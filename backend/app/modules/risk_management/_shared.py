@@ -6,7 +6,7 @@ and type-admin gates, the API shape (a risk merged with its current version and
 derived ratings), the create/update bodies, and the comment/file wrappers over
 the shared `services.module_attachments` kit.
 
-RBAC (plan Phase 0 resolution 10): viewing needs the sub-component enabled and
+RBAC: viewing needs the sub-component enabled and
 project membership; any project member may *propose* (create) a risk, which
 starts `IDENTIFIED`; edit, archive, attachment, project-type and lifecycle
 changes need the project `risk_manager` role or a Fine-Grained Access Control

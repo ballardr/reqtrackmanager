@@ -6,6 +6,7 @@ import type { Organization, OrgUser } from "../../api/types";
 import { buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { StandardWorkspacePage } from "./StandardWorkspacePage";
 import type { ComplianceActionType, ComplianceAuditEvent, ComplianceStandard, ComplianceStandardVersion } from "./types";
+import { chooseRecordAction } from "../../testing/recordActions";
 
 const STANDARD: ComplianceStandard = {
   id: "std-1", organization_id: "org-1", reference: "ISO-27001", name: "ISO 27001",
@@ -47,8 +48,7 @@ function mockWorkspaceApis() {
 
 /**
  * `StandardWorkspacePage` — the per-standard drill-down at `/standards/
- * :standardId[/versions|/history]` (docs/compliance-module-plan.md Phase
- * 18). Resolves its owning org via the new `GET /api/v1/compliance/
+ * :standardId[/versions|/history]`. Resolves its owning org via the new `GET /api/v1/compliance/
  * standards/{id}` before threading it through to every existing org-scoped
  * nested call (action types, versions, history) unchanged.
  */
@@ -69,10 +69,10 @@ export const Overview: Story = {
     await waitFor(() => expect(canvas.getByRole("heading", { name: /ISO-27001 — ISO 27001/ })).toBeInTheDocument());
     await expect(canvas.getByText("Information security management.")).toBeInTheDocument();
     await expect(canvas.getByText("Issued by ISO")).toBeInTheDocument();
-    // Phase 20: the applicability-default panel renders in Overview too.
+    // The applicability-default panel renders in Overview too.
     await waitFor(() => expect(canvas.getByRole("switch")).toHaveAttribute("aria-checked", "false"));
 
-    // Phase 23: clickable stat tiles — one version, zero requirements (the
+    // Clickable stat tiles — one version, zero requirements (the
     // mock's empty `/requirements` list), zero assigned projects.
     await waitFor(() => {
       const tile = canvas.getByRole("link", { name: /Versions/ });
@@ -103,8 +103,8 @@ export const ExportsStandard: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Export" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Standard actions" })).toBeInTheDocument());
+    await chooseRecordAction(canvas, "Standard", "Export");
     await waitFor(() =>
       expect(api.getForBlob).toHaveBeenCalledWith(
         `/api/v1/orgs/${STANDARD.organization_id}/modules/compliance/standards/${STANDARD.id}/export`
@@ -172,6 +172,7 @@ const ORG: Organization = {
   default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
   disabled_at: null, accent_color_hex: null, header_title: null,
   email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
+  code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto" }, enforce_code_everywhere: false,
   force_require_change_request_for_approved_links: false,
   allow_ai_approvals: false,
 };
@@ -179,7 +180,7 @@ const SIBLING_STANDARD: ComplianceStandard = {
   ...STANDARD, id: "std-2", reference: "EN-60529", name: "EN 60529", organization_id: ORG.id,
 };
 
-/** Phase 28 — with more than one standard reachable across the caller's
+/** With more than one standard reachable across the caller's
  * orgs, a chevron next to the standard's name opens a popover listing the
  * others as plain links to their own workspace, via the same cross-org
  * fan-out `StandardListPage.tsx` uses (`listStandardsAcrossMyOrgs`). */

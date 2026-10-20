@@ -1,16 +1,16 @@
 """
 Module: modules.stakeholders.stakeholder_project_router
 
-Project-scoped Stakeholder API (Phase 1.2), mounted at
+Project-scoped Stakeholder API, mounted at
 `/api/v1/projects/{project_id}/modules/stakeholders` alongside
 `project_router.py`'s Persona routes: project-scoped Stakeholder
 CRUD/lifecycle/comments/files/erasure, the project's Stakeholder type
 vocabulary (effective list plus rename/reorder/disable/add), "create from org
 user", the cadence hint, the "represents Persona" links and the project's
-per-stakeholder visibility override (Phase 3b).
+per-stakeholder visibility override.
 
 Reads return the project's own stakeholders *and* the organisation's live
-org-scoped ones (Phase 0 resolution 2), minus org ones the project (or an
+org-scoped ones, minus org ones the project (or an
 ancestor) has hidden. Every mutation targets a project-scoped stakeholder
 only; an org stakeholder is edited through the org router — the one exception
 is hiding/showing it, which writes only the project's own override row. A project stakeholder may represent an org persona or one of its own
@@ -40,7 +40,7 @@ from app.modules.stakeholders._principals import STAKEHOLDER_PRINCIPAL_FIELDS, v
 from app.modules.stakeholders._shared import get_visible_persona, get_visible_stakeholder
 from app.modules.stakeholders.enums import PersonaScope, StakeholderScope, StakeholderStatus
 from app.modules.stakeholders.groups import load_groups
-from app.modules.stakeholders.models import ProjectStakeholderType, Stakeholder
+from app.modules.stakeholders.models import Stakeholder
 from app.modules.stakeholders.schemas import (
     CadenceHintOut,
     RepresentedPersonaOut,
@@ -74,9 +74,20 @@ from app.modules.stakeholders.service import (
     unarchive_record,
 )
 from app.schemas.file import FileAssetOut
-from app.schemas.type_vocabulary import EffectiveTypeOut, ProjectTypeCreate, ProjectTypeOut, ProjectTypeOverrideUpdate
+from app.schemas.type_vocabulary import (
+    EffectiveTypeOut,
+    HiddenTypeOut,
+    ProjectTypeCreate,
+    ProjectTypeOut,
+    ProjectTypeOverrideUpdate,
+    RestoreTypesOut,
+    RestoreTypesRequest,
+)
 from app.services.audit import log_event
+from app.services.project_scope import ProjectScope
 from app.services.rbac import require_project_subcomponent_enabled
+from app.services.tags import TagFilter
+from app.services.type_vocabulary_routes import list_hidden_types, remove_project_type, restore_hidden_types
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/modules/stakeholders", tags=["stakeholders-project"])
 
@@ -167,21 +178,39 @@ def override_project_stakeholder_type(
     return row
 
 
-@router.delete("/stakeholder-types/{project_type_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/stakeholder-types/{type_ref_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_project_stakeholder_type(
-    project_id: UUID, project_type_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    project_id: UUID, type_ref_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    """Removes a project type row (an override reverts to the org default);
-    409 while a stakeholder still uses it."""
+    """Deletes a project-local type, or hides an organisation default in this
+    project (restore it with `POST /stakeholder-types/restore`); `type_ref_id` is an
+    `EffectiveTypeOut.id`. Hiding keeps the project's row, so existing records
+    are unaffected. 409 while a project-local type is still in use."""
     project = _project(db, project_id)
     _require_manage(db, current_user, project)
-    row = db.get(ProjectStakeholderType, project_type_id)
-    if row is None or row.project_id != project_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Stakeholder type not found.")
-    psh.apply_value_error_as_conflict(STAKEHOLDER_TYPES.delete_project_type, db, row)
-    log_event(db, entity_type="project_stakeholder_type", entity_id=project_type_id, action="deleted",
-              actor_id=current_user.id, project_id=project_id)
-    db.commit()
+    remove_project_type(db, STAKEHOLDER_TYPES, project, type_ref_id, current_user, "project_stakeholder_type")
+
+
+@router.get("/stakeholder-types/hidden", response_model=list[HiddenTypeOut])
+def list_hidden_project_stakeholder_types(
+    project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """The organisation defaults this project has hidden. Needs the manage role."""
+    project = _project(db, project_id)
+    _require_manage(db, current_user, project)
+    return list_hidden_types(db, STAKEHOLDER_TYPES, project)
+
+
+@router.post("/stakeholder-types/restore", response_model=RestoreTypesOut)
+def restore_hidden_project_stakeholder_types(
+    project_id: UUID, payload: RestoreTypesRequest, current_user: User = Depends(_require_view),
+    db: Session = Depends(get_db),
+):
+    """Shows hidden organisation defaults in this project again: every one, or
+    only `org_type_ids`. Needs the manage role."""
+    project = _project(db, project_id)
+    _require_manage(db, current_user, project)
+    return restore_hidden_types(db, STAKEHOLDER_TYPES, project, payload, current_user, "project_stakeholder_type")
 
 
 # --- Cadence hint ------------------------------------------------------------
@@ -192,8 +221,8 @@ def get_cadence_hint(
     project_id: UUID, influence_level_id: UUID | None = None, interest_level_id: UUID | None = None,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    """The power/interest quadrant and suggested cadence for a pair of levels
-    (resolution 21); a hint only. Declared before `/stakeholders/{id}` so the
+    """The power/interest quadrant and suggested cadence for a pair of levels;
+    a hint only. Declared before `/stakeholders/{id}` so the
     literal path wins."""
     project = _project(db, project_id)
     try:
@@ -239,25 +268,35 @@ def create_project_stakeholder_from_user(
 def list_project_stakeholders(
     project_id: UUID, include_archived: bool = False, include_org: bool = True, include_hidden: bool = False,
     group_id: UUID | None = None, direct_only: bool = False, group_by: UUID | None = None,
-    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    tag_filter: TagFilter = Depends(), current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    project_scope: ProjectScope = Depends(),
 ):
     """The project's stakeholders, plus the organisation's unless
     `include_org=false`. Org stakeholders hidden from the project are left out
     unless `include_hidden=true` (the manage UI), where they carry `project_hidden`.
     `group_id` keeps a group's members (and its descendants' unless `direct_only`); `group_by`
     orders them by branch under that top-level group."""
-    project = _project(db, project_id)
-    stakeholders = list_project_visible_stakeholders(
-        db, project, include_archived=include_archived, include_hidden=include_hidden
-    )
-    if not include_org:
-        stakeholders = [s for s in stakeholders if s.scope == StakeholderScope.PROJECT]
-    if group_id is not None or group_by is not None:
-        stakeholders = gsh.filter_and_sort_stakeholders(
-            db, stakeholders, load_groups(db, project.organization_id, project_id), group_id=group_id,
-            direct_only=direct_only, group_by=group_by,
+
+    def rows_for(pid: UUID) -> list:
+        """This endpoint's rows for one project of the scope."""
+        project = _project(db, pid)
+        stakeholders = list_project_visible_stakeholders(
+            db, project, include_archived=include_archived, include_hidden=include_hidden
         )
-    return sh.stakeholders_to_out(db, stakeholders, project_id=project_id)
+        if not include_org:
+            stakeholders = [s for s in stakeholders if s.scope == StakeholderScope.PROJECT]
+        stakeholders = tag_filter.keep(db, pid, STAKEHOLDER_ARTEFACT_TYPE, stakeholders)
+        if group_id is not None or group_by is not None:
+            stakeholders = gsh.filter_and_sort_stakeholders(
+                db, stakeholders, load_groups(db, project.organization_id, pid), group_id=group_id,
+                direct_only=direct_only, group_by=group_by,
+            )
+        return sh.stakeholders_to_out(db, stakeholders, project_id=pid)
+
+    return project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, STAKEHOLDER_ARTEFACT_TYPE, rows_for,
+        gate=("stakeholders", "stakeholder"),
+    )
 
 
 @router.get("/stakeholders/{stakeholder_id}", response_model=StakeholderOut)
@@ -339,7 +378,7 @@ def erase_project_stakeholder(
     project_id: UUID, stakeholder_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     """Permanently deletes a stakeholder and every row/file/link holding data
-    about them (Phase 0 resolution 15). Irreversible; the audit event keeps
+    about them. Irreversible; the audit event keeps
     only the id."""
     project = _project(db, project_id)
     stakeholder = _get(db, project_id, stakeholder_id)

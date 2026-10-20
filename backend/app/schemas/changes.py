@@ -19,3 +19,10 @@ class ChangeEntryOut(BaseModel):
     actor_id: UUID | None
     actor_display_name: str | None = None
     detail: dict[str, Any] | None = None
+
+
+class RecordActivityOut(BaseModel):
+    """One page of a single record's activity timeline (newest first)."""
+
+    entries: list[ChangeEntryOut]
+    has_more: bool = False

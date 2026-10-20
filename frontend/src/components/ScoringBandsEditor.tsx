@@ -1,8 +1,8 @@
 /**
  * Module: components/ScoringBandsEditor
  *
- * Edits one scoring model's rating bands (generic scoring-matrix core,
- * Module 1 Phase 10) at org or project level. A band is a label, a lower
+ * Edits one scoring model's rating bands (generic scoring-matrix core)
+ * at org or project level. A band is a label, a lower
  * threshold (entered as a percentage of the model's maximum score) and a
  * tone from the shared `BadgeTone` palette. Client-side validation mirrors
  * the backend's `validate_scoring_bands` so mistakes show before saving.
@@ -18,6 +18,7 @@ import { useState } from "react";
 import { SCORING_BAND_TONE_LABEL, type ScoringBand } from "../api/scoring";
 import type { BadgeTone } from "../api/types";
 import { OverridePill } from "./OverridePill";
+import { Badge } from "./Badge";
 
 interface DraftBand {
   label: string;
@@ -117,10 +118,10 @@ export function ScoringBandsEditor({
             onChange={(e) => update(i, { tone: e.target.value as BadgeTone })}>
             {TONES.map((tone) => <option key={tone} value={tone}>{SCORING_BAND_TONE_LABEL[tone]}</option>)}
           </select>
-          <span className={`badge badge--${band.tone}`}>{band.label || "—"}</span>
+          <Badge tone={band.tone}>{band.label || "—"}</Badge>
           <button type="button" className="btn btn-danger" aria-label={`Remove band ${i + 1}`} title="Remove band"
             disabled={draft.length <= 1} onClick={() => setDraft((d) => d.filter((_, j) => j !== i))}>
-            <Trash2 size={14} />
+            <Trash2 />
           </button>
         </div>
       ))}
@@ -128,7 +129,7 @@ export function ScoringBandsEditor({
       <div className="row" style={{ gap: "0.5rem" }}>
         <button type="button" className="btn" disabled={draft.length >= MAX_BANDS}
           onClick={() => setDraft((d) => [...d, { label: "", percent: d.length ? "" : "0", tone: "muted" }])}>
-          <Plus size={14} /> Add band
+          <Plus /> Add band
         </button>
         <button type="button" className="btn btn-primary" disabled={!dirty || !!error || busy}
           onClick={() => void run(() => onSave(draft.map((b) => ({ label: b.label.trim(), min_score: Number(b.percent) / 100, tone: b.tone }))))}>

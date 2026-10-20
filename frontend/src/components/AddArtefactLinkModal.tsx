@@ -37,8 +37,11 @@ import type {
 } from "../api/artefactLinks";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
+import { defaultOptionKey, optionKey } from "./linkOptions";
 import { LabeledSelect } from "./LabeledSelect";
 import { Modal } from "./Modal";
+import { TextAreaField, TextField } from "./FormFields";
+import { FormActions } from "./FormActions";
 
 /** Lets a page route link changes through a change request instead of the link endpoints. */
 export interface LinksChangeRequestMode {
@@ -63,17 +66,6 @@ interface Level extends ArtefactLinkBrowseStep {
   value: string;
   /** Text typed into the level's own filter. */
   filter: string;
-}
-
-function optionKey(option: ArtefactLinkTypeOption): string {
-  return `${option.link_type_id}:${option.direction}`;
-}
-
-/** The relationship to preselect for a record type: the symmetric "Related to" when offered, else the first. */
-function defaultOptionKey(options: ArtefactLinkTypeOption[], otherType: string): string {
-  const usable = options.filter((o) => o.other_types.some((t) => t.type === otherType));
-  const related = usable.find((o) => o.forward_name === "Related to" && o.reverse_name === "Related to");
-  return optionKey(related ?? usable[0] ?? ({ link_type_id: "", direction: "outgoing" } as ArtefactLinkTypeOption));
 }
 
 function chosenPairs(levels: Level[]): Array<[string, string]> {
@@ -292,7 +284,7 @@ export function AddArtefactLinkModal({
       <div className="stack">
         {changeRequest && <p className="text-muted" style={{ margin: 0 }}>{strings.artefactLinks.changeRequestAddNotice}</p>}
         {relatedProjects.length > 0 && (
-          <LabeledSelect
+          <LabeledSelect helpNotNeeded
             label={strings.artefactLinks.projectLabel}
             value={otherProjectId}
             onChange={setOtherProjectId}
@@ -307,7 +299,7 @@ export function AddArtefactLinkModal({
         {options !== null && options.length > 0 && (
           <>
             {typeChoices.length > 1 && (
-              <LabeledSelect
+              <LabeledSelect helpNotNeeded
                 label={strings.artefactLinks.otherTypeLabel}
                 value={otherType}
                 placeholder={strings.artefactLinks.otherTypePlaceholder}
@@ -331,7 +323,7 @@ export function AddArtefactLinkModal({
                     onChange={(e) => filterLevel(index, e.target.value)}
                   />
                 )}
-                <LabeledSelect
+                <LabeledSelect helpNotNeeded
                   label={level.label}
                   value={level.value}
                   placeholder={strings.artefactLinks.levelAny(level.label)}
@@ -341,22 +333,18 @@ export function AddArtefactLinkModal({
                 {level.truncated && <span className="text-muted">{strings.artefactLinks.levelTruncated}</span>}
               </div>
             ))}
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.artefactLinks.searchLabel}
-              <input
-                className="input"
-                aria-label={strings.artefactLinks.searchLabel}
-                placeholder={strings.artefactLinks.searchPlaceholder}
-                value={searchText}
-                onChange={(e) => {
-                  setSearchText(e.target.value);
-                  setTargetId("");
-                }}
-              />
-            </label>
+            <TextField helpNotNeeded
+              label={strings.artefactLinks.searchLabel}
+              value={searchText}
+              onChange={(next) => {
+                setSearchText(next);
+                setTargetId("");
+              }}
+              placeholder={strings.artefactLinks.searchPlaceholder}
+            />
             {!searchable && <p className="text-muted" style={{ margin: 0 }}>{strings.artefactLinks.searchPrompt}</p>}
             {searchable && (
-              <LabeledSelect
+              <LabeledSelect helpNotNeeded
                 label={strings.artefactLinks.targetLabel}
                 value={targetId}
                 onChange={(value) => {
@@ -376,7 +364,7 @@ export function AddArtefactLinkModal({
               <p className="text-muted" style={{ margin: 0 }}>{strings.artefactLinks.candidatesTruncated}</p>
             )}
             {target && (
-              <LabeledSelect
+              <LabeledSelect help={strings.help.linkRelationship}
                 label={strings.artefactLinks.linkTypeLabel}
                 value={effectiveKey}
                 onChange={setChosenKey}
@@ -387,22 +375,16 @@ export function AddArtefactLinkModal({
           </>
         )}
         {changeRequest && (
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.artefactLinks.reasonLabel}
-            <textarea
-              className="input" rows={2} aria-label={strings.artefactLinks.reasonLabel}
-              value={reason} onChange={(e) => setReason(e.target.value)}
-            />
-          </label>
+          <TextAreaField helpNotNeeded label={strings.artefactLinks.reasonLabel} value={reason} onChange={setReason} rows={2} />
         )}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onClose}>{strings.common.cancel}</button>
-          <button className="btn btn-primary" disabled={!chosen || !target || saving || reasonMissing} onClick={submit}>
-            {collect
+        <FormActions
+          onCancel={onClose}
+          onSave={submit}
+          saveLabel={collect
               ? strings.artefactLinks.submitCollect
               : changeRequest ? strings.artefactLinks.submitAddViaChangeRequest : strings.artefactLinks.submitAdd}
-          </button>
-        </div>
+          saveDisabled={!chosen || !target || saving || reasonMissing}
+        />
       </div>
     </Modal>
   );

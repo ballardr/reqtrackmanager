@@ -2,8 +2,7 @@
 Module: modules.risk_management.treatment
 
 Risk-to-engineering relationships and the "linked to" versus "effectively
-treats" distinction (docs/plans/module-03-risk-management-plan.md Phase 3,
-Phase 0 resolution 3).
+treats" distinction.
 
 Responsibilities:
 - Say which `ArtefactLink`s are *treatment links* of a risk (the families below).

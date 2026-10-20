@@ -74,6 +74,10 @@ A self-contained, optional capability area (backend endpoints, database tables, 
 
 The top-level container, owning users, groups, branding, SSO configuration, and every project underneath it. See [Organisations and projects](../concepts/organisations-and-projects.md).
 
+#### Organisation code
+
+A short upper-case code (letters and digits, no hyphen) that goes in front of the codes of records the organisation itself owns, such as `ACME-PER-001`. It never equals a project code in the organisation. See [Administering an organisation → Organisation code](../workflows/administering-an-organisation.md#organisation-code).
+
 #### Organisation role
 
 A role governing organisation-wide administration (`org_admin`, `project_creator`, `member`) — distinct from a [project role](#project-role). See [Roles, groups, and access control](../concepts/roles-groups-and-access-control.md).
@@ -85,6 +89,10 @@ A long-lived, org/project-scoped bearer credential for non-interactive use, such
 #### Project
 
 Belongs to exactly one organisation, and can optionally have a parent project, modelling a larger programme as a tree of related projects. See [Organisations and projects](../concepts/organisations-and-projects.md).
+
+#### Project code
+
+A short upper-case code (letters and digits, no hyphen) that identifies a project and goes in front of its record codes where records from several projects appear together. See [Administering an organisation → Project codes](../workflows/administering-an-organisation.md#project-codes).
 
 #### Project group
 
@@ -105,6 +113,14 @@ A project marked usable as a template; creating a new project from it copies its
 #### Proposed link
 
 A link a change request carries and an approver merges, or declines, when approving it. See [Change requests → Proposing links](../core-features/change-requests.md#proposing-links).
+
+#### Qualified code
+
+A record code with its owner's code in front, such as `ACME-REQ-001` (project code) or `ACME-PER-001` (the organisation's code, for a record the organisation owns). The same `REQ-001` exists in every project, so a qualified code is the unambiguous way to name a record. See [Administering an organisation → Project codes](../workflows/administering-an-organisation.md#project-codes).
+
+#### Record code
+
+The short name of a record, such as `REQ-001` (requirement), `PP-001` (pain point), `OQ-001` (open question), `NEED-001` (stakeholder need), `EVD-001` (compliance evidence), `CR-001` (change request), or `PER-001` (Persona), `STK-001` (Stakeholder), `SGP-001` (Stakeholder group), `STR-001` (Strategy), `FUT-001` (Future State) and `GP-001` (Guiding Principle). Numbered per project, or per organisation for a record the organisation owns, and never reused. See [Qualified code](#qualified-code) for the form that is unambiguous across projects.
 
 #### Report content
 

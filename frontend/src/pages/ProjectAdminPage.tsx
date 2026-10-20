@@ -1,3 +1,4 @@
+import { useMutation } from "../hooks/useMutation";
 import { ArrowDown, ArrowUp, Check, Download, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -20,6 +21,7 @@ import type {
   OrgUser,
   PendingInvite,
   Project,
+  ProjectCodePolicy,
   ProjectGroup,
   ProjectListItem,
   ProjectMemberSource,
@@ -47,6 +49,7 @@ import { GroupInUseDialog } from "../components/GroupInUseDialog";
 import { ModuleSettingsList } from "../components/ModuleSettingsList";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { DefinitionList } from "../components/DefinitionList";
+import { ProjectTagsPanel } from "../components/ProjectTagsPanel";
 import { DeleteInUseDialog } from "../components/DeleteInUseDialog";
 import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
@@ -67,11 +70,18 @@ import { UserAutocomplete } from "../components/UserAutocomplete";
 import { useOrgLabel } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
-import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
+import { refreshProjectEnabledModules, useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
 import type { ProjectAdminSectionDef } from "../modules/types";
 import { installedModules } from "../modules/registry";
 import { loadProjectSwitcherOptions } from "../utils/entitySwitcherLoaders";
+import { describeCodePolicy, normaliseProjectCode } from "../utils/codePolicy";
 import { downloadBlob } from "../utils/download";
+import { Badge } from "../components/Badge";
+import { CheckboxField, TextAreaField, TextField, ToggleField } from "../components/FormFields";
+import { LabeledSelect } from "../components/LabeledSelect";
+import { FormActions } from "../components/FormActions";
+import { FormGrid, FormGridFull } from "../components/FormGrid";
+import { RecordFieldGroup } from "../components/RecordDetailParts";
 
 // MIRROR_ALL/MIRROR_ROLE can convey manager/admin control (unlike
 // MEMBER_ONLY, which caps at baseline MEMBER — parity with
@@ -80,7 +90,7 @@ const MODES_NEEDING_CONFIRMATION: ProjectRoleInheritanceMode[] = ["mirror_all", 
 
 const TERMINOLOGY_KEYS = ["project", "stage", "component", "category", "requirement", "change_request"] as const;
 
-// PR7 of the members/groups directory rework plan: the four project roles a
+// the members/groups directory rework: the four project roles a
 // group's per-row `MultiSelectDropdown` (Groups tab, and the group's own
 // `SidePanel`) offers — same fixed list `ProjectMembersTable.tsx`'s own Role
 // column already iterates for a user's roles.
@@ -98,24 +108,23 @@ const PROJECT_GROUP_ROLES: ProjectRole[] = ["project_manager", "project_administ
  * Converted from `Tabs` to `ResourceMenu` for cross-page consistency with
  * the other admin-tier pages (Org Admin, Server Admin, Preferences) —
  * a deliberate reversal of the original per-page ≤5-groups Tabs-vs-
- * ResourceMenu call recorded in the 2026-08 UX audit, since this page
+ * ResourceMenu call recorded earlier, since this page
  * never exceeded 5 tabs on its own. See `docs/ux-style-guide.md`
  * Principle 1 and `docs/decisions.md`.
  *
  * "groups" (the combined "Project groups" tab: effective-members audit
  * table, pending invites, and the groups list all on one screen) was later
- * split into "members" and "groups" (Phase 5, docs/decisions.md) — a group's
+ * split into "members" and "groups" (docs/decisions.md) — a group's
  * role being fixed at creation, with no way to add-then-assign, and an
  * org-admin membership UI duplicating a worse version of this one, were
  * both flagged directly; "groups" keeps the groups list itself, now opening
  * a `SidePanel` per group instead of an always-expanded accordion.
  *
- * "members" itself was rebuilt again in a later phase (Phase D, follow-up
- * UX batch, 2026-08-31, docs/decisions.md): once default project groups
- * were removed (Phase C) a group stopped being the common way to grant a
+ * "members" itself was rebuilt again (docs/decisions.md): once default project groups
+ * were removed a group stopped being the common way to grant a
  * role, so the "editable users-and-groups table plus a separate effective-
- * members audit table plus a separate pending-invites section" shape that
- * phase built became three sections doing one job — `ProjectMembersTable`
+ * members audit table plus a separate pending-invites section" shape
+ * became three sections doing one job — `ProjectMembersTable`
  * (`components/ProjectMembersTable.tsx`) replaces all three with a single
  * table over `GET /effective-members`'s own provenance, with pending
  * invites folded in as a per-row status. See that component's own
@@ -124,10 +133,9 @@ const PROJECT_GROUP_ROLES: ProjectRole[] = ["project_manager", "project_administ
  * makes its inline role-toggle safe.
  */
 type CoreProjectAdminGroupKey =
-  | "overview" | "structure" | "fieldsActions" | "members" | "groups" | "reportSetup" | "modules";
+  | "overview" | "structure" | "fieldsActions" | "members" | "groups" | "reportSetup" | "tags" | "modules";
 
-/** Widened to admit a module-contributed section's own key (Module 4 Phase
- * 9, 2026-09-22) — mirrors `OrgAdminGroupKey`'s identical widening for
+/** Widened to admit a module-contributed section's own key (2026-09-22) — mirrors `OrgAdminGroupKey`'s identical widening for
  * `OrgAdminPage.tsx`'s own `moduleAdminSections`. */
 type ProjectAdminGroupKey = CoreProjectAdminGroupKey | string;
 
@@ -138,6 +146,7 @@ const PROJECT_ADMIN_GROUP_KEYS: CoreProjectAdminGroupKey[] = [
   "members",
   "groups",
   "reportSetup",
+  "tags",
   "modules",
 ];
 
@@ -152,12 +161,13 @@ const PROJECT_ADMIN_GROUP_KEYS: CoreProjectAdminGroupKey[] = [
  * and project groups (C-U-11).
  */
 export function ProjectAdminPage() {
+  const run = useMutation();
   const strings = useStrings();
   const { projectId, group: groupParam } = useParams<{ projectId: string; group?: string }>();
   const navigate = useNavigate();
   const orgLabel = useOrgLabel();
   const { showToast } = useToast();
-  // Module 4 Phase 9 (2026-09-22): every installed module's own
+  // Every installed module's own
   // `projectAdminSections`, filtered to this project's actually-enabled
   // modules (`GET /projects/{id}/enabled-modules` already returns only the
   // enabled set) — mirrors `OrgAdminPage.tsx`'s identical `moduleAdminSections`
@@ -177,7 +187,7 @@ export function ProjectAdminPage() {
       return true;
     });
   const [project, setProject] = useState<Project | null>(null);
-  // Module 0 (Platform Foundations) Phases 4/5 — this project's own
+  // This project's own
   // Modules tab: every registered module's effective whole-module state
   // (`projectModules`) plus, for a module with sub-components, this
   // project's own per-sub-component state (`projectModuleSubComponents`,
@@ -192,8 +202,7 @@ export function ProjectAdminPage() {
   const [groups, setGroups] = useState<ProjectGroup[]>([]);
   const [groupsTotal, setGroupsTotal] = useState(0);
   const [groupSearch, setGroupSearch] = useState("");
-  // Groups tab `DirectoryTable` retrofit (Phase B, follow-up UX batch,
-  // 2026-08-31) — `list_project_groups` already pages via `limit`/`offset`,
+  // Groups tab `DirectoryTable` retrofit — `list_project_groups` already pages via `limit`/`offset`,
   // so Name sort is a backend-sorted refetch (its new `order` param), not a
   // client-side sort of only the loaded page — style guide "Pattern:
   // sortable column header"'s "already paginated -> backend sort/order
@@ -206,8 +215,8 @@ export function ProjectAdminPage() {
   const [sourceProjectSelections, setSourceProjectSelections] = useState<Record<string, string>>({});
   // "New group" create Modal (style guide "Pattern: modal dialog for
   // entity create/rename" — mirrors OrgAdminPage's own "New group" modal,
-  // just pointed at the project-scoped endpoint). PR7 of the members/
-  // groups directory rework plan (docs/decisions.md) dropped the role
+  // just pointed at the project-scoped endpoint). The members/
+  // groups directory rework (docs/decisions.md) dropped the role
   // picker this modal used to have: `ProjectGroupCreate` no longer accepts
   // a role at all — a group is now created bare (zero roles), symmetric
   // with the org-scoped "New group" modal, and a role is a separate,
@@ -239,9 +248,11 @@ export function ProjectAdminPage() {
   const [structureError, setStructureError] = useState<string | null>(null);
 
   const [settingsName, setSettingsName] = useState("");
+  const [settingsCode, setSettingsCode] = useState("");
+  const [codePolicy, setCodePolicy] = useState<ProjectCodePolicy | null>(null);
   const [settingsSummary, setSettingsSummary] = useState("");
   const [allowMemberCr, setAllowMemberCr] = useState(true);
-  // Platform review 2026-09, Phase 8 — see `Project.
+  // See `Project.
   // require_change_request_for_approved_links`/`exempt_from_org_link_lock`
   // (backend model docstrings) and `Organization.
   // force_require_change_request_for_approved_links` for the full
@@ -285,31 +296,31 @@ export function ProjectAdminPage() {
   const [addMirrorMode, setAddMirrorMode] = useState<ProjectRoleInheritanceMode>("member_only");
   const [addMirrorFilterRole, setAddMirrorFilterRole] = useState<ProjectRole>("project_manager");
   const [effectiveMembers, setEffectiveMembers] = useState<EffectiveMember[] | null>(null);
-  // Phase 6 (docs/platform-review-2026-09-plan.md): organisation groups
+  // Organisation groups
   // holding a direct `OrgGroupProjectRole` grant on this project, fed into
   // `ProjectMembersTable`'s own `kind: "group"` rows — the read side the
   // existing `addProjectGroupRole` grant flow never had a way to display.
   const [groupRoles, setGroupRoles] = useState<OrgGroupProjectRoleSummary[]>([]);
   const [materializing, setMaterializing] = useState(false);
-  // Module system Phase 2: project-scoped module-contributed role
+  // Project-scoped module-contributed role
   // definitions currently available to grant on this project, fed into
   // `ProjectMembersTable`'s Role column alongside the four core
   // `ProjectRole` options. `[]` before `reload()`'s own fetch resolves,
   // which also correctly renders as "no module roles" for a deployment
-  // with none registered yet (no module has any roles until Phase 5).
+  // with none registered yet (no module has any roles registered).
   const [availableModuleRoles, setAvailableModuleRoles] = useState<ModuleRoleDefinition[]>([]);
 
-  // --- Members section (Phase D, follow-up UX batch, 2026-08-31) --------
+  // --- Members section --------
   // `ProjectMembersTable`'s two data sources — effective members (with
   // provenance) and pending invites, both fetched unpaginated, same
   // "small enough to load whole and let the shared table search/filter/
   // paginate client-side" precedent `MemberRoleTable`'s own two sources
   // set before it. `memberTableGroups` (unrelated to the Members section
   // any more — groups stopped being rows in this table once default
-  // groups were removed, Phase C) still exists purely as the Groups
+  // groups were removed) still exists purely as the Groups
   // section's own lookup source for a deep-linked `?openGroup=` id that
   // isn't on the currently-loaded paginated page (see `openGroupId`
-  // below) — kept as-is, untouched by this phase.
+  // below) — kept as-is.
   const [memberTableGroups, setMemberTableGroups] = useState<ProjectGroup[]>([]);
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const [resendingInviteId, setResendingInviteId] = useState<string | null>(null);
@@ -317,15 +328,15 @@ export function ProjectAdminPage() {
   // 3, "Create is a layer, not a page reflow") — the add-member form used
   // to render permanently above the table via `addControl`; it's now
   // behind this button + `Modal`, mirroring the Groups tab's own "New
-  // group" button/Modal pair below. PR3 originally planned a sibling "Add
-  // group" button here; corrected during PR5's review to a single button
+  // group" button/Modal pair below. A sibling "Add
+  // group" button was considered here and rejected in favour of a single button
   // whose `UserAutocomplete` matches both users and org groups instead —
   // see that component's own module docstring.
   const [addMemberModalOpen, setAddMemberModalOpen] = useState(false);
-  // PR7: the same modal's autocomplete also matches this project's own
+  // The same modal's autocomplete also matches this project's own
   // groups as a third kind — picking one doesn't grant a role at all (a
-  // group's roles are separate, possibly-zero, possibly-multiple grants,
-  // per PR7), it switches the modal into a second step, "add someone to
+  // group's roles are separate, possibly-zero, possibly-multiple grants),
+  // it switches the modal into a second step, "add someone to
   // this group," reusing the existing `addGroupMember`/`addOrgGroupMember`
   // handlers (the Groups tab's own SidePanel already calls the same
   // `POST /{project_id}/groups/{group_id}/members` endpoint for this) —
@@ -334,7 +345,7 @@ export function ProjectAdminPage() {
   // org-group search).
   const [addMemberTargetGroup, setAddMemberTargetGroup] = useState<ProjectGroup | null>(null);
 
-  // --- Groups section: per-group SidePanel (Phase 5) ---------------------
+  // --- Groups section: per-group SidePanel ---------------------
   // Replaces the old always-expanded `CollapsibleSection` accordion. A real
   // id, not a boolean, so at most one group's panel is open at a time.
   const [openGroupId, setOpenGroupId] = useState<string | null>(null);
@@ -441,6 +452,7 @@ export function ProjectAdminPage() {
     setProject(p);
     if (!settingsDirtyRef.current) {
       setSettingsName(p.name);
+      setSettingsCode(p.code);
       setSettingsSummary(p.summary);
       setAllowMemberCr(p.allow_member_change_requests);
       setRequireCrForLinks(p.require_change_request_for_approved_links);
@@ -492,7 +504,7 @@ export function ProjectAdminPage() {
       // page at all.
       api.get<OrgUser[]>(`/api/v1/orgs/${p.organization_id}/users`),
       api.get<OrgGroup[]>(`/api/v1/orgs/${p.organization_id}/groups`),
-      // Platform review 2026-09, Phase 8 — readable by any org member
+      // Readable by any org member
       // (unlike most other org policy toggles), so this reuses the same
       // "project access already implies org membership" reasoning above
       // for the unfiltered org users/groups calls.
@@ -519,11 +531,11 @@ export function ProjectAdminPage() {
       api.get<EffectiveMember[]>(`/api/v1/projects/${projectId}/effective-members`),
       api.get<OrgGroupProjectRoleSummary[]>(`/api/v1/projects/${projectId}/group-roles`),
       api.get<PendingInvite[]>(`/api/v1/projects/${projectId}/pending-invites`),
-      // Module system Phase 2 — same "fetched alongside the rest of this
+      // Same "fetched alongside the rest of this
       // page's own reload()" treatment every other Members-section data
       // source above gets.
       api.get<ModuleRoleDefinition[]>(`/api/v1/projects/${projectId}/module-roles`),
-      // Module 0 (Platform Foundations) Phase 5 follow-up — the Modules
+      // The Modules
       // tab's own bulk discovery endpoint (every registered module, this
       // project's own effective/override state for each).
       api.get<ProjectModuleEnablement[]>(`/api/v1/projects/${projectId}/modules`),
@@ -531,6 +543,7 @@ export function ProjectAdminPage() {
     setOrgUsers(orgUsers);
     setOrgGroups(orgGroups);
     setOrgForceLinksLocked(orgForOrgSettings.force_require_change_request_for_approved_links);
+    setCodePolicy(orgForOrgSettings.project_code_policy);
     setReportTemplates(reportTemplates);
     setOrgProjectStatuses(orgProjectStatuses);
     setOrgProjects(orgProjects);
@@ -539,7 +552,7 @@ export function ProjectAdminPage() {
     setEffectiveMembers(effectiveMembers);
     setGroupRoles(groupRoles);
     setProjectModules(projectModulesLoaded);
-    // Sub-components (Phase 4), one level below the whole-module list just
+    // Sub-components, one level below the whole-module list just
     // fetched — `GET .../subcomponents` safely returns `[]` for a module
     // with none declared (every module except Context & Strategy today),
     // so this is called for every module unconditionally, mirroring Org
@@ -571,7 +584,7 @@ export function ProjectAdminPage() {
     setProjectModuleSubComponents((prev) => ({ ...prev, [moduleKey]: subs }));
   }
 
-  // Module 0 (Platform Foundations) Phase 5 — this project's own
+  // This project's own
   // whole-module enablement override. Immediate PUT + local-state patch,
   // the same shape `toggleModuleEnabled` uses on `OrgAdminPage.tsx` one
   // tier up: a single toggle only ever changes this one module's own row.
@@ -581,6 +594,7 @@ export function ProjectAdminPage() {
         `/api/v1/projects/${projectId}/modules/${moduleKey}/enablement`, { enabled },
       );
       setProjectModules((prev) => prev.map((m) => (m.module_key === moduleKey ? updated : m)));
+      if (projectId) refreshProjectEnabledModules(projectId);
       await refreshProjectModuleSubComponents(moduleKey);
       showToast(enabled ? strings.admin.moduleEnabledToast(updated.name) : strings.admin.moduleDisabledToast(updated.name));
     } catch (err) {
@@ -597,6 +611,7 @@ export function ProjectAdminPage() {
         ...prev,
         [moduleKey]: (prev[moduleKey] ?? []).map((s) => (s.subcomponent_key === subcomponentKey ? updated : s)),
       }));
+      if (projectId) refreshProjectEnabledModules(projectId);
       showToast(
         enabled
           ? strings.admin.moduleSubComponentEnabledToast(updated.name)
@@ -612,7 +627,7 @@ export function ProjectAdminPage() {
     setEffectiveMembers(await api.get<EffectiveMember[]>(`/api/v1/projects/${projectId}/effective-members`));
   }
 
-  /** `ProjectMembersTable`'s own third data source (Phase 6) — same
+  /** `ProjectMembersTable`'s own third data source — same
    * "re-fetch just this" treatment `reloadEffectiveMembers` uses. Called
    * from `reload()` (below) and after every group-role mutation, since a
    * grant/revoke/removal changes exactly this list. */
@@ -671,13 +686,13 @@ export function ProjectAdminPage() {
   }
 
   async function addCustomField() {
-    await api.post(`/api/v1/projects/${projectId}/custom-fields`, {
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/custom-fields`, {
       entity_kind: newFieldKind,
       name: newFieldName,
       field_type: newFieldType,
       options: newFieldType === "list" ? newFieldOptions.split(",").map((s) => s.trim()).filter(Boolean) : null,
       required: newFieldRequired,
-    });
+    }), "add", "custom field"))) return;
     setNewFieldName("");
     setNewFieldOptions("");
     setNewFieldRequired(false);
@@ -685,7 +700,7 @@ export function ProjectAdminPage() {
   }
 
   async function deleteCustomField(fieldId: string) {
-    await api.delete(`/api/v1/projects/${projectId}/custom-fields/${fieldId}`);
+    if (!(await run(() => api.delete(`/api/v1/projects/${projectId}/custom-fields/${fieldId}`), "delete", "custom field"))) return;
     reload();
   }
 
@@ -694,8 +709,9 @@ export function ProjectAdminPage() {
     try {
       await api.patch(`/api/v1/projects/${projectId}`, {
         name: settingsName, summary: settingsSummary,
+        ...(codePolicy?.assignment === "manual" && settingsCode !== project?.code ? { code: normaliseProjectCode(settingsCode) } : {}),
         allow_member_change_requests: allowMemberCr,
-        // Platform review 2026-09, Phase 8 — `requireCrForLinks` always
+        // `requireCrForLinks` always
         // carries this project's own stored opt-in, even while the org
         // force is active and the checkbox below renders checked-and-
         // disabled (rendering it forced doesn't rewrite the underlying
@@ -713,6 +729,7 @@ export function ProjectAdminPage() {
         can_be_parent: canBeParent,
       });
       settingsDirtyRef.current = false;
+      showToast(strings.mutation.success("{project} settings", strings.mutation.past.save));
       reload();
     } catch (err) {
       // Surfaces the C-U-08 ("only manager is inherited") and
@@ -755,17 +772,17 @@ export function ProjectAdminPage() {
 
   async function addMemberSource() {
     if (!addSourceId) return;
-    await api.post(`/api/v1/projects/${projectId}/member-sources`, {
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/member-sources`, {
       source_project_id: addSourceId, mirror_mode: addMirrorMode,
       mirror_filter_role: addMirrorMode === "mirror_role" ? addMirrorFilterRole : null,
-    });
+    }), "add", "member source"))) return;
     setAddSourceId("");
     setAddMirrorMode("member_only");
     reload();
   }
 
   async function removeMemberSource(sourceProjectId: string) {
-    await api.delete(`/api/v1/projects/${projectId}/member-sources/${sourceProjectId}`);
+    if (!(await run(() => api.delete(`/api/v1/projects/${projectId}/member-sources/${sourceProjectId}`), "remove", "member source"))) return;
     reload();
   }
 
@@ -783,14 +800,17 @@ export function ProjectAdminPage() {
   }
 
   async function saveTerminology() {
-    await api.put(`/api/v1/projects/${projectId}/terminology`, { terminology });
+    if (!(await run(() => api.put(`/api/v1/projects/${projectId}/terminology`, { terminology }), "save", "terminology"))) return;
     terminologyDirtyRef.current = false;
     reload();
   }
 
   async function toggleArchive() {
     const action = project?.is_archived ? "unarchive" : "archive";
-    await api.post(`/api/v1/projects/${projectId}/${action}`);
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/${action}`), {
+      success: action === "archive" ? "Project archived." : "Project restored.",
+      failure: `Could not ${action} the project.`,
+    }))) return;
     reload();
   }
 
@@ -818,40 +838,40 @@ export function ProjectAdminPage() {
 
   async function addStage() {
     if (!newStageName.trim()) return;
-    await api.post(`/api/v1/projects/${projectId}/stages`, { name: newStageName });
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages`, { name: newStageName }), "add", "{stage}"))) return;
     setNewStageName("");
     reload();
   }
 
   async function startStageReview(stageId: string) {
-    await api.post(`/api/v1/projects/${projectId}/stages/${stageId}/transition?new_status=review`);
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages/${stageId}/transition?new_status=review`), "start", "{stage} review"))) return;
     reload();
   }
 
   async function approveStage(stageId: string) {
-    await api.post(`/api/v1/projects/${projectId}/stages/${stageId}/transition?new_status=approved`);
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages/${stageId}/transition?new_status=approved`), "approve", "{stage}"))) return;
     reload();
   }
 
   async function setReviewDeadline(stageId: string, isoDeadline: string) {
-    await api.post(`/api/v1/projects/${projectId}/stages/${stageId}/review-deadline`, {
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages/${stageId}/review-deadline`, {
       review_deadline: isoDeadline || null,
-    });
+    }), "set", "review deadline"))) return;
     reload();
   }
 
   async function respondToStageReview(stageId: string, response: "approved" | "rejected") {
-    await api.post(`/api/v1/projects/${projectId}/stages/${stageId}/review-response`, { response });
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages/${stageId}/review-response`, { response }), "respond", "{stage} review"))) return;
     reload();
   }
 
   async function completeStage(stageId: string, cascade: boolean) {
-    await api.post(`/api/v1/projects/${projectId}/stages/${stageId}/complete`, { cascade_to_requirements: cascade });
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages/${stageId}/complete`, { cascade_to_requirements: cascade }), "complete", "{stage}"))) return;
     reload();
   }
 
   async function addComponent() {
-    await api.post(`/api/v1/projects/${projectId}/components`, { name: newComponentName, prefix: newComponentPrefix });
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/components`, { name: newComponentName, prefix: newComponentPrefix }), "add", "{component}"))) return;
     setNewComponentName("");
     setNewComponentPrefix("");
     reload();
@@ -860,20 +880,20 @@ export function ProjectAdminPage() {
   async function addCategory(componentId: string) {
     const input = newCategoryInputs[componentId];
     if (!input?.name || !input?.prefix) return;
-    await api.post(`/api/v1/projects/${projectId}/categories`, {
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/categories`, {
       name: input.name, prefix: input.prefix, component_id: componentId,
-    });
+    }), "add", "category"))) return;
     setNewCategoryInputs((m) => ({ ...m, [componentId]: { name: "", prefix: "" } }));
     reload();
   }
 
   async function moveComponent(id: string, direction: "up" | "down") {
-    await api.post(`/api/v1/projects/${projectId}/components/${id}/move`, { direction });
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/components/${id}/move`, { direction }), { failure: "Could not move {component}." }))) return;
     reload();
   }
 
   async function moveCategory(id: string, direction: "up" | "down") {
-    await api.post(`/api/v1/projects/${projectId}/categories/${id}/move`, { direction });
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/categories/${id}/move`, { direction }), { failure: "Could not move {category}." }))) return;
     reload();
   }
 
@@ -886,6 +906,7 @@ export function ProjectAdminPage() {
         delete next[stageId];
         return next;
       });
+      showToast(strings.mutation.success("{stage}", strings.mutation.past.rename));
       reload();
     } catch (err) {
       setStructureError(err instanceof Error ? err.message : strings.common.error);
@@ -896,6 +917,7 @@ export function ProjectAdminPage() {
    * `DeleteInUseDialog` can show the error in place. */
   async function deleteStage(stageId: string, reassignTo: string) {
     await api.delete(`/api/v1/projects/${projectId}/stages/${stageId}?reassign_to=${reassignTo}`);
+    showToast(strings.mutation.success("{stage}", strings.mutation.past.delete));
     reload();
   }
 
@@ -908,6 +930,7 @@ export function ProjectAdminPage() {
         delete next[componentId];
         return next;
       });
+      showToast(strings.mutation.success("{component}", strings.mutation.past.rename));
       reload();
     } catch (err) {
       setStructureError(err instanceof Error ? err.message : strings.common.error);
@@ -919,6 +942,7 @@ export function ProjectAdminPage() {
     try {
       await api.delete(`/api/v1/projects/${projectId}/components/${componentId}`);
       setDeletingComponentId(null);
+      showToast(strings.mutation.success("{component}", strings.mutation.past.delete));
       reload();
     } catch (err) {
       setStructureError(err instanceof Error ? err.message : strings.common.error);
@@ -934,6 +958,7 @@ export function ProjectAdminPage() {
         delete next[categoryId];
         return next;
       });
+      showToast(strings.mutation.success("{category}", strings.mutation.past.rename));
       reload();
     } catch (err) {
       setStructureError(err instanceof Error ? err.message : strings.common.error);
@@ -944,11 +969,13 @@ export function ProjectAdminPage() {
    * `DeleteInUseDialog` can show the error in place. */
   async function deleteCategory(categoryId: string, reassignTo: string) {
     await api.delete(`/api/v1/projects/${projectId}/categories/${categoryId}?reassign_to=${reassignTo}`);
+    showToast(strings.mutation.success("{category}", strings.mutation.past.delete));
     reload();
   }
 
   async function addActionType(name: string) {
     await api.post(`/api/v1/projects/${projectId}/action-types`, { name });
+    showToast(strings.mutation.success("action type", strings.mutation.past.add));
     reload();
   }
 
@@ -959,6 +986,7 @@ export function ProjectAdminPage() {
 
   async function renameActionType(id: string, name: string) {
     await api.patch(`/api/v1/projects/${projectId}/action-types/${id}`, { name });
+    showToast(strings.mutation.success("action type", strings.mutation.past.rename));
     reload();
   }
 
@@ -968,11 +996,12 @@ export function ProjectAdminPage() {
    * OrgAdminPage's project-statuses/link-types delete flow). */
   async function deleteActionType(id: string, reassignToId?: string) {
     await api.delete(`/api/v1/projects/${projectId}/action-types/${id}${reassignToId ? `?reassign_to_id=${reassignToId}` : ""}`);
+    showToast(strings.mutation.success("action type", strings.mutation.past.delete));
     reload();
   }
 
   /** Creates a new project group with `newGroupName`/`newGroupRole` — the
-   * frontend gap the 2026-08 UX audit flagged (Groups tab could manage
+   * frontend gap flagged earlier (Groups tab could manage
    * membership but had no create form at all). `POST
    * /projects/{id}/groups` already existed and required no backend change. */
   function handleGroupSearchChange(value: string) {
@@ -1000,8 +1029,7 @@ export function ProjectAdminPage() {
     }
   }
 
-  /** Grants/revokes one role on a project group (PR7 of the members/groups
-   * directory rework plan) — the Groups tab's per-row `MultiSelectDropdown`
+  /** Grants/revokes one role on a project group — the Groups tab's per-row `MultiSelectDropdown`
    * (mirroring `ProjectMembersTable`'s own Role column pattern) and the
    * group's own `SidePanel` role editor both call this. Replaces the old
    * `changeGroupRole` (`PATCH .../groups/{id}`, a single mutable field) now
@@ -1035,8 +1063,7 @@ export function ProjectAdminPage() {
    * `addGroupMember`. Grants a *direct* project role rather than group
    * membership (from the Groups tab's own SidePanel, one of the group's
    * currently-held roles is used as an approximation, so the effective
-   * access is close to what joining the group would have granted — PR7:
-   * since a group can now hold zero, one, or several roles, this is no
+   * access is close to what joining the group would have granted — since a group can now hold zero, one, or several roles, this is no
    * longer necessarily exact if the group holds more than one), since the
    * by-email endpoint has no notion of "this specific group" and only ever
    * grants a single role per call — see
@@ -1076,7 +1103,7 @@ export function ProjectAdminPage() {
   }
 
   async function removeGroupMember(groupId: string, userId: string) {
-    await api.delete(`/api/v1/projects/${projectId}/groups/${groupId}/members/${userId}`);
+    if (!(await run(() => api.delete(`/api/v1/projects/${projectId}/groups/${groupId}/members/${userId}`), "remove", "group member"))) return;
     reload();
   }
 
@@ -1087,7 +1114,7 @@ export function ProjectAdminPage() {
   }
 
   async function removeOrgGroupMember(groupId: string, orgGroupId: string) {
-    await api.delete(`/api/v1/projects/${projectId}/groups/${groupId}/members/${orgGroupId}`);
+    if (!(await run(() => api.delete(`/api/v1/projects/${projectId}/groups/${groupId}/members/${orgGroupId}`), "remove", "org group member"))) return;
     reload();
   }
 
@@ -1097,17 +1124,17 @@ export function ProjectAdminPage() {
   // group-membership mutation on this page — no consent needed from the
   // referenced project, mirroring the member-source mechanism above.
   async function addProjectRefMember(groupId: string, sourceProjectId: string) {
-    await api.post(`/api/v1/projects/${projectId}/groups/${groupId}/members`, { source_project_id: sourceProjectId });
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/groups/${groupId}/members`, { source_project_id: sourceProjectId }), "add", "member source"))) return;
     setSourceProjectSelections((prev) => ({ ...prev, [groupId]: "" }));
     reload();
   }
 
   async function removeProjectRefMember(groupId: string, sourceProjectId: string) {
-    await api.delete(`/api/v1/projects/${projectId}/groups/${groupId}/members/${sourceProjectId}`);
+    if (!(await run(() => api.delete(`/api/v1/projects/${projectId}/groups/${groupId}/members/${sourceProjectId}`), "remove", "member source"))) return;
     reload();
   }
 
-  // --- Members section handlers (Phase 5, docs/decisions.md) ------------
+  // --- Members section handlers (docs/decisions.md) ---------------------
 
   /** Toggles one direct role on an effective member (`ProjectMembersTable`'s
    * own `onToggleRole` — only ever called for an option whose sole source
@@ -1132,7 +1159,7 @@ export function ProjectAdminPage() {
     }
   }
 
-  /** `ProjectMembersTable`'s `onToggleModuleRole` (module system Phase 2)
+  /** `ProjectMembersTable`'s `onToggleModuleRole`
    * — same "re-fetch just effective-members" treatment `toggleProjectMemberRole`
    * above uses, always freely callable (no purelyDirect-style guard,
    * since module roles are direct-grant-only). */
@@ -1162,11 +1189,10 @@ export function ProjectAdminPage() {
     await api.post(`/api/v1/projects/${projectId}/roles`, { user_id: userId, role });
   }
 
-  /** The Members section's own add-control, group branch (PR5 of the
-   * members/groups directory rework plan) — `UserAutocomplete`'s combined
+  /** The Members section's own add-control, group branch — `UserAutocomplete`'s combined
    * user-or-group autocomplete calls this instead of `addProjectMember`
    * when the selected match is an org group, granting it `role` *directly*
-   * via PR4's new one-step mechanism (`OrgGroupProjectRole`), parallel to
+   * via the new one-step mechanism (`OrgGroupProjectRole`), parallel to
    * how `addProjectMember` grants a direct `UserProjectRole`. No
    * `ProjectGroup` wrapper is created by this flow, and nesting the group
    * inside another group is deliberately not offered here at all — that
@@ -1203,7 +1229,7 @@ export function ProjectAdminPage() {
     await reloadGroupRoles();
   }
 
-  /** `ProjectMembersTable`'s own `onToggleGroupRole` (Phase 6) — grants/
+  /** `ProjectMembersTable`'s own `onToggleGroupRole` — grants/
    * revokes one role on a group's `kind: "group"` row directly, the same
    * `POST`/`DELETE .../group-roles[...]` calls `addProjectGroupRole`/the
    * backend's `revoke_group_project_role` already expose, just reachable
@@ -1225,7 +1251,7 @@ export function ProjectAdminPage() {
     }
   }
 
-  /** `ProjectMembersTable`'s own "Remove group" (Actions column, Phase 6)
+  /** `ProjectMembersTable`'s own "Remove group"
    * — loops the per-role `DELETE .../group-roles/{org_group_id}/{role}`
    * over every role the group currently holds, the group-row counterpart
    * to `removeAllProjectMemberAccess`'s per-user loop. Confirmed via
@@ -1247,7 +1273,7 @@ export function ProjectAdminPage() {
   }
 
   /** `ProjectMembersTable`'s per-row "Remove all access" (Actions column,
-   * PR6 of the members/groups directory rework plan) — only ever called
+   * the members/groups directory rework) — only ever called
    * for a member whose sources are entirely `direct_role` (that
    * component's own eligibility check), so looping the existing per-role
    * `DELETE /roles/{user_id}/{role}` over every role the member currently
@@ -1268,7 +1294,7 @@ export function ProjectAdminPage() {
   }
 
   /** `ProjectMembersTable`'s per-row "Convert inherited access to direct
-   * roles" (Actions column, PR6) — the per-user counterpart to
+   * roles" (Actions column) — the per-user counterpart to
    * `materializeInheritedAccess` above, calling the new `POST
    * /{project_id}/materialize-inherited-access/{user_id}` endpoint (same
    * idempotency/rank logic, filtered to this one member) rather than the
@@ -1305,14 +1331,13 @@ export function ProjectAdminPage() {
     memberTableGroups.filter((g) => g.roles.includes("project_manager")).length +
     (effectiveMembers ?? []).filter((m) => m.sources.some((s) => s.role === "project_manager" && s.kind === "direct_role")).length;
 
-  // Consolidated from 8 tabs to 5 (2026-08 UX audit roadmap — "Revisit
-  // Project Admin's 8-tab bar against the 5-tab ceiling"). Terminology's
+  // Consolidated from 8 tabs to 5. Terminology's
   // content moved into Overview (a sub-block, not its own group); Stages +
   // Components/Categories merged into Structure; Custom Fields + Action
   // Types merged into Fields & Actions; Groups and Report Setup keep their
   // own groups unchanged. See `docs/decisions.md` for the full rationale —
   // including the later reversal from `Tabs` to `ResourceMenu` recorded
-  // above `ProjectAdminGroupKey`, and Phase 5's later "groups" -> "members"
+  // above `ProjectAdminGroupKey`, and the later "groups" -> "members"
   // + "groups" split recorded there too.
   const activeGroup: ProjectAdminGroupKey =
     (PROJECT_ADMIN_GROUP_KEYS as readonly string[]).includes(groupParam ?? "") ||
@@ -1321,7 +1346,7 @@ export function ProjectAdminPage() {
       : "overview";
 
   // --- Groups section: per-group SidePanel + ?openGroup= deep link -------
-  // (Phase 5, docs/decisions.md) — "click a group in Members, see its
+  // (docs/decisions.md) — "click a group in Members, see its
   // members" is a real URL, not client-only state, matching `ResourceMenu`'s
   // own bookmarkability principle one level deeper (see that component's
   // own docstring/comment for the framing this reuses). `memberTableGroups`
@@ -1383,14 +1408,13 @@ export function ProjectAdminPage() {
 
   if (!stages || !project) return <Spinner />;
 
-  // Project Groups `DirectoryTable` retrofit (Phase B, follow-up UX batch,
-  // 2026-08-31) — replaces the old `<button style={{width:"100%"}}>` per
+  // Project Groups `DirectoryTable` retrofit — replaces the old `<button style={{width:"100%"}}>` per
   // row (no `SortableHeader`, not a real `<table>`) with the same shared
   // shell Org Groups now uses too. `groups` is already sorted server-side
   // (`applyGroupSort`/`loadGroups`'s `order` param), no client-side
   // re-sort needed.
   //
-  // PR5 of the members/groups directory rework plan — this table's rows are
+  // the members/groups directory rework — this table's rows are
   // now a frontend-only `kind`-discriminated union, the same pattern
   // `ProjectMembersTable.tsx`'s own `member`/`invited` `Row` type already
   // established: a real `ProjectGroup` alongside a `ProjectMemberSource`
@@ -1418,16 +1442,16 @@ export function ProjectAdminPage() {
     {
       key: "type", label: strings.admin.groupTypeColumn,
       render: (row) => (
-        <span className="badge">
+        <Badge>
           {row.kind === "group" ? strings.admin.groupTypeBadgeGroup : strings.admin.groupTypeBadgeMemberSource}
-        </span>
+        </Badge>
       ),
     },
     {
       key: "role", label: strings.admin.groupRole,
       render: (row) =>
         row.kind === "group" ? (
-          // PR7: a group's role is no longer a fixed badge — it's a
+          // A group's role is no longer a fixed badge — it's a
           // MultiSelectDropdown over zero-to-several independently-
           // revocable grants, same pattern ProjectMembersTable's own Role
           // column already uses for a user's roles.
@@ -1451,11 +1475,11 @@ export function ProjectAdminPage() {
             })}
           />
         ) : (
-          <span className="badge">
+          <Badge>
             {row.source.mirror_mode === "mirror_role" && row.source.mirror_filter_role
               ? strings.admin.memberSourceModeRole(PROJECT_ROLE_LABEL[row.source.mirror_filter_role])
               : PROJECT_ROLE_INHERITANCE_MODE_LABEL[row.source.mirror_mode]}
-          </span>
+          </Badge>
         ),
     },
     {
@@ -1486,6 +1510,7 @@ export function ProjectAdminPage() {
     { key: "members", label: strings.admin.membersNav, href: `/projects/${projectId}/admin/members` },
     { key: "groups", label: strings.admin.groups, href: `/projects/${projectId}/admin/groups` },
     { key: "reportSetup", label: strings.admin.reportSetup, href: `/projects/${projectId}/admin/reportSetup` },
+    { key: "tags", label: strings.admin.tagsNav, href: `/projects/${projectId}/admin/tags` },
     { key: "modules", label: strings.admin.modulesNav, href: `/projects/${projectId}/admin/modules` },
     ...moduleAdminSections.map((section) => ({
       key: section.key, label: section.label, href: `/projects/${projectId}/admin/${section.key}`,
@@ -1520,7 +1545,7 @@ export function ProjectAdminPage() {
           title={project.can_be_parent ? undefined : strings.admin.canBeParentHint}
           onClick={() => navigate(`/projects?parentProjectId=${project.id}&organizationId=${project.organization_id}`)}
         >
-          <Plus size={14} /> {strings.projects.addSubProject}
+          <Plus /> {strings.projects.addSubProject}
         </button>
       </div>
 
@@ -1529,59 +1554,67 @@ export function ProjectAdminPage() {
       {activeGroup === "overview" && (
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.settings}</h2>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.admin.name}
-          <input
-            className="input"
+        <FormGrid minColumn="18rem">
+          <TextField helpNotNeeded
+            label={strings.admin.name}
             value={settingsName}
-            onChange={(e) => {
+            onChange={(next) => {
               settingsDirtyRef.current = true;
-              setSettingsName(e.target.value);
+              setSettingsName(next);
             }}
           />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.admin.summary}
-          <textarea
-            className="input"
-            rows={2}
+          <TextField help={strings.help.projectCode}
+            label={strings.projects.code}
+            value={settingsCode}
+            onChange={(next) => {
+              settingsDirtyRef.current = true;
+              setSettingsCode(next.toUpperCase());
+            }}
+            inputProps={{ readOnly: codePolicy?.assignment !== "manual", maxLength: codePolicy?.max_length, "aria-describedby": "project-code-hint" }}
+          />
+          <FormGridFull>
+            <p id="project-code-hint" className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>
+            {codePolicy?.assignment === "manual"
+              ? strings.projects.codeEditHint(describeCodePolicy(codePolicy))
+              : strings.projects.codeFixedHint}
+            </p>
+          </FormGridFull>
+          <FormGridFull>
+          <TextAreaField helpNotNeeded
+            label={strings.admin.summary}
             value={settingsSummary}
-            onChange={(e) => {
+            onChange={(next) => {
               settingsDirtyRef.current = true;
-              setSettingsSummary(e.target.value);
+              setSettingsSummary(next);
             }}
+            rows={2}
           />
-        </label>
-        <label className="row">
-          <input
-            type="checkbox"
-            checked={allowMemberCr}
-            onChange={(e) => {
-              settingsDirtyRef.current = true;
-              setAllowMemberCr(e.target.checked);
-            }}
-          />
-          {strings.admin.allowMemberChangeRequests}
-        </label>
-        {/* Platform review 2026-09, Phase 8. Forced checked+disabled (the
+          </FormGridFull>
+        </FormGrid>
+        <CheckboxField help={strings.help.projectAllowMemberChangeRequests}
+          label={strings.admin.allowMemberChangeRequests}
+          checked={allowMemberCr}
+          onChange={(next) => {
+            settingsDirtyRef.current = true;
+            setAllowMemberCr(next);
+          }}
+        />
+        {/* Forced checked+disabled (the
             same disabled+`title` "why is this checked and I can't touch
             it" convention `ProjectMembersTable.tsx` already establishes)
             once the org's own force is active and this project isn't
             exempt — see `exemptFromOrgLinkLock` below for the escape
             hatch. */}
-        <label className="row">
-          <input
-            type="checkbox"
-            checked={requireCrForLinks || (orgForceLinksLocked && !exemptFromOrgLinkLock)}
-            disabled={orgForceLinksLocked && !exemptFromOrgLinkLock}
-            title={orgForceLinksLocked && !exemptFromOrgLinkLock ? strings.admin.requireChangeRequestForApprovedLinksForcedByOrg : undefined}
-            onChange={(e) => {
-              settingsDirtyRef.current = true;
-              setRequireCrForLinks(e.target.checked);
-            }}
-          />
-          {strings.admin.requireChangeRequestForApprovedLinks}
-        </label>
+        <CheckboxField helpNotNeeded
+          label={strings.admin.requireChangeRequestForApprovedLinks}
+          checked={requireCrForLinks || (orgForceLinksLocked && !exemptFromOrgLinkLock)}
+          onChange={(next) => {
+            settingsDirtyRef.current = true;
+            setRequireCrForLinks(next);
+          }}
+          disabled={orgForceLinksLocked && !exemptFromOrgLinkLock}
+          title={orgForceLinksLocked && !exemptFromOrgLinkLock ? strings.admin.requireChangeRequestForApprovedLinksForcedByOrg : undefined}
+        />
         <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>
           {orgForceLinksLocked && !exemptFromOrgLinkLock
             ? strings.admin.requireChangeRequestForApprovedLinksForcedByOrg
@@ -1589,18 +1622,15 @@ export function ProjectAdminPage() {
         </p>
         {orgForceLinksLocked && (
           <>
-            <label className="row">
-              <input
-                type="checkbox"
-                checked={exemptFromOrgLinkLock}
-                onChange={(e) => {
-                  settingsDirtyRef.current = true;
-                  setExemptFromOrgLinkLock(e.target.checked);
-                }}
-              />
-              {strings.admin.exemptFromOrgLinkLock}
-            </label>
-            <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.admin.exemptFromOrgLinkLockHint}</p>
+            <CheckboxField helpNotNeeded
+              label={strings.admin.exemptFromOrgLinkLock}
+              checked={exemptFromOrgLinkLock}
+              onChange={(next) => {
+                settingsDirtyRef.current = true;
+                setExemptFromOrgLinkLock(next);
+              }}
+              hint={strings.admin.exemptFromOrgLinkLockHint}
+            />
           </>
         )}
         {/* AI approval via MCP (docs/decisions.md) — uses the shared
@@ -1608,86 +1638,66 @@ export function ProjectAdminPage() {
             rather than this page's own plain-checkbox convention above; a
             deliberate choice per the UX style guide's component-reuse
             principle, not an oversight. */}
-        <label className="row" style={{ gap: "0.6rem" }}>
-          <ToggleSwitch
-            checked={allowAiApprovals}
-            onChange={(next) => {
-              if (next) {
-                setAiApprovalsAckChecked(false);
-                setAiApprovalsAckPending(true);
-              } else {
-                settingsDirtyRef.current = true;
-                setAllowAiApprovals(false);
-              }
-            }}
-            label={strings.admin.allowAiApprovals}
-          />
-          <span className="stack" style={{ gap: 0 }}>
-            {strings.admin.allowAiApprovals}
-            <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.admin.allowAiApprovalsHint}</span>
-          </span>
-        </label>
-        <label className="row">
-          <input
-            type="checkbox"
-            checked={isTemplate}
-            onChange={(e) => {
+        <ToggleField helpNotNeeded
+          label={strings.admin.allowAiApprovals}
+          checked={allowAiApprovals}
+          onChange={(next) => {
+            if (next) {
+              setAiApprovalsAckChecked(false);
+              setAiApprovalsAckPending(true);
+            } else {
               settingsDirtyRef.current = true;
-              setIsTemplate(e.target.checked);
-            }}
-          />
-          {strings.admin.isTemplate}
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.admin.visibility}
-          <select
-            className="input"
+              setAllowAiApprovals(false);
+            }
+          }}
+          hint={strings.admin.allowAiApprovalsHint}
+        />
+        <CheckboxField help={strings.help.projectUsableAsTemplate}
+          label={strings.admin.isTemplate}
+          checked={isTemplate}
+          onChange={(next) => {
+            settingsDirtyRef.current = true;
+            setIsTemplate(next);
+          }}
+        />
+        <FormGrid minColumn="18rem">
+          <LabeledSelect helpNotNeeded
+            label={strings.admin.visibility}
             value={visibility}
-            onChange={(e) => {
+            onChange={(next) => {
               settingsDirtyRef.current = true;
-              setVisibility(e.target.value as "only_specified" | "org_wide");
+              setVisibility(next as "only_specified" | "org_wide");
             }}
-          >
-            <option value="only_specified">{strings.admin.visibilityOnlySpecified}</option>
-            <option value="org_wide">{strings.admin.visibilityOrgWide}</option>
-          </select>
-        </label>
-        <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.admin.visibilityHint(orgLabel)}</p>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.admin.projectStatus}
-          <select
-            className="input"
+            options={[{ value: "only_specified", label: strings.admin.visibilityOnlySpecified }, { value: "org_wide", label: strings.admin.visibilityOrgWide }]}
+            placeholder={null}
+            hint={strings.admin.visibilityHint(orgLabel)}
+          />
+          <LabeledSelect helpNotNeeded
+            label={strings.admin.projectStatus}
             value={statusId}
-            onChange={(e) => {
+            onChange={(next) => {
               settingsDirtyRef.current = true;
-              setStatusId(e.target.value);
+              setStatusId(next);
             }}
-          >
-            {orgProjectStatuses.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
+            options={orgProjectStatuses.map((s) => ({ value: s.id, label: s.name }))}
+            placeholder={null}
+          />
+        </FormGrid>
 
         {/* Hierarchical projects (docs/decisions.md). Always visible
             regardless of whether this project currently has (or could
             have) a parent of its own — it's the opt-in mechanism other
             projects' managers need before this project appears in *their*
             "Parent project" picker at all. */}
-        <label className="row">
-          <input
-            type="checkbox"
-            checked={canBeParent}
-            onChange={(e) => {
-              settingsDirtyRef.current = true;
-              setCanBeParent(e.target.checked);
-            }}
-          />
-          {strings.admin.canBeParent}
-        </label>
-        <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.admin.canBeParentHint}</p>
+        <CheckboxField helpNotNeeded
+          label={strings.admin.canBeParent}
+          checked={canBeParent}
+          onChange={(next) => {
+            settingsDirtyRef.current = true;
+            setCanBeParent(next);
+          }}
+          hint={strings.admin.canBeParentHint}
+        />
         {/* The current parent's name is always shown plainly here (unlike
             ProjectListPage's list/tile "Child of:" label, which redacts a
             parent the viewer can't see) — a project's own manager needs to
@@ -1699,14 +1709,13 @@ export function ProjectAdminPage() {
             picker with only "None" in it is confusing, not useful. */}
         {showParentField && (
           <>
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.projects.parentProject}
-              <select
-                className="input"
+            <FormGrid minColumn="18rem">
+              <LabeledSelect helpNotNeeded
+                label={strings.projects.parentProject}
                 value={parentProjectId}
-                onChange={(e) => {
+                onChange={(next) => {
                   settingsDirtyRef.current = true;
-                  setParentProjectId(e.target.value);
+                  setParentProjectId(next);
                   // Changing the parent while an elevated inheritance mode is
                   // set must not silently carry that mode's confirmation over
                   // to a *different* parent's role-holders — reset to "none"
@@ -1718,46 +1727,35 @@ export function ProjectAdminPage() {
                     setRoleInheritanceMode("none");
                   }
                 }}
-              >
-                <option value="">{strings.projects.noParent}</option>
-                {parentOptions.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </label>
-            {parentProjectId && (
-              <>
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.projects.inheritFromParent}
-                  <select
-                    className="input"
+                options={parentOptions.map((p) => ({ value: p.id, label: p.name }))}
+                placeholder={strings.projects.noParent}
+              />
+              {parentProjectId && (
+                <>
+                  <LabeledSelect help={strings.help.projectInheritAccess}
+                    label={strings.projects.inheritFromParent}
                     value={roleInheritanceMode}
-                    onChange={(e) => requestInheritModeChange(e.target.value as ProjectRoleInheritanceMode)}
-                  >
-                    {(Object.keys(PROJECT_ROLE_INHERITANCE_MODE_LABEL) as ProjectRoleInheritanceMode[]).map((m) => (
-                      <option key={m} value={m}>{PROJECT_ROLE_INHERITANCE_MODE_LABEL[m]}</option>
-                    ))}
-                  </select>
-                </label>
-                {roleInheritanceMode === "mirror_role" && (
-                  <label className="stack" style={{ gap: "0.25rem" }}>
-                    {strings.projects.inheritModeFilterRole}
-                    <select
-                      className="input"
+                    onChange={(next) => requestInheritModeChange(next as ProjectRoleInheritanceMode)}
+                    options={(Object.keys(PROJECT_ROLE_INHERITANCE_MODE_LABEL) as ProjectRoleInheritanceMode[]).map((m) => ({
+                      value: m, label: PROJECT_ROLE_INHERITANCE_MODE_LABEL[m],
+                    }))}
+                    placeholder={null}
+                  />
+                  {roleInheritanceMode === "mirror_role" && (
+                    <LabeledSelect help={strings.help.projectRoleToMirror}
+                      label={strings.projects.inheritModeFilterRole}
                       value={roleInheritanceFilterRole}
-                      onChange={(e) => {
+                      onChange={(next) => {
                         settingsDirtyRef.current = true;
-                        setRoleInheritanceFilterRole(e.target.value as ProjectRole);
+                        setRoleInheritanceFilterRole(next as ProjectRole);
                       }}
-                    >
-                      <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
-                      <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
-                      <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
-                    </select>
-                  </label>
-                )}
-              </>
-            )}
+                      options={[{ value: "project_manager", label: PROJECT_ROLE_LABEL.project_manager }, { value: "project_administrator", label: PROJECT_ROLE_LABEL.project_administrator }, { value: "stakeholder", label: PROJECT_ROLE_LABEL.stakeholder }]}
+                      placeholder={null}
+                    />
+                  )}
+                </>
+              )}
+            </FormGrid>
           </>
         )}
         {settingsError && <div style={{ color: "var(--color-danger)" }}>{settingsError}</div>}
@@ -1783,13 +1781,11 @@ export function ProjectAdminPage() {
             message={
               <span className="stack" style={{ gap: "0.5rem" }}>
                 <span>{strings.admin.allowAiApprovalsAckBody}</span>
-                <label className="row" style={{ gap: "0.4rem" }}>
-                  <input
-                    type="checkbox" checked={aiApprovalsAckChecked}
-                    onChange={(e) => setAiApprovalsAckChecked(e.target.checked)}
-                  />
-                  {strings.admin.allowAiApprovalsAckCheckbox}
-                </label>
+                <CheckboxField helpNotNeeded
+                  label={strings.admin.allowAiApprovalsAckCheckbox}
+                  checked={aiApprovalsAckChecked}
+                  onChange={setAiApprovalsAckChecked}
+                />
               </span>
             }
             confirmLabel={strings.admin.allowAiApprovalsAckConfirm}
@@ -1809,7 +1805,7 @@ export function ProjectAdminPage() {
               {strings.admin.saveSettings}
             </button>
             <button className="btn" onClick={exportProject} disabled={exporting} title={strings.admin.exportProjectHint(orgLabel)}>
-              <Download size={16} /> {exporting ? "Exporting…" : strings.admin.exportProject}
+              <Download /> {exporting ? "Exporting…" : strings.admin.exportProject}
             </button>
           </div>
           <button className="btn btn-danger" onClick={toggleArchive}>
@@ -1817,8 +1813,7 @@ export function ProjectAdminPage() {
           </button>
         </div>
 
-        {/* Terminology (2026-08 UX audit roadmap: Project Admin's 8 tabs ->
-            5) — pure relocation of the previously-standalone Terminology
+        {/* Terminology — pure relocation of the previously-standalone Terminology
             tab's own JSX/state/handlers into Overview, unchanged. The
             architecture that would make custom terms actually take effect
             across the app is a separate, deliberately-deferred roadmap
@@ -1827,20 +1822,20 @@ export function ProjectAdminPage() {
         <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)", margin: "0.25rem 0" }} />
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.terminology}</h2>
         <p className="text-muted" style={{ margin: 0 }}>{strings.admin.terminologyHint}</p>
-        {TERMINOLOGY_KEYS.map((key) => (
-          <div key={key} className="row">
-            <span style={{ minWidth: 140 }}>{strings.admin.terminologyKeyLabel[key]}</span>
-            <input
-              className="input"
+        <FormGrid minColumn="14rem">
+          {TERMINOLOGY_KEYS.map((key) => (
+            <TextField helpNotNeeded
+              key={key}
+              label={strings.admin.terminologyKeyLabel[key]}
               placeholder={key}
               value={terminology[key] ?? ""}
-              onChange={(e) => {
+              onChange={(next) => {
                 terminologyDirtyRef.current = true;
-                setTerminology((t2) => ({ ...t2, [key]: e.target.value }));
+                setTerminology((t2) => ({ ...t2, [key]: next }));
               }}
             />
-          </div>
-        ))}
+          ))}
+        </FormGrid>
         <button className="btn btn-primary" onClick={saveTerminology} style={{ alignSelf: "flex-start" }}>
           {strings.admin.saveTerminology}
         </button>
@@ -1859,7 +1854,7 @@ export function ProjectAdminPage() {
             <div className="row" style={{ justifyContent: "space-between" }}>
               <div className="row">
                 <input
-                  className="input" style={{ maxWidth: 220 }} value={nameEdit}
+                  className="input" style={{ maxWidth: 220 }} value={nameEdit} aria-label={`${strings.admin.name}: ${s.name}`}
                   onChange={(e) => setStageNameEdits((m) => ({ ...m, [s.id]: e.target.value }))}
                 />
                 {nameEdit !== s.name && nameEdit && (
@@ -1869,12 +1864,12 @@ export function ProjectAdminPage() {
                     title={strings.admin.rename}
                     aria-label={strings.admin.rename}
                   >
-                    <Pencil size={14} />
+                    <Pencil />
                   </button>
                 )}
-                <span className="badge">{STAGE_STATUS_LABEL[s.status]}</span>
-                {s.review_deadline && <span className="badge">{strings.admin.reviewDeadline}: {new Date(s.review_deadline).toLocaleString()}</span>}
-                {s.completed_at && <span className="badge">{strings.admin.stageCompletedAt}: {new Date(s.completed_at).toLocaleDateString()}</span>}
+                <Badge>{STAGE_STATUS_LABEL[s.status]}</Badge>
+                {s.review_deadline && <Badge>{strings.admin.reviewDeadline}: {new Date(s.review_deadline).toLocaleString()}</Badge>}
+                {s.completed_at && <Badge>{strings.admin.stageCompletedAt}: {new Date(s.completed_at).toLocaleDateString()}</Badge>}
                 <button
                   className="btn btn-danger"
                   disabled={otherStages.length === 0}
@@ -1882,7 +1877,7 @@ export function ProjectAdminPage() {
                   aria-label={otherStages.length === 0 ? strings.admin.deleteLastOneHint : strings.admin.deleteStage}
                   onClick={() => setDeletingStageId(s.id)}
                 >
-                  <Trash2 size={14} />
+                  <Trash2 />
                 </button>
               </div>
               {s.status === "scoping" && (
@@ -1892,18 +1887,16 @@ export function ProjectAdminPage() {
               )}
               {s.status === "review" && (
                 <button className="btn" onClick={() => approveStage(s.id)}>
-                  <Check size={14} /> {strings.admin.approveStage}
+                  <Check /> {strings.admin.approveStage}
                 </button>
               )}
               {s.status === "approved" && (
                 <div className="row">
-                  <label className="row" style={{ gap: "0.25rem" }}>
-                    <input
-                      type="checkbox" checked={cascadeInputs[s.id] ?? false}
-                      onChange={(e) => setCascadeInputs((c) => ({ ...c, [s.id]: e.target.checked }))}
-                    />
-                    {strings.admin.cascadeToRequirements}
-                  </label>
+                  <CheckboxField helpNotNeeded
+                    label={strings.admin.cascadeToRequirements}
+                    checked={cascadeInputs[s.id] ?? false}
+                    onChange={(next) => setCascadeInputs((c) => ({ ...c, [s.id]: next }))}
+                  />
                   <button className="btn" onClick={() => completeStage(s.id, cascadeInputs[s.id] ?? false)}>
                     {strings.admin.completeStage}
                   </button>
@@ -1913,7 +1906,7 @@ export function ProjectAdminPage() {
             {s.status === "review" && (
               <div className="row">
                 <input
-                  className="input" type="datetime-local" style={{ maxWidth: 220 }}
+                  className="input" type="datetime-local" style={{ maxWidth: 220 }} aria-label={`${strings.admin.reviewDeadline}: ${s.name}`}
                   value={deadlineInputs[s.id] ?? ""}
                   onChange={(e) => setDeadlineInputs((d) => ({ ...d, [s.id]: e.target.value }))}
                 />
@@ -1938,13 +1931,10 @@ export function ProjectAdminPage() {
           </div>
           );
         })}
-        <div className="row">
-          <input
-            className="input" placeholder={strings.admin.name} value={newStageName}
-            onChange={(e) => setNewStageName(e.target.value)}
-          />
+        <div className="row" style={{ alignItems: "flex-end" }}>
+          <TextField helpNotNeeded label={strings.admin.name} placeholder={strings.admin.name} value={newStageName} onChange={setNewStageName} />
           <button className="btn btn-primary" onClick={addStage} disabled={!newStageName.trim()}>
-            <Plus size={14} /> {strings.admin.newStage}
+            <Plus /> {strings.admin.newStage}
           </button>
         </div>
         </CollapsibleSection>
@@ -1966,11 +1956,11 @@ export function ProjectAdminPage() {
               <div className="row" style={{ justifyContent: "space-between" }}>
                 <div className="row">
                   <input
-                    className="input" style={{ maxWidth: 180 }} value={componentEdit.name}
+                    className="input" style={{ maxWidth: 180 }} value={componentEdit.name} aria-label={`${strings.admin.name}: ${c.name}`}
                     onChange={(e) => setComponentEdits((m) => ({ ...m, [c.id]: { ...componentEdit, name: e.target.value } }))}
                   />
                   <input
-                    className="input" style={{ maxWidth: 80 }} value={componentEdit.prefix}
+                    className="input" style={{ maxWidth: 80 }} value={componentEdit.prefix} aria-label={`${strings.admin.prefix}: ${c.name}`}
                     onChange={(e) => setComponentEdits((m) => ({ ...m, [c.id]: { ...componentEdit, prefix: e.target.value.toUpperCase() } }))}
                   />
                   {componentDirty && componentEdit.name && componentEdit.prefix && (
@@ -1980,7 +1970,7 @@ export function ProjectAdminPage() {
                       aria-label={strings.admin.rename}
                       onClick={() => renameComponent(c.id, componentEdit.name, componentEdit.prefix)}
                     >
-                      <Pencil size={14} />
+                      <Pencil />
                     </button>
                   )}
                 </div>
@@ -1992,7 +1982,7 @@ export function ProjectAdminPage() {
                     aria-label={strings.common.up}
                     onClick={() => moveComponent(c.id, "up")}
                   >
-                    <ArrowUp size={14} />
+                    <ArrowUp />
                   </button>
                   <button
                     className="btn"
@@ -2001,7 +1991,7 @@ export function ProjectAdminPage() {
                     aria-label={strings.common.down}
                     onClick={() => moveComponent(c.id, "down")}
                   >
-                    <ArrowDown size={14} />
+                    <ArrowDown />
                   </button>
                   <button
                     className="btn btn-danger"
@@ -2022,20 +2012,18 @@ export function ProjectAdminPage() {
                     }
                     onClick={() => setDeletingComponentId(c.id)}
                   >
-                    <Trash2 size={14} />
+                    <Trash2 />
                   </button>
                 </div>
               </div>
               {deletingComponentId === c.id && (
-                <div className="row" style={{ background: "var(--color-surface-alt)", padding: "0.5rem", borderRadius: 6 }}>
-                  <span>{strings.admin.confirmDelete}?</span>
-                  <button className="btn btn-danger" onClick={() => deleteComponent(c.id)}>
-                    {strings.admin.confirmDelete}
-                  </button>
-                  <button className="btn" onClick={() => setDeletingComponentId(null)}>
-                    {strings.common.cancel}
-                  </button>
-                </div>
+                <ConfirmDialog
+                  title={strings.admin.deleteComponent}
+                  message={strings.admin.deleteComponentConfirm(c.name)}
+                  confirmLabel={strings.admin.confirmDelete}
+                  onConfirm={() => { setDeletingComponentId(null); deleteComponent(c.id); }}
+                  onCancel={() => setDeletingComponentId(null)}
+                />
               )}
               <div className="stack" style={{ paddingLeft: "1.5rem", gap: "0.4rem" }}>
                 {ownCategories.map((cat, catIdx) => {
@@ -2047,11 +2035,11 @@ export function ProjectAdminPage() {
                     <div className="row" style={{ justifyContent: "space-between" }}>
                       <div className="row">
                         <input
-                          className="input" style={{ maxWidth: 180 }} value={categoryEdit.name}
+                          className="input" style={{ maxWidth: 180 }} value={categoryEdit.name} aria-label={`${strings.admin.name}: ${cat.name}`}
                           onChange={(e) => setCategoryEdits((m) => ({ ...m, [cat.id]: { ...categoryEdit, name: e.target.value } }))}
                         />
                         <input
-                          className="input" style={{ maxWidth: 80 }} value={categoryEdit.prefix}
+                          className="input" style={{ maxWidth: 80 }} value={categoryEdit.prefix} aria-label={`${strings.admin.prefix}: ${cat.name}`}
                           onChange={(e) => setCategoryEdits((m) => ({ ...m, [cat.id]: { ...categoryEdit, prefix: e.target.value.toUpperCase() } }))}
                         />
                         {categoryDirty && categoryEdit.name && categoryEdit.prefix && (
@@ -2061,7 +2049,7 @@ export function ProjectAdminPage() {
                             aria-label={strings.admin.rename}
                             onClick={() => renameCategory(cat.id, categoryEdit.name, categoryEdit.prefix)}
                           >
-                            <Pencil size={14} />
+                            <Pencil />
                           </button>
                         )}
                       </div>
@@ -2073,7 +2061,7 @@ export function ProjectAdminPage() {
                           aria-label={strings.common.up}
                           onClick={() => moveCategory(cat.id, "up")}
                         >
-                          <ArrowUp size={14} />
+                          <ArrowUp />
                         </button>
                         <button
                           className="btn"
@@ -2082,7 +2070,7 @@ export function ProjectAdminPage() {
                           aria-label={strings.common.down}
                           onClick={() => moveCategory(cat.id, "down")}
                         >
-                          <ArrowDown size={14} />
+                          <ArrowDown />
                         </button>
                         <button
                           className="btn btn-danger"
@@ -2091,52 +2079,52 @@ export function ProjectAdminPage() {
                           aria-label={otherCategories.length === 0 ? strings.admin.deleteLastOneHint : strings.admin.deleteCategory}
                           onClick={() => setDeletingCategoryId(cat.id)}
                         >
-                          <Trash2 size={14} />
+                          <Trash2 />
                         </button>
                       </div>
                     </div>
                   </div>
                   );
                 })}
-                <div className="row">
-                  <input
-                    className="input"
+                <div className="row" style={{ alignItems: "flex-end" }}>
+                  <TextField helpNotNeeded
+                    label={strings.admin.name}
                     placeholder={strings.admin.name}
                     value={categoryInput.name}
-                    onChange={(e) => setNewCategoryInputs((m) => ({ ...m, [c.id]: { ...categoryInput, name: e.target.value } }))}
+                    onChange={(next) => setNewCategoryInputs((m) => ({ ...m, [c.id]: { ...categoryInput, name: next } }))}
                   />
-                  <input
-                    className="input"
-                    style={{ maxWidth: 100 }}
+                  <TextField help={strings.help.requirementPrefix}
+                    label={strings.admin.prefix}
                     placeholder={strings.admin.prefix}
                     value={categoryInput.prefix}
-                    onChange={(e) =>
-                      setNewCategoryInputs((m) => ({ ...m, [c.id]: { ...categoryInput, prefix: e.target.value.toUpperCase() } }))
+                    onChange={(next) =>
+                      setNewCategoryInputs((m) => ({ ...m, [c.id]: { ...categoryInput, prefix: next.toUpperCase() } }))
                     }
+                    inputProps={{ style: { maxWidth: 100 } }}
                   />
                   <button
                     className="btn"
                     onClick={() => addCategory(c.id)}
                     disabled={!categoryInput.name || !categoryInput.prefix}
                   >
-                    <Plus size={14} /> {strings.admin.newCategory}
+                    <Plus /> {strings.admin.newCategory}
                   </button>
                 </div>
               </div>
             </div>
           );
         })}
-        <div className="row">
-          <input className="input" placeholder={strings.admin.name} value={newComponentName} onChange={(e) => setNewComponentName(e.target.value)} />
-          <input
-            className="input"
-            style={{ maxWidth: 100 }}
+        <div className="row" style={{ alignItems: "flex-end" }}>
+          <TextField helpNotNeeded label={strings.admin.name} placeholder={strings.admin.name} value={newComponentName} onChange={setNewComponentName} />
+          <TextField help={strings.help.requirementPrefix}
+            label={strings.admin.prefix}
             placeholder={strings.admin.prefix}
             value={newComponentPrefix}
-            onChange={(e) => setNewComponentPrefix(e.target.value.toUpperCase())}
+            onChange={(next) => setNewComponentPrefix(next.toUpperCase())}
+            inputProps={{ style: { maxWidth: 100 } }}
           />
           <button className="btn btn-primary" onClick={addComponent} disabled={!newComponentName || !newComponentPrefix}>
-            <Plus size={14} /> {strings.admin.newComponent}
+            <Plus /> {strings.admin.newComponent}
           </button>
         </div>
         </CollapsibleSection>
@@ -2149,8 +2137,8 @@ export function ProjectAdminPage() {
         {customFields.map((f) => (
           <div key={f.id} className="row" style={{ justifyContent: "space-between" }}>
             <span>
-              {f.name} <span className="badge">{f.entity_kind === "requirement" ? strings.admin.entityKindRequirement : strings.admin.entityKindChangeRequest}</span> <span className="badge">{CUSTOM_FIELD_TYPE_LABEL[f.field_type]}</span>
-              {f.required && <span className="badge">{strings.admin.required}</span>}
+              {f.name} <Badge>{f.entity_kind === "requirement" ? strings.admin.entityKindRequirement : strings.admin.entityKindChangeRequest}</Badge> <Badge>{CUSTOM_FIELD_TYPE_LABEL[f.field_type]}</Badge>
+              {f.required && <Badge>{strings.admin.required}</Badge>}
             </span>
             <button
               className="btn btn-danger"
@@ -2158,7 +2146,7 @@ export function ProjectAdminPage() {
               aria-label={strings.admin.deleteCustomField(f.name)}
               onClick={() => setDeletingFieldId(f.id)}
             >
-              <Trash2 size={14} />
+              <Trash2 />
             </button>
             {deletingFieldId === f.id && (
               <ConfirmDialog
@@ -2171,32 +2159,41 @@ export function ProjectAdminPage() {
             )}
           </div>
         ))}
-        <div className="row">
-          <select className="input" value={newFieldKind} onChange={(e) => setNewFieldKind(e.target.value as CustomFieldEntityKind)}>
-            <option value="requirement">{strings.admin.entityKindRequirement}</option>
-            <option value="change_request">{strings.admin.entityKindChangeRequest}</option>
-          </select>
-          <input className="input" placeholder={strings.admin.fieldName} value={newFieldName} onChange={(e) => setNewFieldName(e.target.value)} />
-          <select className="input" value={newFieldType} onChange={(e) => setNewFieldType(e.target.value as CustomFieldType)}>
-            <option value="short_text">{strings.admin.fieldTypeShortText}</option>
-            <option value="long_text">{strings.admin.fieldTypeLongText}</option>
-            <option value="checkbox">{strings.admin.fieldTypeCheckbox}</option>
-            <option value="list">{strings.admin.fieldTypeList}</option>
-          </select>
+        <div className="row" style={{ alignItems: "flex-end" }}>
+          <LabeledSelect helpNotNeeded
+            label={strings.admin.fieldAppliesTo}
+            value={newFieldKind}
+            onChange={(next) => setNewFieldKind(next as CustomFieldEntityKind)}
+            options={[
+              { value: "requirement", label: strings.admin.entityKindRequirement },
+              { value: "change_request", label: strings.admin.entityKindChangeRequest },
+            ]}
+            placeholder={null}
+          />
+          <TextField helpNotNeeded label={strings.admin.fieldName} placeholder={strings.admin.fieldName} value={newFieldName} onChange={setNewFieldName} />
+          <LabeledSelect helpNotNeeded
+            label={strings.admin.fieldTypeLabel}
+            value={newFieldType}
+            onChange={(next) => setNewFieldType(next as CustomFieldType)}
+            options={[
+              { value: "short_text", label: strings.admin.fieldTypeShortText },
+              { value: "long_text", label: strings.admin.fieldTypeLongText },
+              { value: "checkbox", label: strings.admin.fieldTypeCheckbox },
+              { value: "list", label: strings.admin.fieldTypeList },
+            ]}
+            placeholder={null}
+          />
           {newFieldType === "list" && (
-            <input
-              className="input"
+            <TextField helpNotNeeded
+              label={strings.admin.optionsCommaSeparated}
               placeholder={strings.admin.optionsCommaSeparated}
               value={newFieldOptions}
-              onChange={(e) => setNewFieldOptions(e.target.value)}
+              onChange={setNewFieldOptions}
             />
           )}
-          <label className="row">
-            <input type="checkbox" checked={newFieldRequired} onChange={(e) => setNewFieldRequired(e.target.checked)} />
-            {strings.admin.required}
-          </label>
+          <CheckboxField helpNotNeeded label={strings.admin.required} checked={newFieldRequired} onChange={setNewFieldRequired} />
           <button className="btn btn-primary" onClick={addCustomField} disabled={!newFieldName}>
-            <Plus size={14} /> {strings.admin.newCustomField}
+            <Plus /> {strings.admin.newCustomField}
           </button>
         </div>
         </CollapsibleSection>
@@ -2242,15 +2239,14 @@ export function ProjectAdminPage() {
           </div>
           <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
             <button className="btn btn-primary" onClick={() => setAddMemberModalOpen(true)}>
-              <Plus size={14} /> {strings.admin.addMember}
+              <Plus /> {strings.admin.addMember}
             </button>
-            {/* No sibling "Add group" button (PR5 of the members/groups
-                directory rework plan, corrected during PR5's own review):
+            {/* No sibling "Add group" button (corrected during the own review):
                 the autocomplete below is expanded to match org groups too,
                 rather than a second button/modal — see UserAutocomplete's
                 own module docstring. */}
           </div>
-          {/* PR3/PR5/PR7 of the members/groups directory rework plan
+          {/* the members/groups directory rework
               originally opened one nested Modal here, submitting one
               person at a time and switching itself into a second "add
               into this group" step on a project-group match; now the
@@ -2260,7 +2256,7 @@ export function ProjectAdminPage() {
               bespoke modal at once, and for the project-group hand-off
               design. */}
           {addMemberModalOpen && addMemberTargetGroup && (
-            // PR7: second step after picking a project-group match below —
+            // Second step after picking a project-group match below —
             // adds whoever's picked here as a member of that group
             // (existing `addGroupMember`/`addOrgGroupMember`, both
             // `POST .../groups/{group_id}/members`, no new backend call),
@@ -2338,49 +2334,40 @@ export function ProjectAdminPage() {
           style={{ alignSelf: "flex-start" }}
           onClick={() => setNewGroupModalOpen(true)}
         >
-          <Plus size={14} /> {strings.admin.newGroup}
+          <Plus /> {strings.admin.newGroup}
         </button>
         {newGroupModalOpen && (
           // Style guide "Pattern: modal dialog for entity create/rename" —
           // a brand-new entity (a group) opens in a Modal, not a Popover —
           // the Popover-vs-Modal decision tree reserves Popover for a
           // one/two-field quick action on something that already exists,
-          // not creating a new entity. No role picker here any more (PR7
-          // of the members/groups directory rework plan, docs/
-          // decisions.md): `ProjectGroupCreate` no longer accepts a role at
+          // not creating a new entity. No role picker here any more (docs/decisions.md): `ProjectGroupCreate` no longer accepts a role at
           // all — a freshly created group starts with zero roles, shown as
           // "No roles assigned" in the Groups tab/SidePanel until one is
           // granted via the new per-row `MultiSelectDropdown`.
           <Modal title={strings.admin.newGroup} onClose={() => setNewGroupModalOpen(false)}>
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.admin.name}
-              <input
-                className="input"
-                autoFocus
-                placeholder={strings.admin.groupNamePlaceholder}
-                value={newGroupName}
-                onChange={(e) => setNewGroupName(e.target.value)}
-                onKeyDown={(e) => {
+            <TextField helpNotNeeded required
+              label={strings.admin.name}
+              value={newGroupName}
+              onChange={setNewGroupName}
+              placeholder={strings.admin.groupNamePlaceholder}
+              inputProps={{ autoFocus: true, onKeyDown: (e) => {
                   if (e.key === "Enter" && newGroupName) createProjectGroup();
-                }}
-              />
-            </label>
-            <div className="row" style={{ justifyContent: "flex-end" }}>
-              <button className="btn" onClick={() => setNewGroupModalOpen(false)}>
-                {strings.common.cancel}
-              </button>
-              <button className="btn btn-primary" onClick={createProjectGroup} disabled={!newGroupName}>
-                {strings.common.create}
-              </button>
-            </div>
+                } }}
+            />
+            <FormActions
+              onCancel={() => setNewGroupModalOpen(false)}
+              onSave={createProjectGroup}
+              saveLabel={strings.common.create}
+              saveDisabled={!newGroupName}
+            />
           </Modal>
         )}
 
-        {/* Rebuilt on the shared `DirectoryTable` (Phase 0) inside the
+        {/* Rebuilt on the shared `DirectoryTable` inside the
             standard `.side-grid` + `FilterPanel` layout, replacing the old
             `<button style={{width:"100%"}}>` per-row list — it wasn't a
-            real `<table>` at all, no `SortableHeader` (2026-08-31, Phase B,
-            follow-up UX batch — see docs/decisions.md). `onRowClick`, not
+            real `<table>` at all, no `SortableHeader` (docs/decisions.md). `onRowClick`, not
             `rowHref`, deliberately — found during verification, not
             assumed: every standard project seeds a default group literally
             named "Members" (`DEFAULT_GROUPS`, `routers/projects.py`), the
@@ -2391,8 +2378,7 @@ export function ProjectAdminPage() {
             confusion a screen-reader user would hit navigating by link
             text), whereas `onRowClick`'s `role="button"` trigger can't
             collide with a nav `<Link>`. The existing manual `openGroupId`/
-            `useSearchParams` handling below (unchanged since before this
-            phase) already covers the `?openGroup=` deep link — `onRowClick`
+            `useSearchParams` handling below (unchanged) already covers the `?openGroup=` deep link — `onRowClick`
             just calls the same `setOpenGroupId` a URL-driven open already
             uses. */}
         <div className="side-grid">
@@ -2437,7 +2423,7 @@ export function ProjectAdminPage() {
           only" (same risk profile as visibility=org_wide), but "Mirror all
           roles"/"Mirror one role" can convey a real elevated role, same as
           the forward mechanism's own modes.
-          PR5 of the members/groups directory rework plan: this section's
+          the members/groups directory rework: this section's
           own list of entries moved into the `DirectoryTable` above as
           type-badged rows (alongside real `ProjectGroup` rows) — this card
           now holds only the "add a new one" affordance, relocated from the
@@ -2503,9 +2489,8 @@ export function ProjectAdminPage() {
           return (
             <SidePanel title={strings.admin.groupDetails(g.name)} onClose={() => setOpenGroupId(null)}>
               <div className="stack">
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.admin.groupRoleAtTop}
-                  {/* PR7: same per-row MultiSelectDropdown as the Groups
+                <RecordFieldGroup helpNotNeeded label={strings.admin.groupRoleAtTop}>
+                  {/* Same per-row MultiSelectDropdown as the Groups
                       tab's own "role" column (groupsTabColumns) — kept in
                       sync since both read from `memberTableGroups`/`groups`
                       and both call the same `toggleProjectGroupRole`. */}
@@ -2538,7 +2523,7 @@ export function ProjectAdminPage() {
                         // elements, not a plain object field consumed by a custom
                         // component (see facebook/react#35062's own
                         // error.ref-value-in-custom-component-event-handler-wrapper.tsx
-                        // test fixture). See docs/decisions.md's Phase 4 entry (Decided
+                        // test fixture). See docs/decisions.md's React 19/ESLint 10 upgrade entry (Decided
                         // by: User, 2026-09-15) for the full investigation, including why
                         // `useEffectEvent` and the `"use no memo"` directive don't help.
                         // eslint-disable-next-line react-hooks/refs
@@ -2546,14 +2531,14 @@ export function ProjectAdminPage() {
                       };
                     })}
                   />
-                </label>
+                </RecordFieldGroup>
                 <button
                   className="btn btn-danger"
                   style={{ alignSelf: "flex-start" }}
                   title={strings.admin.deleteGroup}
                   onClick={() => setDeletingGroupId(g.id)}
                 >
-                  <Trash2 size={14} /> {strings.admin.deleteGroup}
+                  <Trash2 /> {strings.admin.deleteGroup}
                 </button>
 
                 {g.member_user_ids.length > 0 && (
@@ -2570,11 +2555,11 @@ export function ProjectAdminPage() {
                             // False positive (react-hooks/refs): only runs on click, not
                             // during render. facebook/react#35062 fixes this exact shape
                             // (built-in `<button onClick>`) but isn't shipped yet — see
-                            // the onToggle comment above and docs/decisions.md's Phase 4.
+                            // the onToggle comment above and docs/decisions.md's React 19/ESLint 10 upgrade entry.
                             // eslint-disable-next-line react-hooks/refs
                             onClick={() => removeGroupMember(g.id, userId)}
                           >
-                            <Trash2 size={14} />
+                            <Trash2 />
                           </button>
                         </li>
                       );
@@ -2589,12 +2574,12 @@ export function ProjectAdminPage() {
                   // facebook/react#35062's exemption (even once shipped) wouldn't cover
                   // this either way — it's scoped to built-in DOM elements only, and
                   // `UserAutocomplete` is a custom component. See the onToggle comment
-                  // above and docs/decisions.md's Phase 4.
+                  // above and docs/decisions.md's React 19/ESLint 10 upgrade entry.
                   // eslint-disable-next-line react-hooks/refs
-                  onSelect={(userId) => addGroupMember(g.id, userId)}
+                  onSelect={(userId) => run(() => addGroupMember(g.id, userId), "add", "group member")}
                   organizationId={project?.organization_id}
                   projectId={project?.id}
-                  // PR7: `g.role` (a single, required field) is gone — a
+                  // `g.role` (a single, required field) is gone — a
                   // group may now hold zero, one, or several roles. The
                   // by-email endpoint still only grants one role at a time
                   // (see `addExternalMember`'s own docstring for why this
@@ -2607,7 +2592,7 @@ export function ProjectAdminPage() {
                   // False positive (react-hooks/refs): same as `onSelect` above —
                   // custom-component prop, out of scope even for facebook/react#35062's
                   // fix once shipped. See the onToggle comment above and
-                  // docs/decisions.md's Phase 4.
+                  // docs/decisions.md's React 19/ESLint 10 upgrade entry.
                   // eslint-disable-next-line react-hooks/refs
                   onSelectExternal={g.roles.length > 0 ? (email) => addExternalMember(email, g.roles[0]) : undefined}
                 />
@@ -2632,11 +2617,11 @@ export function ProjectAdminPage() {
                           title={strings.admin.removeNestedGroup(strings.admin.viaOrgGroup(og.name, orgLabel))}
                           aria-label={strings.admin.removeNestedGroup(strings.admin.viaOrgGroup(og.name, orgLabel))}
                           // False positive (react-hooks/refs) — see the onToggle comment
-                          // above and docs/decisions.md's Phase 4.
+                          // above and docs/decisions.md's React 19/ESLint 10 upgrade entry.
                           // eslint-disable-next-line react-hooks/refs
                           onClick={() => removeOrgGroupMember(g.id, og.id)}
                         >
-                          <Trash2 size={14} />
+                          <Trash2 />
                         </button>
                       </li>
                     ))}
@@ -2663,11 +2648,11 @@ export function ProjectAdminPage() {
                       title={strings.admin.addOrgGroupToProjectGroup(orgLabel)}
                       aria-label={strings.admin.addOrgGroupToProjectGroup(orgLabel)}
                       // False positive (react-hooks/refs) — see the onToggle comment
-                      // above and docs/decisions.md's Phase 4.
+                      // above and docs/decisions.md's React 19/ESLint 10 upgrade entry.
                       // eslint-disable-next-line react-hooks/refs
                       onClick={() => addOrgGroupMember(g.id, orgGroupSelections[g.id])}
                     >
-                      <Plus size={14} />
+                      <Plus />
                     </button>
                   </div>
                 )}
@@ -2685,11 +2670,11 @@ export function ProjectAdminPage() {
                             title={strings.admin.removeNestedGroup(strings.admin.viaProjectMembers(p.name))}
                             aria-label={strings.admin.removeNestedGroup(strings.admin.viaProjectMembers(p.name))}
                             // False positive (react-hooks/refs) — see the onToggle
-                            // comment above and docs/decisions.md's Phase 4.
+                            // comment above and docs/decisions.md's React 19/ESLint 10 upgrade entry.
                             // eslint-disable-next-line react-hooks/refs
                             onClick={() => removeProjectRefMember(g.id, p.id)}
                           >
-                            <Trash2 size={14} />
+                            <Trash2 />
                           </button>
                         </li>
                       ))}
@@ -2718,11 +2703,11 @@ export function ProjectAdminPage() {
                       title={strings.admin.addProjectReferenceToProjectGroup}
                       aria-label={strings.admin.addProjectReferenceToProjectGroup}
                       // False positive (react-hooks/refs) — see the onToggle comment
-                      // above and docs/decisions.md's Phase 4.
+                      // above and docs/decisions.md's React 19/ESLint 10 upgrade entry.
                       // eslint-disable-next-line react-hooks/refs
                       onClick={() => addProjectRefMember(g.id, sourceProjectSelections[g.id])}
                     >
-                      <Plus size={14} />
+                      <Plus />
                     </button>
                   </div>
                 )}
@@ -2765,24 +2750,17 @@ export function ProjectAdminPage() {
         <p className="text-muted" style={{ margin: 0 }}>{strings.admin.reportSetupHint}</p>
         {reportTemplates.length > 0 && (
           <CollapsibleSection sectionKey="projectAdmin.reportSetup.defaultTemplate" title={strings.admin.defaultTemplateSection} defaultCollapsed={false}>
-            <label className="stack" style={{ gap: "0.25rem", maxWidth: 280 }}>
-              {strings.admin.defaultReportTemplate}
-              <select
-                className="input" value={defaultReportTemplateId}
-                onChange={(e) => {
-                  reportConfigDirtyRef.current = true;
-                  setDefaultReportTemplateId(e.target.value);
-                }}
-              >
-                <option value="">{strings.reports.noTemplate}</option>
-                {reportTemplates.map((tpl) => (
-                  <option key={tpl.id} value={tpl.id}>
-                    {tpl.name}
-                  </option>
-                ))}
-              </select>
-              <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.admin.defaultReportTemplateHint}</span>
-            </label>
+            <LabeledSelect helpNotNeeded
+              label={strings.admin.defaultReportTemplate}
+              value={defaultReportTemplateId}
+              onChange={(next) => {
+                reportConfigDirtyRef.current = true;
+                setDefaultReportTemplateId(next);
+              }}
+              options={reportTemplates.map((tpl) => ({ value: tpl.id, label: tpl.name }))}
+              placeholder={strings.reports.noTemplate}
+              hint={strings.admin.defaultReportTemplateHint}
+            />
           </CollapsibleSection>
         )}
         <CollapsibleSection sectionKey="projectAdmin.reportSetup.content" title={strings.admin.reportContent} defaultCollapsed={false}>
@@ -2805,7 +2783,7 @@ export function ProjectAdminPage() {
       </div>
       )}
 
-      {/* Module 0 (Platform Foundations) Phases 4/5 — this project's own
+      {/* This project's own
           Modules tab: override this project's effective enablement of a
           whole module, or one of its sub-components, against the
           organisation's own current default. Not to be confused with
@@ -2814,6 +2792,14 @@ export function ProjectAdminPage() {
           this is the core, module-agnostic "is this module/sub-component
           on for this project" surface, the project-tier sibling of Org
           Admin's own "Modules" section (`OrgAdminPage.tsx`). */}
+      {activeGroup === "tags" && projectId && (
+        <div className="stack">
+          <CollapsibleSection sectionKey="projectAdmin.tags" title={strings.tags.admin.title}>
+            <ProjectTagsPanel projectId={projectId} />
+          </CollapsibleSection>
+        </div>
+      )}
+
       {activeGroup === "modules" && (
         <div className="stack">
           <CollapsibleSection sectionKey="projectAdmin.modules" title={strings.admin.modulesNav}>
@@ -2823,24 +2809,18 @@ export function ProjectAdminPage() {
             ) : (
               <ModuleSettingsList
                 items={projectModules.map((m) => {
-                  // `org_hard_enabled` false = the org has turned the
-                  // module off; nothing a project sets can turn it on, so
-                  // the control is disabled (greyed, with a hint).
-                  const orgOff = !m.org_hard_enabled;
                   const subComponents = projectModuleSubComponents[m.module_key] ?? [];
                   return {
                     key: m.module_key,
                     name: m.name,
-                    hint: orgOff
-                      ? strings.admin.moduleDisabledForOrgHint
-                      : m.effective_enabled !== m.org_default_enabled
-                        ? strings.admin.moduleOrgDefaultHint(m.org_default_enabled)
-                        : null,
-                    muted: orgOff,
+                    // The API lists only modules the organisation has enabled, so a module here
+                    // is always one this project may switch.
+                    hint: m.effective_enabled !== m.org_default_enabled
+                      ? strings.admin.moduleOrgDefaultHint(m.org_default_enabled)
+                      : null,
                     control: (
                       <ToggleSwitch
                         checked={m.effective_enabled}
-                        disabled={orgOff}
                         label={strings.admin.moduleToggleLabel(m.name)}
                         onChange={(next) => toggleProjectModuleEnabled(m.module_key, next)}
                       />
@@ -2854,7 +2834,7 @@ export function ProjectAdminPage() {
                       control: (
                         <ToggleSwitch
                           checked={sub.effective_enabled}
-                          disabled={!m.effective_enabled || !sub.org_hard_enabled}
+                          disabled={!m.effective_enabled}
                           label={strings.admin.moduleSubComponentToggleLabel(m.name, sub.name)}
                           onChange={(next) => toggleProjectSubComponentEnabled(m.module_key, sub.subcomponent_key, next)}
                         />
@@ -2868,7 +2848,7 @@ export function ProjectAdminPage() {
         </div>
       )}
 
-      {/* Module 4 Phase 9 (2026-09-22): one generic lookup for every
+      {/* One generic lookup for every
           module-contributed project-admin section, mirroring
           `OrgAdminPage.tsx`'s own `moduleAdminSections` render — a future
           installed module's own `projectAdminSections` entry needs no

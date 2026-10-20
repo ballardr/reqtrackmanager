@@ -1,7 +1,7 @@
 """
 Module: modules.stakeholders.need_project_router
 
-Project-scoped Stakeholder Need API (Phase 2), mounted at
+Project-scoped Stakeholder Need API, mounted at
 `/api/v1/projects/{project_id}/modules/stakeholders` beside the Persona and
 Stakeholder project routers: need CRUD/lifecycle/comments/files, the "has need"
 links to Stakeholders and Personas, the "gives rise to" links to Requirements,
@@ -55,7 +55,9 @@ from app.modules.stakeholders.service import (
 )
 from app.schemas.file import FileAssetOut
 from app.services.audit import log_event
+from app.services.project_scope import ProjectScope
 from app.services.rbac import require_project_subcomponent_enabled
+from app.services.tags import TagFilter
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/modules/stakeholders", tags=["stakeholder-needs-project"])
 
@@ -92,11 +94,20 @@ def create_need(
 
 @router.get("/needs", response_model=list[NeedOut])
 def list_needs(
-    project_id: UUID, include_archived: bool = False,
+    project_id: UUID, include_archived: bool = False, tag_filter: TagFilter = Depends(),
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    project_scope: ProjectScope = Depends(),
 ):
-    _project(db, project_id)
-    return nd.needs_to_out(db, list_project_needs(db, project_id, include_archived=include_archived))
+    def rows_for(pid: UUID) -> list:
+        """This endpoint's rows for one project of the scope."""
+        _project(db, pid)
+        needs = list_project_needs(db, pid, include_archived=include_archived)
+        return nd.needs_to_out(db, tag_filter.keep(db, pid, NEED_ARTEFACT_TYPE, needs))
+
+    return project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, NEED_ARTEFACT_TYPE, rows_for,
+        gate=("stakeholders", "stakeholder_need"),
+    )
 
 
 @router.get("/needs/{need_id}", response_model=NeedOut)

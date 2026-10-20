@@ -86,8 +86,7 @@ def test_cannot_read_or_write_comments_on_change_request_in_another_project(clie
     comp_b, cat_b = create_component_and_category(client, admin_token, project_b["id"])
     requirement_b = _create_requirement(client, admin_token, project_b["id"], comp_b, cat_b, "B req")
     # A modify change request can only target an already-locked requirement
-    # (2026-08 UX audit roadmap, "No requirement approval action; change
-    # requests can target draft requirements") — approve it directly first.
+    # — approve it directly first.
     approve_resp = client.post(
         f"/api/v1/projects/{project_b['id']}/requirements/{requirement_b['id']}/approve", headers=auth_headers(admin_token)
     )
@@ -125,8 +124,7 @@ def test_cannot_join_project_group_belonging_to_another_project(client, admin_to
         headers=auth_headers(attacker_token),
     ).json()
     project_b = create_project(client, admin_token, org_id, "Victim Project")
-    # No group is auto-created on project creation any more (follow-up UX
-    # batch Phase C, 2026-08-31) — create the manager-role group this test
+    # No group is auto-created on project creation any more (2026-08-31) — create the manager-role group this test
     # needs explicitly.
     manager_group_b = client.post(
         f"/api/v1/projects/{project_b['id']}/groups", json={"name": "Managers"},
@@ -155,8 +153,7 @@ def test_cannot_nest_org_group_from_another_organization(client, admin_token, or
     ).json()
 
     project = create_project(client, admin_token, org_id, "My Project")
-    # No group is auto-created on project creation any more (follow-up UX
-    # batch Phase C, 2026-08-31) — create the manager-role group this test
+    # No group is auto-created on project creation any more (2026-08-31) — create the manager-role group this test
     # needs explicitly.
     manager_group = client.post(
         f"/api/v1/projects/{project['id']}/groups", json={"name": "Managers"},

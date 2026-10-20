@@ -1,4 +1,4 @@
-"""Sub-component hard floor vs. project default (Module 0 — Platform Foundations)
+"""Sub-component hard floor vs. project default (Platform Foundations)
 
 Revision ID: 0056
 Revises: 0055

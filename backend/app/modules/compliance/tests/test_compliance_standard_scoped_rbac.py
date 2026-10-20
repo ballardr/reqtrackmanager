@@ -1,5 +1,5 @@
-"""Tests for the Compliance Module's Phase 22 standard-scoped RBAC
-(docs/compliance-module-plan.md Phase 22): the two new `standards_manager`/
+"""Tests for the Compliance Module's standard-scoped RBAC
+: the two new `standards_manager`/
 `standards_contributor` module-contributed roles (scope `"standard"`,
 module system `ModuleRoleDefinition`'s new generalised entity-scope
 mechanism), their composition with org-scoped `compliance_manager`/
@@ -319,7 +319,7 @@ def test_manage_gate_audit_logged(client, admin_token, org_id):
         db.close()
 
 
-# --- Group-based grants (module system Phase 30) -------------------------------
+# --- Group-based grants -------------------------------
 
 
 def test_group_grant_satisfies_standard_manage_for_group_member(client, admin_token, org_id):

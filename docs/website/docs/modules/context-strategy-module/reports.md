@@ -99,6 +99,8 @@ Options are generated from what each report accepts, so a report only shows the 
 
 ## Exporting
 
+Rows that name a record lead with its code and end with its tags; see [Reports and export → How reports name records](../../core-features/reports-and-export.md#how-reports-name-records).
+
 | Exporting a report |
 | --- |
 | **Export** offers PDF, Word and CSV of exactly what is on screen, with the options currently set |
@@ -123,7 +125,7 @@ sxf,1,Flight logs cannot be exported for audit,Falcon-3 Inspection Drone,Operato
 sxf,2,Pilots cannot tell which redundant flight controller is in command,Falcon-3 Inspection Drone,User,Accepted,High,21,Medium,Blocker: BVLOS Remote Pilot,
 ```
 
-**Branding template (PDF and Word)** applies an organisation [report template](../../core-features/reports-and-export.md)'s accent colour, cover page, logo, and footer to the PDF and Word file. Its introduction and chapters belong to the requirements report and aren't used here. CSV never carries a template.
+**Branding template** applies an organisation [report template](../../core-features/reports-and-export.md)'s accent colour, cover page, logo, and footer to the PDF and Word file. Its introduction and chapters belong to the requirements report and aren't used here. CSV never carries a template.
 
 ## Using reports from the API or an AI assistant
 

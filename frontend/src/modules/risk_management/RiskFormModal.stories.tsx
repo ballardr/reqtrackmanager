@@ -50,7 +50,7 @@ export const CreateRequiresATitleAndDefaultsTheOwner: Story = {
         title: "Supplier may slip", owner: { type: "user", id: "user-1" },
         inherent_likelihood_level_id: "lik-4", inherent_consequence_level_id: "con-4", residual_likelihood_level_id: null,
       }),
-      "",
+      "", [], []
     );
   },
 };
@@ -65,7 +65,7 @@ export const ChoosesAGroupOwner: Story = {
     await expect(d.getByText("Org group")).toBeInTheDocument();
     await userEvent.click(d.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ owner: { type: "org_group", id: "group-1" } }), "",
+      expect.objectContaining({ owner: { type: "org_group", id: "group-1" } }), "", [], []
     ));
   },
 };
@@ -79,11 +79,11 @@ export const ChoosesAProjectGroupThenClearsIt: Story = {
     await userEvent.click(await d.findByText("Release squad"));
     await userEvent.click(d.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ owner: { type: "project_group", id: "pgroup-1" } }), "",
+      expect.objectContaining({ owner: { type: "project_group", id: "pgroup-1" } }), "", [], []
     ));
     await userEvent.click(d.getByRole("button", { name: "Clear: Owner" }));
     await userEvent.click(d.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(args.onSave).toHaveBeenLastCalledWith(expect.objectContaining({ owner: null }), ""));
+    await waitFor(() => expect(args.onSave).toHaveBeenLastCalledWith(expect.objectContaining({ owner: null }), "", [], []));
   },
 };
 
@@ -107,7 +107,7 @@ export const EditPrefillsAndTakesAChangeNote: Story = {
     await expect(d.getByLabelText("Inherent likelihood")).toHaveValue("lik-4");
     await userEvent.type(d.getByLabelText("Change note"), "Reassessed after supplier call");
     await userEvent.click(d.getByRole("button", { name: "Save" }));
-    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ title: "Supplier firmware may be late" }), "Reassessed after supplier call");
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ title: "Supplier firmware may be late" }), "Reassessed after supplier call", [], []);
   },
 };
 

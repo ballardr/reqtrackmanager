@@ -10,6 +10,7 @@ import { htmlToMarkdown, renderMarkdown, resolveImageRef } from "../utils/markdo
 import { FileUploadTrigger } from "./FileUploadTrigger";
 import { Modal } from "./Modal";
 import { Tooltip } from "./Tooltip";
+import { TextField } from "./FormFields";
 
 // The exact tag/attribute set `renderMarkdown` (and this component's own
 // insert-image action, below) ever produce — matches the "match the
@@ -230,7 +231,7 @@ export function RichTextEditor({
           {organizationId && (
             <Tooltip label="Insert image">
               <button type="button" className="btn" aria-label="Insert image" onClick={openImagePicker}>
-                <ImageIcon size={14} />
+                <ImageIcon />
               </button>
             </Tooltip>
           )}
@@ -238,27 +239,27 @@ export function RichTextEditor({
             <>
               <Tooltip label="Bold">
                 <button type="button" className="btn" aria-label="Bold" onClick={() => exec("bold")}>
-                  <Bold size={14} />
+                  <Bold />
                 </button>
               </Tooltip>
               <Tooltip label="Italic">
                 <button type="button" className="btn" aria-label="Italic" onClick={() => exec("italic")}>
-                  <Italic size={14} />
+                  <Italic />
                 </button>
               </Tooltip>
               <Tooltip label="Heading 1">
                 <button type="button" className="btn" aria-label="Heading 1" onClick={() => exec("formatBlock", "h1")}>
-                  <Heading1 size={14} />
+                  <Heading1 />
                 </button>
               </Tooltip>
               <Tooltip label="Heading 2">
                 <button type="button" className="btn" aria-label="Heading 2" onClick={() => exec("formatBlock", "h2")}>
-                  <Heading2 size={14} />
+                  <Heading2 />
                 </button>
               </Tooltip>
               <Tooltip label="Heading 3">
                 <button type="button" className="btn" aria-label="Heading 3" onClick={() => exec("formatBlock", "h3")}>
-                  <Heading3 size={14} />
+                  <Heading3 />
                 </button>
               </Tooltip>
               <Tooltip label="Bullet list">
@@ -266,12 +267,12 @@ export function RichTextEditor({
                   type="button" className="btn" aria-label="Bullet list"
                   onClick={() => exec("insertUnorderedList")}
                 >
-                  <List size={14} />
+                  <List />
                 </button>
               </Tooltip>
               <Tooltip label="Link">
                 <button type="button" className="btn" aria-label="Link" onClick={insertLink}>
-                  <LinkIcon size={14} />
+                  <LinkIcon />
                 </button>
               </Tooltip>
             </>
@@ -325,17 +326,13 @@ export function RichTextEditor({
       {linkModalOpen && (
         <Modal title="Insert link" onClose={() => setLinkModalOpen(false)}>
           <form className="stack" onSubmit={confirmInsertLink}>
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              Link URL
-              <input
-                className="input"
-                type="url"
-                autoFocus
-                placeholder="https://…"
-                value={linkUrl}
-                onChange={(e) => setLinkUrl(e.target.value)}
-              />
-            </label>
+            <TextField helpNotNeeded
+              label="Link URL"
+              value={linkUrl}
+              onChange={setLinkUrl}
+              placeholder="https://…"
+              inputProps={{ autoFocus: true, type: "url" }}
+            />
             <div className="row" style={{ justifyContent: "flex-end" }}>
               <button type="button" className="btn" onClick={() => setLinkModalOpen(false)}>
                 Cancel

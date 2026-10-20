@@ -1,6 +1,5 @@
-"""Tests for Decision Management's MCP tools (docs/plans/module-04-decision-
-management-plan.md, "Phase 4 addendum (2026-09-21) — MCP tools added"; the
-2026-09-22 "Decision Management MCP approval gate" follow-up adds two more).
+"""Tests for Decision Management's MCP tools (the 2026-09-21 read-only tools; the 2026-09-22
+"Decision Management MCP approval gate" follow-up adds two more).
 
 Mirrors `backend/tests/test_module_mcp_tools.py`'s own "against the REAL
 registry" integration section (written against Compliance, the only prior
@@ -102,7 +101,7 @@ def test_decisions_mcp_manifest_declares_no_other_mutating_tool():
     """Beyond the two approval-gated tools above, no other mutating tool is
     declared for this module — create/update/archive/unarchive/propose/
     submit-for-review/supersede/link/comment/file-attach all stay off the
-    MCP tool surface (2026-09-22 addendum's own scope: only approve/reject
+    MCP tool surface (2026-09-22: only approve/reject
     were asked for)."""
     tools = build_mcp_tool_manifest()
     by_name = {t.name: t for t in tools}

@@ -1,7 +1,7 @@
 /**
  * Module: modules/stakeholders/StakeholderGroupsPanel
  *
- * The Stakeholder group manager (Phase 3c): the group tree with create, rename,
+ * The Stakeholder group manager: the group tree with create, rename,
  * move, reorder, "one branch per stakeholder" and delete, the selected group's
  * members, and the "create groups from Organisation / group text" action. One
  * component serves both tiers — the organisation overview (`organizationId`) and
@@ -21,6 +21,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { TreeView } from "../../components/TreeView";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -32,6 +33,7 @@ import type {
   GroupTextProposal, StakeholderGroup, StakeholderGroupFieldValues, StakeholderGroupMember,
 } from "./types";
 import { STAKEHOLDER_SCOPE_LABEL } from "./types";
+import { Badge } from "../../components/Badge";
 
 type FormState = { initial?: StakeholderGroup; parentId?: string | null } | null;
 
@@ -181,21 +183,22 @@ export function StakeholderGroupsPanel({
                 >
                   {n.name}
                 </button>
+                <span className="text-muted" style={{ fontSize: "0.85rem" }}><ScopedRecordCode record={n} /></span>
                 <span className="text-muted">{n.member_count}</span>
-                {n.scope !== tier && <span className="badge">{STAKEHOLDER_SCOPE_LABEL[n.scope]}</span>}
-                {n.exclusive_children && <span className="badge" title="A stakeholder can be in only one child group.">One branch</span>}
+                {n.scope !== tier && <Badge>{STAKEHOLDER_SCOPE_LABEL[n.scope]}</Badge>}
+                {n.exclusive_children && <Badge title="A stakeholder can be in only one child group.">One branch</Badge>}
                 {editable(n) && (
                   <>
                     <button className="btn btn-sm btn-icon" title={`Add a group under ${n.name}`} aria-label={`Add a group under ${n.name}`}
-                      onClick={() => { setFormError(null); setForm({ parentId: n.id }); }}><Plus size={14} /></button>
+                      onClick={() => { setFormError(null); setForm({ parentId: n.id }); }}><Plus /></button>
                     <button className="btn btn-sm btn-icon" title={`Edit ${n.name}`} aria-label={`Edit ${n.name}`}
-                      onClick={() => { setFormError(null); setForm({ initial: n }); }}><Pencil size={14} /></button>
+                      onClick={() => { setFormError(null); setForm({ initial: n }); }}><Pencil /></button>
                     <button className="btn btn-sm btn-icon" title={`Move ${n.name} up`} aria-label={`Move ${n.name} up`}
-                      onClick={() => act(() => groupApi.move(scopeId, n.id, "up"), "Group moved.", "Could not move this group.")}><ArrowUp size={14} /></button>
+                      onClick={() => act(() => groupApi.move(scopeId, n.id, "up"), "Group moved.", "Could not move this group.")}><ArrowUp /></button>
                     <button className="btn btn-sm btn-icon" title={`Move ${n.name} down`} aria-label={`Move ${n.name} down`}
-                      onClick={() => act(() => groupApi.move(scopeId, n.id, "down"), "Group moved.", "Could not move this group.")}><ArrowDown size={14} /></button>
+                      onClick={() => act(() => groupApi.move(scopeId, n.id, "down"), "Group moved.", "Could not move this group.")}><ArrowDown /></button>
                     <button className="btn btn-sm btn-icon" title={`Delete ${n.name}`} aria-label={`Delete ${n.name}`}
-                      onClick={() => setDeleting(n)}><Trash2 size={14} /></button>
+                      onClick={() => setDeleting(n)}><Trash2 /></button>
                   </>
                 )}
               </span>
@@ -230,7 +233,7 @@ export function StakeholderGroupsPanel({
           )}
           {editable(selected) && (
             <div className="row" style={{ gap: "0.5rem", alignItems: "flex-end" }}>
-              <LabeledSelect
+              <LabeledSelect helpNotNeeded
                 label="Stakeholder to add" value={picked} onChange={setPicked} placeholder="Choose…"
                 options={candidates.filter((c) => !memberIds.has(c.value))}
               />

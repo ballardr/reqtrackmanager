@@ -22,7 +22,7 @@ from app.models.enums import (
     StageStatus,
 )
 
-# Module system Phase 2's grant-marker shape is defined in `schemas.org`
+# The module-role grant-marker shape is defined in `schemas.org`
 # (see `ModuleRoleGrantOut`'s own docstring for why), imported here rather
 # than duplicated — the reverse direction of the existing `orgs.py`
 # importing `MoveDirection` from this very module.
@@ -58,6 +58,9 @@ class ProjectCreate(BaseModel):
     name: str
     summary: str = ""
     template_project_id: UUID | None = None  # C-E-05: create from an existing template project
+    # The project's short code. Required when the organisation's policy is manual assignment,
+    # rejected when it is automatic (`services.codes.assign_project_code`).
+    code: str | None = None
     terminology: dict[str, str] = {}
     is_template: bool = False
     # Always explicit, never inherited from a cloned template (see
@@ -99,13 +102,14 @@ class ProjectOut(BaseModel):
     id: UUID
     organization_id: UUID
     name: str
+    code: str
     summary: str
     created_at: datetime
     updated_at: datetime
     is_archived: bool = False
     is_template: bool = False
     allow_member_change_requests: bool = True
-    # Platform review 2026-09, Phase 8 — see `Project.
+    # See `Project.
     # require_change_request_for_approved_links`/`exempt_from_org_link_lock`
     # model docstrings.
     require_change_request_for_approved_links: bool = False
@@ -162,6 +166,9 @@ class ProjectUpdate(BaseModel):
     """
 
     name: str | None = None
+    # Changing the code is only allowed under manual assignment; references pasted elsewhere
+    # with the old code stop matching (`services.codes.change_project_code`).
+    code: str | None = None
     summary: str | None = None
     allow_member_change_requests: bool | None = None
     require_change_request_for_approved_links: bool | None = None
@@ -279,7 +286,7 @@ class EffectiveMemberOut(BaseModel):
     email: str
     effective_role: ProjectRole
     sources: list[MemberSourceProvenanceOut]
-    # Module system Phase 2: this user's project-scoped module-contributed
+    # This user's project-scoped module-contributed
     # role grants, filtered to currently-enabled modules only — same
     # "filter, don't delete a since-disabled module's grant" rule
     # `OrgUserOut.module_roles` documents; see that field's docstring.
@@ -411,10 +418,9 @@ class MoveDirection(BaseModel):
 
 
 class ProjectGroupCreate(BaseModel):
-    """Creates a bare project group with no role at all (PR7 of the
-    members/groups directory rework plan, docs/decisions.md) — a group used
-    to require a `role` up front (fixed for its whole lifetime, until Phase
-    5 made it editable); it's now created empty and a role is a separate,
+    """Creates a bare project group with no role at all (docs/decisions.md) — a group used
+    to require a `role` up front (fixed for its whole lifetime, until it
+    was made editable); it's now created empty and a role is a separate,
     explicit, independently-revocable grant added afterward via `POST
     /{project_id}/groups/{group_id}/roles`, symmetric with how `OrgGroup`
     (org groups) is already created bare."""
@@ -436,7 +442,7 @@ class ProjectGroupMemberAdd(BaseModel):
 class ProjectGroupOut(BaseModel):
     id: UUID
     name: str
-    # `roles` (PR7) replaces the old single required `role` field — computed
+    # `roles` replaces the old single required `role` field — computed
     # from `ProjectGroupRole`, may be empty (a freshly created group with no
     # grant yet), and is not ordered/ranked; the frontend renders it as a
     # `MultiSelectDropdown`, same pattern `ProjectMembersTable`'s own Role
@@ -466,8 +472,7 @@ class OrgGroupProjectRoleSummaryOut(BaseModel):
     """One organisation group holding at least one direct `OrgGroupProjectRole`
     grant on this project (`GET /{project_id}/group-roles`) — the read
     counterpart `assign_group_project_role`/`revoke_group_project_role`
-    (PR4) never got, added in Phase 6 of `docs/platform-review-2026-09-
-    plan.md` so a group granted a role via the Members section's add-
+ never got, added in so a group granted a role via the Members section's add-
     control is actually visible and manageable afterward, not just
     grantable blind. `roles` aggregates every role this one group holds
     directly on this project into a single row, mirroring how
@@ -480,7 +485,7 @@ class OrgGroupProjectRoleSummaryOut(BaseModel):
 
 
 class ProjectGroupRoleAssign(BaseModel):
-    """Body for `POST /{project_id}/groups/{group_id}/roles` (PR7) — grants
+    """Body for `POST /{project_id}/groups/{group_id}/roles` — grants
     a project group one more role, directly, as its own independently-
     revocable `ProjectGroupRole` row. No `org_group_id`/`project_group_id`
     field needed here unlike `OrgGroupProjectRoleAssign`: the target group
@@ -519,8 +524,7 @@ class AssignByEmailOut(BaseModel):
 
 class PendingInviteOut(BaseModel):
     """A project's outstanding (not-yet-accepted) `PendingInvite` — the
-    "resend a stalled invite" feature's list shape (Phase 3,
-    docs/decisions.md). Standard (non-SSO) `PendingInvite` flow only; an
+    "resend a stalled invite" feature's list shape (docs/decisions.md). Standard (non-SSO) `PendingInvite` flow only; an
     `sso_only` org's invitees are provisioned immediately by
     `services.invites.provision_sso_invite` and never get a row here (see
     that scope decision in docs/decisions.md).
@@ -574,3 +578,5 @@ class ProjectMetricsOut(BaseModel):
     file_count: int = 0
     requirements_by_status: dict[str, int] = {}
     stage_progress: list[StageProgressOut] = []
+    # How many projects the counts cover (1 unless the request widened the scope; stage progress is always the project's own).
+    scope_project_count: int = 1

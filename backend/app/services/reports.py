@@ -67,6 +67,7 @@ class ReportRequirementRow:
     category_name: str
     component_sort_order: int = 0
     category_sort_order: int = 0
+    tags: str = ""
 
 
 def _group_rows_by_component_and_category(
@@ -174,8 +175,8 @@ def build_requirement_document(
     # Component/Category don't need their own columns (the chapter-per-component /
     # section-per-category structure below already conveys them), so their
     # width goes to Name/Reasoning.
-    widths = [3, 5, 7.5, 2]
-    header = ["ID", "Name", "Reasoning", "Status"]
+    widths = [3, 4.5, 6, 2, 2]
+    header = ["ID", "Name", "Reasoning", "Status", "Tags"]
 
     # Chapter per component (each starting on its own page) with a sub-section
     # per category underneath when chapters_per_component, otherwise just the
@@ -190,7 +191,7 @@ def build_requirement_document(
                 Heading(category_name, 2), Gap(0.2),
                 Table(
                     header,
-                    [[r.unique_code, r.name, r.reasoning, requirement_status_label(r.status)] for r in category_rows],
+                    [[r.unique_code, r.name, r.reasoning, requirement_status_label(r.status), r.tags] for r in category_rows],
                     col_widths_cm=widths,
                 ),
                 Gap(0.5),
@@ -246,11 +247,11 @@ def generate_csv_report(rows: list[ReportRequirementRow], terminology: dict[str,
     category_label = (terminology.get("category") or "category").capitalize()
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(["ID", "Name", component_label, category_label, "Status", "Reasoning", "Clarification"])
+    writer.writerow(["ID", "Name", component_label, category_label, "Status", "Reasoning", "Clarification", "Tags"])
     for row in rows:
         writer.writerow([
             csv_safe(row.unique_code), csv_safe(row.name), csv_safe(row.component_name),
             csv_safe(row.category_name), csv_safe(requirement_status_label(row.status)), csv_safe(row.reasoning),
-            csv_safe(row.clarification),
+            csv_safe(row.clarification), csv_safe(row.tags),
         ])
     return buffer.getvalue().encode("utf-8")

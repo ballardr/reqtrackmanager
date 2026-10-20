@@ -31,7 +31,7 @@ from app.services.rbac import require_project_module_enabled, user_satisfies_mod
 _require_view = require_project_module_enabled("decisions")
 
 # A Decision's content fields become immutable once it reaches either of
-# these statuses (source overview §13/10.6) — see the package's own
+# these statuses (§13/10.6) — see the package's own
 # `__init__.py` docstring.
 _LOCKED_STATUSES = frozenset({DecisionStatus.APPROVED, DecisionStatus.SUPERSEDED})
 

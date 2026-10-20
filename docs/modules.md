@@ -10,7 +10,7 @@ document.
 This document covers the module *mechanism* itself — the registry, gating,
 RBAC, frontend integration, and MCP tool contribution — not any specific
 module's own business logic. Compliance is the first real module built on top
-of this system; see [docs/plans/compliance-module-plan.md](plans/compliance-module-plan.md)
+of this system; see [docs/plans/completed/compliance-module-plan.md](plans/completed/compliance-module-plan.md)
 for its own requirements and build history. It's used below only for small,
 illustrative examples.
 
@@ -131,8 +131,15 @@ be usable by a given organisation:
 - **Enablement** — the org-tier day-to-day switch. Among modules the
   organisation is entitled to, has *this organisation's own admin* actually
   turned it on? Stored as an explicit override row
-  (`OrganizationModuleEnablement`); no row means "use the module's own
-  registry default" (`ModuleDefinition.default_enabled`).
+  (`OrganizationModuleEnablement`); no row means "use the server-wide default"
+  (`ServerModuleDefault`), and with none of those, the module's own registry
+  default (`ModuleDefinition.default_enabled`).
+- **Server default** — what an organisation with no row of its own gets
+  (`ServerModuleDefault`: enabled for the organisation, and on by default for
+  its projects). A fresh install is seeded with every module on; an upgrade is
+  seeded with nothing, so it keeps its current effective states. Server
+  administrators change it under Server Management → Modules, and can apply it
+  to every existing organisation explicitly.
 
 ```mermaid
 flowchart TD
@@ -144,10 +151,20 @@ flowchart TD
     ISENTITLED -->|no| DISABLED["Effectively disabled"]
     ISENTITLED -->|yes| ENAB{"Explicit enablement override row exists?"}
     ENAB -->|yes| ENABVAL["Use its 'enabled' value"]
-    ENAB -->|no| DEFENABLED["Fall back to ModuleDefinition.default_enabled"]
+    ENAB -->|no| SRVDEF{"ServerModuleDefault row exists?"}
+    SRVDEF -->|yes| SRVVAL["Use its 'org_enabled' value"]
+    SRVDEF -->|no| DEFENABLED["Fall back to ModuleDefinition.default_enabled"]
+    SRVVAL --> RESULT
     ENABVAL --> RESULT["Effective enabled state"]
     DEFENABLED --> RESULT
 ```
+
+**Hiding.** A module an administrator cannot use is not listed to them: the
+organisation module list omits a module the organisation is not entitled to
+(server administrators keep the full view); the project module list omits a
+module, and its sub-components, the organisation has disabled. A project's own
+row for a hidden module is kept, so it returns with its state when the module
+is re-enabled.
 
 Whichever backend dependency a module's endpoints use to check this
 (`require_org_module_enabled(module_key)` / `require_project_module_enabled
@@ -239,7 +256,7 @@ declaring `sub_components` needs no frontend edit of its own to get this.
 `GET .../subcomponents` is called for every registered module
 unconditionally (it safely returns `[]` for one with none declared, e.g.
 every module before Context & Strategy) rather than checked first. See
-`docs/plans/module-00-platform-foundations-plan.md`'s Phase 4 section.
+`docs/plans/completed/module-00-platform-foundations-plan.md`'s Phase 4 section.
 
 ### 2b. Project-level override of whole-module enablement (Module 0 — Platform Foundations — Phase 5)
 
@@ -349,6 +366,9 @@ class ModuleDefinition:
     scoring_schemes: tuple[ScoringSchemeDefinition, ...] = ()  # configurable scoring matrices (§4d)
     scoring_target_providers: dict[str, Callable[[Session, UUID], list[ScoringTarget]]] = {}  # records others score against (§4e)
     artefact_summary_providers: dict[str, ArtefactSummaryProvider] = {}  # records others link to (§4f)
+    search_providers: dict[str, ArtefactSearchProvider] = {}  # records the global search finds (§4j)
+    not_searchable: dict[str, str] = {}  # artefact types deliberately outside the search, with the reason (§4j)
+    search_scopes: dict[str, SearchScope] = {}  # extra places the search can be scoped to (§4j)
     link_type_seeds: tuple[LinkTypeSeed, ...] = ()  # link types you ship; any artefact links to any by default (§4f-bis)
     reports: tuple[ReportDefinition, ...] = ()  # reports core serves for you (§4g)
     notification_types: tuple[NotificationTypeDefinition, ...] = ()  # notification kinds you send (§4h)
@@ -381,7 +401,7 @@ checked against that router, not `get_router()`'s. `app.main`'s mount loop
 mounts both the same way; leave this `None` if you have no project-scoped
 endpoints of your own (most modules).
 
-**`get_global_router` (plans/compliance-module-plan.md Phase 18)** is a third,
+**`get_global_router` (plans/completed/compliance-module-plan.md Phase 18)** is a third,
 optional router for the rarer case where an endpoint has *no* single org or
 project id in its own path at all — Compliance's own example is `GET
 /api/v1/compliance/nav-visibility`, which aggregates across every org the
@@ -420,7 +440,7 @@ step, and where it happens depends on how your module is loaded:
   reviewed in a normal PR, exactly like every other first-party migration.
   Colocating it with the rest of your module's own code (models/service/
   router/tests) rather than dropping it into the flat, shared
-  `backend/alembic/versions/` directory is a plans/compliance-module-plan.md
+  `backend/alembic/versions/` directory is a plans/completed/compliance-module-plan.md
   Phase 11 follow-up: `app.modules.registry.configure_alembic_version_
   locations` adds every registered module's `migrations_dir` to Alembic's
   own multi-directory `version_locations`, so your migration still
@@ -627,7 +647,7 @@ module roles are currently offered (declared by a currently-*enabled*
 module) alongside the fixed core-role options — same checkbox, same
 accessible labelling, same component, for every role in the system.
 
-### 4a. A module-owned entity scope (plans/compliance-module-plan.md Phase 22)
+### 4a. A module-owned entity scope (plans/completed/compliance-module-plan.md Phase 22)
 
 `scope` isn't limited to the two core-recognised literals above. A module
 may declare **any other string** as `scope` — a role tied to one specific
@@ -969,7 +989,7 @@ A module that relates its records to another module's (a Stakeholder
 module, but must still validate the target belongs to the same project, label it
 and offer a picker. The owner declares
 `artefact_summary_providers[artefact_type] = ArtefactSummaryProvider(get, list_for_project, get_many_in_project, browse_levels, filter)`
-(the batch lookup and `filter` are optional; `browse_levels` is required, see below) and a display name in
+(the batch lookup and `filter` are optional; `browse_levels` is required, see below; `list_for_organization(db, organization_id)` is optional too and lists the records the *organisation* owns, so core can resolve an organisation-qualified code such as `ACME-PER-001` through `registry.list_organization_artefact_summaries` without naming the module) and a display name in
 `artefact_type_labels[artefact_type]`; callers use `registry.get_artefact_summary` /
 `list_artefact_summaries` / `has_artefact_summary_provider` /
 `get_artefact_summaries_in_project` / `get_artefact_type_label`. On the frontend the owner's
@@ -995,7 +1015,7 @@ clauses). `selected` is `{level key: option id}` for the earlier levels; the cor
 validates it against what each level offered, so compute options from it alone and
 scope them to the project's organisation. A test fails if a registered type has no
 level. An organisation-owned type (`project_id=None`) is offered only from the
-request project. Core owns only `requirement` and `requirement_action` (its levels
+request project. Core owns only `requirement`, `requirement_action` and `change_request` (its levels
 live in `services/link_browse.py`). `services.summary_facets` has helpers for status
 and two-tier type facets, and `relationships.delete_links_for_artefacts` removes
 links when a type hard-deletes records.
@@ -1093,7 +1113,54 @@ ModuleDefinition(
 - A module declaring `artefact_types` also needs `artefact_summary_providers`,
   `artefact_type_labels` (§4f) and, on the frontend, `artefactPaths`, so the type can
   be shown and followed from a link; `tests/test_artefact_type_routes.py` and
-  `frontend/src/modules/registeredArtefactTypes.json` guard the last.
+  `frontend/src/modules/registeredArtefactTypes.json` guard the last. It also needs a
+  `search_providers` entry, or a `not_searchable` reason (§4j).
+
+### 4j. Global search: providers and scopes (Platform review, Phase 23)
+
+Every artefact type is findable by the header search with no search code of your own: you describe the
+SQL, core does scoping, authorisation, matching, ranking and paging.
+
+```mermaid
+flowchart LR
+    S["POST /search"] --> A["Authorise: projects the caller can open,<br/>module on, view permission, per project"]
+    A --> P["Each type's ArtefactSearchProvider<br/>(your columns and fields)"]
+    P --> M["Merge, rank, page<br/>(omit, never redact)"]
+    M --> R["Hits: code, title, status,<br/>snippet, record to open"]
+```
+
+- `search_providers[artefact_type] = ArtefactSearchProvider(from_clause, columns, fields, where, status_labels, organization_owned, open_owner_type)`.
+  `columns` (`SearchColumns`) says which SQL expression is the id, owning project, code, title, status,
+  archived flag and last change; `fields` (`SearchField(key, label, column)`) are the **extra** text columns
+  the search may match. **Fields are opt-in:** a column you do not list is never matched, so a personal-data or
+  consent-sensitive column is excluded by leaving it out. Reuse a `key` and `label` another type uses
+  (`description`, `rationale`) so the field picker lists it once; `id`, `title` and `tags` are built by core
+  (every taggable type is searched on tags with no provider work). A versioned record is read through its
+  current version: `services.search_core.versioned_provider` builds the provider for you.
+- `organization_owned=True` for a type that can belong to the organisation (`project_id` NULL) and is shown
+  through projects: such a record is found only through a project allowed to see it, using the same visibility
+  your `get_many_in_project` applies (per-project hiding), and its count is taken after that check.
+- `organization_subcomponent="<key>"` instead, for a type whose organisation-owned records have an organisation-level
+  surface and no project shows them (a Strategy): they are searched, in the all-projects scope, for every member
+  of an organisation where that sub-component is on (and, in a one-project search, where the module has it on for
+  that project, unless the person left organisation records out), and open at the organisation page you register in
+  `TierAModuleDefinition.orgArtefactPaths`.
+- `comments=SearchComments(model, record_id, body, created_at, where)` makes the opt-in `comments` field available
+  for a type that has a comment table (`services.search_core.comments_of` builds it). Comments are never searched
+  by default and cannot be a stored default: one `EXISTS` per type is much dearer than the record's own columns.
+- `open_owner_type` names the type whose page opens when yours has none of its own (a finding opens its
+  engagement); `columns.owner_id` is that record's id.
+- **Registration is required.** A type with neither a provider nor an entry in `not_searchable` (`{type: reason}`)
+  fails `tests/test_search.py`, and the frontend must resolve a page for it (`artefactPaths`) or its result would
+  be a dead row (`artefactPaths.stories.tsx`).
+- `search_scopes[key] = SearchScope(label, resolve, narrowness)` adds a place to the page's **Scope** filter
+  (Compliance: `standard`). `resolve(db, user_id, ref_id)` returns a `ScopeResolution(project_ids, restrictions)`:
+  the projects the unit spans (core keeps only those the caller can open) and, per type, an extra SQL condition
+  (a standard's clauses only). A type absent from `restrictions` is not searched in the scope. Return `None` for
+  "not found or not allowed" and answer the two identically. On the frontend register the matching
+  `TierAModuleDefinition.searchScopes` (`key`, `label`, `narrowness`, `match(pathname) -> ref id | null`); core
+  names no module's scope.
+- Never log, audit or trace the query text; core already does not.
 
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 
@@ -1118,10 +1185,13 @@ flowchart LR
 # reports.py
 def collect_overdue(db: Session, ctx: ReportContext) -> ReportResult:
     projects = ctx.eligible(db, "tasks")          # in-scope projects with the sub-component on
-    rows = [[t.title, t.project_name] for t in load_overdue(db, projects, ctx.params["days"], ctx.today)]
+    tasks = load_overdue(db, projects, ctx.params["days"], ctx.today)
+    tags = ctx.tag_text(db, "task", [t.id for t in tasks])          # one query for the Tags column
+    rows = [[ctx.code(t.unique_code, t.project_id), t.title, t.project_name, tags.get(t.id, "")] for t in tasks]
     return ReportResult(
         key="t1", title="Overdue tasks", scope_label=ctx.scope_label, generated_at=datetime.now(UTC),
-        notes=[ctx.scope_note], sections=[ReportSection("overdue", "Overdue", ["Task", "Project"], rows, gap=True)],
+        notes=[ctx.scope_note],
+        sections=[ReportSection("overdue", "Overdue", ["Code", "Task", "Project", "Tags"], rows, gap=True)],
         eligible_projects=len(projects),
     )
 
@@ -1130,6 +1200,7 @@ REPORT_DEFINITIONS = (
         "t1", "overdue-tasks", "Overdue tasks", "Tasks past their due date.", collect_overdue,
         subcomponent="tasks", org_level=True, org_role_key="tasks_reports_viewer",
         params=(ReportParamDefinition("days", "integer", default=0, minimum=0, maximum=365),),
+        record_types=("task",),
     ),
 )
 REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
@@ -1167,6 +1238,18 @@ REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
   `org_level` without an `org_role_key`, an unknown sub-component, or an
   `org_role_key` that is not an org-scoped role is excluded and logged: no
   catalogue entry, no MCP tool, 404 on its route.
+- **Records are named by code, with their tags.** A row that names a record leads with
+  its code and ends with its tags, through the context's helpers, never a hand-formatted
+  string: `ctx.code(unique_code, project_id)` for a project-scoped record, `ctx.org_code(unique_code)`
+  for one the organisation owns, `ctx.tag_text(db, artefact_type, ids)` for the Tags column (one query
+  per type). The rule mirrors the screen's (`frontend/src/utils/recordCode.ts`): a record in the
+  reported project is bare (`REQ-001`) unless the organisation shows the project code everywhere; a
+  record from another project, any record of an organisation-wide run, and an organisation-owned
+  record are qualified (`ACME-REQ-001`). The viewer's `show_project_code` preference is **not**
+  applied, so a saved or scheduled run reads the same for everyone. `record_types` lists the
+  registered artefact types the report names (`backend/tests/test_report_record_codes.py` fails for a
+  report that declares none, or an unregistered type). A custom view renders the server's `code`
+  string and does not format it again.
 - **Cells are untrusted.** CSV cells go through `csv_safe`, PDF cells through
   `report_document.safe` and DOCX cells through `report_docx.clean_text`. Do not put Restricted data (secrets, file content) in
   a result: report reads are not audit-logged, on the basis that every field is
@@ -1243,6 +1326,17 @@ component), used by the nav rail and route-splicing to know a module has a
 frontend surface and where it lives. `nav_path` must match the path used in
 the Tier A route registration above.
 
+A nav entry that leads to one sub-component sets `sub_component` (the primary
+entry: `ModuleFrontendManifest.nav_sub_component`) to that sub-component's key.
+`GET /projects/{id}/enabled-modules` returns each module's
+`disabled_sub_components`, and the nav rail hides the entries listed there — the
+same state that makes the sub-component's API routes 404, so a link never leads
+to a page that cannot load. A page that serves several sub-components (a combined
+list) sets `sub_components_any` (primary entry: `nav_sub_components_any`) instead:
+the entry goes only when every listed sub-component is off. `Layout.tsx` filters
+generically on both fields; it names no module. A module-admin toggle calls `refreshProjectEnabledModules`
+(`hooks/useProjectEnabledModules.ts`) so the rail follows without a reload.
+
 For a **project-scoped** route, `nav_path` may contain a literal
 `"{project_id}"` placeholder (e.g.
 `"/projects/{project_id}/modules/compliance"`) — `GET /projects/{id}/enabled-
@@ -1280,7 +1374,7 @@ hardcoded approach.
 
 ### Global nav links, global routes, and standalone workspaces
 
-Three more optional `TierAModuleDefinition` fields (plans/compliance-module-plan.md
+Three more optional `TierAModuleDefinition` fields (plans/completed/compliance-module-plan.md
 Phase 18), mirroring `orgAdminSections`' own "module hands the parent a
 render function" shape, for a module that needs a presence in `Layout.tsx`/
 `App.tsx` themselves rather than inside Org Admin or a specific project:
@@ -1400,7 +1494,7 @@ A few details that make this safe, not just convenient:
 ### Tier C — federated (a genuinely third-party module, no rebuild required)
 
 Module system follow-up, 2026-09-07 — requested directly by the repo owner,
-not part of a numbered `plans/compliance-module-plan.md` phase. Tier A requires a
+not part of a numbered `plans/completed/compliance-module-plan.md` phase. Tier A requires a
 rebuild of this frontend image (Vite bundles are static build artifacts —
 there is nothing to rescan once the image exists). Tier B can run without a
 build step, but only by giving up native component reuse for iframe
@@ -1850,8 +1944,21 @@ metadata — don't rely on the manifest builder's exclusion as your only
 defence; design the endpoint itself so an AI-driven caller can't reach an
 approval action even if the tool mechanism changes later.
 
+**Tags.** Every type you list in `artefact_types` is taggable with no tag code in your module: tags are keyed by the registered type string (`ArtefactTag.artefact_type`, validated against `get_all_registered_artefact_types()`), and the generic endpoint `/projects/{id}/artefacts/{type}/{id}/tags` authorises through the same `ArtefactResolver` and `manage` permission your type already has. What your module does add: take `TagFilter` (`app/services/tags.py`) as a dependency on each project list endpoint and narrow the rows with `tag_filter.keep(db, project_id, YOUR_TYPE, rows)`; pass `<RecordTags>` to `RecordHeader` on the detail page, `TagField` + `useCommitTags` in the create form and `TagFilterField` + `useTagFilter` in the list; and call `forget_record_tags` where a record is erased for good. A bundle export that carries your records adds `"tags": record_tag_names(...)` to each row and `restore_record_tags(...)` on import.
+
+**Every record type's shared obligations.** Each type in `artefact_types` also ships, in the same change:
+a human-readable `unique_code` from `services.sequences.generate_unique_code` shown through `<RecordCode>`;
+a search provider (§4j) or a `not_searchable` reason, plus a frontend `artefactPaths` entry so a result opens a page;
+a list that takes `ProjectScope` (nested-project filter) and `TagFilter`; and `QuickLinkField`, `TagField` and the
+`help` text on its create form. A vocabulary a project can define and an organisation can default is a
+`TypeVocabulary`, so a project can hide and restore an organisation default. A lifecycle that goes draft to active
+offers Save and activate only when activating needs nothing beyond permission to create. A nav entry that serves
+several sub-components sets `ModuleNavEntry.sub_components_any`. Each of these is a registration or a shared
+component, never an edit to a core file.
+
 **Reports.** If your module reports on its records, declare `ReportDefinition`s
-(§4g) rather than building routes, PDF/CSV code or a catalogue of your own.
+(§4g) rather than building routes, PDF/CSV code or a catalogue of your own. Name each
+record through the context's code and tag helpers and list its type in `record_types`.
 
 **Test it** the way every other change in this codebase is tested: a
 backend test pinning your endpoints' behaviour (including the disabled/
@@ -1925,7 +2032,7 @@ that way, not glossed over:
 
 For the full SOC 2 framing (which control-matrix gap this raises the stakes
 of, and the specific policy-document changes this system committed to), see
-[docs/plans/compliance-module-plan.md](plans/compliance-module-plan.md)'s "SOC2 /
+[docs/plans/completed/compliance-module-plan.md](plans/completed/compliance-module-plan.md)'s "SOC2 /
 Security Planning" section and
 [docs/soc2/policies/](soc2/policies/access-control-policy.md).
 
@@ -1936,7 +2043,7 @@ Security Planning" section and
 - [solution-architecture.md](solution-architecture.md)'s "Modular Feature
   System" section — the precise, line-referenced technical account of every
   table, class, and dependency mentioned here.
-- [plans/compliance-module-plan.md](plans/compliance-module-plan.md) — the phased build
+- [plans/completed/compliance-module-plan.md](plans/completed/compliance-module-plan.md) — the phased build
   plan this system was built under, its design history (including the
   corrections that shaped Tier A/B and module-contributed RBAC), and current
   phase status.

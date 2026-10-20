@@ -4,12 +4,12 @@ Revision ID: 0022
 Revises: 0021
 Create Date: 2026-09-01
 
-Members/groups directory rework plan, PR7 (docs/decisions.md): a
+Members/groups directory rework (docs/decisions.md): a
 `ProjectGroup` used to carry a single, required `role` column fixed at
 creation — a group's role was baked in from the start, with no way to hold
 more than one role or start with none. This migration replaces that column
 with a new `project_group_roles` table (`app.models.project.
-ProjectGroupRole`), mirroring PR4's `org_group_project_roles` table almost
+ProjectGroupRole`), mirroring the `org_group_project_roles` table almost
 exactly: a group can now hold zero, one, or several independently-revocable
 roles, one row per role, the same "one row per role" shape `user_project_
 roles`/`org_group_project_roles` already use — not an array/JSON column.
@@ -42,7 +42,7 @@ read `ProjectGroup.role == PROJECT_MANAGER` directly (`_ensure_project_has_
 a_manager`, `delete_project_group`, `remove_project_group_member`, plus the
 new group-role-revoke endpoint) was updated in the same PR to instead check
 whether the group currently holds a `PROJECT_MANAGER` row in this new
-table — see docs/decisions.md's identify/verify/remediate entry for PR7 for
+table — see docs/decisions.md's identify/verify/remediate entry for this change for
 the full list and review.
 """
 
@@ -105,7 +105,7 @@ def downgrade() -> None:
     # (project_manager > project_administrator > stakeholder > member) so a
     # downgrade never silently drops a manager grant down to a lesser role;
     # a group left with zero roles falls back to 'member', matching how a
-    # freshly-created (post-PR7) group with no grants yet would have been
+    # freshly-created (newly created) group with no grants yet would have been
     # represented under the old required-field shape.
     op.execute("ALTER TABLE project_groups ADD COLUMN IF NOT EXISTS role VARCHAR(30)")
     op.execute(

@@ -12,11 +12,12 @@ Twenty-two read tools, always available:
 | --- | --- |
 | `list_organizations` | Organisations the caller's account belongs to or administers |
 | `list_projects` | Projects the caller has a role on, optionally filtered by organisation or a name/summary search |
-| `get_project` | A single project's detail |
+| `get_project` | A single project's detail, including its short code |
+| `get_record_by_code` | The record a qualified code names (`ACME-REQ-001`, or `ACME-PER-001` for a record the organisation owns): its type, id and project (none for an organisation-owned one), if the caller may see it |
 | `list_permissions` | An organisation's full Fine-Grained Access Control permission-atom vocabulary (artefact types x levels, plus the fixed administrative permissions) |
 | `list_custom_roles` | An organisation's custom roles (Fine-Grained Access Control) — each role's own definition, never who holds it |
 | `get_custom_role` | A single custom role's own definition (name, description, scope, permission-atom set) |
-| `list_requirements` | Requirements in a project, with the same filters the UI's filter panel offers (status, component, category, keyword, or a name/code search) |
+| `list_requirements` | Requirements in a project, with the same filters the UI's filter panel offers (status, component, category, keyword, tags, or a name/code search) |
 | `get_requirement` | A single requirement's full current detail |
 | `get_requirement_history` | A requirement's full version history — every prior state, who changed it, and why (C-A-09) |
 | `get_artefact_link_graph` | What an artefact is linked to, out to three hops, with each link's direction (upstream / downstream / related) for impact analysis; reports hidden and truncated results rather than hiding them |
@@ -24,6 +25,10 @@ Twenty-two read tools, always available:
 | `list_link_candidate_projects` | The projects a link from this project may reach: itself, parent projects and child projects the caller can open (siblings and unrelated projects never appear) |
 | `search_artefact_link_candidates` | Finds the record to link to (the `other_id` for `create_artefact_link`): a short search across every record type a usable link type reaches (two characters or more), or within one type, optionally narrowed by browse choices |
 | `list_artefact_link_browse` | The next browse level of a record type (a compliance clause: standard, then version, then requirement; a requirement: component, then category; most types: a status or type), to narrow the search step by step |
+| `list_tags` | The project's tag vocabulary with usage counts, and whether new tags are free or limited to the list |
+| `get_artefact_tags` | The tags on one record of any type, whether the caller may change them, and the tags to choose from |
+| `find_artefacts_by_tag` | Records of every type that carry some tags (any or all), limited to those the caller can open |
+| `search_records` | Records of every type (and projects) found by text: code, title and tags by default, more fields on request; scoped to all projects, one project or a module's unit such as a Compliance standard. Only what the caller can open; the first 500 matches |
 | `list_change_requests` | Change requests in a project, optionally filtered by status |
 | `get_change_request` | A single change request's full current detail, including the links it proposes (`proposed_links`) |
 | `preview_change_request_links` | Which of a change request's proposed links would merge if approved now, each re-validated, with the reason for any that would not (project manager only) |
@@ -43,6 +48,8 @@ Plus seven write tools, only when [write mode](#write-mode) is enabled:
 | `update_requirement` | Edits an unlocked requirement's content — a partial update; cannot touch `status` |
 | `create_artefact_link` | Links an artefact to another record of the same project, or of a parent or child project (`other_project_id`), from either end — subject to the organisation's link restrictions, each link type's nesting scope and the caller's own permissions |
 | `delete_artefact_link` | Removes a link touching an artefact (irreversible; links with a fixed meaning such as supersession are excluded) |
+| `set_artefact_tags` | Makes a record carry exactly the given tags (new names follow the project's free or restricted mode) |
+| `add_artefact_tag` / `remove_artefact_tag` | Adds or removes one tag on a record, keeping the others |
 | `approve_requirement` | Approves a draft or reviewed requirement — **only when AI approval is enabled** for the project and its organisation |
 | `decide_change_request` | Approves or rejects a submitted change request — **only when AI approval is enabled** for the project and its organisation. `merge_link_ids` chooses which proposed links to create (omitted: every valid one; empty: none); a chosen link that is no longer valid fails the call with a conflict |
 | `complete_requirement` | Marks an approved requirement completed — **only when AI approval is enabled** for the project and its organisation |
@@ -76,9 +83,9 @@ Two optional, non-sensitive HTTP headers on the MCP connection — `X-Default-Or
 
 ## Module-contributed tools
 
-Beyond the hand-written tools above, a backend module (plans/compliance-module-plan.md Phase 4) can declare its own tools that this server registers automatically, without any module-specific code living in this file. See [docs/modules.md](modules.md#6-module-contributed-mcp-tools) for the full design writeup aimed at someone building a module; this section covers only what a deployment operator or an MCP client needs to know.
+Beyond the hand-written tools above, a backend module (plans/completed/compliance-module-plan.md Phase 4) can declare its own tools that this server registers automatically, without any module-specific code living in this file. See [docs/modules.md](modules.md#6-module-contributed-mcp-tools) for the full design writeup aimed at someone building a module; this section covers only what a deployment operator or an MCP client needs to know.
 
-**Compliance (plans/compliance-module-plan.md Phase 6, extended through Phase 22, then reversed to write-enabled 2026-09-22) is the first module to use this**, contributing 74 tools total: 10 read-only tools (unchanged since Phase 6/7/8/9/10/11) plus 64 write tools added in the 2026-09-22 reversal — see [docs/decisions.md](decisions.md)'s "Compliance MCP write tools + generalized AI approval gate" entry for the full rationale for why this module's MCP surface, previously described here as "deliberately read-only," no longer is.
+**Compliance (plans/completed/compliance-module-plan.md Phase 6, extended through Phase 22, then reversed to write-enabled 2026-09-22) is the first module to use this**, contributing 74 tools total: 10 read-only tools (unchanged since Phase 6/7/8/9/10/11) plus 64 write tools added in the 2026-09-22 reversal — see [docs/decisions.md](decisions.md)'s "Compliance MCP write tools + generalized AI approval gate" entry for the full rationale for why this module's MCP surface, previously described here as "deliberately read-only," no longer is.
 
 The 10 read-only tools:
 

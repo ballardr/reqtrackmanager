@@ -1,12 +1,10 @@
-"""Tests for the Compliance Module's Phase 10 Scheduled Reviews +
-Notifications (docs/compliance-module-plan.md Phase 10; docs/Compliance_
-Module_Requirements.md §17, §18, §28): the `ComplianceReview` CRUD/complete/
+"""Tests for the Compliance Module's Scheduled Reviews +
+Notifications (§17, §18, §28): the `ComplianceReview` CRUD/complete/
 evidence-linkage surface on both the org router (standard-level reviews)
 and the project router (project-level reviews), the computed `schedule_
 state` derivation, the unified `reviews-due` listing, the four date-driven
 notification sweeps (`app.modules.compliance.scheduler`), and the six
-event-driven notifications wired into the Phase 6/7/9 endpoints this phase
-extends.
+event-driven notifications wired into the standards, assessment and approval endpoints.
 
 Reuses `test_compliance_standards_api.py`'s and `test_project_compliance_
 api.py`'s helpers for setup, the same way `test_compliance_evidence_api.py`/
@@ -416,7 +414,7 @@ def test_reviews_due_listing_spans_project_and_standard_level(client, admin_toke
     ids = {r["id"] for r in rows}
     assert ids == {due_project_review["id"], due_standard_review["id"]}
 
-    # Phase 40: `standard_id`/`standard_reference`/`standard_name` are
+    # `standard_id`/`standard_reference`/`standard_name` are
     # resolved for *both* kinds of review — a project-level one (through its
     # assignment's own standard version) and a standard-level one (directly)
     # — so a review can be filtered/grouped by standard regardless of which
@@ -571,7 +569,7 @@ def test_new_assignment_notifies_compliance_officers(client, admin_token, org_id
 def test_evidence_expiry_sweep_notifies_once_per_state(client, admin_token, org_id):
     project, _assignment, pcr_id, _assessment_id = _setup_project_with_assessment(client, admin_token, org_id)
     officer_token = _second_officer(client, admin_token, org_id, project["id"], email="evidence-officer@example.com")
-    _create_evidence(
+    evidence = _create_evidence(
         client, admin_token, project["id"], expiry_date=(TODAY - timedelta(days=1)).isoformat(),
         project_compliance_requirement_ids=[pcr_id],
     )
@@ -581,6 +579,8 @@ def test_evidence_expiry_sweep_notifies_once_per_state(client, admin_token, org_
 
     notifs = [n for n in _notifications_for(client, officer_token) if n["type"] == "compliance_evidence_expired"]
     assert len(notifs) == 1
+    # A notification is read out of any project's context, so the evidence is named by its qualified code.
+    assert notifs[0]["title"] == f"Evidence expired: {project['code']}-{evidence['unique_code']} {evidence['title']}"
 
 
 def test_required_action_due_sweep_notifies_assignee(client, admin_token, org_id):

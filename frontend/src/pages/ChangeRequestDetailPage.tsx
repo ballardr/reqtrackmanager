@@ -1,12 +1,12 @@
-import { MessageSquare } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useMutation } from "../hooks/useMutation";
+import { Bell, BellOff, MessageSquare } from "lucide-react";
+import { useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type {
   ActionTypeDefinition,
   ChangeableRequirementField,
-  ChangeEntry,
   ChangeRequest,
   ChangeRequestTask,
   ChangeRequestVoteChoice,
@@ -27,7 +27,10 @@ import {
   principalText,
   REQUIREMENT_LEVEL_LABEL,
 } from "../api/types";
-import { ActivityPanel } from "../components/ActivityPanel";
+import { ArtefactLinksPanel } from "../components/ArtefactLinksPanel";
+import { DetailLayout } from "../components/DetailLayout";
+import { RecordActivity } from "../components/RecordActivity";
+import { RecordTags } from "../components/RecordTags";
 import { ApproveChangeRequestDialog } from "../components/ApproveChangeRequestDialog";
 import { CommentThread } from "../components/CommentThread";
 import { PrincipalBadge } from "../components/PrincipalBadge";
@@ -36,11 +39,15 @@ import { PrincipalFormField } from "../components/PrincipalFormField";
 import { Modal } from "../components/Modal";
 import { ProposedLinksSection } from "../components/ProposedLinksSection";
 import { Spinner } from "../components/Spinner";
-import { SubscribeButton } from "../components/SubscribeButton";
+import { RecordHeader } from "../components/RecordHeader";
 import { useAuth } from "../context/AuthContext";
 import { useStrings } from "../context/TerminologyContext";
 import { useToast } from "../context/ToastContext";
 import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
+import { Badge } from "../components/Badge";
+import { TextField } from "../components/FormFields";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { DetailCard } from "../components/DetailCard";
 
 /** Change request detail: submit/withdraw/decide and its discussion thread (C-R-01).
  *
@@ -51,6 +58,7 @@ import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
  * possible field.
  */
 export function ChangeRequestDetailPage() {
+  const run = useMutation();
   const strings = useStrings();
   const { projectId, crId } = useParams<{ projectId: string; crId: string }>();
   const { user } = useAuth();
@@ -66,7 +74,8 @@ export function ChangeRequestDetailPage() {
   const [decisionNote, setDecisionNote] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [stages, setStages] = useState<ProjectStage[]>([]);
-  const [activity, setActivity] = useState<ChangeEntry[]>([]);
+  // Bumped on every reload so the aside's Links and Activity tabs follow the record.
+  const [refreshToken, setRefreshToken] = useState(0);
   const [tasks, setTasks] = useState<ChangeRequestTask[]>([]);
   const [newTaskDescription, setNewTaskDescription] = useState("");
   const [newTaskAssignee, setNewTaskAssignee] = useState<PrincipalRef | null>(null);
@@ -74,14 +83,13 @@ export function ChangeRequestDetailPage() {
   const [tally, setTally] = useState<ChangeRequestVoteTally | null>(null);
   const [voteComment, setVoteComment] = useState("");
   const [showVoteComments, setShowVoteComments] = useState(false);
-  // ADD_ACTION/REMOVE_ACTION-only (item 514, extended by platform review
-  // 2026-09 Phase 8 to the remove side) — the action type list to resolve
+  // ADD_ACTION/REMOVE_ACTION-only (extended to the remove side) — the action type list to resolve
   // `proposed_action_type_id` to a name, and (link-existing/remove mode
   // only) the action itself, so a reviewer can see what they're actually
   // approving rather than a bare id.
   const [actionTypes, setActionTypes] = useState<ActionTypeDefinition[]>([]);
   const [linkedActionPreview, setLinkedActionPreview] = useState<RequirementAction | null>(null);
-  // REMOVE_LINK-only (Platform review 2026-09, Phase 8) — the same
+  // REMOVE_LINK-only — the same
   // "resolve the id to something a reviewer can actually read" purpose as
   // the action fields above: the existing link (its `display_name`/other-
   // requirement fields are already server-resolved the same way the Links
@@ -89,23 +97,22 @@ export function ChangeRequestDetailPage() {
   // new or modify request proposes arrive resolved on `cr.proposed_links`.
   const [linkPreview, setLinkPreview] = useState<RequirementLink | null>(null);
   // Approving a request that proposes links goes through a dialog where the approver
-  // chooses which to merge (Phase 6b); `clearCompletion` carries the second approve button.
+  // chooses which to merge; `clearCompletion` carries the second approve button.
   const [approving, setApproving] = useState<{ clearCompletion: boolean } | null>(null);
 
   async function reload() {
     if (!projectId || !crId) return;
-    const [crData, commentData, stageData, activityData, taskData, voteData] = await Promise.all([
+    const [crData, commentData, stageData, taskData, voteData] = await Promise.all([
       api.get<ChangeRequest>(`/api/v1/projects/${projectId}/change-requests/${crId}`),
       api.get<Comment[]>(`/api/v1/projects/${projectId}/change-requests/${crId}/comments`),
       api.get<ProjectStage[]>(`/api/v1/projects/${projectId}/stages`),
-      api.get<ChangeEntry[]>(`/api/v1/projects/${projectId}/change-requests/${crId}/activity`),
       api.get<ChangeRequestTask[]>(`/api/v1/projects/${projectId}/change-requests/${crId}/tasks`),
       api.get<ChangeRequestVoteTally>(`/api/v1/projects/${projectId}/change-requests/${crId}/votes`),
     ]);
     setCr(crData);
     setComments(commentData);
     setStages(stageData);
-    setActivity(activityData);
+    setRefreshToken((t) => t + 1);
     setTasks(taskData);
     setTally(voteData);
     if (crData.requirement_id) {
@@ -143,21 +150,21 @@ export function ChangeRequestDetailPage() {
 
   async function addTask() {
     if (!newTaskDescription.trim()) return;
-    await api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/tasks`, {
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/tasks`, {
       description: newTaskDescription, assignee: newTaskAssignee,
-    });
+    }), "add", "task"))) return;
     setNewTaskDescription("");
     setNewTaskAssignee(null);
     reload();
   }
 
   async function toggleTaskDone(task: ChangeRequestTask) {
-    await api.patch(`/api/v1/projects/${projectId}/change-requests/${crId}/tasks/${task.id}`, { is_done: !task.is_done });
+    if (!(await run(() => api.patch(`/api/v1/projects/${projectId}/change-requests/${crId}/tasks/${task.id}`, { is_done: !task.is_done }), { failure: "Could not toggle task done." }))) return;
     reload();
   }
 
   async function castVote(vote: ChangeRequestVoteChoice) {
-    await api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/votes`, { vote, comment: voteComment || null });
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/change-requests/${crId}/votes`, { vote, comment: voteComment || null }), "cast", "vote"))) return;
     reload();
   }
 
@@ -216,10 +223,7 @@ export function ChangeRequestDetailPage() {
     }
   }
 
-  useEffect(() => {
-    reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, crId]);
+  useLoadOnChange(reload, [projectId, crId]);
 
   async function act(action: () => Promise<unknown>, successMessage?: string) {
     setActionError(null);
@@ -244,16 +248,12 @@ export function ChangeRequestDetailPage() {
   }
 
   async function removeCommentAttachment(commentId: string, fileId: string) {
-    await api.delete(`/api/v1/projects/${projectId}/change-requests/${crId}/comments/${commentId}/files/${fileId}`);
+    if (!(await run(() => api.delete(`/api/v1/projects/${projectId}/change-requests/${crId}/comments/${commentId}/files/${fileId}`), "remove", "comment attachment"))) return;
     reload();
   }
 
   async function toggleReaction(commentId: string, reacted: boolean) {
-    if (reacted) {
-      await api.delete(`/api/v1/projects/${projectId}/change-requests/${crId}/comments/${commentId}/reaction`);
-    } else {
-      await api.put(`/api/v1/projects/${projectId}/change-requests/${crId}/comments/${commentId}/reaction`);
-    }
+    if (!(await run(() => (reacted ? api.delete(`/api/v1/projects/${projectId}/change-requests/${crId}/comments/${commentId}/reaction`) : api.put(`/api/v1/projects/${projectId}/change-requests/${crId}/comments/${commentId}/reaction`)), { failure: "Could not update the reaction." }))) return;
     reload();
   }
 
@@ -264,11 +264,7 @@ export function ChangeRequestDetailPage() {
 
   async function toggleSubscription() {
     if (!cr) return;
-    if (cr.is_subscribed) {
-      await api.delete(`/api/v1/projects/${projectId}/change-requests/${crId}/subscription`);
-    } else {
-      await api.put(`/api/v1/projects/${projectId}/change-requests/${crId}/subscription`);
-    }
+    if (!(await run(() => (cr.is_subscribed ? api.delete(`/api/v1/projects/${projectId}/change-requests/${crId}/subscription`) : api.put(`/api/v1/projects/${projectId}/change-requests/${crId}/subscription`)), { failure: "Could not update the subscription." }))) return;
     reload();
   }
 
@@ -277,28 +273,41 @@ export function ChangeRequestDetailPage() {
   const title = cr.proposed_name ?? requirement?.name ?? cr.id;
 
   return (
-    <div className="stack">
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <h1 style={{ margin: 0 }}>{title}</h1>
-        <SubscribeButton subscribed={cr.is_subscribed} onToggle={toggleSubscription} />
-      </div>
+    <DetailLayout
+      contained={false}
+      activity={projectId ? <RecordActivity projectId={projectId} artefactType="change_request" artefactId={cr.id} refreshToken={refreshToken} /> : undefined}
+      aside={projectId ? <ArtefactLinksPanel projectId={projectId} artefactType="change_request" artefactId={cr.id} refreshToken={refreshToken} /> : null}
+    >
+      <RecordHeader
+        recordLabel="Change request"
+        title={title}
+        code={cr.unique_code}
+        tags={projectId ? <RecordTags projectId={projectId} artefactType="change_request" artefactId={cr.id} /> : undefined}
+        badges={cr.is_subscribed ? <Badge tone="info">{strings.requirements.subscribed}</Badge> : undefined}
+        actions={[
+          {
+            label: cr.is_subscribed ? strings.requirements.unsubscribe : strings.requirements.subscribe,
+            icon: cr.is_subscribed ? <BellOff /> : <Bell />,
+            onSelect: toggleSubscription,
+          },
+        ]}
+      />
       {projectId && (
         <WatchingGroupsPanel
           recordPath={`/api/v1/projects/${projectId}/change-requests/${crId}`}
           organizationId={organizationId} projectId={projectId} canManage={canManageTasks}
         />
       )}
-      <div className="side-grid">
       <div className="stack">
-      <div className="card stack">
+      <DetailCard>
         <div className="row">
-          <span className={`badge badge--${CHANGE_REQUEST_STATUS_TONE[cr.status]}`}>
+          <Badge tone={CHANGE_REQUEST_STATUS_TONE[cr.status]}>
             {CHANGE_REQUEST_STATUS_LABEL[cr.status]}
-          </span>
+          </Badge>
           {cr.kind !== "add_action" && cr.kind !== "remove_action" && cr.kind !== "add_link" && cr.kind !== "remove_link" && (
             <>
-              <span className="badge">Target: {targetLabel()}</span>
-              <span className="badge">Level: {levelLabel()}</span>
+              <Badge>Target: {targetLabel()}</Badge>
+              <Badge>Level: {levelLabel()}</Badge>
             </>
           )}
         </div>
@@ -396,7 +405,7 @@ export function ChangeRequestDetailPage() {
           </p>
         )}
         {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
-        <div className="row">
+        <div className="row" style={{ alignItems: "flex-end" }}>
           {cr.status === "draft" && (
             <button
               className="btn btn-primary"
@@ -425,12 +434,12 @@ export function ChangeRequestDetailPage() {
           )}
           {(cr.status === "submitted" || cr.status === "in_review") && canDecide && (
             <>
-              <input
-                className="input"
-                style={{ maxWidth: 240 }}
+              <TextField helpNotNeeded
+                label={strings.changeRequests.decisionNote}
                 placeholder={strings.changeRequests.decisionNote}
                 value={decisionNote}
-                onChange={(e) => setDecisionNote(e.target.value)}
+                onChange={setDecisionNote}
+                inputProps={{ style: { maxWidth: 240 } }}
               />
               <button
                 className="btn btn-primary"
@@ -494,10 +503,9 @@ export function ChangeRequestDetailPage() {
             </>
           )}
         </div>
-      </div>
+      </DetailCard>
 
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.changeRequests.tasks}</h2>
+      <DetailCard heading={strings.changeRequests.tasks}>
         {tasks.map((task) => (
           <label key={task.id} className="row" style={{ gap: "0.5rem" }}>
             <input
@@ -512,11 +520,11 @@ export function ChangeRequestDetailPage() {
         ))}
         {canManageTasks && (
           <div className="row" style={{ alignItems: "flex-end" }}>
-            <input
-              className="input" placeholder={strings.changeRequests.taskDescription}
-              value={newTaskDescription} onChange={(e) => setNewTaskDescription(e.target.value)}
+            <TextField helpNotNeeded
+              label={strings.changeRequests.taskDescription} placeholder={strings.changeRequests.taskDescription}
+              value={newTaskDescription} onChange={setNewTaskDescription}
             />
-            <PrincipalFormField
+            <PrincipalFormField helpNotNeeded
               label={strings.actions.assignee} orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
               value={newTaskAssignee} onChange={setNewTaskAssignee} ariaLabel={`${strings.changeRequests.newTask} ${strings.actions.assignee}`}
               placeholder={strings.reviews.unassigned}
@@ -526,31 +534,30 @@ export function ChangeRequestDetailPage() {
             </button>
           </div>
         )}
-      </div>
+      </DetailCard>
 
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.changeRequests.votes}</h2>
+      <DetailCard heading={strings.changeRequests.votes}>
         <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{strings.changeRequests.votingAdvisoryNotice}</p>
         {tally && (
           <div className="row">
-            <span className="badge">
+            <Badge>
               {tally.approve_count} {strings.changeRequests.voteApproveCount}
-            </span>
-            <span className="badge">
+            </Badge>
+            <Badge>
               {tally.reject_count} {strings.changeRequests.voteRejectCount}
-            </span>
+            </Badge>
             {tally.votes.some((v) => v.comment) && (
               <button className="btn" onClick={() => setShowVoteComments(true)}>
-                <MessageSquare size={14} /> {strings.changeRequests.viewComments}
+                <MessageSquare /> {strings.changeRequests.viewComments}
               </button>
             )}
           </div>
         )}
         {canVote && (cr.status === "submitted" || cr.status === "in_review") && (
-          <div className="row">
-            <input
-              className="input" placeholder={strings.changeRequests.voteComment}
-              value={voteComment} onChange={(e) => setVoteComment(e.target.value)}
+          <div className="row" style={{ alignItems: "flex-end" }}>
+            <TextField helpNotNeeded
+              label={strings.changeRequests.voteComment} placeholder={strings.changeRequests.voteComment}
+              value={voteComment} onChange={setVoteComment}
             />
             <button className="btn btn-primary" onClick={() => castVote("approve")}>
               {strings.changeRequests.voteApprove}
@@ -560,7 +567,7 @@ export function ChangeRequestDetailPage() {
             </button>
           </div>
         )}
-      </div>
+      </DetailCard>
 
       {approving && projectId && crId && (
         <ApproveChangeRequestDialog
@@ -588,9 +595,9 @@ export function ChangeRequestDetailPage() {
               <div key={v.id} className="card stack" style={{ gap: "0.35rem" }}>
                 <div className="row" style={{ justifyContent: "space-between" }}>
                   <span style={{ fontWeight: 600 }}>{userDisplayName(v.user_id)}</span>
-                  <span className="badge">
+                  <Badge>
                     {v.vote === "approve" ? strings.changeRequests.voteApproveCount : strings.changeRequests.voteRejectCount}
-                  </span>
+                  </Badge>
                 </div>
                 <div>{v.comment}</div>
                 <span className="text-muted" style={{ fontSize: "0.8rem" }}>
@@ -602,8 +609,7 @@ export function ChangeRequestDetailPage() {
         </Modal>
       )}
 
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.discussion}</h2>
+      <DetailCard heading={strings.requirements.discussion}>
         <CommentThread
           comments={comments}
           onPost={postComment}
@@ -613,11 +619,8 @@ export function ChangeRequestDetailPage() {
           onEdit={editComment}
           currentUserId={user?.id}
         />
+      </DetailCard>
       </div>
-      </div>
-
-      <ActivityPanel entries={activity} />
-      </div>
-    </div>
+    </DetailLayout>
   );
 }

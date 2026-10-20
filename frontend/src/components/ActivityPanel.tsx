@@ -1,17 +1,18 @@
 import { Link } from "react-router-dom";
 
-import { activityEntityLabel, describeActivityEntry, type ChangeEntry } from "../api/types";
+import { activityEntityLabel, activityEntryNotes, describeActivityEntry, type ChangeEntry } from "../api/types";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
+import { ActivityNote } from "./ActivityNote";
+import { Badge } from "./Badge";
 
-/** Right-side activity timeline (mock's "Subscribed" panel): audit events
- * plus version history for one requirement/change request, newest first.
+/** Activity timeline: audit events, version history and link events, newest first
+ * (a record's own timeline is shown through `RecordActivity`, which feeds this).
  * Shares its entity/action labelling and actor/action text with the
  * project overview activity card and the project history page
  * (`describeActivityEntry`/`activityEntityLabel` in `api/types.ts`) —
  * previously each of the three built its own, inconsistent rendering.
  *
- * `ProjectHistoryPage.tsx` also renders this component directly (2026-08
- * UX audit roadmap row 515, "same data, duplicated rendering") rather than
+ * `ProjectHistoryPage.tsx` also renders this component directly rather than
  * hand-rolling its own list markup, which needed two additions beyond the
  * original single-requirement/-change-request side panel use:
  * `getLink` — a project-wide list spans many different requirements/change
@@ -24,6 +25,8 @@ export function ActivityPanel({
   getLink,
   fullWidth = false,
   bare = false,
+  hideEntityTypes = [],
+  emptyText = "No activity yet.",
 }: {
   entries: ChangeEntry[];
   /** Resolves the item an entry is about to a link + label. Omit when the
@@ -38,22 +41,29 @@ export function ActivityPanel({
   /** Skips the outer `.card` wrapper and "Activity" heading, rendering
    * just the entry list — for a caller that already provides its own card
    * and (possibly toggled) heading, e.g. `RequirementDetailPage`'s merged
-   * History/Activity card (2026-08 UX audit roadmap item 516), whose
+   * History/Activity card, whose
    * heading switches between "Version history" and "Activity" depending
    * on which view is selected rather than always reading "Activity". */
   bare?: boolean;
+  /** Entity types whose badge is left out: a record's own timeline need not badge every entry
+   * with the record's own type, only the entries about something else (links). */
+  hideEntityTypes?: string[];
+  /** Shown when there are no entries. */
+  emptyText?: string;
 }) {
   const orgLabelCap = useOrgLabelCapitalized();
   const list = (
     <>
-      {entries.length === 0 && <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>No activity yet.</p>}
+      {entries.length === 0 && <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{emptyText}</p>}
       {entries.map((e, i) => {
         const link = getLink ? getLink(e) : null;
         return (
           <div key={i} className="stack" style={{ gap: "0.15rem" }}>
-            <div className="row" style={{ gap: "0.3rem" }}>
-              <span className="badge">{activityEntityLabel(e.entity_type, orgLabelCap)}</span>
-            </div>
+            {!hideEntityTypes.includes(e.entity_type) && (
+              <div className="row" style={{ gap: "0.3rem" }}>
+                <Badge>{activityEntityLabel(e.entity_type, orgLabelCap)}</Badge>
+              </div>
+            )}
             <div style={{ fontSize: "0.85rem" }}>
               {describeActivityEntry(e)}
               {link && (
@@ -63,6 +73,7 @@ export function ActivityPanel({
                 </>
               )}
             </div>
+            {activityEntryNotes(e).map((note) => <ActivityNote key={note} text={note} />)}
             <div className="text-muted" style={{ fontSize: "0.75rem" }}>{new Date(e.timestamp).toLocaleString()}</div>
           </div>
         );

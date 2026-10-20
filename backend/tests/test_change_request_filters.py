@@ -1,6 +1,5 @@
 """Tests for the optional `active_only` query param on
-`GET /projects/{project_id}/change-requests` (2026-08 UX audit roadmap,
-"Default Change Requests to an active-only status filter") — pins that
+`GET /projects/{project_id}/change-requests` — pins that
 `active_only=true` narrows to the three non-terminal statuses
 (draft/submitted/in_review), that omitting both `active_only` and
 `cr_status` still returns every status (the existing, unchanged default),

@@ -85,7 +85,7 @@ The full list of backend environment variables, with defaults, is documented in 
 
 ### Obtaining container images
 
-CI (`.github/workflows/ci.yml`) builds the production `backend`, `frontend`, and `mcp-server` images on every change and, once the `frontend` and `backend-and-e2e` jobs pass on a push to `main`, pushes all three to `ghcr.io/<owner>/<repo>-{backend,frontend,mcp-server}` (see [development.md's Continuous integration](development.md#continuous-integration) section). Pull requests still build every image, proving the Dockerfiles work, but never push — only a merge to `main` publishes.
+CI (`.github/workflows/ci.yml`) builds the production `backend`, `frontend`, `mcp-server`, and `docs` images on every change and, once the `frontend` and `backend-and-e2e` jobs pass on a push to `main`, pushes all four to `ghcr.io/<owner>/<repo>-{backend,frontend,mcp-server,docs}` (see [development.md's Continuous integration](development.md#continuous-integration) section). Pull requests still build every image, proving the Dockerfiles work, but never push — only a merge to `main` publishes.
 
 Each image is tagged three ways:
 
@@ -101,6 +101,26 @@ Each image is tagged three ways:
 If your images live in a different registry/namespace (e.g. a private mirror), override `GHCR_IMAGE_PREFIX` in your `.env` instead of editing `docker-compose.yml`.
 
 **Checking what's actually deployed.** The same SemVer/commit SHA used to tag an image is also baked into it at build time (`APP_VERSION`/`GIT_SHA`/`BUILD_DATE` build args, set by the `docker-build` CI job — see `backend/Dockerfile` and `frontend/Dockerfile`), so a running instance can report its own build identity without shell access to the host: the signed-in nav rail shows both the frontend's own bundled version and the backend's, fetched from `GET /api/v1/system/version`. A local `docker compose build` with no `--build-arg`s (the default for the two paths above) reports placeholder `dev`/`unknown` values instead of failing — only images built by CI carry a real version.
+
+### Hosting the documentation internally
+
+The header **Help** link opens the public documentation site by default. That shows the latest docs, not the version you run, and does not work without internet access. To host the docs yourself, run the `docs` image and point `HELP_URL` at it:
+
+```mermaid
+flowchart LR
+    CI["CI build"] -->|"pushes"| IMG["…-docs image"]
+    IMG -->|"docker compose --profile docs up -d"| DOCS["docs service :8200"]
+    ENV["HELP_URL=http://docs.example:8200/"] --> BE["backend"]
+    BE -->|"client-config"| UI["Help link in the app header"]
+    UI -->|"opens"| DOCS
+```
+
+Read left to right: CI publishes a docs image tagged with the same version as the app, you run it, and the backend tells the UI where it is.
+
+- The image is the same static site as the public one, served by unprivileged nginx on port 8080 (`docker-compose.yml` publishes it on 8200 under the `docs` profile). It is built for the root of its own host; to serve it under a sub-path such as `/docs/` behind your reverse proxy, set `DOCS_BASE_URL=/docs/` (and `DOCS_URL`) in your `.env` and build it with `docker compose --profile docs build docs`. The base path is baked in at build time, so a pulled image keeps its published `/`.
+- `HELP_URL` must be reachable from users' browsers, not just from the backend.
+- The dev/test stack (`tests/container/`) already sets `HELP_URL` to its own docs service, so Help is local there; only the production `docker-compose.yml` defaults to the public site.
+- No internal mirror and no wish for an external link? Set `HELP_ENABLED=false` to remove the Help link.
 
 ### Storage credential scope (known gap)
 
@@ -270,7 +290,7 @@ Sizing: each worker holds up to 15 database connections (SQLAlchemy's default po
 
 After `docker compose up -d`, confirm:
 
-1. `curl http://localhost:8000/health` (or your production hostname) returns `{"status": "ok", "database": "ok"}`.
+1. `curl http://localhost:8000/health` (or your production hostname) returns HTTP 200 with `{"status": "ok", "database": "ok"}` (HTTP 503 and `"degraded"` if the database is unreachable).
 2. `curl http://localhost:8000/metrics` returns Prometheus-format metrics.
 3. The frontend loads and you can log in with the bootstrap admin credentials you configured.
 4. If using email notifications, trigger one (e.g. change your password) and confirm it arrives at your configured SMTP provider (or MailHog's UI in non-production environments).

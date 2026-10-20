@@ -1,13 +1,12 @@
-"""Compliance data model (compliance module Phase 5)
+"""Compliance data model
 
 Revision ID: 0026
 Revises: 0025
 Create Date: 2026-09-05
 
 Adds the five tables backing the Compliance Module's data model
-(docs/Compliance_Module_Requirements.md §2, §5, §6, §25, §31;
-docs/compliance-module-plan.md Phase 5) — the first real first-party module
-built on the module system Phases 0-4 laid down before it:
+(§2, §5, §6, §25, §31) — the first real first-party module
+built on the module system:
 
 - `compliance_standards` (`app.modules.compliance.models.
   ComplianceStandard`) — an organisation-level, reusable compliance
@@ -25,8 +24,8 @@ built on the module system Phases 0-4 laid down before it:
   `action_type_definitions`' existing pattern at org rather than project
   scope.
 
-All five tables start empty: this phase adds no seed data (Compliance's
-"potential initial action types," §6, are seeded in Phase 15) and no
+All five tables start empty: this migration adds no seed data (Compliance's
+"potential initial action types," §6, are seeded separately) and no
 existing table is altered. `compliance_required_actions.action_type_id`
 must be created after `compliance_action_type_definitions` (its FK target);
 `compliance_requirements` must be created after

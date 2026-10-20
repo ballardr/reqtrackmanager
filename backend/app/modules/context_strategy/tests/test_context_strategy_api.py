@@ -1,6 +1,5 @@
-"""Tests for Context & Strategy's Phase 1 backend API
-(docs/plans/module-01-context-and-strategy-plan.md Phase 1 — Organisation
-& Project Strategy) — the real HTTP endpoints (`router.py`/
+"""Tests for Context & Strategy's Strategy backend API
+(organisation & project scope) — the real HTTP endpoints (`router.py`/
 `project_router.py`), through the `client` fixture, mirroring
 `modules.decisions.tests.test_decisions_api`'s own "go through the real
 API" convention.
@@ -370,7 +369,7 @@ def test_disabled_module_is_404_not_403(client, admin_token):
 
 
 def test_disabled_strategy_subcomponent_is_404_project_scoped(client, admin_token):
-    """Module 0 (Platform Foundations) Phase 4's real end-to-end consumer:
+    """The real end-to-end consumer of sub-component enablement:
     disabling the org's default for the `"strategy"` sub-component of
     `context_strategy` (with the whole module still enabled) 404s the
     project-scoped Strategy endpoints, same posture as the whole module
@@ -524,18 +523,15 @@ def test_direct_file_attachment_upload_list_unlink_and_lock(client, admin_token)
     assert resp.status_code == 409, resp.text
 
 
-# --- Frontend manifest (Phase 7.1) -------------------------------------------
+# --- Frontend manifest -------------------------------------------
 
 
 def test_frontend_manifest_registers_the_strategy_nav_entry():
-    """Phase 7.1 (2026-09-29): this module's first `frontend_manifest` —
-    Strategy's own primary nav entry. Phase 7.2 (2026-09-29) appended Future
-    State's own entry via `additional_nav_entries`; Phase 7.3 (2026-09-29)
-    appended Pain Point's; Phase 7.4 (2026-09-29) appended Guiding
-    Principle's; Phase 7.5 (2026-09-29) appends Open Question's — the fifth
-    and last of the five planned top-level nav-rail entries (Phase 0 Q7,
-    see `module.py`'s own docstring and `docs/decisions.md`'s nav-manifest-
-    extension entry)."""
+    """This module's `frontend_manifest` — Strategy's own primary nav entry,
+    followed by Future State, Pain Point, Guiding Principle and Open
+    Question via `additional_nav_entries` — the five top-level nav-rail
+    entries (see `module.py`'s own docstring and `docs/decisions.md`'s
+    nav-manifest-extension entry)."""
     manifest = get_frontend_manifest(MODULE_KEY)
     assert manifest is not None
     assert manifest.tier == "installed"
@@ -547,20 +543,54 @@ def test_frontend_manifest_registers_the_strategy_nav_entry():
             nav_label="Future State",
             nav_path=f"/projects/{{project_id}}/modules/{MODULE_KEY}/future-states",
             nav_icon="telescope",
+            sub_component="future_state",
         ),
         ModuleNavEntry(
             nav_label="Pain Point",
             nav_path=f"/projects/{{project_id}}/modules/{MODULE_KEY}/pain-points",
             nav_icon="alert-triangle",
+            sub_component="pain_point",
         ),
         ModuleNavEntry(
             nav_label="Guiding Principle",
             nav_path=f"/projects/{{project_id}}/modules/{MODULE_KEY}/guiding-principles",
             nav_icon="anchor",
+            sub_component="guiding_principle",
         ),
         ModuleNavEntry(
             nav_label="Open Question",
             nav_path=f"/projects/{{project_id}}/modules/{MODULE_KEY}/open-questions",
             nav_icon="circle-help",
+            sub_component="open_question",
         ),
     )
+
+
+def test_enabled_modules_reports_each_nav_entrys_sub_component_and_the_disabled_ones(client, admin_token):
+    """The nav rail hides an entry whose sub-component is off for the project: `enabled-modules` names each
+    entry's `sub_component` and lists the module's disabled ones, flipping as the project admin toggles."""
+    _, project, org_admin_token = _setup(client, admin_token, "CtxStrategy Nav Sub Co")
+    url = f"/api/v1/projects/{project['id']}/enabled-modules"
+
+    def entry():
+        resp = client.get(url, headers=auth_headers(org_admin_token))
+        assert resp.status_code == 200, resp.text
+        return next(m for m in resp.json() if m["module_key"] == MODULE_KEY)
+
+    before = entry()
+    manifest = before["frontend_manifest"]
+    assert manifest["nav_sub_component"] == "strategy"
+    assert [e["sub_component"] for e in manifest["additional_nav_entries"]] == [
+        "future_state", "pain_point", "guiding_principle", "open_question",
+    ]
+    assert before["disabled_sub_components"] == []
+
+    sub_url = f"/api/v1/projects/{project['id']}/modules/{MODULE_KEY}/subcomponents/pain_point"
+    assert client.put(sub_url, json={"enabled": False}, headers=auth_headers(org_admin_token)).status_code == 200
+    assert entry()["disabled_sub_components"] == ["pain_point"]
+    # The page behind the hidden entry is unreachable too: the nav and the routes share one source of truth.
+    resp = client.get(_project_base(project["id"]) + "/pain-points", headers=auth_headers(org_admin_token))
+    assert resp.status_code == 404, resp.text
+
+    assert client.put(sub_url, json={"enabled": True}, headers=auth_headers(org_admin_token)).status_code == 200
+    assert entry()["disabled_sub_components"] == []

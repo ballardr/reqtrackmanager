@@ -43,13 +43,17 @@ Create a group from **New group** or the **+** beside an existing one; **Edit** 
 
 **Delete** removes the group's memberships and moves its child groups up one level. No Stakeholder is deleted. The confirmation states how many memberships and child groups are affected. Deletion is refused if moving a child up would give it the same name as one of its new siblings — rename one first.
 
+## Group codes
+
+Every group has a code, `SGP-001`, shown beside its name in the tree. Organisation groups are numbered within the organisation and a project's groups within the project; where a code is shown outside its own project, an organisation group reads `ACME-SGP-001` (the organisation's code in front) so it is not mistaken for a project's `SGP-001`. A code is never reused after its group is deleted.
+
 ## Putting a Stakeholder in groups
 
 When creating a Stakeholder, choose its groups in the **Groups** picker. On a Stakeholder's page, the **Groups** field shows its groups (hover for the full path) and a picker to change them; **Save groups** applies the whole set at once, so a refused change saves nothing. From an organisation page you change the organisation groups; from a project page, that project's groups. Group membership is classification, not part of a Stakeholder's version history.
 
 ## Using groups in the list
 
-The Stakeholders list gains:
+The Stakeholders list (on the [People page](./people-page.md), with only Stakeholders selected) gains:
 
 - a **Groups** column — click a group badge to filter to it;
 - a **Group** filter, which includes Stakeholders in that group's descendants unless **Directly in the group only** is ticked;

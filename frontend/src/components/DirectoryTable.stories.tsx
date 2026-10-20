@@ -6,6 +6,8 @@ import { expect, fn, userEvent, within } from "storybook/test";
 import type { DirectoryColumn } from "./DirectoryTable";
 import { DirectoryTable } from "./DirectoryTable";
 import type { SortState } from "./sortState";
+import { orphanedControlViolations } from "../testing/orphanedControls";
+import { Badge } from "./Badge";
 
 interface DemoRow {
   id: string;
@@ -29,7 +31,7 @@ const COLUMNS: DirectoryColumn<DemoRow>[] = [
     label: "Status",
     // Deliberately not sortable — a badge column has no natural order, per
     // style guide "Pattern: sortable column header".
-    render: (row) => <span className="badge">{row.status === "active" ? "Active" : "Invited"}</span>,
+    render: (row) => <Badge>{row.status === "active" ? "Active" : "Invited"}</Badge>,
   },
 ];
 
@@ -104,6 +106,40 @@ export const BasicSortableTable: Story = {
 
     const rows = canvas.getAllByRole("row").slice(1); // drop the header row
     await expect(within(rows[0]).getByText("Alex Morgan")).toBeInTheDocument();
+  },
+};
+
+function HeaderActionDemo() {
+  const [sort, setSort] = useState<SortState | null>(null);
+  const [pressed, setPressed] = useState(0);
+  const columns: DirectoryColumn<DemoRow>[] = [
+    { ...COLUMNS[0], headerAction: <button type="button" aria-label="Name settings" onClick={() => setPressed((n) => n + 1)}>⚙</button> },
+    { ...COLUMNS[2], headerAction: <button type="button" aria-label="Status settings">⚙</button> },
+  ];
+  return (
+    <>
+      <DirectoryTable
+        ariaLabel="Demo directory" columns={columns} rows={ROWS} rowKey={(r) => r.id} sort={sort}
+        onSort={(key) => setSort((s) => (s?.key === key ? null : { key, direction: "asc" }))} emptyState={null}
+      />
+      <output aria-label="Pressed">{pressed}</output>
+    </>
+  );
+}
+
+/** A column can carry its own control (a settings gear) beside its header: a sibling of the sort button,
+ * so pressing it never sorts, and for a plain header it sits beside the text. */
+export const HeaderActionDoesNotSort: Story = {
+  render: () => <HeaderActionDemo />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const gear = canvas.getByRole("button", { name: "Name settings" });
+    // The gear is beside the sort button, not inside it.
+    await expect(gear.closest("button.th-sort")).toBeNull();
+    await userEvent.click(gear);
+    await expect(canvas.getByLabelText("Pressed")).toHaveTextContent("1");
+    await expect(canvas.getByRole("columnheader", { name: /Name/ })).toHaveAttribute("aria-sort", "none");
+    await expect(canvas.getByRole("button", { name: "Status settings" })).toBeInTheDocument();
   },
 };
 
@@ -193,3 +229,20 @@ export const NoLoadMoreOnceFullyLoaded: Story = {
 
 export const LightTheme: Story = { globals: { theme: "light" } };
 export const DarkTheme: Story = { globals: { theme: "dark" } };
+
+/** A 200-character name and a 40-character status name: the pill stays a pill and no control drops to a new line. */
+export const LongCellsKeepPillsAndControlsTidy: Story = {
+  args: {
+    rows: [{
+      id: "u-long", name: "An exceptionally long person name that keeps going well past any sensible single line ".repeat(2),
+      email: "long@example.com", status: "active", joined: "2026-01-01",
+    }],
+    columns: [
+      COLUMNS[0], COLUMNS[1],
+      { key: "status", label: "Status", render: () => <Badge tone="info">A forty-character status name goes here</Badge> },
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    await expect(orphanedControlViolations(canvasElement)).toEqual([]);
+  },
+};

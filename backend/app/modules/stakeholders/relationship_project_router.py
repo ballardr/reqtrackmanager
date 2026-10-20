@@ -2,7 +2,7 @@
 Module: modules.stakeholders.relationship_project_router
 
 Project-scoped API for the §10.5 relationships a Stakeholder or Persona has with
-other artefacts (Phase 3), mounted at
+other artefacts, mounted at
 `/api/v1/projects/{project_id}/modules/stakeholders`: the declared kinds, a
 target picker, a holder's relationships (list/add/remove) and the reverse view
 from a target.

@@ -18,8 +18,7 @@ file id, so it is unified here with context-sensitive authorization:
   comment attachments (on either a requirement or a change request's
   discussion thread), require project view access to whichever project the
   attachment's requirement/action/change request belongs to.
-- A module-owned attachment (e.g. Compliance evidence, compliance-module-
-  plan.md Phase 8) is resolved to its owning project via `app.modules.
+- A module-owned attachment (e.g. Compliance evidence) is resolved to its owning project via `app.modules.
   registry.resolve_module_file_project_id` — a generic hook every module
   can implement, so this core, module-agnostic router never needs to
   import a specific module's own file-link table directly (the same
@@ -170,7 +169,7 @@ def download_file(
                         if project_id is None:
                             # Not a core attachment type either — try every
                             # registered module's own file-ownership hook
-                            # (e.g. Compliance evidence, Phase 8) before
+                            # (e.g. Compliance evidence) before
                             # giving up. Generic by design: this router
                             # never imports a specific module's models.
                             project_id = resolve_module_file_project_id(db, file_id)

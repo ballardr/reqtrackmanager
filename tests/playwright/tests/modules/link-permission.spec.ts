@@ -7,7 +7,7 @@ import { API_BASE_URL, setUpOrg } from "./stakeholders/helpers";
 installCleanupHook();
 
 /**
- * Job to be done: docs/plans/platform-enhancements-2026-10-plan.md Phase 6d — an
+ * Job to be done: — an
  * administrator lets someone trace their project's records with one grant that
  * confers nothing else. A member who is also granted the organisation's preset
  * "Link editor" role adds and removes links on a requirement and on a decision,

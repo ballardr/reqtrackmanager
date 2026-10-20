@@ -7,12 +7,12 @@
  * (`RequirementTree.tsx`, §5/§6). Rendered full-width in place of the
  * Standards tab's list (not a `SidePanel`, whose 420px max-width is too
  * narrow for a usable tree editor — see this component's own "why not a
- * SidePanel" note in docs/compliance-module-plan.md's Phase 12 notes) —
+ * SidePanel" note notes) —
  * a "drill into the content column, keep a Back control" shape, the same
  * one `RequirementsPage`'s own detail view already uses elsewhere in this
  * app for a similarly content-heavy child view.
  *
- * Phase 24 adds an always-editable "Version summary" field (distinct from
+ * An always-editable "Version summary" field (distinct from
  * `change_note`, which describes what changed *relative to the previous
  * version*, not this version's own current standing) — editable
  * regardless of the version's own status, unlike everything else here,
@@ -24,16 +24,14 @@
  * pre-computing permissions in the UI (see e.g. Publish/Retire above,
  * unconditionally shown regardless of the caller's actual role).
  *
- * Phase 29b adds the entity quick-switch chevron (Phase 28's
- * `EntitySwitcher`) next to the version heading, so a user already
+ * The entity quick-switch chevron (`EntitySwitcher`) sits next to the version heading, so a user already
  * viewing one version can jump straight to a sibling without returning to
  * the flat "Versions" list first. Its sibling list is simply this
  * component's own `versions` prop — no new fetch, since `StandardNavSection`
  * /`StandardVersionsSection` already load it for the same standard.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
-import { AutoGrowTextarea } from "../../components/AutoGrowTextarea";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { EntitySwitcher, type EntitySwitcherOption } from "../../components/EntitySwitcher";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -46,6 +44,8 @@ import {
   type ComplianceStandard,
   type ComplianceStandardVersion,
 } from "./types";
+import { TextAreaField } from "../../components/FormFields";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
 
 interface Props {
   orgId: string;
@@ -64,9 +64,7 @@ export function VersionWorkspace({ orgId, standard, version, versions, actionTyp
   const [summary, setSummary] = useState(version.summary);
   const [savingSummary, setSavingSummary] = useState(false);
 
-  useEffect(() => {
-    setSummary(version.summary);
-  }, [version.id, version.summary]);
+  useResetOnChange([version.id, version.summary], () => setSummary(version.summary));
 
   async function handleSaveSummary() {
     setSavingSummary(true);
@@ -154,14 +152,13 @@ export function VersionWorkspace({ orgId, standard, version, versions, actionTyp
       )}
 
       <div className="card stack" style={{ gap: "0.4rem" }}>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Version summary</span>
-          <AutoGrowTextarea
-            value={summary}
-            onChange={setSummary}
-            placeholder="This version's current standing — e.g. note that a retired version is deprecated."
-          />
-        </label>
+        <TextAreaField helpNotNeeded
+          label="Version summary"
+          value={summary}
+          onChange={setSummary}
+          autoGrow
+          inputProps={{ placeholder: "This version's current standing — e.g. note that a retired version is deprecated." }}
+        />
         <div className="row" style={{ justifyContent: "flex-end" }}>
           <button className="btn btn-primary" disabled={summary === version.summary || savingSummary} onClick={handleSaveSummary}>
             {savingSummary ? "Saving…" : "Save summary"}

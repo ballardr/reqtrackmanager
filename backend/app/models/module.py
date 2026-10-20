@@ -2,29 +2,28 @@
 Module: models.module
 
 Two-tier module gating tables for the modular feature system
-(compliance-module-plan.md Phase 1): server-tier entitlement (the
+: server-tier entitlement (the
 licensing/plan lever) and org-tier enablement (the day-to-day on/off
 switch an org admin controls among modules their organisation is entitled
 to). See `app.modules.registry` for how these combine with the static
 module registry to produce an effective enabled/disabled value, and
-`app.models.server_role` for the sibling Phase 0 server-tier RBAC table
-this phase builds on.
+`app.models.server_role` for the sibling server-tier RBAC table.
 
-Also holds `ProjectModuleEnablement` (Module 0 — Platform Foundations —
-Phase 5): a project-tier override of whole-module enablement itself,
+Also holds `ProjectModuleEnablement` (Platform Foundations):
+a project-tier override of whole-module enablement itself,
 mirroring `OrganizationModuleEnablement`'s own shape one level down. See
 `app.modules.registry.is_module_enabled_for_project` for the resolution
 formula (entitlement -> project override -> org default -> registry
 default).
 
 Also holds `OrganizationModuleSubComponentDefault`/`ProjectModuleSubComponentEnablement`
-(Module 0 — Platform Foundations — Phase 4): a second, finer-grained pair
+(Platform Foundations): a second, finer-grained pair
 of gating tables one tier *below* whole-module enablement, for toggling an
 individual sub-component of an already-enabled module (e.g. Context &
 Strategy's "Strategy" vs. "Pain Point" vs. "Future State"). See
 `app.modules.registry.is_module_subcomponent_enabled`/`is_org_module_
 subcomponent_enabled` for the full two/one-tier resolution formula each
-combines with `ModuleDefinition.sub_components` to produce — Phase 5's own
+combines with `ModuleDefinition.sub_components` to produce — the
 `is_module_enabled_for_project` is what `is_module_subcomponent_enabled`'s
 own first (whole-module) check now calls, so a project-level whole-module
 override correctly cascades to disable/enable that module's sub-components
@@ -46,8 +45,7 @@ from app.models.base import TimestampMixin, UUIDPKMixin
 class OrganizationModuleEntitlement(UUIDPKMixin, TimestampMixin, Base):
     """Server-tier override of whether an organisation is entitled to use a
     given module — the licensing/plan lever, managed by `ServerRole.
-    SERVER_ADMIN` or `ServerRole.MODULE_ADMINISTRATOR` (module system
-    Phase 0/1).
+    SERVER_ADMIN` or `ServerRole.MODULE_ADMINISTRATOR` (module system).
 
     This is an **explicit-override-only** table, the same shape as
     `Organization.accent_color_hex` falling back to `ServerSettings`
@@ -95,10 +93,41 @@ class OrganizationModuleEntitlement(UUIDPKMixin, TimestampMixin, Base):
     updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
 
+class ServerModuleDefault(UUIDPKMixin, TimestampMixin, Base):
+    """Server-wide default state of one module, consulted by
+    `app.modules.registry.is_module_enabled` and `resolve_default_project_enabled`
+    for any organisation with no `OrganizationModuleEnablement` row of its own,
+    before falling back to `ModuleDefinition.default_enabled`.
+
+    Explicit-override-only, like `OrganizationModuleEntitlement`: no row means
+    "use the registry's own default". A fresh install is seeded all-on
+    (`services.module_defaults.seed_fresh_install_defaults`); an upgrade seeds
+    nothing, so existing deployments keep their current effective states. No
+    per-organisation rows are pre-created, so a later change here reaches every
+    organisation that never overrode the module.
+
+    Attributes:
+        module_key: The module's registry key (a plain string, as elsewhere).
+        org_enabled: Whether an organisation with no row of its own has the module
+            enabled.
+        project_default_enabled: Whether a project of such an organisation gets
+            the module on by default, absent its own override.
+        updated_by: The administrator who last set this default.
+    """
+
+    __tablename__ = "server_module_defaults"
+    __table_args__ = (UniqueConstraint("module_key"),)
+
+    module_key: Mapped[str] = mapped_column(String(100))
+    org_enabled: Mapped[bool] = mapped_column(Boolean)
+    project_default_enabled: Mapped[bool] = mapped_column(Boolean)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+
 class OrganizationModuleEnablement(UUIDPKMixin, TimestampMixin, Base):
     """Org-tier override of whether an org admin has enabled a given
     module for day-to-day use — the switch an `OrgRole.ORG_ADMIN` controls
-    directly (module system Phase 1), among whichever modules the
+    directly, among whichever modules the
     organisation is currently entitled to (see
     `OrganizationModuleEntitlement`).
 
@@ -119,7 +148,7 @@ class OrganizationModuleEnablement(UUIDPKMixin, TimestampMixin, Base):
     deliberately not cleaned up: the AND already makes it inert (see the
     comment at the entitlement-revoking endpoint in `routers/system.py`).
 
-    `default_project_enabled` (added migration 0055, Module 0 Phase 5
+    `default_project_enabled` (added migration 0055
     correction, **Decided by: User, 2026-09-29** — see `docs/decisions.md`'s
     dated entry) is a third, independent tier, only meaningful when
     `enabled` is `True`: does a project get this module on or off *by
@@ -168,9 +197,8 @@ class OrganizationModuleEnablement(UUIDPKMixin, TimestampMixin, Base):
 
 
 class ProjectModuleEnablement(UUIDPKMixin, TimestampMixin, Base):
-    """Project-tier override of whole-module enablement (Module 0 —
-    Platform Foundations — Phase 5, added immediately after Phase 4's own
-    sub-component layer) — a project admin's own choice, taking precedence
+    """Project-tier override of whole-module enablement (Platform Foundations, layered on the sub-component table) — a project
+    admin's own choice, taking precedence
     over the organisation's own `OrganizationModuleEnablement` above it for
     this project only (`app.modules.registry.is_module_enabled_for_project`).
 
@@ -201,8 +229,7 @@ class ProjectModuleEnablement(UUIDPKMixin, TimestampMixin, Base):
     An initial, broader "symmetric against `enabled` itself, in either
     direction, no floor at all" design shipped 2026-09-28 and was reversed
     the next day once a real need surfaced for the org to hard-block a
-    module with no project-level exception possible — see
-    `docs/plans/module-00-platform-foundations-plan.md`'s Phase 5
+    module with no project-level exception possible —
     correction note.
 
     Attributes:
@@ -230,7 +257,7 @@ class ProjectModuleEnablement(UUIDPKMixin, TimestampMixin, Base):
 
 class OrganizationModuleSubComponentDefault(UUIDPKMixin, TimestampMixin, Base):
     """Org-tier default enable/disable state for one sub-component of a
-    module (Module 0 — Platform Foundations — Phase 4) — the organisation-
+    module (Platform Foundations) — the organisation-
     wide policy lever a project's own `ProjectModuleSubComponentEnablement`
     (below) may override, and, for a sub-component of an org-scoped
     artefact with no project tier above it at all, the effective value
@@ -277,16 +304,14 @@ class OrganizationModuleSubComponentDefault(UUIDPKMixin, TimestampMixin, Base):
 
 
 class ProjectModuleSubComponentEnablement(UUIDPKMixin, TimestampMixin, Base):
-    """Project-tier override of one sub-component's enabled state (Module
-    0 — Platform Foundations — Phase 4) — a project admin's own choice for
+    """Project-tier override of one sub-component's enabled state (Platform Foundations) — a project admin's own choice for
     their project only, taking precedence over the organisation's own
     `OrganizationModuleSubComponentDefault` above it
     (`app.modules.registry.is_module_subcomponent_enabled`'s resolution
     order). This mirrors the org tier's own split
     (`OrganizationModuleEntitlement`/`OrganizationModuleEnablement`) one
     level down; whole-module enablement gained an equivalent project-level
-    override of its own in Phase 5 (`ProjectModuleEnablement`, added
-    immediately after this table), so this is no longer the *only*
+    override of its own (`ProjectModuleEnablement`, below), so this is no longer the *only*
     project-level override in this module — it remains, however, the only
     one with no separate hard-floor tier of its own (see below).
 

@@ -45,7 +45,7 @@ export function PrincipalListField({
   const key = (ref: PrincipalRef) => `${ref.type}:${ref.id}`;
 
   return (
-    <RecordFieldGroup
+    <RecordFieldGroup helpNotNeeded
       label={label}
       gap="0.35rem"
       action={

@@ -10,7 +10,7 @@ const MODULE = "decisions";
 const REPORTS = ["Decision register", "Approval ageing", "Decision log", "Rationale coverage"];
 
 /**
- * Job to be done: docs/plans/platform-enhancements-2026-10-plan.md Phase 8 —
+ * Job to be done: —
  * the four Decision Management reports appear in the shared Reports page
  * (rendered by the generic viewer, no custom view), show the project's
  * decisions with their display labels, narrow through the generated option
@@ -166,7 +166,11 @@ test.describe("Decision Management: reports", () => {
           ]);
           expect(download.suggestedFilename()).toBe(`${report.value}.${kind.toLowerCase()}`);
           if (kind === "CSV" && report.value === "decision-register") {
-            expect(await readFile((await download.path())!, "utf8")).toContain(titles.approved);
+            const csv = await readFile((await download.path())!, "utf8");
+            expect(csv).toContain(titles.approved);
+            // A report names each record by its code, and lists its tags.
+            expect(csv.split("\n")[0]).toMatch(/^Code,Title,.*,Tags/);
+            expect(csv).toContain("DEC-001,");
           }
         }
       });

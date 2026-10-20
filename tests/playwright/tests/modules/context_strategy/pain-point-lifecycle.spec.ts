@@ -18,8 +18,7 @@ function inputWithValue(page: Page, value: string) {
 }
 
 /**
- * Job to be done: docs/plans/module-01-context-and-strategy-plan.md Phase
- * 7.3's own exit criteria — Playwright e2e coverage for Pain Point's full
+ * Job to be done: Playwright e2e coverage for Pain Point's full
  * branching lifecycle plus its two-tier type-vocabulary admin surfaces.
  * Exercises the Context & Strategy frontend's third artefact type
  * (`frontend/src/modules/context_strategy/`) against a real backend.
@@ -34,19 +33,19 @@ function inputWithValue(page: Page, value: string) {
  *   CLAUDE.md's "tests must not depend on state left behind by another
  *   test" rule.
  * - **`backend/scripts/seed_e2e_dataset.py` deliberately left untouched
- *   (Decided by: Agent)** — matching Phase 7.1/7.2's own identical
- *   precedent and reasoning exactly (see those specs' own docstrings): a
+ * (Decided by: Agent)** — matching the other lifecycle specs' identical
+ * precedent and reasoning exactly (see their docstrings): a
  *   disposable org created via the API already satisfies this repo's own
  *   "prefer dynamically-named fixtures over mutating shared named seed
  *   data" rule more directly than adding unused fixed fixture data would.
- * - Pain Point is project-scoped only (source overview §6), so unlike
+ * - Pain Point is project-scoped only (§6), so unlike
  *   Strategy/Future State there is no org-scoped artefact flow to also
- *   cover — but its own org-scoped Pain Point *Type* vocabulary tier (Phase
- *   0 Q3) needs its own coverage here, since neither of those two specs'
+ * cover — but its own org-scoped Pain Point *Type* vocabulary tier
+ * needs its own coverage here, since neither of those two specs'
  *   own artefacts have an equivalent two-tier configuration surface.
  * - The freshly-created organisation already has Market/User/Operator Pain
  *   Point types seeded automatically (`module.py`'s `on_org_created`
- *   hook, source overview §6.2) — `run_on_org_created_hooks` runs for
+ * hook, §6.2) — `run_on_org_created_hooks` runs for
  *   every registered module regardless of enablement, so these three types
  *   exist before Context & Strategy is even toggled on for this org.
  */
@@ -176,6 +175,10 @@ test.describe("Context & Strategy: Pain Point lifecycle and type vocabulary", ()
     // --- Back on the list, the Pain Point shows its final status.
     await page.getByRole("link", { name: "← Pain Point", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/pain-points$`));
+    // The list opens on open Pain Points only, so a closed one appears once that filter is cleared.
+    await expect(page.getByRole("checkbox", { name: "Open only" })).toBeChecked();
+    await expect(page.locator("tr", { hasText: painPointTitle })).toHaveCount(0);
+    await page.getByRole("checkbox", { name: "Open only" }).uncheck();
     const row = page.locator("tr", { hasText: painPointTitle });
     await expect(row.getByText("Closed", { exact: true })).toBeVisible();
 

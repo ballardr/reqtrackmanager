@@ -22,7 +22,7 @@ Once healthy:
 - **Prometheus metrics**: http://localhost:8000/metrics
 - **MCP server** (AI-assistant access to requirements — see [mcp-server.md](mcp-server.md)): http://localhost:8100/mcp
 - **MailHog UI** (view sent notification emails): http://localhost:8025
-- **Docs site preview** (see [Documentation website](#documentation-website) below): http://localhost:3001/reqtrackmanager/
+- **Docs site preview** (see [Documentation website](#documentation-website) below): http://localhost:3001/reqtrackmanager/ — the app's header **Help** link opens this local copy in this stack (`HELP_URL` in `tests/container/docker-compose.yml`; set `HELP_URL` in your shell to override). A real deployment keeps the public-site default.
 
 Default bootstrap admin login: `admin@example.com` / `ChangeMe123!`.
 
@@ -55,20 +55,22 @@ uvicorn app.main:app --reload --port 8000
 
 Migrations run automatically on startup. To run them manually, or to create a new one: `python scripts/db.py upgrade head` / `python scripts/db.py revision -m "..."` (from `backend/`, venv active) — not bare `alembic <command>`. A first-party module's own migrations live colocated with the rest of that module's code (e.g. `app/modules/compliance/migrations/`, not the flat `backend/alembic/versions/` every module used to share) rather than in one place, and Alembic's own static `alembic.ini` config can't see that dynamically — the wrapper is what actually resolves every registered module's migration directory before dispatching to Alembic, so it still walks the full chain correctly. See [docs/modules.md](modules.md)'s own migration section for the full module-authoring convention.
 
-**Backend tests** live under `backend/tests/` (core/cross-cutting) and, for a first-party module, colocated at `backend/app/modules/<key>/tests/` instead (Compliance's own tests are there, not in `backend/tests/`, as of a plans/compliance-module-plan.md Phase 11 follow-up) — `pytest` from `backend/` discovers both automatically, no separate invocation needed. They run against their own dedicated `reqtrack_pytest_test` database, never `reqtrack_test` (the dev/demo database the stack above and Playwright use) — `backend/tests/conftest.py` unconditionally rewrites whatever `DATABASE_URL` it's given to that database name (same host/port/user/password, just a different name) before any test runs, and creates it automatically if it doesn't exist yet. This is deliberate: the suite drops and recreates the entire schema at the start of every session and truncates every table after every test, which used to make `reqtrack_test` unsafe to run pytest against while also using it for manual/demo testing (see `docs/decisions.md`) — pointing pytest at its own database removes that conflict entirely, regardless of what `DATABASE_URL` you pass it. `tests/conftest.py`'s own `*_test`-suffix guard still applies as a backstop (it refuses to start against a database not ending in `_test`).
+**Backend tests** live under `backend/tests/` (core/cross-cutting) and, for a first-party module, colocated at `backend/app/modules/<key>/tests/` instead (Compliance's own tests are there, not in `backend/tests/`, as of a plans/completed/compliance-module-plan.md Phase 11 follow-up) — `pytest` from `backend/` discovers both automatically, no separate invocation needed. They run against their own dedicated `reqtrack_pytest_test` database, never `reqtrack_test` (the dev/demo database the stack above and Playwright use) — `backend/tests/conftest.py` unconditionally rewrites whatever `DATABASE_URL` it's given to that database name (same host/port/user/password, just a different name) before any test runs, and creates it automatically if it doesn't exist yet. This is deliberate: the suite drops and recreates the entire schema at the start of every session and truncates every table after every test, which used to make `reqtrack_test` unsafe to run pytest against while also using it for manual/demo testing (see `docs/decisions.md`) — pointing pytest at its own database removes that conflict entirely, regardless of what `DATABASE_URL` you pass it. `tests/conftest.py`'s own `*_test`-suffix guard still applies as a backstop (it refuses to start against a database not ending in `_test`).
 
 **Storage canary.** If the file storage the stack uses is full or unreachable (the Docker VM disk filling with build cache is the usual cause, and shows up as unrelated upload specs failing with a 500), the backend test `tests/test_storage_health.py::test_real_configured_storage_accepts_writes` and the Playwright `globalSetup` (`tests/playwright/global-setup.ts`, via `GET /api/v1/system/storage-health`) fail up front naming the cause. Free space with `docker builder prune -af`.
 
 ```bash
 cd tests/container && docker compose up -d db   # provides both reqtrack_test and (auto-created) reqtrack_pytest_test
 cd ../../backend && source .venv/bin/activate
-DATABASE_URL=postgresql://reqtrack:reqtrack@localhost:5432/reqtrack_test pytest -q   # actually runs against reqtrack_pytest_test
+DATABASE_URL=postgresql://reqtrack:reqtrack@localhost:5432/reqtrack_test pytest -n 4 -q   # actually runs against reqtrack_pytest_test_gw0..gw3
 ```
+
+Run the full suite with `-n 4`, as CI does (`pytest-xdist`, in `requirements.txt`): each worker gets its own database (`reqtrack_pytest_test_gw0`, `_gw1`, ...), so they never interfere. The full suite takes about 15 to 25 minutes that way and about 95 minutes without `-n`. Use plain `pytest -q` for a single file or test, and never start a second pytest run while one is going: two runs share the same databases.
 
 Or run them inside the dev/test stack's own backend container:
 
 ```bash
-cd tests/container && docker compose exec backend pytest -q
+cd tests/container && docker compose exec backend pytest -n 4 -q
 ```
 
 Because pytest never touches `reqtrack_test`, running it doesn't disturb the dev/test stack's own manually-seeded data, demo data, or bootstrap admin user — no restart or reseed needed afterward, and it's safe to run pytest and use the UI/Playwright against the same running stack at the same time.
@@ -110,7 +112,7 @@ A pre-commit hook also backstops this automatically: `npm install` in `frontend/
 
 ## Documentation website
 
-The public documentation site lives at [docs/website/](../docs/website/) (Docusaurus), covering everything in [docs/plans/docs-website-plan.md](plans/docs-website-plan.md)'s "Site structure." To preview it locally with live reload:
+The public documentation site lives at [docs/website/](../docs/website/) (Docusaurus), covering everything in [docs/plans/completed/docs-website-plan.md](plans/completed/docs-website-plan.md)'s "Site structure." To preview it locally with live reload:
 
 ```bash
 cd docs/website
@@ -170,7 +172,7 @@ spec creates, so:
 - **`frontend`** — lint, type-check + build, then the Storybook/Vitest suite above with coverage (`npm run test-storybook -- --coverage`), reported as a check via a JUnit report plus a job-summary percentage and a downloadable HTML report.
 - **`backend-and-e2e`** — the full backend pytest suite with coverage (check + job-summary percentage + downloadable HTML report), `ruff` lint (backend and mcp-server), the mcp-server's own pytest suite, and the full Playwright E2E suite — all against the real dev/test Docker Compose stack (`tests/container/`), the same one you run locally.
 - **`publish-badges`** — runs after both jobs above (`needs:`), regardless of whether they passed (best-effort; never fails the pipeline). Turns each side's coverage/JUnit output into the four `shields.io` endpoint badges at the top of the README (backend tests + coverage, Storybook tests, frontend coverage), and pushes them to a dedicated `badges` branch. A dedicated job rather than a step inside `frontend`/`backend-and-e2e` specifically because those two run in parallel — either publishing its own badges independently would force-push over the other's files nondeterministically depending on which finished last.
-- **`docker-build`** — gated on `frontend` and `backend-and-e2e` passing. Builds the production backend/frontend/mcp-server images, tags each with a [GitVersion](https://gitversion.net/)-computed SemVer (`GitVersion.yml`, `mode: ContinuousDeployment` — see that file's own comment for why not `Mainline`, which GitVersion 6 removed) plus the commit SHA and `latest`, and pushes all three to `ghcr.io/<owner>/<repo>-{backend,frontend,mcp-server}` — except on pull request runs, which still build (proving the Dockerfiles work) but never push. See [deployment.md](deployment.md#obtaining-container-images) for how to point `docker-compose.yml` at a published image instead of building locally.
+- **`docker-build`** — gated on `frontend` and `backend-and-e2e` passing. Builds the production backend/frontend/mcp-server/docs-site images (the docs image is first built with a `/docs/` base path and smoke tested), tags each with a [GitVersion](https://gitversion.net/)-computed SemVer (`GitVersion.yml`, `mode: ContinuousDeployment` — see that file's own comment for why not `Mainline`, which GitVersion 6 removed) plus the commit SHA and `latest`, and pushes all to `ghcr.io/<owner>/<repo>-{backend,frontend,mcp-server,docs}` — except on pull request runs, which still build (proving the Dockerfiles work) but never push. See [deployment.md](deployment.md#obtaining-container-images) for how to point `docker-compose.yml` at a published image instead of building locally.
 
 See the [README's Code Quality Rules](../README.md#code-quality-rules) for the conventions all of the above is expected to follow.
 

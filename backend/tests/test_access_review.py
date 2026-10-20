@@ -292,7 +292,7 @@ def test_system_users_group_names_include_direct_and_inherited_membership(client
 
 
 def test_system_users_search_matches_name_or_email_case_insensitively(client, admin_token, org_id):
-    """Phase E (follow-up UX batch, 2026-08-31): `search` on `/system/users`
+    """`search` on `/system/users`
     reuses `list_org_users`'s exact matching approach (`test_org_users_
     search_and_paginate` in `test_pagination.py` is its org-scoped
     equivalent) — substring, case-insensitive, against display name or
@@ -340,7 +340,7 @@ def test_system_users_search_combines_with_view_and_active_filters(client, admin
 
 
 def test_system_users_sort_by_email_and_created_at(client, admin_token, org_id):
-    """`sort`/`order` (Phase E) — necessary for `DirectoryTable`'s sortable
+    """`sort`/`order` — necessary for `DirectoryTable`'s sortable
     Email/Name/Last login/Created columns to re-sort the *full* filtered
     result, not just the currently loaded page, mirroring `list_org_users`'
     own `sort`/`order` contract exactly."""

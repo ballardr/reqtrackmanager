@@ -13,6 +13,7 @@ function org(overrides: Partial<Organization> = {}): Organization {
     default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
     disabled_at: null, accent_color_hex: null, header_title: null,
     email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
+  code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto" }, enforce_code_everywhere: false,
   force_require_change_request_for_approved_links: false,
   allow_ai_approvals: false,
     ...overrides,
@@ -29,8 +30,7 @@ function standard(overrides: Partial<ComplianceStandard> = {}): ComplianceStanda
 }
 
 /**
- * `StandardListPage` — the cross-org `/standards` tab (docs/compliance-
- * module-plan.md Phase 18), modelled on `ProjectListPage.tsx`. No cross-org
+ * `StandardListPage` — the cross-org `/standards` tab, modelled on `ProjectListPage.tsx`. No cross-org
  * backend listing endpoint exists, so the page fans out `listStandards`
  * per org (`GET /orgs?mine=true`) — mocked here per org id below.
  */
@@ -64,7 +64,7 @@ function mockStandardListApis(orgs: Organization[], standardsByOrg: Record<strin
 const meta: Meta<typeof StandardListPage> = {
   title: "Modules/Compliance/StandardListPage",
   component: StandardListPage,
-  // `withStatefulAuth`, not the plain no-op `withAuth`: Phase 35a's
+  // `withStatefulAuth`, not the plain no-op `withAuth`: the
   // `ViewToggle` reads/writes `useUiPreference`, so switching tiles/list
   // needs a real `setUiPreference` for the UI to actually change.
   decorators: [withToast(), withStatefulAuth(buildUser({ is_server_admin: false })), withRouter("/standards")],
@@ -129,7 +129,7 @@ export const CreateStandardWithOrgPicker: Story = {
   },
 };
 
-/** Phase 35a: `ViewToggle` brings this page into line with
+/** `ViewToggle` brings this page into line with
  * `docs/ux-style-guide.md`'s "Pattern: view toggle" — the same tile/list
  * split `ProjectListPage.tsx` already offers. Defaults to tiles; switching
  * to list shows the pre-existing `DirectoryTable`. */

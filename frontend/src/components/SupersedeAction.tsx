@@ -17,6 +17,7 @@ import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { LabeledSelect } from "./LabeledSelect";
 import { Modal } from "./Modal";
+import { FormActions } from "./FormActions";
 
 export interface SupersedeCandidate {
   id: string;
@@ -83,19 +84,19 @@ export function SupersedeAction({
             {candidates !== null && candidates.length === 0 ? (
               <p className="text-muted" style={{ margin: 0 }}>{strings.artefactLinks.supersedeNone}</p>
             ) : (
-              <LabeledSelect
+              <LabeledSelect helpNotNeeded
                 label={artefactLabel}
                 value={chosen}
                 onChange={setChosen}
                 options={(candidates ?? []).map((c) => ({ value: c.id, label: c.label }))}
               />
             )}
-            <div className="row" style={{ justifyContent: "flex-end" }}>
-              <button className="btn" onClick={() => setOpen(false)}>{strings.common.cancel}</button>
-              <button className="btn btn-primary" disabled={!chosen || saving} onClick={() => void confirm()}>
-                {strings.artefactLinks.supersedeConfirm}
-              </button>
-            </div>
+            <FormActions
+              onCancel={() => setOpen(false)}
+              onSave={() => void confirm()}
+              saveLabel={strings.artefactLinks.supersedeConfirm}
+              saveDisabled={!chosen || saving}
+            />
           </div>
         </Modal>
       )}

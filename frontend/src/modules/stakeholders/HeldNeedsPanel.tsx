@@ -26,7 +26,9 @@ export function HeldNeedsPanel({
       heading="Needs"
       emptyText="No Stakeholder Needs recorded for this yet."
       load={async () =>
-        (await load()).map((n) => ({ link_id: n.link_id, id: n.id, name: `${n.name} (${NEED_STATUS_LABEL[n.status]})`, scope: "project" as const }))
+        (await load()).map((n) => ({
+          link_id: n.link_id, id: n.id, unique_code: n.unique_code, name: `${n.name} (${NEED_STATUS_LABEL[n.status]})`, scope: "project" as const,
+        }))
       }
       linkFor={(need) => `/projects/${projectId}/modules/stakeholders/needs/${need.id}`}
     />

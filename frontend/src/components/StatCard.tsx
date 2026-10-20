@@ -3,12 +3,11 @@ import type { ReactNode } from "react";
 /**
  * One non-clickable stat card — a big number plus a label, with optional
  * `children` for a drill-down list/detail underneath (e.g. the actual
- * projects a count refers to). Extracted (compliance-module-plan.md Phase
- * 19) from `modules/compliance/OrgComplianceDashboard.tsx`'s own
+ * projects a count refers to). Extracted from `modules/compliance/OrgComplianceDashboard.tsx`'s own
  * previously-local `StatCard`, which needed a core-owned home once
  * `pages/OrgOverviewPage.tsx`'s stats header needed the identical shape —
  * a core page must never import a component from `modules/compliance/`
- * (see `docs/compliance-module-plan.md`'s "Modular Feature System
+ * ("Modular Feature System
  * Boundary" section). `OrgComplianceDashboard.tsx` now imports this shared
  * version too, rather than keeping a second, duplicate implementation.
  *

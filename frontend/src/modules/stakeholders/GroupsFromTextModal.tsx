@@ -1,7 +1,7 @@
 /**
  * Module: modules/stakeholders/GroupsFromTextModal
  *
- * The one-off "create groups from Organisation / group text" action (Phase 3c):
+ * The one-off "create groups from Organisation / group text" action:
  * lists the distinct values of the stakeholders' free-text field with how many
  * stakeholders each covers, lets the user untick any, and on confirm creates an
  * "Organisation / group" parent, a child group per ticked value and the
@@ -12,6 +12,7 @@ import { useState } from "react";
 
 import { Modal } from "../../components/Modal";
 import type { GroupTextProposal } from "./types";
+import { FormActions } from "../../components/FormActions";
 
 export function GroupsFromTextModal({
   proposals,
@@ -40,7 +41,7 @@ export function GroupsFromTextModal({
             <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
               {proposals.map((p) => (
                 <li key={p.name}>
-                  <label className="row" style={{ gap: "0.5rem" }}>
+                  <label className="checkbox-label" style={{ gap: "0.5rem" }}>
                     <input
                       type="checkbox" aria-label={p.name} checked={chosen.has(p.name)}
                       onChange={(e) => {
@@ -61,13 +62,13 @@ export function GroupsFromTextModal({
             </ul>
           </>
         )}
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" disabled={chosen.size === 0} onClick={() => onConfirm([...chosen])}>
-            Create groups
-          </button>
-        </div>
+        <FormActions
+          error={error}
+          onCancel={onCancel}
+          onSave={() => onConfirm([...chosen])}
+          saveLabel="Create groups"
+          saveDisabled={chosen.size === 0}
+        />
       </div>
     </Modal>
   );

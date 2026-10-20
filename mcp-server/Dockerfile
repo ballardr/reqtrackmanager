@@ -20,7 +20,7 @@ USER mcp
 
 EXPOSE 8100
 
-HEALTHCHECK --interval=10s --timeout=5s --retries=10 \
-    CMD curl -f http://localhost:8100/health || exit 1
+HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=10 \
+    CMD curl -f http://127.0.0.1:8100/health || exit 1
 
 CMD ["python", "server.py"]

@@ -10,32 +10,29 @@ Seeding logic for Decision Management's two definition tables:
 - `seed_decision_templates` — the org-scoped `DecisionTemplateDefinition`
   seeded ADR template packs, called from `on_org_created_with_choices`
   (`module.py`) with whichever pack keys the caller selected on the
-  org-creation form (Phase 0 addendum Q1 — opt-in, not unconditional).
+  org-creation form (opt-in, not unconditional).
 
-`DECISION_TEMPLATE_PACKS` holds the three seeded packs' content (Phase 0
-addendum Q7): Nygard (the original, minimal ADR format), MADR (Markdown
+`DECISION_TEMPLATE_PACKS` holds the three seeded packs' content: Nygard (the original, minimal ADR format), MADR (Markdown
 Architectural Decision Records, the fuller format), and Y-Statement (the
 compressed single-sentence form). Each pack's prompt text is guidance
-shown to a user filling in a new Decision from that template (Phase 5) —
+shown to a user filling in a new Decision from that template —
 not validation, not enforced structure.
 
-Phase 2 (docs/plans/module-04-decision-management-plan.md) adds the
-approval/rejection/supersession workflow, entirely at this service layer —
-no router exists until Phase 4, and per that plan's Phase 0 addendum item 8
-supersession is deliberately built now rather than deferred to Phase 3:
+The approval/rejection/supersession workflow lives at this service layer,
+and supersession is deliberately built alongside the status transitions:
 
 - `propose_decision` / `submit_decision_for_review` / `approve_decision` /
   `reject_decision` — the `DecisionStatus` transitions
   (`DRAFT -> PROPOSED -> UNDER_REVIEW -> APPROVED`, with `REJECTED`
   reachable from `PROPOSED`/`UNDER_REVIEW`), each validated against
   `_ALLOWED_TRANSITIONS` and recorded via `services.audit.log_event`
-  (Phase 0 activity 3 — reusing the audit-log pattern rather than a
+  (reusing the audit-log pattern rather than a
   bespoke approval-history table), mirroring `services.stages.
   complete_stage`'s shape: a plain service function that mutates status and
-  writes the audit event in one call, without committing (the eventual
-  Phase 4 router owns the transaction, same as every other service
+  writes the audit event in one call, without committing (the
+  router owns the transaction, same as every other service
   function in this codebase).
-- `create_supersession` — creates the typed `ArtefactLink` (Module 0's
+- `create_supersession` — creates the typed `ArtefactLink` (the platform's
   polymorphic relationship model, `services.relationships.create_link`)
   recording that one Decision supersedes another, using a `"Supersedes"` /
   `"Is superseded by"` `RequirementLinkTypeDefinition` row this module
@@ -45,7 +42,7 @@ supersession is deliberately built now rather than deferred to Phase 3:
   new core mechanism; no `DEFAULT_LINK_TYPES` core-file edit or migration
   backfill is needed since it's created lazily, the first time any Decision
   in that organisation is actually superseded).
-- Per Phase 0 addendum item 8, the *old* Decision's status only flips to
+- The *old* Decision's status only flips to
   `SUPERSEDED` once the supersession link exists **and** the *new* Decision
   itself reaches `APPROVED` — not before, and not automatically for a
   predecessor that isn't currently `APPROVED` (e.g. one already `REJECTED`
@@ -55,33 +52,28 @@ supersession is deliberately built now rather than deferred to Phase 3:
   Decision is approved after the link already exists) — see `_maybe_
   supersede`/`_supersede_predecessors`.
 - Content-field immutability once a Decision reaches `APPROVED`/
-  `SUPERSEDED` (source overview §13/10.6) is deliberately **not** enforced
+  `SUPERSEDED` (§13/10.6) is deliberately **not** enforced
   here — every existing lock-after-approval check in this codebase
   (`services.requirements.is_locked`'s call sites) lives at the router
-  layer, and no Decision router/update endpoint exists until Phase 4. It
-  belongs there, not in this phase.
+  layer, and it belongs there.
 
-Phase 3 (docs/plans/module-04-decision-management-plan.md) adds the two
-buildable-now relationship groups, both plain `ArtefactLink` (Module 0)
+Two relationship groups are buildable now, both plain `ArtefactLink`
 consumers using the same lazy fetch-or-create `RequirementLinkTypeDefinition`
 pattern `create_supersession` already established — generalised here into
 `_get_or_create_link_type` rather than duplicated four more times:
 
 - `create_decision_requirement_link` — Decision -> Requirement, either
-  `"Implements"` or `"Affects"` (source overview §13/10.7).
+  `"Implements"` or `"Affects"` (§13/10.7).
 - `create_decision_decision_link` — Decision -> Decision, either
   `"Depends on"` or `"Conflicts with"` (`"Supersedes"` already has its own
   dedicated `create_supersession`, above, because it also drives the
   status-flip side effect these two plain relationships don't have).
 
-The five other relationship targets in the plan's Phase 3 scope (Open
-Question, Pain Point, Strategy, Guiding Principle, Compliance, Design) are
-reserved but deferred to Phase 6, blocked on modules that don't exist yet —
-deliberately not built here.
+Other relationship targets (Open Question, Pain Point, Strategy, Guiding
+Principle, Compliance, Design) are reserved and not built here.
 
-Phase 4 (docs/plans/module-04-decision-management-plan.md) adds the backend
-API (`project_router.py`/`router.py`) and one more small helper here:
-`resolve_decision_file_project_id`, this module's `ModuleDefinition.
+The backend API (`project_router.py`/`router.py`) sits on top of this layer,
+with one more small helper here: `resolve_decision_file_project_id`, this module's `ModuleDefinition.
 resolve_file_owner_project_id` hook (`module.py`), mirroring `modules.
 compliance.service.resolve_evidence_file_project_id`'s exact shape/reasoning
 — resolves a `FileAsset` id to its owning project if it's attached to a
@@ -125,15 +117,14 @@ from app.services.relationships import create_link, get_link_between, get_links_
 DEFAULT_DECISION_TYPES: list[str] = ["Architecture", "Design", "Engineering", "Strategy", "Operational"]
 
 # This module's own artefact-type string, registered on `ModuleDefinition.
-# artefact_types` (module.py) — used today only by `services.sequences.
-# generate_unique_code` for `Decision.unique_code`; Phase 3 will also use it
-# for Decision<->Requirement/Decision<->Decision artefact links.
+# artefact_types` (module.py) — used by `services.sequences.
+# generate_unique_code` for `Decision.unique_code` and for
+# Decision<->Requirement/Decision<->Decision artefact links.
 DECISION_ARTEFACT_TYPE = "decision"
 
-# Fine-Grained Access Control (`docs/plans/core-fine-grained-access-control-
-# plan.md` Phase 4) — the unscoped `(decision, approve_baseline)` permission
-# atom, declared on the `decision_approver` module role (`module.py`). Phase
-# 7 additionally checks this same atom's sub-type-scoped form
+# Fine-Grained Access Control — the unscoped `(decision, approve_baseline)` permission
+# atom, declared on the `decision_approver` module role (`module.py`).
+# The approval check additionally checks this same atom's sub-type-scoped form
 # (`encode_permission(DECISION_ARTEFACT_TYPE, PermissionLevel.APPROVE_
 # BASELINE.value, subtype)`, `subtype` looked up from the decision's own
 # `DecisionTypeDefinition.name` — `Decision` has no ORM relationship to it,
@@ -254,8 +245,8 @@ def resolve_effective_decision_types(db: Session, project_id: uuid.UUID) -> list
     `Project.parent_project_id` upward), else an empty list at an
     unconfigured root.
 
-    Added Phase 9 (2026-09-22, **Decided by: User** — supersedes this
-    module's own earlier Phase 4 **Decided by: Agent** call that Decision
+    Added 2026-09-22 (**Decided by: User** — supersedes this
+    module's own earlier **Decided by: Agent** call that Decision
     Types would have no hierarchical-project fallback, unlike
     `ActionTypeDefinition`). Exact mirror of `app.services.project_
     hierarchy.resolve_effective_action_types` — always on, independent of
@@ -291,8 +282,7 @@ def list_decision_type_names_for_organization(db: Session, organization_id: uuid
     """Returns the distinct `DecisionTypeDefinition.name` values currently
     in use anywhere in `organization_id`, sorted — this module's `Module
     Definition.subtype_providers["decision"]` registration (`module.py`)
-    for Fine-Grained Access Control (`docs/plans/core-fine-grained-access-
-    control-plan.md` Phase 1 Q3/Phase 1), used to populate the Role
+    for Fine-Grained Access Control, used to populate the Role
     Management UI's sub-type picker and to validate a `CustomRolePermission`
     /`ModuleRoleDefinition.permissions` sub-type value at write time
     (`app.services.permissions.validate_permission_key`).
@@ -301,7 +291,7 @@ def list_decision_type_names_for_organization(db: Session, organization_id: uuid
     not `resolve_effective_decision_types`'s own per-project hierarchy
     fallback** (Decided by: Agent) — a permission atom's `subtype` is a
     plain string compared directly against a *specific decision's own*
-    `DecisionTypeDefinition.name` at check time (Phase 5), never resolved
+    `DecisionTypeDefinition.name` at check time, never resolved
     through this function again, so there is no parent/child project to
     walk here: this function's only job is enumerating which sub-type
     *strings* currently mean something somewhere in the org, for an
@@ -334,7 +324,7 @@ def seed_decision_templates(db: Session, organization_id: uuid.UUID, selected_ke
     `DECISION_TEMPLATE_PACKS` (not committed/flushed — caller owns the
     transaction) — this module's `ModuleDefinition.on_org_created_with_
     choices` hook. Packs whose `choice_key` isn't in `selected_keys` are
-    skipped entirely (Phase 0 addendum Q1 — opt-in, not unconditional).
+    skipped entirely (opt-in, not unconditional).
 
     Guards against re-seeding a pack the organisation already has a
     same-named template for (belt-and-braces: `on_org_created_with_choices`
@@ -372,9 +362,9 @@ def seed_decision_templates(db: Session, organization_id: uuid.UUID, selected_ke
         next_sort_order += 1
 
 
-# --- Phase 2: approval, rejection, and supersession workflow --------------
+# --- approval, rejection, and supersession workflow --------------
 
-# Legal `DecisionStatus` transitions (Phase 0 addendum Q1/Q4, `enums.
+# Legal `DecisionStatus` transitions (`enums.
 # DecisionStatus`'s own docstring): forward through the four "in-flight"
 # states, `REJECTED` reachable from either `PROPOSED` or `UNDER_REVIEW`,
 # `SUPERSEDED` reachable only from `APPROVED` and only via `_maybe_
@@ -418,7 +408,7 @@ def _transition_status(
         ValueError: if `new_status` isn't reachable from `decision.status`
             per `_ALLOWED_TRANSITIONS` — mirrors `services.relationships.
             create_link`'s own convention of a plain `ValueError` for a
-            service-layer validation failure, for the eventual Phase 4
+            service-layer validation failure, for the
             router to translate into an HTTP 409.
     """
     if new_status not in _ALLOWED_TRANSITIONS[decision.status]:
@@ -452,7 +442,7 @@ def reject_decision(
     db: Session, decision: Decision, actor_id: uuid.UUID, *, comment: str | None = None, via_mcp: bool = False,
 ) -> Decision:
     """`PROPOSED`/`UNDER_REVIEW` -> `REJECTED`. Rejected Decisions remain
-    queryable (source overview §13/10.6) — never hard-deleted, same as
+    queryable (§13/10.6) — never hard-deleted, same as
     every other soft-delete convention in this codebase; this is a status
     value, not an archive. `via_mcp` — see `_transition_status`'s own
     docstring."""
@@ -466,7 +456,7 @@ def approve_decision(
 ) -> Decision:
     """`UNDER_REVIEW` -> `APPROVED`. Also flips any predecessor Decision
     this one already supersedes (a `create_supersession` link created
-    before this approval) to `SUPERSEDED`, per Phase 0 addendum item 8 —
+    before this approval) to `SUPERSEDED` —
     see `_supersede_predecessors`. `via_mcp` — see `_transition_status`'s
     own docstring."""
     _transition_status(
@@ -497,8 +487,8 @@ def _get_or_create_link_type(
 
 
 def _maybe_supersede(db: Session, *, new_decision: Decision, old_decision: Decision, actor_id: uuid.UUID) -> None:
-    """Flips `old_decision` to `SUPERSEDED` if both halves of Phase 0
-    addendum item 8's condition are already true at this exact moment: the
+    """Flips `old_decision` to `SUPERSEDED` if both halves of the
+    supersession condition are already true at this exact moment: the
     supersession link exists (implied — this is only ever called once it
     does) and `new_decision` is already `APPROVED`. A no-op otherwise
     (including if `old_decision` isn't currently `APPROVED` — superseding
@@ -519,7 +509,7 @@ def _supersede_predecessors(db: Session, decision: Decision, actor_id: uuid.UUID
     `approve_decision`): flips every still-`APPROVED` Decision it already
     supersedes (an outgoing `"Supersedes"`-typed link created earlier, back
     when this Decision wasn't approved yet) to `SUPERSEDED` — the other
-    direction of Phase 0 addendum item 8's condition than `_maybe_
+    direction of the supersession condition than `_maybe_
     supersede` handles."""
     organization_id = _project_organization_id(db, decision.project_id)
     link_type = db.scalar(
@@ -552,7 +542,7 @@ def _supersede_predecessors(db: Session, decision: Decision, actor_id: uuid.UUID
 
 def create_supersession(db: Session, *, new_decision: Decision, old_decision: Decision, actor_id: uuid.UUID):
     """Records that `new_decision` supersedes `old_decision`: creates the
-    typed `"Supersedes"` `ArtefactLink` (source overview §13/10.6), then
+    typed `"Supersedes"` `ArtefactLink` (§13/10.6), then
     immediately flips `old_decision` to `SUPERSEDED` if `new_decision` is
     already `APPROVED` (see `_maybe_supersede`) — otherwise the flip
     happens later, when/if `new_decision` itself reaches `APPROVED` via
@@ -621,7 +611,7 @@ def create_supersession(db: Session, *, new_decision: Decision, old_decision: De
     return link
 
 
-# --- Phase 3: relationships to Requirements and other Decisions -----------
+# --- relationships to Requirements and other Decisions -----------
 
 # Source overview §13/10.7's Decision<->Requirement relationship names.
 # Both already exist in `services.definitions.DEFAULT_LINK_TYPES` except
@@ -642,7 +632,7 @@ CONFLICTS_WITH_LINK_TYPE_REVERSE_NAME = "Conflicts with"
 
 
 class DecisionRequirementLinkKind(str, enum.Enum):
-    """Which of source overview §13/10.7's two Decision -> Requirement
+    """Which of §13/10.7's two Decision -> Requirement
     relationship names `create_decision_requirement_link` should use."""
 
     IMPLEMENTS = "implements"
@@ -676,7 +666,7 @@ def create_decision_requirement_link(
     actor_id: uuid.UUID,
 ) -> ArtefactLink:
     """Records that `decision` either `Implements` or `Affects`
-    `requirement` (source overview §13/10.7): creates the typed
+    `requirement` (§13/10.7): creates the typed
     `ArtefactLink`, with `decision` as the source, using the same lazy
     fetch-or-create `RequirementLinkTypeDefinition` pattern
     `create_supersession` established.
@@ -768,7 +758,7 @@ def create_decision_decision_link(
     )
 
 
-# --- Phase 4: file-ownership resolution hook -------------------------------
+# --- file-ownership resolution hook -------------------------------
 
 
 def resolve_decision_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UUID | None:
@@ -802,7 +792,7 @@ def resolve_decision_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UU
 
 # Link types Decision Management ships (`ModuleDefinition.link_type_seeds`):
 # Decision <-> Pain Point / Open Question / Strategy / Guiding Principle /
-# Compliance requirement (Platform Enhancements Phase 5b), the Decision ->
+# Compliance requirement (link-type seeds), the Decision ->
 # Requirement "Affects", and the dedicated "Supersedes". "Implements",
 # "Depends on" and "Conflicts with" are core defaults. The target type strings
 # of other modules are plain names, not imports; a restriction naming a type

@@ -8,6 +8,7 @@ import { buildProject, buildUser, withAuth, withRouter, withToast } from "../../
 import { buildPersona, buildStakeholder, buildStakeholderGroup, buildStakeholderScheme } from "./fixtures";
 import { StakeholderDetailPage } from "./StakeholderDetailPage";
 import type { CadenceHint, HeldNeed, RepresentedLink, Stakeholder, StakeholderEngagement } from "./types";
+import { chooseRecordAction, recordActionNames } from "../../testing/recordActions";
 
 const PROJECT_ID = "project-1";
 const STAKEHOLDER_ID = "stakeholder-1";
@@ -144,8 +145,8 @@ export const DeleteIsTierTwoAndNeedsTheExactName: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Delete permanently" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Delete permanently" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Stakeholder actions" }));
+    await chooseRecordAction(canvas, "Stakeholder", "Delete permanently");
     const dialog = within(within(document.body).getByRole("dialog", { name: "Permanently delete Pat Regulator?" }));
     await expect(dialog.getByText(/This cannot be undone/)).toBeInTheDocument();
     const confirm = dialog.getByRole("button", { name: "Delete permanently" });
@@ -164,11 +165,11 @@ export const ArchiveAsksForConfirmation: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Archive" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Archive" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Stakeholder actions" }));
+    await chooseRecordAction(canvas, "Stakeholder", "Archive");
     await userEvent.click(within(within(document.body).getByRole("dialog", { name: "Archive this Stakeholder?" })).getByRole("button", { name: "Archive" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(`${PROJECT_BASE}/stakeholders/${STAKEHOLDER_ID}/archive`));
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Unarchive" })).toBeInTheDocument());
+    await waitFor(async () => expect(await recordActionNames(canvas, "Stakeholder")).toContain("Unarchive"));
   },
 };
 
@@ -180,7 +181,7 @@ export const OrgStakeholderInProjectIsReadOnly: Story = {
     await expect(canvas.getByRole("link", { name: "organisation view" })).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Retire" })).not.toBeInTheDocument();
-    await expect(canvas.queryByRole("button", { name: "Delete permanently" })).not.toBeInTheDocument();
+    await expect(await recordActionNames(canvas, "Stakeholder")).not.toContain("Delete permanently");
     await expect(canvas.queryByRole("combobox", { name: "Persona to represent" })).not.toBeInTheDocument();
   },
 };
@@ -251,10 +252,12 @@ export const OwnerCanBeAssigned: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByLabelText("Stakeholder owner"));
-    await userEvent.type(canvas.getByLabelText("Stakeholder owner"), "Jamie");
-    await waitFor(() => canvas.getByText(/Jamie Lee/));
-    await userEvent.click(canvas.getByText(/Jamie Lee/));
+    await waitFor(() => canvas.getByRole("button", { name: "Assign: Stakeholder owner" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Assign: Stakeholder owner" }));
+    const picker = within(within(document.body).getByRole("dialog", { name: "Assign: Stakeholder owner" }));
+    await userEvent.type(picker.getByLabelText("Stakeholder owner"), "Jamie");
+    await waitFor(() => picker.getByText(/Jamie Lee/));
+    await userEvent.click(picker.getByText(/Jamie Lee/));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${PROJECT_BASE}/stakeholders/${STAKEHOLDER_ID}`, { owner: { type: "user", id: "user-2" } }));
   },
 };
@@ -267,9 +270,11 @@ export const OwnerCanBeAProjectGroup: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByLabelText("Stakeholder owner"));
-    await userEvent.type(canvas.getByLabelText("Stakeholder owner"), "release");
-    await userEvent.click(await canvas.findByText("Release board"));
+    await waitFor(() => canvas.getByRole("button", { name: "Assign: Stakeholder owner" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Assign: Stakeholder owner" }));
+    const picker = within(within(document.body).getByRole("dialog", { name: "Assign: Stakeholder owner" }));
+    await userEvent.type(picker.getByLabelText("Stakeholder owner"), "release");
+    await userEvent.click(await picker.findByText("Release board"));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${PROJECT_BASE}/stakeholders/${STAKEHOLDER_ID}`, { owner: { type: "project_group", id: "pgroup-1" } }));
   },
 };
@@ -303,7 +308,7 @@ export const VersionHistoryUsesLabels: Story = {
     }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("heading", { name: "Version history" })).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Versions" })).toBeInTheDocument());
     await expect(canvas.getByText("Initial creation.")).toBeInTheDocument();
     await expect(canvas.getAllByText("Quarterly").length).toBeGreaterThan(0);
   },
@@ -323,7 +328,7 @@ export const EditOpensThePrefilledForm: Story = {
 
 export const ListsTheNeedsTheStakeholderHas: Story = {
   beforeEach: () =>
-    mockDetailApis(buildStakeholder(), { needs: [{ link_id: "n1", id: "need-1", name: "Diagnose faults quickly", status: "active" }] }),
+    mockDetailApis(buildStakeholder(), { needs: [{ link_id: "n1", id: "need-1", unique_code: "NEED-001", name: "Diagnose faults quickly", status: "active" }] }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const link = await canvas.findByRole("link", { name: "Diagnose faults quickly (Active)" });
@@ -336,8 +341,8 @@ export const ShowsTheEngagementTimelineAndLastEngaged: Story = {
   beforeEach: () =>
     mockDetailApis(buildStakeholder({ last_engaged: "2026-04-02" }), {
       engagements: [
-        { id: "e2", title: "Evidence follow-up", channel: "email", engagement_date: "2026-04-02" },
-        { id: "e1", title: "Quarterly review", channel: "meeting", engagement_date: "2026-03-12" },
+        { id: "e2", unique_code: "ENG-002", title: "Evidence follow-up", channel: "email", engagement_date: "2026-04-02" },
+        { id: "e1", unique_code: "ENG-001", title: "Quarterly review", channel: "meeting", engagement_date: "2026-03-12" },
       ],
     }),
   play: async ({ canvasElement }) => {
@@ -370,7 +375,7 @@ export const LinksPanelShowsLinks: Story = {
   },
 };
 
-const PILOT_REF = { id: "pilot", name: "Pilot users", scope: "project" as const, parent_group_id: "client" };
+const PILOT_REF = { id: "pilot", name: "Pilot users", scope: "project" as const, parent_group_id: "client", unique_code: "SGP-002", organization_id: null };
 
 export const ShowsTheStakeholdersGroupsWithTheirPath: Story = {
   beforeEach: () => mockDetailApis(buildStakeholder({ groups: [PILOT_REF] })),

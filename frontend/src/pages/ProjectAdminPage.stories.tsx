@@ -35,6 +35,7 @@ import {
   withTerminology,
   withToast,
 } from "../testing/storybook-helpers";
+import { buildUsage, buildVocabulary } from "../testing/tagsFixtures";
 import { ProjectAdminPage } from "./ProjectAdminPage";
 
 const PROJECT_ID = "project-1";
@@ -73,7 +74,7 @@ function mockProjectAdminApis(
     reportConfig?: ProjectReportConfig;
     effectiveReportContent?: EffectiveReportContent;
     moduleRoles?: ModuleRoleDefinition[];
-    // Module 0 (Platform Foundations) Phases 4/5 — the Modules tab's own
+    // The Modules tab's own
     // bulk module list and, per module, its declared sub-components (keyed
     // by `module_key`; defaults to `[]` per module, matching the real
     // `GET .../subcomponents` endpoint's own "no sub-components declared"
@@ -82,7 +83,7 @@ function mockProjectAdminApis(
     linkTypes?: ProjectLinkType[];
     projectModules?: ProjectModuleEnablement[];
     projectModuleSubComponents?: Record<string, ProjectModuleSubComponent[]>;
-    // Platform review 2026-09, Phase 8 — the org's own
+    // The org's own
     // `force_require_change_request_for_approved_links`, fetched via a bare
     // `GET /orgs/{id}` alongside the other org-scoped calls below.
     organization?: Organization;
@@ -99,11 +100,14 @@ function mockProjectAdminApis(
     default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
     disabled_at: null, accent_color_hex: null, header_title: null,
     email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
+    code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto" }, enforce_code_everywhere: false,
     force_require_change_request_for_approved_links: false,
     allow_ai_approvals: false,
   };
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return project;
+    if (path.endsWith(`/projects/${PROJECT_ID}/tags`)) return buildVocabulary();
+    if (path.includes(`/projects/${PROJECT_ID}/tags/usage`)) return buildUsage();
     // Checked before the "/orgs/" + "/groups"/"/users" branches below,
     // which this bare org-detail path doesn't match (no further segment).
     if (path === `/api/v1/orgs/${project.organization_id}`) return organization;
@@ -115,8 +119,7 @@ function mockProjectAdminApis(
     if (path.endsWith("/artefact-types")) return [{ type: "requirement", label: "Requirement" }];
     if (path.endsWith("/artefact-link-rules")) return [];
     if (path.includes("/project-statuses")) return projectStatuses;
-    // `ProjectMembersTable`'s own second data source (Phase D, follow-up UX
-    // batch, 2026-08-31) — checked before "/groups" below purely for
+    // `ProjectMembersTable`'s own second data source — checked before "/groups" below purely for
     // readability; the two substrings don't actually collide.
     if (path.includes("/pending-invites")) return overrides.pendingInvites ?? [];
     // Checked before the plain "/groups" check below — /orgs/{id}/groups
@@ -125,7 +128,7 @@ function mockProjectAdminApis(
     if (path.includes("/orgs/") && path.includes("/groups")) return orgGroups;
     // The Groups section's own paginated list (unchanged) and the Members
     // section's unpaginated `memberTableGroups` `?openGroup=` lookup fetch
-    // (Phase 5) both hit this same "/groups" substring — both are fine
+    // both hit this same "/groups" substring — both are fine
     // returning the same fixed `groupsForThisStory` array regardless of
     // query params, matching how a real unpaginated `GET .../groups` (no
     // `limit`) would return everything.
@@ -144,12 +147,12 @@ function mockProjectAdminApis(
     // Hierarchical projects (docs/decisions.md). Checked before the plain
     // "/users" check below — /orgs/{id}/users also matches that.
     if (path.includes("/member-sources")) return overrides.memberSources ?? [];
-    // Module system Phase 2: fetched inside the same `reload()` alongside
+    // Fetched inside the same `reload()` alongside
     // effective-members/pending-invites above — must be mocked, or that
     // Members section's own module-role fetch throws as unmocked and
     // rejects `reload()`'s own `Promise.all`.
     if (path.includes("/module-roles")) return overrides.moduleRoles ?? [];
-    // Module 0 (Platform Foundations) Phases 4/5 — checked before the
+    // Checked before the
     // generic "/modules" bulk-list branch below, since both the
     // enablement and subcomponents paths also contain that substring.
     // `moduleKey` is parsed out of the path itself so each module's own
@@ -165,7 +168,7 @@ function mockProjectAdminApis(
       throw new Error(`unmocked module enablement fixture for: ${moduleKey}`);
     }
     if (path.endsWith("/modules")) return overrides.projectModules ?? [];
-    // Phase 6 (docs/platform-review-2026-09-plan.md): `ProjectMembersTable`'s
+    // `ProjectMembersTable`'s
     // third data source — checked before the plain "/groups" check above
     // doesn't apply here since "/group-roles" isn't a substring of
     // "/groups" (the reverse isn't true either), so ordering doesn't matter,
@@ -178,14 +181,13 @@ function mockProjectAdminApis(
     // `UserAutocomplete`'s debounced server-side search (organizationId
     // mode) — checked before the plain "/users" catch-all below, which
     // that path also matches. No user matches wired by default; a story
-    // exercising this control's group-matching (PR5) types into it without
+    // exercising this control's group-matching types into it without
     // needing a real user result too.
     if (path.includes("/users/search")) return { members: [], external: null };
     if (path.includes("/users")) return [];
     throw new Error(`unmocked path: ${path}`);
   });
-  // The Groups tab's own group list paginates/searches (2026-08 UX audit
-  // "Directories at scale") — org-group nesting still reads from the
+  // The Groups tab's own group list paginates/searches — org-group nesting still reads from the
   // plain `api.get` mock above, unchanged.
   spyOn(api, "getPage").mockImplementation(async (path: string) => {
     if (path.includes("/groups")) return { items: groupsForThisStory, total: groupsForThisStory.length };
@@ -224,6 +226,53 @@ export const OverviewTabSaveSettings: Story = {
   },
 };
 
+/** Under automatic assignment the code is shown but cannot be edited, and is not sent on save. */
+export const OverviewTabCodeIsReadOnlyUnderAutomaticAssignment: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({ project: buildProject({ id: PROJECT_ID, organization_id: "org-1", name: "Atlas Platform", code: "ATL", status_id: "st1" }) });
+    spyOn(api, "patch").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const code = await waitFor(() => {
+      const el = canvas.getByLabelText("Code");
+      expect(el).toHaveValue("ATL");
+      return el;
+    });
+    await expect(code).toHaveAttribute("readonly");
+    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
+    await waitFor(() => expect(api.patch).toHaveBeenCalled());
+    await expect((api.patch as unknown as { mock: { calls: unknown[][] } }).mock.calls[0][1]).not.toHaveProperty("code");
+  },
+};
+
+/** Under manual assignment the code is editable and a changed value is sent upper-cased. */
+export const OverviewTabCodeEditableUnderManualAssignment: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({
+      project: buildProject({ id: PROJECT_ID, organization_id: "org-1", name: "Atlas Platform", code: "ATL", status_id: "st1" }),
+      organization: { ...buildForcedOrg(), force_require_change_request_for_approved_links: false,
+        project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "manual" } },
+    });
+    spyOn(api, "patch").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const code = await waitFor(() => {
+      const el = canvas.getByLabelText("Code");
+      expect(el).toHaveValue("ATL");
+      expect(el).not.toHaveAttribute("readonly");
+      return el;
+    });
+    await userEvent.clear(code);
+    await userEvent.type(code, "atlas");
+    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}`, expect.objectContaining({ code: "ATLAS" }))
+    );
+  },
+};
+
 export const OverviewTabSetOrgWideVisibility: Story = {
   beforeEach: () => {
     mockProjectAdminApis();
@@ -243,7 +292,7 @@ export const OverviewTabSetOrgWideVisibility: Story = {
   },
 };
 
-/** Platform review 2026-09, Phase 8 — the plain, unforced case: the
+/** The plain, unforced case: the
  * project's own opt-in checkbox is enabled and starts unchecked (the
  * permissive default), and no exemption checkbox is shown since the org
  * isn't forcing anything. */
@@ -340,6 +389,7 @@ function buildForcedOrg(): Organization {
     default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
     disabled_at: null, accent_color_hex: null, header_title: null,
     email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
+    code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto" }, enforce_code_everywhere: false,
     force_require_change_request_for_approved_links: true,
     allow_ai_approvals: false,
   };
@@ -359,7 +409,7 @@ export const OverviewTabArchive: Story = {
 };
 
 // Terminology's own JSX/state/handlers are unchanged — only its location
-// moved (2026-08 UX audit roadmap: 8 tabs -> 5), from its own tab into a
+// moved, from its own tab into a
 // sub-block underneath Overview's settings. No tab click needed any more:
 // Overview is the default tab.
 export const TerminologyTab: Story = {
@@ -560,9 +610,9 @@ export const CustomFieldsTabDeleteRequiresConfirmation: Story = {
 
 /** Style guide "Pattern: modal dialog for entity create/rename": "+ New
  * group" opens a Modal instead of the Groups tab having no create form at
- * all (2026-08 UX audit finding) — mirrors OrgAdminPage's own "New group"
- * modal, just against the project-scoped endpoint. PR7 of the members/
- * groups directory rework plan (docs/decisions.md) dropped this modal's
+ * all — mirrors OrgAdminPage's own "New group"
+ * modal, just against the project-scoped endpoint. The members/
+ * groups directory rework (docs/decisions.md) dropped this modal's
  * role picker: a group is now created bare (zero roles, `ProjectGroupCreate`
  * no longer accepts one at all) and a role is a separate, explicit grant
  * added afterward via the new group row's own `MultiSelectDropdown` — see
@@ -583,7 +633,7 @@ export const GroupsTabCreateGroupViaModal: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "New group" }));
     const dialog = body.getByRole("dialog", { name: "New group" });
     await expect(within(dialog).getByRole("button", { name: "Create" })).toBeDisabled();
-    // No role picker any more (PR7) — just the name field.
+    // No role picker any more — just the name field.
     await expect(within(dialog).queryByLabelText("Role")).not.toBeInTheDocument();
 
     await userEvent.type(within(dialog).getByPlaceholderText("e.g. Reviewers"), "Reviewers");
@@ -599,17 +649,17 @@ export const GroupsTabCreateGroupViaModal: Story = {
 };
 
 // --- Groups tab: DirectoryTable + per-group SidePanel --------------------
-// Replaces the old always-expanded `CollapsibleSection` accordion (Phase 5),
+// Replaces the old always-expanded `CollapsibleSection` accordion,
 // then the pre-`DirectoryTable` `<button style={{width:"100%"}}>` per-row
-// list (Phase B, follow-up UX batch, 2026-08-31) — a group row still opens
+// list — a group row still opens
 // the same `SidePanel` (3-way composition editor, role `<select>` at the
 // top, delete action) via a real `<button>` (`DirectoryTable`'s
-// `onRowClick`, not `rowHref` — found during Phase B verification that
+// `onRowClick`, not `rowHref` — found during verification that
 // every standard project's then-auto-created default "Members" group
 // would otherwise collide with this page's own `ResourceMenu` "Members"
 // nav `<Link>`, both `role="link"` with an identical accessible name), just
-// inside a real `<table>` now. Default groups were themselves removed in
-// Phase C (2026-08-31, docs/decisions.md) — the collision that motivated
+// inside a real `<table>` now. Default groups were themselves removed
+// (2026-08-31, docs/decisions.md) — the collision that motivated
 // `onRowClick` over `rowHref` no longer has that specific automatic
 // trigger, but the underlying ambiguity (any two same-named `role="link"`
 // elements on one page) is general, so the choice stands regardless.
@@ -620,7 +670,7 @@ export const GroupsTabOpensSidePanelWithRoleSelectAndDelete: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Project groups" }));
     await waitFor(() => expect(canvas.getByRole("button", { name: "Stakeholders" })).toBeInTheDocument());
-    // Role (PR7: MultiSelectDropdown, not a plain badge) and Members
+    // Role (MultiSelectDropdown, not a plain badge) and Members
     // (count) columns render alongside Name, independent of opening the
     // row.
     await expect(canvas.getByRole("button", { name: "Stakeholders's roles" })).toHaveTextContent("Stakeholder");
@@ -631,8 +681,7 @@ export const GroupsTabOpensSidePanelWithRoleSelectAndDelete: Story = {
     // The SidePanel's own role editor is the same MultiSelectDropdown, kept
     // in sync with the Groups tab's row.
     await expect(within(panel).getByRole("button", { name: "Stakeholders's roles" })).toHaveTextContent("Stakeholder");
-    // No group is specially protected from deletion any more (Phase C,
-    // follow-up UX batch, 2026-08-31 removed `is_default` and the four
+    // No group is specially protected from deletion any more (2026-08-31 removed `is_default` and the four
     // auto-created "standard" groups entirely) — the only remaining guard
     // is C-U-08 ("a project must retain at least one manager"), which
     // doesn't apply to this stakeholder-role group at all.
@@ -640,7 +689,7 @@ export const GroupsTabOpensSidePanelWithRoleSelectAndDelete: Story = {
   },
 };
 
-/** PR7 of the members/groups directory rework plan: a group's role is no
+/** the members/groups directory rework: a group's role is no
  * longer fixed at creation — the Groups tab's per-row `MultiSelectDropdown`
  * grants/revokes roles via the new `POST`/`DELETE .../groups/{group_id}/
  * roles` endpoints, the same pattern `ProjectMembersTable`'s own Role
@@ -766,8 +815,7 @@ export const GroupsTabDeleteGroupRequiresConfirmation: Story = {
 };
 
 // The "click a group in Members, see its members" `?openGroup=` deep link
-// (Phase 5; the Groups tab's own row moved onto `DirectoryTable` in Phase B,
-// but stayed a real `<button>` — `onRowClick`, not `rowHref` — feeding the
+// (the Groups tab's own row is on `DirectoryTable` but stays a real `<button>` — `onRowClick`, not `rowHref` — feeding the
 // same `setOpenGroupId`/`useSearchParams` handling either way, see that
 // prop's own comment on the `DirectoryTable` call site below for why)
 // isn't covered by its own Storybook story starting from a pre-set
@@ -779,11 +827,11 @@ export const GroupsTabDeleteGroupRequiresConfirmation: Story = {
 // (`project-admin-members.spec.ts`'s own "?openGroup= deep link" step)
 // covers that full round trip end-to-end instead.
 
-// --- Members tab (Phase D, follow-up UX batch, 2026-08-31) --------------
+// --- Members tab --------------
 // `ProjectMembersTable` fed by `GET /effective-members` (with provenance)
 // + `GET /pending-invites`, merged client-side — replaces the old
 // `MemberRoleTable` (direct users + groups) and `PendingInvitesSection`
-// this phase retired; see that component's own docstring and
+// retired; see that component's own docstring and
 // `docs/decisions.md` for the full rationale. Most of this component's
 // own behavior (disabled-role-with-title, role filter, "Show invited",
 // pagination) is already covered by `ProjectMembersTable.stories.tsx`
@@ -839,7 +887,7 @@ export const MembersTabShowsEffectiveMembersWithProvenance: Story = {
  * `POST .../roles` once committed, distinct from the Groups tab's
  * per-group add flow, which grants group membership instead. Style guide
  * "Pattern: modal dialog for entity create/rename" (Principle 3) — as of
- * PR3 of the members/groups directory rework, this is no longer
+ * the members/groups directory rework, this is no longer
  * permanently visible above the table; "Add member" opens it in a `Modal`,
  * mirroring `GroupsTabCreateGroupViaModal` above. Each staged entry gets
  * its own per-row role `<select>` now (see `AddMembersModal`'s own module
@@ -902,7 +950,7 @@ export const MembersTabAddMemberModalOpen: Story = {
   },
 };
 
-/** PR5 of the members/groups directory rework plan: the same "Add member"
+/** the members/groups directory rework: the same "Add member"
  * autocomplete also matches org groups by name (client-side, against
  * `orgGroups` — always loaded for the Groups tab regardless), rendered with
  * an "Org group" badge distinguishing it from a user match. Picking one
@@ -943,7 +991,7 @@ export const MembersTabAddMemberAutocompleteMatchesGroup: Story = {
   },
 };
 
-/** Phase 6 (docs/platform-review-2026-09-plan.md): an org group holding a
+/** An org group holding a
  * direct `OrgGroupProjectRole` grant on this project (the mechanism the
  * story above grants through) now renders as its own row in the Members
  * table — badge, editable role dropdown, and a "Remove group" action —
@@ -997,7 +1045,7 @@ export const MembersTabGroupRowRoleToggleAndRemove: Story = {
   },
 };
 
-/** PR7 of the members/groups directory rework plan: the same "Add member"
+/** the members/groups directory rework: the same "Add member"
  * autocomplete also matches this project's own groups (client-side,
  * against `memberTableGroups`), rendered with a "Project group" badge —
  * distinct from the "Org group" badge above, since these are genuinely
@@ -1222,7 +1270,7 @@ export const StructureTabPluralisesCategoryCorrectly: Story = {
 };
 
 /**
- * C-C-03, the 2026-08 UX audit's single most visible example: the
+ * C-C-03, the single most visible example: the
  * custom-fields entity-kind dropdown/badge used to read "Requirement" /
  * "Change request" literally — one tab over from the Terminology settings
  * meant to rename those exact words (`CUSTOM_FIELD_ENTITY_KIND_LABEL` in
@@ -1309,7 +1357,7 @@ export const SaveErrorShowsInline: Story = {
  * to a direct child — any same-organisation project is a valid source, and
  * each one shows its own mirror mode as a badge next to its name.
  *
- * PR5 of the members/groups directory rework plan: this whole section moved
+ * the members/groups directory rework: this whole section moved
  * from the Overview tab onto the Groups tab, rendering as type-badged rows
  * in the same `DirectoryTable` as real `ProjectGroup` rows rather than a
  * separate `<ul>` — see `GroupsTabShowsGroupsAndMemberSourcesTogether`
@@ -1351,7 +1399,7 @@ export const MemberSourcesListAndAdd: Story = {
   },
 };
 
-/** PR5 of the members/groups directory rework plan: the Groups tab's
+/** the members/groups directory rework: the Groups tab's
  * `DirectoryTable` now mixes a real `ProjectGroup` row and a
  * `ProjectMemberSource` row (moved here from the Overview tab) side by
  * side, each carrying a "Type" badge distinguishing them ("Project group"
@@ -1395,7 +1443,7 @@ export const GroupsTabShowsGroupsAndMemberSourcesTogether: Story = {
 /** A project group's members can be defined as "the direct members of that
  * other project" (`ProjectGroupMember.source_project_id`, docs/decisions.md)
  * — a third option alongside individual users and nested {@link OrgGroup}s.
- * Phase 5 extends the existing labelled line with a `Link` to that
+ * The existing labelled line carries a `Link` to that
  * project's own new Members page and a clarifying "this is live, not a
  * fixed list" hint — both now live inside the group's `SidePanel`. */
 export const ProjectGroupCanReferenceAnotherProjectsMembers: Story = {
@@ -1418,7 +1466,7 @@ export const ProjectGroupCanReferenceAnotherProjectsMembers: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Stakeholders" }));
     const panel = within(document.body).getByRole("dialog", { name: "Stakeholders details" });
     await waitFor(() => expect(within(panel).getByText("Authentication's members")).toBeInTheDocument());
-    // The new Phase-5 link to that project's own Members page, plus the
+    // The link to that project's own Members page, plus the
     // "this is live, not a fixed list" clarifying hint.
     await expect(within(panel).getByRole("link", { name: "View members" })).toHaveAttribute(
       "href", "/projects/sibling-1/admin/members"
@@ -1561,7 +1609,7 @@ export const ParentFieldHiddenWithNoEligibleCandidates: Story = {
   },
 };
 
-/** Phase 28 — with more than one project to switch between, a chevron next
+/** With more than one project to switch between, a chevron next
  * to the project name opens a popover listing the others as plain links
  * to their own Project Admin page. */
 export const EntitySwitcherOffersSiblingProjects: Story = {
@@ -1586,7 +1634,7 @@ export const EntitySwitcherOffersSiblingProjects: Story = {
   },
 };
 
-// --- Module 0 (Platform Foundations) Phases 4/5: Modules tab ---------------------------
+// --- Modules tab ---------------------------
 
 const usingOrgDefaultModule: ProjectModuleEnablement = {
   module_key: "fake_module", name: "Fake Module", effective_enabled: true,
@@ -1596,14 +1644,6 @@ const overriddenModule: ProjectModuleEnablement = {
   module_key: "context_strategy", name: "Context & Strategy", effective_enabled: false,
   org_default_enabled: true, org_hard_enabled: true, has_project_override: true, project_override_enabled: false,
 };
-// Module 0 (Platform Foundations) Phase 5 correction (2026-09-29) — the
-// organisation has hard-disabled this module outright: no project
-// override, existing or new, can widen it on. The Modules tab must render
-// its toggle disabled with an explanatory hint in this state.
-const orgHardDisabledModule: ProjectModuleEnablement = {
-  module_key: "fake_module", name: "Fake Module", effective_enabled: false,
-  org_default_enabled: false, org_hard_enabled: false, has_project_override: false, project_override_enabled: null,
-};
 const usingOrgDefaultSubComponent: ProjectModuleSubComponent = {
   module_key: "context_strategy", subcomponent_key: "pain_point", name: "Pain Point",
   effective_enabled: true, org_default_enabled: true, org_hard_enabled: true, has_project_override: true, project_override_enabled: true,
@@ -1611,6 +1651,18 @@ const usingOrgDefaultSubComponent: ProjectModuleSubComponent = {
 const overriddenSubComponent: ProjectModuleSubComponent = {
   module_key: "context_strategy", subcomponent_key: "strategy", name: "Strategy",
   effective_enabled: false, org_default_enabled: true, org_hard_enabled: true, has_project_override: true, project_override_enabled: false,
+};
+
+/** The Tags group shows the project's tag vocabulary and usage tables. */
+export const TagsGroupShowsTheVocabularyAndUsage: Story = {
+  beforeEach: () => mockProjectAdminApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Tags" }));
+    await expect(await canvas.findByRole("table", { name: "Tags" })).toBeInTheDocument();
+    await expect(canvas.getByRole("combobox", { name: "Who can add a new tag" })).toHaveValue("free");
+    await expect(canvas.getByRole("table", { name: "Where tags are used: Requirement" })).toBeInTheDocument();
+  },
 };
 
 /** One switch per module; a module whose value differs from the org's
@@ -1660,30 +1712,6 @@ export const ModulesTabToggleWholeModule: Story = {
       )
     );
     await expect(within(document.body).getByText("Fake Module disabled for this project")).toBeInTheDocument();
-  },
-};
-
-/** Module 0 (Platform Foundations) Phase 5 correction (2026-09-29): a
- * module the organisation has hard-disabled outright (`org_hard_enabled:
- * false`) renders its row greyed out, its toggle disabled, and an
- * explanatory hint — the same "greyed out, not hidden, with a reason"
- * convention Org Admin's own Modules page already uses for a
- * non-entitled/not-yet-implemented module — rather than a toggle a
- * project admin could click and have silently rejected (or, before this
- * correction, silently accepted and then never take effect). */
-export const ModulesTabHardDisabledModuleShowsDisabledToggleWithHint: Story = {
-  beforeEach: () => mockProjectAdminApis({ projectModules: [orgHardDisabledModule] }),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Modules" }));
-    await waitFor(() => expect(canvas.getByText("Fake Module")).toBeInTheDocument());
-
-    await expect(
-      canvas.getByText("Turned off for your organisation — ask an organisation admin to turn it on.")
-    ).toBeInTheDocument();
-    const toggle = canvas.getByRole("switch", { name: "Enable Fake Module for this project" });
-    await expect(toggle).not.toBeChecked();
-    await expect(toggle).toBeDisabled();
   },
 };
 

@@ -27,6 +27,10 @@ _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 settings = get_settings()
 
+#: Shortest password accepted anywhere a person's password is set (signup, change-password, and an
+#: administrator creating an account), so the rule has one definition.
+MIN_PASSWORD_LENGTH = 8
+
 _exp_required = JWTClaimsRegistry(exp={"essential": True})
 
 
@@ -220,7 +224,7 @@ def create_module_frame_token(
 ) -> str:
     """Creates a short-lived signed JWT scoping a Tier B `<ModuleFrame>`
     iframe's own backend calls to exactly one module, organisation,
-    (optionally) project, and user (compliance-module-plan.md Phase 3).
+    (optionally) project, and user.
 
     Minted by `POST /orgs/{id}/modules/{module_key}/frame-token` or
     `POST /projects/{id}/modules/{module_key}/frame-token` for a caller who

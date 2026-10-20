@@ -1,15 +1,15 @@
-"""Tests for PR7 of the members/groups directory rework plan (docs/
+"""Tests for the members/groups directory rework (docs/
 decisions.md): a `ProjectGroup`'s role is no longer a single, required field
 fixed at creation — it now holds zero, one, or several independently-
 revocable roles, each its own `ProjectGroupRole` row, granted/revoked via
 `POST`/`DELETE /projects/{id}/groups/{group_id}/roles[/{role}]`. This is the
 group-level counterpart to `test_org_group_project_roles.py`'s
-`OrgGroupProjectRole` coverage (PR4), mirroring its shape closely, plus the
+`OrgGroupProjectRole` coverage, mirroring its shape closely, plus the
 migration backfill that converted every pre-existing group's old scalar
 `role` into exactly one grant row.
 
 This file used to cover `PATCH /projects/{id}/groups/{group_id}` (making a
-project group's role editable after creation, Phase 5) — that endpoint no
+project group's role editable after creation) — that endpoint no
 longer exists (there is no longer a single mutable `role` field to PATCH);
 its coverage is replaced by the grant/revoke tests below. The delete/
 member-removal C-U-08 guard tests and the engagement-cleanup regression
@@ -29,7 +29,7 @@ from tests.conftest import auth_headers, create_org_user, create_project, login
 
 
 def _create_group(client, token, project_id, name: str, role: str | None = None) -> dict:
-    """Creates a bare project group (PR7: `ProjectGroupCreate` no longer
+    """Creates a bare project group (`ProjectGroupCreate` no longer
     accepts a role at all), then optionally grants it one role via the new
     `POST .../groups/{group_id}/roles` endpoint — the two-call replacement
     for the old single `POST .../groups` with `role` in the payload."""
@@ -103,7 +103,7 @@ def _make_group_the_sole_manager(client, admin_token, org_id, project_id) -> dic
 
 
 def test_create_group_has_no_role_and_starts_with_empty_roles_list(client, admin_token, org_id):
-    """PR7: `POST .../groups` no longer accepts (or requires) a role — a
+    """`POST .../groups` no longer accepts (or requires) a role — a
     freshly created group starts with zero roles, symmetric with how a
     freshly created org group already has none."""
     project = create_project(client, admin_token, org_id)
@@ -284,10 +284,10 @@ def test_idempotent_grant_no_op_does_not_create_a_second_audit_event(client, adm
 
 
 def test_group_holding_two_roles_produces_two_provenance_entries_for_its_members(client, admin_token, org_id):
-    """The core PR7 behaviour: a group is no longer limited to one role.
+    """The core behaviour: a group is no longer limited to one role.
     Both grants must show up as two separate `direct_group` Source entries
     for the same member, not collapsed into one — the same "one line per
-    source" principle PR1 established for two *different* groups granting
+    source" principle established for two *different* groups granting
     the same role, applied here the other way round (one group granting two
     different roles)."""
     project = create_project(client, admin_token, org_id, "Two Roles One Group Project")
@@ -314,8 +314,8 @@ def test_group_holding_two_roles_produces_two_provenance_entries_for_its_members
 
 
 def test_two_different_groups_granting_the_same_role_still_produce_two_entries(client, admin_token, org_id):
-    """Regression check that PR7's join-through-the-grant-table rewrite of
-    the `direct_group` provenance branch didn't disturb PR1's existing
+    """Regression check that the join-through-the-grant-table rewrite of
+    the `direct_group` provenance branch didn't disturb the existing
     two-*different*-groups behaviour."""
     project = create_project(client, admin_token, org_id, "Two Groups Same Role Project")
     user_id = create_org_user(client, admin_token, org_id, "two-groups-same-role@example.com", role="member")
@@ -467,8 +467,8 @@ def test_grant_and_revoke_gated_at_manage_tier(client, admin_token, org_id):
 
 
 def test_removing_a_nested_org_group_member_cleans_up_its_users_favourites(client, admin_token, org_id):
-    """Pre-existing regression pin (PR4, docs/decisions.md), carried over
-    unchanged by PR7's group-creation shape update:
+    """Pre-existing regression pin (docs/decisions.md), carried over
+    unchanged by the group-creation shape update:
     `remove_project_group_member`'s engagement cleanup resolves a removed
     nested org group's real member set (direct + nested descendants) before
     deciding whether to clean up favourites/subscriptions."""
@@ -547,7 +547,7 @@ def test_revoking_a_role_cleans_up_the_left_behind_members_favourites(client, ad
     """New engagement-cleanup path this PR adds (`revoke_project_group_role`):
     revoking a group's role must clean up favourites/subscriptions for any
     member left with no remaining access, mirroring `revoke_group_project_
-    role`'s (PR4) equivalent per-member cleanup."""
+    role`'s equivalent per-member cleanup."""
     project = create_project(client, admin_token, org_id)
     member_id = create_org_user(client, admin_token, org_id, "revoke-role-cleanup@example.com", role="member")
     member_token = login(client, "revoke-role-cleanup@example.com", "Password123!")

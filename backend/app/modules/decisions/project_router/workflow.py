@@ -1,23 +1,21 @@
 """
 Module: modules.decisions.project_router.workflow
 
-Lifecycle transitions (Phase 2 service functions): propose/submit-for-
+Lifecycle transitions: propose/submit-for-
 review/approve/reject. `approve`/`reject` carry the AI-approval MCP gate
 (`require_ai_approvals_enabled`) added 2026-09-22 — see
 `approve_decision_endpoint`'s own docstring below. Also home for
 `_apply_value_error_as_conflict` (imported by `relationships.py`, the
-only other bucket that calls into a Phase 2/3 `service.py` function).
+only other bucket that calls into a lifecycle/relationship `service.py` function).
 See the package's own `__init__.py` docstring for the full router-split
 account.
 
-`approve`/`reject` were Fine-Grained Access Control Phase 4's second
-migration (`docs/plans/core-fine-grained-access-control-plan.md`) — the
-first live consumer of `require_permission` (Phase 2) as a FastAPI
-dependency, replacing the previous flat `require_module_role("decisions",
+`approve`/`reject` were the first live consumer of `require_permission` as a
+FastAPI dependency, replacing the previous flat `require_module_role("decisions",
 "decision_approver")` gate, checking the unscoped `(decision,
 approve_baseline)` permission atom.
 
-Phase 7 narrows this further to a **sub-type-scoped** check: `(decision,
+This is narrowed further to a **sub-type-scoped** check: `(decision,
 approve_baseline, subtype=<this decision's own Decision Type name>)`,
 via `_require_approve_permission_for_decision` below. Because the
 sub-type is per-instance data (the loaded `Decision` row's own
@@ -29,7 +27,7 @@ a leading `Depends`. A caller holding the flat, unscoped
 `decision_approver`/`(decision, approve_baseline)` grant is unaffected:
 `permission_satisfied`'s wildcard rule lets that unscoped grant satisfy
 any specific sub-type, so today's flat-approval behaviour is unchanged
-for every existing holder with zero configuration (Design Principle 1).
+for every existing holder with zero configuration (additive-only).
 `_require_view` still runs first (module-enabled/project-membership,
 404) via its own leading `Depends`, exactly as every sibling endpoint in
 this package already does.
@@ -71,7 +69,7 @@ def _require_approve_permission_for_decision(
 ) -> None:
     """Sub-type-scoped `(decision, approve_baseline, subtype=<this
     decision's own Decision Type name>)` check (Fine-Grained Access
-    Control Phase 7) — see this module's own docstring above for why this
+    Control) — see this module's own docstring above for why this
     is a direct `get_effective_permissions`/`permission_satisfied` call
     rather than a `require_permission` `Depends`. Server admin bypasses,
     consistent with every existing `require_*` check in `rbac.py`."""
@@ -119,10 +117,10 @@ def _get_decision_in_project_for_update(db: Session, project_id: UUID, decision_
 
 
 def _apply_value_error_as_conflict(fn, *args, **kwargs):
-    """Calls a Phase 2/3 `service.py` function, translating its `ValueError`
+    """Calls a `service.py` function, translating its `ValueError`
     (that layer's own "validation failed" convention) into an HTTP 409 —
     the translation every one of `service.py`'s own docstrings names as
-    "Phase 4's router" responsibility."""
+    the router's responsibility."""
     try:
         return fn(*args, **kwargs)
     except ValueError as exc:
@@ -166,7 +164,7 @@ def approve_decision_endpoint(
 ):
     """Formally approves a Decision (`UNDER_REVIEW` -> `APPROVED`) — gated
     by the `(decision, approve_baseline, subtype=<this decision's own
-    Decision Type>)` permission atom (Fine-Grained Access Control Phase 7
+    Decision Type>)` permission atom (Fine-Grained Access Control
     — see this module's own docstring). `_require_view` (module-enabled/
     project-membership, 404) is declared first so it is resolved before
     `_require_approve_permission_for_decision`'s 403, matching every
@@ -209,7 +207,7 @@ def reject_decision_endpoint(
     `reject_requirement`'s mandatory `decision_note`
     (`modules.compliance.project_router`): a rejection must never appear
     with no indication of why. Gated by the same sub-type-scoped
-    permission check as `approve` (Fine-Grained Access Control Phase 7) —
+    permission check as `approve` —
     see `approve_decision_endpoint`'s docstring above.
 
     No longer marked `APPROVAL_ACTION_ROUTE_EXTRA` (2026-09-22) — see

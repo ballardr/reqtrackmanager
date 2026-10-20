@@ -40,8 +40,7 @@ Responsibilities:
   gate can only *restrict* what an already-authorized human's account could
   do directly, never grant more. See docs/decisions.md's "AI approval via
   MCP" entry for the full reasoning.
-- Registers module-contributed tools declaratively (compliance-module-plan.md
-  Phase 4): a backend module (e.g. a future Compliance module) can declare
+- Registers module-contributed tools declaratively: a backend module (e.g. a future Compliance module) can declare
   its own tools, which this server discovers by fetching `GET /api/v1/
   system/modules/mcp-tools` (lazily, authenticated with whatever session's
   token is on hand, cached in-process) and registers as plain proxy calls
@@ -228,6 +227,24 @@ def _require_artefact_type(value: str, field_name: str = "artefact_type") -> str
         raise ValueError(f"'{field_name}' must be a lowercase artefact type such as 'requirement', got {value!r}.")
     return value
 
+# A record's own code (`REQ-001`, `SYS-PERF-014`); a clause reference such as `A.5.15` is not one.
+_RECORD_CODE = re.compile(r"[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d+")
+
+
+def _require_field_key(value: str) -> str:
+    """Validates a search field key (lowercase, underscores)."""
+    if not re.fullmatch(r"[a-z][a-z0-9_]{0,39}", value):
+        raise ValueError(f"search field keys look like 'description', got {value!r}.")
+    return value
+
+
+def _require_tag_mode(value: str) -> str:
+    """Validates a tag match mode."""
+    if value not in ("any", "all"):
+        raise ValueError(f"'tag_mode' must be 'any' or 'all', got {value!r}.")
+    return value
+
+
 def _default_scope() -> tuple[str | None, str | None]:
     """Reads this MCP connection's optional default-scope headers,
     `X-Default-Organization-Id`/`X-Default-Project-Id` — a convenience for a
@@ -326,7 +343,8 @@ async def _call_backend(
             caller's own account lacks access to the requested resource (403).
         LookupError: the backend returned 404 for the requested resource.
         ValueError: the backend rejected the request as invalid or
-            conflicting with the resource's current state (400/409/422) —
+            conflicting with the resource's current state (400/409/422), or a
+            search that ran too long (408) or sent too fast (429) —
             e.g. an unknown component_id, or editing a locked requirement.
         RuntimeError: any other non-2xx backend response, or a network-level
             failure reaching the backend at all.
@@ -369,7 +387,7 @@ async def _call_backend(
         )
     if response.status_code == 404:
         raise LookupError("The requested resource does not exist, or you don't have access to it.")
-    if response.status_code in (400, 409, 422):
+    if response.status_code in (400, 408, 409, 422, 429):
         raise ValueError(f"ReqTrackManager rejected this request ({response.status_code}): {_detail(response)}")
     if response.is_error:
         raise RuntimeError(f"ReqTrackManager returned an unexpected error ({response.status_code}): {_detail(response)}")
@@ -424,10 +442,37 @@ async def get_project(project_id: str | None = None) -> dict:
         project_id: The project's UUID (from `list_projects`).
 
     Returns:
-        The project's `id`, `organization_id`, `name`, `summary`, and status flags.
+        The project's `id`, `organization_id`, `name`, `code`, `summary`, and status flags.
     """
     pid = _require_project_id(project_id)
     response = await _call_backend("GET", f"/api/v1/projects/{pid}")
+    return response.json()
+
+
+@mcp.tool
+async def get_record_by_code(qualified_code: str, organization_id: str | None = None) -> dict:
+    """Finds the record a qualified code names, such as `ACME-REQ-001`.
+
+    A qualified code is the project's `code` (from `list_projects` / `get_project`), a hyphen,
+    then the record's own code. A record the organisation itself owns (a shared Persona,
+    Stakeholder, Stakeholder Group, Strategy, Future State or Guiding Principle) is qualified
+    by the organisation's code instead (`ACME-PER-001`). Use it when a person quotes a code and you need the record's
+    type, id and project; then call the tool for that type with the returned `id`.
+
+    Args:
+        qualified_code: The code, in any case, e.g. "ACME-REQ-001".
+        organization_id: The organisation to search (from `list_organizations`).
+
+    Returns:
+        `artefact_type` (e.g. "requirement", "requirement_action", "decision"), `id`,
+        `project_id` (null for an organisation-owned record), `qualified_code` and `label`. A code naming no record you may see is an
+        error, the same as one that does not exist.
+    """
+    oid = _require_organization_id(organization_id)
+    code = qualified_code.strip()
+    if not code or "/" in code:
+        raise ValueError("qualified_code must look like PROJECT-REQ-001.")
+    response = await _call_backend("GET", f"/api/v1/orgs/{oid}/records/by-code/{code}")
     return response.json()
 
 
@@ -465,8 +510,8 @@ async def list_custom_roles(organization_id: str | None = None) -> list[dict]:
     set) only, never who currently holds it.
 
     Deliberately excludes grant-roster visibility (which users/groups hold
-    a role) — per `docs/plans/core-fine-grained-access-control-plan.md`'s
-    own MCP-tools addendum, an access-control privilege map (who holds
+    a role) —
+    an access-control privilege map (who holds
     elevated permissions) is a real reconnaissance-value disclosure this
     server's read tools otherwise never expose, unlike a role/standard/
     decision-type *definition*. There is no tool to list or query grants.
@@ -515,6 +560,8 @@ async def list_requirements(
     component_id: str | None = None,
     category_id: str | None = None,
     include_archived: bool = False,
+    tags: list[str] | None = None,
+    tag_mode: str = "any",
 ) -> list[dict]:
     """Lists requirements in a project, with the same filters the Requirements page's filter panel offers.
 
@@ -525,10 +572,14 @@ async def list_requirements(
         search: Optional case-insensitive substring match against a
             requirement's name or its unique code (e.g. "SW-PERF-014") —
             use this to find a specific requirement by code.
-        keyword: Optional exact match against a requirement's assigned keywords.
+        keyword: Optional match against one of a requirement's tags (its keywords).
         component_id: Optional UUID to filter to one component.
         category_id: Optional UUID to filter to one category.
         include_archived: Whether to include archived requirements (excluded by default).
+        tags: Optional tag names; only requirements carrying them are listed
+            (case-insensitive). `tag_mode` "any" (default) needs one of them,
+            "all" needs every one.
+        tag_mode: "any" or "all".
 
     Returns:
         A list of requirements, each including `id`, `unique_code`, `name`,
@@ -539,11 +590,13 @@ async def list_requirements(
     pid = _require_project_id(project_id)
     comp = _require_uuid(component_id, "component_id") if component_id else None
     cat = _require_uuid(category_id, "category_id") if category_id else None
+    _require_tag_mode(tag_mode)
     response = await _call_backend(
         "GET", f"/api/v1/projects/{pid}/requirements",
         params={
             "status": status, "search": search, "keyword": keyword,
             "component_id": comp, "category_id": cat, "include_archived": include_archived,
+            "tag": tags or None, "tag_mode": tag_mode,
         },
     )
     return response.json()
@@ -831,6 +884,154 @@ async def list_link_candidate_projects(project_id: str | None = None) -> dict:
     pid = _require_project_id(project_id)
     response = await _call_backend("GET", f"/api/v1/projects/{pid}/link-candidate-projects")
     return response.json()
+
+
+@mcp.tool
+async def list_tags(project_id: str | None = None) -> dict:
+    """Lists the tags a project offers and how new tags are treated.
+
+    Args:
+        project_id: The project's UUID (from `list_projects`).
+
+    Returns:
+        `mode` ("free": anyone who may tag a record can coin a tag;
+        "restricted": only listed tags can be applied), `inherited` (true when
+        the list belongs to a parent project, which then manages it) and
+        `tags`, each with `id`, `name`, `colour`, `usage_count`.
+    """
+    pid = _require_project_id(project_id)
+    response = await _call_backend("GET", f"/api/v1/projects/{pid}/tags")
+    return response.json()
+
+
+@mcp.tool
+async def get_artefact_tags(project_id: str | None = None, *, artefact_type: str, artefact_id: str) -> dict:
+    """Gets the tags on one record of any type.
+
+    Args:
+        project_id: The project's UUID (from `list_projects`).
+        artefact_type: The record's type, for example "requirement", "decision",
+            "pain_point" or "persona".
+        artefact_id: The record's UUID (from the matching list tool).
+
+    Returns:
+        `tags` (each `id`, `name`, `colour`), `can_edit` (whether the caller may
+        change them), `restricted` (only listed tags can be applied) and
+        `suggestions` (the tags to choose from).
+    """
+    pid = _require_project_id(project_id)
+    aid = _require_uuid(artefact_id, "artefact_id")
+    _require_artefact_type(artefact_type)
+    response = await _call_backend("GET", f"/api/v1/projects/{pid}/artefacts/{artefact_type}/{aid}/tags")
+    return response.json()
+
+
+@mcp.tool
+async def find_artefacts_by_tag(
+    project_id: str | None = None,
+    *,
+    tags: list[str],
+    tag_mode: str = "any",
+    artefact_type: str | None = None,
+) -> dict:
+    """Finds records of every type that carry some tags: "what is tagged `safety`?" without listing each type.
+
+    Args:
+        project_id: The project's UUID (from `list_projects`).
+        tags: One or more tag names (case-insensitive).
+        tag_mode: "any" (default) needs one of the tags, "all" needs every one.
+        artefact_type: Optional: only this record type.
+
+    Returns:
+        `records` (each `artefact_type`, `type_label`, `id`, `label`, `status`,
+        `is_archived`) and `truncated` (more matched than were returned). Records
+        the caller cannot open are left out, so absence is not proof a record
+        is untagged.
+    """
+    pid = _require_project_id(project_id)
+    _require_tag_mode(tag_mode)
+    if not tags:
+        raise ValueError("'tags' needs at least one tag name.")
+    if artefact_type is not None:
+        _require_artefact_type(artefact_type)
+    response = await _call_backend(
+        "GET", f"/api/v1/projects/{pid}/tags/records",
+        params={"tag": tags, "tag_mode": tag_mode, "artefact_type": artefact_type},
+    )
+    return response.json()
+
+
+@mcp.tool
+async def search_records(
+    query: str,
+    scope: str = "all",
+    project_id: str | None = None,
+    organization_ids: list[str] | None = None,
+    types: list[str] | None = None,
+    fields: list[str] | None = None,
+    match: str = "contains",
+    include_archived: bool = False,
+    include_organization_records: bool | None = None,
+    limit: int = 25,
+) -> dict:
+    """Finds records of every type by text, without listing each type: "what mentions the brake pedal?".
+
+    Searches the code (`ID`), `Title` and `Tags` of every record you may open, plus any other fields you
+    name. Records and projects you cannot open are left out, so a missing record is not proof it does not exist.
+
+    Args:
+        query: The text, at least 2 characters. With `match` "contains" (default) every word must match,
+            in any order; "phrase" needs the exact phrase.
+        scope: "all" (every project you can open, default), "project" (one project: pass `project_id` or
+            use the connection's default project), or a unit a module offers, written
+            `<module key>:<scope key>:<id>` (a Compliance standard is `compliance:standard:<standard id>`).
+        project_id: The project for scope "project" (from `list_projects`).
+        organization_ids: Only these organisations' projects (from `list_organizations`).
+        types: Only these record types, e.g. ["requirement", "risk"]; "project" finds projects by name or code.
+        fields: Field keys to match, e.g. ["id", "title", "tags", "description"]. Omit to use the user's
+            own default (ID, Title and Tags unless they changed it). Unknown keys are ignored; the response
+            echoes the keys it used in `fields_used`. "comments" searches discussion on every record: it is
+            slower, never a default, so add it only when the text is likely in a comment.
+        match: "contains" or "phrase".
+        include_archived: Include archived and retired records (default false).
+        include_organization_records: For scope "project": also search the organisation's own records (a shared
+            Strategy). Omit to use the person's preference (on by default).
+        limit: At most this many hits (1 to 50, default 25). Only the first 500 matches can be reached.
+
+    Returns:
+        `hits` (each `type`, `type_label`, `id`, `code`, `qualified_code`, `title`, `status_label`,
+        `is_archived`, `project_id`, `project_name`, `open_type`/`open_id`/`open_project_id` for the record
+        whose page opens, and a `snippet` of the first matching non-title field), `total` (capped at 500, with
+        `total_capped`), `type_counts` and `not_searched` (types that declare none of the fields asked for).
+        Use `qualified_code` to quote a record and the matching `get_*` tool with `id` to read it.
+    """
+    text = " ".join(query.split())
+    if len(text) < 2 or len(text) > 200:
+        raise ValueError("'query' must be between 2 and 200 characters.")
+    if match not in ("contains", "phrase"):
+        raise ValueError(f"'match' must be 'contains' or 'phrase', got {match!r}.")
+    if not 1 <= limit <= 50:
+        raise ValueError("'limit' must be between 1 and 50.")
+    if scope not in ("all", "project") and not re.fullmatch(r"[a-z][a-z0-9_]*:[a-z][a-z0-9_]*:[0-9a-fA-F-]{36}", scope):
+        raise ValueError("'scope' must be 'all', 'project' or '<module key>:<scope key>:<id>'.")
+    body: dict = {"q": text, "scope": scope, "match": match, "include_archived": include_archived, "limit": limit}
+    if include_organization_records is not None:
+        body["include_organization_records"] = include_organization_records
+    if scope == "project":
+        body["project_id"] = _require_project_id(project_id)
+    if organization_ids:
+        body["organization_ids"] = [_require_uuid(o, "organization_ids") for o in organization_ids]
+    if types:
+        body["types"] = [_require_artefact_type(t, "types") for t in types]
+    if fields:
+        body["fields"] = [_require_field_key(f) for f in fields]
+    response = await _call_backend("POST", "/api/v1/search", json=body)
+    result = response.json()
+    for hit in result.get("hits", []):
+        owner = hit.get("project_code") or hit.get("organization_code")
+        code = hit.get("code", "")
+        hit["qualified_code"] = f"{owner}-{code}" if owner and _RECORD_CODE.fullmatch(code) else code
+    return result
 
 
 @mcp.tool
@@ -1159,7 +1360,7 @@ if MCP_WRITES_ENABLED:
                 "project_group", "id": uuid}`); omit to leave unchanged.
             target_stage_id: Retarget which project stage this requirement is for; omit to leave unchanged.
             level: "requirement", "recommended", or "optional"; omit to leave unchanged.
-            keywords: Replaces the full keyword set if given; omit to leave the current keywords unchanged.
+            keywords: Replaces the requirement's tags (its keywords) if given; omit to leave them unchanged.
             custom_fields: Replaces the full custom field value map if given; omit to leave unchanged.
             review_date / review_lead_days / reviewer: Review scheduling fields (`reviewer` is a
                 principal, same shape as `owner`); omit any you're not changing.
@@ -1185,7 +1386,6 @@ if MCP_WRITES_ENABLED:
                 _require_uuid(target_stage_id, "target_stage_id") if target_stage_id else current["target_stage_id"]
             ),
             "level": level if level is not None else current["level"],
-            "keywords": keywords if keywords is not None else current["keywords"],
             "custom_fields": custom_fields if custom_fields is not None else current["custom_fields"],
             "change_note": change_note,
             "review_date": review_date if review_date is not None else current["review_date"],
@@ -1196,6 +1396,9 @@ if MCP_WRITES_ENABLED:
             # transition, by construction, regardless of what the caller's
             # account could do directly via the API.
         }
+        if keywords is not None:
+            # Omitted leaves the tags alone; a stale copy of them sent back would remove tags added since the read.
+            body["keywords"] = keywords
         response = await _call_backend("PUT", f"/api/v1/projects/{pid}/requirements/{rid}", json=body)
         return response.json()
 
@@ -1393,8 +1596,95 @@ if MCP_WRITES_ENABLED:
         await _call_backend("DELETE", f"/api/v1/projects/{pid}/artefacts/{artefact_type}/{aid}/links/{lid}")
         return {"deleted": True, "link_id": lid}
 
+    @mcp.tool
+    async def set_artefact_tags(
+        project_id: str | None = None,
+        *,
+        artefact_type: str,
+        artefact_id: str,
+        tags: list[str],
+    ) -> dict:
+        """Makes a record carry exactly these tags, adding and removing as needed.
 
-# --- Module-contributed tools (compliance-module-plan.md Phase 4) ----------
+        Read `get_artefact_tags` first and send the full wanted list: a tag
+        left out is removed. A project in "restricted" mode accepts only tags
+        on its list (`list_tags`); a refused name is a rule, not a glitch, so
+        report it rather than retrying with another spelling. Tags are not
+        record content, so this works on an approved requirement.
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            artefact_type: The record's type, for example "requirement".
+            artefact_id: The record's UUID.
+            tags: The wanted tag names (up to 50; names are case-insensitive, at
+                most 40 characters, with no commas or semicolons).
+
+        Returns:
+            The record's tags as `get_artefact_tags` returns them.
+        """
+        pid = _require_project_id(project_id)
+        aid = _require_uuid(artefact_id, "artefact_id")
+        _require_artefact_type(artefact_type)
+        response = await _call_backend(
+            "PUT", f"/api/v1/projects/{pid}/artefacts/{artefact_type}/{aid}/tags", json={"tags": tags}
+        )
+        return response.json()
+
+    @mcp.tool
+    async def add_artefact_tag(
+        project_id: str | None = None,
+        *,
+        artefact_type: str,
+        artefact_id: str,
+        tag: str,
+    ) -> dict:
+        """Adds one tag to a record, keeping its others (see `set_artefact_tags` for the rules).
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            artefact_type: The record's type, for example "requirement".
+            artefact_id: The record's UUID.
+            tag: The tag name.
+
+        Returns:
+            The record's tags as `get_artefact_tags` returns them.
+        """
+        pid = _require_project_id(project_id)
+        aid = _require_uuid(artefact_id, "artefact_id")
+        _require_artefact_type(artefact_type)
+        response = await _call_backend(
+            "POST", f"/api/v1/projects/{pid}/artefacts/{artefact_type}/{aid}/tags", json={"name": tag}
+        )
+        return response.json()
+
+    @mcp.tool
+    async def remove_artefact_tag(
+        project_id: str | None = None,
+        *,
+        artefact_type: str,
+        artefact_id: str,
+        tag_id: str,
+    ) -> dict:
+        """Removes one tag from a record. The tag stays in the project's list.
+
+        Args:
+            project_id: The project's UUID (from `list_projects`).
+            artefact_type: The record's type, for example "requirement".
+            artefact_id: The record's UUID.
+            tag_id: The tag's UUID (from `get_artefact_tags`).
+
+        Returns:
+            The record's remaining tags as `get_artefact_tags` returns them.
+        """
+        pid = _require_project_id(project_id)
+        aid = _require_uuid(artefact_id, "artefact_id")
+        _require_artefact_type(artefact_type)
+        tid = _require_uuid(tag_id, "tag_id")
+        response = await _call_backend("DELETE", f"/api/v1/projects/{pid}/artefacts/{artefact_type}/{aid}/tags/{tid}")
+        return response.json()
+
+
+# --- Module-contributed tools ----------
 #
 # A module (e.g. a future Compliance module) can declare its own MCP tools
 # declaratively — see docs/modules.md's "Module-contributed MCP tools"
@@ -2079,4 +2369,10 @@ async def health_check(request: Request) -> PlainTextResponse:
 
 
 if __name__ == "__main__":
-    mcp.run(transport="http", host="0.0.0.0", port=8100)
+    # IPv4 and IPv6 are both served. Handing uvicorn the host alone is not
+    # enough: asyncio binds `::` IPv6-only, so a socket is bound up front the
+    # way uvicorn's own CLI does (dual-stack on Linux) and passed in.
+    import uvicorn
+
+    _listen_socket = uvicorn.Config(app=None, host="::", port=8100).bind_socket()
+    mcp.run(transport="http", host="::", port=8100, sockets=[_listen_socket])

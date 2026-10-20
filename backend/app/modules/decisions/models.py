@@ -1,14 +1,12 @@
 """
 Module: modules.decisions.models
 
-Decision Management's data model (docs/plans/module-04-decision-
-management-plan.md Phase 1):
+Decision Management's data model:
 
 - `DecisionTypeDefinition` — project-scoped, extensible vocabulary (e.g.
   Architecture, Design, Engineering, Strategy, Operational), exact shape of
   `app.models.action_type.ActionTypeDefinition` (id, project_id, name,
-  sort_order — no `is_enabled` flag; see this module's own docstring in
-  docs/plans/module-04-decision-management-plan.md's Phase 0 addendum for
+  sort_order — no `is_enabled` flag; see this module's own docstring for
   why). Seeded per-project by `service.seed_decision_types`.
 - `DecisionTemplateDefinition` — org-scoped, per-field guidance-text
   preset (e.g. the seeded Nygard/MADR/Y-Statement ADR packs, or an org's
@@ -18,8 +16,8 @@ management-plan.md Phase 1):
   template is a creation-time convenience that pre-fills fields, not a
   persistent relationship, so deleting one is always a plain delete with
   no reassignment machinery.
-- `Decision` — the record itself (source overview §13/10.3's field list).
-  `unique_code` uses Module 0's generic `services.sequences.
+- `Decision` — the record itself (§13/10.3's field list).
+  `unique_code` uses the platform's generic `services.sequences.
   generate_unique_code` with this module's own `"decision"` artefact-type
   string (`ModuleDefinition.artefact_types`, `module.py`), not a
   hand-edited core enum member — see `app.models.sequence.
@@ -71,8 +69,8 @@ class DecisionTypeDefinition(UUIDPKMixin, TimestampMixin, Base):
 
 class DecisionTemplateDefinition(UUIDPKMixin, TimestampMixin, Base):
     """An org-managed Decision Template — per-field guidance/placeholder
-    text applied to a new Decision's free-text fields at creation time
-    (Phase 5), not a persistent relationship (see module docstring).
+    text applied to a new Decision's free-text fields at creation time,
+not a persistent relationship (see module docstring).
 
     Attributes:
         organization_id: The owning organisation.
@@ -111,7 +109,7 @@ class DecisionTemplateDefinition(UUIDPKMixin, TimestampMixin, Base):
 
 
 class Decision(UUIDPKMixin, TimestampMixin, Base):
-    """A formally recorded decision (source overview §13/10.3).
+    """A formally recorded decision (§13/10.3).
 
     Attributes:
         project_id: The owning project.
@@ -131,7 +129,7 @@ class Decision(UUIDPKMixin, TimestampMixin, Base):
             `decision_approver` module role (`module.py`), which controls
             *who may* approve any decision in the project — this column
             records who *did* (or will), the placeholder-role resolution
-            from Phase 0 addendum Q2/2a doesn't remove the value of
+            doesn't remove the value of
             recording an actual named decision-maker per Decision.
         owner_type / owner_id: Mandatory principal that maintains the
             record (a team can own a Decision); distinct from the decision
@@ -140,7 +138,7 @@ class Decision(UUIDPKMixin, TimestampMixin, Base):
             `module.py`'s `principal_references` guard group deletion.
         context / options_considered / chosen_option / rationale /
             consequences / assumptions / constraints: Free-text fields
-            (source overview §13/10.3; rationale and consequences are
+            (§13/10.3; rationale and consequences are
             explicitly separate fields per that section, not folded into
             a single description).
         creator_id: Who created this record.

@@ -5,9 +5,11 @@
  * backend (I-A-01: loosely coupled).
  */
 
+import type { ProjectScopedRow } from "./projectScope";
+
 export type ProjectRole = "project_manager" | "project_administrator" | "stakeholder" | "member";
 export type OrgRole = "org_admin" | "project_creator" | "member";
-// Module system (compliance-module-plan.md Phase 0). `server_admin` mirrors
+// Module system. `server_admin` mirrors
 // `User.is_server_admin` for display purposes only — see `ServerRole`'s
 // backend docstring — it is never granted/revoked through the
 // `/server-roles` endpoints this type also describes, only through the
@@ -46,7 +48,7 @@ export const REQUIREMENT_LEVEL_LABEL: Record<RequirementLevel, string> = {
   recommended: "Recommended",
   optional: "Optional",
 };
-/** Platform review 2026-09, Phase 8 added `remove_action` (closing the
+/** `remove_action` (closing the
  * asymmetry `unlink_action` had with `add_action`'s already-gated add
  * side) and `add_link`/`remove_link` (an opt-in sibling gate for
  * `RequirementLink`, see `Project.require_change_request_for_approved_links`
@@ -74,7 +76,7 @@ export const REQUIREMENT_ACTION_OUTCOME_LABEL: Record<RequirementActionOutcome, 
   failed: "Failed",
 };
 
-// Platform review 2026-09, Phase 4 (status colour). A `BadgeTone` is one of
+// Status colour. A `BadgeTone` is one of
 // only 5 values, each backed by a `.badge--<tone>` CSS modifier
 // (styles/theme.css) — muted = not yet actionable (draft/withdrawn/
 // archived), info = awaiting a decision (in review/pending — deliberately
@@ -82,7 +84,7 @@ export const REQUIREMENT_ACTION_OUTCOME_LABEL: Record<RequirementActionOutcome, 
 // attention, not routine in-progress states), accent = a positive
 // terminal outcome (approved/completed), danger = a negative terminal
 // outcome (rejected/failed), warning = needs attention (used by scoring
-// rating bands, e.g. a "High" pain point — Module 1 Phase 10; the backend's
+// rating bands, e.g. a "High" pain point; the backend's
 // `SCORING_BAND_TONES` mirrors this set). Every status/outcome enum rendered as a
 // badge should have a *_TONE map here alongside its *_LABEL map, never an
 // inline colour at the call site.
@@ -101,7 +103,7 @@ export const CHANGE_REQUEST_STATUS_TONE: Record<ChangeRequestStatus, BadgeTone> 
   rejected: "danger",
   withdrawn: "muted",
 };
-/** What became of a link proposed on a change request (Platform Enhancements Phase 6b). */
+/** What became of a link proposed on a change request */
 export type ProposedLinkOutcome = "pending" | "merged" | "declined" | "skipped";
 export const PROPOSED_LINK_OUTCOME_LABEL: Record<ProposedLinkOutcome, string> = {
   pending: "Pending",
@@ -121,7 +123,7 @@ export const REQUIREMENT_ACTION_OUTCOME_TONE: Record<RequirementActionOutcome, B
   failed: "danger",
 };
 
-// Entity-type accent (Phase 4, item 2) — a left-border stripe/box-shadow
+// Entity-type accent — a left-border stripe/box-shadow
 // (`.entity-accent-row`/`.entity-accent-card`, styles/theme.css) applied
 // consistently wherever these kinds appear as a list row or card, so a
 // user scanning a mixed list (e.g. a requirement's own Links card, which
@@ -147,7 +149,7 @@ export const ENTITY_ACCENT_COLOR: Record<EntityAccentKind, string> = {
   action: "var(--color-entity-action)",
   change_request: "var(--color-entity-change-request)",
 };
-// Compliance module enums/label maps (Phase 5/6/12) live in this module's
+// Compliance module enums/label maps live in this module's
 // own `frontend/src/modules/compliance/types.ts`, not here — see that
 // file's own docstring for why a module's enum is that module's own display
 // concern rather than a core one, mirroring the backend's identical
@@ -178,7 +180,7 @@ export const SERVER_ROLE_LABEL: Record<ServerRole, string> = {
  * Collapses a user's held `ProjectRole` set down to the precedence style
  * guide "Pattern: role display — effective highest role only" defines, for
  * compact summary contexts (a list row, a header badge) — see
- * docs/ux-style-guide.md and docs/ux-audit-2026-08.md's "Project role
+ * docs/ux-style-guide.md and "Project role
  * display" finding. `project_manager` is the sole top tier: if held, it
  * alone is shown. Otherwise `project_administrator` and `stakeholder` are a
  * shared, mutually-equal second tier — both are shown if both are held,
@@ -233,6 +235,9 @@ export const ENTITY_TYPE_LABEL: Record<string, string> = {
   action_type_definition: "Action type",
   requirement_action: "Action",
   requirement_action_link: "Action link",
+  artefact_link: "Link",
+  tag: "Tag",
+  tag_settings: "Tag settings",
 };
 
 function capitalize(value: string): string {
@@ -278,6 +283,13 @@ const ACTIVITY_ACTION_LABEL: Record<string, string> = {
   terminology_updated: "updated terminology",
   report_config_updated: "updated the report configuration",
   comment_added: "commented on",
+  comment_edited: "edited a comment on",
+  comment_file_attached: "attached a file to a comment on",
+  comment_file_removed: "removed a file from a comment on",
+  moved: "reordered",
+  review_response_submitted: "responded to the review",
+  merged: "merged",
+  reclassified: "reclassified",
 };
 
 export function activityActionLabel(action: string): string {
@@ -373,9 +385,46 @@ export interface TwoFactorChallenge {
   challenge_token: string;
 }
 
+/** How an organisation's project codes are formed (`code_rules.CodePolicy` on the backend). */
+export type ProjectCodeKind = "letters" | "digits" | "alphanumeric";
+export type ProjectCodeAssignment = "auto" | "manual";
+
+export interface ProjectCodePolicy {
+  kind: ProjectCodeKind;
+  min_length: number;
+  max_length: number;
+  assignment: ProjectCodeAssignment;
+}
+
+export const PROJECT_CODE_KIND_LABEL: Record<ProjectCodeKind, string> = {
+  letters: "Letters only",
+  digits: "Digits only",
+  alphanumeric: "Letters and digits",
+};
+
+export const PROJECT_CODE_ASSIGNMENT_LABEL: Record<ProjectCodeAssignment, string> = {
+  auto: "Assigned automatically",
+  manual: "Chosen by the project's creator",
+};
+
+/** A record found by its qualified code (`GET /orgs/{id}/records/by-code/{code}`). */
+export interface CodedRecord {
+  artefact_type: string;
+  id: string;
+  project_id: string;
+  qualified_code: string;
+  label: string;
+}
+
 export interface Organization {
   id: string;
   name: string;
+  // Short code that qualifies organisation-scoped record codes (`ACME-PER-001`).
+  code: string;
+  // How project codes are formed, and whether a record code always shows its project
+  // code. Readable by every member: the project form and the display rule need them.
+  project_code_policy: ProjectCodePolicy;
+  enforce_code_everywhere: boolean;
   created_at: string;
   logo_file_id: string | null;
   default_template_project_id: string | null;
@@ -388,7 +437,7 @@ export interface Organization {
   email_footer_company_name: string | null;
   email_footer_website: string | null;
   email_footer_address: string | null;
-  // Platform review 2026-09, Phase 8 — unlike most other org policy
+  // Unlike most other org policy
   // toggles (behind `OrgAdvancedSettings`/`ORG_ADMIN`), readable by any
   // org member here: a project manager who isn't an org admin still needs
   // to know whether this force is active to render their own project's
@@ -406,7 +455,7 @@ export interface OrgImportResult {
   warnings: string[];
 }
 
-// Module 4 (Decision Management) Phase 1 — a module's optional org-creation
+// A module's optional org-creation
 // seeding choice (`app.modules.registry.OrgCreationChoiceOption`), listed
 // generically by `GET /orgs/creation-choices` so this page never hardcodes
 // a specific module's own choices.
@@ -480,7 +529,7 @@ export interface FileAsset {
  * `action_title` are set for "action_attachment" rows (an action may be
  * linked to zero, one, or several requirements, so it has no single owning
  * requirement to attribute the file to). See backend `ProjectFileOut`. */
-export interface ProjectFile {
+export interface ProjectFile extends ProjectScopedRow {
   file: FileAsset;
   uploaded_by_display_name: string;
   source: "requirement_attachment" | "action_attachment" | "comment_attachment";
@@ -493,8 +542,7 @@ export interface ProjectFile {
   comment_id: string | null;
 }
 
-/** One available module-contributed role (module system Phase 2,
- * `GET /orgs/{id}/module-roles` / `GET /projects/{id}/module-roles`) —
+/** One available module-contributed role (`GET /orgs/{id}/module-roles` / `GET /projects/{id}/module-roles`) —
  * only roles of a currently effectively-enabled module are ever returned,
  * so a role belonging to a disabled/non-entitled module simply isn't in
  * this list. `name`/`description` are data returned by the API (set
@@ -521,7 +569,7 @@ export interface ModuleRoleGrant {
 }
 
 /** The four-tier permission-atom taxonomy (Fine-Grained Access Control,
- * `docs/plans/core-fine-grained-access-control-plan.md` Phase 0 Q1) —
+ *) —
  * mirrors `app.models.enums.PermissionLevel`'s wire values exactly. `view`
  * is its own independent atom (a role can hold it alone, a pure read-only
  * grant) rather than being implied by every write tier. */
@@ -540,7 +588,7 @@ export const PERMISSION_LEVEL_LABEL: Record<PermissionLevel, string> = {
 export const ALL_ARTEFACT_TYPES = "*";
 
 /** One permission atom in an organisation's currently-valid vocabulary
- * (Fine-Grained Access Control Phase 3, `GET /orgs/{id}/permissions`) —
+ * (Fine-Grained Access Control, `GET /orgs/{id}/permissions`) —
  * mirrors `PermissionOut` exactly. Either an artefact-type/level/sub-type
  * atom (`artefact_type`/`level` set, `subtype` set or `null` for the
  * wildcard) or a bare administrative permission (`artefact_type`/`level`/
@@ -568,13 +616,13 @@ export interface CustomRolePreset {
 }
 
 /** An organisation-defined `CustomRoleDefinition` (Fine-Grained Access
- * Control Phase 3) — a named, additive role composed from a set of
+ * Control) — a named, additive role composed from a set of
  * `Permission.key` strings, grantable to a user or org group exactly like
  * a fixed `OrgRole`/`ProjectRole` or a module-contributed role. `scope`
  * determines whether a grant of this role needs a `project_id`
  * (`"project"`), a `scope_entity_id` (any other value — a registered
- * module-owned entity scope key from `GET /orgs/{id}/entity-scopes`, Phase
- * 5, e.g. `"standard"`), or neither (`"org"`) — mirrors `ModuleRoleDefinition.
+ * module-owned entity scope key from `GET /orgs/{id}/entity-scopes`,
+ * e.g. `"standard"`), or neither (`"org"`) — mirrors `ModuleRoleDefinition.
  * scope`'s own trichotomy. Deliberately `string`, not a literal union: the
  * set of valid non-`"org"`/`"project"` values is server-derived and grows
  * as modules register their own entity scopes, the same reason `Permission.
@@ -591,7 +639,7 @@ export interface CustomRoleDefinition {
 }
 
 /** Body for `POST /orgs/{id}/custom-roles` / `PATCH .../custom-roles/{id}`
- * — `ORG_ADMIN`-only, never delegable (Phase 0 Q5). `CustomRoleDefinitionUpdate`
+ * — `ORG_ADMIN`-only, never delegable. `CustomRoleDefinitionUpdate`
  * is a genuine partial update: an omitted field leaves it unchanged, and
  * `permissions` (when given) replaces the role's entire permission set
  * rather than merging with it — there is no separate add/remove-one
@@ -623,7 +671,7 @@ export interface CustomRoleGrant {
 }
 
 /** Body for granting/revoking a `CustomRoleDefinition` to/from a user or
- * org group (Fine-Grained Access Control Phase 3/5) — mirrors the backend
+ * org group — mirrors the backend
  * `CustomRoleGrantTarget` schema. Exactly one of `project_id`/
  * `scope_entity_id` is required, matching whichever scope the target role
  * declares (`"project"` or a registered entity scope respectively); neither
@@ -633,8 +681,7 @@ export interface CustomRoleGrantTarget {
   scope_entity_id?: string | null;
 }
 
-/** One entity of a registered module-owned entity scope (Fine-Grained
- * Access Control (core) plan Phase 5), as listed for a specific
+/** One entity of a registered module-owned entity scope as listed for a specific
  * organisation. */
 export interface EntityScopeEntity {
   id: string;
@@ -642,7 +689,7 @@ export interface EntityScopeEntity {
 }
 
 /** One registered module-owned entity scope (`GET /orgs/{id}/entity-scopes`)
- * — the generalised form of the project picker Phase 3 already built for
+ * — the generalised form of the project picker built for
  * project-scoped custom-role grants: the Role Management page's scope
  * dropdown and entity picker render these generically, never hardcoding a
  * specific module's scope kind (e.g. compliance's `"standard"`), mirroring
@@ -665,11 +712,11 @@ export interface OrgUser {
   last_login_at: string | null;
   is_2fa_enabled: boolean;
   /** This user's org-scoped module-contributed role grants, filtered to
-   * currently-enabled modules only (module system Phase 2) — a grant for
+   * currently-enabled modules only — a grant for
    * a since-disabled module is simply omitted, not a sign it was revoked. */
   module_roles: ModuleRoleGrant[];
   /** This user's org-scoped `CustomRoleDefinition` grants (Fine-Grained
-   * Access Control Phase 3) — see `CustomRoleGrant`'s own docstring for
+   * Access Control) — see `CustomRoleGrant`'s own docstring for
    * why this is org-scoped only. */
   custom_roles: CustomRoleGrant[];
 }
@@ -699,7 +746,7 @@ export type AssignByEmailOutcome = "added" | "invited" | "sso_provisioned";
 
 /** A project's outstanding (not-yet-accepted) `PendingInvite` — see
  * `PendingInviteOut`'s docstring in the backend schema. Standard
- * (non-SSO) invite flow only (Phase 3, docs/decisions.md); `status` is
+ * (non-SSO) invite flow only (docs/decisions.md); `status` is
  * computed server-side from `expires_at`, not stored. */
 export type PendingInviteStatus = "pending" | "expired";
 export const PENDING_INVITE_STATUS_LABEL: Record<PendingInviteStatus, string> = {
@@ -718,8 +765,7 @@ export interface PendingInvite {
 
 /** An organisation's outstanding (not-yet-accepted) org-only `PendingInvite`
  * — see `OrgPendingInviteOut`'s docstring in the backend schema. The
- * org-level counterpart to `PendingInvite` above (Phase A, follow-up UX
- * batch): `GET /orgs/{id}/pending-invites` only ever returns `project_id
+ * org-level counterpart to `PendingInvite` above : `GET /orgs/{id}/pending-invites` only ever returns `project_id
  * IS NULL` rows, and unlike the project-level shape this carries
  * `invited_by_display_name` (surfaced in Org Admin's merged Users table). */
 export interface OrgPendingInvite {
@@ -756,7 +802,7 @@ export interface OrgGroup {
   idp_synced_group_name: string | null;
   /** Only meaningful alongside `idp_synced_group_name` — a user whose IdP
    * groups/roles claim matches it is granted this `OrgRole` at SSO login
-   * (2026-08 UX audit roadmap item 522). */
+   *. */
   granted_org_role: OrgRole | null;
 }
 
@@ -784,13 +830,15 @@ export interface Project {
   id: string;
   organization_id: string;
   name: string;
+  // Short upper-case code that qualifies this project's record codes (`ACME-REQ-001`).
+  code: string;
   summary: string;
   created_at: string;
   updated_at: string;
   is_archived: boolean;
   is_template: boolean;
   allow_member_change_requests: boolean;
-  // Platform review 2026-09, Phase 8 — opt-in per-project requirement that
+  // Opt-in per-project requirement that
   // adding/removing a `RequirementLink` on an already-approved requirement
   // go through a change request (`ChangeRequestKind` `add_link`/
   // `remove_link`) instead of the direct endpoint. Effective value is
@@ -869,9 +917,7 @@ export const PROJECT_ROLE_INHERITANCE_MODE_LABEL: Record<ProjectRoleInheritanceM
 
 // Access provenance (decision 10, docs/decisions.md) — why a user has a
 // given effective role: one of six direct sources on this exact project
-// (split from a single collapsed "direct" kind in the follow-up UX batch's
-// Phase D, 2026-08-31, with `direct_org_group_role` added by PR4 of the
-// members/groups directory rework plan — see the backend's
+// (split from a single collapsed "direct" kind 2026-08-31, with `direct_org_group_role` added by the members/groups directory rework — see the backend's
 // `_direct_effective_project_roles_by_kind` docstring for the full
 // rationale), forward-inherited (role_inheritance_mode, with
 // via_project_name/via_mode naming the ancestor hop), or member-source-
@@ -879,7 +925,7 @@ export const PROJECT_ROLE_INHERITANCE_MODE_LABEL: Record<ProjectRoleInheritanceM
 // see the backend's get_effective_project_members_with_provenance
 // docstring).
 //
-// `"direct_org_group_role"` (PR4) means an org group holds this role on the
+// `"direct_org_group_role"` means an org group holds this role on the
 // project *directly* (its own `OrgGroupProjectRole` row) — distinct from
 // `"direct_org_group"`, which means the org group is nested inside a
 // `ProjectGroup` (C-U-12). Both are real mechanisms that coexist; only the
@@ -901,11 +947,11 @@ export type MemberSourceProvenanceKind =
  * function actually needs ("is it safe to let *this user's* row show a
  * toggle-off that only ever affects this user").
  *
- * `"direct_org_group_role"` (PR4, `OrgGroupProjectRole`) is also a genuine,
+ * `"direct_org_group_role"` (`OrgGroupProjectRole`) is also a genuine,
  * individually-revocable backing row — `DELETE /{project_id}/group-roles/
  * {org_group_id}/{role}` deletes it outright, no silent no-op — but it is
  * deliberately NOT included here. Same now for `"direct_group"` itself
- * (PR7, `ProjectGroupRole`): a project group's role used to be a fixed,
+ * (`ProjectGroupRole`): a project group's role used to be a fixed,
  * non-per-user field with no per-role delete endpoint at all; it's now
  * also a genuine, individually-revocable row (`DELETE /{project_id}/
  * groups/{group_id}/roles/{role}`), but for the identical blast-radius
@@ -916,14 +962,13 @@ export type MemberSourceProvenanceKind =
  * that group too, which is a materially different, higher-blast-radius
  * action than what this predicate's current callers assume "direct and
  * revocable" means. The group-row UI this comment used to describe as
- * future work now exists (`ProjectMembersTable`'s `kind: "group"` row,
- * Phase 6, docs/platform-review-2026-09-plan.md) — it does not extend this
+ * future work now exists (`ProjectMembersTable`'s `kind: "group"` row)
+ * — it does not extend this
  * predicate or filter a user's own `sources` at all, since `GET
  * /{project_id}/group-roles` (`OrgGroupProjectRoleSummary` below) already
  * names exactly which roles each group holds directly, with no per-source
  * `kind` check needed. Conflating a group's own row with a per-user toggle
- * would make it silently do group-wide damage. See docs/decisions.md's PR4
- * entry. */
+ * would make it silently do group-wide damage. See docs/decisions.md. */
 export function isDirectRoleKind(kind: MemberSourceProvenanceKind): boolean {
   return kind === "direct_role";
 }
@@ -950,7 +995,7 @@ export interface EffectiveMember {
   effective_role: ProjectRole;
   sources: MemberSourceProvenance[];
   /** This user's project-scoped module-contributed role grants, filtered
-   * to currently-enabled modules only (module system Phase 2) — same
+   * to currently-enabled modules only — same
    * "filter, don't delete" rule `OrgUser.module_roles` documents. */
   module_roles: ModuleRoleGrant[];
 }
@@ -962,9 +1007,8 @@ export interface MaterializeResult {
 
 /** One organisation group holding at least one direct `OrgGroupProjectRole`
  * grant on a project (`GET /{project_id}/group-roles`) — the read
- * counterpart to `POST`/`DELETE /{project_id}/group-roles/...` (PR4),
- * added in Phase 6 (docs/platform-review-2026-09-plan.md) so
- * `ProjectMembersTable` can render this group as its own row instead of
+ * counterpart to `POST`/`DELETE /{project_id}/group-roles/...`,
+ * so `ProjectMembersTable` can render this group as its own row instead of
  * only being visible through a member's `"direct_org_group_role"`
  * provenance line. `roles` aggregates every role this one group holds
  * directly on the project. */
@@ -1260,8 +1304,8 @@ export interface OrgProjectSummary {
   is_archived: boolean;
 }
 
-/** `pages/OrgOverviewPage.tsx`'s stats header (compliance-module-plan.md
- * Phase 19). `is_full_org_total` distinguishes the two meanings the counts
+/** `pages/OrgOverviewPage.tsx`'s stats header.
+ * `is_full_org_total` distinguishes the two meanings the counts
  * below can have — see `OrgOverviewStatsOut`'s own backend docstring
  * (`backend/app/schemas/org.py`) for the full scoping rules. */
 export interface OrgOverviewStats {
@@ -1275,11 +1319,11 @@ export interface OrgOverviewStats {
 export interface ProjectGroup {
   id: string;
   name: string;
-  /** PR7 of the members/groups directory rework plan: replaces the old
+  /** the members/groups directory rework: replaces the old
    * single, required `role` field — a group is now created bare and may
    * hold zero, one, or several independently-revocable roles at once,
    * granted/revoked via `POST`/`DELETE /{project_id}/groups/{group_id}/
-   * roles`, the same "one row per role" shape `OrgGroupProjectRole` (PR4)
+   * roles`, the same "one row per role" shape `OrgGroupProjectRole`
    * already established for org groups. */
   roles: ProjectRole[];
   member_user_ids: string[];
@@ -1306,9 +1350,11 @@ export interface ProjectMetrics {
   file_count: number;
   requirements_by_status: Record<string, number>;
   stage_progress: StageProgress[];
+  /** How many projects the counts cover (1 unless the overview is widened to related projects). */
+  scope_project_count: number;
 }
 
-export interface Requirement {
+export interface Requirement extends ProjectScopedRow {
   id: string;
   project_id: string;
   unique_code: string;
@@ -1364,6 +1410,8 @@ export interface RequirementDueForReview {
   // (`MyReviewsDuePage`) — its project-scoped sibling has the project in
   // context already (it's in the URL) and never sets this.
   project_name?: string | null;
+  // Qualifies `unique_code` in that cross-project listing.
+  project_code?: string | null;
   unique_code: string;
   name: string;
   review_date: string;
@@ -1424,7 +1472,7 @@ export interface LinkedRequirement {
   name: string;
 }
 
-export interface RequirementAction {
+export interface RequirementAction extends ProjectScopedRow {
   id: string;
   project_id: string;
   unique_code: string;
@@ -1491,9 +1539,10 @@ export const CHANGEABLE_FIELD_LABEL: Record<ChangeableRequirementField, string> 
   attachments: "Attachments",
 };
 
-export interface ChangeRequest {
+export interface ChangeRequest extends ProjectScopedRow {
   id: string;
   project_id: string;
+  unique_code: string;
   requirement_id: string | null;
   kind: ChangeRequestKind;
   status: ChangeRequestStatus;
@@ -1522,7 +1571,7 @@ export interface ChangeRequest {
    * propose every field. See `CHANGEABLE_REQUIREMENT_FIELDS` above. */
   changed_fields: ChangeableRequirementField[];
   proposed_attachment_file_ids: string[];
-  /** ADD_ACTION-only (2026-08 UX audit roadmap item 514) — either
+  /** ADD_ACTION-only — either
    * `proposed_action_link_id` (link an existing action) or
    * `proposed_action_title` + `proposed_action_type_id` (create a new
    * one) is set, mutually exclusive. */
@@ -1619,18 +1668,51 @@ export interface ChangeEntry {
  * separately by the caller) — the one shared description used by the
  * project overview activity card, the project history page, and the
  * requirement/change-request side-panel activity list, so the three no
- * longer describe the same data three different, inconsistent ways. */
+ * longer describe the same data three different, inconsistent ways.
+ * The note or comment typed with the change is not part of the sentence;
+ * `activityEntryNotes` returns it for the caller to show beneath. */
 export function describeActivityEntry(entry: ChangeEntry): string {
   const who = entry.actor_display_name ?? "Someone";
+  if (entry.entity_type === "artefact_link" && entry.detail && typeof entry.detail.other_label === "string") {
+    const removed = entry.action === "deleted";
+    const preposition = entry.detail.direction === "incoming" ? "from" : "to";
+    const kind = typeof entry.detail.other_type_label === "string" ? ` (${entry.detail.other_type_label})` : "";
+    return `${who} ${removed ? "removed a link" : "added a link"} ${preposition} ${entry.detail.other_label}${kind}`;
+  }
+  if ((entry.action === "tagged" || entry.action === "untagged") && typeof entry.detail?.tag === "string") {
+    return `${who} ${entry.action === "tagged" ? "added" : "removed"} the tag "${entry.detail.tag}"`;
+  }
   const action = activityActionLabel(entry.action);
-  const changeNote = entry.detail && typeof entry.detail.change_note === "string" ? entry.detail.change_note : "";
   // AI approval via MCP (docs/decisions.md): every approval/decision/
   // completion performed through the MCP server carries `detail.via ===
   // "mcp"` — surfaced here so it's visible on every one of this function's
   // callers (ActivityPanel, ProjectHistoryPage, requirement/CR Activity
   // tabs) without each needing its own change.
   const viaMcp = entry.detail?.via === "mcp" ? " (via MCP)" : "";
-  return `${who} ${action}${changeNote ? ` — ${changeNote}` : ""}${viaMcp}`;
+  return `${who} ${action}${viaMcp}`;
+}
+
+/**
+ * The text a person typed with a change, for an activity entry: the comment given at a workflow step
+ * (`detail.comment`, written by every module's transition and by a change request's decision) and the
+ * note given with an edit (`detail.change_note`). Returned in that order, each once, empty ones left out.
+ * Older change request decisions stored their comment as `detail.note`; it is read for those entries only.
+ * The text is user input: render it as text, never as HTML.
+ */
+export function activityEntryNotes(entry: ChangeEntry): string[] {
+  const detail = entry.detail;
+  if (!detail) return [];
+  const legacyDecisionNote = entry.entity_type === "change_request" && (entry.action === "approved" || entry.action === "rejected")
+    ? detail.note
+    : undefined;
+  const candidates = [detail.comment, legacyDecisionNote, detail.change_note];
+  const notes: string[] = [];
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string") continue;
+    const text = candidate.trim();
+    if (text !== "" && !notes.includes(text)) notes.push(text);
+  }
+  return notes;
 }
 
 /**
@@ -1739,8 +1821,7 @@ export type ExternalUserPolicy = "disabled" | "org_domain_only" | "anyone";
 
 /** SSO group→role mapping used to live here (`sso_group_mappings`) — it's
  * now a per-`OrgGroup` property (`OrgGroup.granted_org_role`, alongside
- * `idp_synced_group_name`) instead of a disconnected flat list — 2026-08
- * UX audit roadmap item 522. */
+ * `idp_synced_group_name`) instead of a disconnected flat list. */
 export interface OrgAdvancedSettings {
   smtp_host: string | null;
   smtp_port: number | null;
@@ -1752,7 +1833,7 @@ export interface OrgAdvancedSettings {
   auto_accept_email_domain: string | null;
   external_user_policy: ExternalUserPolicy;
   allow_relaxed_child_project_creation: boolean;
-  // Platform review 2026-09, Phase 8 — see `Organization`'s own field of
+  // See `Organization`'s own field of
   // the same name for the full resolution.
   force_require_change_request_for_approved_links: boolean;
   // AI approval via MCP (docs/decisions.md) — see `Organization`'s own
@@ -1760,15 +1841,14 @@ export interface OrgAdvancedSettings {
   allow_ai_approvals: boolean;
 }
 
-/** One module's state as seen by an org admin (module system Phase 1,
- * `GET`/`PUT /orgs/{id}/modules[/{module_key}]`) — the registry's static
+/** One module's state as seen by an org admin
+ * (`GET`/`PUT /orgs/{id}/modules[/{module_key}]`) — the registry's static
  * description plus this organisation's own effective entitlement/
  * enablement. `enabled` is already the *effective* value (entitled AND
  * enabled) computed server-side; a non-entitled module is still included
  * in the response rather than filtered out, so the Modules admin UI can
  * grey it out with an explanatory note instead of hiding it entirely. */
-/** A module's frontend integration manifest (module system Phase 3,
- * extended with Tier C/`"federated"` in a same-system follow-up, see
+/** A module's frontend integration manifest (including Tier C/`"federated"`, see
  * `docs/decisions.md`'s "Module system follow-up: Tier C (Module
  * Federation)" entries) — see backend `app.modules.registry.
  * ModuleFrontendManifest`'s docstring for the full account.
@@ -1797,6 +1877,12 @@ export interface ManifestNavEntry {
    * the field" reason as `additional_nav_entries` below; `resolveNavIcon`
    * falls back to a generic icon when absent. */
   nav_icon?: string;
+  /** Key of the module sub-component this entry leads to; the entry is hidden while that
+   * sub-component is in `ModuleNavEntry.disabled_sub_components`. `null`/absent: the whole module. */
+  sub_component?: string | null;
+  /** For one page serving several sub-components: the entry is hidden only while every key listed
+   * here is disabled. Absent/empty: no such condition. */
+  sub_components_any?: string[];
 }
 
 export interface ModuleFrontendManifest {
@@ -1807,8 +1893,7 @@ export interface ModuleFrontendManifest {
   remote_entry_url: string | null;
   exposed_module: string | null;
   /** Zero or more further nav-rail entries beyond this manifest's own
-   * primary `nav_label`/`nav_path` pair (module system follow-up, Module 1
-   * — Context & Strategy — Phase 7.1, 2026-09-29) — see backend `app.
+   * primary `nav_label`/`nav_path` pair (module system follow-up, Context & Strategy) — see backend `app.
    * modules.registry.ModuleFrontendManifest.additional_nav_entries`'s own
    * docstring for the full rationale. Tier A ("installed") only; always
    * empty for Tier B/C. Optional (rather than required) purely so existing
@@ -1820,9 +1905,13 @@ export interface ModuleFrontendManifest {
   /** This manifest's own primary nav-rail entry's icon — see `ManifestNavEntry.
    * nav_icon`'s own docstring. */
   nav_icon?: string;
+  /** `ManifestNavEntry.sub_component` for this manifest's own primary entry. */
+  nav_sub_component?: string | null;
+  /** `ManifestNavEntry.sub_components_any` for this manifest's own primary entry. */
+  nav_sub_components_any?: string[];
 }
 
-/** `enabled` is the hard floor (Module 0 Phase 5 correction, 2026-09-29):
+/** `enabled` is the hard floor (corrected 2026-09-29):
  * `false` means no project of this organisation may use this module at
  * all, no project override possible in either direction.
  * `default_project_enabled` is a separate, independent tier, only
@@ -1840,6 +1929,51 @@ export interface OrgModule {
   default_project_enabled: boolean;
   default_enabled: boolean;
   frontend_manifest: ModuleFrontendManifest | null;
+}
+
+export const MODULE_ENTITLEMENT_POLICY_LABEL: Record<ModuleEntitlementPolicy, string> = {
+  open: "Open — every organisation may use every module",
+  closed: "Closed — only organisations granted a module may use it",
+};
+
+/** One module's server-wide default — `GET/PUT /system/module-defaults[/{module_key}]`. A
+ * fresh install has every module available (`org_enabled` and `project_default_enabled` both
+ * true); `has_override` is false while the registry's own default decides. */
+export interface ServerModuleDefault {
+  module_key: string;
+  name: string;
+  description: string;
+  org_enabled: boolean;
+  project_default_enabled: boolean;
+  has_override: boolean;
+}
+
+/** Which tier decides whether a module is enabled for an organisation. */
+export type ModuleEnabledSource = "organization" | "server_default" | "registry";
+
+export const MODULE_ENABLED_SOURCE_LABEL: Record<ModuleEnabledSource, string> = {
+  organization: "set by the organisation",
+  server_default: "server default",
+  registry: "built-in default",
+};
+
+/** One module as a server administrator sees it for one organisation —
+ * `GET/PUT /system/orgs/{id}/module-entitlements[/{module_key}]`. */
+export interface OrgModuleEntitlement {
+  module_key: string;
+  name: string;
+  entitled: boolean;
+  has_override: boolean;
+  default_policy_used: boolean;
+  enabled: boolean;
+  default_project_enabled: boolean;
+  enabled_source: ModuleEnabledSource;
+}
+
+/** The result of applying the server defaults to every organisation. */
+export interface ApplyServerModuleDefaultsResult {
+  organizations_changed: number;
+  rows_written: number;
 }
 
 /** One sub-component a module declares, with this organisation's own
@@ -1900,8 +2034,7 @@ export interface ProjectModuleEnablement {
   project_override_enabled: boolean | null;
 }
 
-/** One sub-component a module declares, as seen from one project (Module 0
- * — Platform Foundations — Phase 4) — `GET/PUT /projects/{id}/
+/** One sub-component a module declares, as seen from one project (Platform Foundations) — `GET/PUT /projects/{id}/
  * modules/{module_key}/subcomponents[/{subcomponent_key}]`. Same
  * "effective state alongside org default and this project's own override,
  * not just a flat boolean" shape as `ProjectModuleEnablement`, one level
@@ -1918,15 +2051,18 @@ export interface ProjectModuleSubComponent {
 }
 
 /** One currently-enabled module, as returned by `GET /projects/{id}/enabled-
- * modules` — the lean, nav-facing shape (module system Phase 3), unlike
+ * modules` — the lean, nav-facing shape, unlike
  * `OrgModule`'s org-admin bookkeeping view. */
 export interface ModuleNavEntry {
   module_key: string;
   name: string;
   frontend_manifest: ModuleFrontendManifest | null;
+  /** Keys of this module's sub-components that are off for the project. Optional for the same
+   * "old fixtures predate the field" reason as `additional_nav_entries`. */
+  disabled_sub_components?: string[];
 }
 
-/** A freshly-minted Tier B `<ModuleFrame>` token (module system Phase 3). */
+/** A freshly-minted Tier B `<ModuleFrame>` token. */
 export interface ModuleFrameToken {
   token: string;
   expires_in_minutes: number;
@@ -2051,6 +2187,12 @@ export interface SystemVersion {
   version: string;
   git_sha: string;
   build_date: string;
+}
+
+/** Deployment settings for the app shell — `GET /api/v1/system/client-config`. */
+export interface ClientConfig {
+  help_enabled: boolean;
+  help_url: string;
 }
 
 // --- Principals (users and groups on parity) ---------------------------------------------------

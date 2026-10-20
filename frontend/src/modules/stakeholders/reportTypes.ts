@@ -12,6 +12,8 @@ import type { GridQuadrant } from "./types";
 export interface GridItem {
   id: string;
   project_id: string;
+  /** The record's code as the server shows it (`STK-001`, or `ACME-STK-001` for an organisation-owned record). */
+  code: string;
   name: string;
   /** The Influence level name, "" when unset. */
   influence: string;

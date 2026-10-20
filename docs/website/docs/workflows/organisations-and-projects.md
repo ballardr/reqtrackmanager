@@ -27,6 +27,8 @@ Disabled organisations' projects are hidden by default; use the **All** filter t
 
 Click **New project** from the Projects page — either blank, or **from a template** (any project in the organisation marked "usable as a project template," see [Core Features → Project templates](../core-features/project-templates.md)). Only an org admin or a project creator can do this; a plain member sees no create option. A [hierarchical project](../concepts/organisations-and-projects.md) can also be created as a sub-project of one you manage, from that parent project's own admin page.
 
+Every project has a short **code** (for example `ACME`) that qualifies its record codes. Most organisations assign it automatically from the project's name, so the form has no code field; if your organisation lets the creator choose, the form asks for one and states the rule (length and allowed characters). The code can be edited later in the project's admin **Overview** only under that manual setting. See [Administering an organisation → Project codes](./administering-an-organisation.md#project-codes).
+
 A new project copies the organisation's current module and sub-component defaults (for every module the organisation has available) — blank or from a template alike, since a template's own module settings aren't carried over (see [Core Features → Project templates](../core-features/project-templates.md#what-a-template-carries-over)). Changing an organisation default later doesn't affect it; turning a module **Off** at organisation level does. See [Modules → Overview → Gating](../modules/overview.md#gating-entitlement--enablement--overrides) and [Administering a project → Modules](./administering-a-project.md#modules).
 
 ## Favouriting a project

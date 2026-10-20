@@ -34,6 +34,8 @@ class ChangeRequest(UUIDPKMixin, TimestampMixin, Base):
     """A proposal to add or modify a requirement, subject to review/approval.
 
     Attributes:
+        unique_code: Project-scoped identifier (e.g. `"CR-003"`), from
+            `services.sequences.generate_unique_code`; never reused.
         requirement_id: The requirement being modified; null when kind is
             NEW_REQUIREMENT (the requirement does not exist yet).
         creator_id: The user who authored the change request (C-G-13).
@@ -42,8 +44,10 @@ class ChangeRequest(UUIDPKMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "change_requests"
+    __table_args__ = (UniqueConstraint("project_id", "unique_code", name="uq_change_requests_project_unique_code"),)
 
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+    unique_code: Mapped[str] = mapped_column(String(64))
     requirement_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="SET NULL"), nullable=True
     )
@@ -95,24 +99,23 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
         proposed_action_link_id / proposed_action_title / proposed_action_
             description / proposed_action_type_id / proposed_action_
             assignee_type+_id (a principal — `models.principal`) / proposed_action_due_date: ADD_ACTION-only
-            (2026-08 UX audit roadmap item 514). Either
+. Either
             `proposed_action_link_id` (link an existing `RequirementAction`
             to the target requirement) or `proposed_action_title` +
             `proposed_action_type_id` (create a new one and link it) is
             set, mutually exclusive — see
             `routers/change_requests.py::create_change_request`'s
             validation. `proposed_action_link_id` is also REMOVE_ACTION's
-            only field (Platform review 2026-09, Phase 8) — which of the
+            only field — which of the
             requirement's already-linked actions to unlink on approval;
             reusing the same column rather than adding a duplicate one,
             since the two kinds never coexist on one version row.
-        proposed_links: The links this change request proposes (Platform
-            Enhancements Phase 6b), merged into the requirement on approval
+        proposed_links: The links this change request proposes,
+            merged into the requirement on approval
             as the approver chooses. The whole payload of an ADD_LINK request
             and an optional addition to NEW_REQUIREMENT / MODIFY_REQUIREMENT
             ones. See `ChangeRequestProposedLink`.
-        proposed_link_id: REMOVE_LINK-only (Platform review 2026-09, Phase
-            8) — the existing `ArtefactLink` row to remove on approval.
+        proposed_link_id: REMOVE_LINK-only — the existing `ArtefactLink` row to remove on approval.
             `ondelete="SET NULL"` since the link could in principle be
             removed by some other path between submission and approval;
             `decide_change_request` re-checks it still exists before acting,
@@ -163,7 +166,7 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
     proposed_reviewer_type: Mapped[str | None] = principal_type_column(nullable=True)
     proposed_reviewer_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
     proposed_attachment_file_ids: Mapped[list[str]] = mapped_column(JSONB, default=list)
-    # ADD_ACTION-only (item 514): either `proposed_action_link_id` (link an
+    # ADD_ACTION-only: either `proposed_action_link_id` (link an
     # existing `RequirementAction`) or `proposed_action_title` +
     # `proposed_action_type_id` (create a new one) is set, never both — see
     # `routers.change_requests.create_change_request`'s validation. Mirrors
@@ -180,8 +183,8 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
     proposed_action_assignee_type: Mapped[str | None] = principal_type_column(nullable=True)
     proposed_action_assignee_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
     proposed_action_due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    # REMOVE_LINK-only (Platform review 2026-09, Phase 8). References `artefact_links.id` (Module 0, Platform Foundations Phase
-    # 1) — originally `requirement_links.id`; repointed by migration 0041
+    # REMOVE_LINK-only. References `artefact_links.id` (Platform Foundations)
+    # — originally `requirement_links.id`; repointed by migration 0041
     # when that table was folded into the generic `ArtefactLink` table,
     # preserving each migrated row's original id so this FK never needed
     # its stored values to change, only its target.
@@ -209,7 +212,7 @@ class ChangeRequestVersion(UUIDPKMixin, Base):
 class ChangeRequestProposedLink(UUIDPKMixin, Base):
     """One link a change request proposes to create, merged on approval.
 
-    Platform Enhancements Phase 6b. A real table (not a JSON list) so the link
+    A real table (not a JSON list) so the link
     type is a foreign key: deleting an in-use link type repoints or blocks on
     these rows (`services.link_type_usage`) instead of `SET NULL` silently
     stripping the type from a request that could then no longer be applied.

@@ -23,7 +23,6 @@ import type { ScoringScheme } from "../api/scoring";
 import { AuthContext, type AuthContextValue } from "../context/AuthContextValue";
 import { ProjectContext } from "../context/ProjectContextValue";
 import { ThemeProvider } from "../context/ThemeContext";
-import { ToastProvider } from "../context/ToastContext";
 import { StatefulAuthProvider } from "./StatefulAuthProvider";
 import type {
   ActionTypeDefinition,
@@ -79,6 +78,7 @@ export function buildProject(overrides: Partial<Project> = {}): Project {
     id: nextId("project"),
     organization_id: nextId("org"),
     name: "Atlas Platform",
+    code: "ATLAS",
     summary: "Core platform requirements for the Atlas programme.",
     created_at: "2026-01-05T09:00:00Z",
     updated_at: "2026-03-01T14:30:00Z",
@@ -229,9 +229,7 @@ export function buildRequirement(overrides: Partial<Requirement> = {}): Requirem
   // backend/app/routers/requirements.py) so a story only needs to set
   // `status` and gets a consistent, real derived state — rather than every
   // "approved" story call site having to separately remember to
-  // also pass `is_locked: true` (2026-08 UX audit roadmap, "No requirement
-  // approval action" — added when the Approve button/"Make change request"
-  // gating started actually reading these two fields). An explicit override
+  // also pass `is_locked: true`. An explicit override
   // for either still wins, via the trailing `...overrides` spread.
   //
   // C-G-11: completion (`is_completed`/`completed_at`/`completed_by`) is now
@@ -332,6 +330,7 @@ export function buildChangeRequest(overrides: Partial<ChangeRequest> = {}): Chan
   return {
     id: nextId("cr"),
     project_id: "project-1",
+    unique_code: "CR-001",
     requirement_id: "requirement-1",
     kind: "modify_requirement",
     status: "draft",
@@ -503,15 +502,12 @@ export function withRouter(initialPath: string, routePath = "*"): Decorator {
   );
 }
 
-/** Wraps a story in a real `ToastProvider` — for any page/component whose
- * play function asserts a toast appears after a mutation (`useToast()`
- * throws outside a provider, same as every other context hook here). */
+/** Marks a story whose play function asserts a toast after a mutation. The real `ToastProvider` comes
+ * from the global decorator in `.storybook/preview.tsx` (every component that reports a mutation reads it,
+ * and `useToast()` throws outside a provider), so this adds nothing of its own: a second provider would
+ * render a second toast stack. */
 export function withToast(): Decorator {
-  return (Story) => (
-    <ToastProvider>
-      <Story />
-    </ToastProvider>
-  );
+  return (Story) => <Story />;
 }
 
 /** Wraps a story in a real `ThemeProvider` — for any component whose

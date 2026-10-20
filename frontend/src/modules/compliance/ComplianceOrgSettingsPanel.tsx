@@ -1,8 +1,7 @@
 /**
  * Module: modules/compliance/ComplianceOrgSettingsPanel
  *
- * The org-level Compliance settings panel (docs/compliance-module-plan.md
- * Phase 22) — so far, one field: this organisation's designated **default
+ * The org-level Compliance settings panel — so far, one field: this organisation's designated **default
  * compliance-managers group**, the SSO-friendly fallback that keeps a
  * standard from ever being left with no `standards_manager` at all (§3).
  * Every current member of the picked `OrgGroup` counts as an effective
@@ -21,6 +20,8 @@ import type { OrgGroup } from "../../api/types";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import type { ComplianceOrgSettings } from "./types";
+import { LabeledSelect } from "../../components/LabeledSelect";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
 
 export function ComplianceOrgSettingsPanel({ orgId }: { orgId: string }) {
   const { showToast } = useToast();
@@ -28,9 +29,12 @@ export function ComplianceOrgSettingsPanel({ orgId }: { orgId: string }) {
   const [groups, setGroups] = useState<OrgGroup[] | null>(null);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
+  useResetOnChange([orgId], () => {
     setSettings(null);
     setGroups(null);
+  });
+
+  useEffect(() => {
     complianceApi.getComplianceOrgSettings(orgId).then(setSettings);
     api.get<OrgGroup[]>(`/api/v1/orgs/${orgId}/groups`).then(setGroups);
   }, [orgId]);
@@ -59,22 +63,14 @@ export function ComplianceOrgSettingsPanel({ orgId }: { orgId: string }) {
         SSO-managed, designate a fallback group here instead of assigning managers one at a time — every current
         member of this group counts as a Standards Manager for any standard with no explicit manager of its own.
       </p>
-      <label className="stack" style={{ gap: "0.25rem", maxWidth: "24rem" }}>
-        Default compliance-managers group
-        <select
-          className="input"
-          value={settings.default_standards_manager_group_id ?? ""}
-          disabled={saving}
-          onChange={(e) => handleChange(e.target.value)}
-        >
-          <option value="">None configured</option>
-          {groups.map((g) => (
-            <option key={g.id} value={g.id}>
-              {g.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <LabeledSelect helpNotNeeded
+        label="Default compliance-managers group"
+        value={settings.default_standards_manager_group_id ?? ""}
+        onChange={handleChange}
+        options={groups.map((g) => ({ value: g.id, label: g.name }))}
+        placeholder="None configured"
+        disabled={saving}
+      />
     </div>
   );
 }

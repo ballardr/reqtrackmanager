@@ -4,6 +4,7 @@ import { AUTH_UNAUTHORIZED_EVENT, api, loadStoredToken, setAuthToken } from "../
 import type { UiPreferenceValue, User } from "../api/types";
 import { applyUiPreferencePatch } from "./uiPreferencePatch";
 import { AuthContext, type AuthContextValue, type LoginResult } from "./AuthContextValue";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 // Every other call through this client waits indefinitely (no timeout at
 // all) — login/2FA-verify are the deliberate exception. Both hit
@@ -21,7 +22,7 @@ const LOGIN_TIMEOUT_MS = 45_000;
 /** Provides the authenticated user and login/logout actions to the app. */
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => loadStoredToken() !== null);
 
   const refreshUser = useCallback(async () => {
     try {
@@ -33,14 +34,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  useEffect(() => {
-    const token = loadStoredToken();
-    if (!token) {
-      setLoading(false);
-      return;
-    }
+  useLoadOnChange(() => {
+    if (!loadStoredToken()) return;
     refreshUser().finally(() => setLoading(false));
-  }, [refreshUser]);
+  }, []);
 
   const login = useCallback(async (email: string, password: string): Promise<LoginResult> => {
     const result = await api.post<

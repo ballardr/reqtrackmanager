@@ -1,5 +1,4 @@
-"""Tests for the artefact link graph (docs/plans/platform-enhancements-2026-10-plan.md
-Phase 5): link-type `flow`, `services.link_graph` and
+"""Tests for the artefact link graph: link-type `flow`, `services.link_graph` and
 `GET /projects/{id}/artefacts/{type}/{id}/link-graph`.
 
 Covers flow resolution for each `flow` value from both ends of a link, untyped
@@ -18,6 +17,7 @@ import pytest
 from sqlalchemy import event
 
 from app.database import SessionLocal, engine
+from app.models.enums import CORE_ARTEFACT_TYPES
 from app.models.requirement import Requirement
 from app.modules.registry import (
     get_all_registered_artefact_types,
@@ -336,7 +336,7 @@ def test_every_registered_artefact_type_has_a_provider_and_label():
     providers = {
         t for definition in get_module_registry().values() for t in definition.artefact_summary_providers
     }
-    for artefact_type in get_all_registered_artefact_types() - {REQ, ACTION}:
+    for artefact_type in get_all_registered_artefact_types() - CORE_ARTEFACT_TYPES:
         assert artefact_type in providers, f"{artefact_type} cannot be shown in the link graph"
         label = get_artefact_type_label(artefact_type)
         assert label and "_" not in label

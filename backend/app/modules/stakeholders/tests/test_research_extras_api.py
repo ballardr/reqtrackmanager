@@ -1,5 +1,4 @@
-"""Tests for the Phase 4 research extras (docs/plans/module-02-stakeholders-and-
-personas-plan.md): session prompts, anonymous participants and findings of an
+"""Tests for the research extras: session prompts, anonymous participants and findings of an
 Engagement, behind the `research_extras` sub-component (off by default).
 
 Covers: the sub-component gate (the engagement log keeps working when it is off,

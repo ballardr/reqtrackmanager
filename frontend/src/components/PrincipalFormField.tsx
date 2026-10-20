@@ -9,16 +9,21 @@
  */
 import type { ComponentProps } from "react";
 
+import { FieldCaption } from "./FieldHelp";
+import type { FieldHelpProps } from "./FieldHelp";
 import { PrincipalPicker } from "./PrincipalPicker";
 
 /**
  * @param label The visible caption (e.g. "Owner").
+ * @param help The field's `(?)` help text (or `helpNotNeeded` for a self-explanatory field).
  * @param pickerProps Everything `PrincipalPicker` takes; `ariaLabel` is its accessible name.
  */
-export function PrincipalFormField({ label, ...pickerProps }: { label: string } & ComponentProps<typeof PrincipalPicker>) {
+export function PrincipalFormField({
+  label, help, required, ...pickerProps
+}: FieldHelpProps & { label: string } & ComponentProps<typeof PrincipalPicker>) {
   return (
     <div className="stack" style={{ gap: "0.25rem" }}>
-      <span>{label}</span>
+      <FieldCaption label={label} help={help} required={required} />
       <PrincipalPicker {...pickerProps} />
     </div>
   );

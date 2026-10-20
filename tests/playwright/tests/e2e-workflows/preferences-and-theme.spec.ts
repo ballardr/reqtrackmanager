@@ -6,8 +6,8 @@ import { loginAs, logout, ORG_NAMES, PERSONAS, PROJECT_NAMES, selectPreferencesG
  * Job to be done: profile preferences persist server-side (not just
  * localStorage) — theme (U-U-01), pronouns (C-U-18), and the post-login
  * landing page (U-U-03, all three modes: automatic / overview / a specific
- * project). The Help page is also checked here as a light, low-risk page
- * visit rather than its own spec file.
+ * project). The header Help link is also checked here as a light, low-risk
+ * assertion rather than its own spec file.
  *
  * The landing preference is only resolved once, at the moment of login
  * (`resolveLandingPath` in LoginPage.tsx) — it's not applied to ordinary
@@ -15,7 +15,7 @@ import { loginAs, logout, ORG_NAMES, PERSONAS, PROJECT_NAMES, selectPreferencesG
  * plain `/projects`. Testing it for real means logging out and back in for
  * each mode, not just navigating around within one session.
  */
-test.describe("preferences: theme persistence, pronouns, landing page mode; help page", () => {
+test.describe("preferences: theme persistence, pronouns, landing page mode; help link", () => {
   test("theme and pronouns persist across reload; all three landing-page modes save", async ({ page }) => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
 
@@ -84,10 +84,13 @@ test.describe("preferences: theme persistence, pronouns, landing page mode; help
       await expect(page).toHaveURL(/\/projects$/);
     });
 
-    await test.step("the help page renders", async () => {
-      await page.getByRole("link", { name: "Help", exact: true }).click();
-      await expect(page).toHaveURL(/\/help$/);
-      await expect(page.locator("main")).not.toBeEmpty();
+    await test.step("the header Help link points at the configured docs URL and opens a new tab", async () => {
+      // Asserted, not followed: the target is an external site.
+      const help = page.getByRole("link", { name: "Help (opens in a new tab)" });
+      // The test stack points Help at its own docs service (`HELP_URL` in tests/container/docker-compose.yml).
+      await expect(help).toHaveAttribute("href", process.env.HELP_URL ?? "http://localhost:3001/reqtrackmanager/");
+      await expect(help).toHaveAttribute("target", "_blank");
+      await expect(help).toHaveAttribute("rel", /noopener/);
     });
 
     await test.step("notification types a module registers are listed under the label the backend sent", async () => {

@@ -1,12 +1,11 @@
-"""Context & Strategy data model (Module 1 Phase 1)
+"""Context & Strategy data model
 
 Revision ID: 0048
 Revises: 0047
 Create Date: 2026-09-28
 
-Adds the six tables backing Context & Strategy's Phase 1 data model
-(docs/plans/module-01-context-and-strategy-plan.md Phase 1 — Organisation
-& Project Strategy):
+Adds the six tables backing Context & Strategy's Strategy data model
+(organisation & project scope):
 
 - `strategies` (identity row: `scope` discriminator, exactly one of
   `organization_id`/`project_id` set, enforced by a CHECK constraint).

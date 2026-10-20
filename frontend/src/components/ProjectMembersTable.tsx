@@ -1,11 +1,10 @@
 /**
  * Module: components/ProjectMembersTable
  *
- * The unified "who has access to this {project}, and why" table (Phase D,
- * follow-up UX batch, 2026-08-31, docs/decisions.md) — replaces both
+ * The unified "who has access to this {project}, and why" table (docs/decisions.md) — replaces both
  * `MemberRoleTable.tsx` (the direct-users-and-groups editable table) and
  * `PendingInvitesSection.tsx` (a separate pending-invites list), now that
- * Phase C removed default project groups: groups are no longer the common
+ * default project groups are removed: groups are no longer the common
  * way to grant a role, so a group-and-user union row shape stopped making
  * sense, and pending invites are folded in as a per-row status rather than
  * kept as a second section. Two call sites share this exact component:
@@ -39,7 +38,7 @@
  *   silently no-op while this table
  *   showed the role as removed. See `MemberSourceProvenanceKind`'s own doc
  *   comment (`api/types.ts`) for the full rationale — this is the exact
- *   fix the Phase D `kind` split exists to make possible. A disabled
+ * fix the `kind` split exists to make possible. A disabled
  *   option's own label also carries an inline "(by group)"/"(only
  *   manager)" suffix (platform review 2026-09 follow-up) stating which of
  *   the two disabled reasons applies, rather than relying solely on the
@@ -71,7 +70,7 @@
  *   inheritance, which this client-side hint can't see) — see that guard's
  *   own docstring (`routers/projects.py::revoke_project_role`).
  *
- * - Module system Phase 2: the Role column's `MultiSelectDropdown` also
+ * - Module roles: the Role column's `MultiSelectDropdown` also
  *   merges in `availableModuleRoles` (already filtered to project scope by
  *   the caller), one option per module-contributed role — checked from a
  *   member's own `module_roles`, toggled via `onToggleModuleRole`. Unlike
@@ -79,7 +78,7 @@
  *   subjected to the `purelyDirect`/inherited-disabled treatment: V1
  *   module roles are direct-grant-only with no group/hierarchy
  *   inheritance concept at all (a deliberate scope boundary — see
- *   `docs/compliance-module-plan.md`'s Phase 2 spec), so every module-role
+ * spec), so every module-role
  *   option is always freely togglable. Its `label` renders the role
  *   definition's own `name` directly — not a `MODULE_ROLE_LABEL`-style
  *   frontend lookup map — since it is already human-readable data returned
@@ -93,7 +92,7 @@
  * full (small enough to load whole and search/filter/paginate client-side
  * — the same precedent `MemberRoleTable`'s own two data sources already
  * set, and why `GET /{project_id}/effective-members`'s own new `search`/
- * `limit`/`offset` support — added in this same phase for completeness and
+ * `limit`/`offset` support — added for completeness and
  * future consumers — isn't used by this component: role-filtering and the
  * pending-invite merge both need the *complete* set to stay correct, and a
  * `LoadMoreButton` backed by real server-side offset pagination would make
@@ -101,8 +100,7 @@
  * `onToggleRole`/`onResendInvite`/`addControl` are the caller's own API
  * calls and composed control, same division of responsibility
  * `MemberRoleTable` already proved out.
- * - Per-row Actions column (PR6 of the members/groups directory rework
- *   plan, docs/decisions.md): "Remove all access" and "Convert inherited
+ * - Per-row Actions column (docs/decisions.md): "Remove all access" and "Convert inherited
  *   access to direct roles", behind one `ActionMenu` per member row —
  *   offered/hidden per-row per that PR's own eligibility rules (see
  *   `allDirectRoleSourced`/`hasInheritedSource` below). `onRemoveAllAccess`/
@@ -114,8 +112,7 @@
  *   through with no confirm step, matching the bulk "Convert all inherited
  *   access to direct roles" button's own (confirm-free) treatment on
  *   `ProjectAdminPage.tsx`.
- * - A third row kind, `kind: "group"` (Phase 6, docs/platform-review-2026-
- *   09-plan.md): an organisation group holding at least one direct
+ * - A third row kind, `kind: "group"`: an organisation group holding at least one direct
  *   `OrgGroupProjectRole` grant on this project (`groupRoles`, from `GET
  *   /{project_id}/group-roles`) — a real, first-class mechanism the Members
  *   section's "Add member" autocomplete has always been able to *create*
@@ -125,7 +122,7 @@
  *   group. Its Role cell is a `MultiSelectDropdown` over the four core
  *   `ProjectRole`s (module-contributed roles are out of scope here — see
  *   `EffectiveMember.module_roles`'s own docstring; a module role's group-
- *   grant path, module system Phase 30, is a separate mechanism/table),
+ * grant path, is a separate mechanism/table),
  *   always freely togglable in both directions since the row's very
  *   existence *is* the direct grant (no `purelyDirect`-style disabling
  *   needed, unlike a user row's Role cell) — `onToggleGroupRole` is the
@@ -144,7 +141,7 @@
  *   table doesn't need a no-op stub.
  */
 import { Info, Send, Trash2, Wand2 } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 
 import type {
   EffectiveMember,
@@ -165,6 +162,8 @@ import { FilterCheckbox, FilterField, FilterPanel } from "./FilterPanel";
 import { MultiSelectDropdown } from "./MultiSelectDropdown";
 import { Popover } from "./Popover";
 import { cycleSort, type SortState } from "./sortState";
+import { Badge } from "./Badge";
+import { useResetOnChange } from "../hooks/useResetOnChange";
 
 const PROJECT_ROLES: ProjectRole[] = ["project_manager", "project_administrator", "stakeholder", "member"];
 const PAGE_SIZE = 20;
@@ -250,7 +249,7 @@ function MemberSourceSummary({ strings, member }: { strings: Strings; member: Ef
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
-        <Info size={13} />
+        <Info size={14} />
         {label}
       </button>
       {open && (
@@ -291,9 +290,9 @@ export function ProjectMembersTable({
   members: EffectiveMember[];
   invites: PendingInvite[];
   /** Organisation groups holding a direct `OrgGroupProjectRole` grant on
-   * this project (Phase 6) — rendered as their own `kind: "group"` rows,
+   * this project — rendered as their own `kind: "group"` rows,
    * alongside (not replacing) the member/invited rows above. Defaults to
-   * `[]`, matching this table's pre-Phase-6 behavior for a caller that
+   * `[]`, matching this table's original behavior for a caller that
    * hasn't fetched `GET /{project_id}/group-roles` yet. */
   groupRoles?: OrgGroupProjectRoleSummary[];
   /** Grants `role` to the user when `checked` is true, revokes it otherwise
@@ -301,8 +300,8 @@ export function ProjectMembersTable({
    * (see the module docstring); a non-`direct_role` option is rendered
    * disabled, so it can't reach this callback via the UI. */
   onToggleRole: (userId: string, role: ProjectRole, checked: boolean) => void;
-  /** Grants/revokes one role on a group's own `kind: "group"` row (Phase
-   * 6) — always freely callable in both directions, since (unlike a user's
+  /** Grants/revokes one role on a group's own `kind: "group"` row —
+   * always freely callable in both directions, since (unlike a user's
    * `onToggleRole`) there is no inherited/group-sourced state to guard
    * against here: the row's existence already means every listed role is
    * this group's own direct grant. The caller's own `POST`/`DELETE
@@ -315,7 +314,7 @@ export function ProjectMembersTable({
   /** The invite currently being resent, if any — disables that row's
    * Resend button while the request is in flight. */
   resendingInviteId?: string | null;
-  /** Per-row "Remove all access" (Actions column, PR6) — called only after
+  /** Per-row "Remove all access" (Actions column) — called only after
    * the built-in `ConfirmDialog` is confirmed, and only ever offered for a
    * member whose sources are entirely `direct_role` (see
    * `allDirectRoleSourced` below). The caller loops the actual per-role
@@ -324,14 +323,14 @@ export function ProjectMembersTable({
    * entirely (e.g. a future read-only rendering) — both current call sites
    * always supply it. */
   onRemoveAllAccess?: (userId: string) => void;
-  /** Per-row "Convert inherited access to direct roles" (Actions column,
-   * PR6) — called directly (no confirm step; additive, not destructive),
+  /** Per-row "Convert inherited access to direct roles" (Actions column)
+   * — called directly (no confirm step; additive, not destructive),
    * only ever offered for a member with at least one `forward_inherited`/
    * `member_source_inherited` source. The caller calls the new `POST
    * /{project_id}/materialize-inherited-access/{user_id}` endpoint and
    * refreshes `members` itself. Omit to hide the Actions column entirely. */
   onConvertToDirect?: (userId: string) => void;
-  /** A group row's own "Remove group" (Actions column, Phase 6) — called
+  /** A group row's own "Remove group" — called
    * only after the built-in `ConfirmDialog` is confirmed. The caller loops
    * `DELETE .../group-roles/{org_group_id}/{role}` over every role the
    * group currently holds, same division of responsibility as
@@ -345,12 +344,12 @@ export function ProjectMembersTable({
   /** Accessible name for the table itself. */
   ariaLabel: string;
   /** Project-scoped module-contributed role definitions available to
-   * grant on this project (module system Phase 2) — already filtered to
+   * grant on this project — already filtered to
    * currently-enabled modules by the caller (`GET /{project_id}/module-
-   * roles`). Defaults to `[]`, the real-world default today since no
-   * module has any roles registered until Phase 5 — the Role column's
+   * roles`). Defaults to `[]`, the default when no module has any
+   * roles registered — the Role column's
    * `MultiSelectDropdown` then shows only the four core `ProjectRole`
-   * options, unchanged from before this phase. */
+   * options. */
   availableModuleRoles?: ModuleRoleDefinition[];
   /** Grants/revokes one module-contributed role on a member — always
    * freely callable (no `purelyDirect`-style disabling), since module
@@ -369,9 +368,7 @@ export function ProjectMembersTable({
   const [confirmRemoveUserId, setConfirmRemoveUserId] = useState<string | null>(null);
   const [confirmRemoveGroupId, setConfirmRemoveGroupId] = useState<string | null>(null);
 
-  useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
-  }, [search, roleFilter, showInvited]);
+  useResetOnChange([search, roleFilter, showInvited], () => setVisibleCount(PAGE_SIZE));
 
   const needle = search.trim().toLowerCase();
 
@@ -396,7 +393,7 @@ export function ProjectMembersTable({
     : filteredMembers;
 
   // Same search/role-filter treatment as `filteredMembers` above, applied
-  // to group rows (Phase 6) — a group has no email, so search only matches
+  // to group rows — a group has no email, so search only matches
   // its name.
   const filteredGroupRoles = groupRoles.filter((g) => {
     if (needle && !g.org_group_name.toLowerCase().includes(needle)) return false;
@@ -437,14 +434,14 @@ export function ProjectMembersTable({
       render: (row) => {
         if (row.kind === "member") return row.member.display_name;
         if (row.kind === "invited") return <span className="text-muted">—</span>;
-        // `kind === "group"` (Phase 6) — a small "Group" badge ahead of the
+        // `kind === "group"` — a small "Group" badge ahead of the
         // name so the row doesn't read as a person with a blank email (the
         // Email column below), matching this table's own existing "badge
         // signals kind" idiom (the invited row's status badge in the Role
         // column) rather than a whole extra Type column.
         return (
           <span className="row" style={{ gap: "0.4rem", alignItems: "center" }}>
-            <span className="badge">{strings.membersTable.groupRowBadge}</span>
+            <Badge>{strings.membersTable.groupRowBadge}</Badge>
             {row.group.org_group_name}
           </span>
         );
@@ -468,7 +465,7 @@ export function ProjectMembersTable({
           const invite = row.invite;
           return (
             <div className="row" style={{ gap: "0.4rem", alignItems: "center" }}>
-              <span className="badge">{PENDING_INVITE_STATUS_LABEL[invite.status]}</span>
+              <Badge>{PENDING_INVITE_STATUS_LABEL[invite.status]}</Badge>
               <button
                 className="btn"
                 disabled={resendingInviteId === invite.id}
@@ -476,7 +473,7 @@ export function ProjectMembersTable({
                 title={strings.admin.resendInviteAria(invite.email)}
                 aria-label={strings.admin.resendInviteAria(invite.email)}
               >
-                <Send size={14} /> {strings.admin.resendInvite}
+                <Send /> {strings.admin.resendInvite}
               </button>
             </div>
           );
@@ -552,7 +549,7 @@ export function ProjectMembersTable({
                   onToggle: () => onToggleRole(member.user_id, role, !checked),
                 };
               }),
-              // Module system Phase 2: merged in alongside the core roles
+              // Merged in alongside the core roles
               // above, same dropdown/checkbox styling and optionLabel
               // pattern — never disabled (see this component's own
               // docstring for why module roles skip the purelyDirect

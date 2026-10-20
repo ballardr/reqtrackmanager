@@ -30,16 +30,22 @@ const VERTICAL_GAP_PX = 6.4; // 0.4rem
  * Escape or a click anywhere outside itself and its anchor — the caller is
  * expected to hold `onClose` as "set open state to false" and pass a
  * stable `anchorRef` for the trigger button.
+ *
+ * `fit` sizes the panel to its content instead of the fixed 280px (up to the
+ * viewport width less a margin, `.popover-bubble`'s `max-width`), for a menu
+ * whose longest label would otherwise clip.
  */
 export function Popover({
   anchorRef,
   onClose,
   title,
+  fit = false,
   children,
 }: {
   anchorRef: RefObject<HTMLElement | null>;
   onClose: () => void;
   title: string;
+  fit?: boolean;
   children: ReactNode;
 }) {
   const bubbleRef = useRef<HTMLDivElement>(null);
@@ -91,7 +97,7 @@ export function Popover({
       style={{
         position: "fixed",
         zIndex: 1150,
-        width: 280,
+        width: fit ? "max-content" : 280,
         visibility: "hidden",
       }}
     >

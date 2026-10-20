@@ -1,5 +1,5 @@
 """Tests for a core requirement's links to a Compliance standard's clauses as ordinary generic
-links (docs/plans/platform-enhancements-2026-10-plan.md Phase 6c): the organisation-owned
+links: the organisation-owned
 `compliance_requirement` artefact type, the standard -> version -> requirement finder, isolation,
 the permissions of the generic link endpoints, cleanup when a draft clause is deleted, project
 bundles, the migration from the old traceability table, and the retired routes and MCP tools.

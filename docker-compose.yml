@@ -133,6 +133,10 @@ services:
       PUBLIC_BACKEND_URL: ${PUBLIC_API_BASE_URL-http://localhost:8000}
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
       MCP_SERVER_PUBLIC_URL: ${MCP_SERVER_PUBLIC_URL:-http://localhost:8100}
+      # Header Help link: the public docs site by default; set HELP_URL to an internally
+      # hosted copy (the `docs` profile) or HELP_ENABLED=false to remove the link.
+      HELP_ENABLED: ${HELP_ENABLED:-true}
+      HELP_URL: ${HELP_URL:-https://ballardr.github.io/reqtrackmanager/}
     volumes:
       # Only used if STORAGE_BACKEND=local is set (default is s3/storage
       # above). Named so it survives container recreation and so
@@ -146,8 +150,9 @@ services:
     ports:
       - "8000:8000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
       interval: 10s
+      start_period: 120s
       timeout: 5s
       retries: 10
 
@@ -180,8 +185,9 @@ services:
     # volumes:
     #   - ./external-modules:/usr/share/nginx/external-modules:ro
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
       interval: 10s
+      start_period: 60s
       timeout: 5s
       retries: 10
 
@@ -214,8 +220,35 @@ services:
     ports:
       - "8100:8100"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8100/health"]
       interval: 10s
+      start_period: 60s
+      timeout: 5s
+      retries: 10
+
+  # --- Documentation site (optional): docker compose --profile docs up ---
+  # The docs hosted inside the deployment, for air-gapped installs or docs
+  # that match the deployed version. Own host/port, so the site is at its
+  # root; point the backend's HELP_URL at it (e.g. http://localhost:8200/).
+  # See docs/deployment.md "Hosting the documentation internally".
+  docs:
+    image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-docs:${IMAGE_TAG:-latest}
+    profiles: ["docs"]
+    build:
+      context: ./docs/website
+      dockerfile: Dockerfile.prod
+      args:
+        DOCS_URL: ${DOCS_URL:-http://localhost:8200}
+        # Baked into the site's asset URLs at build time (must start and end with `/`), so
+        # changing it needs `docker compose --profile docs build docs`; a pulled image keeps
+        # the `/` it was published with.
+        DOCS_BASE_URL: ${DOCS_BASE_URL:-/}
+    ports:
+      - "8200:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      start_period: 60s
       timeout: 5s
       retries: 10
 

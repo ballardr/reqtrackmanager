@@ -2,7 +2,7 @@
  * Module: modules/decisions/DecisionQuickViewPanel
  *
  * A minimal, read-only `SidePanel` peek at a Decision, opened on row click
- * from `ProjectDecisionsPage.tsx`'s list — Phase 9 (2026-09-22)'s
+ * from `ProjectDecisionsPage.tsx`'s list — the
  * "quick view + full page" pattern (docs/ux-style-guide.md's "Pattern:
  * entity detail panel"): a Decision's full detail (lifecycle actions,
  * relationships, comments, attachments) is too much for a side panel alone,
@@ -20,6 +20,7 @@ import { RecordFieldGroup } from "../../components/RecordDetailParts";
 import { SidePanel } from "../../components/SidePanel";
 import { DECISION_STATUS_LABEL, DECISION_STATUS_TONE } from "./types";
 import type { Decision, DecisionTypeDefinition } from "./types";
+import { Badge } from "../../components/Badge";
 
 export function DecisionQuickViewPanel({
   projectId,
@@ -37,14 +38,14 @@ export function DecisionQuickViewPanel({
   return (
     <SidePanel title={decision.unique_code} onClose={onClose}>
       <div className="stack">
-        <span className={`badge badge--${DECISION_STATUS_TONE[decision.status]}`}>
+        <Badge tone={DECISION_STATUS_TONE[decision.status]}>
           {DECISION_STATUS_LABEL[decision.status]}
-        </span>
+        </Badge>
         <h2 style={{ margin: 0 }}>{decision.title}</h2>
         <p className="text-muted" style={{ margin: 0 }}>{decisionType?.name ?? "—"}</p>
         <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{decision.decision_statement}</p>
-        <RecordFieldGroup label="Owner"><PrincipalBadge principal={decision.owner} /></RecordFieldGroup>
-        <RecordFieldGroup label="Decision maker"><PrincipalBadge principal={decision.decision_maker} /></RecordFieldGroup>
+        <RecordFieldGroup helpNotNeeded label="Owner"><PrincipalBadge principal={decision.owner} /></RecordFieldGroup>
+        <RecordFieldGroup helpNotNeeded label="Decision maker"><PrincipalBadge principal={decision.decision_maker} /></RecordFieldGroup>
         <Link
           to={`/projects/${projectId}/modules/decisions/${decision.id}`}
           className="btn btn-primary"

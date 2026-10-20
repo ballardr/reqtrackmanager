@@ -3,7 +3,7 @@
 See [future-modules-2026-09-index.md](future-modules-2026-09-index.md) for
 cross-cutting architecture referenced throughout.
 
-**Source:** [future-modules-2026-09-overview.md](future-modules-2026-09-overview.md)
+**Source:** [future-modules-2026-09-overview.md](completed/future-modules-2026-09-overview.md)
 §14–16 ("Module 5 — Requirements & Requirement Libraries", "Organisation
 Requirement Libraries", "Project Adoption and Baselining").
 
@@ -204,7 +204,7 @@ MCP-tools addition above, applied to every not-yet-built module plan); the
 specific scope and placement below are **Decided by: Agent**.
 
 **Goal:** add this module's user-facing surface to `docs/website/` (the
-published docs site, `docs/plans/docs-website-plan.md`) — modeled closely
+published docs site, `docs/plans/completed/docs-website-plan.md`) — modeled closely
 on `module-04-decision-management-plan.md`'s own "Phase 6 — Docs website
 coverage", adapted to this module's actual content rather than copied.
 
@@ -254,7 +254,7 @@ that way.
 - **Screenshots.** — **Decided by: User** (2026-09-22, made explicit across
   every not-yet-built module plan's own "Docs website coverage" phase,
   alongside [Module 4](module-04-decision-management-plan.md)'s Phase 6
-  addendum of the same date). Follow `docs/plans/docs-website-plan.md`'s
+  addendum of the same date). Follow `docs/plans/completed/docs-website-plan.md`'s
   "Screenshots" standard (1440×900 viewport, captured against the seeded
   demo dataset, stored under `docs/website/static/img/screenshots/`, real
   alt text plus a one-line caption, no surrounding "what this shows/why it

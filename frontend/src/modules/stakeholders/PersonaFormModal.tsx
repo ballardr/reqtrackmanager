@@ -9,15 +9,20 @@
  * `owner`/`champion` are not fields here — `PersonaDetailPage` assigns
  * them through `RecordPrincipalField`. `weight` is optional: blank means "no
  * weight", which scoring treats as equal weighting. `change_note` only
- * renders when editing. Every field has a visible label (principle 13).
+ * renders when editing; "Save and activate" only when creating. Every field has a visible label (principle 13).
  */
 import { useState } from "react";
 
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import type { CollectedLink } from "../../api/artefactLinks";
 import { Modal } from "../../components/Modal";
-import { TextAreaField, TextField } from "./RecordFormFields";
+import { QuickLinkField } from "../../components/QuickLinkField";
+import { TagField } from "../../components/TagField";
+import { TextAreaField, TextField } from "../../components/FormFields";
 import type { Persona, PersonaFieldValues } from "./types";
+import { FormActions } from "../../components/FormActions";
+import { STAKEHOLDERS_HELP } from "./help";
 
 const TEXT_FIELDS: { key: keyof PersonaFieldValues; label: string; rows: number }[] = [
   { key: "description", label: "Description", rows: 2 },
@@ -33,6 +38,7 @@ const TEXT_FIELDS: { key: keyof PersonaFieldValues; label: string; rows: number 
 export function PersonaFormModal({
   initial,
   scopeLabel,
+  projectId,
   typeOptions,
   error,
   onCancel,
@@ -41,17 +47,21 @@ export function PersonaFormModal({
   initial?: Persona;
   /** e.g. "organisation" / "project", shown in the title of a new persona. */
   scopeLabel: string;
+  /** The project a new persona is created in; with it a create form offers the quick-link field. Omit for the organisation scope. */
+  projectId?: string;
   /** The enabled types this scope offers; the current type is always kept selectable. */
   typeOptions: { value: string; label: string }[];
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: PersonaFieldValues) => void;
+  onSave: (values: PersonaFieldValues, quickLinks: CollectedLink[], tags: string[]) => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [typeId, setTypeId] = useState(initial?.persona_type_id ?? "");
   const [roleTitle, setRoleTitle] = useState(initial?.role_title ?? "");
   const [weight, setWeight] = useState(initial?.weight != null ? String(initial.weight) : "");
   const [changeNote, setChangeNote] = useState("");
+  const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
   const [fields, setFields] = useState<Record<string, string>>(() =>
     Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, (initial?.[f.key as keyof Persona] as string | undefined) ?? ""])),
   );
@@ -65,55 +75,54 @@ export function PersonaFormModal({
       ? [...typeOptions, { value: initial.persona_type_id, label: `${initial.persona_type_name ?? "Current type"} (disabled)` }]
       : typeOptions;
 
-  function save() {
+  function save(activate = false) {
     onSave({
       name: name.trim(),
       persona_type_id: typeId || null,
       role_title: roleTitle,
       weight: weightNumber,
       change_note: changeNote,
+      ...(activate ? { activate: true } : {}),
       ...(Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, fields[f.key] ?? ""])) as Record<string, string>),
-    } as PersonaFieldValues);
+    } as PersonaFieldValues, quickLinks, tags);
   }
 
   return (
     <Modal title={initial ? `Edit ${initial.name}` : `New Persona (${scopeLabel})`} onClose={onCancel} size="lg">
       <div className="stack">
         <FormGrid minColumn="18rem">
-          <TextField label="Name" ariaLabel="Persona name" value={name} onChange={setName} />
-          <LabeledSelect label="Type" value={typeId} onChange={setTypeId} options={options} placeholder="No type" />
-          <TextField label="Role / job title" ariaLabel="Role or job title" value={roleTitle} onChange={setRoleTitle} />
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            <span>Importance weight (optional)</span>
-            <input
-              className="input"
-              type="number"
-              min="0"
-              step="any"
-              value={weight}
-              onChange={(e) => setWeight(e.target.value)}
-              aria-label="Importance weight"
-              aria-invalid={!weightValid}
-            />
-            <span className="text-muted" style={{ fontSize: "0.8rem" }}>
-              Used when scoring against personas. Leave blank to weight every persona equally; must be greater than zero.
-            </span>
-          </label>
+          <TextField helpNotNeeded required label="Name" ariaLabel="Persona name" value={name} onChange={setName} />
+          <LabeledSelect helpNotNeeded label="Type" value={typeId} onChange={setTypeId} options={options} placeholder="No type" />
+          <TextField helpNotNeeded label="Role / job title" ariaLabel="Role or job title" value={roleTitle} onChange={setRoleTitle} />
+          <TextField help={STAKEHOLDERS_HELP.personaImportanceWeight}
+            label="Importance weight"
+            ariaLabel="Importance weight"
+            value={weight}
+            onChange={setWeight}
+            inputProps={{ min: "0", step: "any", "aria-invalid": !weightValid, type: "number" }}
+          />
           {TEXT_FIELDS.map((f) => (
             <FormGridFull key={f.key}>
-              <TextAreaField
+              <TextAreaField helpNotNeeded
                 label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
                 onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
               />
             </FormGridFull>
           ))}
-          {initial && <FormGridFull><TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
+          {initial && <FormGridFull><TextField helpNotNeeded label="Change note" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
+          {!initial && projectId && (
+            <FormGridFull>
+              <div className="stack">
+                <QuickLinkField projectId={projectId} artefactType="persona" value={quickLinks} onChange={setQuickLinks} />
+                <TagField projectId={projectId} artefactType="persona" value={tags} onChange={setTags} />
+              </div>
+            </FormGridFull>
+          )}
         </FormGrid>
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" disabled={!valid} onClick={save}>Save</button>
-        </div>
+        <FormActions
+          error={error} onCancel={onCancel} onSave={() => save()} saveDisabled={!valid}
+          onSaveAndActivate={initial ? undefined : () => save(true)}
+        />
       </div>
     </Modal>
   );

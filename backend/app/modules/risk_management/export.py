@@ -4,8 +4,7 @@ Module: modules.risk_management.export
 This module's contribution to the core org/project bundle export/import
 (`app.services.org_export`/`project_export`), registered through
 `ModuleOrgBundleHooks`/`ModuleProjectBundleHooks` on `MODULE_DEFINITION` rather
-than those core files importing this module (docs/plans/module-03-risk-
-management-plan.md Phase 8).
+than those core files importing this module.
 
 - Org level: the Risk type vocabulary.
 - Project level: the project's type overrides and local types; each Risk (its
@@ -82,6 +81,7 @@ from app.services.link_type_scope import resolve_link_type_scope
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.relationships import create_link, get_all_links
 from app.services.scoring import list_levels, seed_missing_scoring_levels
+from app.services.tags import record_tag_names, restore_record_tags
 
 _TEXT_FIELDS = ("title", "statement", "cause", "risk_event", "consequence", "acceptance_criteria")
 _REQUIREMENT = "requirement"
@@ -225,6 +225,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "created_by_email": emails.get(risk.creator_id), "created_at": _j(risk.created_at),
             "is_archived": risk.is_archived, "archived_at": _j(risk.archived_at), "archived_by_email": emails.get(risk.archived_by),
             "review_notified_for": {"due": _j(risk.review_due_notified_for), "overdue": _j(risk.review_overdue_notified_for)},
+            "tags": record_tag_names(db, RISK_ARTEFACT_TYPE, risk.id),
         }
         attachments = []
         for asset, linked_by in db.execute(
@@ -249,7 +250,11 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         ]
         entry["treatments"] = _treatment_json(db, project, risk.id, req_code, link_type_names, verdicts_by_link, emails)
         risks_json.append(entry)
-    return {"risk_project_types": types_json, "risks": risks_json}, assets
+    return {
+        "risk_project_types": types_json,
+        "risk_hidden_org_types": RISK_TYPES.hidden_names(db, project.id, project.organization_id),
+        "risks": risks_json,
+    }, assets
 
 
 # --- Project level: import ---------------------------------------------------
@@ -298,7 +303,7 @@ def import_project_data(
     treatment links. Anything that cannot be matched in the target (a type, a
     scoring level, a requirement, a link type) is skipped or left unset with a
     warning, never guessed."""
-    if not data.get("risks") and not data.get("risk_project_types"):
+    if not data.get("risks") and not data.get("risk_project_types") and not data.get("risk_hidden_org_types"):
         return
     organization_id = project.organization_id
     seed_missing_scoring_levels(db, organization_id)
@@ -358,6 +363,10 @@ def import_project_data(
             **{c: levels.get(c) for c in LEVEL_COLUMN_AXES},
         ))
         db.flush()
+        restore_record_tags(
+            db, organization_id=organization_id, record_project_id=project.id, actor_id=creator_id,
+            artefact_type=RISK_ARTEFACT_TYPE, artefact_id=risk.id, names=entry.get("tags"),
+        )
 
         for att in entry.get("attachments", []):
             att_bytes = file_bytes_by_ref.get(att["file_ref"])
@@ -409,6 +418,10 @@ def import_project_data(
                     reassessment_reason=verdict.get("reassessment_reason", ""),
                 ))
     db.flush()
+
+    # Hidden last: a risk above may use a type the project hides, which needs its row created first.
+    for name in RISK_TYPES.hide_by_names(db, project.id, organization_id, data.get("risk_hidden_org_types", [])):
+        warnings.add(f"Hidden risk type {name!r} skipped — the organisation has no such type.")
 
     # Keep new Risks from reusing an imported code.
     counter = db.scalar(select(ProjectSequenceCounter).where(

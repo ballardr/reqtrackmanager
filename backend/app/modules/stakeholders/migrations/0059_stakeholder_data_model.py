@@ -1,11 +1,10 @@
-"""Stakeholder data model (Module 2 Phase 1.2)
+"""Stakeholder data model
 
 Revision ID: 0059
 Revises: 0058
 Create Date: 2026-10-05
 
-Adds the Stakeholder tables (docs/plans/module-02-stakeholders-and-personas-plan.md
-Phase 1.2): `stakeholder_type_definitions`/`project_stakeholder_types`
+Adds the Stakeholder tables: `stakeholder_type_definitions`/`project_stakeholder_types`
 (two-tier type vocabulary), `stakeholders`/`stakeholder_versions` (identity +
 temporal content, org or project scope, with the Influence/Interest scoring
 level references, engagement cadence and optional platform-user link) and the

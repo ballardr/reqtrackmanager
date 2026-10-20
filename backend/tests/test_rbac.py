@@ -40,7 +40,7 @@ def test_project_creator_can_create_project(client, admin_token, org_id):
 
 def test_project_creator_becomes_project_manager(client, admin_token, org_id):
     """The project creator is granted a direct PROJECT_MANAGER role (C-U-10)
-    — no group is created at all (follow-up UX batch Phase C, 2026-08-31,
+    — no group is created at all (2026-08-31,
     docs/decisions.md: the four auto-created "standard" project groups were
     removed; a fresh project's initial manager grant is now always direct)."""
     create_org_user(client, admin_token, org_id, "creator2@example.com", role="project_creator")
@@ -115,8 +115,7 @@ def test_org_admin_can_manage_group_membership_on_a_project_with_no_role(client,
     project = create_project(client, creator_token, org["id"], "Group Manage Project")
     target_id = create_org_user(client, admin_token, org["id"], "reach_target@example.com", role="member")
 
-    # No group is auto-created on project creation any more (follow-up UX
-    # batch Phase C, 2026-08-31) — create the member-role group this test
+    # No group is auto-created on project creation any more (2026-08-31) — create the member-role group this test
     # needs explicitly.
     member_group = client.post(
         f"/api/v1/projects/{project['id']}/groups", json={"name": "Members"},
@@ -281,8 +280,7 @@ def test_sole_org_admin_cannot_leave(client, admin_token):
 
 
 def test_org_admin_can_remove_another_user_from_org(client, admin_token, org_id):
-    """`DELETE /{organization_id}/users/{user_id}/membership` (PR6 of the
-    members/groups directory rework plan, docs/decisions.md) — the admin-
+    """`DELETE /{organization_id}/users/{user_id}/membership` (docs/decisions.md) — the admin-
     initiated counterpart to `leave_organization`, exercised on someone
     *other* than the caller. Access is fully gone afterwards, and the
     removal is audit logged."""

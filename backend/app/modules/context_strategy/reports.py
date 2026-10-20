@@ -1,8 +1,7 @@
 """
 Module: modules.context_strategy.reports
 
-Report data layer for Context & Strategy (docs/plans/module-01-context-and-
-strategy-plan.md Phases 12/12b): the nine reports R1–R9 as one `collect_*`
+Report data layer for Context & Strategy: the nine reports R1–R9 as one `collect_*`
 function each, returning the core framework's `ReportResult`, plus the
 `REPORT_DEFINITIONS` that declare them to the registry. Everything
 module-neutral — result shapes, scope rule (`readable_projects`), PDF/CSV
@@ -19,20 +18,20 @@ Responsibilities:
   declared parameters per report.
 
 Design decisions (all Decided by: Agent unless stated; the report list,
-formats, model/roll-up choice and access rules are Phase 9, Decided by:
+formats, model/roll-up choice and access rules are Decided by:
 User):
 - "Open" Pain Points are Submitted, Triaged and Accepted. Addressed means
   the problem is fixed and Rejected/Duplicate/Closed are finished, so none
   of them belong in a fix ranking.
 - Org-wide reports group Pain Points by the scoring model actually applied
   (the project's resolved default unless a model is requested), never
-  ranking different models together (Phase 9 Q3).
+  ranking different models together.
 - Cross-artefact checks ("has a Requirement", "has a Strategy") count only
   artefacts inside the report's readable scope. A link to something the
   caller cannot read is treated as absent rather than leaked, so a gap list
   may over-report; it never reveals a hidden record.
 - R2, R5, R6 and R7 are project-level only; R1, R3, R4, R8 and R9 also run
-  organisation-wide (Phase 9 Q12), gated by the `org_reports_viewer` role and
+  organisation-wide, gated by the `org_reports_viewer` role and
   the framework's default `readable_projects` scope. Organisation-scoped
   Strategies, Future States and Guiding Principles appear in the project
   reports they relate to (R2 parents, R6 and R7 rows) because every org
@@ -42,11 +41,11 @@ User):
   JSON endpoints, and nothing Restricted (no file content, no secrets) is
   included.
 - R9 has no tier columns yet: `intentional_in`/`removed_by` stay reserved
-  until Product Tiers (Module 13) exists, so the report says so in a note.
+  until Product Tiers exists, so the report says so in a note.
 
 Dependencies: core `services.relationships`/`services.scoring`/
 `services.report_framework`, the `registry` artefact-summary hook (Decisions,
-without importing Module 4) and this module's own models.
+without importing Decision Management) and this module's own models.
 """
 
 from __future__ import annotations
@@ -123,6 +122,7 @@ from app.services.scoring import resolve_effective_bands, resolve_effective_cell
 STRATEGY_TYPE = "strategy"
 FUTURE_STATE_TYPE = "future_state"
 PAIN_POINT_TYPE = "pain_point"
+OPEN_QUESTION_TYPE = "open_question"
 GUIDING_PRINCIPLE_TYPE = "guiding_principle"
 REQUIREMENT_TYPE = "requirement"
 DECISION_TYPE = "decision"
@@ -234,7 +234,9 @@ class _RequirementRef:
     status: str
 
 
-def _requirements(db: Session, ids: set[uuid.UUID], project_ids: set[uuid.UUID]) -> dict[uuid.UUID, _RequirementRef]:
+def _requirements(
+    db: Session, req: ReportContext, ids: set[uuid.UUID], project_ids: set[uuid.UUID],
+) -> dict[uuid.UUID, _RequirementRef]:
     """Loads the non-archived Requirements among `ids` that sit in
     `project_ids` (links to anything else are treated as absent)."""
     if not ids:
@@ -250,9 +252,19 @@ def _requirements(db: Session, ids: set[uuid.UUID], project_ids: set[uuid.UUID])
     from app.services.labels import requirement_status_label
 
     return {
-        r.id: _RequirementRef(r.id, r.project_id, r.unique_code, v.name, requirement_status_label(v.status.value))
+        r.id: _RequirementRef(
+            r.id, r.project_id, req.code(r.unique_code, r.project_id), v.name, requirement_status_label(v.status.value),
+        )
         for r, v in rows
     }
+
+
+def _code(req: ReportContext, record: Any) -> str:
+    """The code of a Strategy, Future State, Guiding Principle, Pain Point or Open Question as the report shows it: an
+    organisation-owned record is always qualified by the organisation's code, a project-scoped one by the report's rule."""
+    if record.project_id is None:
+        return req.org_code(record.unique_code)
+    return req.code(record.unique_code, record.project_id)
 
 
 def _project_names(projects: list[Project]) -> dict[uuid.UUID, str]:
@@ -351,6 +363,13 @@ class RankedPainPoint:
     personas: list[PersonaScoreRow]
     matrix: MatrixPoint | None
     rank: int | None = None
+    code: str = ""
+    tags: str = ""
+
+    @property
+    def label(self) -> str:
+        """The title with its code in front (`PP-003 Slow login`), as report tables show it."""
+        return f"{self.code} {self.title}" if self.code else self.title
 
 
 @dataclass
@@ -471,6 +490,7 @@ def _score_pain_points(
                 cell_ratings=_cell_rating_refs(db, ctx, project, model),
             )
         summaries = build_pain_point_scoring(db, ctx, pain_points, model, _rollup(req))
+        pain_point_tags = req.tag_text(db, PAIN_POINT_TYPE, [pp.id for pp in pain_points])
         for pp, summary in zip(pain_points, summaries, strict=True):
             if pp.pain_point_type_id not in type_names:
                 ppt = db.get(ProjectPainPointType, pp.pain_point_type_id)
@@ -478,7 +498,8 @@ def _score_pain_points(
             personas = _persona_rows(ctx, summary)
             counted = [p for p in personas if p.target_status != TargetStatus.INACTIVE.value]
             group.items.append(RankedPainPoint(
-                id=pp.id, project_id=project.id, project_name=project.name, title=pp.title,
+                id=pp.id, project_id=project.id, project_name=project.name, title=pp.title, code=req.code(pp.unique_code, project.id),
+                tags=pain_point_tags.get(pp.id, ""),
                 type_name=type_names[pp.pain_point_type_id], status=pp.status.value,
                 status_label=label(PAIN_POINT_STATUS_LABEL, pp.status.value), priority=pp.priority.value,
                 date_identified=pp.date_identified, is_intentional=pp.is_intentional, model_key=model.key,
@@ -500,14 +521,14 @@ def _fmt_score(value: float | None) -> str:
 def _item_row(i: RankedPainPoint) -> list[str]:
     """The common Pain Point row used by the R1 tables."""
     return [
-        i.model_key, str(i.rank) if i.rank else "", i.title, i.project_name, i.type_name, i.status_label,
+        i.model_key, str(i.rank) if i.rank else "", i.label, i.project_name, i.type_name, i.status_label,
         label(PRIORITY_LABEL, i.priority), _fmt_score(i.score), i.band or "",
         "Blocker: " + (", ".join(i.blocker_personas) or "yes") if i.is_blocker else "",
-        "Persona links degraded" if i.personas_degraded else "",
+        "Persona links degraded" if i.personas_degraded else "", i.tags,
     ]
 
 
-_R1_COLUMNS = ["Model", "Rank", "Pain point", "Project", "Type", "Status", "Priority", "Score (0–100)", "Band", "Blocker", "Note"]
+_R1_COLUMNS = ["Model", "Rank", "Pain point", "Project", "Type", "Status", "Priority", "Score (0–100)", "Band", "Blocker", "Note", "Tags"]
 
 
 def collect_pain_point_prioritisation(db: Session, req: ReportContext) -> ReportResult:
@@ -548,7 +569,7 @@ def collect_pain_point_prioritisation(db: Session, req: ReportContext) -> Report
             (i for i in group.items if i.is_intentional), key=lambda i: (-(i.score or 0), i.title.lower()))]
         for i in group.items:
             breakdown += [
-                [i.model_key, i.title, i.project_name, p.persona, label(SCORE_TARGET_STATUS_LABEL, p.target_status),
+                [i.model_key, i.label, i.project_name, p.persona, label(SCORE_TARGET_STATUS_LABEL, p.target_status),
                  p.severity or "", p.frequency or "", p.confidence or "", _fmt_score(p.score), p.band or "",
                  "Yes" if p.is_blocker else ""]
                 for p in i.personas
@@ -614,7 +635,7 @@ def collect_upgrade_drivers(db: Session, req: ReportContext) -> ReportResult:
     A limitation whose worst persona is at or above
     `CHURN_RISK_SEVERITY_RATIO` of the top Severity level is flagged as a
     churn risk rather than an upsell lever. Tier columns are reserved until
-    Product Tiers (Module 13) exists.
+    Product Tiers exists.
 
     Args:
         db: Database session.
@@ -625,19 +646,19 @@ def collect_upgrade_drivers(db: Session, req: ReportContext) -> ReportResult:
     """
     groups = _score_pain_points(db, req, OPEN_PAIN_POINT_STATUSES, intentional=True)
     result = _result(req, "r9", "Upgrade drivers", eligible=len(req.eligible(db, "pain_point")), notes=[
-        "Tier columns are empty until Product Tiers (Module 13) is available; limitations are not yet linked to a tier.",
+        "Tier columns are empty until Product Tiers is available; limitations are not yet linked to a tier.",
         "Churn risk: a persona is at or near the top Severity level, so the limitation may push users away "
         "rather than towards an upgrade.",
     ])
     columns = ["Model", "Pain point", "Project", "Status", "Introduced in tier", "Removed by tier",
-               "Persona severity", "Score (0–100)", "Band", "Assessment"]
+               "Persona severity", "Score (0–100)", "Band", "Assessment", "Tags"]
     rows, churn_rows = [], []
     for group in groups:
         for i in sorted(group.items, key=lambda i: (-(i.score or 0), i.title.lower())):
             persona_severity = "; ".join(f"{p.persona}: {p.severity}" for p in i.personas if p.severity) or "Not scored"
             row = [
-                i.model_key, i.title, i.project_name, i.status_label, "", "", persona_severity, _fmt_score(i.score),
-                i.band or "", "Churn risk" if i.churn_risk else "Upsell lever",
+                i.model_key, i.label, i.project_name, i.status_label, "", "", persona_severity, _fmt_score(i.score),
+                i.band or "", "Churn risk" if i.churn_risk else "Upsell lever", i.tags,
             ]
             rows.append(row)
             if i.churn_risk:
@@ -667,6 +688,7 @@ class CascadeNode:
     status: str
     project: str
     children: list[CascadeNode] = field(default_factory=list)
+    code: str = ""
 
 
 def collect_strategy_cascade(db: Session, req: ReportContext) -> ReportResult:
@@ -708,7 +730,7 @@ def collect_strategy_cascade(db: Session, req: ReportContext) -> ReportResult:
     req_by_strategy = _outgoing(db, STRATEGY_TYPE, list(all_strategies), REQUIREMENT_TYPE)
     req_by_fs = _outgoing(db, FUTURE_STATE_TYPE, list(future_states), REQUIREMENT_TYPE)
     requirements = _requirements(
-        db, {r for rs in (*req_by_strategy.values(), *req_by_fs.values()) for r in rs}, project_ids,
+        db, req, {r for rs in (*req_by_strategy.values(), *req_by_fs.values()) for r in rs}, project_ids,
     )
     fs_versions = _current_versions(db, FutureStateVersion, "future_state_id", list(future_states))
 
@@ -721,14 +743,16 @@ def collect_strategy_cascade(db: Session, req: ReportContext) -> ReportResult:
             return None
         v = fs_versions[fs.id]
         node = CascadeNode("future_state", fs.id, v.title, label(LIFECYCLE_STATUS_LABEL, v.status.value),
-                           project_label(fs.project_id))
+                           project_label(fs.project_id), code=_code(req, fs))
         node.children = [_req_node(requirements[r], names) for r in req_by_fs.get(fs.id, []) if r in requirements]
         return node
 
     def strategy_node(s: Strategy) -> CascadeNode:
         v = versions[s.id]
         kind = "org_strategy" if s.scope is StrategyScope.ORGANIZATION else "strategy"
-        node = CascadeNode(kind, s.id, v.title, label(LIFECYCLE_STATUS_LABEL, v.status.value), project_label(s.project_id))
+        node = CascadeNode(
+            kind, s.id, v.title, label(LIFECYCLE_STATUS_LABEL, v.status.value), project_label(s.project_id), code=_code(req, s),
+        )
         node.children = [n for n in (fs_node(f) for f in fs_by_strategy.get(s.id, [])) if n]
         node.children += [_req_node(requirements[r], names) for r in req_by_strategy.get(s.id, []) if r in requirements]
         return node
@@ -756,7 +780,7 @@ def collect_strategy_cascade(db: Session, req: ReportContext) -> ReportResult:
     cascade_rows: list[list[str]] = []
 
     def flatten(node: CascadeNode, depth: int) -> None:
-        cascade_rows.append([_KIND_LABEL[node.kind], "— " * depth + node.title, node.status, node.project])
+        cascade_rows.append([_KIND_LABEL[node.kind], node.code, "— " * depth + node.title, node.status, node.project])
         for child in node.children:
             flatten(child, depth + 1)
 
@@ -774,18 +798,23 @@ def collect_strategy_cascade(db: Session, req: ReportContext) -> ReportResult:
         fs for fs in future_states.values()
         if fs.project_id is not None and not any(sid in visible_strategies for sid in fs_strategy_links.get(fs.id, []))
     ]
-    cols = ["Artefact", "Title", "Status", "Project"]
+    cols = ["Artefact", "Code", "Title", "Status", "Project", "Tags"]
+    strategy_tags = req.tag_text(db, STRATEGY_TYPE, [s.id for s in project_strategies])
+    future_state_tags = req.tag_text(db, FUTURE_STATE_TYPE, [fs.id for fs in fs_no_strategy])
     result.sections = [
-        ReportSection("cascade", "Cascade", ["Level", "Title", "Status", "Project"], cascade_rows),
+        ReportSection("cascade", "Cascade", ["Level", "Code", "Title", "Status", "Project"], cascade_rows),
         ReportSection("no_parent", "Project Strategies with no organisation Strategy", cols,
-                      [["Strategy", versions[s.id].title, label(LIFECYCLE_STATUS_LABEL, versions[s.id].status.value),
-                        project_label(s.project_id)] for s in no_parent], gap=True),
+                      [["Strategy", _code(req, s), versions[s.id].title,
+                        label(LIFECYCLE_STATUS_LABEL, versions[s.id].status.value), project_label(s.project_id),
+                        strategy_tags.get(s.id, "")] for s in no_parent], gap=True),
         ReportSection("no_requirement", "Active Strategies with no Requirement", cols,
-                      [["Strategy", versions[s.id].title, "Active", project_label(s.project_id)] for s in no_requirement],
+                      [["Strategy", _code(req, s), versions[s.id].title, "Active", project_label(s.project_id),
+                        strategy_tags.get(s.id, "")] for s in no_requirement],
                       gap=True),
         ReportSection("no_strategy", "Future States with no Strategy", cols,
-                      [["Future State", fs_versions[fs.id].title,
-                        label(LIFECYCLE_STATUS_LABEL, fs_versions[fs.id].status.value), project_label(fs.project_id)]
+                      [["Future State", _code(req, fs), fs_versions[fs.id].title,
+                        label(LIFECYCLE_STATUS_LABEL, fs_versions[fs.id].status.value), project_label(fs.project_id),
+                        future_state_tags.get(fs.id, "")]
                        for fs in fs_no_strategy], gap=True),
     ]
     result.metrics = [
@@ -808,7 +837,7 @@ _KIND_LABEL = {
 
 
 def _req_node(r: _RequirementRef, names: dict[uuid.UUID, str]) -> CascadeNode:
-    return CascadeNode("requirement", r.id, f"{r.code} {r.name}", r.status, names.get(r.project_id, ""))
+    return CascadeNode("requirement", r.id, r.name, r.status, names.get(r.project_id, ""), code=r.code)
 
 
 def _current_versions(db: Session, model: Any, fk: str, ids: list[uuid.UUID]) -> dict[uuid.UUID, Any]:
@@ -885,31 +914,38 @@ def collect_pain_point_coverage(db: Session, req: ReportContext) -> ReportResult
         [t, *(str(counts[t][s.value]) for s in statuses), str(sum(counts[t].values()))] for t in sorted(counts)
     ]
     links = _outgoing(db, PAIN_POINT_TYPE, [p.id for p in pain_points], REQUIREMENT_TYPE)
-    requirements = _requirements(db, {r for rs in links.values() for r in rs}, set(names))
+    requirements = _requirements(db, req, {r for rs in links.values() for r in rs}, set(names))
     accepted = [p for p in pain_points if p.status is PainPointStatus.ACCEPTED]
     uncovered = [p for p in accepted if not any(r in requirements for r in links.get(p.id, []))]
+    pp_codes = {pp.id: req.code(pp.unique_code, pp.project_id) for pp in pain_points}
+    pp_tags = req.tag_text(db, PAIN_POINT_TYPE, [pp.id for pp in pain_points])
     linked_rows = [
-        [pp.title, names[pp.project_id], f"{requirements[r].code} {requirements[r].name}", requirements[r].status]
+        [
+            f"{pp_codes[pp.id]} {pp.title}", names[pp.project_id], f"{requirements[r].code} {requirements[r].name}",
+            requirements[r].status, pp_tags.get(pp.id, ""),
+        ]
         for pp in pain_points for r in links.get(pp.id, []) if r in requirements
     ]
     open_pps = [p for p in pain_points if p.status in OPEN_PAIN_POINT_STATUSES]
     age_rows = [
-        [pp.title, names[pp.project_id], label(PAIN_POINT_STATUS_LABEL, pp.status.value),
-         _fmt_date(pp.date_identified), str((req.today - pp.date_identified).days)]
+        [f"{pp_codes[pp.id]} {pp.title}", names[pp.project_id], label(PAIN_POINT_STATUS_LABEL, pp.status.value),
+         _fmt_date(pp.date_identified), str((req.today - pp.date_identified).days), pp_tags.get(pp.id, "")]
         for pp in open_pps
     ]
     result.sections = [
         ReportSection("matrix", "Type × status", ["Type", *(label(PAIN_POINT_STATUS_LABEL, s.value) for s in statuses), "Total"], matrix_rows),
         ReportSection("uncovered", "Accepted Pain Points with no Requirement",
-                      ["Pain point", "Project", "Identified", "Age (days)"],
-                      [[p.title, names[p.project_id], _fmt_date(p.date_identified), str((req.today - p.date_identified).days)]
+                      ["Pain point", "Project", "Identified", "Age (days)", "Tags"],
+                      [[f"{pp_codes[p.id]} {p.title}", names[p.project_id], _fmt_date(p.date_identified),
+                        str((req.today - p.date_identified).days), pp_tags.get(p.id, "")]
                        for p in uncovered], gap=True,
                       note="An Accepted Pain Point is a commitment; none of these has a Requirement that addresses it."),
-        ReportSection("requirements", "Linked Requirements", ["Pain point", "Project", "Requirement", "Requirement status"], linked_rows),
-        ReportSection("ageing", "Age of open Pain Points", ["Pain point", "Project", "Status", "Identified", "Age (days)"], age_rows),
+        ReportSection("requirements", "Linked Requirements", ["Pain point", "Project", "Requirement", "Requirement status", "Tags"], linked_rows),
+        ReportSection("ageing", "Age of open Pain Points", ["Pain point", "Project", "Status", "Identified", "Age (days)", "Tags"], age_rows),
     ]
     result.metrics = [
-        ReportMetric("Pain Points", len(pain_points), link=_page("pain-points")),
+        # open="0": this count includes every status, and the list opens on open Pain Points unless told otherwise.
+        ReportMetric("Pain Points", len(pain_points), link=_page("pain-points", open="0")),
         ReportMetric("Accepted", len(accepted), link=_page("pain-points", status="accepted")),
         ReportMetric("Accepted with no Requirement", len(uncovered), gap=True, link=_gap_table("pain-point-coverage", "uncovered")),
         ReportMetric(
@@ -937,6 +973,8 @@ class OpenQuestionRow:
     due_date: date | None
     days_open: int
     is_overdue: bool
+    code: str = ""
+    tags: str = ""
 
 
 def collect_open_question_register(db: Session, req: ReportContext) -> ReportResult:
@@ -958,11 +996,13 @@ def collect_open_question_register(db: Session, req: ReportContext) -> ReportRes
         OpenQuestion.status.in_(OPEN_QUESTION_OPEN_STATUSES),
     )).all()) if projects else []
     owners = _owner_text(db, questions)
+    question_tags = req.tag_text(db, OPEN_QUESTION_TYPE, [q.id for q in questions])
     items = [
         OpenQuestionRow(
             q.id, q.project_id, names[q.project_id], q.question, q.priority.value, q.status.value,
             owners(q), q.due_date, (req.today - q.created_at.date()).days,
-            q.due_date is not None and q.due_date < req.today,
+            q.due_date is not None and q.due_date < req.today, req.code(q.unique_code, q.project_id),
+            question_tags.get(q.id, ""),
         )
         for q in questions
     ]
@@ -970,11 +1010,12 @@ def collect_open_question_register(db: Session, req: ReportContext) -> ReportRes
 
     def row(i: OpenQuestionRow) -> list[str]:
         return [
-            i.question, i.project_name, label(PRIORITY_LABEL, i.priority), label(OPEN_QUESTION_STATUS_LABEL, i.status),
-            i.owner or "Unowned", _fmt_date(i.due_date), "Overdue" if i.is_overdue else "", str(i.days_open),
+            f"{i.code} {i.question}", i.project_name, label(PRIORITY_LABEL, i.priority),
+            label(OPEN_QUESTION_STATUS_LABEL, i.status), i.owner or "Unowned", _fmt_date(i.due_date),
+            "Overdue" if i.is_overdue else "", str(i.days_open), i.tags,
         ]
 
-    columns = ["Question", "Project", "Priority", "Status", "Owner", "Due", "Overdue", "Days open"]
+    columns = ["Question", "Project", "Priority", "Status", "Owner", "Due", "Overdue", "Days open", "Tags"]
     by_priority = Counter(i.priority for i in items)
     by_owner = Counter(i.owner or "Unowned" for i in items)
     result.sections = [
@@ -1018,6 +1059,7 @@ def collect_future_state_roadmap(db: Session, req: ReportContext) -> ReportResul
     )).all()) if projects else []
     versions = _current_versions(db, FutureStateVersion, "future_state_id", [s.id for s in states])
     items = []
+    state_tags = req.tag_text(db, FUTURE_STATE_TYPE, [s.id for s in states])
     for s in states:
         v = versions[s.id]
         if v.status not in ROADMAP_FUTURE_STATE_STATUSES:
@@ -1025,6 +1067,7 @@ def collect_future_state_roadmap(db: Session, req: ReportContext) -> ReportResul
         overdue = v.target_date is not None and v.target_date < req.today and v.status is not FutureStateStatus.ACTIVE
         items.append({
             "id": s.id, "project_id": s.project_id, "project_name": names[s.project_id], "title": v.title,
+            "code": _code(req, s), "tags": state_tags.get(s.id, ""),
             "status": v.status.value, "target_date": v.target_date, "is_overdue": overdue,
             "has_success_measures": bool(v.success_measures.strip()),
             "days_to_target": (v.target_date - req.today).days if v.target_date else None,
@@ -1033,13 +1076,14 @@ def collect_future_state_roadmap(db: Session, req: ReportContext) -> ReportResul
 
     def row(i: dict[str, Any]) -> list[str]:
         return [
-            _fmt_date(i["target_date"]) or "No target date", i["title"], i["project_name"],
+            _fmt_date(i["target_date"]) or "No target date", i["code"], i["title"], i["project_name"],
             label(LIFECYCLE_STATUS_LABEL, i["status"]),
             "" if i["days_to_target"] is None else str(i["days_to_target"]),
             "Target passed" if i["is_overdue"] else "", "" if i["has_success_measures"] else "No success measures",
+            i["tags"],
         ]
 
-    columns = ["Target date", "Future State", "Project", "Status", "Days to target", "Target passed", "Measures"]
+    columns = ["Target date", "Code", "Future State", "Project", "Status", "Days to target", "Target passed", "Measures", "Tags"]
     result.sections = [
         ReportSection("roadmap", "Roadmap", columns, [row(i) for i in items],
                       note="Negative days mean the target date has passed. Superseded and Retired Future States are omitted."),
@@ -1069,7 +1113,7 @@ def collect_guiding_principle_usage(db: Session, req: ReportContext) -> ReportRe
     A principle counts as applied when it is linked to at least one readable
     Requirement or Decision. Decision links are resolved through the generic
     artefact-summary hook, so they show as zero until Decision Management
-    populates them (Module 4 Phase 7).
+    populates them.
 
     Args:
         db: Database session.
@@ -1095,7 +1139,7 @@ def collect_guiding_principle_usage(db: Session, req: ReportContext) -> ReportRe
     active = [p for p in principles if versions[p.id].status is GuidingPrincipleStatus.ACTIVE]
     ids = [p.id for p in active]
     req_links = _outgoing(db, GUIDING_PRINCIPLE_TYPE, ids, REQUIREMENT_TYPE)
-    requirements = _requirements(db, {r for rs in req_links.values() for r in rs}, project_ids)
+    requirements = _requirements(db, req, {r for rs in req_links.values() for r in rs}, project_ids)
     decision_ids: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
     for link in [*relationships.get_links_from_many(db, GUIDING_PRINCIPLE_TYPE, ids),
                  *relationships.get_links_to_many(db, GUIDING_PRINCIPLE_TYPE, ids)]:
@@ -1104,6 +1148,7 @@ def collect_guiding_principle_usage(db: Session, req: ReportContext) -> ReportRe
         elif link.source_type == DECISION_TYPE and link.target_type == GUIDING_PRINCIPLE_TYPE:
             decision_ids[link.target_id].add(link.source_id)
     owners = _owner_text(db, [versions[p.id] for p in active])
+    principle_tags = req.tag_text(db, GUIDING_PRINCIPLE_TYPE, ids)
     items = []
     for p in active:
         v = versions[p.id]
@@ -1113,7 +1158,8 @@ def collect_guiding_principle_usage(db: Session, req: ReportContext) -> ReportRe
             decisions += summary is not None and summary.project_id in project_ids and not summary.is_archived
         reqs = sum(1 for r in req_links.get(p.id, []) if r in requirements)
         items.append({
-            "id": p.id, "name": v.name, "scope": p.scope.value, "project_name": names.get(p.project_id, "") if p.project_id else "",
+            "id": p.id, "code": _code(req, p), "tags": principle_tags.get(p.id, ""), "name": v.name, "scope": p.scope.value,
+            "project_name": names.get(p.project_id, "") if p.project_id else "",
             "priority": v.priority.value, "owner": owners(v),
             "decisions": decisions, "requirements": reqs, "applied": decisions + reqs > 0,
         })
@@ -1121,11 +1167,14 @@ def collect_guiding_principle_usage(db: Session, req: ReportContext) -> ReportRe
 
     def row(i: dict[str, Any]) -> list[str]:
         return [
-            i["name"], label(SCOPE_LABEL, i["scope"]), i["project_name"], label(PRIORITY_LABEL, i["priority"]),
+            i["code"], i["name"], label(SCOPE_LABEL, i["scope"]), i["project_name"], label(PRIORITY_LABEL, i["priority"]),
             i["owner"] or "", str(i["decisions"]), str(i["requirements"]), "Yes" if i["applied"] else "Never applied",
+            i["tags"],
         ]
 
-    columns = ["Principle", "Scope", "Project", "Priority", "Owner", "Linked Decisions", "Linked Requirements", "Applied"]
+    columns = [
+        "Code", "Principle", "Scope", "Project", "Priority", "Owner", "Linked Decisions", "Linked Requirements", "Applied", "Tags",
+    ]
     result.sections = [
         ReportSection("register", "Active Guiding Principles", columns, [row(i) for i in items]),
         ReportSection("unused", "Never applied", columns, [row(i) for i in items if not i["applied"]], gap=True,
@@ -1191,12 +1240,14 @@ def collect_change_history(db: Session, req: ReportContext) -> ReportResult:
                             .order_by(version_model.version_number)).all() if artefacts else []:
             by_artefact[getattr(v, fk)].append(v)
         authors = _user_names(db, {v.created_by for vs in by_artefact.values() for v in vs})
+        artefact_tags = req.tag_text(db, sub, [a.id for a in artefacts])
         for a in artefacts:
             versions = by_artefact.get(a.id, [])
             previous = None
             for v in versions:
                 entry = {
-                    "kind": kind_label, "artefact_id": a.id, "title": getattr(v, title_attr),
+                    "kind": kind_label, "artefact_id": a.id, "code": _code(req, a), "tags": artefact_tags.get(a.id, ""),
+                    "title": getattr(v, title_attr),
                     "project_name": names.get(a.project_id, "") if a.project_id else "Organisation",
                     "version": v.version_number, "status": v.status.value,
                     "previous_status": previous.status.value if previous else None,
@@ -1216,11 +1267,13 @@ def collect_change_history(db: Session, req: ReportContext) -> ReportResult:
             if e["previous_status"] and e["previous_status"] != e["status"] else ""
         )
         return [
-            _fmt_date(e["changed_at"]), e["kind"], e["title"], e["project_name"], f"v{e['version']}",
-            label(LIFECYCLE_STATUS_LABEL, e["status"]), move, e["change_note"], e["author"],
+            _fmt_date(e["changed_at"]), e["kind"], e["code"], e["title"], e["project_name"], f"v{e['version']}",
+            label(LIFECYCLE_STATUS_LABEL, e["status"]), move, e["change_note"], e["author"], e["tags"],
         ]
 
-    columns = ["Date", "Artefact", "Title", "Project", "Version", "Status", "Status change", "Change note", "Author"]
+    columns = [
+        "Date", "Artefact", "Code", "Title", "Project", "Version", "Status", "Status change", "Change note", "Author", "Tags",
+    ]
     result.sections = [
         ReportSection("history", "Version history", columns, [row(e) for e in entries]),
         ReportSection("stale", f"Active, not revised in {req.params["stale_months"]} months", columns, [row(e) for e in stale],
@@ -1306,45 +1359,54 @@ REPORT_DEFINITIONS: tuple[ReportDefinition, ...] = (
         "Open Pain Points ranked by the chosen scoring model and persona roll-up, with Blockers always shown.",
         collect_pain_point_prioritisation, subcomponent="pain_point", org_level=True, org_role_key=_ORG_ROLE,
         params=(_MODEL_KEY, _ROLLUP),
+        record_types=("pain_point",),
     ),
     ReportDefinition(
         "r2", "strategy-cascade", "Strategy cascade and alignment",
         "Organisation Strategy to Requirement, with alignment gaps.", collect_strategy_cascade, subcomponent="strategy",
+        record_types=("strategy", "future_state", "requirement"),
     ),
     ReportDefinition(
         "r3", "pain-point-coverage", "Pain Point coverage and ageing",
         "Pain Points by type and status, Accepted ones with no Requirement, and age.", collect_pain_point_coverage,
         subcomponent="pain_point", org_level=True, org_role_key=_ORG_ROLE,
+        record_types=("pain_point", "requirement"),
     ),
     ReportDefinition(
         "r4", "open-question-register", "Open Question register",
         "Unresolved Open Questions by priority and owner, with overdue and unowned items.",
         collect_open_question_register, subcomponent="open_question", org_level=True, org_role_key=_ORG_ROLE,
+        record_types=("open_question",),
     ),
     ReportDefinition(
         "r5", "future-state-roadmap", "Future State roadmap",
         "Future States by target date, with missed targets and missing success measures.",
         collect_future_state_roadmap, subcomponent="future_state",
+        record_types=("future_state",),
     ),
     ReportDefinition(
         "r6", "guiding-principle-usage", "Guiding Principle register and usage",
         "Active Guiding Principles and how they are applied.", collect_guiding_principle_usage,
         subcomponent="guiding_principle",
+        record_types=("guiding_principle",),
     ),
     ReportDefinition(
         "r7", "strategy-change-history", "Strategy change history",
         "Version history of Strategies, Future States and Guiding Principles, and stale Active items.",
         collect_change_history, params=(_STALE_MONTHS, _SINCE),
+        record_types=("strategy", "future_state", "guiding_principle"),
     ),
     ReportDefinition(
         "r8", "summary", "Context & Strategy summary", "Headline figures and every report's gap lists in one pack.",
         collect_summary_pack, org_level=True, org_role_key=_ORG_ROLE,
         params=(_MODEL_KEY, _ROLLUP, _STALE_MONTHS, _SINCE),
+        record_types=("pain_point", "strategy", "future_state", "open_question", "guiding_principle", "requirement"),
     ),
     ReportDefinition(
         "r9", "upgrade-drivers", "Upgrade drivers",
         "Intentional tier limitations with per-persona Severity and churn risk.", collect_upgrade_drivers,
         subcomponent="pain_point", org_level=True, org_role_key=_ORG_ROLE, params=(_MODEL_KEY, _ROLLUP),
+        record_types=("pain_point",),
     ),
 )
 

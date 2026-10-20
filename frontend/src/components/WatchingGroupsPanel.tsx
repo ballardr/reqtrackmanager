@@ -3,7 +3,7 @@
  *
  * The groups watching one requirement or change request (users and groups on parity): everyone in a
  * watching group who can view the project is notified of the record's comments, alongside people who
- * subscribed themselves (`SubscribeButton`). Project managers and administrators add and remove groups
+ * subscribed themselves (the record header menu's Subscribe action). Project managers and administrators add and remove groups
  * with a `PrincipalPicker` limited to organisation groups and the project's groups; everyone else sees
  * who is watching. Renders nothing for a reader when no group is watching, so an unwatched record stays
  * uncluttered.
@@ -83,7 +83,7 @@ export function WatchingGroupsPanel({
                 <button
                   type="button" className="btn" onClick={() => remove(group)} aria-label={`${strings.watchers.stopWatching}: ${group.label}`}
                 >
-                  <X size={14} />
+                  <X />
                 </button>
               )}
             </li>

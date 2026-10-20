@@ -2,7 +2,7 @@
  * Module: components/ProjectNavEditor
  *
  * The "Customise navigation" modal for the Project nav section
- * (docs/plans/platform-enhancements-2026-10-plan.md Phase 4): reorder items, move them behind
+ *: reorder items, move them behind
  * "More", and choose whether the layout applies to every project or just this one.
  *
  * Responsibilities:
@@ -43,6 +43,7 @@ import {
   type ProjectNavItem,
 } from "../navigation/projectNav";
 import { Modal } from "./Modal";
+import { FormActions } from "./FormActions";
 
 type Scope = "all" | "project";
 
@@ -171,20 +172,20 @@ export function ProjectNavEditor({
               aria-label={section === "main" ? customise.moveToMore(item.label) : customise.moveToNavigation(item.label)}
               title={section === "main" ? customise.moveToMore(item.label) : customise.moveToNavigation(item.label)}
             >
-              {section === "main" ? <ChevronsDown size={14} /> : <ChevronsUp size={14} />}
+              {section === "main" ? <ChevronsDown /> : <ChevronsUp />}
             </button>
           )}
           <button
             type="button" className="btn" onClick={() => move(section, key, -1)} disabled={index === 0}
             aria-label={customise.moveUp(item.label)} title={customise.moveUp(item.label)}
           >
-            <ArrowUp size={14} />
+            <ArrowUp />
           </button>
           <button
             type="button" className="btn" onClick={() => move(section, key, 1)} disabled={index === list.length - 1}
             aria-label={customise.moveDown(item.label)} title={customise.moveDown(item.label)}
           >
-            <ArrowDown size={14} />
+            <ArrowDown />
           </button>
         </span>
       </li>
@@ -222,18 +223,20 @@ export function ProjectNavEditor({
           </ul>
         )}
       </section>
-      <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
-        <span className="row">
-          <button type="button" className="btn" onClick={resetToDefault}>{customise.resetToDefault}</button>
-          {hasOverride && (
-            <button type="button" className="btn" onClick={removeOverride}>{customise.removeOverride}</button>
-          )}
-        </span>
-        <span className="row">
-          <button type="button" className="btn" onClick={onClose}>{strings.common.cancel}</button>
-          <button type="button" className="btn btn-primary" onClick={save} disabled={saving}>{customise.save}</button>
-        </span>
-      </div>
+      <FormActions
+        leading={
+          <span className="row">
+            <button type="button" className="btn" onClick={resetToDefault}>{customise.resetToDefault}</button>
+            {hasOverride && (
+              <button type="button" className="btn" onClick={removeOverride}>{customise.removeOverride}</button>
+            )}
+          </span>
+        }
+        onCancel={onClose}
+        onSave={save}
+        saveLabel={customise.save}
+        saveDisabled={saving}
+      />
     </Modal>
   );
 }

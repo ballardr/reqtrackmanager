@@ -24,6 +24,7 @@ import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { Modal } from "./Modal";
 import { ProposedLinkRow } from "./ProposedLinkRow";
+import { FormActions } from "./FormActions";
 
 export function ApproveChangeRequestDialog({
   projectId,
@@ -170,12 +171,12 @@ export function ApproveChangeRequestDialog({
         {rows !== null && count === 0 && kind === "add_link" && (
           <p role="status" className="text-muted" style={{ margin: 0 }}>{strings.changeRequests.appliesNothingNotice}</p>
         )}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onClose}>{strings.common.cancel}</button>
-          <button className="btn btn-primary" disabled={rows === null || saving} onClick={() => void approve()}>
-            {count > 0 ? strings.changeRequests.approveMergeLinks(count) : strings.changeRequests.approveWithoutLinks}
-          </button>
-        </div>
+        <FormActions
+          onCancel={onClose}
+          onSave={() => void approve()}
+          saveLabel={count > 0 ? strings.changeRequests.approveMergeLinks(count) : strings.changeRequests.approveWithoutLinks}
+          saveDisabled={rows === null || saving}
+        />
       </div>
     </Modal>
   );

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, openProject, PERSONAS, PROJECT_NAMES, searchProjects } from "./helpers";
+import { chooseRecordAction, loginAs, openProject, PERSONAS, PROJECT_NAMES, recordActionNames, searchProjects } from "./helpers";
 
 /**
  * Job to be done: notifications are a first-class, searchable, paginated
@@ -17,8 +17,8 @@ test.describe("notifications page and favourites page", () => {
       await openProject(page, PROJECT_NAMES.alpha1);
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await page.getByRole("link", { name: "Must expose a health-check endpoint", exact: true }).click();
-      const subscribeButton = page.getByRole("button", { name: "Subscribe", exact: true });
-      if (await subscribeButton.count()) await subscribeButton.click();
+      await expect.poll(() => recordActionNames(page, "Requirement")).not.toEqual([]);
+      if ((await recordActionNames(page, "Requirement")).includes("Subscribe")) await chooseRecordAction(page, "Requirement", "Subscribe");
       await page.getByPlaceholder("Add comment").fill(`E2E: triggering a notification for the notifications-page spec (${Date.now()}).`);
       await page.getByRole("button", { name: "Add comment", exact: true }).click();
     });
@@ -61,8 +61,7 @@ test.describe("notifications page and favourites page", () => {
         await Promise.all([page.waitForResponse((r) => r.url().includes("/favorite")), favouriteButton.click()]);
       }
 
-      // Reactive nav rail (2026-08 UX audit roadmap row 512,
-      // `FavouritesContext`) — the "Favourites" rail link appears right
+      // Reactive nav rail — the "Favourites" rail link appears right
       // away, without needing to navigate to /projects or /favourites again
       // first (the previous behaviour this spec used to have to work
       // around by going straight to /favourites via `page.goto` instead of

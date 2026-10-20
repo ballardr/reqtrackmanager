@@ -1,5 +1,5 @@
-"""Tests for the Compliance Module's Phase 5 data model
-(docs/compliance-module-plan.md; docs/Compliance_Module_Requirements.md §2,
+"""Tests for the Compliance Module's data model
+(§2,
 §5, §6, §25, §31): module registration (this is the first real first-party
 module in `INSTALLED_MODULES`, not a fixture like every module-system test
 before it), the `ComplianceStandard` -> `ComplianceStandardVersion` ->
@@ -7,9 +7,8 @@ before it), the `ComplianceStandard` -> `ComplianceStandardVersion` ->
 Action` shape, the organisation-scoped `ComplianceActionTypeDefinition`
 vocabulary, and the 0026 migration's up/down behaviour.
 
-Phase 5 is data model only — there is no API surface yet (Phase 6), so
-every test here talks to the ORM directly via `SessionLocal`, the same
-"model-level only this phase" scope the plan's own spec calls for. Only
+These tests are data-model only, so
+every test here talks to the ORM directly via `SessionLocal`. Only
 `org_id`/`admin_token`/`create_org_user` (existing API-backed fixtures) are
 used to get real `organizations`/`users` rows to hang foreign keys off —
 nothing compliance-specific goes through the API.
@@ -36,16 +35,16 @@ from tests.conftest import build_alembic_config, create_org_user
 def test_compliance_module_is_registered_with_org_and_project_roles():
     """Unlike every module-system test before it, this doesn't need a
     fixture module — Compliance is a real, permanent entry in
-    `INSTALLED_MODULES` as of this phase. The module has both an org-scoped
-    and a project-scoped router, a `resolve_file_owner_project_id` hook
-    (Phase 8), and four scheduled jobs (Phase 10) — see
+    `INSTALLED_MODULES`. The module has both an org-scoped
+    and a project-scoped router, a `resolve_file_owner_project_id` hook,
+and four scheduled jobs — see
     `test_compliance_standards_api.py`/`test_project_compliance_api.py`/
     `test_compliance_evidence_api.py`/`test_compliance_approval_workflow.py`/
     `test_compliance_reviews_and_notifications.py`/`test_compliance_
     mapping_and_version_impact.py` for the actual API surfaces these facts
     stand in for here.
 
-    Its MCP surface was originally ten read-only tools (Phases 6-11);
+    Its MCP surface was originally ten read-only tools;
     2026-09-22 reversed that to write-enabled (68 more tools) except
     approvals (gated, not excluded) and RBAC/file-upload endpoints (still
     undeclared) — see `module.py`'s own docstring and `docs/decisions.md`'s
@@ -61,16 +60,15 @@ def test_compliance_module_is_registered_with_org_and_project_roles():
 
     assert definition.default_enabled is True, "§1: compliance is enabled by default"
     assert definition.implemented is True
-    assert definition.get_router() is not None, "Phase 6 adds the Standards Management API router"
-    assert definition.get_project_router is not None, "Phase 7 adds the project-scoped assessment router"
+    assert definition.get_router() is not None, "the Standards Management API router is registered"
+    assert definition.get_project_router is not None, "the project-scoped assessment router is registered"
     assert definition.get_project_router() is not None
     assert len(definition.mcp_tools) == 74, (
-        "Ten read-only tools (three from Phase 6, two more from Phase 7, one more from Phase 8, one more "
-        "from Phase 9, one more from Phase 10, two more from Phase 11) plus 68 write tools declared in the "
+        "Ten read-only tools plus 68 write tools declared in the "
         "2026-09-22 reversal (docs/decisions.md's 'Compliance MCP write tools + generalized AI approval "
         "gate' entry), minus 2 removed in the 2026-09-23 hardening pass (complete_project_review/"
-        "complete_standard_review) and 2 more removed in platform enhancements Phase 6c (the requirement "
-        "traceability-link create/delete tools, replaced by the generic artefact-link tools) — see "
+        "complete_standard_review) and 2 more removed when the requirement "
+        "traceability-link create/delete tools were replaced by the generic artefact-link tools — see "
         "module.py's own updated docstring"
     )
     assert {tool.name for tool in definition.mcp_tools} >= {
@@ -82,7 +80,7 @@ def test_compliance_module_is_registered_with_org_and_project_roles():
     )
     assert any("migrate" in tool.name for tool in definition.mcp_tools), (
         "The 2026-09-22 reversal also declares the project version-migration action "
-        "(compliance_migrate_project_compliance_version) — see module.py's own Phase 11 notes"
+        "(compliance_migrate_project_compliance_version) — see module.py's own docstring"
     )
     assert not any(
         tool.name
@@ -103,8 +101,8 @@ def test_compliance_module_is_registered_with_org_and_project_roles():
         "configuration (mirrors core's record_review_outcome), not just gated — both routes are now marked "
         "APPROVAL_ACTION_ROUTE_EXTRA and their tool declarations were removed"
     )
-    assert definition.resolve_file_owner_project_id is not None, "Phase 8 adds the evidence file-ownership hook"
-    assert len(definition.scheduled_jobs) == 4, "Phase 10 adds four date-driven notification sweeps"
+    assert definition.resolve_file_owner_project_id is not None, "the evidence file-ownership hook is registered"
+    assert len(definition.scheduled_jobs) == 4, "four date-driven notification sweeps are registered"
 
     roles_by_key = {role.role_key: role for role in definition.roles}
     assert set(roles_by_key) == {
@@ -112,7 +110,7 @@ def test_compliance_module_is_registered_with_org_and_project_roles():
     }
     assert roles_by_key["compliance_manager"].scope == "org"
     assert roles_by_key["compliance_officer"].scope == "project"
-    # Phase 22: standard-scoped roles use the generalised, module-owned
+    # Standard-scoped roles use the generalised, module-owned
     # entity scope (`app.modules.registry.ModuleRoleDefinition`'s new
     # `scope`/`overridden_by`/`resolve_entity_organization_id` mechanism)
     # rather than a second hardcoded "org"/"project" literal.
@@ -322,7 +320,7 @@ def test_standard_reference_is_unique_per_organization(client, admin_token, org_
 
 
 def test_migration_0026_upgrade_and_downgrade_round_trip():
-    """Downgrades to 0025 (none of this phase's five tables exist), then
+    """Downgrades to 0025 (none of its five tables exist), then
     upgrades back to head (0026's real `upgrade()` runs), confirming the
     tables actually appear/disappear — not a reimplementation of the
     migration's SQL, a direct exercise of it, mirroring `test_schema_

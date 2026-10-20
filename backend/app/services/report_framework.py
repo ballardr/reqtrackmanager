@@ -1,7 +1,7 @@
 """
 Module: services.report_framework
 
-The module-neutral half of reporting (Module 1 Phase 12b): everything a
+The module-neutral half of reporting: everything a
 module's reports have in common, so a module contributes only `collect_*`
 functions plus one `ReportDefinition` each (declared on
 `ModuleDefinition.reports`).
@@ -13,6 +13,9 @@ Responsibilities:
   validated parameters and a cached per-sub-component enablement check;
   `readable_projects` / `scope_projects` are the only places report scope is
   decided.
+- Naming records: `ReportContext.code` / `org_code` give a record's code by the one rule
+  (`services.codes.display_code`) and `tag_text` its tags, so a collector never formats a code or
+  queries tags itself; `ReportDefinition.record_types` declares what a report names.
 - Output: `render_csv` (first section only, formula-neutralised) and
   `render_pdf` and `render_docx` (every section). Both render one neutral
   `ReportDocument` from `build_result_document` (`services.report_model`), so a
@@ -86,6 +89,7 @@ from app.modules.registry import (
     is_org_module_subcomponent_enabled,
     validate_report_definitions,
 )
+from app.services.codes import display_code
 from app.services.csv_safety import csv_safe
 from app.services.downloads import file_response, filename_safe
 from app.services.project_hierarchy import get_descendant_project_ids
@@ -103,6 +107,7 @@ from app.services.report_document import ReportBranding, load_report_template, r
 from app.services.report_docx import render_docx_document
 from app.services.report_model import Block, Gap, Heading, Note, ReportDocument, Table
 from app.services.report_pdf import render_pdf_document
+from app.services.tags import tag_names_for_records
 
 ReportFormat = Literal["json", "pdf", "csv", "docx"]
 REPORT_FORMATS: tuple[str, ...] = ("json", "pdf", "csv", "docx")
@@ -260,6 +265,39 @@ class ReportContext:
         if len(self.projects) > 1:
             return f"Covers this project and {len(self.projects) - 1} readable child project(s)."
         return "Covers this project only."
+
+    def code(self, unique_code: str, project_id: uuid.UUID, project_code: str | None = None) -> str:
+        """A project-scoped record's code as this report shows it (`REQ-001` or `ACME-REQ-001`).
+
+        Qualified when the record is in a project other than the one reported on (every record of
+        an organisation-wide run), or when the organisation enforces the project code; the
+        person's preference is ignored so a saved report is reproducible. A project outside
+        `projects` is qualified with `project_code` when the caller knows it, otherwise left bare.
+        """
+        owner = next((p for p in self.projects if p.id == project_id), None)
+        return display_code(
+            unique_code,
+            owner.code if owner is not None else project_code,
+            own_project_code=self.root_project.code if self.root_project is not None else None,
+            enforced=self.organization.enforce_code_everywhere,
+        )
+
+    def org_code(self, unique_code: str) -> str:
+        """An organisation-owned record's code, always qualified (`ACME-PER-001`)."""
+        return display_code(unique_code, self.organization.code, organization_owned=True)
+
+    def tag_text(self, db: Session, artefact_type: str, record_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, str]:
+        """The tags of `record_ids` as comma-separated text for a report's Tags column, in one query.
+
+        Args:
+            db: Database session.
+            artefact_type: The registered type of every id.
+            record_ids: The records the report names; ones with no tag are absent from the result.
+
+        Returns:
+            `{record id: "tag a, tag b"}`.
+        """
+        return {rid: ", ".join(names) for rid, names in tag_names_for_records(db, artefact_type, record_ids).items()}
 
     def eligible(self, db: Session, subcomponent: str) -> list[Project]:
         """The in-scope projects that have `subcomponent` effectively enabled.

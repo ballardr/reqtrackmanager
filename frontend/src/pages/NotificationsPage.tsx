@@ -1,14 +1,18 @@
-import { useEffect, useState } from "react";
+import { useMutation } from "../hooks/useMutation";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { Notification } from "../api/types";
 import { getNotificationLink } from "../modules/artefactPaths";
 import { FilterCheckbox, FilterPanel } from "../components/FilterPanel";
+import { ListPageLayout } from "../components/ListPageLayout";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
+import { useResetOnChange } from "../hooks/useResetOnChange";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 const strings = t();
 
@@ -21,6 +25,7 @@ const PAGE_SIZE = 30;
  * loading every notification ever received up front would be wasteful.
  */
 export function NotificationsPage() {
+  const run = useMutation();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [notifications, setNotifications] = useState<Notification[] | null>(null);
@@ -41,14 +46,11 @@ export function NotificationsPage() {
     setTotal(page.total);
   }
 
-  useEffect(() => {
-    setNotifications(null);
-    load(0, false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, unreadOnly]);
+  useResetOnChange([search, unreadOnly], () => setNotifications(null));
+  useLoadOnChange(() => load(0, false), [search, unreadOnly]);
 
   async function markRead(id: string) {
-    await api.post(`/api/v1/notifications/${id}/read`);
+    if (!(await run(() => api.post(`/api/v1/notifications/${id}/read`), { failure: "Could not mark read." }))) return;
     setNotifications((prev) => (prev ? prev.map((n) => (n.id === id ? { ...n, read_at: new Date().toISOString() } : n)) : prev));
   }
 
@@ -72,21 +74,27 @@ export function NotificationsPage() {
 
   return (
     <div className="stack">
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <h1 style={{ margin: 0 }}>{strings.notifications.title}</h1>
-        {unreadCount > 0 && (
-          <button className="btn btn-primary" onClick={markAllRead}>
-            {strings.notifications.markAllRead}
-          </button>
-        )}
-      </div>
-
-      <div className="side-grid">
+      <ListPageLayout
+        title={strings.notifications.title}
+        actions={
+          unreadCount > 0 && (
+            <button className="btn btn-primary" onClick={markAllRead}>
+              {strings.notifications.markAllRead}
+            </button>
+          )
+        }
+        filter={
+          <FilterPanel sectionKey="notificationsFilters">
+            <FilterCheckbox label={strings.notifications.unreadOnly} checked={unreadOnly} onChange={setUnreadOnly} />
+          </FilterPanel>
+        }
+      >
         <div className="stack">
           <input
             className="input"
             style={{ maxWidth: 320 }}
             placeholder={strings.notifications.search}
+            aria-label={strings.notifications.search}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -115,11 +123,7 @@ export function NotificationsPage() {
             <LoadMoreButton loaded={notifications.length} total={total} onClick={() => load(notifications.length, true)} />
           )}
         </div>
-
-        <FilterPanel sectionKey="notificationsFilters">
-          <FilterCheckbox label={strings.notifications.unreadOnly} checked={unreadOnly} onChange={setUnreadOnly} />
-        </FilterPanel>
-      </div>
+      </ListPageLayout>
     </div>
   );
 }

@@ -132,4 +132,4 @@ Click your name in the top bar. The page is tabbed:
 
 ## Help
 
-The **?** icon in the top bar opens an in-app help page covering how the app is organised, roles, the requirement and change-request lifecycles (with diagrams), and components/categories — a quick reference without leaving the app.
+The **?** icon in the top bar opens the documentation site in a new tab (your administrator can point it at an internally hosted copy, or remove it).

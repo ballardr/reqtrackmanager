@@ -1,16 +1,15 @@
-"""Pain Point data model (Module 1 Phase 3)
+"""Pain Point data model
 
 Revision ID: 0052
 Revises: 0051
 Create Date: 2026-09-28
 
-Adds the six tables backing Context & Strategy's Phase 3 data model
-(docs/plans/module-01-context-and-strategy-plan.md Phase 3 — Pain Points),
+Adds the six tables backing Context & Strategy's Pain Point data model,
 a structurally different shape from migrations 0048/0051's identity+version
 pairs (see `models.py`'s own docstring for the full reasoning):
 
-- `pain_point_type_definitions` (org-scoped base type vocabulary, Phase 0
-  Q3's two-tier design — same shape as `requirement_link_type_definitions`).
+- `pain_point_type_definitions` (org-scoped base type vocabulary,
+  part of the two-tier design — same shape as `requirement_link_type_definitions`).
 - `project_pain_point_types` (project-scoped: either a local override of
   one org type, via `org_type_id`, or a fully project-local type when
   `org_type_id` is NULL — enforced by a CHECK constraint that a NULL
@@ -24,14 +23,14 @@ pairs (see `models.py`'s own docstring for the full reasoning):
 
 No backfill needed — this is a brand-new artefact type with no
 pre-existing rows anywhere. `pain_point_type_definitions`' Market/User/
-Operator defaults (source overview §6.2) are seeded per-organisation at
+Operator defaults (§6.2) are seeded per-organisation at
 organisation-creation time (`app.modules.context_strategy.service.
 seed_default_pain_point_types`, via `ModuleDefinition.on_org_created`),
 not backfilled here for already-existing organisations — this module is
 `default_enabled=False`, so an org only sees Pain Points at all once it
-explicitly enables the module, at which point Phase 7's own frontend
-onboarding (not yet built) is the natural point to offer seeding existing
-orgs' defaults, matching how Strategy/Future State (Phases 1-2) needed no
+explicitly enables the module, at which point the frontend onboarding
+is the natural point to offer seeding existing
+orgs' defaults, matching how Strategy/Future State needed no
 backfill of their own either.
 """
 

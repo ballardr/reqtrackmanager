@@ -2,9 +2,9 @@
  * Module: modules/compliance/ProjectCompliancePage
  *
  * The Compliance Module's project-scoped, Project-Manager/Compliance-
- * Officer-facing view (docs/compliance-module-plan.md Phase 13;
- * requirements doc §21, plus UI portions of §7-§10, §12, §13) — the route
- * component Phase 3's Tier A mechanism mounts at
+ * Officer-facing view
+ * (requirements doc §21, plus UI portions of §7-§10, §12, §13) — the route
+ * component the Tier A mechanism mounts at
  * `/projects/:projectId/modules/compliance` (see `modules/registry.ts`).
  *
  * Top-level shape: three `Tabs` — "Standards" (every standard assigned to
@@ -18,7 +18,7 @@
  * easy... to determine what remains outstanding").
  *
  * Standard-to-project *assignment itself* is a Compliance Manager action on
- * the *org* router (`router.py::create_project_compliance`'s own Phase 7
+ * the *org* router (`router.py::create_project_compliance`'s
  * design — see that endpoint's docstring), even though this whole page is
  * project-scoped; this page fetches the owning project's `organization_id`
  * once and passes it down wherever an org-router call is needed. Mirrors
@@ -30,24 +30,20 @@
  * Every mutating control always renders; the backend enforces
  * `require_module_role("compliance", "compliance_officer")`/
  * `_require_manage` and a 403 surfaces as a toast — the same "no client-side
- * can-i-manage precomputation" posture `ComplianceAdminPanel.tsx` (Phase 12)
+ * can-i-manage precomputation" posture `ComplianceAdminPanel.tsx`
  * established, since no "my effective roles including module roles" endpoint
  * exists to check against without adding one (flagged there, still true
  * here).
  *
- * The Standards tab's "Export" trigger (Phase 15, §29) hits
+ * The Standards tab's "Export" trigger (§29) hits
  * `GET .../modules/compliance/reports?format={pdf,csv}` directly via
  * `api.getForBlob` + `downloadBlob` — the exact same fetch-a-blob-and-save-
  * it idiom `pages/ReportsPage.tsx`'s own PDF/CSV buttons already use for
  * core requirement reports (that page's `generate` function), reused
  * rather than reinvented for this module's own report generator
- * (`app.modules.compliance.reports`). Originally two permanently-visible
- * adjacent buttons; Phase 43 moved it onto the shared `ReportExportButton`
- * (a single "Export" trigger opening a PDF/CSV `Popover`) once
- * `OrgComplianceDashboard.tsx`'s own identical Phase 25b fix was extracted
- * into a reusable component for three new callers — this page's own
- * pre-25b layout had been left behind unfixed until then; see that
- * component's own docstring.
+ * (`app.modules.compliance.reports`). It uses the shared `ReportExportButton`
+ * (a single "Export" trigger opening a PDF/CSV `Popover`) rather than two
+ * permanently-visible adjacent buttons; see that component's own docstring.
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -66,6 +62,12 @@ import { EvidencePanel } from "./EvidencePanel";
 import { OutstandingPanel } from "./OutstandingPanel";
 import { ProjectComplianceDetail } from "./ProjectComplianceDetail";
 import { complianceRiskLabel, type ComplianceStandard, type ComplianceStandardVersion, type ProjectCompliance, type ProjectComplianceStatus } from "./types";
+import { DateField } from "../../components/FormFields";
+import { FormActions } from "../../components/FormActions";
+import { FormGrid } from "../../components/FormGrid";
+import { LabeledSelect } from "../../components/LabeledSelect";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 type ComplianceTabKey = "standards" | "evidence" | "outstanding";
 
@@ -118,14 +120,13 @@ export function ProjectCompliancePage() {
     }
   }
 
-  useEffect(() => {
+  useLoadOnChange(() => {
     if (!projectId) return;
     api.get<Project>(`/api/v1/projects/${projectId}`).then((proj) => {
       setProject(proj);
       api.get<OrgUser[]>(`/api/v1/orgs/${proj.organization_id}/users`).then(setOrgUsers);
     });
     void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   if (!projectId) return null;
@@ -227,10 +228,9 @@ export function ProjectCompliancePage() {
           onCancel={() => setAssigning(false)}
           onSave={async (values) => {
             try {
-              // Phase 20's default, primary assignment path — works for a
+              // The default, primary assignment path — works for a
               // plain Project Manager with no `compliance_officer` grant,
-              // not gated behind it (see docs/compliance-module-plan.md
-              // Phase 20).
+              // not gated behind it.
               await complianceApi.createProjectComplianceAsProjectManager(projectId, values);
               showToast("Standard assigned to project.");
               setAssigning(false);
@@ -268,12 +268,13 @@ function AssignStandardModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId]);
 
+  useResetOnChange([orgId, standardId], () => {
+    setVersions(null);
+    setVersionId("");
+  });
+
   useEffect(() => {
-    if (!standardId) {
-      setVersions(null);
-      setVersionId("");
-      return;
-    }
+    if (!standardId) return;
     complianceApi.listStandardVersions(orgId, standardId).then((all) => {
       const published = all.filter((v) => v.status === "published");
       setVersions(published);
@@ -285,55 +286,43 @@ function AssignStandardModal({
   }, [orgId, standardId]);
 
   return (
-    <Modal title="Assign compliance standard" onClose={onCancel}>
+    <Modal title="Assign compliance standard" onClose={onCancel} size="lg">
       <div className="stack">
         {standards === null ? (
           <Spinner />
         ) : standards.length === 0 ? (
           <p className="text-muted">No compliance standards exist in this organisation yet.</p>
         ) : (
-          <>
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              <span>Standard</span>
-              <select className="input" value={standardId} onChange={(e) => setStandardId(e.target.value)} aria-label="Standard">
-                <option value="">Select a standard…</option>
-                {standards.filter((s) => !s.is_archived).map((s) => (
-                  <option key={s.id} value={s.id}>{s.reference} — {s.name}</option>
-                ))}
-              </select>
-            </label>
+          <FormGrid minColumn="18rem">
+            <LabeledSelect helpNotNeeded
+              label="Standard"
+              value={standardId}
+              onChange={setStandardId}
+              options={standards.filter((s) => !s.is_archived).map((s) => ({ value: s.id, label: `${s.reference} — ${s.name}` }))}
+              placeholder="Select a standard…"
+            />
             {standardId && (
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                <span>Version</span>
-                {versions === null ? (
-                  <Spinner />
-                ) : versions.length === 0 ? (
-                  <p className="text-muted" style={{ margin: 0 }}>This standard has no published version to assign.</p>
-                ) : (
-                  <select className="input" value={versionId} onChange={(e) => setVersionId(e.target.value)} aria-label="Standard version">
-                    {versions.map((v) => (
-                      <option key={v.id} value={v.id}>{v.version_label}</option>
-                    ))}
-                  </select>
-                )}
-              </label>
+              versions === null ? (
+                <Spinner />
+              ) : versions.length === 0 ? (
+                <p className="text-muted" style={{ margin: 0 }}>This standard has no published version to assign.</p>
+              ) : (
+                <LabeledSelect helpNotNeeded
+                  label="Version" ariaLabel="Standard version"
+                  value={versionId} onChange={setVersionId}
+                  options={versions.map((v) => ({ value: v.id, label: v.version_label }))} placeholder={null}
+                />
+              )
             )}
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              <span>Target compliance date (optional)</span>
-              <input className="input" type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
-            </label>
-          </>
+            <DateField helpNotNeeded label="Target compliance date" value={targetDate} onChange={setTargetDate} />
+          </FormGrid>
         )}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button
-            className="btn btn-primary"
-            disabled={!standardId || !versionId}
-            onClick={() => onSave({ standard_id: standardId, standard_version_id: versionId, target_compliance_date: targetDate || null })}
-          >
-            Assign
-          </button>
-        </div>
+        <FormActions
+          onCancel={onCancel}
+          onSave={() => onSave({ standard_id: standardId, standard_version_id: versionId, target_compliance_date: targetDate || null })}
+          saveLabel="Assign"
+          saveDisabled={!standardId || !versionId}
+        />
       </div>
     </Modal>
   );

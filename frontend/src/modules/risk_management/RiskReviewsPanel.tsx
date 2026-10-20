@@ -1,7 +1,7 @@
 /**
  * Module: modules/risk_management/RiskReviewsPanel
  *
- * The review section of a risk's detail page (plan Phase 4): the next scheduled
+ * The review section of a risk's detail page: the next scheduled
  * review (flagged when overdue), a "Record review" dialog, and the history of
  * past reviews, each with the ratings and treatment count it was made against.
  * A review is immutable; a mistake is corrected by recording a newer one. The
@@ -28,6 +28,11 @@ import {
   RISK_REVIEW_OUTCOME_LABEL, RISK_REVIEW_OUTCOME_TONE, RISK_STATUS_LABEL,
 } from "./types";
 import type { Risk, RiskReview, RiskReviewOutcome } from "./types";
+import { Badge } from "../../components/Badge";
+import { FormActions } from "../../components/FormActions";
+import { DateField, TextAreaField } from "../../components/FormFields";
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
+import { DetailCard } from "../../components/DetailCard";
 
 /**
  * @param risk The risk being reviewed.
@@ -93,14 +98,10 @@ export function RiskReviewsPanel({
   if (reviews === null) return <Spinner />;
 
   return (
-    <section className="stack" aria-label="Reviews" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Reviews</h3>
-        <button className="btn" onClick={() => setRecording(true)}>Record review</button>
-      </div>
+    <DetailCard heading="Reviews" action={<button className="btn" onClick={() => setRecording(true)}>Record review</button>}>
       <p className="text-muted" style={{ margin: 0 }}>
         {risk.review_date ? <>Next review: {risk.review_date}</> : "No review scheduled."}
-        {risk.is_review_overdue && <> <span className="badge badge--danger">Overdue</span></>}
+        {risk.is_review_overdue && <> <Badge tone="danger">Overdue</Badge></>}
       </p>
       {reviews.length > 0 && (
         <table className="table" aria-label="Review history">
@@ -115,7 +116,7 @@ export function RiskReviewsPanel({
                 <td>{new Date(r.reviewed_at).toLocaleDateString()}</td>
                 <td>{userNames[r.reviewed_by] ?? "—"}</td>
                 <td>
-                  <span className={`badge badge--${RISK_REVIEW_OUTCOME_TONE[r.outcome]}`}>{RISK_REVIEW_OUTCOME_LABEL[r.outcome]}</span>
+                  <Badge tone={RISK_REVIEW_OUTCOME_TONE[r.outcome]}>{RISK_REVIEW_OUTCOME_LABEL[r.outcome]}</Badge>
                 </td>
                 <td style={{ whiteSpace: "pre-wrap" }}>{r.notes}</td>
                 <td>{RISK_STATUS_LABEL[r.risk_status]}</td>
@@ -129,36 +130,40 @@ export function RiskReviewsPanel({
       )}
 
       {recording && (
-        <Modal title={`Record review of ${risk.unique_code}`} onClose={close}>
+        <Modal title={`Record review of ${risk.unique_code}`} onClose={close} size="lg">
           <div className="stack">
-            <LabeledSelect
-              label="Outcome"
-              value={outcome}
-              onChange={(next) => setOutcome(next as RiskReviewOutcome)}
-              options={Object.entries(RISK_REVIEW_OUTCOME_LABEL).map(([value, label]) => ({ value, label }))}
-              placeholder={null}
+            <FormGrid minColumn="18rem">
+              <LabeledSelect helpNotNeeded
+                label="Outcome"
+                value={outcome}
+                onChange={(next) => setOutcome(next as RiskReviewOutcome)}
+                options={Object.entries(RISK_REVIEW_OUTCOME_LABEL).map(([value, label]) => ({ value, label }))}
+                placeholder={null}
+              />
+              <FormGridFull>
+                <p className="text-muted" style={{ margin: 0 }}>
+                  Confirmed: the assessment and treatment still stand. Reassessed: you changed them as part of this review
+                  (edit the risk first).
+                </p>
+              </FormGridFull>
+              <FormGridFull>
+                <TextAreaField helpNotNeeded required label="Review notes" value={notes} onChange={setNotes} rows={3} />
+              </FormGridFull>
+              <DateField helpNotNeeded label="Next review date" value={nextDate} onChange={setNextDate} />
+              <FormGridFull>
+                <p className="text-muted" style={{ margin: 0 }}>Leave the date empty to schedule no further review.</p>
+              </FormGridFull>
+            </FormGrid>
+            <FormActions
+              error={error}
+              onCancel={close}
+              onSave={save}
+              saveLabel="Save review"
+              saveDisabled={!notes.trim()}
             />
-            <p className="text-muted" style={{ margin: 0 }}>
-              Confirmed: the assessment and treatment still stand. Reassessed: you changed them as part of this review
-              (edit the risk first).
-            </p>
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              <span>Review notes</span>
-              <textarea className="input" rows={3} aria-label="Review notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
-            </label>
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              <span>Next review date</span>
-              <input className="input" type="date" aria-label="Next review date" value={nextDate} onChange={(e) => setNextDate(e.target.value)} />
-            </label>
-            <p className="text-muted" style={{ margin: 0 }}>Leave the date empty to schedule no further review.</p>
-            {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-            <div className="row" style={{ justifyContent: "flex-end" }}>
-              <button className="btn" onClick={close}>Cancel</button>
-              <button className="btn btn-primary" disabled={!notes.trim()} onClick={save}>Save review</button>
-            </div>
           </div>
         </Modal>
       )}
-    </section>
+    </DetailCard>
   );
 }

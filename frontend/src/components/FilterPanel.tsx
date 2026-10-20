@@ -4,6 +4,7 @@ import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { t } from "../i18n/strings";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { ResultCount } from "./ResultCount";
+import { CheckboxField } from "./FormFields";
 
 const strings = t();
 
@@ -15,7 +16,7 @@ const MOBILE_BREAKPOINT_PX = 860;
 
 /**
  * Filter shell (mock's Search/Status/Category/Filters panel), restructured
- * (2026-08 UX audit roadmap: persistent "showing X of Y" result count) into
+ * into
  * a header + collapsible body:
  *
  *  - Header (always rendered, never collapses): when the caller passes
@@ -149,9 +150,6 @@ export function FilterCheckbox({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="row" style={{ gap: "0.4rem" }}>
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
-      {label}
-    </label>
+    <CheckboxField helpNotNeeded label={label} checked={checked} onChange={onChange} />
   );
 }

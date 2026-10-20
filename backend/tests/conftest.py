@@ -55,6 +55,9 @@ os.environ["DATABASE_URL"] = dedicated_pytest_database_url(os.environ["DATABASE_
 os.environ.setdefault("SERVER_ADMIN_EMAIL", "admin@example.com")
 os.environ.setdefault("SERVER_ADMIN_PASSWORD", "ChangeMe123!")
 os.environ.setdefault("SERVER_ADMIN_CREATE_ORG", "true")
+# A fresh install seeds every module available; the suite's tables are truncated after every test, so
+# that seed would reach only the first test. Tests that need it enable the setting themselves.
+os.environ.setdefault("MODULES_DEFAULT_AVAILABLE", "false")
 
 import pytest
 from fastapi.testclient import TestClient
@@ -78,8 +81,8 @@ def build_alembic_config() -> Config:
     any test that needs to drive Alembic directly (`command.upgrade`/
     `downgrade`/etc.), e.g. to exercise a specific migration's own up/down
     behaviour in isolation. Every such test must go through this rather
-    than building its own bare `Config`: since a compliance-module-plan.md
-    Phase 11 follow-up split first-party migrations across multiple
+    than building its own bare `Config`: since
+    first-party migrations across multiple
     directories (`ModuleDefinition.migrations_dir`), a `Config` missing
     `configure_alembic_version_locations` can no longer resolve `"head"`
     (or any revision id living in a module's own directory) at all —
@@ -288,8 +291,7 @@ def direct_project_roles(project_id: str) -> dict[str, set[str]]:
     project_id, role)`, not one row per user).
 
     `GET /projects/{id}/direct-members`, the endpoint several older tests
-    used for this exact assertion, was removed in the follow-up UX batch's
-    Phase D (2026-08-31, docs/decisions.md) once the new unified Members
+    used for this exact assertion, was removed 2026-08-31 (2026-08-31, docs/decisions.md) once the new unified Members
     table made it a dead surface with no remaining frontend caller — this
     helper replaces those call sites with a direct read of the same
     underlying data, since a "does this user hold this direct grant" check

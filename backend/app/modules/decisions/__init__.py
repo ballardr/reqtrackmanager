@@ -1,8 +1,7 @@
 """
 Module: modules.decisions
 
-The Decision Management Module (docs/plans/module-04-decision-management-
-plan.md) — a formal record of decisions made during a project's lifecycle
+The Decision Management Module — a formal record of decisions made during a project's lifecycle
 (architecture, design, engineering, strategy, operational, or other
 project-specific areas), with configurable decision types, an approval
 lifecycle, supersession, and org-managed Decision Templates (custom, plus
@@ -29,15 +28,11 @@ Responsibilities:
 - `module`: this module's `MODULE_DEFINITION`, registered into
   `app.modules.registry.INSTALLED_MODULES`.
 
-Design decision: Phase 1 is data model only (`docs/plans/module-04-
-decision-management-plan.md`). `module.py`'s `get_router()` returns `None`
-and `mcp_tools` is empty; `implemented=False` and `default_enabled=False`
-reflect that nothing here is usable by an end user yet — the backend API
-(Phase 4) and frontend (Phase 5) are what make it real.
+Design decision: `default_enabled=False` — an organisation must opt in explicitly.
 
 External dependencies/integrations: none of its own. Reuses the module
 system's module-contributed RBAC (`decision_owner`/`decision_approver`)
-and Module 0's generic `services.sequences.generate_unique_code` (via this
+and the platform's generic `services.sequences.generate_unique_code` (via this
 module's own `"decision"` entry in `ModuleDefinition.artefact_types`) for
 `Decision.unique_code`, rather than bespoke mechanisms for either.
 """

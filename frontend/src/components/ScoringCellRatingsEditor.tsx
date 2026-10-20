@@ -2,7 +2,7 @@
  * Module: components/ScoringCellRatingsEditor
  *
  * Edits one two-axis scoring model's explicit per-cell ratings (generic
- * scoring-matrix core, Module 3 Phase 1a) at org or project level: the
+ * scoring-matrix core) at org or project level: the
  * matrix itself (`ScoringMatrixChart` in edit mode) with a band picker in
  * each cell. A pinned cell overrides the threshold bands for that cell only,
  * which is what lets a matrix be non-monotonic in the product of its levels'

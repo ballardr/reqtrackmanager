@@ -1,9 +1,7 @@
 """
 Module: modules.compliance.scheduler
 
-The Compliance Module's Phase 10 date-driven notification sweeps (docs/
-compliance-module-plan.md Phase 10; docs/Compliance_Module_Requirements.md
-§18, §28) — registered with the core scheduler generically via
+The Compliance Module's date-driven notification sweeps (§18, §28) — registered with the core scheduler generically via
 `app.modules.registry.ModuleScheduledJob` (`module.py`'s `MODULE_DEFINITION.
 scheduled_jobs`), the same way `services/scheduler.py`'s own two core jobs
 are, but without that core file importing anything from this module
@@ -11,7 +9,7 @@ directly. Mirrors `app.services.reviews.send_due_review_reminders`'s own
 shape exactly: a plain `(db: Session) -> None` function, no session opened
 inside it, one `db.commit()` at the end.
 
-Four sweeps, one per §28 bullet-group this phase covers:
+Four sweeps, one per §28 bullet-group covered:
 - `send_evidence_expiry_notifications`: evidence approaching/past expiry
   (§14, §18's "Evidence approaching expiry"/"Evidence expiring").
 - `send_review_due_notifications`: scheduled compliance reviews becoming
@@ -66,6 +64,7 @@ from app.modules.compliance.service import (
     get_effective_compliance_officers,
 )
 from app.services import notifications
+from app.services.codes import qualify
 from app.services.principals import principal_recipients, principal_ref
 
 #: Days before a required action's `due_date` that it is notified as
@@ -108,16 +107,19 @@ def send_evidence_expiry_notifications(db: Session) -> None:
     ).all()
 
     for evidence in candidates:
-        if db.get(Project, evidence.project_id) is None:
+        project = db.get(Project, evidence.project_id)
+        if project is None:
             continue
         recipients = get_effective_compliance_officers(db, evidence.project_id)
+        # A notification is read out of context, so the record is named by its qualified code.
+        named = f"{qualify(project.code, evidence.unique_code)} {evidence.title}"
 
         if evidence.expiry_date < today:
             if evidence.expiry_notified_at is not None:
                 continue
             _notify_many(
                 db, recipients, notification_type=NotificationType.COMPLIANCE_EVIDENCE_EXPIRED,
-                title=f"Evidence expired: {evidence.title}",
+                title=f"Evidence expired: {named}",
                 body=f'"{evidence.title}" expired on {evidence.expiry_date.isoformat()}.',
                 project_id=evidence.project_id, entity_type="compliance_evidence", entity_id=str(evidence.id),
             )
@@ -127,7 +129,7 @@ def send_evidence_expiry_notifications(db: Session) -> None:
                 continue
             _notify_many(
                 db, recipients, notification_type=NotificationType.COMPLIANCE_EVIDENCE_EXPIRING_SOON,
-                title=f"Evidence expiring soon: {evidence.title}",
+                title=f"Evidence expiring soon: {named}",
                 body=f'"{evidence.title}" expires on {evidence.expiry_date.isoformat()}.',
                 project_id=evidence.project_id, entity_type="compliance_evidence", entity_id=str(evidence.id),
             )

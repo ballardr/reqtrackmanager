@@ -1,4 +1,4 @@
-"""Engagements can have several facilitators (Module 2 Phase 5 follow-up)
+"""Engagements can have several facilitators
 
 Revision ID: 0088
 Revises: 0087

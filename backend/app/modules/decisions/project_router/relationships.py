@@ -1,7 +1,7 @@
 """
 Module: modules.decisions.project_router.relationships
 
-Relationship endpoints (Phase 3 service functions): list a Decision's
+Relationship endpoints: list a Decision's
 relationships, and create a supersession, a Decision<->Requirement link,
 or a Decision<->Decision link. See the package's own `__init__.py`
 docstring for the full router-split account.

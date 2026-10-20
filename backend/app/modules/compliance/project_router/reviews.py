@@ -1,7 +1,7 @@
 """
 Module: modules.compliance.project_router.reviews
 
-A project's own scheduled compliance reviews (Phase 10, §17/§18):
+A project's own scheduled compliance reviews (§17/§18):
 create/list/get/update/delete/complete, its due-review listing, and
 evidence link/unlink. `_get_project_review_or_404` is local to this
 file only (verified by call-site grep before this split).
@@ -93,7 +93,7 @@ def list_project_reviews(
 ):
     """Lists every review — `SCHEDULED` and `COMPLETED` — ever scheduled
     against this assignment, in creation order; §17's "Review history" is
-    exactly this listing (see `models.py`'s own Phase 10 notes)."""
+    exactly this listing (see `models.py`'s review design decisions)."""
     project_compliance = _get_project_compliance_or_404(db, project_id, project_compliance_id)
     reviews = db.scalars(
         select(ComplianceReview)
@@ -117,8 +117,7 @@ def list_reviews_due(
     should surface both. The `compliance_list_reviews_due` MCP tool.
     Delegates to `service.py::list_reviews_due_for_project` (`include_
     upcoming=False`, this endpoint's pre-existing behaviour), shared with
-    `router.py`'s Phase 14 org-wide aggregation — moved there in Phase 14;
-    behaviour unchanged."""
+    `router.py`'s org-wide aggregation."""
     reviews = list_reviews_due_for_project(db, project_id=project_id, include_upcoming=False)
     labels = principal_labels_for(db, reviews, "owner")
     return [build_review_out(db, review, labels) for review in reviews]

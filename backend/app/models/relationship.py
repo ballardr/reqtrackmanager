@@ -1,15 +1,14 @@
 """
 Module: models.relationship
 
-Module 0 (Platform Foundations), Phase 1: the generic, polymorphic
+The generic, polymorphic
 cross-artefact relationship table every content module in the future-
 modules roadmap builds its own artefact-to-artefact links on top of,
 instead of each module inventing its own per-pair join table the way
 `RequirementLink` (requirement-to-requirement traceability) and
 `RequirementActionLink` (action-to-requirement membership) used to.
 
-Design decision (Decided by: User, docs/decisions.md "Module 0 (Platform
-Foundations) Phase 0"): a single polymorphic table
+Design decision (Decided by: User, docs/decisions.md's Platform Foundations entry): a single polymorphic table
 (`source_type`/`source_id`/`target_type`/`target_id`/`link_type_id`)
 rather than a dedicated table per artefact-type pair. `source_id`/
 `target_id` deliberately carry no foreign key — a polymorphic id can't
@@ -28,7 +27,7 @@ whether it's set:
 - **Non-null**: an org-defined, typed traceability link (what
   `RequirementLink` used to be) — `link_type_id` points at a
   `RequirementLinkTypeDefinition` row (reused as-is; not extended with a
-  type-pair constraint in this phase — YAGNI).
+  type-pair constraint — YAGNI).
 - **Null**: an untyped, structural link (what `RequirementActionLink` used
   to be — it never had a type, just membership in a many-to-many set).
 
@@ -37,7 +36,7 @@ one relationship surface regardless of which shape its own links need.
 
 Links are not gated by an artefact's own lock state by default (see
 `routers.requirements.create_link`'s docstring for the opt-in exception
-Platform review 2026-09, Phase 8 introduced) — traceability metadata isn't
+a later opt-in introduced) — traceability metadata isn't
 "requirement content" under C-G-12 any more than a `ReviewComment` is
 (carried over unchanged from `RequirementLink`'s own original docstring,
 which this model replaces).
@@ -53,11 +52,9 @@ This module intentionally does not perform authorization/tenant-scoping
 checks anywhere — see `services.relationships`' own module docstring for
 why that responsibility stays at the router layer.
 
-**Revised by Module 0 Phase 3**: `source_type`/`target_type` were
-originally a closed `ArtefactType` enum column, extended with new members
-directly by whichever module introduced an artefact type. That still
-required a core file to be hand-edited per module, so Phase 3 changed both
-columns to plain, validated strings instead — see `app.models.enums.
+`source_type`/`target_type` are plain, validated strings, not a closed
+`ArtefactType` enum column: an enum would need a core file hand-edited per
+module that introduces an artefact type — see `app.models.enums.
 ArtefactType`'s own docstring and `app.modules.registry.ModuleDefinition.
 artefact_types`/`get_all_registered_artefact_types` for the registration
 mechanism that replaced it.
@@ -81,14 +78,14 @@ class ArtefactLink(UUIDPKMixin, TimestampMixin, Base):
     """A relationship between two artefacts of any registered artefact
     type, replacing both the old `RequirementLink` (requirement-to-
     requirement traceability) and `RequirementActionLink`
-    (action-to-requirement membership) tables, which this Phase 1 migration
-    folds into this one.
+    (action-to-requirement membership) tables, which this table
+    replaces.
 
     Attributes:
         source_type / source_id: The link's origin artefact. No FK on
             `source_id` — see this module's docstring for why. `source_type`
             is a plain string (not a closed `ArtefactType` enum, as of
-            Module 0 Phase 3) — see `app.services.relationships.
+            Platform Foundations) — see `app.services.relationships.
             create_link`'s docstring for where it's validated.
         target_type / target_id: The link's destination artefact. Same
             no-FK caveat and plain-string type as `source_id`/`source_type`.
@@ -144,7 +141,7 @@ class ArtefactLink(UUIDPKMixin, TimestampMixin, Base):
 
     # Plain strings, not a `str_enum(ArtefactType, ...)` column (unlike
     # every other enum-typed column in this codebase) — deliberately, as
-    # of migration 0043 (Module 0 Phase 3): a closed Python `enum.Enum`
+    # of migration 0043: a closed Python `enum.Enum`
     # can't gain members at runtime, so it can't represent every module's
     # own registered artefact types, only the two this app owns outright.
     # Validated at the service layer instead — see `app.services.

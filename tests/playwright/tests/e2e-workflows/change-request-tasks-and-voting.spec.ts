@@ -37,7 +37,7 @@ test.describe("change-request tasks and stakeholder voting", () => {
       const nameCheckbox = page.getByRole("checkbox", { name: "Name", exact: true });
       await nameCheckbox.check();
       await nameCheckbox.locator("xpath=../..").locator("input.input").fill(proposedName);
-      await page.getByPlaceholder("Reason for change").fill("E2E: tasks and voting coverage.");
+      await page.getByLabel("Reason for change").fill("E2E: tasks and voting coverage.");
       await page.getByRole("button", { name: "Create", exact: true }).click();
       await searchChangeRequests(page, proposedName);
       await expect(page.getByText(proposedName)).toBeVisible();
@@ -51,7 +51,7 @@ test.describe("change-request tasks and stakeholder voting", () => {
     });
 
     await test.step("PM adds a task; a plain member cannot (hidden in the UI and rejected server-side)", async () => {
-      await page.getByPlaceholder("Description").fill("Confirm latency budget with hardware team");
+      await page.getByLabel("Description").fill("Confirm latency budget with hardware team");
       await page.getByRole("button", { name: "New task" }).click();
       await expect(page.getByText("Confirm latency budget with hardware team")).toBeVisible();
 
@@ -102,14 +102,14 @@ test.describe("change-request tasks and stakeholder voting", () => {
     });
 
     await test.step("two stakeholders cast opposing advisory votes with comments", async () => {
-      await page.getByPlaceholder("Comment (optional)").fill("Looks fine to me.");
+      await page.getByPlaceholder("Comment", { exact: true }).fill("Looks fine to me.");
       await page.getByRole("button", { name: "Vote to approve" }).click();
       await expect(page.getByText("1 approve")).toBeVisible();
 
       await logout(page);
       await loginAs(page, PERSONAS.stakeholderAlpha2.email);
       await page.goto(`/projects/${projectId}/change-requests/${crId}`);
-      await page.getByPlaceholder("Comment (optional)").fill("I'd like more testing first.");
+      await page.getByPlaceholder("Comment", { exact: true }).fill("I'd like more testing first.");
       await page.getByRole("button", { name: "Vote to reject" }).click();
       await expect(page.getByText("1 reject")).toBeVisible();
     });

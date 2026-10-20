@@ -50,7 +50,6 @@ from app.schemas.org import (
     UserAccessOut,
     UserAccessProject,
 )
-from app.security import hash_password
 from app.services import engagement, invites
 from app.services.audit import log_event
 from app.services.notifications import notify
@@ -65,6 +64,7 @@ from app.services.rbac import (
     require_org_admin_or_server_admin,
     require_org_role,
 )
+from app.services.user_provisioning import create_native_user, invite_user
 
 router = APIRouter(tags=["organizations-membership"])
 
@@ -83,36 +83,14 @@ def create_org_user(
     initial user of a newly created org). Every other org-scoped endpoint
     requires a genuine org role.
     """
-    if db.scalar(select(User).where(User.email == payload.email.lower())) is not None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "A user with this email already exists.")
-    org = db.get(Organization, organization_id)
-    if org is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
-    if org.sso_only:
-        # A brand-new native-credentialed account whose only org membership
-        # is sso_only could never log in (NativeAuthBackend rejects native
-        # login when every one of a user's orgs requires SSO) — same guard
-        # as self-signup's allow_self_signup/sso_only mutual exclusion.
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "This organisation is SSO-only; native accounts cannot be created for it directly.",
-        )
-    user = User(
-        email=payload.email.lower(),
-        display_name=payload.display_name,
-        password_hash=hash_password(payload.password),
-        auth_backend="native",
-    )
-    db.add(user)
-    db.flush()
-    db.add(UserOrgRole(user_id=user.id, organization_id=organization_id, role=payload.role))
-    log_event(
+    user = create_native_user(
         db,
-        entity_type="user",
-        entity_id=user.id,
-        action="created",
-        actor_id=current_user.id,
+        email=payload.email,
+        display_name=payload.display_name,
+        password=payload.password,
         organization_id=organization_id,
+        role=payload.role,
+        actor_id=current_user.id,
     )
     db.commit()
     return OrgUserOut(
@@ -158,7 +136,7 @@ def list_org_users(
     somewhere else" — same pattern as every other org-scoped admin check).
 
     `search` (name/email substring, case-insensitive) and `limit`/`offset`
-    (U-P-06, 2026-08 UX audit "Directories at scale") are open to any
+ are open to any
     caller who can already reach this endpoint at all — they narrow the
     same directory a plain member can browse, not an access-review signal,
     so they don't require org-admin the way the filters above do. As with
@@ -166,8 +144,7 @@ def list_org_users(
     (unchanged from before pagination existed); when given, the total
     match count before slicing is returned via `X-Total-Count`.
 
-    `sort` (2026-08 UX audit roadmap, "Column-header sorting on data
-    tables") optionally overrides the default `display_name` sort with
+    `sort` optionally overrides the default `display_name` sort with
     `email` or `last_login_at`; `order` picks `asc` (default) or `desc`.
     `last_login_at` is nullable (a user who's never logged in) — those
     rows sort last regardless of `order`, so "sort by last login,
@@ -206,7 +183,7 @@ def list_org_users(
             )
         by_user[user.id].roles.append(role)
 
-    # Module system Phase 2: attach each returned user's org-scoped
+    # Attach each returned user's org-scoped
     # module-contributed role grants, filtered to currently-*enabled*
     # modules only (`list_enabled_module_roles`) — a grant for a
     # since-disabled module is simply omitted here, never deleted from
@@ -228,12 +205,12 @@ def list_org_users(
             if (module_key, role_key) in enabled_org_role_keys:
                 by_user[user_id].module_roles.append(ModuleRoleGrantOut(module_key=module_key, role_key=role_key))
 
-    # Fine-Grained Access Control Phase 3 (frontend Role Management UI):
+    # For the frontend Role Management UI:
     # same "attach each returned user's own grants" treatment as
     # module_roles above, for org-scoped (`project_id IS NULL`)
     # `CustomRoleDefinition` grants — see `CustomRoleGrantOut`'s docstring
     # for why project-scoped grants are deliberately excluded here.
-    # `scope_entity_id.is_(None)` (Phase 5) is the same exclusion for an
+    # `scope_entity_id.is_(None)` is the same exclusion for an
     # entity-scoped grant, which also has `project_id IS NULL` and would
     # otherwise be misreported here as an org-scoped grant.
     if by_user:
@@ -329,8 +306,7 @@ def list_org_pending_invites(
     `PendingInvite`s, most recent first — `project_id IS NULL` only.
     Project-scoped invites (created via a project's by-email add-user flow)
     stay owned by `routers/projects.py::list_pending_project_invites` and
-    are never double-listed here (Phase A, follow-up UX batch;
-    docs/decisions.md).
+    are never double-listed here (docs/decisions.md).
 
     `require_org_role(ORG_ADMIN)` — deliberately **no** server-admin
     bypass. This previously reused `require_org_admin_or_server_admin`
@@ -343,7 +319,7 @@ def list_org_pending_invites(
     invitee PII and seed new members into an arbitrary organisation was a
     real regression against I-M-05's "does not give access to data within
     organisations" invariant, not a legitimate extension of it. Fixed as
-    part of a hardening pass (see decisions.md's I-M-05 entry addendum).
+    part of a hardening pass (see decisions.md's I-M-05 entry).
     """
     invites_list = db.scalars(
         select(PendingInvite)
@@ -367,7 +343,7 @@ def create_org_pending_invite(
     db: Session = Depends(get_db),
 ):
     """Invites a new user into the organisation by email — the org-level
-    "Invite user" action (Phase A, follow-up UX batch), distinct from
+    "Invite user" action , distinct from
     `create_org_user`'s "New user" (an immediate password-based account).
     The invitee sets their own display name/password at signup via the
     emailed link and is granted `OrgRole.MEMBER` on redemption
@@ -392,24 +368,7 @@ def create_org_pending_invite(
     once that person's IdP group/role claim is configured to match on
     first SSO login.
     """
-    org = db.get(Organization, organization_id)
-    if org is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
-    if org.sso_only:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "This organisation is SSO-only; email invites are not used — access is provisioned at SSO login.",
-        )
-    email = payload.email.lower()
-    if db.scalar(select(User).where(User.email == email)) is not None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "A user with this email already exists.")
-    invite = invites.create_pending_invite(
-        db, email=email, organization=org, project=None, project_role=None, invited_by=current_user.id,
-    )
-    log_event(
-        db, entity_type="pending_invite", entity_id=invite.id, action="invited",
-        actor_id=current_user.id, organization_id=organization_id, detail={"email": email},
-    )
+    invite = invite_user(db, email=payload.email, organization_id=organization_id, actor_id=current_user.id)
     db.commit()
     return _org_pending_invite_out(invite, db)
 
@@ -447,8 +406,7 @@ def get_user_access(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
-    """One user's access within this organisation (2026-08 UX audit, sixth
-    pass: "No way to view a user's access") — every project in the org
+    """One user's access within this organisation — every project in the org
     where the user holds at least one effective role, that role set, which
     of the project's own groups they're a direct member of, and which org
     groups they directly belong to.
@@ -692,10 +650,9 @@ def assign_org_role(
     than trusted, so the URL a caller is authorized against (and what ends
     up in the audit trail) can never diverge from who is actually affected.
 
-    Gated by `require_org_admin_or_grant_roles` (Fine-Grained Access
-    Control Phase 0 Q6/Phase 3) — an `ORG_ADMIN`, server admin, or a
+    Gated by `require_org_admin_or_grant_roles` — an `ORG_ADMIN`, server admin, or a
     `grant_roles` holder may reach this endpoint. **Granting `OrgRole.
-    ORG_ADMIN` itself stays carved out**, per Q6's explicit instruction: a
+    ORG_ADMIN` itself stays carved out**, per an explicit instruction: a
     `grant_roles`-only holder (neither a real `ORG_ADMIN` nor a server
     admin) is rejected with 403 specifically when `payload.role ==
     OrgRole.ORG_ADMIN`, checked here rather than in the dependency itself
@@ -765,7 +722,7 @@ def revoke_org_role(
     through this endpoint, by construction, with no separate "last admin"
     count check needed.
 
-    Gated by `require_org_admin_or_grant_roles` (Phase 0 Q6/Phase 3), with
+    Gated by `require_org_admin_or_grant_roles`, with
     the same `OrgRole.ORG_ADMIN`-value carve-out `assign_org_role` applies:
     a `grant_roles`-only holder is rejected with 403 when `role ==
     OrgRole.ORG_ADMIN` — the "self-targeting is blocked" reasoning above
@@ -806,7 +763,7 @@ def list_org_module_roles(
 ):
     """Lists the org-scoped module-contributed roles currently available to
     grant in this organisation — i.e. declared by a module that is
-    currently effectively enabled here (module system Phase 2). Same
+    currently effectively enabled here. Same
     "any org member can see what role options exist" gate as `list_org_
     users` (C-A-13's own filters are the only part of that endpoint
     actually restricted to admins; the option list itself isn't
@@ -827,12 +784,11 @@ def assign_org_module_role(
     current_user: User = Depends(require_org_admin_or_grant_roles),
     db: Session = Depends(get_db),
 ):
-    """Grants an org-scoped module-contributed role to a user (module
-    system Phase 2) — the module-role counterpart to `assign_org_role`,
+    """Grants an org-scoped module-contributed role to a user — the module-role counterpart to `assign_org_role`,
     same gate (an org admin already implicitly holds every org-scoped
     module role via `require_module_role`'s own override, so it's
     consistent that org admin is also who explicitly grants/revokes the
-    row) plus a `grant_roles` holder (Phase 0 Q6/Phase 3) — no `OrgRole.
+    row) plus a `grant_roles` holder — no `OrgRole.
     ORG_ADMIN`-equivalent carve-out is needed here, since a module role
     carries no admin-tier significance of its own.
 
@@ -1057,8 +1013,7 @@ def remove_org_user(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
-    """Admin-initiated counterpart to `leave_organization` above (PR6 of the
-    members/groups directory rework plan, docs/decisions.md — `OrgAdminPage
+    """Admin-initiated counterpart to `leave_organization` above (docs/decisions.md — `OrgAdminPage
     .tsx`'s Users table Actions column, "Remove from {org}"): an org admin
     removes *another* user's membership in `organization_id`, rather than
     the user removing their own. No prior admin-initiated removal endpoint

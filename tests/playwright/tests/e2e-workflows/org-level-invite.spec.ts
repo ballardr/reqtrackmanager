@@ -6,7 +6,7 @@ import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook } from "./helper
 installCleanupHook();
 
 /**
- * End-to-end proof of Phase A (follow-up UX batch, docs/decisions.md):
+ * End-to-end proof (docs/decisions.md):
  * Org Admin gets its own "Invite user" entry point — previously the
  * token-link invite flow (`services/invites.py`) was only reachable from
  * inside a project. An org admin invites someone by email (no password, no
@@ -18,7 +18,7 @@ installCleanupHook();
  *
  * Also covers the new `org_role` `FilterField` (`GET /orgs/{id}/users`'s
  * `org_role` param already existed server-side but had no frontend control
- * wired up to it before this phase).
+ * wired up to it originally).
  *
  * Each test creates its own fresh organisation (with its own admin), the
  * same isolation `external-project-invite.spec.ts` uses — an org-only
@@ -91,8 +91,9 @@ test("org admin invites a user org-level, and they can sign up and get org acces
 
   await test.step("invite the new email via the org-level 'Invite user' button", async () => {
     // Distinct from "New user" (immediate password account) — the whole
-    // point of this phase.
-    await page.getByRole("button", { name: "Invite user" }).click();
+    // point of this feature.
+    await page.getByRole("button", { name: "Add user" }).click();
+    await page.getByRole("menuitem", { name: "Invite user" }).click();
     const dialog = page.getByRole("dialog", { name: "Invite user" });
     await expect(dialog.getByLabel("Password")).toHaveCount(0);
     await dialog.getByLabel("Email").fill(inviteeEmail);
@@ -164,7 +165,8 @@ test("org admin sees a pending org-level invite listed and can resend it, retrig
   await ensureExpanded(page, "Organisation users");
 
   await test.step("invite the new email via the org-level 'Invite user' button", async () => {
-    await page.getByRole("button", { name: "Invite user" }).click();
+    await page.getByRole("button", { name: "Add user" }).click();
+    await page.getByRole("menuitem", { name: "Invite user" }).click();
     const dialog = page.getByRole("dialog", { name: "Invite user" });
     await dialog.getByLabel("Email").fill(inviteeEmail);
     await dialog.getByRole("button", { name: "Send invite" }).click();

@@ -17,6 +17,7 @@ A Need is **optional**. Use it where the distinction matters; skip it where a di
 
 | Field | What it holds |
 | --- | --- |
+| Code | The record code, `NEED-001`: numbered per project and never reused. |
 | Name | A short title for the need. |
 | Need | The need in the Stakeholder's or Persona's own words. |
 | Rationale | Why it matters, where it came from, or the evidence for it. |

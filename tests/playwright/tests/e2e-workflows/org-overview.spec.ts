@@ -18,9 +18,9 @@ import {
 } from "./helpers";
 
 /**
- * Job to be done: compliance-module-plan.md Phase 19 — the new
+ * Job to be done: — the new
  * "Organisation Overview" nav-rail page, reachable regardless of whether
- * compliance applies to the org (unlike Phase 18's "Compliance Standards"
+ * compliance applies to the org (unlike the "Compliance Standards"
  * tab). Covers reaching the page via `/org-overview`'s single-org/multi-org
  * auto-redirect, and the core scoping rule from `docs/decisions.md`'s
  * "Compliance module, human review follow-ups" entry: an org admin sees
@@ -32,7 +32,7 @@ import {
  * (`org_admin` of Alpha, sees every Alpha project). The counts cover
  * active (non-archived) projects only.
  */
-test.describe("Organisation Overview page (Phase 19)", () => {
+test.describe("Organisation Overview page", () => {
   installCleanupHook();
 
   test("a single-org member with partial project access sees scoped totals; the org admin sees the real totals", async ({ page, request }) => {
@@ -77,8 +77,8 @@ test.describe("Organisation Overview page (Phase 19)", () => {
     // by the value, no separator) — a plain substring match on "Projects"
     // would also catch the compliance dashboard's own "Projects subject to
     // compliance" stat, which this org has (Alpha has standards assigned
-    // from other specs' fixtures). Stat items render inside `.stat-bar`
-    // (compliance-module-plan.md Phase 27b), not `.card`.
+    // from other specs' fixtures). Stat items render inside `.stat-bar`,
+    // not `.card`.
     const memberProjectsItem = page.locator(".stat-bar-item").filter({ hasText: /^Projects\d+$/ });
     const memberProjectCountText = (await memberProjectsItem.innerText()).replace("Projects", "");
     const memberProjectCount = Number(memberProjectCountText);
@@ -109,7 +109,7 @@ test.describe("Organisation Overview page (Phase 19)", () => {
   });
 
   /**
-   * Phase 27c — the stats header is folded into a real, always-present
+   * The stats header is folded into a real, always-present
    * "Overview" `ResourceMenu` group, and `ResourceMenu` itself hides its own
    * menu-strip chrome whenever there's nothing to switch between. A module
    * that is enabled for the org contributes overview groups of its own, and

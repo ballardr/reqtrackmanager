@@ -15,6 +15,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 from app.models.enums import OrgRole, ProjectRole
 from app.models.notification import DigestMode
+from app.security import MIN_PASSWORD_LENGTH
 
 
 class LoginRequest(BaseModel):
@@ -35,7 +36,7 @@ class SignupRequest(BaseModel):
     """
 
     email: EmailStr
-    password: str = Field(min_length=8)
+    password: str = Field(min_length=MIN_PASSWORD_LENGTH)
     display_name: str = Field(min_length=1, max_length=255)
     invite_token: str | None = None
 
@@ -115,7 +116,7 @@ class TwoFactorStatusUpdate(BaseModel):
 
 class ChangePasswordRequest(BaseModel):
     current_password: str
-    new_password: str = Field(min_length=8)
+    new_password: str = Field(min_length=MIN_PASSWORD_LENGTH)
 
 
 class UserPreferencesUpdate(BaseModel):

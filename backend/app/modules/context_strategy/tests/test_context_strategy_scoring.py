@@ -1,6 +1,5 @@
 """Tests for Context & Strategy's registration into the generic
-scoring-matrix core (docs/plans/module-01-context-and-strategy-plan.md
-Phase 10): the `pain_point` scheme's seeded levels/models/bands, its
+scoring-matrix core: the `pain_point` scheme's seeded levels/models/bands, its
 `pain_point_type_admin` gate on org-level configuration, and module
 enablement gating. The core mechanism itself is covered by
 `tests/test_scoring_matrix.py`.

@@ -1,8 +1,8 @@
 """
 Module: modules.compliance.project_router.required_action_assessments
 
-A project compliance requirement's required-action assessments (Phase
-8): list/get/update, complete/uncomplete, and linked-evidence listing.
+A project compliance requirement's required-action assessments:
+list/get/update, complete/uncomplete, and linked-evidence listing.
 `_get_required_action_assessment_or_404` is local to this file only
 (verified by call-site grep before this split).
 """
@@ -92,7 +92,7 @@ def update_required_action_assessment(
     (§6's "Assignee," "Due date"). Completion is a separate action
     endpoint below, mirroring `Requirement`'s own completion-overlay
     shape — never set here. Resetting `due_reminder_sent_at`/`overdue_
-    notified_at` whenever `due_date` actually changes (Phase 10, §18) gives
+    notified_at` whenever `due_date` actually changes (§18) gives
     a rescheduled due date its own fresh reminder cycle rather than
     silently inheriting the old date's "already reminded" state."""
     _pc, _pcr, assessment = _get_required_action_assessment_or_404(

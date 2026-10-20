@@ -1,6 +1,5 @@
-"""Tests for Phase 21's standard-level import/export
-(docs/compliance-module-plan.md Phase 21; docs/Compliance_Module_
-Requirements.md §29): `GET .../standards/{id}/export`/`POST .../standards/
+"""Tests for standard-level import/export
+(§29): `GET .../standards/{id}/export`/`POST .../standards/
 import` — a single `ComplianceStandard`, with every version's full
 requirement/required-action tree, as its own portable JSON document,
 distinct from the whole-organisation bundle `test_compliance_export_import.
@@ -56,7 +55,7 @@ def _build_standard_with_tree(client, admin_token, org_id, *, reference="EXP-STD
     required actions, and the action-type vocabulary subset."""
     standard = _create_standard(client, admin_token, org_id, reference=reference, name="Exportable Standard")
     # `create_standard` doesn't embed its own first version in the response
-    # (Phase 6's `ComplianceStandardOut` is deliberately flat) — fetch it.
+    # (`ComplianceStandardOut` is deliberately flat) — fetch it.
     versions = client.get(f"{_base(org_id)}/standards/{standard['id']}/versions", headers=auth_headers(admin_token)).json()
     version_id = versions[0]["id"]
 
@@ -78,7 +77,7 @@ def _build_standard_with_tree(client, admin_token, org_id, *, reference="EXP-STD
 def test_export_document_carries_full_tree_and_only_referenced_vocab(client, admin_token, org_id):
     standard, version_id, parent, child, action_type, action = _build_standard_with_tree(client, admin_token, org_id)
     # A second, unused action type must NOT leak into the export — "not the
-    # whole org's vocabulary" per this phase's own spec.
+    # whole org's vocabulary".
     _create_action_type(client, admin_token, org_id, name="Unused Action Type")
 
     doc = _export(client, admin_token, org_id, standard["id"])
@@ -101,11 +100,11 @@ def test_export_document_carries_full_tree_and_only_referenced_vocab(client, adm
 
 
 def test_export_and_import_round_trip_version_summary_and_clarification(client, admin_token, org_id):
-    """Phase 24: a version's `summary` and a requirement's clarification
+    """A version's `summary` and a requirement's clarification
     fields (`clarification_count`/`last_clarified_at`/
     `last_clarification_note`/the clarifying user) are first-class exported
     fields, not silently dropped like the "evidence history missing from
-    export" gap Phase 15 found and fixed."""
+    export" gap that was found and fixed."""
     standard, version_id, parent, child, action_type, action = _build_standard_with_tree(
         client, admin_token, org_id, reference="CLARIFY-EXP-STD"
     )

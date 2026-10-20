@@ -15,7 +15,7 @@
  * only and never changes the field. Contact info is Confidential personal
  * data, flagged as such. `change_note` only renders when editing.
  *
- * Groups (Phase 3c): when creating and `groups` is given, a `TreeSelect` picks the
+ * Groups: when creating and `groups` is given, a `TreeSelect` picks the
  * new stakeholder's groups of this `tier`; they are returned as `group_ids` and
  * applied by the caller after the create (group membership is not part of the
  * stakeholder's own versioned fields). Editing changes groups from the detail
@@ -26,13 +26,18 @@ import { useEffect, useState } from "react";
 import type { ScoringScheme } from "../../api/scoring";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import type { CollectedLink } from "../../api/artefactLinks";
 import { Modal } from "../../components/Modal";
+import { QuickLinkField } from "../../components/QuickLinkField";
+import { TagField } from "../../components/TagField";
 import { ScoringLevelPicker } from "../../components/ScoringLevelPicker";
 import { TreeSelect } from "../../components/TreeSelect";
 import { buildGroupTree, groupSelectNodes } from "./groupTree";
-import { TextAreaField, TextField } from "./RecordFormFields";
+import { TextAreaField, TextField } from "../../components/FormFields";
 import type { CadenceHint, Stakeholder, StakeholderFieldValues, StakeholderGroup, TargetCadence } from "./types";
 import { GRID_QUADRANT_LABEL, TARGET_CADENCE_LABEL } from "./types";
+import { FormActions } from "../../components/FormActions";
+import { STAKEHOLDERS_HELP } from "./help";
 
 const TEXT_FIELDS: { key: keyof StakeholderFieldValues; label: string; rows: number }[] = [
   { key: "description", label: "Description", rows: 2 },
@@ -49,6 +54,7 @@ const CADENCE_OPTIONS = Object.entries(TARGET_CADENCE_LABEL).map(([value, label]
 export function StakeholderFormModal({
   initial,
   scopeLabel,
+  projectId,
   typeOptions,
   scheme,
   loadHint,
@@ -61,6 +67,8 @@ export function StakeholderFormModal({
   initial?: Stakeholder;
   /** e.g. "organisation" / "project", shown in the title of a new stakeholder. */
   scopeLabel: string;
+  /** The project a new stakeholder is created in; with it a create form offers the quick-link field. Omit for the organisation scope. */
+  projectId?: string;
   /** The enabled types this scope offers; the current type is always kept selectable. */
   typeOptions: { value: string; label: string }[];
   /** The org's `stakeholder` scoring scheme, or `null` to omit the level pickers. */
@@ -73,9 +81,11 @@ export function StakeholderFormModal({
   groupTier?: "organization" | "project";
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: StakeholderFieldValues & { group_ids?: string[] }) => void;
+  onSave: (values: StakeholderFieldValues & { group_ids?: string[] }, quickLinks: CollectedLink[], tags: string[]) => void;
 }) {
   const [groupIds, setGroupIds] = useState<string[]>([]);
+  const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
   const [name, setName] = useState(initial?.name ?? "");
   const [typeId, setTypeId] = useState(initial?.stakeholder_type_id ?? "");
   const [role, setRole] = useState(initial?.role ?? "");
@@ -114,7 +124,7 @@ export function StakeholderFormModal({
       ? [...typeOptions, { value: initial.stakeholder_type_id, label: `${initial.stakeholder_type_name ?? "Current type"} (disabled)` }]
       : typeOptions;
 
-  function save() {
+  function save(activate = false) {
     onSave({
       name: name.trim(),
       stakeholder_type_id: typeId || null,
@@ -126,19 +136,20 @@ export function StakeholderFormModal({
       influence_level_id: influence,
       interest_level_id: interest,
       change_note: changeNote,
+      ...(activate ? { activate: true } : {}),
       ...(!initial && groups ? { group_ids: groupIds } : {}),
       ...(Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, fields[f.key] ?? ""])) as Record<string, string>),
-    } as StakeholderFieldValues);
+    } as StakeholderFieldValues, quickLinks, tags);
   }
 
   return (
     <Modal title={initial ? `Edit ${initial.name}` : `New Stakeholder (${scopeLabel})`} onClose={onCancel} size="lg">
       <div className="stack">
         <FormGrid minColumn="18rem">
-          <TextField label="Name" ariaLabel="Stakeholder name" value={name} onChange={setName} />
-          <LabeledSelect label="Type" value={typeId} onChange={setTypeId} options={options} placeholder="No type" />
-          <TextField label="Role" value={role} onChange={setRole} />
-          <TextField label="Organisation / group" value={group} onChange={setGroup} />
+          <TextField helpNotNeeded required label="Name" ariaLabel="Stakeholder name" value={name} onChange={setName} />
+          <LabeledSelect helpNotNeeded label="Type" value={typeId} onChange={setTypeId} options={options} placeholder="No type" />
+          <TextField helpNotNeeded label="Role" value={role} onChange={setRole} />
+          <TextField helpNotNeeded label="Organisation / group" value={group} onChange={setGroup} />
           {influenceAxis && interestAxis && (
             <>
               <ScoringLevelPicker axis={influenceAxis} value={influence} onChange={setInfluence} />
@@ -146,7 +157,7 @@ export function StakeholderFormModal({
             </>
           )}
           <div className="stack" style={{ gap: "0.25rem" }}>
-            <LabeledSelect
+            <LabeledSelect help={STAKEHOLDERS_HELP.stakeholderCadence}
               label="Target engagement cadence" value={cadence} onChange={setCadence} options={CADENCE_OPTIONS}
               placeholder="Not set"
             />
@@ -169,31 +180,38 @@ export function StakeholderFormModal({
           )}
           {TEXT_FIELDS.map((f) => (
             <FormGridFull key={f.key}>
-              <TextAreaField
+              <TextAreaField helpNotNeeded
                 label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
                 onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
               />
             </FormGridFull>
           ))}
           <FormGridFull>
-            <TextAreaField
+            <TextAreaField helpNotNeeded
               label="Contact / reference information" value={contact} onChange={setContact}
               hint="Confidential personal data. Everyone who can see this stakeholder can read it."
             />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField
+            <TextAreaField helpNotNeeded
               label="Availability constraints" value={availability} onChange={setAvailability}
               hint="What limits how often they will engage (their side, not ours)."
             />
           </FormGridFull>
-          {initial && <FormGridFull><TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
+          {initial && <FormGridFull><TextField helpNotNeeded label="Change note" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
+          {!initial && projectId && (
+            <FormGridFull>
+              <div className="stack">
+                <QuickLinkField projectId={projectId} artefactType="stakeholder" value={quickLinks} onChange={setQuickLinks} />
+                <TagField projectId={projectId} artefactType="stakeholder" value={tags} onChange={setTags} />
+              </div>
+            </FormGridFull>
+          )}
         </FormGrid>
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" disabled={!valid} onClick={save}>Save</button>
-        </div>
+        <FormActions
+          error={error} onCancel={onCancel} onSave={() => save()} saveDisabled={!valid}
+          onSaveAndActivate={initial ? undefined : () => save(true)}
+        />
       </div>
     </Modal>
   );

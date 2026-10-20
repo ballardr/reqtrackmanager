@@ -1,12 +1,11 @@
-"""Stakeholder groups (Module 2 Phase 3c)
+"""Stakeholder groups
 
 Revision ID: 0086
 Revises: 0085
 Create Date: 2026-10-13
 
 Adds `stakeholder_groups`, a tree of org- or project-scoped groups that
-classify stakeholders (docs/plans/module-02-stakeholders-and-personas-plan.md
-Phase 0 addendum 3), and `stakeholder_group_members`, the many-to-many direct
+classify stakeholders, and `stakeholder_group_members`, the many-to-many direct
 memberships. Nothing is backfilled: the "create groups from Organisation /
 group text" action proposes groups on request instead.
 """

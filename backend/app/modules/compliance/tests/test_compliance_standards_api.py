@@ -1,18 +1,17 @@
-"""Tests for the Compliance Module's Phase 6 Standards Management API
-(docs/compliance-module-plan.md Phase 6; docs/Compliance_Module_
-Requirements.md §2, §3, §4, §26): full CRUD for standards/versions/
+"""Tests for the Compliance Module's Standards Management API
+(§2, §3, §4, §26): full CRUD for standards/versions/
 requirements/required actions/action types through the real HTTP API (the
-first time this module has had an API surface to go through at all — Phase
-5's own tests were ORM-only), the publish/retire version lifecycle and its
+first time this module has had an API surface to go through at all — the
+data-model tests are ORM-only), the publish/retire version lifecycle and its
 immutability enforcement, version cloning, the org-admin/compliance-manager
-RBAC composition `require_module_role` already provides (this phase's own
-job is to prove it applies here, not reimplement it), cross-organisation
+RBAC composition `require_module_role` already provides (the job here
+is to prove it applies, not reimplement it), cross-organisation
 isolation (404, not 403 or 200), audit logging, and action-type
 delete-with-reassignment.
 
 Every test uses the real `/api/v1/orgs/{organization_id}/modules/compliance`
 endpoints via the `client` fixture — no direct ORM manipulation, unlike
-`test_compliance_data_model.py` (Phase 5, which had no API to go through).
+`test_compliance_data_model.py` (which had no API to go through).
 """
 
 from __future__ import annotations
@@ -93,7 +92,7 @@ def test_full_crud_happy_path(client, admin_token, org_id):
     action_type = _create_action_type(client, admin_token, org_id, name="Inspection")
     assert action_type["name"] == "Inspection"
     # sort_order == 2, not 0: every organisation now starts with 2 default
-    # compliance action types ("Document Review", "Test" — Phase 17c), so
+    # compliance action types ("Document Review", "Test"), so
     # this is the third row created for `org_id`, not the first.
     assert action_type["sort_order"] == 2
 
@@ -241,7 +240,7 @@ def test_rbac_composition_manager_grant_admin_override_and_member_forbidden(clie
     """§3/§26: only a Compliance Manager (module role) or an Organisation
     Administrator may mutate standards — proving `require_module_role`'s
     existing admin-override composition applies here, not reimplementing
-    it (per Phase 6's own spec instruction: "confirm this composition
+    it ("confirm this composition
     explicitly in tests")."""
     # (a) A user granted the compliance_manager module role can create a standard.
     manager_id = create_org_user(client, admin_token, org_id, "compliance-manager@example.com", role="member")

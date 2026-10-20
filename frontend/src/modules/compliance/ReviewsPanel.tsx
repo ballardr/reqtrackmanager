@@ -15,11 +15,12 @@
  * the per-assignment CRUD surface, matching `ApplicabilityTree`'s own
  * "one assignment at a time" scope.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import type { OrgUser, PrincipalRef } from "../../api/types";
 import { principalRef, savedPrincipalDisplay } from "../../api/types";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { Modal } from "../../components/Modal";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { PrincipalFormField } from "../../components/PrincipalFormField";
@@ -33,6 +34,12 @@ import {
   type ComplianceReview,
   type ComplianceReviewOutcome,
 } from "./types";
+import { Badge } from "../../components/Badge";
+import { DateField, TextAreaField, TextField } from "../../components/FormFields";
+import { FormActions } from "../../components/FormActions";
+import { LabeledSelect } from "../../components/LabeledSelect";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { COMPLIANCE_HELP } from "./help";
 
 export function ReviewsPanel({
   projectId, projectComplianceId, organizationId, orgUsers,
@@ -52,10 +59,7 @@ export function ReviewsPanel({
     }
   }
 
-  useEffect(() => {
-    void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, projectComplianceId]);
+  useLoadOnChange(reload, [projectId, projectComplianceId]);
 
   if (reviews === null) return <Spinner />;
 
@@ -73,8 +77,8 @@ export function ReviewsPanel({
               <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
                 <span>
                   <strong>{r.frequency_label}</strong> — due {r.next_due_date}
-                  {r.schedule_state && <span className="badge" style={{ marginLeft: "0.5rem" }}>{COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL[r.schedule_state]}</span>}
-                  <span className="badge" style={{ marginLeft: "0.5rem" }}>{COMPLIANCE_REVIEW_STATUS_LABEL[r.status]}</span>
+                  {r.schedule_state && <Badge className="badge-after">{COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL[r.schedule_state]}</Badge>}
+                  <Badge className="badge-after">{COMPLIANCE_REVIEW_STATUS_LABEL[r.status]}</Badge>
                 </span>
                 {r.status === "scheduled" ? (
                   <div className="row">
@@ -182,43 +186,44 @@ function ReviewFormModal({
   const [notes, setNotes] = useState(initial?.notes ?? "");
 
   return (
-    <Modal title={initial ? "Edit review" : "Schedule review"} onClose={onCancel}>
+    <Modal title={initial ? "Edit review" : "Schedule review"} onClose={onCancel} size="lg">
       <div className="stack">
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Frequency / description</span>
-          <input className="input" value={frequencyLabel} onChange={(e) => setFrequencyLabel(e.target.value)} placeholder="e.g. Annual security review" aria-label="Frequency label" />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Next due date</span>
-          <input className="input" type="date" value={nextDueDate} onChange={(e) => setNextDueDate(e.target.value)} />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Recurs every (days, optional)</span>
-          <input className="input" type="number" min={1} value={recurrenceDays} onChange={(e) => setRecurrenceDays(e.target.value)} />
-        </label>
-        <PrincipalFormField
-          label="Owner" orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
-          value={owner} display={savedPrincipalDisplay(owner, initial?.owner)} onChange={setOwner} ariaLabel="Review owner"
+        <FormGrid minColumn="18rem">
+          <FormGridFull>
+            <TextField helpNotNeeded required
+              label="Frequency / description"
+              ariaLabel="Frequency label"
+              value={frequencyLabel}
+              onChange={setFrequencyLabel}
+              placeholder="e.g. Annual security review"
+            />
+          </FormGridFull>
+          <DateField helpNotNeeded required label="Next due date" value={nextDueDate} onChange={setNextDueDate} />
+          <TextField help={COMPLIANCE_HELP.complianceReviewRecurrence}
+            label="Recurs every (days)"
+            value={recurrenceDays}
+            onChange={setRecurrenceDays}
+            inputProps={{ min: 1, type: "number" }}
+          />
+          <FormGridFull>
+            <PrincipalFormField helpNotNeeded
+              label="Owner" orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
+              value={owner} display={savedPrincipalDisplay(owner, initial?.owner)} onChange={setOwner} ariaLabel="Review owner"
+            />
+          </FormGridFull>
+          <FormGridFull>
+            <TextAreaField helpNotNeeded label="Notes" value={notes} onChange={setNotes} rows={2} />
+          </FormGridFull>
+        </FormGrid>
+        <FormActions
+          onCancel={onCancel}
+          onSave={() =>
+            onSave({
+              frequency_label: frequencyLabel, recurrence_days: recurrenceDays ? Number(recurrenceDays) : null,
+              next_due_date: nextDueDate, owner, notes,
+            })}
+          saveDisabled={!frequencyLabel.trim() || !nextDueDate}
         />
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Notes</span>
-          <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-        </label>
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button
-            className="btn btn-primary"
-            disabled={!frequencyLabel.trim() || !nextDueDate}
-            onClick={() =>
-              onSave({
-                frequency_label: frequencyLabel, recurrence_days: recurrenceDays ? Number(recurrenceDays) : null,
-                next_due_date: nextDueDate, owner, notes,
-              })
-            }
-          >
-            Save
-          </button>
-        </div>
       </div>
     </Modal>
   );
@@ -239,22 +244,16 @@ function CompleteReviewModal({
   return (
     <Modal title="Complete review" onClose={onCancel}>
       <div className="stack">
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Outcome</span>
-          <select className="input" value={outcome} onChange={(e) => setOutcome(e.target.value as ComplianceReviewOutcome)} aria-label="Review outcome">
-            {OUTCOME_OPTIONS.map((opt) => (
-              <option key={opt} value={opt}>{COMPLIANCE_REVIEW_OUTCOME_LABEL[opt]}</option>
-            ))}
-          </select>
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Notes</span>
-          <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-        </label>
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => onSave({ outcome, notes })}>Complete</button>
-        </div>
+        <LabeledSelect helpNotNeeded
+          label="Outcome"
+          ariaLabel="Review outcome"
+          value={outcome}
+          onChange={(next) => setOutcome(next as ComplianceReviewOutcome)}
+          options={OUTCOME_OPTIONS.map((opt) => ({ value: opt, label: COMPLIANCE_REVIEW_OUTCOME_LABEL[opt] }))}
+          placeholder={null}
+        />
+        <TextAreaField helpNotNeeded label="Notes" value={notes} onChange={setNotes} rows={2} />
+        <FormActions onCancel={onCancel} onSave={() => onSave({ outcome, notes })} saveLabel="Complete" />
       </div>
     </Modal>
   );

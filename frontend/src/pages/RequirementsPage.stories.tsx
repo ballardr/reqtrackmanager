@@ -2,11 +2,14 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
+import type { ArtefactLinkCandidate, ArtefactLinkTypeOption } from "../api/artefactLinks";
 import type { Category, Component, ProjectStage } from "../api/types";
 import {
-  buildFileAsset, buildLinkType, buildProjectListItem, projectLinkTypesPayload, buildRequirement, buildRequirementLink, buildUser,
+  buildFileAsset, buildProjectListItem, buildRequirement, buildUser,
   withRouter, withStatefulAuth, withTerminology, withToast,
 } from "../testing/storybook-helpers";
+import { buildCandidate, buildOption } from "../testing/artefactLinksFixtures";
+import { buildVocabulary } from "../testing/tagsFixtures";
 import { RequirementsPage } from "./RequirementsPage";
 
 const PROJECT_ID = "project-1";
@@ -24,20 +27,35 @@ const stages: ProjectStage[] = [
   { id: "s2", project_id: PROJECT_ID, name: "Test", status: "scoping", sort_order: 1, is_current: false, approved_at: null, completed_at: null, completed_by: null, review_deadline: null },
 ];
 
-function mockRequirementsListApis(myRoles: "manager" | "member", opts: { components?: Component[]; categories?: Category[] } = {}) {
+/** The quick-link field's finder reads: the link types usable from a new requirement and the records a search finds. */
+function finderReply(path: string, options: ArtefactLinkTypeOption[], candidates: ArtefactLinkCandidate[]): unknown {
+  if (path.includes("/link-candidates")) return { items: candidates, truncated: false };
+  return options;
+}
+
+function mockRequirementsListApis(
+  myRoles: "manager" | "member",
+  opts: {
+    components?: Component[]; categories?: Category[]; linkOptions?: ArtefactLinkTypeOption[]; candidates?: ArtefactLinkCandidate[];
+    withTags?: boolean;
+    /** The project has a parent the viewer can open; a widened list then adds the parent's requirement. */
+    withParent?: boolean;
+  } = {},
+) {
   const comps = opts.components ?? components;
   const cats = opts.categories ?? categories;
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (opts.withTags && path.endsWith(`/projects/${PROJECT_ID}/tags`)) return buildVocabulary();
+    if (path.endsWith("/scope-options")) return { has_parents: opts.withParent === true, has_children: false, truncated: false };
     if (path.endsWith("/my-roles")) return { roles: myRoles === "manager" ? ["project_manager"] : ["member"] };
+    if (path.includes("/artefacts/")) return finderReply(path, opts.linkOptions ?? [], opts.candidates ?? []);
     if (path.includes("archived=false")) return [buildProjectListItem({ id: PROJECT_ID, my_roles: myRoles === "manager" ? ["project_manager"] : ["member"] })];
     if (path.includes("/components")) return comps;
     if (path.includes("/categories")) return cats;
     if (path.includes("/stages")) return stages;
     if (path.includes("custom-fields")) return [];
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1", name: "Atlas Platform" };
-    if (path.includes("/link-types")) return projectLinkTypesPayload();
-    // The create modal's step 2 (attach files / add links) fetches the full,
-    // unpaginated project requirements list — distinct from the paginated
+    // The unpaginated project requirements list is distinct from the paginated
     // main list, which goes through `api.getPage` below, not `api.get`.
     if (path.endsWith(`/projects/${PROJECT_ID}/requirements`)) {
       return [buildRequirement({ id: "r1", unique_code: "AUTH-LOG-001", name: "Reset password", component_id: "c1", category_id: "cat1", target_stage_id: "s1" })];
@@ -46,12 +64,18 @@ function mockRequirementsListApis(myRoles: "manager" | "member", opts: { compone
     if (path.includes("/users")) return [];
     throw new Error(`unmocked path: ${path}`);
   });
-  spyOn(api, "getPage").mockResolvedValue({
-    items: [
+  spyOn(api, "getPage").mockImplementation(async (path: string) => {
+    const items = [
       buildRequirement({ id: "r1", unique_code: "AUTH-LOG-001", name: "Reset password", component_id: "c1", category_id: "cat1", target_stage_id: "s1" }),
       buildRequirement({ id: "r2", unique_code: "RPT-EXP-002", name: "Nightly export", component_id: "c2", category_id: "cat2", target_stage_id: "s1", status: "approved" }),
-    ],
-    total: 2,
+    ];
+    if (path.includes("project_scope=parents")) {
+      items.push(buildRequirement({
+        id: "r3", unique_code: "PLAT-001", name: "Single sign-on", from_project_id: "project-parent",
+        from_project_name: "Platform", from_project_code: "PLAT",
+      }));
+    }
+    return { items, total: items.length };
   });
 }
 
@@ -78,7 +102,7 @@ export const TilesView: Story = {
   },
 };
 
-/** Style guide "Pattern: split-button trigger" (roadmap item 505) — a
+/** Style guide "Pattern: split-button trigger" — a
  * plain click on "New requirement" performs the common-case action
  * ("Add one") directly, opening the create form as a `Modal` layer
  * (not an inline block that reflows the list underneath) with no menu
@@ -138,7 +162,7 @@ export const ListView: Story = {
   },
 };
 
-/** Column-header sorting (2026-08 UX audit roadmap) — this list is backend-
+/** Column-header sorting — this list is backend-
  * paginated (`PAGE_SIZE`/`LoadMoreButton`), so a header click refetches with
  * `sort`/`order` query params rather than reordering just the loaded page. */
 export const SortByNameRefetchesWithSortParams: Story = {
@@ -187,8 +211,58 @@ export const FilterByStatusBadge: Story = {
   },
 };
 
+/** A project with a parent offers the scope filter; widening it adds the parent's requirement, labelled with its
+ * project, qualified by its code and read-only here (no bulk checkbox, no reorder buttons), and sends `project_scope`. */
+export const WideningTheScopeAddsTheParentsRequirements: Story = {
+  beforeEach: () => mockRequirementsListApis("manager", { withParent: true }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
+    await expect(canvas.queryByText("Single sign-on")).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    await userEvent.selectOptions(await canvas.findByRole("combobox", { name: "Show records from" }), "parents");
+    const row = (await canvas.findByRole("link", { name: "Single sign-on" })).closest("tr")!;
+    await expect(within(row).getByText("From Platform")).toBeInTheDocument();
+    await expect(within(row).getByText("PLAT-PLAT-001")).toBeInTheDocument();
+    await expect(within(row).queryByRole("checkbox")).not.toBeInTheDocument();
+    await expect(within(row).queryByRole("button", { name: "Move up" })).not.toBeInTheDocument();
+    await waitFor(() => {
+      const paths = (api.getPage as unknown as { mock: { calls: unknown[][] } }).mock.calls.map((c) => String(c[0]));
+      expect(paths.some((p) => p.includes("project_scope=parents"))).toBe(true);
+    });
+  },
+};
+
+/** The tag filter lists the project's tags and sends the chosen ones, with the match mode, in the list read. */
+export const FilterByTagSendsTheTagParameters: Story = {
+  beforeEach: () => mockRequirementsListApis("manager", { withTags: true }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
+    await userEvent.click(await canvas.findByRole("button", { name: "Tags" }));
+    await userEvent.click(await within(document.body).findByRole("checkbox", { name: "Safety" }));
+    await waitFor(() => {
+      const paths = (api.getPage as unknown as { mock: { calls: unknown[][] } }).mock.calls.map((c) => String(c[0]));
+      expect(paths.some((p) => p.includes("tag=Safety") && p.includes("tag_mode=any"))).toBe(true);
+    });
+  },
+};
+
+/** "Tag selected" in the bulk toolbar opens the dialog that adds and removes tags on the selected rows. */
+export const BulkTagSelectedOpensTheTagDialog: Story = {
+  beforeEach: () => mockRequirementsListApis("manager", { withTags: true }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    await userEvent.click(canvas.getByLabelText("Select AUTH-LOG-001 Reset password"));
+    await userEvent.click(canvas.getByRole("button", { name: "Tag selected" }));
+    await expect(await within(document.body).findByRole("dialog", { name: "Tag 1 selected requirement" })).toBeInTheDocument();
+  },
+};
+
 /** Filter select options render the existing `REQUIREMENT_STATUS_LABEL` map
- * (2026-08 UX audit roadmap, "Fix raw-enum filter/table text"), not the raw
+ *, not the raw
  * backend enum string — "In review", not "in_review". */
 export const StatusFilterOptionsUseLabelMap: Story = {
   beforeEach: () => mockRequirementsListApis("manager"),
@@ -202,8 +276,7 @@ export const StatusFilterOptionsUseLabelMap: Story = {
   },
 };
 
-/** The "Include archived" filter checkbox (2026-08 UX audit roadmap:
- * unarchive endpoint + Restore button) is what makes an archived
+/** The "Include archived" filter checkbox is what makes an archived
  * requirement reachable at all — the default list excludes them entirely,
  * and `RequirementDetailPage.tsx`'s new Restore button only helps once a
  * user can get to that page in the first place. Mirrors
@@ -313,7 +386,7 @@ export const NoComponentsManagerCanCreateInline: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "New requirement" }));
     const panel = within(document.body).getByRole("dialog", { name: "New requirement" });
     await waitFor(() => expect(within(panel).getByText("This project has no components or categories yet.")).toBeInTheDocument());
-    await expect(within(panel).getByPlaceholderText("Prefix")).toBeInTheDocument();
+    await expect(within(panel).getByLabelText("Prefix")).toBeInTheDocument();
   },
 };
 
@@ -328,7 +401,7 @@ export const NoComponentsMemberSeesLinkToAdmin: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "New requirement" }));
     const panel = within(document.body).getByRole("dialog", { name: "New requirement" });
     await waitFor(() => expect(within(panel).getByRole("link", { name: "Add one in Project Admin before creating requirements." })).toBeInTheDocument());
-    await expect(within(panel).queryByPlaceholderText("Prefix")).not.toBeInTheDocument();
+    await expect(within(panel).queryByLabelText("Prefix")).not.toBeInTheDocument();
   },
 };
 
@@ -376,10 +449,38 @@ export const CreateRequirementShowsToast: Story = {
   },
 };
 
-/** UX review: creating a requirement now advances the same modal to a
- * second step (attach files / add links) instead of closing — both
- * previously only possible afterwards, from the detail page. */
-export const CreateRequirementAdvancesToAttachFilesAndLinksStep: Story = {
+/** The create form takes every field the edit form does: clarification, review date, reminder lead
+ * time and (empty here) owner and reviewer all reach the create call. */
+export const CreateRequirementSendsClarificationAndReviewFields: Story = {
+  beforeEach: () => {
+    mockRequirementsListApis("manager");
+    spyOn(api, "post").mockResolvedValue(buildRequirement({ id: "r-new", unique_code: "AUTH-LOG-099", name: "Reset password via SMS" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "New requirement" }));
+    const panel = within(document.body).getByRole("dialog", { name: "New requirement" });
+    await waitFor(() => expect(within(panel).getByPlaceholderText("Name")).toBeInTheDocument());
+    await userEvent.type(within(panel).getByPlaceholderText("Name"), "Reset password via SMS");
+    await userEvent.type(within(panel).getByLabelText("Clarification"), "Applies to field staff");
+    await userEvent.type(within(panel).getByLabelText(/Reminder lead time/), "14");
+    await expect(within(panel).getByText("Owner")).toBeInTheDocument();
+    await expect(within(panel).getByText("Assigned reviewer")).toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole("button", { name: "Create" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/requirements`,
+        expect.objectContaining({
+          clarification: "Applies to field staff", review_lead_days: 14, review_date: null, owner: null, reviewer: null,
+        })
+      )
+    );
+  },
+};
+
+/** UX review: "Create & attach files" advances the same modal to a second step
+ * (attach files) instead of closing — only possible afterwards, from the detail page, before. */
+export const CreateRequirementAdvancesToAttachFilesStep: Story = {
   beforeEach: () => {
     mockRequirementsListApis("manager");
     spyOn(api, "post").mockResolvedValue(buildRequirement({ id: "r-new", unique_code: "AUTH-LOG-099", name: "Reset password via SMS" }));
@@ -389,79 +490,47 @@ export const CreateRequirementAdvancesToAttachFilesAndLinksStep: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "New requirement" }));
     const panel = within(document.body).getByRole("dialog", { name: "New requirement" });
     await userEvent.type(within(panel).getByPlaceholderText("Name"), "Reset password via SMS");
-    await userEvent.click(within(panel).getByRole("button", { name: "Create & attach files/links" }));
+    await userEvent.click(within(panel).getByRole("button", { name: "Create & attach files" }));
 
-    const step2 = within(document.body).getByRole("dialog", { name: "AUTH-LOG-099 — Attach files & links" });
+    const step2 = within(document.body).getByRole("dialog", { name: "AUTH-LOG-099 — Attach files" });
     await waitFor(() => expect(within(step2).getByText("Attachments")).toBeInTheDocument());
-    await expect(within(step2).getByText("Traceability links")).toBeInTheDocument();
+    await expect(within(step2).queryByText("Traceability links")).not.toBeInTheDocument();
     await expect(within(step2).getByRole("button", { name: "Finish" })).toBeInTheDocument();
   },
 };
 
-/** The "Add link" trigger is greyed out once there's nothing left to link
- * to — here, the just-created requirement is the only one in the project,
- * so the eligible-targets list ("every other requirement, minus any
- * already linked") is empty. */
-export const CreateStepAddLinkDisabledWithNoEligibleTargets: Story = {
+/** Uploading a file works directly against the newly-created requirement's real id, reusing the
+ * same endpoints `RequirementDetailPage` uses — and "Finish" closes the modal. */
+export const CreateStepAttachFileThenFinish: Story = {
   beforeEach: () => {
     mockRequirementsListApis("manager");
     spyOn(api, "post").mockResolvedValue(buildRequirement({ id: "r-new", unique_code: "AUTH-LOG-099", name: "Reset password via SMS" }));
-    // Override the full-project-requirements fetch (used to compute
-    // eligible link targets) to contain nothing but the one just created.
-    spyOn(api, "get").mockImplementation(async (path: string) => {
-      if (path.endsWith("/my-roles")) return { roles: ["project_manager"] };
-      if (path.includes("archived=false")) return [buildProjectListItem({ id: PROJECT_ID, my_roles: ["project_manager"] })];
-      if (path.includes("/components")) return components;
-      if (path.includes("/categories")) return categories;
-      if (path.includes("/stages")) return stages;
-      if (path.includes("custom-fields")) return [];
-      if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1", name: "Atlas Platform" };
-      if (path.includes("/link-types")) return projectLinkTypesPayload();
-      if (path.endsWith(`/projects/${PROJECT_ID}/requirements`)) return [buildRequirement({ id: "r-new", unique_code: "AUTH-LOG-099", name: "Reset password via SMS" })];
-      if (path.includes("/users")) return [];
-      throw new Error(`unmocked path: ${path}`);
-    });
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "New requirement" }));
-    const panel = within(document.body).getByRole("dialog", { name: "New requirement" });
-    await userEvent.type(within(panel).getByPlaceholderText("Name"), "Reset password via SMS");
-    await userEvent.click(within(panel).getByRole("button", { name: "Create & attach files/links" }));
-
-    const step2 = within(within(document.body).getByRole("dialog", { name: "AUTH-LOG-099 — Attach files & links" }));
-    await waitFor(() => expect(step2.getByRole("button", { name: "Add link" })).toBeDisabled());
-  },
-};
-
-/** Uploading a file and adding a link both work directly against the
- * newly-created requirement's real id, reusing the same endpoints
- * `RequirementDetailPage` uses — and "Finish" closes the modal. */
-export const CreateStepAttachFileAddLinkThenFinish: Story = {
-  beforeEach: () => {
-    mockRequirementsListApis("manager");
-    spyOn(api, "post").mockImplementation(async (path: string) => {
-      if (path.endsWith("/requirements")) return buildRequirement({ id: "r-new", unique_code: "AUTH-LOG-099", name: "Reset password via SMS" });
-      if (path.includes("/links")) return buildRequirementLink({ other_requirement_id: "r1", other_requirement_unique_code: "AUTH-LOG-001", other_requirement_name: "Reset password" });
-      return undefined;
-    });
     spyOn(api, "postFile").mockResolvedValue(buildFileAsset({ id: "f1", filename: "design-notes.pdf" }));
-    spyOn(api, "get").mockImplementation(async (path: string) => {
-      if (path.endsWith("/my-roles")) return { roles: ["project_manager"] };
-      if (path.includes("archived=false")) return [buildProjectListItem({ id: PROJECT_ID, my_roles: ["project_manager"] })];
-      if (path.includes("/components")) return components;
-      if (path.includes("/categories")) return categories;
-      if (path.includes("/stages")) return stages;
-      if (path.includes("custom-fields")) return [];
-      if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1", name: "Atlas Platform" };
-      if (path.includes("/link-types")) return projectLinkTypesPayload([buildLinkType({ id: "lt1", forward_name: "Depends on", reverse_name: "Depended on by" })]);
-      if (path.endsWith(`/projects/${PROJECT_ID}/requirements`)) {
-        return [buildRequirement({ id: "r1", unique_code: "AUTH-LOG-001", name: "Reset password", component_id: "c1", category_id: "cat1", target_stage_id: "s1" })];
-      }
-      if (path.includes("/files")) return [buildFileAsset({ id: "f1", filename: "design-notes.pdf" })];
-      if (path.includes("/links")) return [buildRequirementLink({ other_requirement_id: "r1", other_requirement_unique_code: "AUTH-LOG-001", other_requirement_name: "Reset password" })];
-      if (path.includes("/users")) return [];
-      throw new Error(`unmocked path: ${path}`);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "New requirement" }));
+    const panel = within(document.body).getByRole("dialog", { name: "New requirement" });
+    await userEvent.type(within(panel).getByPlaceholderText("Name"), "Reset password via SMS");
+    await userEvent.click(within(panel).getByRole("button", { name: "Create & attach files" }));
+
+    const step2 = within(within(document.body).getByRole("dialog", { name: "AUTH-LOG-099 — Attach files" }));
+    await step2.findByRole("button", { name: "Finish" });
+    await userEvent.click(step2.getByRole("button", { name: "Finish" }));
+    await expect(within(document.body).queryByRole("dialog", { name: "AUTH-LOG-099 — Attach files" })).not.toBeInTheDocument();
+  },
+};
+
+/** Records chosen in the form's "Link to" field are linked to the new requirement, in one call, right after it is created. */
+export const CreateRequirementLinksTheChosenRecords: Story = {
+  beforeEach: () => {
+    mockRequirementsListApis("manager", {
+      linkOptions: [buildOption({ other_types: [{ type: "requirement", label: "Requirement" }] })],
+      candidates: [buildCandidate({ type: "requirement", id: "r1", type_label: "Requirement", label: "AUTH-LOG-001 Reset password" })],
+    });
+    spyOn(api, "post").mockImplementation(async (path: string) => {
+      if (path.endsWith("/links/bulk")) return { items: [] };
+      return buildRequirement({ id: "r-new", unique_code: "AUTH-LOG-099", name: "Reset password via SMS" });
     });
   },
   play: async ({ canvasElement }) => {
@@ -469,24 +538,19 @@ export const CreateStepAttachFileAddLinkThenFinish: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "New requirement" }));
     const panel = within(document.body).getByRole("dialog", { name: "New requirement" });
     await userEvent.type(within(panel).getByPlaceholderText("Name"), "Reset password via SMS");
-    await userEvent.click(within(panel).getByRole("button", { name: "Create & attach files/links" }));
-
-    const step2 = within(within(document.body).getByRole("dialog", { name: "AUTH-LOG-099 — Attach files & links" }));
-    const addLinkButton = await step2.findByRole("button", { name: "Add link" });
-    await expect(addLinkButton).toBeEnabled();
-    await userEvent.click(addLinkButton);
-    const popover = within(within(document.body).getByRole("dialog", { name: "Add link" }));
-    await userEvent.selectOptions(popover.getByLabelText("Target requirement"), "r1");
-    await userEvent.selectOptions(popover.getByLabelText("Link type"), "lt1");
-    await userEvent.click(popover.getByRole("button", { name: "Add link" }));
-    await waitFor(() => expect(step2.getByText(/Depends on: AUTH-LOG-001/)).toBeInTheDocument());
-
-    await userEvent.click(step2.getByRole("button", { name: "Finish" }));
-    await expect(within(document.body).queryByRole("dialog", { name: "AUTH-LOG-099 — Attach files & links" })).not.toBeInTheDocument();
+    await userEvent.type(await within(panel).findByRole("combobox", { name: "Link to" }), "reset");
+    await userEvent.click(await within(panel).findByRole("option", { name: /AUTH-LOG-001 Reset password/ }));
+    await userEvent.click(within(panel).getByRole("button", { name: "Create" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/artefacts/requirement/r-new/links/bulk`,
+        { links: [{ link_type_id: "lt-related", direction: "outgoing", other_type: "requirement", other_id: "r1" }] },
+      )
+    );
   },
 };
 
-/** Style guide Principle 13 (roadmap item 524) — Name/Reasoning/Description
+/** Style guide Principle 13 — Name/Reasoning/Description
  * used to be the only fields on this form relying on placeholder text
  * alone, unlike every field below them (Component/Category/Target
  * version/Level), which already had a real `<label>`. All seven now do. */
@@ -510,7 +574,7 @@ export const CreateFormFieldsAllHaveVisibleLabels: Story = {
   },
 };
 
-/** Roadmap item 525 — Reasoning/Description are `AutoGrowTextarea` now, not
+/** Reasoning/Description are `AutoGrowTextarea` now, not
  * a fixed `rows={2}` `<textarea>`: typing content past two lines grows the
  * field's own height to show it, rather than scrolling inside a two-line
  * box (see `AutoGrowTextarea.stories.tsx` for the height-cap behaviour
@@ -545,8 +609,7 @@ export const MoveFailureShowsToast: Story = {
   },
 };
 
-/** Style guide "Pattern: bulk operations on a list" (2026-08 UX audit
- * roadmap: bulk operations on list pages, piloted here). Checking a row
+/** Style guide "Pattern: bulk operations on a list". Checking a row
  * checkbox in list view surfaces the contextual toolbar — "N selected",
  * "Clear selection", and the two bulk actions — right above the table;
  * unchecking back down to zero hides it again. */

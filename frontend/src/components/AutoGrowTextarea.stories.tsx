@@ -47,7 +47,7 @@ export const GrowsToFitContentWithinTheCap: Story = {
   },
 };
 
-/** Roadmap item 525 — capped "around 8 lines" by default; content past the
+/** Capped "around 8 lines" by default; content past the
  * cap stops growing the element itself and scrolls internally instead of
  * pushing the rest of the form down. A small `maxVisibleLines` here (3)
  * keeps the story's own fixture short rather than typing 9+ real lines to

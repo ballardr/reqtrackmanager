@@ -1,20 +1,18 @@
-"""Tests for Module 0 (Platform Foundations) Phase 5's project-level
-override of whole-module enablement (`docs/plans/module-00-platform-
-foundations-plan.md`): `ProjectModuleEnablement`, `app.modules.registry.
+"""Tests for the project-level
+override of whole-module enablement: `ProjectModuleEnablement`, `app.modules.registry.
 is_module_enabled_for_project`'s resolution, `require_project_module_enabled`/
 `require_project_module_enabled_dynamic`'s switch onto it, the project-tier
 `GET`/`PUT /projects/{id}/modules/{module_key}/enablement` endpoints,
 copy-on-create / copy-before-default-change (Decided by: User,
 2026-10-04 — an org default only affects projects created afterwards; an
-org hard Off still reaches every project), and — the one part of this phase that isn't purely additive —
+org hard Off still reaches every project), and — the one part that isn't purely additive —
 the regression proving a project-level whole-module override correctly
-cascades into `is_module_subcomponent_enabled`'s own resolution (Phase 4's
-own tests only proved the org-level disable case cascades, a different
-code path now that this phase's project-override tier sits ahead of it).
+cascades into `is_module_subcomponent_enabled`'s own resolution (the
+sub-component tests only prove the org-level disable case cascades, a different
+code path now that the project-override tier sits ahead of it).
 
 **Corrected 2026-09-29** (Decided by: User — see `docs/decisions.md`'s
-dated entry and `docs/plans/module-00-platform-foundations-plan.md`'s
-Phase 5 correction note): the resolution is no longer "org default,
+dated entry): the resolution is no longer "org default,
 project override symmetric in either direction" as a single tier. It is
 now four tiers — entitlement, the organisation's own hard `enabled` floor
 (absolute — no project override can cross it upward, in either direction),
@@ -55,7 +53,6 @@ from app.modules.registry import (
     ModuleDefinition,
     ModuleSubComponentDefinition,
     build_registry,
-    get_module_registry,
     is_module_enabled_for_project,
     is_module_subcomponent_enabled,
 )
@@ -234,15 +231,14 @@ def test_project_enablement_unregistered_module_behaves_as_disabled(client, admi
 def test_project_level_whole_module_override_cascades_to_subcomponent_resolution(
     client, admin_token, org_id, fake_module
 ):
-    """The one part of Phase 5 that isn't purely additive: before this
-    phase, `is_module_subcomponent_enabled` resolved whole-module state via
-    the org-only `is_module_enabled`, so it could only ever see an
-    org-level disable. Now that a project can independently disable the
-    whole module via `ProjectModuleEnablement`, that override must also
+    """Regression: `is_module_subcomponent_enabled` once resolved whole-module
+    state via the org-only `is_module_enabled`, so it could only ever see an
+    org-level disable. A project that independently disables the
+    whole module via `ProjectModuleEnablement` must also
     disable every one of that module's sub-components — proven here
     against a project where the *org* default is still enabled (the org-
-    level disable path Phase 4's own tests already covered would pass
-    even without this phase's fix; this test isolates the new code path)."""
+    level disable path the sub-component tests already cover would pass
+    even without the project-override fix; this test isolates the new code path)."""
     project = create_project(client, admin_token, org_id, "Subcomponent Cascade From Project Override")
     db = SessionLocal()
     try:
@@ -261,7 +257,7 @@ def test_project_level_whole_module_override_cascades_to_subcomponent_resolution
         db.commit()
 
         # The sub-component must now resolve to disabled too — this is
-        # the cascade this phase's fix is responsible for.
+        # the cascade the fix is responsible for.
         assert is_module_subcomponent_enabled(db, project_uuid, fake_module, SUBCOMPONENT_KEY) is False
 
         # Confirm this isn't a false negative from some other cause: a
@@ -289,7 +285,7 @@ def test_project_level_whole_module_override_cascades_to_subcomponent_resolution
 
 
 def test_require_project_module_enabled_404_when_project_override_disables(client, admin_token, org_id, fake_module):
-    """Before this phase, only an org-level disable could 404 this
+    """Originally only an org-level disable could 404 this
     dependency. Now a project-level override alone (org default left
     enabled) must too."""
     project = create_project(client, admin_token, org_id, "Require Project Module Enabled Override Disabled")
@@ -534,7 +530,7 @@ def test_project_module_enablement_endpoint_404_for_unregistered_module(client, 
 def test_project_module_enablement_endpoint_does_not_shadow_a_modules_own_bare_project_router_route(
     client, admin_token, org_id,
 ):
-    """Regression for the routing collision this phase's own verification
+    """Regression for the routing collision verification
     found and fixed: before the `/enablement` suffix was added, `GET/PUT
     /projects/{project_id}/modules/{module_key}` (registered on the core
     `routers.projects` router, mounted in `main.py` *before* any module's
@@ -559,8 +555,8 @@ def test_project_module_enablement_endpoint_does_not_shadow_a_modules_own_bare_p
         f"/api/v1/projects/{project['id']}/modules/decisions", headers=auth_headers(org_admin_token)
     )
     assert resp.status_code == 200, resp.text
-    # A real list-of-decisions response (initially empty), never this
-    # phase's own `ProjectModuleEnablementOut` shape (which would instead
+    # A real list-of-decisions response (initially empty), never the
+    # `ProjectModuleEnablementOut` shape (which would instead
     # have `effective_enabled`/`org_default_enabled` keys).
     assert resp.json() == []
 
@@ -573,7 +569,7 @@ def test_list_project_modules_includes_every_registered_module_with_correct_stat
     client, admin_token, org_id, fake_module,
 ):
     """The Project Admin Modules tab's own discovery endpoint: every
-    registered module appears, including ones this project has no
+    module the organisation has enabled appears, including ones this project has no
     override for at all, each with the correct effective/org-default/
     override-provenance state — proven against both an unset module (the
     fake fixture, still at registry default) and one with an actual
@@ -588,9 +584,13 @@ def test_list_project_modules_includes_every_registered_module_with_correct_stat
     assert by_key[fake_module]["effective_enabled"] is True
     assert by_key[fake_module]["has_project_override"] is True
     assert by_key[fake_module]["project_override_enabled"] is True
-    # A real, already-registered module (Decision Management) also
-    # appears, proving this isn't limited to fixture modules.
-    assert "decisions" in by_key
+    # A real module the organisation has not enabled (Decision Management is opt-in) is
+    # omitted, and appears once the organisation enables it.
+    assert "decisions" not in by_key
+    resp = client.put(f"/api/v1/orgs/{org_id}/modules/decisions", json={"enabled": True}, headers=auth_headers(admin_token))
+    assert resp.status_code == 200, resp.text
+    resp = client.get(f"/api/v1/projects/{project_id}/modules", headers=auth_headers(admin_token))
+    assert "decisions" in {row["module_key"] for row in resp.json()}
 
     resp = client.put(
         f"/api/v1/projects/{project_id}/modules/{fake_module}/enablement", json={"enabled": False},
@@ -617,8 +617,8 @@ def test_list_project_modules_for_project_role_who_is_not_org_admin(
     client, admin_token, org_id, project_role,
 ):
     """The Modules tab is reachable by a project-only role, not just an org
-    admin (Phase 11): a plain org member holding only a project role gets
-    every registered module, while an org member with no role on the
+    admin: a plain org member holding only a project role gets
+    every module the organisation has enabled, while an org member with no role on the
     project is refused (403), so the tab can't become a module-list leak."""
     project = create_project(client, admin_token, org_id, f"Modules Tab {project_role}")
     holder_id = create_org_user(client, admin_token, org_id, f"modtab-{project_role}@example.com")
@@ -632,7 +632,10 @@ def test_list_project_modules_for_project_role_who_is_not_org_admin(
     holder_token = login(client, f"modtab-{project_role}@example.com", "Password123!")
     resp = client.get(f"/api/v1/projects/{project['id']}/modules", headers=auth_headers(holder_token))
     assert resp.status_code == 200, resp.text
-    assert {row["module_key"] for row in resp.json()} == set(get_module_registry())
+    org_modules = client.get(f"/api/v1/orgs/{org_id}/modules", headers=auth_headers(admin_token)).json()
+    org_enabled = {m["module_key"] for m in org_modules if m["enabled"]}
+    assert org_enabled
+    assert {row["module_key"] for row in resp.json()} == org_enabled
 
     outsider_token = login(client, f"modtab-outsider-{project_role}@example.com", "Password123!")
     resp = client.get(f"/api/v1/projects/{project['id']}/modules", headers=auth_headers(outsider_token))
@@ -721,10 +724,9 @@ def test_org_hard_off_reaches_existing_projects_and_restores_on_re_enable(client
         json={"enabled": False, "default_project_enabled": True}, headers=auth_headers(admin_token),
     )
     assert resp.status_code == 200, resp.text
-    sub = _project_sub(client, admin_token, project_id, fake_module)
-    assert sub["effective_enabled"] is False
-    assert sub["org_hard_enabled"] is False
-    assert sub["project_override_enabled"] is True
+    # An organisation-disabled sub-component vanishes from the project's list; its project row is kept.
+    sub_url = f"/api/v1/projects/{project_id}/modules/{fake_module}/subcomponents"
+    assert SUBCOMPONENT_KEY not in {row["subcomponent_key"] for row in client.get(sub_url, headers=auth_headers(admin_token)).json()}
 
     resp = client.put(
         f"/api/v1/orgs/{org_id}/modules/{fake_module}",

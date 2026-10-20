@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
 import type { ChangeEntry, Project, ProjectAncestor, ProjectHierarchySummary, ProjectListItem, ProjectMetrics, RequirementStatus } from "../api/types";
-import { activityEntityLabel, activityEntryLink, describeActivityEntry, REQUIREMENT_STATUS_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import { activityEntityLabel, activityEntryLink, activityEntryNotes, describeActivityEntry, REQUIREMENT_STATUS_LABEL, STAGE_STATUS_LABEL } from "../api/types";
 import { EntitySwitcher } from "../components/EntitySwitcher";
 import { MetricTile } from "../components/MetricTile";
 import { ProjectHierarchyLabels } from "../components/ProjectHierarchyLabels";
@@ -13,8 +13,13 @@ import { StatusPieChart } from "../components/StatusPieChart";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
 import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
+import { useProjectScope } from "../hooks/useProjectScope";
+import { ProjectScopeSelect } from "../components/ProjectScopeSelect";
 import { getInstalledModule } from "../modules/registry";
 import { loadProjectSwitcherOptions } from "../utils/entitySwitcherLoaders";
+import { ActivityNote } from "../components/ActivityNote";
+import { Badge } from "../components/Badge";
+import { useResetOnChange } from "../hooks/useResetOnChange";
 
 /** Project overview dashboard (U-P-05): key metrics, status/outcome charts,
  * per-stage progress, and a recent activity feed at a glance. Every
@@ -39,9 +44,10 @@ export function ProjectOverviewPage() {
   const [ancestors, setAncestors] = useState<ProjectAncestor[]>([]);
   const [children, setChildren] = useState<ProjectListItem[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const projectScope = useProjectScope(projectId);
   // Extra module-contributed summary tiles (module boundary cleanup,
-  // 2026-09-08) — e.g. Compliance's own per-standard status tiles (Phase
-  // 17d), only shown once this project's org has the module enabled. This
+  // 2026-09-08) — e.g. Compliance's own per-standard status tiles,
+  // only shown once this project's org has the module enabled. This
   // core page renders whatever each currently-enabled module's own
   // `projectOverviewTiles` hands it and never imports a specific module
   // itself; a module deciding it has nothing to show yet (e.g. no standards
@@ -52,17 +58,17 @@ export function ProjectOverviewPage() {
     ? enabledModules.flatMap((entry) =>
         (getInstalledModule(entry.module_key)?.projectOverviewTiles ?? []).map((tile) => ({
           key: `${entry.module_key}:${tile.key}`,
-          node: tile.render({ projectId }),
+          node: tile.render({ projectId, projectScope: projectScope.scope }),
         }))
       )
     : [];
 
+  useResetOnChange([projectId], () => setLoadError(null));
+
   useEffect(() => {
     if (!projectId) return;
-    setLoadError(null);
     const onError = (err: unknown) => setLoadError(err instanceof ApiError ? err.message : strings.common.error);
     api.get<Project>(`/api/v1/projects/${projectId}`).then(setProject).catch(onError);
-    api.get<ProjectMetrics>(`/api/v1/projects/${projectId}/metrics`).then(setMetrics).catch(onError);
     api
       .get<ChangeEntry[]>(`/api/v1/projects/${projectId}/changes`)
       .then((entries) => setActivity(entries.slice(0, 8)))
@@ -70,6 +76,15 @@ export function ProjectOverviewPage() {
     api.get<ProjectAncestor[]>(`/api/v1/projects/${projectId}/ancestors`).then(setAncestors).catch(onError);
     api.get<ProjectListItem[]>(`/api/v1/projects/${projectId}/children`).then(setChildren).catch(onError);
   }, [projectId, strings.common.error]);
+
+  // The counts follow the overview's scope; the rest of the page is always this project's own.
+  useEffect(() => {
+    if (!projectId) return;
+    api
+      .get<ProjectMetrics>(`/api/v1/projects/${projectId}/metrics${projectScope.query ? `?${projectScope.query}` : ""}`)
+      .then(setMetrics)
+      .catch((err: unknown) => setLoadError(err instanceof ApiError ? err.message : strings.common.error));
+  }, [projectId, projectScope.query, strings.common.error]);
 
   if (loadError) return <p style={{ color: "var(--color-danger)" }}>{loadError}</p>;
   if (!project || !metrics) return <Spinner />;
@@ -139,9 +154,12 @@ export function ProjectOverviewPage() {
           <p className="text-muted">{project.summary}</p>
           <ProjectHierarchyLabels project={hierarchySummary} />
         </div>
-        <Link className="btn btn-primary" to={`/projects/${projectId}/requirements?new=1`}>
-          <Plus size={16} /> {strings.requirements.newRequirement}
-        </Link>
+        <div className="row" style={{ alignItems: "center" }}>
+          <ProjectScopeSelect scope={projectScope} compact coveredProjects={metrics.scope_project_count} />
+          <Link className="btn btn-primary" to={`/projects/${projectId}/requirements?new=1`}>
+            <Plus /> {strings.requirements.newRequirement}
+          </Link>
+        </div>
       </div>
       <div className="grid grid-metrics">
         {tiles.map(([label, value, to]) => (
@@ -176,7 +194,7 @@ export function ProjectOverviewPage() {
             >
               <div className="row" style={{ justifyContent: "space-between", fontSize: "0.85rem" }}>
                 <span>
-                  {s.name} <span className="badge">{STAGE_STATUS_LABEL[s.status]}</span>
+                  {s.name} <Badge>{STAGE_STATUS_LABEL[s.status]}</Badge>
                 </span>
                 <span className="text-muted">{s.completed_percent}%</span>
               </div>
@@ -205,14 +223,17 @@ export function ProjectOverviewPage() {
               className="row"
               style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}
             >
-              <span>
-                <span className="badge">{activityEntityLabel(c.entity_type, orgLabelCap)}</span> {describeActivityEntry(c)}
-                {link && (
-                  <>
-                    {" "}
-                    <Link to={link.to}>{link.label}</Link>
-                  </>
-                )}
+              <span className="stack" style={{ gap: "0.25rem", minWidth: 0 }}>
+                <span>
+                  <Badge>{activityEntityLabel(c.entity_type, orgLabelCap)}</Badge> {describeActivityEntry(c)}
+                  {link && (
+                    <>
+                      {" "}
+                      <Link to={link.to}>{link.label}</Link>
+                    </>
+                  )}
+                </span>
+                {activityEntryNotes(c).map((note) => <ActivityNote key={note} text={note} />)}
               </span>
               <span className="text-muted">{new Date(c.timestamp).toLocaleString()}</span>
             </div>

@@ -1,10 +1,10 @@
 /**
  * Module: modules/context_strategy/ProjectOpenQuestionsPage
  *
- * The Context & Strategy module's project-scoped Open Question list route
- * (docs/plans/module-01-context-and-strategy-plan.md Phase 7.5), mounted at
+ * The Context & Strategy module's project-scoped Open Question list route,
+ * mounted at
  * `/projects/:projectId/modules/context_strategy/open-questions`, reached
- * via this module's fifth and last top-level nav-rail entry (Phase 0 Q7).
+ * via this module's fifth and last top-level nav-rail entry.
  * Mirrors `ProjectPainPointsPage.tsx`'s exact `DirectoryTable` + `FilterPanel`
  * + "New X" `Modal` shape — Open Question is project-scoped only (source
  * overview §9), so unlike `ProjectStrategiesPage.tsx`/
@@ -27,6 +27,7 @@ import type { Project } from "../../api/types";
 import { api } from "../../api/client";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ListPageLayout } from "../../components/ListPageLayout";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { oneOf, useInitialSearchParams } from "../../hooks/useInitialSearchParams";
@@ -34,11 +35,24 @@ import { projectOpenQuestionApi } from "./api";
 import { OpenQuestionFormModal } from "./OpenQuestionFormModal";
 import { OPEN_QUESTION_OPEN_STATUSES, OPEN_QUESTION_PRIORITY_LABEL, OPEN_QUESTION_STATUS_LABEL, OPEN_QUESTION_STATUS_TONE } from "./types";
 import type { OpenQuestion, OpenQuestionFieldValues, OpenQuestionPriority, OpenQuestionStatus } from "./types";
+import { Badge } from "../../components/Badge";
+import { RecordCode } from "../../components/RecordCode";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { rowProjectId } from "../../api/projectScope";
+import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
+import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
+import { useProjectScope } from "../../hooks/useProjectScope";
+import { useTagFilter } from "../../hooks/useTagFilter";
+import { TagFilterField } from "../../components/TagFilterField";
+import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
+import { useCommitTags } from "../../hooks/useCommitTags";
 
 export function ProjectOpenQuestionsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "open_question");
+  const commitTags = useCommitTags(projectId ?? "", "open_question");
   const initial = useInitialSearchParams();
   const [project, setProject] = useState<Project | null>(null);
   const [openQuestions, setOpenQuestions] = useState<OpenQuestion[] | null>(null);
@@ -48,6 +62,8 @@ export function ProjectOpenQuestionsPage() {
   const [statusFilter, setStatusFilter] = useState<OpenQuestionStatus | "">(() => oneOf(initial.get("status"), Object.keys(OPEN_QUESTION_STATUS_LABEL) as OpenQuestionStatus[]));
   const [priorityFilter, setPriorityFilter] = useState<OpenQuestionPriority | "">(() => oneOf(initial.get("priority"), Object.keys(OPEN_QUESTION_PRIORITY_LABEL) as OpenQuestionPriority[]));
   const [includeArchived, setIncludeArchived] = useState(false);
+  const tagFilter = useTagFilter();
+  const projectScope = useProjectScope(projectId);
   const [openOnly, setOpenOnly] = useState(initial.get("open") === "1");
   const [overdueOnly, setOverdueOnly] = useState(initial.get("overdue") === "1");
   const [unownedOnly, setUnownedOnly] = useState(initial.get("unowned") === "1");
@@ -58,7 +74,7 @@ export function ProjectOpenQuestionsPage() {
   async function reloadOpenQuestions() {
     if (!projectId) return;
     try {
-      setOpenQuestions(await projectOpenQuestionApi.list(projectId, { include_archived: includeArchived }));
+      setOpenQuestions(await projectOpenQuestionApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }));
       setLoadError(null);
     } catch (err) {
       setLoadError(toErrorMessage(err, "The Context & Strategy module isn't enabled for this project's organisation, or you don't have access to it."));
@@ -70,10 +86,7 @@ export function ProjectOpenQuestionsPage() {
     api.get<Project>(`/api/v1/projects/${projectId}`).then(setProject);
   }, [projectId]);
 
-  useEffect(() => {
-    void reloadOpenQuestions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, includeArchived]);
+  useLoadOnChange(reloadOpenQuestions, [projectId, includeArchived, tagFilter.query, projectScope.scope]);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -86,72 +99,83 @@ export function ProjectOpenQuestionsPage() {
     if (unownedOnly && q.owner !== null) return false;
     if (statusFilter && q.status !== statusFilter) return false;
     if (priorityFilter && q.priority !== priorityFilter) return false;
-    if (search && !q.question.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !`${q.unique_code} ${q.question}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
   const columns: DirectoryColumn<OpenQuestion>[] = [
-    { key: "question", label: "Question", render: (q) => q.question },
+    { key: "question", label: "Question", render: (q) => <>{q.question}<ProjectScopeLabel row={q} /></> },
+    { key: "code", label: "Code", render: (q) => <RecordCode code={q.unique_code} ownerProjectCode={q.from_project_code} /> },
     { key: "priority", label: "Priority", render: (q) => OPEN_QUESTION_PRIORITY_LABEL[q.priority] },
     {
       key: "status", label: "Status",
-      render: (q) => <span className={`badge badge--${OPEN_QUESTION_STATUS_TONE[q.status]}`}>{OPEN_QUESTION_STATUS_LABEL[q.status]}</span>,
+      render: (q) => <Badge tone={OPEN_QUESTION_STATUS_TONE[q.status]}>{OPEN_QUESTION_STATUS_LABEL[q.status]}</Badge>,
     },
     { key: "due_date", label: "Due", render: (q) => q.due_date ?? "—" },
   ];
 
   return (
     <div className="container stack">
-      <h1 style={{ margin: 0 }}>Open Question</h1>
-      <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
-        New Open Question
-      </button>
-      <div className="side-grid">
+      <ListPageLayout
+        title="Open Question"
+        actions={
+          <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
+            New Open Question
+          </button>
+        }
+        filter={
+          <FilterPanel
+            sectionKey="context_strategy.open_questions.list" total={filtered.length}
+            search={search} onSearchChange={setSearch} searchPlaceholder="Search Open Questions…" searchAriaLabel="Search Open Questions"
+          >
+            <FilterField label="Status">
+              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as OpenQuestionStatus | "")}>
+                <option value="">All statuses</option>
+                {Object.entries(OPEN_QUESTION_STATUS_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterField label="Priority">
+              <select className="input" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as OpenQuestionPriority | "")}>
+                <option value="">All priorities</option>
+                {Object.entries(OPEN_QUESTION_PRIORITY_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterCheckbox label="Open only" checked={openOnly} onChange={setOpenOnly} />
+            <FilterCheckbox label="Overdue only" checked={overdueOnly} onChange={setOverdueOnly} />
+            <FilterCheckbox label="Unowned only" checked={unownedOnly} onChange={setUnownedOnly} />
+            <ProjectScopeFilter scope={projectScope} />
+            {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
+          </FilterPanel>
+        }
+      >
         <DirectoryTable
           ariaLabel="Open Questions"
           columns={columns}
           rows={filtered}
           rowKey={(q) => q.id}
-          onRowClick={(q) => navigate(`/projects/${projectId}/modules/context_strategy/open-questions/${q.id}`)}
+          onRowClick={(q) => navigate(`/projects/${rowProjectId(q, projectId)}/modules/context_strategy/open-questions/${q.id}`)}
           emptyState={<p className="text-muted">No Open Questions recorded for this project yet.</p>}
         />
-        <FilterPanel
-          sectionKey="context_strategy.open_questions.list" total={filtered.length}
-          search={search} onSearchChange={setSearch} searchPlaceholder="Search Open Questions…" searchAriaLabel="Search Open Questions"
-        >
-          <FilterField label="Status">
-            <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as OpenQuestionStatus | "")}>
-              <option value="">All statuses</option>
-              {Object.entries(OPEN_QUESTION_STATUS_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label="Priority">
-            <select className="input" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as OpenQuestionPriority | "")}>
-              <option value="">All priorities</option>
-              {Object.entries(OPEN_QUESTION_PRIORITY_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterCheckbox label="Open only" checked={openOnly} onChange={setOpenOnly} />
-          <FilterCheckbox label="Overdue only" checked={overdueOnly} onChange={setOverdueOnly} />
-          <FilterCheckbox label="Unowned only" checked={unownedOnly} onChange={setUnownedOnly} />
-          <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
-        </FilterPanel>
-      </div>
+      </ListPageLayout>
 
       {creating && (
         <OpenQuestionFormModal
+          projectId={projectId}
           error={createError}
           onCancel={() => { setCreating(false); setCreateError(null); }}
-          onSave={async (values: OpenQuestionFieldValues) => {
+          onSave={async (values: OpenQuestionFieldValues, quickLinks, tags) => {
             setCreateError(null);
             try {
-              await projectOpenQuestionApi.create(projectId, values);
+              const created = await projectOpenQuestionApi.create(projectId, values);
               showToast("Open Question created.");
               setCreating(false);
+              await commitQuickLinks(created.id, quickLinks);
+              await commitTags(created.id, tags);
               await reloadOpenQuestions();
             } catch (err) {
               setCreateError(toErrorMessage(err, "Could not create Open Question."));

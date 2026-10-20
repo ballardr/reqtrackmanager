@@ -81,6 +81,7 @@ export function buildLinksApi(overrides: Partial<ArtefactLinksApi> = {}): Artefa
     browse: fn(async () => null),
     projects: fn(async () => ({ items: [], truncated: false })),
     create: fn(async () => undefined),
+    createMany: fn(async () => undefined),
     remove: fn(async () => undefined),
     ...overrides,
   };

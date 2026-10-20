@@ -15,8 +15,10 @@ import { useState } from "react";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { Modal } from "../../components/Modal";
 import { descendantIds, flattenGroupTree, buildGroupTree } from "./groupTree";
-import { TextField } from "./RecordFormFields";
+import { TextField } from "../../components/FormFields";
 import type { StakeholderGroup, StakeholderGroupFieldValues } from "./types";
+import { FormActions } from "../../components/FormActions";
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
 
 export function StakeholderGroupFormModal({
   initial,
@@ -45,34 +47,34 @@ export function StakeholderGroupFormModal({
     .map(({ group, depth }) => ({ value: group.id, label: `${"  ".repeat(depth)}${group.name}` }));
 
   return (
-    <Modal title={initial ? `Edit ${initial.name}` : "New Stakeholder group"} onClose={onCancel}>
+    <Modal title={initial ? `Edit ${initial.name}` : "New Stakeholder group"} onClose={onCancel} size="lg">
       <div className="stack">
-        <TextField label="Name" ariaLabel="Group name" value={name} onChange={setName} />
-        <TextField label="Description" value={description} onChange={setDescription} />
-        <LabeledSelect label="Parent group" value={parentId} onChange={setParentId} options={parentOptions} placeholder="None (top level)" />
-        <label className="row" style={{ gap: "0.5rem", alignItems: "flex-start" }}>
-          <input type="checkbox" checked={exclusive} onChange={(e) => setExclusive(e.target.checked)} aria-label="One branch per stakeholder" />
-          <span className="stack" style={{ gap: "0.1rem" }}>
-            <span>One branch per stakeholder</span>
-            <span className="text-muted" style={{ fontSize: "0.8rem" }}>
-              A stakeholder can be in only one of this group&apos;s direct child groups, so it can be sorted and grouped by
-              like a single column (for example Client).
-            </span>
-          </span>
-        </label>
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button
-            className="btn btn-primary"
-            disabled={name.trim() === ""}
-            onClick={() =>
-              onSave({ name: name.trim(), description, parent_group_id: parentId || null, exclusive_children: exclusive })
-            }
-          >
-            Save
-          </button>
-        </div>
+        <FormGrid minColumn="18rem">
+          <FormGridFull>
+            <TextField helpNotNeeded required label="Name" ariaLabel="Group name" value={name} onChange={setName} />
+          </FormGridFull>
+          <TextField helpNotNeeded label="Description" value={description} onChange={setDescription} />
+          <LabeledSelect helpNotNeeded label="Parent group" value={parentId} onChange={setParentId} options={parentOptions} placeholder="None (top level)" />
+          <FormGridFull>
+            <label className="checkbox-label" style={{ gap: "0.5rem" }}>
+              <input type="checkbox" checked={exclusive} onChange={(e) => setExclusive(e.target.checked)} aria-label="One branch per stakeholder" />
+              <span className="stack" style={{ gap: "0.1rem" }}>
+                <span>One branch per stakeholder</span>
+                <span className="text-muted" style={{ fontSize: "0.8rem" }}>
+                  A stakeholder can be in only one of this group&apos;s direct child groups, so it can be sorted and grouped by
+                  like a single column (for example Client).
+                </span>
+              </span>
+            </label>
+          </FormGridFull>
+        </FormGrid>
+        <FormActions
+          error={error}
+          onCancel={onCancel}
+          onSave={() =>
+            onSave({ name: name.trim(), description, parent_group_id: parentId || null, exclusive_children: exclusive })}
+        saveDisabled={name.trim() === ""}
+        />
       </div>
     </Modal>
   );

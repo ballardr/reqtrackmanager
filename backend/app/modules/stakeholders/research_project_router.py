@@ -1,7 +1,7 @@
 """
 Module: modules.stakeholders.research_project_router
 
-Project-scoped research-extras API (Phase 4), mounted beside the engagement
+Project-scoped research-extras API, mounted beside the engagement
 router: an engagement's session prompts, anonymous participants and findings,
 and a finding's raised/answered links. Every route needs the `research_extras`
 sub-component to be on for the project (404 otherwise), so turning it off hides
@@ -39,7 +39,9 @@ from app.modules.stakeholders.schemas import (
     PromptUpdate,
 )
 from app.modules.stakeholders.service import STAKEHOLDERS_MODULE_KEY
+from app.services.project_scope import ProjectScope
 from app.services.rbac import require_project_subcomponent_enabled
+from app.services.tags import TagFilter
 
 router = APIRouter(prefix=f"/api/v1/projects/{{project_id}}/modules/{STAKEHOLDERS_MODULE_KEY}", tags=["research-project"])
 
@@ -166,13 +168,25 @@ def delete_anonymous_participant(
 
 
 @router.get("/findings", response_model=list[FindingOut])
-def list_project_findings(project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db)):
+def list_project_findings(
+    project_id: UUID, tag_filter: TagFilter = Depends(), current_user: User = Depends(_require_view),
+    db: Session = Depends(get_db),
+    project_scope: ProjectScope = Depends(),
+):
     """Every finding in the project, newest first."""
-    _project(db, project_id)
-    rows = db.scalars(
-        select(ResearchFinding).where(ResearchFinding.project_id == project_id).order_by(ResearchFinding.created_at.desc())
-    ).all()
-    return [rs.finding_to_out(f) for f in rows]
+
+    def rows_for(pid: UUID) -> list:
+        """This endpoint's rows for one project of the scope."""
+        _project(db, pid)
+        rows = db.scalars(
+            select(ResearchFinding).where(ResearchFinding.project_id == pid).order_by(ResearchFinding.created_at.desc())
+        ).all()
+        return [rs.finding_to_out(f) for f in tag_filter.keep(db, pid, FINDING_ARTEFACT_TYPE, rows)]
+
+    return project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, FINDING_ARTEFACT_TYPE, rows_for,
+        gate=(STAKEHOLDERS_MODULE_KEY, RESEARCH_SUBCOMPONENT),
+    )
 
 
 @router.get("/engagements/{engagement_id}/findings", response_model=list[FindingOut])

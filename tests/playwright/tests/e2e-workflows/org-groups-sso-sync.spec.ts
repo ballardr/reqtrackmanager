@@ -6,12 +6,11 @@ import { deleteOrgOnCleanup, installCleanupHook, openOrgGroupPanel, selectOrgAdm
 installCleanupHook();
 
 /**
- * Job to be done: an org group's SSO-sync sub-section (Phase B, follow-up
- * UX batch, 2026-08-31, docs/decisions.md) is gated on SSO actually being
+ * Job to be done: an org group's SSO-sync sub-section (docs/decisions.md) is gated on SSO actually being
  * configured for the org, and the explicit enable/disable toggle within it
  * works both directions.
  *
- * This is a real regression fix, not just new coverage — before this phase,
+ * This is a real regression fix, not just new coverage — before the fix,
  * the sync-name `<input>` and "Save sync settings" button rendered
  * unconditionally regardless of whether SSO was configured at all; only the
  * granted-role `<select>` was actually gated. The first scenario below pins

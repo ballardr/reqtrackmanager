@@ -33,7 +33,7 @@ export const SubmitsNewOpenQuestion: Story = {
     await userEvent.click(body.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ question: "Should we standardise on a single battery vendor?" })
+      expect.objectContaining({ question: "Should we standardise on a single battery vendor?" }), [], []
     ));
   },
 };
@@ -50,7 +50,7 @@ export const SaveDisabledUntilQuestionFilled: Story = {
 export const EditExisting: Story = {
   args: {
     initial: {
-      id: "open-question-1", project_id: "project-1", creator_id: "user-1",
+      id: "open-question-1", project_id: "project-1", unique_code: "OQ-001", creator_id: "user-1",
       is_archived: false, archived_at: null, archived_by: null,
       question: "Should we standardise on a single battery vendor?",
       context: "Two vendors are currently qualified.", evidence: "",
@@ -63,6 +63,20 @@ export const EditExisting: Story = {
     await expect(body.getByRole("heading", { name: "Edit Open Question" })).toBeInTheDocument();
     await expect(body.getByDisplayValue("Should we standardise on a single battery vendor?")).toBeInTheDocument();
     await expect(body.getByDisplayValue("2026-03-01")).toBeInTheDocument();
+  },
+};
+
+/** Worst case: a long save error and a long unbroken title. The error is shown, and the dialog neither scrolls
+ * sideways nor pushes Save out of reach. */
+export const LongErrorAndLongTitleKeepTheActionsReachable: Story = {
+  args: { error: "Could not save: " + "the server rejected this request for a reason that takes a while to explain. ".repeat(4) },
+  play: async () => {
+    const body = within(document.body);
+    await userEvent.type(body.getAllByRole("textbox")[0], "W".repeat(200));
+    await expect(body.getByText(/Could not save:/)).toBeVisible();
+    await expect(body.getByRole("button", { name: "Save" })).toBeVisible();
+    const dialog = body.getByRole("dialog");
+    await expect(dialog.scrollWidth).toBeLessThanOrEqual(dialog.clientWidth + 1);
   },
 };
 

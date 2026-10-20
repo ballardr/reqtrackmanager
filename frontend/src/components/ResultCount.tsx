@@ -4,7 +4,7 @@ const strings = t();
 
 /**
  * Persistent "showing X of Y" result count for a paginated, filterable list
- * (2026-08 UX audit roadmap) — lives in `FilterPanel`'s always-visible
+ * — lives in `FilterPanel`'s always-visible
  * header, unlike `LoadMoreButton`'s "(loaded/total)" text, which disappears
  * entirely once every page has loaded (`LoadMoreButton.tsx`).
  *

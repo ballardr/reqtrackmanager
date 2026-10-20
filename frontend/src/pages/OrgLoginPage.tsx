@@ -7,6 +7,7 @@ import { LoginBrandHeader } from "../components/LoginBrandHeader";
 import { useAuth } from "../context/AuthContext";
 import { t } from "../i18n/strings";
 import { resolveLandingPath } from "./LoginPage";
+import { TextField } from "../components/FormFields";
 
 const strings = t();
 
@@ -128,17 +129,18 @@ export function OrgLoginPage() {
 
           {!info.sso_only && (
             <form className="stack" onSubmit={handleSubmit}>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.login.email}
-                <input className="input" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-              </label>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.login.password}
-                <input
-                  className="input" type="password" required value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </label>
+              <TextField helpNotNeeded
+                label={strings.login.email}
+                value={email}
+                onChange={setEmail}
+                inputProps={{ required: true, type: "email" }}
+              />
+              <TextField helpNotNeeded
+                label={strings.login.password}
+                value={password}
+                onChange={setPassword}
+                inputProps={{ required: true, type: "password" }}
+              />
               {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
               <button className="btn btn-primary" type="submit" disabled={submitting}>
                 {submitting ? "…" : strings.login.submit}

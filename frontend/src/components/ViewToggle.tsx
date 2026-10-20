@@ -26,7 +26,7 @@ export function useViewMode(pageKey: string, defaultMode: ViewMode = "tiles"): [
  * page (see `ProjectListPage`/`FavouritesPage`'s own `useEffect`), so this
  * component doesn't need to handle that fallback itself.
  *
- * `showTilesOption` (compliance-module-plan.md Phase 23): the mirror-image
+ * `showTilesOption`: the mirror-image
  * case — a caller whose two real view modes are "tree" and "list" only
  * (`RequirementTree.tsx`'s authoring-tree vs. scanning-list toggle), where
  * a "tiles" mode means nothing at all, not just "nothing to show a
@@ -54,7 +54,7 @@ export function ViewToggle({
           aria-label="Tile view"
           aria-pressed={mode === "tiles"}
         >
-          <LayoutGrid size={16} />
+          <LayoutGrid />
         </button>
       )}
       <button
@@ -64,7 +64,7 @@ export function ViewToggle({
         aria-label="List view"
         aria-pressed={mode === "list"}
       >
-        <List size={16} />
+        <List />
       </button>
       {showTreeOption && (
         <button
@@ -74,7 +74,7 @@ export function ViewToggle({
           aria-label="Tree view"
           aria-pressed={mode === "tree"}
         >
-          <GitBranch size={16} />
+          <GitBranch />
         </button>
       )}
     </div>

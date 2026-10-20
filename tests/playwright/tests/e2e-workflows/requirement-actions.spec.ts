@@ -12,8 +12,8 @@ import { loginAs, openProject, PERSONAS, PROJECT_NAMES } from "./helpers";
  * archiving).
  *
  * Uses two throwaway requirements created fresh by this run, not Alpha-1's
- * seeded HW-FN-005/SW-PERF-006 as this spec originally did — item 514
- * (actions gated behind a change request once a requirement is locked)
+ * seeded HW-FN-005/SW-PERF-006 as this spec originally did — actions
+ * (gated behind a change request once a requirement is locked)
  * turned "untouched by any other spec" into a false assumption:
  * `workflow-bypass-attempts.spec.ts` approves Alpha-1's whole "Scoping"
  * stage baseline as part of its own scenario, which locks *every*
@@ -35,7 +35,7 @@ import { loginAs, openProject, PERSONAS, PROJECT_NAMES } from "./helpers";
  * `link` role (its actual rendered `<a>`) rather than a bare `getByText`,
  * so it can never resolve to a dropdown option instead.
  *
- * 2026-08 UX audit, sixth pass: "Link existing action" now opens a
+ * "Link existing action" now opens a
  * `Popover` and "Create and link a new action" now opens a `Modal`
  * (previously a permanently-visible inline select+button row and an
  * inline-reveal block, respectively — the latter briefly a `SidePanel`
@@ -91,7 +91,7 @@ test.describe("requirement actions", () => {
       await page.goto(reqUrl[req1Name]);
       await page.getByRole("button", { name: "Create and link a new action" }).click();
       const panel = page.getByRole("dialog", { name: "Create and link a new action" });
-      await panel.getByPlaceholder("Title").fill(actionTitle);
+      await panel.getByLabel("Title").fill(actionTitle);
       await panel.getByLabel("Type", { exact: true }).selectOption({ label: "Review" });
       await panel.getByRole("button", { name: "Create", exact: true }).click();
       await expect(panel).not.toBeVisible();

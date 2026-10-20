@@ -1,7 +1,7 @@
 /**
  * Module: modules/risk_management/RiskTreatmentsPanel
  *
- * The treatment section of a risk's detail page (plan Phase 0 Q3 / Phase 3): the
+ * The treatment section of a risk's detail page: the
  * requirements, designs and actions linked as a treatment (Mitigated by, Treated
  * by), each with the risk owner's verdict on whether it *effectively* reduces the
  * risk — a link alone only proposes one. A risk counts as treated only through
@@ -26,6 +26,10 @@ import {
   TREATMENT_ASSESSMENT_STATUS_LABEL, TREATMENT_ASSESSMENT_STATUS_TONE,
 } from "./types";
 import type { RiskTreatment, RiskTreatmentList, TreatmentAssessmentStatus } from "./types";
+import { Badge } from "../../components/Badge";
+import { FormActions } from "../../components/FormActions";
+import { TextAreaField } from "../../components/FormFields";
+import { DetailCard } from "../../components/DetailCard";
 
 /** The verdicts a person can record; "Needs reassessment" is only ever set by the system. */
 const ASSESSABLE: TreatmentAssessmentStatus[] = ["effective", "ineffective", "proposed"];
@@ -94,8 +98,7 @@ export function RiskTreatmentsPanel({
   if (list === null) return <Spinner />;
 
   return (
-    <section className="stack" aria-label="Treatments" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-      <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Treatments</h3>
+    <DetailCard heading="Treatments">
       <p className="text-muted" style={{ margin: 0 }}>
         {list.effective_count === 0
           ? "No effective treatment yet. Link a requirement, design or action in the Links panel, then assess whether it reduces this risk."
@@ -120,9 +123,9 @@ export function RiskTreatmentsPanel({
                   </td>
                   <td>{t.relationship}</td>
                   <td>
-                    <span className={`badge badge--${TREATMENT_ASSESSMENT_STATUS_TONE[t.status]}`}>
+                    <Badge tone={TREATMENT_ASSESSMENT_STATUS_TONE[t.status]}>
                       {TREATMENT_ASSESSMENT_STATUS_LABEL[t.status]}
-                    </span>
+                    </Badge>
                   </td>
                   <td>
                     {t.rationale || "—"}
@@ -148,26 +151,19 @@ export function RiskTreatmentsPanel({
       {assessing && (
         <Modal title={`Assess ${assessing.label}`} onClose={() => setAssessing(null)}>
           <div className="stack">
-            <LabeledSelect
+            <LabeledSelect helpNotNeeded
               label="Verdict"
               value={status}
               onChange={(next) => setStatus(next as TreatmentAssessmentStatus)}
               options={ASSESSABLE.map((s) => ({ value: s, label: TREATMENT_ASSESSMENT_STATUS_LABEL[s] }))}
               placeholder={null}
             />
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              <span>Rationale</span>
-              <textarea className="input" rows={3} aria-label="Rationale" value={rationale} onChange={(e) => setRationale(e.target.value)} />
-            </label>
-            <p className="text-muted" style={{ margin: 0 }}>A rationale is required to mark a treatment Effective or Ineffective.</p>
-            {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-            <div className="row" style={{ justifyContent: "flex-end" }}>
-              <button className="btn" onClick={() => setAssessing(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={save}>Save</button>
-            </div>
+            <TextAreaField helpNotNeeded required={status !== "proposed"} label="Rationale" value={rationale} onChange={setRationale} rows={3} />
+            <p className="text-muted" style={{ margin: 0 }}>A rationale is needed to mark a treatment Effective or Ineffective.</p>
+            <FormActions error={error} onCancel={() => setAssessing(null)} onSave={save} />
           </div>
         </Modal>
       )}
-    </section>
+    </DetailCard>
   );
 }

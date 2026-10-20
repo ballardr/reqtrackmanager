@@ -46,12 +46,16 @@ from app.services import engagement
 from app.services.actions import get_requirement_action_in_project
 from app.services.audit import log_event
 from app.services.change_request_links import ProposedLinkProblem, check_proposed_link, describe_links
+from app.services.change_request_summary import CHANGE_REQUEST_ARTEFACT_TYPE, CHANGE_REQUEST_CODE_PREFIX
 from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
 from app.services.principals import principal_columns, principal_out, validate_principal
+from app.services.project_scope import ProjectScope
 from app.services.rbac import get_effective_project_roles, require_project_view
 from app.services.relationships import get_link_between as get_artefact_link_between
 from app.services.requirements import get_current_version, is_locked, requires_change_request_for_links
+from app.services.sequences import generate_unique_code
+from app.services.tags import TagFilter
 
 router = APIRouter(tags=["change-requests-core"])
 
@@ -87,7 +91,8 @@ def _to_out(
     carries just `proposed_link_count`."""
     project = db.get(Project, cr.project_id) if with_links and version.proposed_links else None
     return ChangeRequestOut(
-        id=cr.id, project_id=cr.project_id, requirement_id=cr.requirement_id, kind=cr.kind, status=cr.status,
+        id=cr.id, project_id=cr.project_id, unique_code=cr.unique_code, requirement_id=cr.requirement_id, kind=cr.kind,
+        status=cr.status,
         creator_id=cr.creator_id, changed_fields=version.changed_fields,
         proposed_name=version.proposed_name, proposed_reasoning=version.proposed_reasoning,
         proposed_clarification=version.proposed_clarification, proposed_description=version.proposed_description,
@@ -189,8 +194,7 @@ def create_change_request(
         requirement = db.get(Requirement, payload.requirement_id)
         if requirement is None or requirement.project_id != project_id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid requirement_id.")
-        # Requirement-status guard (2026-08 UX audit roadmap, "No requirement
-        # approval action; change requests can target draft requirements"):
+        # Requirement-status guard:
         # a change request exists to gate edits once direct editing is
         # locked (`LOCKED_STATUSES = {APPROVED}`, services/requirements.py)
         # — a draft or reviewed requirement isn't locked, so it should be
@@ -263,7 +267,7 @@ def create_change_request(
                     status.HTTP_400_BAD_REQUEST, "proposed_action_type_id must be an action type defined in this project."
                 )
     elif payload.kind == ChangeRequestKind.REMOVE_ACTION:
-        # Platform review 2026-09, Phase 8 — mirrors ADD_ACTION's own guard
+        # Mirrors ADD_ACTION's own guard
         # above, and is unconditional (no project/org opt-in): removing an
         # already-linked action from a locked requirement always requires a
         # change request, closing the asymmetry `unlink_action` used to have
@@ -288,7 +292,7 @@ def create_change_request(
         if existing is None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "This action is not linked to this requirement.")
     elif payload.kind in (ChangeRequestKind.ADD_LINK, ChangeRequestKind.REMOVE_LINK):
-        # Platform review 2026-09, Phase 8 — a project/org opt-in sibling of
+        # A project/org opt-in sibling of
         # ADD_ACTION/REMOVE_ACTION above: only reachable once
         # `services.requirements.requires_change_request_for_links` is true
         # for this project (links otherwise stay ungated — see
@@ -394,7 +398,8 @@ def create_change_request(
         creator_id = payload.creator_id
 
     cr = ChangeRequest(
-        project_id=project_id, requirement_id=payload.requirement_id, kind=payload.kind,
+        project_id=project_id, unique_code=generate_unique_code(db, project, CHANGE_REQUEST_ARTEFACT_TYPE, CHANGE_REQUEST_CODE_PREFIX),
+        requirement_id=payload.requirement_id, kind=payload.kind,
         status=ChangeRequestStatus.DRAFT, creator_id=creator_id,
     )
     db.add(cr)
@@ -448,14 +453,16 @@ def list_change_requests(
     order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
+    tag_filter: TagFilter = Depends(),
+    project_scope: ProjectScope = Depends(),
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
     """Lists change requests, with optional status/target-version filters.
+    `tag`/`tag_mode` narrow to change requests carrying those tags.
     `limit`/`offset` (U-P-06) are optional pagination — see `list_requirements`
     for the same pattern.
 
-    `active_only` (2026-08 UX audit roadmap, "Default Change Requests to
-    an active-only status filter") filters to the three non-terminal
+    `active_only` filters to the three non-terminal
     statuses (`draft`/`submitted`/`in_review`) in one round trip, so the
     frontend's default view doesn't have to request every status and then
     hide `approved`/`rejected`/`withdrawn` rows client-side — with the
@@ -464,8 +471,7 @@ def list_change_requests(
     set. Ignored when `cr_status` is also given — an explicit single
     status is more specific than "any active status" and wins.
 
-    `sort` (2026-08 UX audit roadmap, "Column-header sorting on data
-    tables") optionally sorts by `proposed_name`, `status`, or
+    `sort` optionally sorts by `proposed_name`, `status`, or
     `created_at`, `order` picks `asc` (default) or `desc`. Omitting `sort`
     keeps the existing default (creation/query) order unchanged. Rows with
     no `proposed_name` (a MODIFY_REQUIREMENT change request that didn't
@@ -477,59 +483,68 @@ def list_change_requests(
     Without `sort`, rows are newest first.
 
     `search` (2026-10-04) is a case-insensitive substring match against
-    what the list shows and what a user would type: the proposed name, the
-    reason, and the target requirement's current name and code (the list
+    what the list shows and what a user would type: the request's code, the
+    proposed name, the reason, and the target requirement's current name and code (the list
     falls back to the requirement's name when there's no proposed name). The
     requirement names are looked up in one batched query.
 
-    `X-Total-Unfiltered-Count` (persistent "showing X of Y" result count,
-    2026-08 UX audit roadmap) is a second response header reporting the
+    `X-Total-Unfiltered-Count` is a second response header reporting the
     count within only the mandatory project scope (change requests have no
     archived-visibility concept), before `cr_status`/`active_only`/
     `target_stage_id` narrow it further — unlike `X-Total-Count`, it does
     not change when the caller applies a status/target-version filter.
-    """
-    base_query = select(ChangeRequest).where(ChangeRequest.project_id == project_id)
-    response.headers["X-Total-Unfiltered-Count"] = str(
-        db.scalar(select(func.count()).select_from(base_query.subquery()))
-    )
 
-    query = base_query
-    if cr_status:
-        query = query.where(ChangeRequest.status == cr_status)
-    elif active_only:
-        query = query.where(ChangeRequest.status.in_([
-            ChangeRequestStatus.DRAFT, ChangeRequestStatus.SUBMITTED, ChangeRequestStatus.IN_REVIEW,
-        ]))
-    # Newest first by default. Without an explicit order Postgres returned
-    # rows in arbitrary order, so `limit`/`offset` pages could repeat or skip
-    # rows and a just-created request could land anywhere (2026-10-04). Also
-    # the tie-breaker for `sort` below, since Python's sort is stable.
-    crs = db.scalars(query.order_by(ChangeRequest.created_at.desc(), ChangeRequest.id.desc())).all()
-    needle = search.strip().lower() if search and search.strip() else None
-    requirement_text: dict[UUID, str] = {}
-    if needle:
-        requirement_ids = {cr.requirement_id for cr in crs if cr.requirement_id}
-        if requirement_ids:
-            for requirement_id, code, name in db.execute(
-                select(Requirement.id, Requirement.unique_code, RequirementVersion.name)
-                .join(RequirementVersion, RequirementVersion.requirement_id == Requirement.id)
-                .where(Requirement.id.in_(requirement_ids), RequirementVersion.valid_to.is_(None))
-            ).all():
-                requirement_text[requirement_id] = f"{code} {name}".lower()
-    out = []
-    for cr in crs:
-        version = _latest_version(db, cr)
-        if target_stage_id and version.proposed_target_stage_id != target_stage_id:
-            continue
-        if needle:
-            haystack = " ".join(filter(None, [
-                (version.proposed_name or "").lower(), (version.reason or "").lower(),
-                requirement_text.get(cr.requirement_id, "") if cr.requirement_id else "",
+    `project_scope` adds the change requests of the related projects the caller can open, each
+    row labelled with `from_project_*` (see `list_requirements`).
+    """
+    unfiltered = 0
+
+    def rows_for(pid: UUID) -> list[ChangeRequestOut]:
+        nonlocal unfiltered
+        base_query = select(ChangeRequest).where(ChangeRequest.project_id == pid)
+        unfiltered += db.scalar(select(func.count()).select_from(base_query.subquery())) or 0
+
+        query = base_query
+        if cr_status:
+            query = query.where(ChangeRequest.status == cr_status)
+        elif active_only:
+            query = query.where(ChangeRequest.status.in_([
+                ChangeRequestStatus.DRAFT, ChangeRequestStatus.SUBMITTED, ChangeRequestStatus.IN_REVIEW,
             ]))
-            if needle not in haystack:
+        # Newest first by default. Without an explicit order Postgres returned
+        # rows in arbitrary order, so `limit`/`offset` pages could repeat or skip
+        # rows and a just-created request could land anywhere (2026-10-04). Also
+        # the tie-breaker for `sort` below, since Python's sort is stable.
+        crs = db.scalars(query.order_by(ChangeRequest.created_at.desc(), ChangeRequest.id.desc())).all()
+        crs = tag_filter.keep(db, pid, "change_request", crs)
+        needle = search.strip().lower() if search and search.strip() else None
+        requirement_text: dict[UUID, str] = {}
+        if needle:
+            requirement_ids = {cr.requirement_id for cr in crs if cr.requirement_id}
+            if requirement_ids:
+                for requirement_id, code, name in db.execute(
+                    select(Requirement.id, Requirement.unique_code, RequirementVersion.name)
+                    .join(RequirementVersion, RequirementVersion.requirement_id == Requirement.id)
+                    .where(Requirement.id.in_(requirement_ids), RequirementVersion.valid_to.is_(None))
+                ).all():
+                    requirement_text[requirement_id] = f"{code} {name}".lower()
+        rows = []
+        for cr in crs:
+            version = _latest_version(db, cr)
+            if target_stage_id and version.proposed_target_stage_id != target_stage_id:
                 continue
-        out.append(_to_out(db, cr, version, current_user.id, with_links=False))
+            if needle:
+                haystack = " ".join(filter(None, [
+                    cr.unique_code.lower(), (version.proposed_name or "").lower(), (version.reason or "").lower(),
+                    requirement_text.get(cr.requirement_id, "") if cr.requirement_id else "",
+                ]))
+                if needle not in haystack:
+                    continue
+            rows.append(_to_out(db, cr, version, current_user.id, with_links=False))
+        return rows
+
+    out = project_scope.collect(db, db.get(Project, project_id), current_user.id, "change_request", rows_for)
+    response.headers["X-Total-Unfiltered-Count"] = str(unfiltered)
 
     if sort:
         def _sort_value(item: ChangeRequestOut):
@@ -567,5 +582,7 @@ def change_request_activity(
     cr = db.get(ChangeRequest, cr_id)
     if cr is None or cr.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Change request not found.")
-    entries = get_project_changes(db, project_id, since=None, until=None, include_comments=False)
-    return [e for e in entries if e.entity_type == "change_request" and e.entity_id == str(cr_id)]
+    return get_project_changes(
+        db, project_id, since=None, until=None, include_comments=False,
+        entity_type="change_request", entity_id=cr_id,
+    )

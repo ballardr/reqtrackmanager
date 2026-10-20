@@ -44,7 +44,8 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.enums import ArtefactType, LinkFlow, ProjectRole
+from app.models.enums import CORE_ARTEFACT_TYPES, ArtefactType, LinkFlow, ProjectRole
+from app.models.organization import Organization
 from app.models.project import Project
 from app.models.relationship import ArtefactLink
 from app.models.requirement import Requirement, RequirementVersion
@@ -63,6 +64,7 @@ from app.schemas.link_graph import (
     LinkGraphNode,
     LinkGraphOut,
 )
+from app.services.change_request_summary import change_request_summaries
 from app.services.link_nesting import RelatedProject, is_link_live, nesting_violation, related_projects
 from app.services.permissions import encode_permission
 from app.services.rbac import get_effective_permissions, get_effective_project_roles, permission_satisfied
@@ -73,6 +75,7 @@ MAX_NODES = 150
 
 _REQUIREMENT = ArtefactType.REQUIREMENT.value
 _ACTION = ArtefactType.REQUIREMENT_ACTION.value
+_CHANGE_REQUEST = ArtefactType.CHANGE_REQUEST.value
 
 #: Project roles that may link a record of a core type that is not approved, without holding
 #: `link` or `manage` (the roles that could edit requirements before links had their own
@@ -98,7 +101,10 @@ class _Walk:
 def _core_summaries(
     db: Session, project_ids: list[uuid.UUID], artefact_type: str, ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, ArtefactSummary]:
-    """Summaries of the requirements / actions among `ids` that belong to any of `project_ids`, in one query."""
+    """Summaries of the core-type records (requirements, actions, change requests) among `ids` that
+    belong to any of `project_ids`, in one query per type."""
+    if artefact_type == _CHANGE_REQUEST:
+        return change_request_summaries(db, project_ids, ids)
     if artefact_type == _REQUIREMENT:
         rows = db.execute(
             select(Requirement, RequirementVersion)
@@ -180,6 +186,11 @@ class ArtefactResolver:
         self._scope: list[Project] = [project] + [r.project for r in self.related if r.project.id != project.id]
         self._names: dict[uuid.UUID, str] = {r.project.id: r.project.name for r in self.related}
         self._names.setdefault(project.id, project.name)
+        self._codes: dict[uuid.UUID, str] = {r.project.id: r.project.code for r in self.related}
+        self._codes.setdefault(project.id, project.code)
+        self._organization_code: str | None = db.scalar(
+            select(Organization.code).where(Organization.id == project.organization_id)
+        )
 
     def _held_in(self, project_id: uuid.UUID) -> set[str]:
         """The user's effective permissions in one scope project (cached)."""
@@ -190,6 +201,15 @@ class ArtefactResolver:
     def project_name(self, project_id: uuid.UUID | None) -> str | None:
         """The name of a scope project (every one is a project the user can open), else `None`."""
         return None if project_id is None else self._names.get(project_id)
+
+    def project_code(self, project_id: uuid.UUID | None) -> str | None:
+        """The code of a scope project, else `None`; qualifies the record codes shown for it."""
+        return None if project_id is None else self._codes.get(project_id)
+
+    def organization_code(self, summary: ArtefactSummary) -> str | None:
+        """The request project's organisation's code for an organisation-owned record
+        (resolved only from the request project), else `None`; qualifies its record code."""
+        return self._organization_code if summary.organization_id is not None else None
 
     def resolve(self, wanted: dict[str, set[uuid.UUID]]) -> None:
         """Looks up every not-yet-known id in `wanted` (grouped by type), one query per type
@@ -203,7 +223,7 @@ class ArtefactResolver:
             found: dict[uuid.UUID, ArtefactSummary] | None = {}
             if not viewable:
                 pass
-            elif artefact_type in (_REQUIREMENT, _ACTION):
+            elif artefact_type in CORE_ARTEFACT_TYPES:
                 found = _core_summaries(self._db, [p.id for p in viewable], artefact_type, todo)
             else:
                 found, remaining = {}, list(todo)
@@ -276,6 +296,8 @@ def _node(resolver: ArtefactResolver, summary: ArtefactSummary, artefact_type: s
         type=artefact_type, id=summary.id, type_label=get_artefact_type_label(artefact_type), label=summary.label,
         status=summary.status, is_archived=summary.is_archived, depth=depth, project_id=summary.project_id,
         project_name=resolver.project_name(summary.project_id),
+        project_code=resolver.project_code(summary.project_id),
+        organization_code=resolver.organization_code(summary),
     )
 
 

@@ -1,16 +1,15 @@
 """
 Module: modules.compliance.project_router.evidence
 
-A project's own supporting evidence (Phase 8): CRUD, archive/
+A project's own supporting evidence: CRUD, archive/
 unarchive, revalidate (with the approvals-it-supported-invalidated
 side effect, `_invalidate_approvals_supported_by_evidence`, local to
 this file only), links to a requirement or a required-action
 assessment, and file attachment (upload or link an existing org
 resource).
 
-`create_evidence`/`update_evidence` are Fine-Grained Access Control Phase
-6's org/project-axis migration (`docs/plans/core-fine-grained-access-
-control-plan.md`) — `_require_evidence_manage` (below) tries the existing
+`create_evidence`/`update_evidence` are the Fine-Grained Access Control
+org/project-axis migration — `_require_evidence_manage` (below) tries the existing
 `_require_officer` (`compliance_officer`) gate first, falling back to
 `require_permission`'s `(compliance_evidence, manage)` atom only on a 403
 (never a 404 — module-disabled must propagate immediately), the same
@@ -35,6 +34,7 @@ from app.modules.compliance.models import (
     ARTEFACT_TYPE_EVIDENCE,
     ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT,
     ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT,
+    EVIDENCE_CODE_PREFIX,
     ComplianceEvidence,
     ComplianceEvidenceFile,
     ComplianceEvidenceRevalidation,
@@ -67,7 +67,10 @@ from app.schemas.file import FileAssetOut, LinkResourceRequest
 from app.services import relationships
 from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
+from app.services.project_scope import ProjectScope
 from app.services.rbac import require_permission
+from app.services.sequences import generate_unique_code
+from app.services.tags import TagFilter
 
 router = APIRouter(tags=["compliance-project-evidence"])
 
@@ -78,7 +81,7 @@ def _require_evidence_manage(
     db: Session = Depends(get_db),
 ) -> User:
     """`create_evidence`/`update_evidence`'s gate (Fine-Grained Access
-    Control Phase 6, see this module's own docstring) — additive: a caller
+    Control, see this module's own docstring) — additive: a caller
     who already holds `compliance_officer` sees no behaviour change; a
     caller who instead holds a custom role granting `(compliance_evidence,
     manage)` (org- or project-scoped) reaches these two endpoints without
@@ -115,8 +118,8 @@ def _invalidate_approvals_supported_by_evidence(
     own docstrings; a no-op for a piece of evidence that supports nothing,
     or whose linked rows aren't currently `PENDING_APPROVAL`/`APPROVED`.
     `actor_id` is the user who performed the evidence mutation that
-    triggered this — a real human action, unlike a future Phase 10
-    passive-expiry sweep, which would log with `actor_id=None` instead.
+    triggered this — a real human action, unlike a passive-expiry sweep,
+    which logs with `actor_id=None` instead.
 
     Does not commit — callers commit as part of their own single
     transaction, same convention as every other mutation on this router.
@@ -155,8 +158,11 @@ def create_evidence(
         _get_assessment_for_project_or_404(db, project_id, assessment_id)
 
     now = datetime.now(UTC)
+    project = db.get(Project, project_id)
     evidence = ComplianceEvidence(
-        project_id=project_id, title=payload.title, description=payload.description,
+        project_id=project_id,
+        unique_code=generate_unique_code(db, project, ARTEFACT_TYPE_EVIDENCE, EVIDENCE_CODE_PREFIX),
+        title=payload.title, description=payload.description,
         issuing_organisation=payload.issuing_organisation, issued_date=payload.issued_date,
         expiry_date=payload.expiry_date, provided_by=current_user.id, provided_at=now, notes=payload.notes,
     )
@@ -183,13 +189,24 @@ def create_evidence(
 
 @router.get("/evidence", response_model=list[ComplianceEvidenceOut])
 def list_evidence(
-    project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    project_id: UUID, tag_filter: TagFilter = Depends(),
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    project_scope: ProjectScope = Depends(),
 ):
     """Lists every piece of evidence for this project, including archived
     rows — a caller wanting only active evidence filters client-side,
     mirroring `list_project_compliance`'s own identical judgment call."""
-    evidence_rows = db.scalars(select(ComplianceEvidence).where(ComplianceEvidence.project_id == project_id)).all()
-    return [build_evidence_out(db, evidence) for evidence in evidence_rows]
+
+    def rows_for(pid: UUID) -> list:
+        """This endpoint's rows for one project of the scope."""
+        evidence_rows = db.scalars(select(ComplianceEvidence).where(ComplianceEvidence.project_id == pid)).all()
+        evidence_rows = tag_filter.keep(db, pid, "compliance_evidence", evidence_rows)
+        return [build_evidence_out(db, evidence) for evidence in evidence_rows]
+
+    return project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, "compliance_evidence", rows_for,
+        gate=("compliance", None),
+    )
 
 
 @router.get("/expiring-evidence", response_model=list[ComplianceEvidenceOut])

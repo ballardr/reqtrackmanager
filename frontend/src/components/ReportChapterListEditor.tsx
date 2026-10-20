@@ -2,6 +2,7 @@ import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 
 import type { ReportChapter } from "../api/types";
 import { RichTextEditor } from "./RichTextEditor";
+import { TextField } from "./FormFields";
 
 /**
  * An ordered list of {title, body} report chapters — used identically for
@@ -35,14 +36,14 @@ export function ReportChapterListEditor({
       <strong>{label}</strong>
       {list.map((chapter, idx) => (
         <div key={idx} className="card stack" style={{ gap: "0.4rem" }}>
-          <div className="row" style={{ justifyContent: "space-between" }}>
-            <input
-              className="input"
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-end" }}>
+            <TextField helpNotNeeded
+              label="Chapter title"
               placeholder="Chapter title"
               value={chapter.title}
-              onChange={(e) => {
+              onChange={(title) => {
                 const next = [...list];
-                next[idx] = { ...next[idx], title: e.target.value };
+                next[idx] = { ...next[idx], title };
                 setList(next);
               }}
             />
@@ -54,7 +55,7 @@ export function ReportChapterListEditor({
                 aria-label="Move chapter up"
                 onClick={() => move(idx, "up")}
               >
-                <ArrowUp size={14} />
+                <ArrowUp />
               </button>
               <button
                 className="btn"
@@ -63,7 +64,7 @@ export function ReportChapterListEditor({
                 aria-label="Move chapter down"
                 onClick={() => move(idx, "down")}
               >
-                <ArrowDown size={14} />
+                <ArrowDown />
               </button>
               <button
                 className="btn btn-danger"
@@ -71,7 +72,7 @@ export function ReportChapterListEditor({
                 aria-label="Delete chapter"
                 onClick={() => setList(list.filter((_, i) => i !== idx))}
               >
-                <Trash2 size={14} />
+                <Trash2 />
               </button>
             </div>
           </div>
@@ -89,7 +90,7 @@ export function ReportChapterListEditor({
         </div>
       ))}
       <button className="btn" onClick={() => setList([...list, { title: "", body: "" }])} style={{ alignSelf: "flex-start" }}>
-        <Plus size={14} /> Add chapter
+        <Plus /> Add chapter
       </button>
     </div>
   );

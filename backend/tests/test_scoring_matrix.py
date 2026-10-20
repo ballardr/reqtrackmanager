@@ -1,5 +1,5 @@
-"""Tests for the generic scoring-matrix core (Module 1 — Context & Strategy
-— Phase 10): `ScoringSchemeDefinition` validation, score maths, level
+"""Tests for the generic scoring-matrix core (Context & Strategy
+): `ScoringSchemeDefinition` validation, score maths, level
 seeding (org creation and startup sync), level CRUD rules, the
 project → ancestor → org → system resolution of default model and bands,
 permission/enablement gating and cross-org isolation.
@@ -410,7 +410,7 @@ def test_disabled_module_unknown_scheme_and_cross_org_isolation(client, admin_to
     assert SCHEME not in {s["key"] for s in listed}
 
 
-# --- Per-cell rating overrides (Module 3 Phase 1a) ---------------------------
+# --- Per-cell rating overrides ---------------------------
 
 
 def _cell(first: dict, second: dict, label: str) -> dict:

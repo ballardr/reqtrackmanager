@@ -2,7 +2,7 @@
  * Module: modules/compliance/ComplianceSettingsPage
  *
  * Org-level compliance settings at `/standards/settings/:orgId`
- * (docs/compliance-module-plan.md Phase 18) — the two extensible
+ * — the two extensible
  * vocabularies (`ActionTypesPanel`, `MappingTypesPanel`) that used to be
  * tabs inside `ComplianceAdminPanel.tsx` (now deleted, fully superseded),
  * re-hosted as their own routed page.
@@ -18,7 +18,7 @@
  * new "Pattern: project-like drill-down entities" section for the full
  * reasoning behind this split.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { api } from "../../api/client";
@@ -31,6 +31,8 @@ import * as complianceApi from "./api";
 import { ComplianceOrgSettingsPanel } from "./ComplianceOrgSettingsPanel";
 import { MappingTypesPanel } from "./MappingTypesPanel";
 import type { ComplianceActionType } from "./types";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 type ComplianceSettingsGroupKey = "actionTypes" | "mappingTypes" | "standardsManagement";
 
@@ -45,15 +47,17 @@ export function ComplianceSettingsPage() {
     setActionTypes(await complianceApi.listActionTypes(orgId));
   }
 
-  useEffect(() => {
-    if (!orgId) return;
+  useResetOnChange([orgId], () => {
     setActionTypes(null);
     setLoadError(null);
+  });
+
+  useLoadOnChange(() => {
+    if (!orgId) return;
     api.get<Organization>(`/api/v1/orgs/${orgId}`).then(setOrg);
     reloadActionTypes().catch(() =>
       setLoadError("The Compliance module isn't enabled for this organisation, or you don't have access to it.")
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId]);
 
   const activeGroup: ComplianceSettingsGroupKey =
@@ -61,7 +65,7 @@ export function ComplianceSettingsPage() {
   const groups: ResourceMenuGroupDef<ComplianceSettingsGroupKey>[] = [
     { key: "actionTypes", label: "Action types", href: `/standards/settings/${orgId}/actionTypes` },
     { key: "mappingTypes", label: "Mapping types", href: `/standards/settings/${orgId}/mappingTypes` },
-    // Phase 22: the org-wide fallback compliance-managers group.
+    // The org-wide fallback compliance-managers group.
     { key: "standardsManagement", label: "Standards management", href: `/standards/settings/${orgId}/standardsManagement` },
   ];
 

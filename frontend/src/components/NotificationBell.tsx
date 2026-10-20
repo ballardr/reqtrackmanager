@@ -1,5 +1,6 @@
+import { useMutation } from "../hooks/useMutation";
 import { Bell } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -7,11 +8,14 @@ import type { Notification } from "../api/types";
 import { getNotificationLink } from "../modules/artefactPaths";
 import { t } from "../i18n/strings";
 import { Tooltip } from "./Tooltip";
+import { useResetOnChange } from "../hooks/useResetOnChange";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 const strings = t();
 
 /** Notification centre (C-N-02): a bell icon with unread count and a dropdown list. */
 export function NotificationBell() {
+  const run = useMutation();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   const location = useLocation();
@@ -22,24 +26,18 @@ export function NotificationBell() {
     setNotifications(list);
   }
 
-  useEffect(() => {
-    reload();
-    const interval = setInterval(reload, 30_000);
-    return () => clearInterval(interval);
-  }, []);
+  useLoadOnChange(reload, [], { intervalMs: 30_000 });
 
   // The dropdown previously stayed open across navigation (it's rendered
   // in the header, outside the routed content, so nothing else was ever
   // telling it to close) — closing it on every route change matches how a
   // popover is expected to behave everywhere else in the app.
-  useEffect(() => {
-    setOpen(false);
-  }, [location.pathname]);
+  useResetOnChange([location.pathname], () => setOpen(false));
 
   const unreadCount = notifications.filter((n) => !n.read_at).length;
 
   async function markRead(id: string) {
-    await api.post(`/api/v1/notifications/${id}/read`);
+    if (!(await run(() => api.post(`/api/v1/notifications/${id}/read`), { failure: "Could not mark read." }))) return;
     reload();
   }
 
@@ -53,7 +51,7 @@ export function NotificationBell() {
   }
 
   async function markAllRead() {
-    await api.post("/api/v1/notifications/read-all");
+    if (!(await run(() => api.post("/api/v1/notifications/read-all"), { failure: "Could not mark all read." }))) return;
     reload();
   }
 
@@ -67,7 +65,7 @@ export function NotificationBell() {
           title={strings.notifications.title}
           aria-label={strings.notifications.title}
         >
-          <Bell size={16} />
+          <Bell />
           {unreadCount > 0 && (
             <span className="notification-count-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>
           )}

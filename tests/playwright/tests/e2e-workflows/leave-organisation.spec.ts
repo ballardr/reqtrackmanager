@@ -7,7 +7,7 @@ installCleanupHook();
 
 /**
  * Job to be done: a user can leave an organisation themselves, from
- * Preferences' "Your access" tab (2026-08 UX audit roadmap item 520) —
+ * Preferences' "Your access" tab —
  * moved out of Org Admin entirely, since leaving is about the current
  * user's own membership, not an org-level setting. Previously fired
  * immediately with zero confirmation; now goes through the shared Tier 1

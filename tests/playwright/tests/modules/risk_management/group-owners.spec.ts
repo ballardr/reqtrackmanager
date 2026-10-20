@@ -8,7 +8,7 @@ installCleanupHook();
 
 /**
  * Job to be done: users and groups on parity, Risk Management's owner
- * (docs/plans/users-and-groups-parity-plan.md) — a Risk can be owned by an
+ * — a Risk can be owned by an
  * organisation group or a project group, the register and the Risk page name a
  * group owner with its kind, and deleting a group that still owns a Risk lets
  * the admin hand it to someone else.

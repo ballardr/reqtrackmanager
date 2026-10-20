@@ -4,11 +4,11 @@ Revision ID: 0047
 Revises: 0046
 Create Date: 2026-09-27
 
-`docs/plans/core-fine-grained-access-control-plan.md` Phase 5: adds
+: adds
 `scope_entity_id` to `user_custom_role_grants`/`group_custom_role_grants`
 (`app.models.custom_role.UserCustomRoleGrant`/`GroupCustomRoleGrant`) — the
 generalised sibling of `project_id`, for a `CustomRoleDefinition` whose
-`scope` is a registered module-owned entity scope (Phase 5's new
+`scope` is a registered module-owned entity scope (the
 `EntityScopeDefinition` registry, e.g. compliance's `"standard"`) rather
 than `"org"`/`"project"`. Mirrors `0034_module_role_scope_entity.py`'s
 identical addition to `user_module_roles` one tier up (a module-contributed

@@ -1,12 +1,12 @@
 /**
  * Module: modules/compliance/VersionDiffModal
  *
- * §27's version-diff viewer — fetches `GET .../diff/{other}` (Phase 11) for
+ * §27's version-diff viewer — fetches `GET .../diff/{other}` for
  * two versions of the same standard and renders its five categories
  * (added/removed/modified/replaced/re-mapped). Read-only: the actual
  * "migrate a project to this version" action is project-scoped
  * (`project_router.py::migrate_project_compliance_version`) and explicitly
- * out of Phase 12's org-level scope (Phase 13) — this is the "preview
+ * out of the org-level scope — this is the "preview
  * before you commit" half only, per that endpoint's own docstring.
  */
 import { useEffect, useState, type ReactNode } from "react";
@@ -15,6 +15,8 @@ import { Modal } from "../../components/Modal";
 import { toErrorMessage } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import type { ComplianceStandardVersion, StandardVersionDiff } from "./types";
+import { LabeledSelect } from "../../components/LabeledSelect";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
 
 interface Props {
   orgId: string;
@@ -30,13 +32,13 @@ export function VersionDiffModal({ orgId, standardId, fromVersionId, versions, o
   const [diff, setDiff] = useState<StandardVersionDiff | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!otherVersionId) {
-      setDiff(null);
-      return;
-    }
+  useResetOnChange([orgId, standardId, fromVersionId, otherVersionId], () => {
     setDiff(null);
     setError(null);
+  });
+
+  useEffect(() => {
+    if (!otherVersionId) return;
     complianceApi
       .getStandardVersionDiff(orgId, standardId, fromVersionId, otherVersionId)
       .then(setDiff)
@@ -50,15 +52,14 @@ export function VersionDiffModal({ orgId, standardId, fromVersionId, versions, o
   return (
     <Modal title="Compare versions" onClose={onClose} size="lg">
       <div className="stack">
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Compare with</span>
-          <select className="input" value={otherVersionId} onChange={(e) => setOtherVersionId(e.target.value)} aria-label="Compare with version">
-            <option value="">Select a version…</option>
-            {otherVersions.map((v) => (
-              <option key={v.id} value={v.id}>{v.version_label}</option>
-            ))}
-          </select>
-        </label>
+        <LabeledSelect helpNotNeeded
+          label="Compare with"
+          ariaLabel="Compare with version"
+          value={otherVersionId}
+          onChange={setOtherVersionId}
+          options={otherVersions.map((v) => ({ value: v.id, label: v.version_label }))}
+          placeholder="Select a version…"
+        />
 
         {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
 

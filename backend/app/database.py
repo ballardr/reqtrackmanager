@@ -18,7 +18,9 @@ from app.metrics import instrument_engine
 
 settings = get_settings()
 
-engine = create_engine(settings.database_url, pool_pre_ping=True, future=True)
+# `connect_timeout` bounds how long an unreachable database can stall a request
+# (notably the /health probe) instead of waiting on the OS TCP timeout.
+engine = create_engine(settings.database_url, pool_pre_ping=True, future=True, connect_args={"connect_timeout": 5})
 instrument_engine(engine)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 

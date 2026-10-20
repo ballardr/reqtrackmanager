@@ -5,7 +5,7 @@
  * nested under one standard assignment, since a single piece of evidence
  * may support requirements across more than one of a project's standard
  * assignments at once (§13's "multiple compliance requirements and/or
- * standards"; `project_router.py`'s own Phase 8 design). A `DirectoryTable`
+ * standards"; `project_router.py`'s design). A `DirectoryTable`
  * + `FilterPanel` list (style guide "Pattern: directories at scale"), a
  * `Modal` create flow (Principle 3), and a `SidePanel` detail view (edit
  * metadata, revalidate — §15's append-only history — archive/unarchive,
@@ -15,24 +15,27 @@
  *
  * Linking evidence to a specific requirement/required-action assessment is
  * done from the requirement side (`RequirementAssessmentPanel`'s own
- * "Link existing evidence" control, plus Phase 33's "Upload new evidence"
+ * "Link existing evidence" control, plus the "Upload new evidence"
  * inline create-and-link flow, which reuses this file's own exported
  * `EvidenceFormModal` and the same `FileAttachmentList`/`ResourcePickerModal`
  * files step below) — this panel is the canonical evidence CRUD surface,
  * not a second place to manage linkage.
  */
-import { FolderOpen, Paperclip, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { FolderOpen, Paperclip } from "lucide-react";
+import { useState } from "react";
 
 import type { FileAsset } from "../../api/types";
 import { api } from "../../api/client";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { RecordCode } from "../../components/RecordCode";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { FileUploadTrigger } from "../../components/FileUploadTrigger";
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { Modal } from "../../components/Modal";
+import { RemovableChip } from "../../components/RemovableChip";
 import { ResourcePickerModal } from "../../components/ResourcePickerModal";
 import { SidePanel } from "../../components/SidePanel";
 import { Spinner } from "../../components/Spinner";
@@ -43,6 +46,9 @@ import {
   type ComplianceEvidence,
   type ComplianceEvidenceRevalidation,
 } from "./types";
+import { DateField, TextAreaField, TextField } from "../../components/FormFields";
+import { FormActions } from "../../components/FormActions";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 export function EvidencePanel({ projectId, orgId }: { projectId: string; orgId: string }) {
   const { showToast } = useToast();
@@ -69,10 +75,7 @@ export function EvidencePanel({ projectId, orgId }: { projectId: string; orgId: 
     }
   }
 
-  useEffect(() => {
-    void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  useLoadOnChange(reload, [projectId]);
 
   async function openEvidence(item: ComplianceEvidence) {
     setSelected(item);
@@ -108,10 +111,11 @@ export function EvidencePanel({ projectId, orgId }: { projectId: string; orgId: 
 
   const filtered = evidence
     .filter((e) => includeArchived || !e.is_archived)
-    .filter((e) => !search || e.title.toLowerCase().includes(search.toLowerCase()));
+    .filter((e) => !search || `${e.unique_code} ${e.title}`.toLowerCase().includes(search.toLowerCase()));
 
   const columns: DirectoryColumn<ComplianceEvidence>[] = [
     { key: "title", label: "Title", render: (e) => e.title },
+    { key: "code", label: "Code", render: (e) => <RecordCode code={e.unique_code} /> },
     { key: "issuing_organisation", label: "Issuing organisation", render: (e) => e.issuing_organisation ?? "—" },
     { key: "expiry_date", label: "Expiry", render: (e) => e.expiry_date ?? "—" },
     { key: "validity", label: "Validity", render: (e) => COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL[e.validity_state] },
@@ -162,6 +166,7 @@ export function EvidencePanel({ projectId, orgId }: { projectId: string; orgId: 
       {selected && (
         <SidePanel title={selected.title} onClose={() => setSelected(null)}>
           <div className="stack">
+            <small className="text-muted"><RecordCode code={selected.unique_code} /></small>
             <p>{selected.description || <span className="text-muted">No description.</span>}</p>
             <p className="text-muted" style={{ margin: 0 }}>
               Validity: {COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL[selected.validity_state]}
@@ -192,7 +197,7 @@ export function EvidencePanel({ projectId, orgId }: { projectId: string; orgId: 
             <div className="row" style={{ justifyContent: "space-between" }}>
               <h3 style={{ margin: 0 }}>Files</h3>
               <button className="btn" onClick={() => setShowResourcePicker(true)}>
-                <FolderOpen size={14} /> Link from shared resources
+                <FolderOpen /> Link from shared resources
               </button>
             </div>
             <FileAttachmentList
@@ -304,76 +309,67 @@ export function EvidenceFormModal({
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
 
   return (
-    <Modal title={initial ? "Edit evidence" : "Add evidence"} onClose={onCancel}>
+    <Modal title={initial ? "Edit evidence" : "Add evidence"} onClose={onCancel} size="lg">
       <div className="stack">
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Title</span>
-          <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Evidence title" />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Description</span>
-          <textarea className="input" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Issuing organisation</span>
-          <input className="input" value={issuingOrganisation} onChange={(e) => setIssuingOrganisation(e.target.value)} />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Issued date</span>
-          <input className="input" type="date" value={issuedDate} onChange={(e) => setIssuedDate(e.target.value)} />
-        </label>
-        {!initial && (
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            <span>Expiry date (optional — change later via Revalidate)</span>
-            <input className="input" type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} />
-          </label>
-        )}
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Notes</span>
-          <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-        </label>
-        {!initial && (
-          <div className="stack" style={{ gap: "0.25rem" }}>
-            <span>Files</span>
-            {stagedFiles.map((file, index) => (
-              <div key={`${file.name}-${index}`} className="row" style={{ justifyContent: "space-between" }}>
-                <span>{file.name}</span>
-                <button
-                  className="btn btn-danger"
-                  title={`Remove ${file.name}`}
-                  aria-label={`Remove ${file.name}`}
-                  onClick={() => setStagedFiles((prev) => prev.filter((_, i) => i !== index))}
+        <FormGrid minColumn="18rem">
+          <FormGridFull>
+            <TextField helpNotNeeded required label="Title" ariaLabel="Evidence title" value={title} onChange={setTitle} />
+          </FormGridFull>
+          <FormGridFull>
+            <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} rows={2} />
+          </FormGridFull>
+          <TextField helpNotNeeded label="Issuing organisation" value={issuingOrganisation} onChange={setIssuingOrganisation} />
+          <DateField helpNotNeeded label="Issued date" value={issuedDate} onChange={setIssuedDate} />
+          {!initial && (
+            <DateField helpNotNeeded
+              label="Expiry date"
+              hint="Change it later with Revalidate."
+              value={expiryDate}
+              onChange={setExpiryDate}
+            />
+          )}
+          <FormGridFull>
+            <TextAreaField helpNotNeeded label="Notes" value={notes} onChange={setNotes} rows={2} />
+          </FormGridFull>
+          {!initial && (
+            <FormGridFull>
+              <div className="stack" style={{ gap: "0.25rem" }}>
+                <span>Files</span>
+                {stagedFiles.length > 0 && (
+                  <div className="row" style={{ flexWrap: "wrap" }}>
+                    {stagedFiles.map((file, index) => (
+                      <RemovableChip
+                        key={`${file.name}-${index}`}
+                        label={file.name}
+                        removeLabel={`Remove ${file.name}`}
+                        onRemove={() => setStagedFiles((prev) => prev.filter((_, i) => i !== index))}
+                      />
+                    ))}
+                  </div>
+                )}
+                <FileUploadTrigger
+                  onSelect={(file) => setStagedFiles((prev) => [...prev, file])}
+                  title="Attach a file"
+                  aria-label="Attach a file"
                 >
-                  <Trash2 size={14} />
-                </button>
+                  <Paperclip size={14} /> Attach a file
+                </FileUploadTrigger>
               </div>
-            ))}
-            <FileUploadTrigger
-              onSelect={(file) => setStagedFiles((prev) => [...prev, file])}
-              title="Attach a file"
-              aria-label="Attach a file"
-            >
-              <Paperclip size={14} /> Attach a file
-            </FileUploadTrigger>
-          </div>
-        )}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button
-            className="btn btn-primary" disabled={!title.trim()}
-            onClick={() =>
-              onSave(
-                {
-                  title, description, issuing_organisation: issuingOrganisation || null,
-                  issued_date: issuedDate || null, expiry_date: initial ? undefined : (expiryDate || null), notes,
-                },
-                stagedFiles
-              )
-            }
-          >
-            Save
-          </button>
-        </div>
+            </FormGridFull>
+          )}
+        </FormGrid>
+        <FormActions
+          onCancel={onCancel}
+          onSave={() =>
+            onSave(
+              {
+                title, description, issuing_organisation: issuingOrganisation || null,
+                issued_date: issuedDate || null, expiry_date: initial ? undefined : (expiryDate || null), notes,
+              },
+              stagedFiles
+            )}
+          saveDisabled={!title.trim()}
+        />
       </div>
     </Modal>
   );
@@ -392,20 +388,17 @@ function RevalidateModal({
   return (
     <Modal title="Revalidate evidence" onClose={onCancel}>
       <div className="stack">
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>New expiry date (optional)</span>
-          <input className="input" type="date" value={newExpiryDate} onChange={(e) => setNewExpiryDate(e.target.value)} />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Justification</span>
-          <textarea className="input" rows={2} value={justification} onChange={(e) => setJustification(e.target.value)} />
-        </label>
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => onSave({ new_expiry_date: newExpiryDate || null, justification })}>
-            Revalidate
-          </button>
-        </div>
+        <FormGrid minColumn="18rem">
+          <DateField helpNotNeeded label="New expiry date" value={newExpiryDate} onChange={setNewExpiryDate} />
+          <FormGridFull>
+            <TextAreaField helpNotNeeded label="Justification" value={justification} onChange={setJustification} rows={2} />
+          </FormGridFull>
+        </FormGrid>
+        <FormActions
+          onCancel={onCancel}
+          onSave={() => onSave({ new_expiry_date: newExpiryDate || null, justification })}
+          saveLabel="Revalidate"
+        />
       </div>
     </Modal>
   );

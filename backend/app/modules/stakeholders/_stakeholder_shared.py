@@ -7,13 +7,13 @@ for Personas: the routers declare their own routes and these hold the bodies
 the two would otherwise duplicate. Comments and files go through the shared
 `services.module_attachments` kit.
 
-RBAC (Phase 0 resolution 6): viewing is gated by sub-component enablement
+RBAC: viewing is gated by sub-component enablement
 alone; create/edit/archive/retire/erase need the scope's owner role
 (`org_stakeholder_owner`/`stakeholder_owner`) or a Fine-Grained Access Control
 `(stakeholder, manage)` grant. Stakeholder-type admin (and scoring
 configuration) is the separate org-scoped `stakeholder_type_admin` role.
 
-Personal data (Phase 0 resolution 15): a stakeholder is a record about an
+Personal data: a stakeholder is a record about an
 identifiable person, so audit events here never carry the name, contact info
 or filenames, and `erase_stakeholder_endpoint` hard-deletes the record.
 """
@@ -138,7 +138,8 @@ def stakeholder_to_out(
         hidden = visibility_fields(resolve_stakeholder_visibility(db, project_id), stakeholder.id)
     return StakeholderOut(
         id=stakeholder.id, scope=stakeholder.scope, organization_id=stakeholder.organization_id,
-        project_id=stakeholder.project_id, creator_id=stakeholder.creator_id, is_archived=stakeholder.is_archived,
+        project_id=stakeholder.project_id, unique_code=stakeholder.unique_code, creator_id=stakeholder.creator_id,
+        is_archived=stakeholder.is_archived,
         archived_at=stakeholder.archived_at, archived_by=stakeholder.archived_by, name=version.name,
         description=version.description, stakeholder_type_id=version.project_type_id or version.org_type_id,
         stakeholder_type_name=STAKEHOLDER_TYPES.display_name(
@@ -156,7 +157,13 @@ def stakeholder_to_out(
         ),
         user_id=version.user_id, version_number=version.version_number, created_at=stakeholder.created_at,
         updated_at=stakeholder.updated_at, **hidden, last_engaged=last_engaged,
-        groups=[StakeholderGroupRefOut(id=r.id, name=r.name, scope=r.scope, parent_group_id=r.parent_group_id) for r in group_refs],
+        groups=[
+            StakeholderGroupRefOut(
+                id=r.id, name=r.name, scope=r.scope, parent_group_id=r.parent_group_id, unique_code=r.unique_code,
+                organization_id=r.organization_id,
+            )
+            for r in group_refs
+        ],
     )
 
 
@@ -255,8 +262,11 @@ def create_stakeholder_from_payload(
     project_id: uuid.UUID | None,
 ) -> StakeholderOut:
     """Validates a create payload, creates the stakeholder, audit-logs (no
-    personal data), commits and returns the API shape."""
-    content = payload.model_dump(exclude={"stakeholder_type_id"})
+    personal data), commits and returns the API shape.
+
+    With `payload.activate` the stakeholder is also moved to `ACTIVE` before the single commit (both audit
+    events, same actor, all or nothing). Activation has the same gate as creation, checked by every caller."""
+    content = payload.model_dump(exclude={"stakeholder_type_id", "activate"})
     _validate_refs(db, organization_id, project_id, content, payload)
     expand_sent(payload, content, STAKEHOLDER_PRINCIPAL_FIELDS)
     try:
@@ -271,6 +281,11 @@ def create_stakeholder_from_payload(
     )
     log_event(db, entity_type=STAKEHOLDER_ARTEFACT_TYPE, entity_id=stakeholder.id, action="created",
               actor_id=creator.id, organization_id=stakeholder.organization_id, project_id=stakeholder.project_id)
+    if payload.activate:
+        transition_stakeholder(
+            db, stakeholder, get_current_stakeholder_version(db, stakeholder.id), StakeholderStatus.ACTIVE, creator,
+            action="activated",
+        )
     db.commit()
     db.refresh(stakeholder)
     return stakeholder_to_out(db, stakeholder, get_current_stakeholder_version(db, stakeholder.id))
@@ -280,7 +295,7 @@ def create_stakeholder_from_user(
     db: Session, scope: StakeholderScope, payload: StakeholderFromUserCreate, creator: User, *,
     organization_id: uuid.UUID, project_id: uuid.UUID | None,
 ) -> StakeholderOut:
-    """"Create stakeholder from org user" (resolution 13): prefills the name
+    """"Create stakeholder from org user": prefills the name
     and contact info from the user's account.
 
     Raises:
@@ -300,6 +315,7 @@ def create_stakeholder_from_user(
             name=user.display_name, contact_info=user.email, user_id=user.id,
             stakeholder_type_id=payload.stakeholder_type_id, role=payload.role,
             organisation_group=payload.organisation_group, target_cadence=payload.target_cadence,
+            activate=payload.activate,
         ),
         creator, organization_id=organization_id, project_id=project_id,
     )
@@ -363,7 +379,7 @@ def represents_to_out(db: Session, link, persona: Persona) -> RepresentedPersona
     """API shape of a link seen from the stakeholder side."""
     return RepresentedPersonaOut(
         link_id=link.id, id=persona.id, name=get_current_persona_version(db, persona.id).name,
-        scope=persona.scope.value,
+        scope=persona.scope.value, unique_code=persona.unique_code, organization_id=persona.organization_id,
     )
 
 
@@ -371,7 +387,7 @@ def stakeholder_link_to_out(db: Session, link, stakeholder: Stakeholder) -> Repr
     """API shape of a link seen from the persona side (the other end is a stakeholder)."""
     return RepresentedPersonaOut(
         link_id=link.id, id=stakeholder.id, name=get_current_stakeholder_version(db, stakeholder.id).name,
-        scope=stakeholder.scope.value,
+        scope=stakeholder.scope.value, unique_code=stakeholder.unique_code, organization_id=stakeholder.organization_id,
     )
 
 

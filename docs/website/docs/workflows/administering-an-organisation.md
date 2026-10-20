@@ -13,6 +13,8 @@ Reach an organisation's admin page via **My organisations** in the nav, or from 
 
 ## Managing users
 
+**Add user ▾** (the same menu as Server Management) offers **Invite user** (emails a sign-up link so the person chooses their own password) and **New user** (an account you create now, with a password you set).
+
 The **Users** section lists every member, with access-review filters useful for periodic review: stale logins (180+ days), accounts without 2FA, and accounts with no project access at all. Once an accepted email domain is set (see below), it also lists existing accounts elsewhere in the system matching that domain but not yet members.
 
 ## Managing groups
@@ -31,9 +33,38 @@ Deleting a group never leaves a project without a Project Manager. Every project
 
 Set the organisation's logo and, under **Templates & reports**, define **report templates** (accent colour, cover page, footer text, and optional content) and organisation-wide **report defaults** (introduction, chapters and appendices, written separately for each report type) that a project falls back to, after its parent projects, wherever it leaves its own report content blank. See [Core Features → Reports and export](../core-features/reports-and-export.md).
 
+## Tags
+
+**Org admin → Tags** holds the tags used by records the organisation itself owns (organisation personas, stakeholders, strategies and so on) and the setting for who may add a new one. A project's own records use that project's tags. See [Tags](../core-features/tags.md#child-projects-and-the-organisation).
+
 ## Link types
 
 Under **Projects & workflow → Link types**, define the vocabulary of links between records: each link type's name in both directions, its direction (upstream, downstream or none), which kinds of record it may join (**Can link from** / **Can link to**), and, in the **By artefact type** tab, which link types each kind of record may use. Deleting a link type that is in use opens a dialog to move its links to another type or delete them too. A switch on the same page decides whether project admins may add link types of their own and hide the organisation's. See [Links and traceability](../core-features/links-and-traceability.md#link-types).
+
+## Project codes
+
+Under **Projects & workflow → Project codes**, decide how a project's short code is formed: which **characters** (letters, digits, or both), the **shortest** and **longest** length, and whether the code is **assigned automatically** (from the project's name, with a number added on a clash) or **chosen by the creator**. A code is unique within the organisation, never equal to the organisation's own code, and never contains a hyphen. A change applies to codes created from now on; existing codes are never rewritten.
+
+The code qualifies record codes: `REQ-001` exists in every project, so a record seen outside its own project (in a link to a parent or child project, say) shows as `ACME-REQ-001`. Inside its own project each person chooses in **Preferences** whether to see the project code (on by default), unless you tick **Always show the project code**.
+
+```mermaid
+flowchart TD
+    A["Record code shown"] --> B{"Record in another project?"}
+    B -- yes --> Q["ACME-REQ-001"]
+    B -- no --> C{"Organisation requires the project code?"}
+    C -- yes --> Q
+    C -- no --> D{"Person's preference on?"}
+    D -- yes --> Q
+    D -- no --> R["REQ-001"]
+```
+
+### Organisation code
+
+Records the organisation itself owns and every project shares (Personas, Stakeholders, Stakeholder groups, Strategies, Future states and Guiding principles that you created at organisation level) are numbered within the organisation and qualified by the **organisation's** code: `ACME-PER-001`. They always show qualified, because a bare `PER-001` could equally be a project's own Persona. A project's own records of the same type follow the project-code rule above.
+
+Under **Projects & workflow → Organisation code**, change the organisation's code (letters and digits only, no hyphen, and different from every project code). You are asked to confirm: a qualified code already written down under the old code (in a document or a ticket) stops finding its record, though the records keep their own codes. The change is recorded in the audit log.
+
+A qualified code can be looked up from the API (`GET /api/v1/orgs/{id}/records/by-code/{code}`) and by AI assistants through the `get_record_by_code` MCP tool; both return only records the caller may see.
 
 ## Single sign-on
 

@@ -5,16 +5,15 @@ Aggregates the `orgs` package's per-concern routers — `core` (creation,
 import/export/merge, disable/enable/delete, listing, overview stats),
 `membership` (users, pending invites, access summaries, org-role and
 module-role grants, leave/remove/deactivate/archive), `groups`,
-`resources` (shared file resources), `branding` (logo/login-background,
+`resources` (shared file resources), `records` (lookup by qualified code), `branding` (logo/login-background,
 accent/wordmark/email-footer, default template, public login-info),
 `settings` (advanced settings, module enablement, SSO/OIDC, SCIM),
 `reports` (report templates and org-level report defaults), `org_pats`
 (org-admin PAT incident-response actions), `taxonomies` (project
 statuses, requirement link types), `custom_roles` (Fine-Grained Access
 Control's permission vocabulary, `CustomRoleDefinition` CRUD, and its
-user/group grant endpoints — `docs/plans/core-fine-grained-access-control-
-plan.md` Phase 3), and `scoring` (generic scoring-matrix levels, default
-model and bands — Module 1 Phase 10) — into the single `/api/v1/orgs`
+user/group grant endpoints —), and `scoring` (generic scoring-matrix levels, default
+model and bands) — into the single `/api/v1/orgs`
 router `main.py` mounts.
 
 Split out from one ~3,200-line module (previously `routers/orgs.py`) so
@@ -35,6 +34,7 @@ from app.routers.orgs import (
     groups,
     membership,
     org_pats,
+    records,
     reports,
     resources,
     scoring,
@@ -54,6 +54,7 @@ router.include_router(core.router, prefix=_PREFIX)
 router.include_router(membership.router, prefix=_PREFIX)
 router.include_router(groups.router, prefix=_PREFIX)
 router.include_router(resources.router, prefix=_PREFIX)
+router.include_router(records.router, prefix=_PREFIX)
 router.include_router(branding.router, prefix=_PREFIX)
 router.include_router(settings.router, prefix=_PREFIX)
 router.include_router(reports.router, prefix=_PREFIX)

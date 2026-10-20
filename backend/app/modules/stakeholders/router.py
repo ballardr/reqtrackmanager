@@ -1,7 +1,7 @@
 """
 Module: modules.stakeholders.router
 
-Org-scoped API for the Stakeholders & Personas module (Phase 1.1), mounted at
+Org-scoped API for the Stakeholders & Personas module, mounted at
 `/api/v1/orgs/{organization_id}/modules/stakeholders`: organisation-scoped
 Persona CRUD/lifecycle/comments/files and the org Persona type vocabulary.
 

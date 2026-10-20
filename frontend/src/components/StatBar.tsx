@@ -24,6 +24,7 @@ import type { ReactNode } from "react";
 import { needsAttention } from "../utils/needsAttention";
 import { isInteractive, type StatFigureAction } from "../utils/statFigureAction";
 import { StatFigureLabel } from "./StatFigureLabel";
+import { Badge } from "./Badge";
 
 export interface StatBarItem {
   key: string;
@@ -70,7 +71,7 @@ export function StatBarEntry({
         <StatFigureLabel label={label} value={value} to={to} onActivate={onActivate} hint={hint} />
       </dt>
       <dd className="stat-bar-value">{value}</dd>
-      {attention && <span className="badge badge--warning stat-bar-flag">Needs attention</span>}
+      {attention && <Badge tone="warning" className="stat-bar-flag">Needs attention</Badge>}
     </div>
   );
 }

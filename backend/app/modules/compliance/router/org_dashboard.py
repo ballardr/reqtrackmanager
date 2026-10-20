@@ -98,7 +98,7 @@ def create_project_compliance(
     rows`) — see that function's own docstring for why this happens once,
     upfront, rather than lazily.
 
-    As of Phase 20, this is the *secondary*, administrative assignment
+    This is the *secondary*, administrative assignment
     path (a Compliance Manager assigning on a project's behalf, or in
     bulk) — the default, primary path is `project_router.py::create_
     project_compliance_self_service`, usable by a plain Project Manager.
@@ -174,7 +174,7 @@ def list_all_project_compliance(
 # "Compliance Managers and authorised users" text does not override §26's
 # own dedicated Security and Permissions section, which is this module's
 # authoritative RBAC source (confirmed by reading both sections; see
-# docs/compliance-module-plan.md's Phase 14 notes for the full reasoning).
+# notes for the full reasoning).
 # Each iterates every project in the organisation (not only ones with an
 # active assignment — the shared per-project service function already
 # returns an empty list for a project with none) and calls the exact same
@@ -185,7 +185,7 @@ def list_all_project_compliance(
 
 def _org_projects(db: Session, organization_id: UUID) -> list[Project]:
     """Every project in this organisation — the fixed iteration set every
-    Phase 14 org-wide aggregation below loops over."""
+    org-wide aggregation below loops over."""
     return list(db.scalars(select(Project).where(Project.organization_id == organization_id)).all())
 
 
@@ -320,14 +320,14 @@ def get_org_compliance_report(
     data collected. PDF: one row per project/assigned-standard-version
     pair, plus cross-project non-compliant/pending-approval/expiring-
     evidence appendices. CSV: the same rows as a flat export. Manage-gated
-    like every other Phase 14 org-wide aggregation on this router (§26:
+    like every other org-wide aggregation on this router (§26:
     "View compliance across projects" is a Compliance Manager capability,
-    not general org membership) — see this router's own Phase 14 comment
+    not general org membership) — see this router's comments
     for the full reasoning, which applies identically to a report as to the
     live dashboard listings it's built from.
 
     `project_id`/`standard_id`/`standard_version_id`/`requirement_id`
-    (Phase 43) are optional scoping filters — see `collect_org_compliance_
+ are optional scoping filters — see `collect_org_compliance_
     report`'s own docstring — passed by `OrgComplianceStandardsPanel.tsx`'s
     and `OrgComplianceOutstandingPanel.tsx`'s own Export triggers to match
     whichever of their filters is currently applied."""

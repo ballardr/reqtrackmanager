@@ -21,10 +21,11 @@ from sqlalchemy.orm import Session
 from app.models.enums import PrincipalType, RequirementLevel, RequirementStatus
 from app.models.organization import Organization
 from app.models.project import Project, ProjectCategory, ProjectComponent
-from app.models.requirement import Requirement, RequirementKeyword, RequirementVersion
+from app.models.requirement import Requirement, RequirementVersion
 from app.models.user import User
 from app.modules.registry import ArtefactChange
 from app.schemas.principal import PrincipalOut, PrincipalRef
+from app.services import tags as tag_service
 from app.services.artefact_changes import notify_artefact_changed, requirement_content_changed
 from app.services.principals import principal_columns, principal_labels, principal_ref
 from app.services.rbac import lock_project_for_update
@@ -56,13 +57,12 @@ def is_locked(version: RequirementVersion) -> bool:
 def requires_change_request_for_links(db: Session, project: Project) -> bool:
     """Whether `project` requires an approved change request to add/remove a
     requirement-to-requirement traceability `ArtefactLink` on an
-    already-approved requirement (Platform review 2026-09, Phase 8 — a
+    already-approved requirement (a
     deliberately narrower, opt-in sibling of C-G-12's unconditional lock on
     a requirement's own content fields; traceability links otherwise stay
     ungated by design, see `models.relationship.ArtefactLink`'s docstring).
 
-    Resolution order, per the confirmed design (docs/decisions.md's
-    "Platform review 2026-09, Phase 8" entry):
+    Resolution order, per the confirmed design (docs/decisions.md):
       1. The project's own opt-in toggle
          (`Project.require_change_request_for_approved_links`) always wins
          when set — a project may lock itself down regardless of any org
@@ -179,8 +179,8 @@ def create_requirement(
     )
     db.add(version)
 
-    for kw in dict.fromkeys(k.strip().lower() for k in keywords if k.strip()):
-        db.add(RequirementKeyword(requirement_id=requirement.id, keyword=kw))
+    if keywords:
+        tag_service.set_keywords(db, requirement, keywords, creator.id)
 
     return requirement
 
@@ -305,12 +305,15 @@ def unarchive_requirement(db: Session, requirement: Requirement, actor: User) ->
     requirement.archived_by = None
 
 
-def set_keywords(db: Session, requirement: Requirement, keywords: list[str]) -> None:
-    """Replaces a requirement's keyword set (C-M-01)."""
-    db.execute(RequirementKeyword.__table__.delete().where(RequirementKeyword.requirement_id == requirement.id))
-    for kw in dict.fromkeys(k.strip().lower() for k in keywords if k.strip()):
-        db.add(RequirementKeyword(requirement_id=requirement.id, keyword=kw))
+def set_keywords(db: Session, requirement: Requirement, keywords: list[str], actor_id: UUID | None = None) -> None:
+    """Replaces a requirement's keyword set (C-M-01): its tags, under the project's tag mode.
+
+    Raises:
+        HTTPException: 422 for an invalid name, or one not on the list in a restricted project.
+    """
+    tag_service.set_keywords(db, requirement, keywords, actor_id)
 
 
 def get_keywords(db: Session, requirement_id: UUID) -> list[str]:
-    return list(db.scalars(select(RequirementKeyword.keyword).where(RequirementKeyword.requirement_id == requirement_id)).all())
+    """The requirement's keywords (its tag names)."""
+    return tag_service.get_keywords(db, requirement_id)

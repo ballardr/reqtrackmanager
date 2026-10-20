@@ -2,10 +2,10 @@
 
 See [future-modules-2026-09-index.md](future-modules-2026-09-index.md) for
 cross-cutting architecture referenced throughout. This module hard-depends
-on [Module 0](module-00-platform-foundations-plan.md) for its relationship
+on [Module 0](completed/module-00-platform-foundations-plan.md) for its relationship
 infrastructure.
 
-**Source:** [future-modules-2026-09-overview.md](future-modules-2026-09-overview.md)
+**Source:** [future-modules-2026-09-overview.md](completed/future-modules-2026-09-overview.md)
 §3's six-line Module 6 entry, now substantially superseded by
 [engineering-design-vs-decisions.md](engineering-design-vs-decisions.md)
 ("the design/decision doc") — a supplementary source the user provided
@@ -189,7 +189,7 @@ open-question resolutions below, before Phase 1.
    completed requirement's marker "may later be reversed... when a
    review/audit occurs") — both stay available, neither is foreclosed by
    the other. See Phase 3 and Phase 6 for the mechanism this drives; see
-   also [Module 0's "Related, non-blocking" section](module-00-platform-foundations-plan.md)
+   also [Module 0's "Related, non-blocking" section](completed/module-00-platform-foundations-plan.md)
    for why this is documented as a roadmap-wide convention, not invented
    fresh here — Risk Management (Module 3) already wants the same thing
    for its own mitigations.
@@ -376,7 +376,7 @@ infrastructure:
   confirmed "Verification Action" finding, since §21's model diagram shows
   Verification hanging off Design directly, not just off Requirement).
   *Generalising `RequirementActionLink` to target `Design` at all is
-  [Module 0](module-00-platform-foundations-plan.md)'s job — folded into
+  [Module 0](completed/module-00-platform-foundations-plan.md)'s job — folded into
   its own relationship-model fork alongside `RequirementLink`'s — not
   something this phase resolves independently; this phase only consumes
   it once Module 0 has it.*
@@ -467,7 +467,7 @@ MCP-tools addition above, applied to every not-yet-built module plan); the
 specific scope below is **Decided by: Agent**.
 
 **Goal:** add Engineering Design's user-facing surface to `docs/website/`
-(the published docs site, `docs/plans/docs-website-plan.md`) — modeled
+(the published docs site, `docs/plans/completed/docs-website-plan.md`) — modeled
 closely on `module-04-decision-management-plan.md`'s own "Phase 6 — Docs
 website coverage", adapted to this module's own content rather than
 copied.
@@ -514,7 +514,7 @@ to be under-scoped or missed.
 - **Screenshots.** — **Decided by: User** (2026-09-22, made explicit across
   every not-yet-built module plan's own "Docs website coverage" phase,
   alongside [Module 4](module-04-decision-management-plan.md)'s Phase 6
-  addendum of the same date). Follow `docs/plans/docs-website-plan.md`'s
+  addendum of the same date). Follow `docs/plans/completed/docs-website-plan.md`'s
   "Screenshots" standard (1440×900 viewport, captured against the seeded
   demo dataset, stored under `docs/website/static/img/screenshots/`, real
   alt text plus a one-line caption, no surrounding "what this shows/why it

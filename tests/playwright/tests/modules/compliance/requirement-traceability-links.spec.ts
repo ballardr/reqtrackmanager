@@ -5,8 +5,7 @@ import { createStandardWithVersion } from "./helpers";
 
 /**
  * Job to be done: a core requirement traces to the compliance standard's clause it
- * satisfies. The clause is an ordinary link target (docs/plans/platform-enhancements-
- * 2026-10-plan.md Phase 6c, replacing Compliance Phase 34's own table and section): it is
+ * satisfies. The clause is an ordinary link target (replacing the former dedicated table and section): it is
  * found from the shared Links panel's "Add a link" finder, either by searching its text
  * across every record type or by narrowing step by step (Standard -> Version ->
  * Requirement), appears in the panel under the clause's record type, survives a reload,
@@ -69,7 +68,13 @@ test.describe("Compliance: core requirement <-> standard clause links through th
     await test.step("narrowing Standard -> Version -> Requirement lists the clause, then link it", async () => {
       await panel.getByRole("button", { name: "Add link" }).click();
       await dialog.getByLabel("Link to").selectOption({ label: "Compliance standard clause" });
-      await dialog.getByLabel("Standard", { exact: true }).selectOption({ label: `${reference} ${standardName}` });
+      // The picker lists only the first options of a long list and offers a filter box above it; a shared
+      // database holds many standards, so narrow to this run's own before choosing it.
+      const standardSelect = dialog.getByLabel("Standard", { exact: true });
+      await expect(standardSelect.locator("option").nth(1)).toBeAttached();
+      const standardFilter = dialog.getByPlaceholder("Filter standard options");
+      if ((await standardFilter.count()) > 0) await standardFilter.fill(reference);
+      await standardSelect.selectOption({ label: `${reference} ${standardName}` });
       await dialog.getByLabel("Version", { exact: true }).selectOption({ label: "v1.0" });
       // The last level narrows to exactly one clause.
       await dialog.getByLabel("Requirement", { exact: true }).selectOption({ label: `${clauseReference} ${clauseName}` });

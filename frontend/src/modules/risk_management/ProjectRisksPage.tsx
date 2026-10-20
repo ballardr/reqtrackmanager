@@ -3,7 +3,7 @@
  *
  * The project's risk register, mounted at `/projects/:projectId/modules/
  * risk_management/risks` (`module.ts`, reached from the "Risks" nav-rail
- * entry) — docs/plans/module-03-risk-management-plan.md Phase 5.
+ * entry) —
  *
  * Two views over the same filtered set, switched with `Tabs`:
  * - *Register*: a `DirectoryTable` (code opens the detail page) with inherent
@@ -18,6 +18,7 @@
  * backend. The project, org users, types, scheme and risks are fetched here
  * (no `ProjectContext` provider, as `ProjectDecisionsPage` does).
  */
+import { RecordCode } from "../../components/RecordCode";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
@@ -26,6 +27,7 @@ import type { OrgUser, Project } from "../../api/types";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterBadge } from "../../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ListPageLayout } from "../../components/ListPageLayout";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { Spinner } from "../../components/Spinner";
@@ -40,6 +42,15 @@ import { RiskRatingBadge } from "./RiskRatingBadge";
 import { CONSEQUENCE_AXIS, LIKELIHOOD_AXIS, levelName, useRiskScheme } from "./useRiskScheme";
 import { RISK_STATUS_LABEL, RISK_STATUS_TONE } from "./types";
 import type { Risk, RiskFieldValues, RiskStatus } from "./types";
+import { Badge } from "../../components/Badge";
+import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
+import { useCommitTags } from "../../hooks/useCommitTags";
+import { rowProjectId } from "../../api/projectScope";
+import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
+import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
+import { useProjectScope } from "../../hooks/useProjectScope";
+import { useTagFilter } from "../../hooks/useTagFilter";
+import { TagFilterField } from "../../components/TagFilterField";
 
 type View = "register" | "matrix";
 
@@ -65,6 +76,8 @@ export function ProjectRisksPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "risk");
+  const commitTags = useCommitTags(projectId ?? "", "risk");
   const scheme = useRiskScheme(projectId);
   const [project, setProject] = useState<Project | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
@@ -81,6 +94,8 @@ export function ProjectRisksPage() {
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [untreatedOnly, setUntreatedOnly] = useState(false);
   const [includeArchived, setIncludeArchived] = useState(false);
+  const tagFilter = useTagFilter();
+  const projectScope = useProjectScope(projectId);
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -102,7 +117,7 @@ export function ProjectRisksPage() {
     if (!projectId) return;
     let active = true;
     riskApi
-      .list(projectId, { include_archived: includeArchived })
+      .list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope })
       .then((list) => {
         if (!active) return;
         setRisks(list);
@@ -114,7 +129,7 @@ export function ProjectRisksPage() {
     return () => {
       active = false;
     };
-  }, [projectId, includeArchived, refreshKey]);
+  }, [projectId, includeArchived, refreshKey, tagFilter.tags, tagFilter.mode, projectScope.scope]);
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -135,8 +150,8 @@ export function ProjectRisksPage() {
 
 
   const columns: DirectoryColumn<Risk>[] = [
-    { key: "code", label: "Code", render: (r) => r.unique_code },
-    { key: "title", label: "Title", render: (r) => r.title },
+    { key: "code", label: "Code", render: (r) => <RecordCode code={r.unique_code} ownerProjectCode={r.from_project_code} /> },
+    { key: "title", label: "Title", render: (r) => <>{r.title}<ProjectScopeLabel row={r} /></> },
     { key: "type", label: "Type", render: (r) => r.risk_type_name ?? "—" },
     { key: "inherent", label: "Inherent", render: (r) => <RiskRatingBadge rating={r.inherent_rating} /> },
     { key: "residual", label: "Residual", render: (r) => <RiskRatingBadge rating={r.residual_rating} /> },
@@ -155,7 +170,7 @@ export function ProjectRisksPage() {
     {
       key: "review", label: "Next review",
       render: (r) => r.review_date
-        ? <span>{r.review_date}{r.is_review_overdue && <> <span className="badge badge--danger">Overdue</span></>}</span>
+        ? <span>{r.review_date}{r.is_review_overdue && <> <Badge tone="danger">Overdue</Badge></>}</span>
         : "—",
     },
   ];
@@ -164,83 +179,90 @@ export function ProjectRisksPage() {
 
   return (
     <div className="container stack">
-      <h1 style={{ margin: 0 }}>Risks</h1>
-      <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
-        New risk
-      </button>
-      <Tabs
-        idPrefix="risks-view"
-        tabs={[{ key: "register", label: "Register" }, { key: "matrix", label: "Matrix" }]}
-        active={view}
-        onChange={setView}
-      />
-      <div className="side-grid">
-        <div className="stack" {...tabPanelProps("risks-view", view)}>
-          {cell && (
-            <div className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
-              <span className="badge">
-                {cell.basis === "inherent" ? "Inherent" : "Residual"}:{" "}
-                {levelName(scheme, LIKELIHOOD_AXIS, cell.likelihoodLevelId)} likelihood,{" "}
-                {levelName(scheme, CONSEQUENCE_AXIS, cell.consequenceLevelId)} consequence
-              </span>
-              <button className="btn" onClick={() => setCell(null)}>Clear matrix filter</button>
-            </div>
-          )}
-          {view === "register" ? (
-            <DirectoryTable
-              ariaLabel="Risks"
-              columns={columns}
-              rows={filtered}
-              rowKey={(r) => r.id}
-              rowHref={(r) => `/projects/${projectId}/modules/risk_management/risks/${r.id}`}
-              emptyState={<p className="text-muted">{risks.length === 0 ? "No Risks recorded for this project yet." : "No Risks match these filters."}</p>}
-            />
-          ) : (
-            <div className="stack">
-              <LabeledSelect
-                label="Plot by" value={basis} onChange={(next) => setBasis(next as RiskMatrixBasis)}
-                options={BASIS_OPTIONS} placeholder={null}
+      <ListPageLayout
+        title="Risks"
+        actions={
+          <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
+            New risk
+          </button>
+        }
+        filter={
+          <FilterPanel
+            sectionKey="risks.list" total={filtered.length}
+            search={search} onSearchChange={setSearch} searchPlaceholder="Search risks…" searchAriaLabel="Search risks"
+          >
+            <FilterField label="Status">
+              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as RiskStatus | "")}>
+                <option value="">All statuses</option>
+                {Object.entries(RISK_STATUS_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterField label="Risk type">
+              <select className="input" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+                <option value="">All types</option>
+                {riskTypes.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterCheckbox label="Review overdue" checked={overdueOnly} onChange={setOverdueOnly} />
+            <FilterCheckbox label="No effective treatment" checked={untreatedOnly} onChange={setUntreatedOnly} />
+            <ProjectScopeFilter scope={projectScope} />
+            {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
+          </FilterPanel>
+        }
+      >
+        <Tabs
+          idPrefix="risks-view"
+          tabs={[{ key: "register", label: "Register" }, { key: "matrix", label: "Matrix" }]}
+          active={view}
+          onChange={setView}
+        />
+          <div className="stack" {...tabPanelProps("risks-view", view)}>
+            {cell && (
+              <div className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+                <Badge>
+                  {cell.basis === "inherent" ? "Inherent" : "Residual"}:{" "}
+                  {levelName(scheme, LIKELIHOOD_AXIS, cell.likelihoodLevelId)} likelihood,{" "}
+                  {levelName(scheme, CONSEQUENCE_AXIS, cell.consequenceLevelId)} consequence
+                </Badge>
+                <button className="btn" onClick={() => setCell(null)}>Clear matrix filter</button>
+              </div>
+            )}
+            {view === "register" ? (
+              <DirectoryTable
+                ariaLabel="Risks"
+                columns={columns}
+                rows={filtered}
+                rowKey={(r) => r.id}
+                rowHref={(r) => `/projects/${rowProjectId(r, projectId)}/modules/risk_management/risks/${r.id}`}
+                emptyState={<p className="text-muted">{risks.length === 0 ? "No Risks recorded for this project yet." : "No Risks match these filters."}</p>}
               />
-              <RiskMatrix
-                scheme={scheme} risks={filtered} basis={basis}
-                onCellClick={(likelihoodLevelId, consequenceLevelId) => {
-                  setCell({ basis, likelihoodLevelId, consequenceLevelId });
-                  setView("register");
-                }}
-              />
-              {unplotted > 0 && (
-                <p className="text-muted" style={{ margin: 0 }}>
-                  {unplotted} risk{unplotted === 1 ? " has" : "s have"} no {basis} likelihood and consequence, so {unplotted === 1 ? "isn't" : "aren't"} plotted.
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-        <FilterPanel
-          sectionKey="risks.list" total={filtered.length}
-          search={search} onSearchChange={setSearch} searchPlaceholder="Search risks…" searchAriaLabel="Search risks"
-        >
-          <FilterField label="Status">
-            <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as RiskStatus | "")}>
-              <option value="">All statuses</option>
-              {Object.entries(RISK_STATUS_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label="Risk type">
-            <select className="input" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-              <option value="">All types</option>
-              {riskTypes.map((t) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterCheckbox label="Review overdue" checked={overdueOnly} onChange={setOverdueOnly} />
-          <FilterCheckbox label="No effective treatment" checked={untreatedOnly} onChange={setUntreatedOnly} />
-          <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
-        </FilterPanel>
-      </div>
+            ) : (
+              <div className="stack">
+                <LabeledSelect helpNotNeeded
+                  label="Plot by" value={basis} onChange={(next) => setBasis(next as RiskMatrixBasis)}
+                  options={BASIS_OPTIONS} placeholder={null}
+                />
+                <RiskMatrix
+                  scheme={scheme} risks={filtered} basis={basis}
+                  onCellClick={(likelihoodLevelId, consequenceLevelId) => {
+                    setCell({ basis, likelihoodLevelId, consequenceLevelId });
+                    setView("register");
+                  }}
+                />
+                {unplotted > 0 && (
+                  <p className="text-muted" style={{ margin: 0 }}>
+                    {unplotted} risk{unplotted === 1 ? " has" : "s have"} no {basis} likelihood and consequence, so {unplotted === 1 ? "isn't" : "aren't"} plotted.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+      </ListPageLayout>
 
       {creating && (
         <RiskFormModal
@@ -252,12 +274,14 @@ export function ProjectRisksPage() {
           currentUserId={user?.id}
           error={createError}
           onCancel={() => { setCreating(false); setCreateError(null); }}
-          onSave={async (values: RiskFieldValues) => {
+          onSave={async (values: RiskFieldValues, _changeNote, quickLinks, tags) => {
             setCreateError(null);
             try {
-              await riskApi.create(projectId, values);
+              const created = await riskApi.create(projectId, values);
               showToast("Risk created.");
               setCreating(false);
+              await commitQuickLinks(created.id, quickLinks);
+              await commitTags(created.id, tags);
               setRefreshKey((k) => k + 1);
             } catch (err) {
               setCreateError(toErrorMessage(err, "Could not create risk."));

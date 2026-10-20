@@ -52,7 +52,8 @@ flowchart TD
   C -- "no (only if the module was Off when the project was created)" --> D["Org's current default"]
 ```
 
-- **Entitlement** — server-tier licensing lever. Not entitled = off everywhere.
+- **Entitlement** — server-tier licensing lever. Not entitled = off everywhere, and the module is not listed to that organisation's administrators or projects.
+- **Server defaults** — under **Server Management → Modules**, a server administrator sets what an organisation gets for a module it has not chosen itself (available, and on for new projects). A fresh install starts with every module available; an upgraded install changes nothing until the administrator chooses, and **Apply to all organisations** writes the defaults into existing organisations on request. The same page grants or withdraws a module for one organisation and shows which tier decides its state.
 - **Org Off is a hard floor** — reaches every project immediately; a project can't turn it back on (a `PUT` with `enabled: true` is rejected with 400). Turning it back on restores each project's own setting.
 - **Defaults only affect new projects** — a project copies the org's default when it's created (for every module the org has available), so changing a default later never flips an existing project. Before a default changes, any project still without its own setting gets the old value written in first. **Why:** a module silently disappearing from (or appearing in) live projects is surprising and disruptive.
 - **Projects can opt in or out** — within the floor, a project admin can turn a module on even if the org default is off, or off if it's on.

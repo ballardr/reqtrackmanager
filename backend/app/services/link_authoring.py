@@ -45,7 +45,7 @@ from dataclasses import dataclass
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.models.enums import ArtefactType
+from app.models.enums import CORE_ARTEFACT_TYPES, ArtefactType
 from app.models.project import Project
 from app.models.relationship import ArtefactLink
 from app.models.requirement import Requirement
@@ -91,7 +91,7 @@ def linkable_types_for_project(db: Session, project: Project) -> set[str]:
     """Registered artefact types whose owning module is enabled for `project` (core types always)."""
     from app.modules.registry import is_module_enabled_for_project
 
-    types = {ArtefactType.REQUIREMENT.value, ArtefactType.REQUIREMENT_ACTION.value}
+    types = set(CORE_ARTEFACT_TYPES)
     for definition in get_module_registry().values():
         if definition.artefact_types and is_module_enabled_for_project(db, project.id, definition.key):
             types.update(definition.artefact_types)

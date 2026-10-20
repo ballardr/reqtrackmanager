@@ -84,7 +84,7 @@ test.describe("server-admin user directory: orphaned accounts, deactivation, ban
       expect(panelBox!.width).toBeGreaterThanOrEqual(tableBox!.width - 1);
     });
 
-    await test.step("search narrows the list by name or email (Phase E, follow-up UX batch)", async () => {
+    await test.step("search narrows the list by name or email", async () => {
       await searchBox.fill("no-such-user-xyz");
       await expect(page.getByText(orphan.email)).toHaveCount(0);
 

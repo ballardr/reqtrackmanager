@@ -1,4 +1,4 @@
-"""Per-cell scoring rating overrides (Module 3 — Risk Management — Phase 1a)
+"""Per-cell scoring rating overrides (Risk Management)
 
 Revision ID: 0072
 Revises: 0071

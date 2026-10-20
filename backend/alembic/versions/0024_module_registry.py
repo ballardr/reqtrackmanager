@@ -1,11 +1,11 @@
-"""Module registry gating tables (module system Phase 1)
+"""Module registry gating tables
 
 Revision ID: 0024
 Revises: 0023
 Create Date: 2026-09-04
 
-Two-tier module gating for the modular feature system
-(docs/compliance-module-plan.md Phase 1), sitting on top of Phase 0's
+Two-tier module gating for the modular feature system,
+sitting on top of the
 `server_roles`/`default_module_entitlement_policy`:
 
 - `organization_module_entitlements` (`app.models.module.

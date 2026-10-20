@@ -1,5 +1,4 @@
-"""Tests for the module system's Phase 0 server-tier RBAC extension
-(docs/compliance-module-plan.md): the new `ServerRole.MODULE_ADMINISTRATOR`
+"""Tests for the module system's server-tier RBAC extension: the new `ServerRole.MODULE_ADMINISTRATOR`
 role, its grant/revoke endpoints, `services.rbac.require_server_role`'s
 composition with `User.is_server_admin`, and the deployment-wide default
 module entitlement policy setting it gates."""

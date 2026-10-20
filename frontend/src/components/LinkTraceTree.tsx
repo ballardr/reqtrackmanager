@@ -184,7 +184,7 @@ function BranchNode({
 
   return (
     <li className="link-trace__item">
-      <div className="artefact-links__row">
+      <div className="artefact-links__summary" data-wrap-ok>
         <button
           type="button"
           className="link-trace__toggle"

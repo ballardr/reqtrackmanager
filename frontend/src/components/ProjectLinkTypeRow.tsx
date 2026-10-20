@@ -1,5 +1,6 @@
 import { LINK_FLOW_LABEL, type ProjectLinkType } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
+import { Badge } from "./Badge";
 
 /**
  * One link type a project sees but does not own: the organisation's, or a
@@ -36,12 +37,12 @@ export function ProjectLinkTypeRow({
       <div className="row" style={{ gap: "0.5rem", opacity: item.hidden || shadowed ? 0.7 : 1 }}>
         <strong>{item.forward_name}</strong>
         <span className="text-muted">{item.reverse_name}</span>
-        <span className="badge">{scopeLabel}</span>
-        <span className="badge">{LINK_FLOW_LABEL[item.flow]}</span>
+        <Badge>{scopeLabel}</Badge>
+        <Badge>{LINK_FLOW_LABEL[item.flow]}</Badge>
         {item.hidden && (
-          <span className="badge">{item.hidden_by_inherited ? strings.orgAdmin.linkTypeHiddenByParent : strings.orgAdmin.linkTypeHidden}</span>
+          <Badge>{item.hidden_by_inherited ? strings.orgAdmin.linkTypeHiddenByParent : strings.orgAdmin.linkTypeHidden}</Badge>
         )}
-        {shadowed && <span className="badge">{strings.orgAdmin.linkTypeShadowed(item.shadowed_by_name ?? "")}</span>}
+        {shadowed && <Badge>{strings.orgAdmin.linkTypeShadowed(item.shadowed_by_name ?? "")}</Badge>}
       </div>
       {canChange && !shadowed && (
         <button

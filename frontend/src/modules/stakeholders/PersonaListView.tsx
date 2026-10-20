@@ -9,7 +9,10 @@
  * The "Show hidden" filter and Visibility column are `RecordListView`'s.
  */
 import { PersonaFormModal } from "./PersonaFormModal";
-import { RecordListView } from "./RecordListView";
+import type { TagFilterState } from "../../hooks/useTagFilter";
+import type { ProjectScopeState } from "../../hooks/useProjectScope";
+import { PeopleKindIcon } from "./PeopleKindIcon";
+import { RecordListView, type RecordListPage } from "./RecordListView";
 import type { Persona, PersonaFieldValues } from "./types";
 import { PERSONA_SCOPE_LABEL, PERSONA_STATUS_LABEL, PERSONA_STATUS_TONE } from "./types";
 
@@ -28,6 +31,9 @@ export function PersonaListView({
   onIncludeHiddenChange,
   onShowHidden,
   onOpen,
+  tagFilter,
+  projectScope,
+  page,
   onCreate,
 }: {
   personas: Persona[];
@@ -47,8 +53,14 @@ export function PersonaListView({
   /** Re-shows a hidden persona in this project (the Visibility cell's "Show" action). */
   onShowHidden?: (persona: Persona) => void;
   onOpen: (persona: Persona) => void;
-  /** Resolves on success; a rejection keeps the modal open and shows its message. */
-  onCreate: (values: PersonaFieldValues) => Promise<void>;
+  /** The project's tag filter (state kept by the page); omit where tags are not offered. */
+  tagFilter?: { projectId: string; filter: TagFilterState };
+  /** The project page's list scope (state kept by the page); omit where related projects are not offered. */
+  projectScope?: ProjectScopeState;
+  /** The page header (title, actions, tabs) this list owns when it is a whole page. */
+  page?: RecordListPage;
+  /** Resolves on success; a rejection keeps the modal open and shows its message. Omit when personas are created elsewhere. */
+  onCreate?: (values: PersonaFieldValues) => Promise<void>;
 }) {
   return (
     <RecordListView<Persona, PersonaFieldValues>
@@ -63,7 +75,8 @@ export function PersonaListView({
       statusTone={PERSONA_STATUS_TONE}
       scopeLabels={PERSONA_SCOPE_LABEL}
       typeName={(p) => p.persona_type_name}
-      searchText={(p) => `${p.name} ${p.role_title}`}
+      nameIcon={() => <PeopleKindIcon kind="persona" />}
+      searchText={(p) => `${p.unique_code} ${p.name} ${p.role_title}`}
       columnsBeforeType={[{ key: "role", label: "Role", render: (p) => p.role_title || "—" }]}
       columnsAfterScope={[
         {
@@ -80,8 +93,11 @@ export function PersonaListView({
       onIncludeHiddenChange={onIncludeHiddenChange}
       onShowHidden={onShowHidden}
       onOpen={onOpen}
+      tagFilter={tagFilter}
+      projectScope={projectScope}
+      page={page}
       onCreate={onCreate}
-      renderCreateModal={(props) => <PersonaFormModal {...props} typeOptions={typeOptions} />}
+      renderCreateModal={onCreate ? (props) => <PersonaFormModal {...props} typeOptions={typeOptions} /> : undefined}
     />
   );
 }

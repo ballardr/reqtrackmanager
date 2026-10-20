@@ -1,11 +1,11 @@
-"""Compliance cross-standard mapping + version impact (compliance module Phase 11)
+"""Compliance cross-standard mapping + version impact
 
 Revision ID: 0031
 Revises: 0030
 Create Date: 2026-09-06
 
-Adds the schema backing the Compliance Module's Phase 11 (docs/Compliance_
-Module_Requirements.md §19, §27; docs/compliance-module-plan.md Phase 11):
+Adds the schema backing the Compliance Module's cross-standard mapping and version impact
+(§19, §27):
 
 - `compliance_requirements.cloned_from_requirement_id` — a nullable,
   self-referential FK recording which requirement (in an earlier version of
@@ -13,8 +13,8 @@ Module_Requirements.md §19, §27; docs/compliance-module-plan.md Phase 11):
   `app.modules.compliance.router._clone_requirement_tree` at clone time;
   consumed by `app.modules.compliance.service.diff_standard_versions` to
   distinguish an unchanged/modified requirement from a genuinely added one
-  (§27). `ON DELETE SET NULL`, not `CASCADE` — see `models.py`'s own Phase
-  11 design-decisions section for why this differs from `parent_
+  (§27). `ON DELETE SET NULL`, not `CASCADE` — see `models.py`'s cross-standard mapping
+  design decisions for why this differs from `parent_
   requirement_id`'s own `CASCADE` one column up.
 - `compliance_mapping_relationship_types` (`ComplianceMappingRelationshipType
   Definition`) — an organisation-scoped, extensible vocabulary of cross-
@@ -25,7 +25,7 @@ Module_Requirements.md §19, §27; docs/compliance-module-plan.md Phase 11):
   default `false`) — whether this type is strong enough that a `replaced`
   version-diff pair linked by it may have its assessment carried forward
   during project migration, subject to a separate, explicit per-migration
-  human confirmation (see `models.py`'s own Phase 11 notes). Named without
+  human confirmation (see `models.py`'s cross-standard mapping design decisions). Named without
   the `..._type_definitions` suffix its own column names would otherwise
   suggest — see `models.py`'s own docstring for why (a shorter table name
   avoids a >63-byte auto-generated index name on `organization_id`).

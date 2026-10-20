@@ -17,7 +17,7 @@ While the project's current stage is still in scoping, requirements within a com
 
 ## The requirement detail page
 
-Opening a requirement shows its full detail: name, reasoning, clarification, description, custom field values, an editable form (disabled once locked), its full version history — including who made each change — a discussion thread, traceability links to other requirements, and file attachments.
+Opening a requirement shows its full detail: name, reasoning, clarification, description, custom field values, an editable form (disabled once locked), its **Versions** table — including who made each change — a discussion thread, file attachments, and, beside the content, the Links and Activity tabs (see [One record's timeline](../workflows/files-comments-and-history.md#one-records-timeline)).
 
 | Requirement detail |
 | --- |
@@ -25,6 +25,10 @@ Opening a requirement shows its full detail: name, reasoning, clarification, des
 | ![Requirement detail page with its fields, activity, actions and discussion, and a Links panel on the right](../../static/img/screenshots/requirement-detail.png) |
 
 Once a requirement is locked (Approved or Completed), the edit form disables itself with a "Locked" badge, and further changes go through a [change request](./change-requests.md) instead — see [Requirements, versions, and the lifecycle](../concepts/requirements-versions-and-lifecycle.md) for why.
+
+## Keywords are tags
+
+A requirement's **keywords** are its [tags](tags.md): add them from the **Tags** box under the requirement's title, filter the list by them, and change many requirements at once with **Tag selected**. Because they are shared with every other kind of record, a keyword keeps the capital letters it was typed with (older keywords were all lower case), and a project can limit new ones to a list its administrators keep.
 
 ## Traceability links
 

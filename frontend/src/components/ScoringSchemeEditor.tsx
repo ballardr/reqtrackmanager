@@ -2,10 +2,10 @@
  * Module: components/ScoringSchemeEditor
  *
  * Org-level configuration of one scoring scheme (generic scoring-matrix
- * core, Module 1 Phase 10): each axis's levels, the org default model, and
+ * core): each axis's levels, the org default model, and
  * each model's rating bands. A module embeds this in its own org-admin
  * section, passing its scheme key (e.g. Context & Strategy's "pain_point")
- * — core never knows which modules score what (Decided by: User, Phase 10
+ * — core never knows which modules score what (Decided by: User
  * sign-off: scoring config sits beside the feature it scores).
  *
  * Levels reuse the shared `DefinitionList` (inline edit, delete with
@@ -22,6 +22,7 @@ import { LabeledSelect } from "./LabeledSelect";
 import { OverridePill } from "./OverridePill";
 import { ScoringModelBands } from "./ScoringModelBands";
 import { Spinner } from "./Spinner";
+import { useStrings } from "../context/TerminologyContext";
 
 function parseLevel(values: Record<string, string>) {
   const weight = Number(values.weight);
@@ -34,6 +35,7 @@ function parseLevel(values: Record<string, string>) {
  * @param schemeKey The registered scoring scheme key.
  */
 export function ScoringSchemeEditor({ orgId, schemeKey }: { orgId: string; schemeKey: string }) {
+  const strings = useStrings();
   const { showToast } = useToast();
   const [scheme, setScheme] = useState<ScoringScheme | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -81,7 +83,7 @@ export function ScoringSchemeEditor({ orgId, schemeKey }: { orgId: string; schem
           Used unless a project sets its own; anyone viewing scores can still switch model.
         </p>
         <div className="row" style={{ gap: "0.75rem", alignItems: "flex-end", flexWrap: "wrap" }}>
-          <LabeledSelect
+          <LabeledSelect help={strings.help.scoringDefaultModel}
             label="Default model"
             value={scheme.default_model_key}
             placeholder={null}
@@ -115,7 +117,7 @@ export function ScoringSchemeEditor({ orgId, schemeKey }: { orgId: string; schem
               fields={[
                 { key: "name", getValue: (l) => l.name, placeholder: "Level name", ariaLabel: `${axis.label} level name`, maxWidth: 180 },
                 { key: "weight", getValue: (l) => String(l.weight), placeholder: "Weight", ariaLabel: `${axis.label} level weight`, maxWidth: 90, inputType: "number" },
-                { key: "description", getValue: (l) => l.description ?? "", placeholder: "Guidance (optional)", ariaLabel: `${axis.label} level guidance`, maxWidth: 360, optional: true },
+                { key: "description", getValue: (l) => l.description ?? "", placeholder: "Guidance", ariaLabel: `${axis.label} level guidance`, maxWidth: 360, optional: true },
               ]}
               getReassignLabel={(l) => l.name}
               onRename={async (id, values) => {

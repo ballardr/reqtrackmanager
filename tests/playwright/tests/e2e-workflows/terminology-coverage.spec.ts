@@ -5,11 +5,9 @@ import { loginAs, openProject, PERSONAS, PROJECT_NAMES, selectProjectAdminGroup 
 /**
  * Job to be done: C-C-03's per-project terminology overrides actually reach
  * every surface that renders one of the six overridable nouns, not just the
- * nav label + list-page heading the 2026-08 UX audit found were the only
- * two "working" surfaces before this fix (see docs/ux-audit-2026-08.md's
- * "Terminology coverage" finding and its roadmap entry "Extend terminology
- * overrides to actually cover their own surface", and the corresponding
- * entry in docs/decisions.md).
+ * nav label + list-page heading were the only
+ * two "working" surfaces before this fix (see
+ * docs/decisions.md).
  *
  * Uses PROJECT_NAMES.delta1, a project dedicated to this spec and seeded
  * with a fixed, permanent terminology override
@@ -56,7 +54,7 @@ test.describe("terminology overrides reach their own surfaces", () => {
     await test.step("Project Admin's custom-fields entity-kind dropdown — the audit's single most visible example", async () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
       await selectProjectAdminGroup(page, "Fields & actions");
-      const entityKindSelect = page.getByRole("combobox").first();
+      const entityKindSelect = page.getByRole("main").getByRole("combobox").first();
       // Default selection is "requirement" -> now renders as the override.
       await expect(entityKindSelect).toContainText("Spec");
       await entityKindSelect.selectOption("change_request");

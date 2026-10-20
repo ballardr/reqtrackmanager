@@ -1,12 +1,12 @@
-"""Module-contributed RBAC (module system Phase 2)
+"""Module-contributed RBAC
 
 Revision ID: 0025
 Revises: 0024
 Create Date: 2026-09-05
 
-Adds the two tables module-contributed RBAC needs
-(docs/compliance-module-plan.md Phase 2), sitting on top of Phase 0's
-`server_roles` and Phase 1's `organization_module_entitlements`/
+Adds the two tables module-contributed RBAC needs,
+sitting on top of
+`server_roles` and `organization_module_entitlements`/
 `organization_modules`:
 
 - `module_role_definitions` (`app.models.module_role.
@@ -29,7 +29,7 @@ Adds the two tables module-contributed RBAC needs
 No backfill of either table — `module_role_definitions` starts empty and
 is populated by the next process startup's `sync_module_role_definitions`
 call, and `user_module_roles` starts empty since no module with roles is
-registered yet (Compliance doesn't land until Phase 5) — matching 0023/
+registered yet (Compliance doesn't land until later) — matching 0023/
 0024's own "additive tables/columns only" precedent.
 """
 

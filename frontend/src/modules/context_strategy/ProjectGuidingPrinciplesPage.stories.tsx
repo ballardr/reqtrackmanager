@@ -10,7 +10,7 @@ const PROJECT_ID = "project-1";
 
 function guidingPrinciple(overrides: Partial<GuidingPrinciple> = {}): GuidingPrinciple {
   return {
-    id: "gp-1", scope: "project", organization_id: null, project_id: PROJECT_ID, creator_id: "user-1",
+    id: "gp-1", scope: "project", organization_id: null, project_id: PROJECT_ID, unique_code: "GP-001", creator_id: "user-1",
     is_archived: false, archived_at: null, archived_by: null, name: "Field data is captured once",
     principle_statement: "Every field observation is recorded exactly once, at the point of inspection.",
     rationale: "", priority: "high", status: "active", owner: null, version_number: 3, is_locked: true,

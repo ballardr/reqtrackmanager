@@ -150,8 +150,7 @@ def approve_requirement(
     channel: str = Depends(get_request_channel),
 ):
     """Approves a draft or reviewed requirement directly (C-G-11) — the
-    previously-missing standalone path out of draft/reviewed status (2026-08
-    UX audit roadmap, "No requirement approval action"). Before this
+    previously-missing standalone path out of draft/reviewed status. Before this
     endpoint existed, `APPROVED` only ever happened as a side effect of a
     change request (`decide_change_request`) or a stage baseline
     (`services/baseline.py::create_baseline_for_stage`, which does the same

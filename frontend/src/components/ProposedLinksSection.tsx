@@ -10,6 +10,7 @@ import type { ProposedLink } from "../api/types";
 import { PROPOSED_LINK_OUTCOME_LABEL, PROPOSED_LINK_OUTCOME_TONE } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import { ProposedLinkRow } from "./ProposedLinkRow";
+import { Badge } from "./Badge";
 
 export function ProposedLinksSection({ links, title }: { links: ProposedLink[]; title?: string }) {
   const strings = useStrings();
@@ -27,9 +28,9 @@ export function ProposedLinksSection({ links, title }: { links: ProposedLink[]; 
             }}
             trailing={
               <>
-                <span className={`badge badge--${PROPOSED_LINK_OUTCOME_TONE[link.outcome]}`}>
+                <Badge tone={PROPOSED_LINK_OUTCOME_TONE[link.outcome]}>
                   {PROPOSED_LINK_OUTCOME_LABEL[link.outcome]}
-                </span>
+                </Badge>
                 {link.outcome_reason && <span className="text-muted">{link.outcome_reason}</span>}
               </>
             }

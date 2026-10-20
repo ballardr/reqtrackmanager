@@ -3,7 +3,7 @@ Module: modules.stakeholders._research_shared
 
 Handler bodies behind the research-extras routes (`research_project_router.py`):
 session prompts, anonymous participants and findings of an Engagement
-(Phase 4, Phase 0 addendum 2 item 19 and 20). The routes are gated by the
+The routes are gated by the
 `research_extras` sub-component, so a project that has it off still has the full
 engagement log.
 
@@ -47,6 +47,7 @@ from app.modules.stakeholders.service import get_current_persona_version
 from app.services.audit import log_event
 from app.services.ordering import move_ordered
 from app.services.relationships import delete_link, get_all_links
+from app.services.tags import forget_record_tags
 
 
 def _not_found(noun: str) -> HTTPException:
@@ -265,6 +266,7 @@ def delete_finding(db: Session, finding: ResearchFinding, actor: User, project: 
     """Deletes a finding and every link it has, audit-logs and commits."""
     for link in get_all_links(db, FINDING_ARTEFACT_TYPE, finding.id, include_cross_project=True):
         delete_link(db, link)
+    forget_record_tags(db, FINDING_ARTEFACT_TYPE, finding.id)
     finding_id = finding.id
     db.delete(finding)
     log_event(

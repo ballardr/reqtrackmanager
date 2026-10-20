@@ -1,5 +1,4 @@
-"""Tests for generic link authoring and link rules (docs/plans/platform-enhancements-
-2026-10-plan.md Phase 5b): link-type artefact restrictions, artefact-type link rules,
+"""Tests for generic link authoring and link rules: link-type artefact restrictions, artefact-type link rules,
 module link-type seeds, the generic `link-types` / `links` endpoints, and deleting a
 link type that is in use.
 
@@ -98,7 +97,7 @@ def test_seed_registry_merges_shared_names_and_flags_supersedes():
     # A core default stays unrestricted and keeps its flow.
     assert seeds["Implements"].allowed_source_types is None
     assert seeds["Implements"].flow.value == "forward_is_upstream"
-    # The Decision seeds of the plan carry their restrictions; Risk Management adds itself as a target.
+    # The Decision seeds carry their restrictions; Risk Management adds itself as a target.
     assert seeds["Addresses"].allowed_source_types == (DEC,)
     assert set(seeds["Addresses"].allowed_target_types) == {PAIN, "risk"}
 

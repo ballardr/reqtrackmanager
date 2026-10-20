@@ -5,9 +5,7 @@ import { loginAs, ORG_NAMES, PERSONAS } from "./helpers";
 /**
  * /orgs (the only path to org administration) previously had no nav-rail
  * entry point for anyone but a server admin — an ordinary org admin had no
- * way there beyond a bookmark or a stale link they'd clicked once (2026-08
- * UX audit finding, corrected from an earlier draft that misdiagnosed this
- * as a missing "org switcher" — see docs/decisions.md). Fixed with a plain
+ * way there beyond a bookmark or a stale link they'd clicked once. Fixed with a plain
  * "My organisations" nav-rail link. This persona belongs to two orgs
  * (Alpha, Beta), so /orgs shows the directory list rather than
  * auto-redirecting straight to a single org's admin page.

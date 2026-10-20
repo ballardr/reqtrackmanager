@@ -2,7 +2,7 @@
 Module: models.scoring
 
 Generic, module-agnostic storage for configurable scoring matrices
-(Module 1 — Context & Strategy — Phase 10). A module registers a scoring
+(Context & Strategy). A module registers a scoring
 *scheme* (axes, models, default bands) via `ModuleDefinition.
 scoring_schemes`; these tables hold each organisation's/project's data for
 it, keyed by the scheme's/axis's/model's plain string keys and validated
@@ -19,7 +19,7 @@ never a closed core enum a module would need a value added to.
   (`project_id IS NULL`) and/or per-project override sets. A set is
   all-or-nothing; no rows means "inherit".
 - `ScoringCellRating` — explicit per-cell band overrides for a two-axis
-  model (Module 3 Phase 1a): an (axis-1 level, axis-2 level) → band label
+  model: an (axis-1 level, axis-2 level) → band label
   mapping, same org/project all-or-nothing set semantics as bands. A cell
   with no row falls back to the threshold bands.
 

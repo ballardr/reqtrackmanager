@@ -1,5 +1,5 @@
-"""Tests for the Risk Management module's Phase 1 project API
-(docs/plans/module-03-risk-management-plan.md), through the real HTTP endpoints.
+"""Tests for the Risk Management module's project API,
+through the real HTTP endpoints.
 
 Covers: create/read/list, identifiers, partial update and clearing, version
 history, status being read-only, reference validation (levels, owner, type),
@@ -414,7 +414,7 @@ def test_risk_is_a_registered_artefact_type_with_roles_and_scheme():
 
 
 def test_the_project_nav_offers_the_risk_register(client, admin_token):
-    """Phase 5: the module's `frontend_manifest` puts a "Risks" nav entry pointing at the register route the
+    """The module's `frontend_manifest` puts a "Risks" nav entry pointing at the register route the
     frontend serves (`frontend/src/modules/risk_management/module.ts`)."""
     _, project, token = setup(client, admin_token, "Risk Nav Co")
     resp = client.get(f"/api/v1/projects/{project['id']}/enabled-modules", headers=auth_headers(token))

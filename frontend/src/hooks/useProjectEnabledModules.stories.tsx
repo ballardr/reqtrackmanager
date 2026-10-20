@@ -4,7 +4,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api, ApiError } from "../api/client";
 import type { ModuleNavEntry } from "../api/types";
-import { useProjectEnabledModules } from "./useProjectEnabledModules";
+import { refreshProjectEnabledModules, useProjectEnabledModules } from "./useProjectEnabledModules";
 
 /** Renders the hook's own `loaded`/`modules` result as text — the hook has
  * no UI of its own, so this is the thinnest possible harness for exercising
@@ -108,5 +108,34 @@ export const DoesNotFetchUntilReady: Story = {
 
     await userEvent.click(canvas.getByRole("button", { name: "Become ready" }));
     await waitFor(() => expect(canvas.getByText("loaded:1")).toBeInTheDocument());
+  },
+};
+
+/** `refreshProjectEnabledModules(projectId)` re-fetches for that project only, without dropping back to
+ * `loading`; a failed refresh keeps the list already shown. */
+export const RefreshesWhenToldAndKeepsTheListOnFailure: Story = {
+  beforeEach: () => {
+    let calls = 0;
+    spyOn(api, "get").mockImplementation(async () => {
+      calls += 1;
+      if (calls === 1) return [];
+      if (calls === 2) return FIXTURE_MODULES;
+      throw new ApiError(500, "Transient failure.");
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("loaded:0")).toBeInTheDocument());
+
+    refreshProjectEnabledModules("another-project");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(api.get).toHaveBeenCalledTimes(1);
+
+    refreshProjectEnabledModules("proj-1");
+    await waitFor(() => expect(canvas.getByText("loaded:1")).toBeInTheDocument());
+
+    refreshProjectEnabledModules("proj-1");
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(3));
+    await expect(canvas.getByText("loaded:1")).toBeInTheDocument();
   },
 };

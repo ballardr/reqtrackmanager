@@ -2,7 +2,7 @@
  * Module: modules/compliance/StandardFormModal
  *
  * The create/edit dialog for a `ComplianceStandard` (§2) — extracted out of
- * `StandardsPanel.tsx` (docs/compliance-module-plan.md Phase 18, "Compliance
+ * `StandardsPanel.tsx` ("Compliance
  * Standards" as a first-class, cross-org, project-like nav entity) so both
  * the new cross-org `/standards` list page (`StandardListPage.tsx`, create)
  * and the per-standard `/standards/:standardId` workspace
@@ -11,8 +11,7 @@
  * rule (docs/ux-style-guide.md Principle 8).
  *
  * Create mode always also creates the standard's mandatory first (draft)
- * version in the same dialog (a standard is never left with zero versions —
- * Phase 12's original design decision, unchanged here). When the caller can
+ * version in the same dialog (a standard is never left with zero versions). When the caller can
  * manage standards in more than one organisation, an "Organisation" picker
  * is the dialog's first field — the exact same "org picker as the first
  * field of the same create dialog, hidden entirely when there's only one
@@ -25,13 +24,18 @@
  * which makes the creator the owner until it is reassigned from the edit
  * dialog.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import type { OrgUser, PrincipalRef } from "../../api/types";
 import { principalRef, savedPrincipalDisplay } from "../../api/types";
 import { Modal } from "../../components/Modal";
 import { PrincipalFormField } from "../../components/PrincipalFormField";
 import type { ComplianceStandard } from "./types";
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
+import { LabeledSelect } from "../../components/LabeledSelect";
+import { FormActions } from "../../components/FormActions";
+import { DateField, TextAreaField, TextField } from "../../components/FormFields";
+import { COMPLIANCE_HELP } from "./help";
 
 export interface StandardFormValues {
   reference: string;
@@ -86,33 +90,18 @@ export function StandardFormModal({
   onCancel: () => void;
   onSave: (values: StandardFormValues | EditableStandardFieldValues, organizationId: string) => void;
 }) {
-  const [selectedOrgId, setSelectedOrgId] = useState(orgId ?? (orgs?.length === 1 ? orgs[0].id : ""));
-  // `orgs` is frequently still loading (an async fetch on the caller's own
-  // page, e.g. `StandardListPage.tsx`'s `reload()`) at the exact moment
-  // this modal first mounts — `useState`'s initializer above only runs
-  // once, so a caller with genuinely exactly one candidate org, whose
-  // `orgs` prop is still `[]`/loading at mount, would otherwise be stuck
-  // with `selectedOrgId === ""` forever, permanently disabling Save with
-  // no picker ever shown to fix it (no `orgs.length > 1`, so no UI
-  // surfaces the problem either). Auto-fills only for that single-
-  // candidate case, once `orgs` finishes loading — **never** for a
-  // multi-org caller: an earlier version of this effect auto-filled from
-  // `orgs[0].id` whenever nothing had been chosen yet, without checking
-  // `orgs.length`, which silently picked whichever organisation happened
-  // to load first (not necessarily the one shown as the picker's first
-  // option, since the fill could race ahead of the picker's own re-render)
-  // — a real, found-in-verification bug that could create a standard in
-  // the wrong organisation with no error and no visual sign anything went
-  // wrong. For `orgs.length > 1`, `selectedOrgId` is left blank until the
-  // caller explicitly chooses in the picker — Save stays correctly
-  // disabled until they do, exactly like the pre-existing case where
-  // `orgs` hasn't loaded at all yet.
-  useEffect(() => {
-    if (!selectedOrgId && (orgId || orgs?.length === 1)) {
-      setSelectedOrgId(orgId ?? orgs![0].id);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, orgs]);
+  const [chosenOrgId, setSelectedOrgId] = useState("");
+  // The organisation is derived, not copied into state by an effect: `orgs` is
+  // frequently still loading (an async fetch on the caller's own page, e.g.
+  // `StandardListPage.tsx`'s `reload()`) when this modal first mounts, so a
+  // caller with exactly one candidate org must pick it up once `orgs` arrives.
+  // **Never** for a multi-org caller: auto-filling from `orgs[0].id` whenever
+  // nothing was chosen once silently picked whichever organisation loaded first
+  // (not necessarily the picker's first option) and created a standard in the
+  // wrong organisation with no error. For `orgs.length > 1` the value stays
+  // blank until the caller chooses in the picker, so Save stays disabled until
+  // they do.
+  const selectedOrgId = chosenOrgId || (orgId ?? (orgs?.length === 1 ? orgs[0].id : ""));
   const [reference, setReference] = useState(initial?.reference ?? "");
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
@@ -148,86 +137,59 @@ export function StandardFormModal({
   }
 
   return (
-    <Modal title={initial ? "Edit standard" : "New standard"} onClose={onCancel}>
+    <Modal title={initial ? "Edit standard" : "New standard"} onClose={onCancel} size="lg">
       <div className="stack">
-        {!initial && orgs && orgs.length > 1 && (
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            <span>Organisation</span>
-            <select
-              className="input"
-              value={selectedOrgId}
-              onChange={(e) => setSelectedOrgId(e.target.value)}
-              aria-label="Organisation"
-              autoFocus
-            >
-              {orgs.map((o) => (
-                <option key={o.id} value={o.id}>{o.name}</option>
-              ))}
-            </select>
-          </label>
-        )}
-        {!initial && (
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            <span>Reference</span>
-            <input
-              className="input"
+        <FormGrid minColumn="18rem">
+          {!initial && orgs && orgs.length > 1 && (
+            <FormGridFull>
+              <LabeledSelect helpNotNeeded required
+                label="Organisation" value={selectedOrgId} onChange={setSelectedOrgId}
+                options={orgs.map((o) => ({ value: o.id, label: o.name }))} placeholder={null}
+              />
+            </FormGridFull>
+          )}
+          {!initial && (
+            <TextField help={COMPLIANCE_HELP.complianceStandardReference} required
+              label="Reference"
+              ariaLabel="Standard reference"
               value={reference}
-              onChange={(e) => setReference(e.target.value)}
+              onChange={setReference}
               placeholder="e.g. ISO-27001"
-              aria-label="Standard reference"
-              autoFocus={!(orgs && orgs.length > 1)}
+              inputProps={{ autoFocus: !(orgs && orgs.length > 1) }}
             />
-          </label>
-        )}
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Name</span>
-          <input className="input" value={name} onChange={(e) => setName(e.target.value)} aria-label="Standard name" />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Description</span>
-          <textarea className="input" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Issuing organisation</span>
-          <input className="input" value={issuingOrganisation} onChange={(e) => setIssuingOrganisation(e.target.value)} />
-        </label>
-        {initial && (
-          <PrincipalFormField
-            label="Owner"
-            kinds={["user", "org_group"]}
-            orgUsers={orgUsers}
-            organizationId={resolvedOrgId}
-            value={owner}
-            display={savedPrincipalDisplay(owner, initial.owner)}
-            onChange={setOwner}
-            ariaLabel="Standard owner"
-            placeholder="Select an owner…"
-          />
-        )}
-        {!initial && (
-          <>
-            <h3 style={{ margin: "0.5rem 0 0" }}>Initial version</h3>
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              <span>Initial version label</span>
-              <input className="input" value={versionLabel} onChange={(e) => setVersionLabel(e.target.value)} placeholder="e.g. 1.0" aria-label="Initial version label" />
-            </label>
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              <span>Effective date</span>
-              <input className="input" type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} />
-            </label>
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              <span>Change note</span>
-              <textarea className="input" value={changeNote} onChange={(e) => setChangeNote(e.target.value)} rows={2} />
-            </label>
-          </>
-        )}
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" disabled={!canSave} onClick={handleSave}>
-            Save
-          </button>
-        </div>
+          )}
+          <TextField helpNotNeeded required label="Name" ariaLabel="Standard name" value={name} onChange={setName} />
+          <FormGridFull>
+            <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} rows={3} />
+          </FormGridFull>
+          <TextField helpNotNeeded label="Issuing organisation" value={issuingOrganisation} onChange={setIssuingOrganisation} />
+          {initial && (
+            <PrincipalFormField helpNotNeeded required
+              label="Owner"
+              kinds={["user", "org_group"]}
+              orgUsers={orgUsers}
+              organizationId={resolvedOrgId}
+              value={owner}
+              display={savedPrincipalDisplay(owner, initial.owner)}
+              onChange={setOwner}
+              ariaLabel="Standard owner"
+              placeholder="Select an owner…"
+            />
+          )}
+          {!initial && (
+            <>
+              <FormGridFull>
+                <h3 style={{ margin: "0.5rem 0 0" }}>Initial version</h3>
+              </FormGridFull>
+              <TextField helpNotNeeded required label="Initial version label" value={versionLabel} onChange={setVersionLabel} placeholder="e.g. 1.0" />
+              <DateField help={COMPLIANCE_HELP.complianceEffectiveDate} label="Effective date" value={effectiveDate} onChange={setEffectiveDate} />
+              <FormGridFull>
+                <TextAreaField helpNotNeeded label="Change note" value={changeNote} onChange={setChangeNote} rows={2} />
+              </FormGridFull>
+            </>
+          )}
+        </FormGrid>
+        <FormActions error={error} onCancel={onCancel} onSave={handleSave} saveDisabled={!canSave} />
       </div>
     </Modal>
   );

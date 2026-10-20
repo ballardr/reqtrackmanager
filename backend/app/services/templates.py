@@ -11,8 +11,7 @@ stages/baselines/change-request history, since a template is a starting
 point for a new project's own lifecycle, not a copy of the source
 project's current lifecycle state.
 
-Direct `UserProjectRole` grants are copied as of the follow-up UX batch's
-Phase C (2026-08-31, docs/decisions.md): once a project's initial manager
+Direct `UserProjectRole` grants are copied 2026-08-31 (2026-08-31, docs/decisions.md): once a project's initial manager
 (and any other directly-granted role) is normally established via a direct
 grant rather than group membership (`routers.projects.create_project`'s
 non-template path), a template project's own directly-granted managers/
@@ -20,7 +19,7 @@ admins/stakeholders/members would otherwise silently vanish on clone for
 everyone except whoever happens to be doing the cloning (who still gets a
 manager role via `_ensure_project_has_a_manager`'s fallback, but nobody
 else the template creator intended to carry over). This was a real,
-identified gap in an earlier draft of that phase's plan, not a
+identified gap in an earlier draft, not a
 pre-existing, deliberately-scoped-out behaviour.
 
 The new project's `status_id` is deliberately *not* copied from the
@@ -53,14 +52,16 @@ from app.models.project import (
     ProjectStage,
     UserProjectRole,
 )
-from app.models.requirement import Requirement, RequirementKeyword, RequirementVersion
+from app.models.requirement import Requirement, RequirementVersion
 from app.models.user import User
+from app.services.codes import generate_project_code
 from app.services.definitions import get_default_project_status_id
-from app.services.requirements import get_current_version
+from app.services.requirements import get_current_version, get_keywords, set_keywords
 
 
 def clone_project(
-    db: Session, source: Project, *, name: str, summary: str, creator: User, parent_project_id: UUID | None = None
+    db: Session, source: Project, *, name: str, summary: str, creator: User, parent_project_id: UUID | None = None,
+    code: str | None = None,
 ) -> Project:
     """Creates a new project by copying a template project's configuration.
 
@@ -78,12 +79,16 @@ def clone_project(
             manages the parent) is the caller's responsibility
             (`routers.projects.create_project`), same as every other field
             here.
+        code: The new project's code, already validated by the caller; when omitted one is
+            generated from `name` under the organisation's policy. The template's own code
+            is never copied.
 
     Returns:
         The newly created Project.
     """
     new_project = Project(
         organization_id=source.organization_id, name=name, summary=summary,
+        code=code or generate_project_code(db, source.organization_id, name),
         allow_member_change_requests=source.allow_member_change_requests,
         require_change_request_for_approved_links=source.require_change_request_for_approved_links,
         exempt_from_org_link_lock=source.exempt_from_org_link_lock,
@@ -145,7 +150,7 @@ def clone_project(
         db.add(new_group)
         db.flush()
         group_id_map[group.id] = new_group.id
-        # Roles (PR7, docs/decisions.md): a group's role(s) live in the
+        # Roles (docs/decisions.md): a group's role(s) live in the
         # separate ProjectGroupRole grant table now, not a scalar column on
         # ProjectGroup itself — copy every role the template's group holds,
         # not just one, the same "copy everything" precedent this loop
@@ -158,7 +163,7 @@ def clone_project(
             # All three member-target kinds are copied — `source_project_id`
             # ("this group's members = that project's own direct members")
             # was a real, pre-existing gap found while reviewing this
-            # function for Phase C: only `user_id`/`org_group_id` were ever
+            # function: only `user_id`/`org_group_id` were ever
             # carried over, so a template group referencing another
             # project's roster silently lost that reference on every clone.
             # `source_project_id` itself points at the *original* project it
@@ -175,7 +180,7 @@ def clone_project(
                 )
             )
 
-    # Direct role grants (Phase C, follow-up UX batch, 2026-08-31 — see this
+    # Direct role grants (2026-08-31 — see this
     # module's own docstring for why this is now needed). Copied verbatim,
     # including any `PROJECT_MANAGER` grant the template's own creator or
     # anyone else held directly — `_ensure_project_has_a_manager`
@@ -229,9 +234,9 @@ def clone_project(
                 custom_fields=remapped_custom_fields,
             )
         )
-        keywords = db.scalars(select(RequirementKeyword.keyword).where(RequirementKeyword.requirement_id == requirement.id)).all()
-        for keyword in keywords:
-            db.add(RequirementKeyword(requirement_id=new_requirement.id, keyword=keyword))
+        keywords = get_keywords(db, requirement.id)
+        if keywords:
+            set_keywords(db, new_requirement, keywords, creator.id)
 
     return new_project
 

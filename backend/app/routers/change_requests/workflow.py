@@ -45,6 +45,7 @@ from app.services import notifications, pubsub
 from app.services.actions import generate_unique_code as generate_action_unique_code
 from app.services.audit import log_event
 from app.services.change_request_links import build_preview, decline_all, resolve_links
+from app.services.codes import qualify
 from app.services.principals import revalidated_principal, revalidated_principal_columns
 from app.services.rbac import (
     get_effective_project_roles,
@@ -81,7 +82,16 @@ def _display_title(db: Session, cr: ChangeRequest, version: ChangeRequestVersion
     silently rendering "None" (a pre-existing gap for a MODIFY_REQUIREMENT
     CR that doesn't rename anything, found while adding ADD_ACTION — item
     514's own new kind never sets `proposed_name` at all, so it would hit
-    this on every single notification without a fallback)."""
+    this on every single notification without a fallback). The request's qualified code leads the
+    title (`ACME-CR-003 Wider doors`): a notification is read out of any project's context, so a
+    bare `CR-003` would be ambiguous."""
+    project = db.get(Project, cr.project_id)
+    code = qualify(project.code, cr.unique_code) if project is not None else cr.unique_code
+    return f"{code} {_title_text(db, cr, version)}"
+
+
+def _title_text(db: Session, cr: ChangeRequest, version: ChangeRequestVersion) -> str:
+    """The title text of `_display_title`, without the code."""
     if version.proposed_name:
         return version.proposed_name
     if cr.kind == ChangeRequestKind.ADD_ACTION:
@@ -273,9 +283,7 @@ def decide_change_request(
                 reasoning=version.proposed_reasoning if "reasoning" in changed else None,
                 clarification=version.proposed_clarification if "clarification" in changed else None,
                 description=version.proposed_description if "description" in changed else None,
-                # Was unconditionally `RequirementStatus.APPROVED` (2026-08
-                # UX audit roadmap, found alongside "No requirement approval
-                # action") — silently reverted an already-completed
+                # Was unconditionally `RequirementStatus.APPROVED` — silently reverted an already-completed
                 # requirement's *lifecycle status* as a side effect of any
                 # modify-CR approval. `create_change_request`'s own guard
                 # (above) only allows a MODIFY_REQUIREMENT change request
@@ -416,7 +424,7 @@ def decide_change_request(
                         },
                     )
         elif cr.kind == ChangeRequestKind.REMOVE_ACTION:
-            # Platform review 2026-09, Phase 8 — mirrors ADD_ACTION's own
+            # Mirrors ADD_ACTION's own
             # re-check above: the link could have already been removed
             # directly (before this requirement was re-locked, say) between
             # submission and approval, so re-verify rather than assume.
@@ -436,11 +444,11 @@ def decide_change_request(
                 )
                 db.delete(existing)
         elif cr.kind == ChangeRequestKind.ADD_LINK:
-            # Phase 6b: an add-link request is nothing but its proposed links, which
+            # An add-link request is nothing but its proposed links, which
             # `resolve_links` below merges (re-validated now, as the approver chose).
             pass
         elif cr.kind == ChangeRequestKind.REMOVE_LINK:
-            # Platform review 2026-09, Phase 8 — same re-check posture as
+            # Same re-check posture as
             # ADD_LINK above: the link may already have been removed via
             # some other path between submission and approval.
             link = db.get(ArtefactLink, version.proposed_link_id)
@@ -504,7 +512,11 @@ def decide_change_request(
         decline_all(version)
         change_requests_rejected_total.inc()
 
-    decision_detail: dict = {"note": payload.note, "via": "mcp"} if channel == "mcp" else {"note": payload.note}
+    # The decision note is stored as `comment`, the key every other workflow step uses, so the
+    # activity timeline shows it through one rule.
+    decision_detail: dict = {"comment": payload.note} if payload.note else {}
+    if channel == "mcp":
+        decision_detail["via"] = "mcp"
     if link_result is not None:
         decision_detail["links"] = {
             "merged": link_result.merged, "declined": link_result.declined, "skipped": link_result.skipped,

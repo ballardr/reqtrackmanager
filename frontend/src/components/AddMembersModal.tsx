@@ -55,6 +55,7 @@ import { PROJECT_ROLE_LABEL } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import { Modal } from "./Modal";
 import { UserAutocomplete } from "./UserAutocomplete";
+import { FormActions } from "./FormActions";
 
 export type StagedMemberKind = "user" | "group" | "external";
 
@@ -276,21 +277,13 @@ export function AddMembersModal({
           </ul>
         )}
 
-        <div className="row" style={{ justifyContent: onBack ? "space-between" : "flex-end" }}>
-          {onBack && (
-            <button className="btn" onClick={onBack}>
-              {strings.common.back}
-            </button>
-          )}
-          <div className="row">
-            <button className="btn" onClick={onClose}>
-              {strings.common.cancel}
-            </button>
-            <button className="btn btn-primary" onClick={handleCommit} disabled={staged.length === 0 || committing}>
-              {strings.admin.addSelectedMembers(staged.length)}
-            </button>
-          </div>
-        </div>
+        <FormActions
+          leading={onBack && <button className="btn" onClick={onBack}>{strings.common.back}</button>}
+          onCancel={onClose}
+          onSave={handleCommit}
+          saveLabel={strings.admin.addSelectedMembers(staged.length)}
+          saveDisabled={staged.length === 0 || committing}
+        />
       </div>
     </Modal>
   );

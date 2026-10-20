@@ -2,7 +2,7 @@
 Module: services.principals
 
 The one mechanism for a field that names "who": a user, an organisation group
-or a project group (docs/plans/users-and-groups-parity-plan.md). A record
+or a project group. A record
 field becomes a `<name>_type` / `<name>_id` column pair (`models.principal`)
 and everything about it goes through this module, so every module resolves,
 filters, displays, notifies and deletes a group-owned record the same way.
@@ -83,7 +83,7 @@ def _open_change_request_versions() -> ColumnElement[bool]:
     )
 
 
-# Core fields built as principals (Phase 6 of the plan). A module's own fields are declared on its
+# Core fields built as principals. A module's own fields are declared on its
 # `ModuleDefinition.principal_references` instead.
 CORE_PRINCIPAL_REFERENCES: tuple[PrincipalReference, ...] = (
     PrincipalReference(

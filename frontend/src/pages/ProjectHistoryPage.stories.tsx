@@ -14,8 +14,7 @@ export default meta;
 
 type Story = StoryObj<typeof ProjectHistoryPage>;
 
-/** Converted onto the shared `ActivityPanel` component (2026-08 UX audit
- * roadmap row 515), replacing this page's previous hand-rolled list
+/** Converted onto the shared `ActivityPanel` component, replacing this page's previous hand-rolled list
  * markup — each row now also carries a link to the item it's about
  * (`getLink`/`activityEntryLink`), which the old markup already had but
  * this asserts explicitly now that it's `ActivityPanel`'s own `getLink`
@@ -65,7 +64,7 @@ export const FilterByEntityType: Story = {
   },
 };
 
-/** U-P-06 / 2026-08 UX audit "Scale: two unbounded lists" — this timeline
+/** U-P-06 "Scale: two unbounded lists" — this timeline
  * previously fetched every change with no `limit`/`offset` at all. Clicking
  * "Load more" requests the next page at the correct offset and appends its
  * items below the first page's, rather than replacing them. */

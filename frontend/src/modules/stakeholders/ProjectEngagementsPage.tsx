@@ -25,6 +25,12 @@ import { EngagementFormModal } from "./EngagementFormModal";
 import { RecordListView } from "./RecordListView";
 import type { Engagement, EngagementFieldValues } from "./types";
 import { ENGAGEMENT_CHANNEL_LABEL } from "./types";
+import { Badge } from "../../components/Badge";
+import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
+import { useCommitTags } from "../../hooks/useCommitTags";
+import { rowProjectId } from "../../api/projectScope";
+import { useProjectScope } from "../../hooks/useProjectScope";
+import { useTagFilter } from "../../hooks/useTagFilter";
 
 type Option = { value: string; label: string };
 
@@ -37,6 +43,10 @@ export function ProjectEngagementsPage() {
   const findingId = searchParams.get("finding");
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "engagement");
+  const commitTags = useCommitTags(projectId ?? "", "engagement");
+  const tagFilter = useTagFilter();
+  const projectScope = useProjectScope(projectId);
   const [engagements, setEngagements] = useState<EngagementRow[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filters, setFilters] = useState<EngagementListFilters>({});
@@ -60,7 +70,7 @@ export function ProjectEngagementsPage() {
     if (!projectId || findingId) return;
     let active = true;
     projectEngagementApi
-      .list(projectId, filters)
+      .list(projectId, { ...filters, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope })
       .then((list) => {
         if (!active) return;
         setEngagements(list.map((e) => ({ ...e, name: e.title })));
@@ -72,7 +82,7 @@ export function ProjectEngagementsPage() {
     return () => {
       active = false;
     };
-  }, [projectId, findingId, filters, refreshKey]);
+  }, [projectId, findingId, filters, refreshKey, tagFilter.tags, tagFilter.mode, projectScope.scope]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -111,14 +121,13 @@ export function ProjectEngagementsPage() {
         typeLabel="Channel"
         searchText={(e) => `${e.unique_code} ${e.title} ${e.summary}`}
         columnsBeforeType={[
-          { key: "code", label: "Code", render: (e) => <span className="text-muted">{e.unique_code}</span> },
           { key: "date", label: "Date", render: (e) => e.engagement_date },
         ]}
         columnsAfterScope={[
           { key: "participants", label: "Participants", render: (e) => e.participant_count + e.anonymous_participant_count },
           {
             key: "retention", label: "Retention",
-            render: (e) => (e.retention_due ? <span className="badge badge--warning">Review due</span> : e.retain_until ? `Until ${e.retain_until}` : "—"),
+            render: (e) => (e.retention_due ? <Badge tone="warning">Review due</Badge> : e.retain_until ? `Until ${e.retain_until}` : "—"),
           },
         ]}
         extraFilters={
@@ -134,13 +143,19 @@ export function ProjectEngagementsPage() {
             <FilterCheckbox label="Retention review due" checked={filters.retention_due === true} onChange={(next) => setFilter({ retention_due: next ? true : undefined })} />
           </>
         }
-        onOpen={(e) => navigate(`/projects/${projectId}/modules/stakeholders/engagements/${e.id}`)}
-        onCreate={async (values) => {
-          await projectEngagementApi.create(projectId, values);
+        onOpen={(e) => navigate(`/projects/${rowProjectId(e, projectId)}/modules/stakeholders/engagements/${e.id}`)}
+        tagFilter={{ projectId, filter: tagFilter }}
+        projectScope={projectScope}
+        onCreate={async (values, quickLinks, tags) => {
+          const created = await projectEngagementApi.create(projectId, values);
           showToast("Engagement logged.");
           reload();
+          await commitQuickLinks(created.id, quickLinks);
+          await commitTags(created.id, tags);
         }}
-        renderCreateModal={(props) => <EngagementFormModal error={props.error} onCancel={props.onCancel} onSave={props.onSave} />}
+        renderCreateModal={(props) => (
+          <EngagementFormModal projectId={projectId} error={props.error} onCancel={props.onCancel} onSave={props.onSave} />
+        )}
       />
     </div>
   );

@@ -1,14 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { installCleanupHook } from "../../e2e-workflows/helpers";
+import { installCleanupHook, chooseRecordAction, selectOptionContaining } from "../../e2e-workflows/helpers";
 import { API_BASE_URL, setUpOrg } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
 
 /**
- * Job to be done: docs/plans/module-02-stakeholders-and-personas-plan.md
- * Phase 5's exit criteria — Playwright e2e coverage for the Engagement UI
+ * Job to be done:
+ * Playwright e2e coverage for the Engagement UI
  * (`frontend/src/modules/stakeholders/`) against a real backend: log, edit and
  * permanently delete an engagement; add participants and covered Personas;
  * aim it at a Stakeholder group (a snapshot of members); log a contact from a
@@ -31,7 +31,11 @@ async function post<T>(page: Page, url: string, headers: Headers, data: object):
 }
 
 const projectBase = (projectId: string) => `${API_BASE_URL}/api/v1/projects/${projectId}/modules/stakeholders`;
-const today = () => new Date().toISOString().slice(0, 10);
+/** Today as YYYY-MM-DD in the local timezone: the date the engagement form defaults to, and the day the server counts as "today" for the caller (`X-Client-Date`). */
+const today = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+};
 
 test.describe("Stakeholders & Personas: Engagements", () => {
   test("logs, edits and permanently deletes an engagement", async ({ page }) => {
@@ -77,7 +81,7 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await expect(page.getByText("Retention review due")).toBeVisible();
 
     // --- Permanent delete is a tier-2 confirm needing the exact title.
-    await page.getByRole("button", { name: "Delete permanently" }).click();
+    await chooseRecordAction(page, "Engagement", "Delete permanently");
     const confirm = page.getByRole("dialog", { name: `Permanently delete ${title}?` });
     const confirmButton = confirm.getByRole("button", { name: "Delete permanently" });
     await expect(confirmButton).toBeDisabled();
@@ -226,7 +230,7 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await page.getByRole("button", { name: "Add to Raised and answered" }).click();
     const addOutcome = page.getByRole("dialog", { name: "Record an outcome" });
     await addOutcome.getByLabel("Outcome type").selectOption({ label: "Stakeholder Need" });
-    await addOutcome.getByLabel("Outcome record").selectOption({ label: needName });
+    await selectOptionContaining(addOutcome.getByLabel("Outcome record"), needName);
     await addOutcome.getByRole("button", { name: "Add outcome" }).click();
     await expect(page.getByText("Outcome recorded.")).toBeVisible();
     await expect(page.getByText("Raised · Stakeholder Need:")).toBeVisible();
@@ -304,7 +308,7 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await card.getByRole("button", { name: "Add link" }).click();
     const linkDialog = page.getByRole("dialog", { name: "Add a link" });
     await linkDialog.getByLabel("Link to").selectOption({ label: "Stakeholder need" });
-    await linkDialog.getByLabel("Record").selectOption({ label: needName });
+    await selectOptionContaining(linkDialog.getByLabel("Record"), needName);
     await linkDialog.getByLabel("Relationship").selectOption({ label: "Raised" });
     await linkDialog.getByRole("button", { name: "Add link" }).click();
     await expect(page.getByText("Link added.").last()).toBeVisible();

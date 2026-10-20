@@ -1,9 +1,9 @@
 /**
  * Module: modules/decisions/DecisionTemplatesPanel
  *
- * The org-scoped Decision Template library (Phase 0 addendum items 1/2/6/7)
+ * The org-scoped Decision Template library
  * — registered as this module's `orgAdminSections` contribution
- * (`module.ts`; moved here from `orgOverviewSections` in Phase 9,
+ * (`module.ts`; moved here from `orgOverviewSections` on
  * 2026-09-22, per explicit user direction — an org admin manages this
  * library on Org Management, not the Org Dashboard), the org-level
  * counterpart to the opt-in template-pack picker
@@ -25,7 +25,7 @@
  * shortcut; "Edit" is still listed in the menu too, since a shortcut is
  * never a substitute for a menu entry.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Pencil, Trash2 } from "lucide-react";
 
 import { ActionMenu } from "../../components/ActionMenu";
@@ -36,6 +36,7 @@ import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as decisionsApi from "./api";
 import { DecisionTemplateFormModal } from "./DecisionTemplateFormModal";
 import type { DecisionTemplate } from "./types";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 export function DecisionTemplatesPanel({ orgId }: { orgId: string }) {
   const { showToast } = useToast();
@@ -55,10 +56,7 @@ export function DecisionTemplatesPanel({ orgId }: { orgId: string }) {
     }
   }
 
-  useEffect(() => {
-    void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId]);
+  useLoadOnChange(reload, [orgId]);
 
   if (loadError) return <div style={{ color: "var(--color-danger)" }}>{loadError}</div>;
   if (templates === null) return <Spinner />;

@@ -11,8 +11,7 @@ def _submitted_cr(client, admin_token, project_id, component_id, category_id):
         headers=auth_headers(admin_token),
     ).json()
     # A modify change request can only target an already-locked requirement
-    # (2026-08 UX audit roadmap, "No requirement approval action; change
-    # requests can target draft requirements") — approve it directly first.
+    # — approve it directly first.
     approve_resp = client.post(
         f"/api/v1/projects/{project_id}/requirements/{req['id']}/approve", headers=auth_headers(admin_token)
     )

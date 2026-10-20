@@ -2,31 +2,32 @@
  * Module: modules/context_strategy/OrgFutureStatesPanel
  *
  * The org-scoped equivalent of `ProjectFutureStatesPage.tsx` — an
- * organisation's own org-scoped Future State records (Phase 0 Q1's
- * follow-on scope discriminator), rendered as an `OrgOverviewPage.tsx`
+ * organisation's own org-scoped Future State records (the
+ * org/project scope discriminator), rendered as an `OrgOverviewPage.tsx`
  * `ResourceMenu` group (`module.ts`'s `orgOverviewSections`).
  *
  * **Placement, Decided by: Agent — follows `OrgStrategiesPanel.tsx`'s own
- * placement directly, per this phase's own brief ("use whatever surface
- * Phase 7.1 decided for Strategy's org-scoped list... for consistency,
- * unless you find a concrete reason Future State should differ").** No such
- * reason was found: an org-scoped Future State is the same kind of org-level
+ * placement directly, for consistency.** No reason for Future State to differ
+ * was found: an org-scoped Future State is the same kind of org-level
  * content a Future State Owner/Approver works with day to day that
  * `OrgStrategiesPanel.tsx`'s own docstring already reasons through for
  * Strategy, so it lands on `orgOverviewSections` (Org Dashboard) too, not
  * `orgAdminSections` (Org Management).
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { orgFutureStateApi } from "./api";
 import { FutureStateFormModal } from "./FutureStateFormModal";
 import { FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE } from "./types";
 import type { FutureState, FutureStateFieldValues, FutureStateStatus } from "./types";
+import { Badge } from "../../components/Badge";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 export function OrgFutureStatesPanel({ orgId }: { orgId: string }) {
   const navigate = useNavigate();
@@ -50,25 +51,23 @@ export function OrgFutureStatesPanel({ orgId }: { orgId: string }) {
     }
   }
 
-  useEffect(() => {
-    void reloadFutureStates();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, includeArchived]);
+  useLoadOnChange(reloadFutureStates, [orgId, includeArchived]);
 
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (futureStates === null) return <Spinner />;
 
   const filtered = futureStates.filter((fs) => {
     if (statusFilter && fs.status !== statusFilter) return false;
-    if (search && !fs.title.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !`{fs.unique_code} {fs.title}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
   const columns: DirectoryColumn<FutureState>[] = [
     { key: "title", label: "Title", render: (fs) => fs.title },
+    { key: "code", label: "Code", render: (fs) => <span className="text-muted"><ScopedRecordCode record={fs} /></span> },
     {
       key: "status", label: "Status",
-      render: (fs) => <span className={`badge badge--${FUTURE_STATE_STATUS_TONE[fs.status]}`}>{FUTURE_STATE_STATUS_LABEL[fs.status]}</span>,
+      render: (fs) => <Badge tone={FUTURE_STATE_STATUS_TONE[fs.status]}>{FUTURE_STATE_STATUS_LABEL[fs.status]}</Badge>,
     },
     { key: "target_date", label: "Target date", render: (fs) => fs.target_date ?? "—" },
     { key: "version", label: "Version", render: (fs) => `v${fs.version_number}` },

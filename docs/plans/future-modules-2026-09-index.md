@@ -1,7 +1,7 @@
 # Future Modules (Sept 2026) — Plan Index
 
 This document is the entry point for the ten-module roadmap proposed in
-[future-modules-2026-09-overview.md](future-modules-2026-09-overview.md)
+[future-modules-2026-09-overview.md](completed/future-modules-2026-09-overview.md)
 ("the overview"), plus two modules this planning pass added that aren't
 part of the overview's own ten: **Module 0 — Platform Foundations**, the
 shared infrastructure (a generic cross-artefact relationship model and
@@ -20,7 +20,7 @@ A third, similarly cross-cutting and authorization-sensitive capability —
 scoped here as "Module 12" — was reclassified from an optional module to
 **core platform infrastructure** on 2026-09-23 (**Decided by: User**), for
 reasons recorded in its own plan's opening section
-([core-fine-grained-access-control-plan.md](core-fine-grained-access-control-plan.md)):
+([core-fine-grained-access-control-plan.md](completed/core-fine-grained-access-control-plan.md)):
 `docs/requirements.md` already treats customisable permissions as core v2
 product direction rather than an optional add-on, and Decision Management
 (Module 4) Phase 8 was already concretely blocked on it existing. It is
@@ -85,18 +85,18 @@ that discussion; this just reorders the table to match it).
 
 | Order | # | Module | Status | Plan | Depends on (hard) | Depends on (soft — enriches, not blocks) | Overview section(s) |
 |---|---|---|---|---|---|---|---|
-| — | — | Platform Foundations | **Built** | [module-00-platform-foundations-plan.md](module-00-platform-foundations-plan.md) | — (build this first) | — | not in the overview's own list — see "Module dependency graph" below |
-| — | — | Fine-Grained Access Control (core, formerly "Module 12") | **Built** (10/10, 2026-09-27) | [core-fine-grained-access-control-plan.md](core-fine-grained-access-control-plan.md) | — (core infrastructure, no content module "depends on" it — see note below) | — | not in the overview at all — requested by the user 2026-09-21, reclassified to core 2026-09-23 |
+| — | — | Platform Foundations | **Built** | [module-00-platform-foundations-plan.md](completed/module-00-platform-foundations-plan.md) | — (build this first) | — | not in the overview's own list — see "Module dependency graph" below |
+| — | — | Fine-Grained Access Control (core, formerly "Module 12") | **Built** (10/10, 2026-09-27) | [core-fine-grained-access-control-plan.md](completed/core-fine-grained-access-control-plan.md) | — (core infrastructure, no content module "depends on" it — see note below) | — | not in the overview at all — requested by the user 2026-09-21, reclassified to core 2026-09-23 |
 | — | 4 | Decision Management | **9/10** — Phase 7 (reserved-relationship wiring) blocked on Module 1 and/or Module 6 below | [module-04-decision-management-plan.md](module-04-decision-management-plan.md) | Module 0 | Context & Strategy (1) — Open Question/Pain Point/Strategy/Guiding Principle relationship targets only (Phase 7) | §13 (labelled §10 in the source doc; see note in that plan) |
-| — | 1 | Context & Strategy | **Built** (original 13 phases, 2026-09-29); Reporting extension added 2026-10-04 (18/20 — Phases 9–12 done: scoring core, per-persona scoring, report backend R1–R9 on 2026-10-05; Phase 12b extracted the module-neutral report framework into core on 2026-10-06; Phase 13 Reports UI is next) | [module-01-context-and-strategy-plan.md](module-01-context-and-strategy-plan.md) | Module 0 | — | §5–9 |
+| — | 1 | Context & Strategy | **Built** (original 13 phases, 2026-09-29); Reporting extension added 2026-10-04 (18/20 — Phases 9–12 done: scoring core, per-persona scoring, report backend R1–R9 on 2026-10-05; Phase 12b extracted the module-neutral report framework into core on 2026-10-06; Phase 13 Reports UI is next) | [module-01-context-and-strategy-plan.md](completed/module-01-context-and-strategy-plan.md) | Module 0 | — | §5–9 |
 | **Next** | 2 | Stakeholders & Personas | In progress: Phase 0 signed off 2026-10-05 (Personas get a separate table; addenda add Engagements with research extras, stakeholder cadence, and reports S1–S5, now 9 phases); Phase 1.1 (Persona) shipped 2026-10-05 and unblocks Module 1's per-persona Pain Point scoring (2026-10-04, **Decided by: User**); Phase 1.2 (Stakeholder) and Phase 2 (Stakeholder Needs) shipped 2026-10-05; Phases 3 (Relationships), 3b (per-project visibility), 3c (Stakeholder Groups), 7a (docs), 4 (Engagements backend, 2026-10-13) and 5 (Engagements UI, 2026-10-13) are done; Phase 6 (reports) is next, then 7b | [module-02-stakeholders-and-personas-plan.md](module-02-stakeholders-and-personas-plan.md) | Module 0, Requirements (existing) | — | §10 |
 | 3 | 5 | Requirements & Requirement Libraries | Not started | [module-05-requirements-and-libraries-plan.md](module-05-requirements-and-libraries-plan.md) | — (already largely built; does not need Module 0) | — | §14–16 |
 | 4 | 6 | Engineering Design | Not started | [module-06-engineering-design-plan.md](module-06-engineering-design-plan.md) | Module 0, Requirements (existing) | Decisions (4) — design/decision are usually created together, per the doc below; now satisfiable immediately, Decision Management having shipped | §3 Module 6 list, now superseded by [engineering-design-vs-decisions.md](engineering-design-vs-decisions.md) — a supplementary source the user provided 2026-09-16 with a full field-level spec, no longer the thinnest module |
-| 5 | 3 | Risk Management | Phases 0, 1a (core per-cell scoring override) and 1 (data model, scoring, RBAC, project API) shipped 2026-10-12; Phase 2 is next | [module-03-risk-management-plan.md](module-03-risk-management-plan.md) | Module 0, Requirements (existing) | Context (1), Decisions (4), Design (6), Verification (existing) — all four satisfied by this point in the order except Context, which lands immediately before it | §11 |
+| 5 | 3 | Risk Management | Phases 0, 1a (core per-cell scoring override) and 1 (data model, scoring, RBAC, project API) shipped 2026-10-12; Phase 2 is next | [module-03-risk-management-plan.md](completed/module-03-risk-management-plan.md) | Module 0, Requirements (existing) | Context (1), Decisions (4), Design (6), Verification (existing) — all four satisfied by this point in the order except Context, which lands immediately before it | §11 |
 | 6 | 8 | Governance / Policies | Not started | [module-08-governance-plan.md](module-08-governance-plan.md) | — (does not itself need Module 0 — it governs artefacts, it doesn't create relationships between them) | Traceability (7) and Compliance (9) results, once those exist, feed Governance Health | §29–36 |
 | 7 | 7 | Traceability | Not started | [module-07-traceability-plan.md](module-07-traceability-plan.md) | Module 0, Module 8 (Governance) | Every artefact type its configured rules target (1, 2, 3, 4, 5, 6, 9) — a rule targeting a type that doesn't exist yet just can't be configured yet | §17–28 |
 | 8 | 9 | Compliance Integration | Not started | [module-09-compliance-integration-plan.md](module-09-compliance-integration-plan.md) | Module 0, Compliance (existing, shipped), Module 7, Module 8 | Risk (3), Decisions (4) — reserved relationship targets | §37 |
-| 9 | 10 | Reporting & Analysis | Not started | [module-10-reporting-and-analysis-plan.md](module-10-reporting-and-analysis-plan.md) | Module 0 | Consumes whatever of 1–9 is enabled at generation time; degrades gracefully, never blocks on a module not existing | §47 |
+| 9 | 10 | Reporting & Analysis | Not started (re-planned 2026-10-20 as a custom-report layout designer over the core report framework; 0/16) | [module-10-reporting-and-analysis-plan.md](module-10-reporting-and-analysis-plan.md) | Module 0 | Consumes whatever of 1–9 is enabled at generation time; degrades gracefully, never blocks on a module not existing | §47 |
 | — | 13 | Product Variants | Not started — proposed 2026-10-04, generalised from tiers 2026-10-12 | [module-13-product-variants-plan.md](module-13-product-variants-plan.md) | Module 0 | Context & Strategy (1): intentional Pain Point → Variant links | not in the overview — requested by the user 2026-10-04 |
 | — | 14 | Product Feedback (Enhancement Requests) | Not started — proposed 2026-10-05; plan now, build after Modules 1 and 2 (**Decided by: User**) | [module-14-product-feedback-plan.md](module-14-product-feedback-plan.md) | Module 0 | Context & Strategy (1): Pain Point links + report hook; Stakeholders & Personas (2): requester/Engagement links | not in the overview — requested by the user 2026-10-05 |
 | — | 15 | Workflows (and the System Ontology) | Not started — planned 2026-10-13; Phase 0 sign-off open | [module-15-workflows-plan.md](module-15-workflows-plan.md) | Module 0; core creation and form contracts (that plan's Phases 2 and 3) | Every module with creatable types; modules contribute templates | not in the overview — requested by the user 2026-10-13 |
@@ -106,7 +106,7 @@ Fine-Grained Access Control (Custom Roles & Permissions) — formerly listed
 here as "Module 12" — has its own row above only as a **build-status
 entry**, so the table can show it as done; it was reclassified to core
 platform infrastructure on 2026-09-23 (see the top of this document and
-[core-fine-grained-access-control-plan.md](core-fine-grained-access-control-plan.md))
+[core-fine-grained-access-control-plan.md](completed/core-fine-grained-access-control-plan.md))
 and is deliberately excluded from the **module dependency graph and
 dependency columns**, the same way Module 0 is: neither is an enablement
 toggle any content-module row can be said to "depend on" or "not depend
@@ -526,7 +526,7 @@ in this repository.
 
 ## Foundational finding: the existing relationship model is requirement-specific
 
-**This finding is now owned by [Module 0 — Platform Foundations](module-00-platform-foundations-plan.md),
+**This finding is now owned by [Module 0 — Platform Foundations](completed/module-00-platform-foundations-plan.md),
 not Module 1** — split out on 2026-09-16 once it became clear the same
 infrastructure blocks Module 4 (Decision Management) just as much as
 Module 1, and that fixing it in place, ahead of every content module,
@@ -649,7 +649,7 @@ questions the overview leaves open across the whole roadmap:
    model. What *does* need work is `RequirementActionLink`, today a
    requirement-only per-pair table — generalising it to target any
    artefact type (Design, Risk, Decision, ...) is folded into
-   [Module 0](module-00-platform-foundations-plan.md)'s own relationship-
+   [Module 0](completed/module-00-platform-foundations-plan.md)'s own relationship-
    model fork (the same choice as `RequirementLink`'s), not resolved
    independently by each module that wants to link an Action to its own
    artefact type — Modules 3 and 6 were both about to do exactly that

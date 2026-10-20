@@ -174,21 +174,21 @@ def test_csv_report_header_uses_project_terminology_overrides_for_component_and_
     """C-C-03: a project that renamed "component"/"category" (Project
     Admin's Terminology tab) should see its own vocabulary in the CSV
     header, not always the English default — this is the fix for the
-    hardcoded ["ID", "Name", "Component", "Category", ...] header row the
-    2026-08 UX audit's "Terminology coverage" finding named. Every other
+    hardcoded ["ID", "Name", "Component", "Category", ...] header row.
+    Every other
     header cell (ID/Name/Status/Reasoning/Clarification) isn't one of the
     six overridable nouns, so it must stay literal regardless of override."""
     rows = [_row("SW-PERF-001", "Software", 0, "Performance", 0)]
     csv_bytes = generate_csv_report(rows, terminology={"component": "module", "category": "topic"})
     header_line = csv_bytes.decode("utf-8").splitlines()[0]
-    assert header_line == "ID,Name,Module,Topic,Status,Reasoning,Clarification"
+    assert header_line == "ID,Name,Module,Topic,Status,Reasoning,Clarification,Tags"
 
 
 def test_csv_report_header_falls_back_to_english_default_with_no_terminology_override():
     rows = [_row("SW-PERF-001", "Software", 0, "Performance", 0)]
-    assert generate_csv_report(rows).decode("utf-8").splitlines()[0] == "ID,Name,Component,Category,Status,Reasoning,Clarification"
+    assert generate_csv_report(rows).decode("utf-8").splitlines()[0] == "ID,Name,Component,Category,Status,Reasoning,Clarification,Tags"
     assert generate_csv_report(rows, terminology={}).decode("utf-8").splitlines()[0] == (
-        "ID,Name,Component,Category,Status,Reasoning,Clarification"
+        "ID,Name,Component,Category,Status,Reasoning,Clarification,Tags"
     )
 
 
@@ -205,7 +205,7 @@ def test_csv_report_endpoint_reflects_projects_saved_terminology_override(client
     resp = client.post(f"/api/v1/projects/{project['id']}/reports", json={"format": "csv"}, headers=auth_headers(admin_token))
     assert resp.status_code == 200
     header_line = resp.content.decode("utf-8").splitlines()[0]
-    assert header_line == "ID,Name,Module,Topic,Status,Reasoning,Clarification"
+    assert header_line == "ID,Name,Module,Topic,Status,Reasoning,Clarification,Tags"
 
 
 def test_report_config_persists_and_is_used_as_pdf_default(client, admin_token, org_id):

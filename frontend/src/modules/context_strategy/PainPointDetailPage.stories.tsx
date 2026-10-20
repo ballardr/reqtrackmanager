@@ -35,7 +35,7 @@ const SQUAD: Principal = { type: "project_group", id: "pgroup-1", label: "Releas
 
 function painPoint(overrides: Partial<PainPoint> = {}): PainPoint {
   return {
-    id: PAIN_POINT_ID, project_id: PROJECT_ID, pain_point_type_id: "type-operator", pain_point_type_name: "Operator",
+    id: PAIN_POINT_ID, project_id: PROJECT_ID, unique_code: "PP-001", pain_point_type_id: "type-operator", pain_point_type_name: "Operator",
     creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null,
     title: "Report delays under poor connectivity", description: "Field reports queue for days before reaching HQ.",
     source: "Operator interviews", impact: "Decisions are made on stale data.", evidence: "12 reports last month.",
@@ -193,9 +193,11 @@ export const OwnerCanBeAssigned: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => canvas.getByText("Unassigned"));
-    await userEvent.type(canvas.getByLabelText("Pain Point owner"), "Jamie");
-    await waitFor(() => canvas.getByText(/Jamie Lee/));
-    await userEvent.click(canvas.getByText(/Jamie Lee/));
+    await userEvent.click(canvas.getByRole("button", { name: "Assign: Pain Point owner" }));
+    const picker = within(within(document.body).getByRole("dialog", { name: "Assign: Pain Point owner" }));
+    await userEvent.type(picker.getByLabelText("Pain Point owner"), "Jamie");
+    await waitFor(() => picker.getByText(/Jamie Lee/));
+    await userEvent.click(picker.getByText(/Jamie Lee/));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/pain-points/${PAIN_POINT_ID}`,
       expect.objectContaining({ owner: { type: "user", id: "user-2" } })
@@ -211,9 +213,11 @@ export const OwnerCanBeAnOrgGroup: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByLabelText("Pain Point owner"));
-    await userEvent.type(canvas.getByLabelText("Pain Point owner"), "platform");
-    await userEvent.click(await canvas.findByText("Platform Architecture"));
+    await waitFor(() => canvas.getByRole("button", { name: "Assign: Pain Point owner" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Assign: Pain Point owner" }));
+    const picker = within(within(document.body).getByRole("dialog", { name: "Assign: Pain Point owner" }));
+    await userEvent.type(picker.getByLabelText("Pain Point owner"), "platform");
+    await userEvent.click(await picker.findByText("Platform Architecture"));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/pain-points/${PAIN_POINT_ID}`,
       expect.objectContaining({ owner: { type: "org_group", id: "group-1" } })
@@ -230,9 +234,11 @@ export const OwnerCanBeAProjectGroup: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByLabelText("Pain Point owner"));
-    await userEvent.type(canvas.getByLabelText("Pain Point owner"), "release");
-    await userEvent.click(await canvas.findByText("Release board"));
+    await waitFor(() => canvas.getByRole("button", { name: "Assign: Pain Point owner" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Assign: Pain Point owner" }));
+    const picker = within(within(document.body).getByRole("dialog", { name: "Assign: Pain Point owner" }));
+    await userEvent.type(picker.getByLabelText("Pain Point owner"), "release");
+    await userEvent.click(await picker.findByText("Release board"));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/pain-points/${PAIN_POINT_ID}`,
       expect.objectContaining({ owner: { type: "project_group", id: "pgroup-1" } })

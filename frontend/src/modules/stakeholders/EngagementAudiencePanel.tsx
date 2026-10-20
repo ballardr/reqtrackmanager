@@ -1,8 +1,8 @@
 /**
  * Module: modules/stakeholders/EngagementAudiencePanel
  *
- * The Stakeholder groups an engagement was aimed at (Phase 0 addendum 3, item
- * 29). Picking groups in the shared `TreeSelect` and pressing "Add everyone in
+ * The Stakeholder groups an engagement was aimed at.
+ * Picking groups in the shared `TreeSelect` and pressing "Add everyone in
  * group" records an audience link and copies each group's current members
  * (descendants included) into the participant list as a **snapshot**: the
  * engagement is a historical record, so later membership changes never alter who
@@ -25,6 +25,7 @@ import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectEngagementApi } from "./api";
 import { allGroupSelectNodes, buildGroupTree, groupPath } from "./groupTree";
 import type { EngagementAudience, StakeholderGroup } from "./types";
+import { FormActions } from "../../components/FormActions";
 
 export function EngagementAudiencePanel({
   projectId,
@@ -109,7 +110,7 @@ export function EngagementAudiencePanel({
   if (audiences === null) return null;
 
   return (
-    <RecordFieldGroup
+    <RecordFieldGroup helpNotNeeded
       label="Audience groups"
       gap="0.35rem"
       action={
@@ -117,7 +118,7 @@ export function EngagementAudiencePanel({
           type="button" className="btn btn-sm btn-icon" aria-label="Add to Audience groups"
           title="Add to Audience groups" aria-haspopup="dialog" disabled={nodes.length === 0} onClick={() => setPicking(true)}
         >
-          <Plus size={14} aria-hidden="true" />
+          <Plus aria-hidden="true" />
         </button>
       }
     >
@@ -142,12 +143,12 @@ export function EngagementAudiencePanel({
             <span className="text-muted" style={{ fontSize: "0.8rem" }}>
               Copies the group's current members in as participants. Later changes to the group don't change who took part.
             </span>
-            <div className="row" style={{ justifyContent: "flex-end" }}>
-              <button className="btn" onClick={() => { setPicking(false); setSelected([]); }}>Cancel</button>
-              <button className="btn btn-primary" disabled={selected.length === 0 || adding} onClick={addEveryone}>
-                Add everyone in group
-              </button>
-            </div>
+            <FormActions
+              onCancel={() => { setPicking(false); setSelected([]); }}
+              onSave={addEveryone}
+              saveLabel="Add everyone in group"
+              saveDisabled={selected.length === 0 || adding}
+            />
           </div>
         </Modal>
       )}

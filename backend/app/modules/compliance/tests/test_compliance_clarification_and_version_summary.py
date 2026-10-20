@@ -1,5 +1,5 @@
-"""Tests for the Compliance Module's Phase 24 (docs/compliance-module-plan.md
-Phase 24; docs/Compliance_Module_Requirements.md §4, §31): post-publish
+"""Tests for the Compliance Module's
+post-publish clarification and version summary (§4, §31): post-publish
 requirement clarification (`PATCH .../requirements/{id}/clarify`) and a
 standard version's always-editable `summary` field
 (`PATCH .../versions/{version_id}`).
@@ -119,8 +119,8 @@ def test_clarify_rejected_on_retired_version(client, admin_token, org_id):
 
 def test_ordinary_update_endpoint_still_409s_on_published_version(client, admin_token, org_id):
     """A substantive-shaped change (via the ordinary, non-clarify update
-    endpoint) still 409s on a published version exactly as before this
-    phase — the clarify endpoint is a narrow, distinct addition, not a
+    endpoint) still 409s on a published version exactly as before —
+    the clarify endpoint is a narrow, distinct addition, not a
     loosening of `_require_draft_version` itself."""
     standard, version, requirement = _setup_published_standard_with_requirement(client, admin_token, org_id, reference="CLARIFY-409")
 

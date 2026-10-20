@@ -55,7 +55,7 @@ def list_decision_types(
     when creating a Decision, so listing isn't manage-only (only
     create/rename/move/delete are). A project with none of its own falls
     back to its nearest ancestor's (hierarchical projects, always on
-    independent of RBAC inheritance settings — Phase 9, 2026-09-22 — see
+    independent of RBAC inheritance settings, 2026-09-22 — see
     `service.resolve_effective_decision_types`)."""
     return resolve_effective_decision_types(db, project_id)
 
@@ -128,16 +128,13 @@ def delete_decision_type(
 ):
     """Deletes a project's Decision Type, applying the shared rename/
     delete/reassign rules (`services.definitions`). Unlike `Decision
-    Template` (org-scoped, no persistent FK from `Decision` — see Phase 0
-    addendum item 6), `Decision.decision_type_id` **is** a real, non-null
+    Template` (org-scoped, no persistent FK from `Decision`), `Decision.decision_type_id` **is** a real, non-null
     FK, so deleting an in-use type requires an explicit `reassign_to_id`
     (409 naming the count if omitted) — resolved independently of the
-    template answer, per this phase's own build instructions, rather than
-    copying it.
+    template answer rather than copying it.
 
-    `allow_empty=project.parent_project_id is not None` (Phase 9,
-    2026-09-22, **Decided by: User** — supersedes this endpoint's own
-    earlier Phase 4 **Decided by: Agent** call that Decision Types would
+    `allow_empty=project.parent_project_id is not None` (2026-09-22, **Decided by: User** — supersedes this endpoint's own
+    earlier **Decided by: Agent** call that Decision Types would
     never allow emptying a project, unlike `ActionTypeDefinition`): a
     project with a parent may now be emptied of its own decision types,
     since it falls back to its nearest ancestor's

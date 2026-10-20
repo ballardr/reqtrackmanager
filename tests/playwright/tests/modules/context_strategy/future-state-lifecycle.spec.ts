@@ -8,20 +8,18 @@ installCleanupHook();
 const API_BASE_URL = "http://localhost:8000";
 
 /**
- * Job to be done: docs/plans/module-01-context-and-strategy-plan.md Phase
- * 7.2's own exit criteria — Playwright e2e coverage for Future State's
+ * Job to be done: Playwright e2e coverage for Future State's
  * create -> propose -> submit-for-review -> approve -> activate flow.
  * Exercises the full Future State frontend
  * (`frontend/src/modules/context_strategy/{ProjectFutureStatesPage,
  * FutureStateDetailPage,FutureStateFormModal}.tsx`) against a real backend:
  * creating a project-scoped Future State, moving it through its lifecycle to
- * Active on its own detail page, reached via this phase's new "Future
- * State" nav-rail entry (the second of Phase 0 Q7's five planned top-level
- * entries to ship a route).
+ * Active on its own detail page, reached via the "Future
+ * State" nav-rail entry.
  *
  * Mirrors `strategy-lifecycle.spec.ts`'s own structure and reasoning
  * directly — Future State's backend is itself "an exact structural mirror"
- * of Strategy's (Phase 2's own scope text: same org/project scope
+ * of Strategy's (same org/project scope
  * discriminator, same seven-state lifecycle, same owner/approver RBAC
  * pattern), so this spec follows the same conventions rather than
  * inventing new ones:

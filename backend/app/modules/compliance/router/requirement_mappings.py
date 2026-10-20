@@ -1,8 +1,8 @@
 """
 Module: modules.compliance.router.requirement_mappings
 
-Cross-standard/cross-version requirement mapping links (Phase 11,
-§19/§27): create/list/get/archive/unarchive, a requirement-scoped
+Cross-standard/cross-version requirement mapping links
+(§19/§27): create/list/get/archive/unarchive, a requirement-scoped
 convenience listing visible from either side of a mapping, and the
 read-only added/removed/modified/replaced/re-mapped diff between two
 versions of a standard.
@@ -64,7 +64,7 @@ def create_requirement_mapping(
     Compliance Manager decision, mirroring standards/requirements
     management generally. Both requirements (which may belong to different
     standards, or to two versions of the *same* standard — see `models.py`'s
-    own Phase 11 notes) and the relationship type must all belong to this
+    cross-standard mapping design decisions) and the relationship type must all belong to this
     organisation (404/400 otherwise). §19's "must not imply that satisfying
     one requirement automatically satisfies another unless the relationship
     explicitly supports that behaviour" is upheld structurally: nothing

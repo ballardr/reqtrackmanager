@@ -10,6 +10,7 @@
  * tier-1 confirm; it has no comments or files of its own and is deleted with its
  * engagement, because it can quote participants.
  */
+import { RecordCode } from "../../components/RecordCode";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
@@ -19,8 +20,9 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Modal } from "../../components/Modal";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectResearchApi } from "./api";
-import { TextAreaField, TextField } from "./RecordFormFields";
+import { TextAreaField, TextField } from "../../components/FormFields";
 import type { ResearchFinding } from "./types";
+import { FormActions } from "../../components/FormActions";
 
 /** A finding sits in its engagement's page, so its link list leaves the engagement out (the trace still shows it). */
 const HIDE_ENGAGEMENT = ["engagement"] as const;
@@ -38,15 +40,14 @@ function FindingFormModal({
   return (
     <Modal title={initial ? `Edit ${initial.title}` : "New finding"} onClose={onCancel} size="lg">
       <div className="stack">
-        <TextField label="Title" ariaLabel="Finding title" value={title} onChange={setTitle} hint="One line, e.g. “Technicians skip the checklist when offline”." />
-        <TextAreaField label="Description" rows={5} value={description} onChange={setDescription} hint="Findings can quote participants and are deleted with the engagement." />
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" disabled={title.trim() === ""} onClick={() => onSave({ title: title.trim(), description })}>
-            Save
-          </button>
-        </div>
+        <TextField helpNotNeeded required label="Title" ariaLabel="Finding title" value={title} onChange={setTitle} hint="One line, e.g. “Technicians skip the checklist when offline”." />
+        <TextAreaField helpNotNeeded label="Description" rows={5} value={description} onChange={setDescription} hint="Findings can quote participants and are deleted with the engagement." />
+        <FormActions
+          error={error}
+          onCancel={onCancel}
+          onSave={() => onSave({ title: title.trim(), description })}
+          saveDisabled={title.trim() === ""}
+        />
       </div>
     </Modal>
   );
@@ -116,7 +117,7 @@ export function ResearchFindingsPanel({
       <span className="row" style={{ gap: "0.35rem", alignItems: "center" }}>
         <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>Findings</span>
         <button type="button" className="btn btn-sm btn-icon" aria-label="Add finding" title="Add finding" aria-haspopup="dialog" onClick={() => setCreating(true)}>
-          <Plus size={14} aria-hidden="true" />
+          <Plus aria-hidden="true" />
         </button>
       </span>
       {findings.length === 0 && <span className="text-muted">No findings recorded for this engagement.</span>}
@@ -124,12 +125,12 @@ export function ResearchFindingsPanel({
         <div key={f.id} id={`finding-${f.id}`} className="card stack" style={{ gap: "0.35rem" }} aria-label={`Finding ${f.title}`}>
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
             <span className="row" style={{ gap: "0.5rem", alignItems: "baseline" }}>
-              <span className="text-muted" style={{ fontSize: "0.85rem" }}>{f.unique_code}</span>
+              <span className="text-muted" style={{ fontSize: "0.85rem" }}><RecordCode code={f.unique_code} /></span>
               <strong>{f.title}</strong>
             </span>
             <span className="row" style={{ gap: "0.35rem" }}>
-              <button className="btn btn-sm btn-icon" aria-label={`Edit ${f.title}`} title={`Edit ${f.title}`} onClick={() => { setFormError(null); setEditing(f); }}><Pencil size={14} /></button>
-              <button className="btn btn-sm btn-icon" aria-label={`Delete ${f.title}`} title={`Delete ${f.title}`} onClick={() => setDeleting(f)}><Trash2 size={14} /></button>
+              <button className="btn btn-sm btn-icon" aria-label={`Edit ${f.title}`} title={`Edit ${f.title}`} onClick={() => { setFormError(null); setEditing(f); }}><Pencil /></button>
+              <button className="btn btn-sm btn-icon" aria-label={`Delete ${f.title}`} title={`Delete ${f.title}`} onClick={() => setDeleting(f)}><Trash2 /></button>
             </span>
           </div>
           {f.description && <div style={{ whiteSpace: "pre-wrap" }}>{f.description}</div>}

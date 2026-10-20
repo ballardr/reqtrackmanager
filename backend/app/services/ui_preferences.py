@@ -2,8 +2,7 @@
 Module: services.ui_preferences
 
 Merges a partial update into a user's `ui_preferences` bag
-(`User.ui_preferences`) while keeping the bag bounded
-(docs/plans/platform-enhancements-2026-10-plan.md Phase 4).
+(`User.ui_preferences`) while keeping the bag bounded.
 
 Responsibilities:
 - Shallow-merge a patch by top-level key; a `None` value removes the key, so a

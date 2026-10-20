@@ -1,0 +1,22 @@
+# Rendered at container start by nginx's envsubst entrypoint (DOCS_BASE_URL).
+# Docusaurus is built with `trailingSlash: false`, so /a/b is the file a/b.html.
+server {
+    listen 8080;
+    listen [::]:8080;  # keep: IPv6 is always supported
+    root /usr/share/nginx/html;
+
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    location = /health {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok";
+    }
+
+    location / {
+        try_files $uri $uri.html $uri/index.html =404;
+    }
+
+    error_page 404 ${DOCS_BASE_URL}404.html;
+}

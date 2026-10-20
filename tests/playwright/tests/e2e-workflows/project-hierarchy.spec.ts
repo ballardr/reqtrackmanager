@@ -173,7 +173,7 @@ test.describe("hierarchical (parent/child) projects", () => {
     await test.step("Gamma-3 (the parent) lists Gamma-4 as a member source", async () => {
       await openProjectByName(page, PROJECT_NAMES.gamma3);
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      // PR5 of the members/groups directory rework plan: "Member sources"
+      // the members/groups directory rework: "Member sources"
       // moved from the Overview tab onto the Groups tab, rendering as a
       // type-badged row in the same table as real project groups rather
       // than a separate `<ul>` — no more `<Link>` on the row itself (the
@@ -212,10 +212,9 @@ test.describe("hierarchical (parent/child) projects", () => {
     });
 
     await test.step("effective members shows the stakeholder-on-Gamma-3 as forward-inherited (mirror all roles) on Gamma-4", async () => {
-      // Effective members moved onto its own "Members" section (Phase 5,
-      // docs/decisions.md) — the old combined "Project groups" tab no
-      // longer has it. Rebuilt again in Phase D (follow-up UX batch,
-      // 2026-08-31) onto the unified `ProjectMembersTable`, which renders
+      // Effective members moved onto its own "Members" section
+      // (docs/decisions.md) — the old combined "Project groups" tab no
+      // longer has it. Rebuilt again onto the unified `ProjectMembersTable`, which renders
       // immediately (no lazy "Show members" button/collapsed section any
       // more — this is now the tab's primary content, not a secondary
       // audit view).
@@ -223,8 +222,7 @@ test.describe("hierarchical (parent/child) projects", () => {
       const memberRow = page.locator("tr", { hasText: PERSONAS.projectMgrGamma.name });
       await expect(memberRow).toBeVisible();
       // The Source cell's per-source detail lives behind a click-to-open
-      // popover now (Phase 9, platform review 2026-09 follow-up —
-      // ProjectMembersTable.tsx's own doc comment), not always-visible
+      // popover now (ProjectMembersTable.tsx's own doc comment), not always-visible
       // text in the cell — this member has no direct role on Gamma-4, so
       // the row's summary button reads plain "Group".
       await memberRow.getByRole("button", { name: "Group" }).click();
@@ -242,7 +240,7 @@ test.describe("hierarchical (parent/child) projects", () => {
       const memberRow = page.locator("tr", { hasText: PERSONAS.projectMgrGamma.name });
       // A user with both a direct grant and an inherited one now shows
       // "Direct and group" as the row's summary button; the per-source
-      // breakdown (still both lines, same as before Phase 9) is behind the
+      // breakdown (still both lines, same as before) is behind the
       // same popover as above.
       await memberRow.getByRole("button", { name: "Direct and group" }).click();
       const popover = page.getByRole("dialog", { name: `${PERSONAS.projectMgrGamma.name}'s access sources` });
@@ -289,8 +287,7 @@ test.describe("hierarchical (parent/child) projects", () => {
     const gamma1Id = await projectIdByName(PROJECT_NAMES.gamma1);
     const gamma2Id = await projectIdByName(PROJECT_NAMES.gamma2);
 
-    // No project auto-creates any group any more (follow-up UX batch Phase
-    // C, 2026-08-31) — Gamma-1 previously had a default "Members" group
+    // No project auto-creates any group any more (2026-08-31) — Gamma-1 previously had a default "Members" group
     // this test reused for its own project-referencing-group case; that no
     // longer exists, so this test now maintains its own dedicated, fixed-
     // name custom group instead (created idempotently — get-or-create, not
@@ -304,7 +301,7 @@ test.describe("hierarchical (parent/child) projects", () => {
         .then((r) => r.json());
       const existing = groups.find((g) => g.name === sourceRefGroupName);
       if (existing) return existing;
-      // PR7 of the members/groups directory rework plan: `ProjectGroupCreate`
+      // the members/groups directory rework: `ProjectGroupCreate`
       // no longer accepts a role — created bare, which is fine here since
       // this test only exercises the group's project-reference UI, never
       // its actual granted access.
@@ -349,7 +346,7 @@ test.describe("hierarchical (parent/child) projects", () => {
     await test.step("add Gamma-2 as a 'Mirror all roles' member source of Gamma-1 (unrelated projects, not parent/child)", async () => {
       await openProjectByName(page, PROJECT_NAMES.gamma1);
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      // PR5: "Member sources" moved from the Overview tab onto the Groups
+      // "Member sources" moved from the Overview tab onto the Groups
       // tab, as a type-badged row in the same table as real project
       // groups rather than a separate `<ul>` — the row is now a `<tr>`,
       // not a `<li>`, has no `<Link>` on its name (read-only detail; a
@@ -366,13 +363,13 @@ test.describe("hierarchical (parent/child) projects", () => {
       await expect(gamma2SourceRow.getByText("Mirror all roles", { exact: true })).toBeVisible();
     });
 
-    await test.step("Gamma-1's own dedicated source-ref group can also define a member as 'Gamma-2's members' directly (get-or-created above, not a per-run throwaway one — `DELETE .../groups/{id}` exists as of Phase 5, but this test doesn't need it, and a fixed name lets a defensive re-run's own cleanup() find it)", async () => {
+    await test.step("Gamma-1's own dedicated source-ref group can also define a member as 'Gamma-2's members' directly (get-or-created above, not a per-run throwaway one — `DELETE .../groups/{id}` exists, but this test doesn't need it, and a fixed name lets a defensive re-run's own cleanup() find it)", async () => {
       await selectProjectAdminGroup(page, "Project groups");
       const panel = await openProjectGroupPanel(page, sourceRefGroup.name);
       await panel.getByRole("combobox", { name: "Referenced project" }).selectOption({ label: PROJECT_NAMES.gamma2 });
       await panel.getByRole("button", { name: "Reference another project's members…" }).click();
       await expect(panel.getByText(`${PROJECT_NAMES.gamma2}'s members`)).toBeVisible();
-      // Phase 5: the referenced-project line also links to that project's
+      // The referenced-project line also links to that project's
       // own new Members page now, with a "this is live" clarifying hint.
       await expect(panel.getByRole("link", { name: "View members" })).toBeVisible();
       // Scoped to the hint's own `<p>` element (`viaProjectMembersHint`,

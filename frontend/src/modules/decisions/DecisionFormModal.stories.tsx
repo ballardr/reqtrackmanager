@@ -5,6 +5,7 @@ import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { api } from "../../api/client";
 import type { OrgGroup, OrgUser, ProjectGroup } from "../../api/types";
 import { DecisionFormModal } from "./DecisionFormModal";
+import { requiredCaptions } from "../../testing/requiredMarkers";
 import type { Decision, DecisionTemplate, DecisionTypeDefinition } from "./types";
 
 const DECISION_TYPES: DecisionTypeDefinition[] = [
@@ -80,7 +81,7 @@ export const CreateFromTemplate: Story = {
   args: { templates: TEMPLATES },
   play: async () => {
     const body = within(document.body);
-    await userEvent.selectOptions(body.getByLabelText("Start from a template (optional)"), "template-1");
+    await userEvent.selectOptions(body.getByLabelText("Start from a template"), "template-1");
     await waitFor(() => expect(body.getByDisplayValue(
       "What is the issue that we're seeing that is motivating this decision?"
     )).toBeInTheDocument());
@@ -95,7 +96,7 @@ export const SubmitsNewDecision: Story = {
     await userEvent.click(body.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Adopt PostgreSQL", decision_statement: "Use PostgreSQL as the backing store.", owner: { type: "user", id: "user-1" }, decision_maker: null })
+      expect.objectContaining({ title: "Adopt PostgreSQL", decision_statement: "Use PostgreSQL as the backing store.", owner: { type: "user", id: "user-1" }, decision_maker: null }), [], []
     ));
   },
 };
@@ -112,7 +113,7 @@ export const ChoosesAGroupOwner: Story = {
     await userEvent.click(body.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ owner: { type: "org_group", id: "group-1" } })
+      expect.objectContaining({ owner: { type: "org_group", id: "group-1" } }), [], []
     ));
   },
 };
@@ -127,11 +128,11 @@ export const ChoosesAProjectGroupDecisionMaker: Story = {
     await userEvent.click(await body.findByText("Release board"));
     await userEvent.click(body.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ decision_maker: { type: "project_group", id: "pgroup-1" } })
+      expect.objectContaining({ decision_maker: { type: "project_group", id: "pgroup-1" } }), [], []
     ));
     await userEvent.click(body.getByRole("button", { name: "Unassign: Decision maker" }));
     await userEvent.click(body.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(args.onSave).toHaveBeenLastCalledWith(expect.objectContaining({ decision_maker: null })));
+    await waitFor(() => expect(args.onSave).toHaveBeenLastCalledWith(expect.objectContaining({ decision_maker: null }), [], []));
   },
 };
 
@@ -164,7 +165,7 @@ export const EditExisting: Story = {
     const body = within(document.body);
     await expect(body.getByRole("heading", { name: "Edit DEC-001" })).toBeInTheDocument();
     await expect(body.getByDisplayValue("Legacy MySQL is EOL.")).toBeInTheDocument();
-    await expect(body.queryByLabelText("Start from a template (optional)")).not.toBeInTheDocument();
+    await expect(body.queryByLabelText("Start from a template")).not.toBeInTheDocument();
     // The existing group owner shows its name, kind and member count.
     await expect(body.getByText("Platform Architecture")).toBeInTheDocument();
     await expect(body.getByText("Org group · 2 members")).toBeInTheDocument();
@@ -193,9 +194,32 @@ export const TypesArriveAfterOpening: Story = {
     const save = body.getByRole("button", { name: "Save" });
     await waitFor(() => expect(save).toBeEnabled());
     await userEvent.click(save);
-    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ decision_type_id: DECISION_TYPES[0].id }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ decision_type_id: DECISION_TYPES[0].id }), [], []);
+  },
+};
+
+/** Worst case: a long save error and a long unbroken title. The error is shown, and the dialog neither scrolls
+ * sideways nor pushes Save out of reach. */
+export const LongErrorAndLongTitleKeepTheActionsReachable: Story = {
+  args: { error: "Could not save: " + "the server rejected this request for a reason that takes a while to explain. ".repeat(4) },
+  play: async () => {
+    const body = within(document.body);
+    await userEvent.type(body.getByLabelText("Decision title"), "W".repeat(200));
+    await expect(body.getByText(/Could not save:/)).toBeVisible();
+    await expect(body.getByRole("button", { name: "Save" })).toBeVisible();
+    const dialog = body.getByRole("dialog");
+    await expect(dialog.scrollWidth).toBeLessThanOrEqual(dialog.clientWidth + 1);
   },
 };
 
 export const LightTheme: Story = { ...CreateNew };
 export const DarkTheme: Story = { ...CreateNew, globals: { theme: "dark" } };
+
+/** Title, statement, type and owner block saving and are marked; the decision date and decision maker are not. */
+export const RequiredFieldsAreMarked: Story = {
+  play: async () => {
+    const root = await within(document.body).findByRole("dialog");
+    await expect(requiredCaptions(root)).toEqual(["Decision title", "Decision statement", "Decision type", "Owner"]);
+    await expect(within(root).queryByText(/optional/i)).not.toBeInTheDocument();
+  },
+};

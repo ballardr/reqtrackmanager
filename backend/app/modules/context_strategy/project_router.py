@@ -1,12 +1,11 @@
 """
 Module: modules.context_strategy.project_router
 
-Context & Strategy's Phase 1 project-scoped API (docs/plans/module-01-
-context-and-strategy-plan.md Phase 1) — CRUD, lifecycle transitions,
+Context & Strategy's project-scoped API — CRUD, lifecycle transitions,
 comments, and file attachments for **project-scoped** Strategy records.
 Mounted at `/api/v1/projects/{project_id}/modules/context_strategy`.
 
-Phase 2 adds the same surface for **project-scoped** Future State records,
+The same surface exists for **project-scoped** Future State records,
 at `/future-states`, gated by `require_project_subcomponent_enabled
 ("context_strategy", "future_state")` and `_shared.require_future_state_
 manage_role`/`require_future_state_approve_permission` — exact structural
@@ -15,9 +14,8 @@ project-scoped Future State's file attachments resolve through this
 module's own `resolve_file_owner_project_id` hook (`module.py` ->
 `service.resolve_future_state_file_project_id`), the same as Strategy's.
 
-Phase 3 adds Pain Points, at `/pain-points`, plus their own two-tier type
-vocabulary's project-scoped half at `/pain-point-types` (Phase 0 Q3 —
-the org-scoped half, `PainPointTypeDefinition` CRUD, lives in `router.py`
+Pain Points live at `/pain-points`, plus their own two-tier type
+vocabulary's project-scoped half at `/pain-point-types` (the org-scoped half, `PainPointTypeDefinition` CRUD, lives in `router.py`
 instead, since Pain Point's *type vocabulary* has an org-level component
 even though the Pain Point *artefact* does not). Gated by `require_
 project_subcomponent_enabled("context_strategy", "pain_point")`
@@ -41,11 +39,8 @@ with, since Pain Point itself has no org scope at all.
 RBAC: reads/creation are gated by `require_project_subcomponent_enabled
 ("context_strategy", "strategy")` (`_require_view`) — any project member
 with the module *and* this sub-component enabled may browse and propose a
-Strategy (Phase 1's "project members (View + Propose)"). Module 0
-(Platform Foundations) Phase 4 added the sub-component tier on top of the
-whole-module check this router originally used (see `docs/decisions.md`'s
-"Module 1 (Context & Strategy) Phase 1" entry's "Coordination note" for
-why Phase 1 shipped whole-module-gated first) — `require_project_
+Strategy ("project members (View + Propose)"). The sub-component tier sits
+on top of the whole-module check (see `docs/decisions.md`'s "Context & Strategy" entry's "Coordination note") — `require_project_
 subcomponent_enabled` still checks whole-module enablement first
 internally, so this is a strict narrowing, not a parallel/replacement
 check. Direct edits/archival require the
@@ -65,7 +60,7 @@ project_router.files`'s identical shape. See `router.py`'s own module
 docstring for the org-scoped sibling of this router (whose files instead
 use `is_org_resource=True`), and `_shared.py` for the helpers both share.
 
-Phase 4 adds the same surface for **project-scoped** Guiding Principle
+The same surface exists for **project-scoped** Guiding Principle
 records, at `/guiding-principles`, gated by `require_project_subcomponent_
 enabled("context_strategy", "guiding_principle")` and `_shared.require_
 guiding_principle_manage_role`/`require_guiding_principle_approve_
@@ -76,9 +71,9 @@ Guiding Principle's file attachments resolve through this module's own
 `resolve_file_owner_project_id` hook (`module.py` -> `service.resolve_
 guiding_principle_file_project_id`), the same as Strategy's/Future State's.
 
-Phase 5 adds Open Questions, at `/open-questions` — project-scoped only,
-like Pain Point (no org-scoped counterpart in `router.py` at all this
-time, unlike Pain Point's own org-scoped type-vocabulary half, since Open
+Open Questions live at `/open-questions` — project-scoped only,
+like Pain Point (no org-scoped counterpart in `router.py` at all,
+unlike Pain Point's own org-scoped type-vocabulary half, since Open
 Question has no type vocabulary of its own). Gated by `require_project_
 subcomponent_enabled("context_strategy", "open_question")`
 (`_require_open_question_view`) for reads/creation — §9.4's broad-creation
@@ -92,7 +87,7 @@ resolve_permission` (`open_question_resolver` — §9.4's own "Decision Maker"
 tier, distinct from "Question Owner / Project Manager"; see `module.py`'s
 own docstring for why this is two roles, not Pain Point's one). `resolve`
 is deliberately a plain status transition, not the actual "Create Decision
-from Open Question" workflow (§9.5, Module 4's own Phase 7) — see `service.
+from Open Question" workflow (§9.5, a separate Decision Management workflow) — see `service.
 resolve_open_question`'s own docstring. A project-scoped Open Question's
 file attachments resolve through this module's own `resolve_file_owner_
 project_id` hook (`module.py` -> `service.resolve_open_question_file_
@@ -115,6 +110,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.modules.context_strategy._shared import (
     apply_value_error_as_conflict,
+    can_manage_pain_points,
     context_strategy_link_to_out,
     future_state_to_out,
     get_future_state_in_scope,
@@ -158,7 +154,6 @@ from app.modules.context_strategy.models import (
     PainPointComment,
     PainPointCommentFile,
     PainPointFile,
-    ProjectPainPointType,
     Strategy,
     StrategyComment,
     StrategyCommentFile,
@@ -216,6 +211,7 @@ from app.modules.context_strategy.schemas import (
     PainPointScoresUpdate,
     PainPointScoringListOut,
     PainPointScoringSummaryOut,
+    PainPointScoringTargetsOut,
     PainPointTransitionRequest,
     PainPointUpdate,
     ProjectPainPointTypeCreate,
@@ -239,6 +235,7 @@ from app.modules.context_strategy.service import (
     GUIDING_PRINCIPLE_ARTEFACT_TYPE,
     OPEN_QUESTION_ARTEFACT_TYPE,
     PAIN_POINT_ARTEFACT_TYPE,
+    PAIN_POINT_TYPE_HIDING,
     STRATEGY_ARTEFACT_TYPE,
     accept_pain_point,
     activate_future_state,
@@ -271,7 +268,6 @@ from app.modules.context_strategy.service import (
     create_strategy,
     create_strategy_link,
     create_strategy_supersession,
-    delete_project_pain_point_type,
     get_current_future_state_version,
     get_current_guiding_principle_version,
     get_current_version,
@@ -313,11 +309,15 @@ from app.modules.context_strategy.service import (
     withdraw_open_question,
 )
 from app.schemas.file import FileAssetOut
+from app.schemas.type_vocabulary import HiddenTypeOut, RestoreTypesOut, RestoreTypesRequest
 from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
 from app.services.principals import validate_principal
+from app.services.project_scope import ProjectScope
 from app.services.rbac import require_ai_approvals_enabled, require_project_subcomponent_enabled
 from app.services.relationships import get_all_links
+from app.services.tags import TagFilter
+from app.services.type_vocabulary_routes import list_hidden_types, remove_project_type, restore_hidden_types
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/modules/context_strategy", tags=["context-strategy-project"])
 
@@ -355,7 +355,7 @@ def create_project_strategy(
 ):
     """Creates a project-scoped Strategy in `DRAFT` status. Any project
     member with the module enabled may create one — no `strategy_owner`
-    grant required (Phase 1's "project members (View + Propose)")."""
+    grant required ("project members (View + Propose)")."""
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
@@ -376,13 +376,23 @@ def create_project_strategy(
 @router.get("/strategies", response_model=list[StrategyOut])
 def list_project_strategies(
     project_id: UUID, include_archived: bool = False,
+    tag_filter: TagFilter = Depends(),
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    project_scope: ProjectScope = Depends(),
 ):
-    query = select(Strategy).where(Strategy.project_id == project_id, Strategy.scope == _SCOPE)
-    if not include_archived:
-        query = query.where(Strategy.is_archived.is_(False))
-    strategies = db.scalars(query.order_by(Strategy.created_at)).all()
-    return [strategy_to_out(s, get_current_version(db, s.id)) for s in strategies]
+    def rows_for(pid: UUID) -> list:
+        """This endpoint's rows for one project of the scope."""
+        query = select(Strategy).where(Strategy.project_id == pid, Strategy.scope == _SCOPE)
+        if not include_archived:
+            query = query.where(Strategy.is_archived.is_(False))
+        strategies = db.scalars(query.order_by(Strategy.created_at)).all()
+        strategies = tag_filter.keep(db, pid, STRATEGY_ARTEFACT_TYPE, strategies)
+        return [strategy_to_out(s, get_current_version(db, s.id)) for s in strategies]
+
+    return project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, STRATEGY_ARTEFACT_TYPE, rows_for,
+        gate=("context_strategy", "strategy"),
+    )
 
 
 @router.get("/strategies/{strategy_id}", response_model=StrategyOut)
@@ -526,7 +536,7 @@ def approve_project_strategy(
     channel: str = Depends(get_request_channel),
 ):
     """Formally approves a Strategy (`UNDER_REVIEW` -> `APPROVED`). MCP-
-    reachable (Phase 6, `module.py`'s `mcp_tools`) — per the 2026-09-22
+    reachable (`module.py`'s `mcp_tools`) — per the 2026-09-22
     write-enabled-MCP decision (`docs/decisions.md`), reached through the
     MCP server this additionally requires this project and its organisation
     to both have explicitly enabled AI approval (`require_ai_approvals_
@@ -654,6 +664,8 @@ def edit_project_strategy_comment(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may edit it.")
     comment.body = payload.body
     comment.edited_at = datetime.now(UTC)
+    log_event(db, entity_type=STRATEGY_ARTEFACT_TYPE, entity_id=strategy_id, action="comment_edited",
+              actor_id=current_user.id, project_id=project_id, detail={"comment_id": str(comment.id)})
     db.commit()
     db.refresh(comment)
     return _comment_to_out(db, comment)
@@ -713,6 +725,8 @@ def remove_project_strategy_comment_attachment(
     db.flush()
     if asset is not None:
         delete_file(db, asset)
+    log_event(db, entity_type=STRATEGY_ARTEFACT_TYPE, entity_id=strategy_id, action="comment_file_removed",
+              actor_id=current_user.id, project_id=project_id, detail={"file_id": str(file_id)})
     db.commit()
 
 
@@ -785,7 +799,7 @@ def unlink_project_strategy_file(
 
 
 # =============================================================================
-# --- Future State (Phase 2) -------------------------------------------------
+# --- Future State -------------------------------------------------
 # =============================================================================
 
 
@@ -831,13 +845,23 @@ def create_project_future_state(
 @router.get("/future-states", response_model=list[FutureStateOut])
 def list_project_future_states(
     project_id: UUID, include_archived: bool = False,
+    tag_filter: TagFilter = Depends(),
     current_user: User = Depends(_require_future_state_view), db: Session = Depends(get_db),
+    project_scope: ProjectScope = Depends(),
 ):
-    query = select(FutureState).where(FutureState.project_id == project_id, FutureState.scope == _FS_SCOPE)
-    if not include_archived:
-        query = query.where(FutureState.is_archived.is_(False))
-    future_states = db.scalars(query.order_by(FutureState.created_at)).all()
-    return [future_state_to_out(fs, get_current_future_state_version(db, fs.id)) for fs in future_states]
+    def rows_for(pid: UUID) -> list:
+        """This endpoint's rows for one project of the scope."""
+        query = select(FutureState).where(FutureState.project_id == pid, FutureState.scope == _FS_SCOPE)
+        if not include_archived:
+            query = query.where(FutureState.is_archived.is_(False))
+        future_states = db.scalars(query.order_by(FutureState.created_at)).all()
+        future_states = tag_filter.keep(db, pid, FUTURE_STATE_ARTEFACT_TYPE, future_states)
+        return [future_state_to_out(fs, get_current_future_state_version(db, fs.id)) for fs in future_states]
+
+    return project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, FUTURE_STATE_ARTEFACT_TYPE, rows_for,
+        gate=("context_strategy", "future_state"),
+    )
 
 
 @router.get("/future-states/{future_state_id}", response_model=FutureStateOut)
@@ -986,7 +1010,7 @@ def approve_project_future_state(
     channel: str = Depends(get_request_channel),
 ):
     """Formally approves a Future State (`UNDER_REVIEW` -> `APPROVED`).
-    MCP-reachable (Phase 6) — same `require_ai_approvals_enabled` gate as
+    MCP-reachable — same `require_ai_approvals_enabled` gate as
     `approve_project_strategy`, see that endpoint's own docstring."""
     project = db.get(Project, project_id)
     if channel == "mcp":
@@ -1121,6 +1145,8 @@ def edit_project_future_state_comment(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may edit it.")
     comment.body = payload.body
     comment.edited_at = datetime.now(UTC)
+    log_event(db, entity_type=FUTURE_STATE_ARTEFACT_TYPE, entity_id=future_state_id, action="comment_edited",
+              actor_id=current_user.id, project_id=project_id, detail={"comment_id": str(comment.id)})
     db.commit()
     db.refresh(comment)
     return _fs_comment_to_out(db, comment)
@@ -1181,6 +1207,8 @@ def remove_project_future_state_comment_attachment(
     db.flush()
     if asset is not None:
         delete_file(db, asset)
+    log_event(db, entity_type=FUTURE_STATE_ARTEFACT_TYPE, entity_id=future_state_id, action="comment_file_removed",
+              actor_id=current_user.id, project_id=project_id, detail={"file_id": str(file_id)})
     db.commit()
 
 
@@ -1265,7 +1293,7 @@ def unlink_project_future_state_file(
 
 
 # =============================================================================
-# --- Pain Points (Phase 3) ---------------------------------------------------
+# --- Pain Points ---------------------------------------------------
 # =============================================================================
 
 
@@ -1273,14 +1301,7 @@ def _get_pain_point(db: Session, project_id: UUID, pain_point_id: UUID) -> PainP
     return get_pain_point_in_scope(db, project_id=project_id, pain_point_id=pain_point_id)
 
 
-def _get_project_pain_point_type(db: Session, project_id: UUID, project_pain_point_type_id: UUID) -> ProjectPainPointType:
-    row = db.get(ProjectPainPointType, project_pain_point_type_id)
-    if row is None or row.project_id != project_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Pain Point type not found.")
-    return row
-
-
-# --- Pain Point type vocabulary (project-scoped half, Phase 0 Q3) -----------
+# --- Pain Point type vocabulary -----------
 
 
 @router.get("/pain-point-types", response_model=list[EffectivePainPointTypeOut])
@@ -1354,25 +1375,47 @@ def override_project_pain_point_type(
     return row
 
 
-@router.delete("/pain-point-types/{project_pain_point_type_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/pain-point-types/{type_ref_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_project_pain_point_type_endpoint(
-    project_id: UUID, project_pain_point_type_id: UUID,
+    project_id: UUID, type_ref_id: UUID,
     current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
 ):
-    """Deletes a `ProjectPainPointType` row (§6.2 "Remove types where no
-    longer used") — for an org-backed override, this simply reverts to the
-    plain org default; for a project-local type, this genuinely removes it.
-    409s if any Pain Point still references it (`service.delete_project_
-    pain_point_type`'s own docstring)."""
+    """Deletes a project-local Pain Point type, or hides an organisation default
+    in this project (§6.2 "Remove types where no longer used"; restore with
+    `POST /pain-point-types/restore`). `type_ref_id` is an
+    `EffectivePainPointTypeOut.id`. Hiding keeps the project's row, so existing
+    Pain Points are unaffected. 409 while a project-local type is still in use."""
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
     require_pain_point_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
-    row = _get_project_pain_point_type(db, project_id, project_pain_point_type_id)
-    apply_value_error_as_conflict(delete_project_pain_point_type, db, row)
-    log_event(db, entity_type="project_pain_point_type", entity_id=project_pain_point_type_id, action="deleted",
-              actor_id=current_user.id, project_id=project_id)
-    db.commit()
+    remove_project_type(db, PAIN_POINT_TYPE_HIDING, project, type_ref_id, current_user, "project_pain_point_type")
+
+
+@router.get("/pain-point-types/hidden", response_model=list[HiddenTypeOut])
+def list_hidden_project_pain_point_types(
+    project_id: UUID, current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    """The organisation Pain Point types this project has hidden. Needs the manager role."""
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    require_pain_point_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
+    return list_hidden_types(db, PAIN_POINT_TYPE_HIDING, project)
+
+
+@router.post("/pain-point-types/restore", response_model=RestoreTypesOut)
+def restore_hidden_project_pain_point_types(
+    project_id: UUID, payload: RestoreTypesRequest,
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    """Shows hidden organisation Pain Point types in this project again: every
+    one, or only `org_type_ids`. Needs the manager role."""
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    require_pain_point_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
+    return restore_hidden_types(db, PAIN_POINT_TYPE_HIDING, project, payload, current_user, "project_pain_point_type")
 
 
 # --- Pain Point CRUD -----------------------------------------------------------
@@ -1399,12 +1442,25 @@ def create_project_pain_point(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     if not pain_point_type.is_enabled:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This Pain Point type is disabled for this project.")
+    scoring_ctx = None
+    if payload.scores:
+        # Scoring is triage-tier (as on `PUT .../scores`): creating needs no grant, scoring does.
+        require_pain_point_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
+        scoring_ctx = load_scoring_context(db, project)
     pain_point = create_pain_point(
-        db, project_id=project_id, pain_point_type=pain_point_type, creator=current_user, title=payload.title,
+        db, project=project, pain_point_type=pain_point_type, creator=current_user, title=payload.title,
         description=payload.description, source=payload.source, impact=payload.impact, evidence=payload.evidence,
         priority=payload.priority, date_identified=payload.date_identified,
         is_intentional=payload.is_intentional,
     )
+    if scoring_ctx is not None:
+        # Same validation and audit as the scores endpoint; any 400 leaves nothing committed.
+        set_pain_point_scores(
+            db, scoring_ctx, pain_point,
+            [ScoreEntryInput(e.target_id, e.severity_level_id, e.frequency_level_id, e.confidence_level_id)
+             for e in payload.scores],
+            current_user,
+        )
     log_event(db, entity_type=PAIN_POINT_ARTEFACT_TYPE, entity_id=pain_point.id, action="created",
               actor_id=current_user.id, project_id=project_id, detail={"title": payload.title})
     db.commit()
@@ -1415,14 +1471,24 @@ def create_project_pain_point(
 @router.get("/pain-points", response_model=list[PainPointOut])
 def list_project_pain_points(
     project_id: UUID, include_archived: bool = False,
+    tag_filter: TagFilter = Depends(),
     current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+    project_scope: ProjectScope = Depends(),
 ):
-    query = select(PainPoint).where(PainPoint.project_id == project_id)
-    if not include_archived:
-        query = query.where(PainPoint.is_archived.is_(False))
-    pain_points = db.scalars(query.order_by(PainPoint.created_at)).all()
-    labels = owner_labels(db, pain_points)
-    return [pain_point_to_out(db, p, labels) for p in pain_points]
+    def rows_for(pid: UUID) -> list:
+        """This endpoint's rows for one project of the scope."""
+        query = select(PainPoint).where(PainPoint.project_id == pid)
+        if not include_archived:
+            query = query.where(PainPoint.is_archived.is_(False))
+        pain_points = db.scalars(query.order_by(PainPoint.created_at)).all()
+        pain_points = tag_filter.keep(db, pid, PAIN_POINT_ARTEFACT_TYPE, pain_points)
+        labels = owner_labels(db, pain_points)
+        return [pain_point_to_out(db, p, labels) for p in pain_points]
+
+    return project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, PAIN_POINT_ARTEFACT_TYPE, rows_for,
+        gate=("context_strategy", "pain_point"),
+    )
 
 
 @router.get("/pain-points/{pain_point_id}", response_model=PainPointOut)
@@ -1508,7 +1574,7 @@ def unarchive_project_pain_point(
     return pain_point_to_out(db, pain_point)
 
 
-# --- Pain Point scoring (Phase 11) ---------------------------------------------
+# --- Pain Point scoring ---------------------------------------------
 
 
 def _score_out(score) -> ScoreOut | None:
@@ -1569,6 +1635,21 @@ def list_project_pain_point_scores(
     return PainPointScoringListOut(
         model_key=model.key, model_source=ctx.default_model_source if model.key == ctx.default_model_key else "chosen",
         rollup=method.value, items=[_scoring_summary_out(s) for s in summaries],
+    )
+
+
+@router.get("/pain-point-scoring-targets", response_model=PainPointScoringTargetsOut)
+def get_project_pain_point_scoring_targets(
+    project_id: UUID, current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    """What a create form needs to offer scoring before the Pain Point exists: whether the caller
+    may score at all, and the personas it can be scored against."""
+    project = db.get(Project, project_id)
+    can_score = can_manage_pain_points(db, current_user, organization_id=project.organization_id, project_id=project_id)
+    targets = list(load_scoring_context(db, project).targets.values()) if can_score else []
+    return PainPointScoringTargetsOut(
+        can_score=can_score,
+        available_targets=[ScoringTargetOut(id=t.id, label=t.label, weight=t.weight, is_active=t.is_active) for t in targets],
     )
 
 
@@ -1670,7 +1751,7 @@ def mark_project_pain_point_duplicate(
 ):
     """`TRIAGED` -> `DUPLICATE`. A comment is required (`service.mark_
     pain_point_duplicate`'s own docstring — this is also where the
-    canonical Pain Point is noted, pending Phase 6's real link)."""
+    canonical Pain Point is noted)."""
     if not (payload.comment or "").strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A comment is required to mark a Pain Point as a duplicate.")
     project = db.get(Project, project_id)
@@ -1784,6 +1865,8 @@ def edit_project_pain_point_comment(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may edit it.")
     comment.body = payload.body
     comment.edited_at = datetime.now(UTC)
+    log_event(db, entity_type=PAIN_POINT_ARTEFACT_TYPE, entity_id=pain_point_id, action="comment_edited",
+              actor_id=current_user.id, project_id=project_id, detail={"comment_id": str(comment.id)})
     db.commit()
     db.refresh(comment)
     return _pp_comment_to_out(db, comment)
@@ -1844,6 +1927,8 @@ def remove_project_pain_point_comment_attachment(
     db.flush()
     if asset is not None:
         delete_file(db, asset)
+    log_event(db, entity_type=PAIN_POINT_ARTEFACT_TYPE, entity_id=pain_point_id, action="comment_file_removed",
+              actor_id=current_user.id, project_id=project_id, detail={"file_id": str(file_id)})
     db.commit()
 
 
@@ -1857,7 +1942,7 @@ async def upload_project_pain_point_file(
 ):
     """**Deliberately open to any project member**, not manager-gated —
     unlike `upload_project_strategy_file`/`upload_project_future_state_
-    file` (both owner-gated), source overview §6.5 explicitly lists "Add
+    file` (both owner-gated), §6.5 explicitly lists "Add
     evidence" among the broad-creation-model capabilities every project
     member gets for a Pain Point. Still 409s once the Pain Point has
     reached a terminal outcome."""
@@ -1923,7 +2008,7 @@ def unlink_project_pain_point_file(
 
 
 # =============================================================================
-# --- Guiding Principles (Phase 4) --------------------------------------------
+# --- Guiding Principles --------------------------------------------
 # =============================================================================
 
 
@@ -1974,15 +2059,25 @@ def create_project_guiding_principle(
 @router.get("/guiding-principles", response_model=list[GuidingPrincipleOut])
 def list_project_guiding_principles(
     project_id: UUID, include_archived: bool = False,
+    tag_filter: TagFilter = Depends(),
     current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
+    project_scope: ProjectScope = Depends(),
 ):
-    query = select(GuidingPrinciple).where(
-        GuidingPrinciple.project_id == project_id, GuidingPrinciple.scope == _GP_SCOPE,
+    def rows_for(pid: UUID) -> list:
+        """This endpoint's rows for one project of the scope."""
+        query = select(GuidingPrinciple).where(
+            GuidingPrinciple.project_id == pid, GuidingPrinciple.scope == _GP_SCOPE,
+        )
+        if not include_archived:
+            query = query.where(GuidingPrinciple.is_archived.is_(False))
+        guiding_principles = db.scalars(query.order_by(GuidingPrinciple.created_at)).all()
+        guiding_principles = tag_filter.keep(db, pid, GUIDING_PRINCIPLE_ARTEFACT_TYPE, guiding_principles)
+        return guiding_principles_to_out(db, guiding_principles)
+
+    return project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, GUIDING_PRINCIPLE_ARTEFACT_TYPE, rows_for,
+        gate=("context_strategy", "guiding_principle"),
     )
-    if not include_archived:
-        query = query.where(GuidingPrinciple.is_archived.is_(False))
-    guiding_principles = db.scalars(query.order_by(GuidingPrinciple.created_at)).all()
-    return guiding_principles_to_out(db, guiding_principles)
 
 
 @router.get("/guiding-principles/{guiding_principle_id}", response_model=GuidingPrincipleOut)
@@ -2155,10 +2250,10 @@ def activate_project_guiding_principle(
     current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
     channel: str = Depends(get_request_channel),
 ):
-    """Activates an approved Guiding Principle. MCP-reachable (Phase 6) —
-    per the plan's own 2026-09-22 update, Guiding Principle's own
+    """Activates an approved Guiding Principle. MCP-reachable —
+    per the 2026-09-22 update, Guiding Principle's own
     `require_ai_approvals_enabled`-gated actions are `activate`/`retire`,
-    not `approve` (see `service.py`'s own Phase 6 docstring for the
+    not `approve` (see `service.py`'s relationships docstring for the
     reasoning) — same gate pattern as `approve_project_strategy`."""
     project = db.get(Project, project_id)
     if channel == "mcp":
@@ -2203,7 +2298,7 @@ def retire_project_guiding_principle(
     current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
     channel: str = Depends(get_request_channel),
 ):
-    """Retires a Guiding Principle. MCP-reachable (Phase 6) — same
+    """Retires a Guiding Principle. MCP-reachable — same
     `require_ai_approvals_enabled` gate as `activate_project_guiding_
     principle`, see that endpoint's own docstring."""
     project = db.get(Project, project_id)
@@ -2292,6 +2387,8 @@ def edit_project_guiding_principle_comment(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may edit it.")
     comment.body = payload.body
     comment.edited_at = datetime.now(UTC)
+    log_event(db, entity_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, entity_id=guiding_principle_id, action="comment_edited",
+              actor_id=current_user.id, project_id=project_id, detail={"comment_id": str(comment.id)})
     db.commit()
     db.refresh(comment)
     return _gp_comment_to_out(db, comment)
@@ -2354,6 +2451,8 @@ def remove_project_guiding_principle_comment_attachment(
     db.flush()
     if asset is not None:
         delete_file(db, asset)
+    log_event(db, entity_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, entity_id=guiding_principle_id, action="comment_file_removed",
+              actor_id=current_user.id, project_id=project_id, detail={"file_id": str(file_id)})
     db.commit()
 
 
@@ -2442,7 +2541,7 @@ def unlink_project_guiding_principle_file(
 
 
 # =============================================================================
-# --- Open Questions (Phase 5) -------------------------------------------------
+# --- Open Questions -------------------------------------------------
 # =============================================================================
 
 
@@ -2465,7 +2564,7 @@ def create_project_open_question(
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
     open_question = create_open_question(
-        db, project_id=project_id, creator=current_user, question=payload.question, context=payload.context,
+        db, project=project, creator=current_user, question=payload.question, context=payload.context,
         evidence=payload.evidence, priority=payload.priority, due_date=payload.due_date,
     )
     log_event(db, entity_type=OPEN_QUESTION_ARTEFACT_TYPE, entity_id=open_question.id, action="created",
@@ -2478,14 +2577,24 @@ def create_project_open_question(
 @router.get("/open-questions", response_model=list[OpenQuestionOut])
 def list_project_open_questions(
     project_id: UUID, include_archived: bool = False,
+    tag_filter: TagFilter = Depends(),
     current_user: User = Depends(_require_open_question_view), db: Session = Depends(get_db),
+    project_scope: ProjectScope = Depends(),
 ):
-    query = select(OpenQuestion).where(OpenQuestion.project_id == project_id)
-    if not include_archived:
-        query = query.where(OpenQuestion.is_archived.is_(False))
-    open_questions = db.scalars(query.order_by(OpenQuestion.created_at)).all()
-    labels = owner_labels(db, open_questions)
-    return [open_question_to_out(db, oq, labels) for oq in open_questions]
+    def rows_for(pid: UUID) -> list:
+        """This endpoint's rows for one project of the scope."""
+        query = select(OpenQuestion).where(OpenQuestion.project_id == pid)
+        if not include_archived:
+            query = query.where(OpenQuestion.is_archived.is_(False))
+        open_questions = db.scalars(query.order_by(OpenQuestion.created_at)).all()
+        open_questions = tag_filter.keep(db, pid, OPEN_QUESTION_ARTEFACT_TYPE, open_questions)
+        labels = owner_labels(db, open_questions)
+        return [open_question_to_out(db, oq, labels) for oq in open_questions]
+
+    return project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, OPEN_QUESTION_ARTEFACT_TYPE, rows_for,
+        gate=("context_strategy", "open_question"),
+    )
 
 
 @router.get("/open-questions/{open_question_id}", response_model=OpenQuestionOut)
@@ -2625,8 +2734,8 @@ def resolve_project_open_question(
     through a Decision" tier — gated separately from `open_question_owner`
     (`_shared.require_open_question_resolve_permission`). A plain status
     transition here, not the actual "Create Decision from Open Question"
-    workflow (§9.5, Module 4's own Phase 7) — see `service.resolve_open_
-    question`'s own docstring. MCP-reachable (Phase 6) — same `require_ai_
+    workflow (§9.5, a separate Decision Management workflow) — see `service.resolve_open_
+    question`'s own docstring. MCP-reachable — same `require_ai_
     approvals_enabled` gate as `approve_project_strategy`, see that
     endpoint's own docstring."""
     project = db.get(Project, project_id)
@@ -2708,6 +2817,8 @@ def edit_project_open_question_comment(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may edit it.")
     comment.body = payload.body
     comment.edited_at = datetime.now(UTC)
+    log_event(db, entity_type=OPEN_QUESTION_ARTEFACT_TYPE, entity_id=open_question_id, action="comment_edited",
+              actor_id=current_user.id, project_id=project_id, detail={"comment_id": str(comment.id)})
     db.commit()
     db.refresh(comment)
     return _oq_comment_to_out(db, comment)
@@ -2769,6 +2880,8 @@ def remove_project_open_question_comment_attachment(
     db.flush()
     if asset is not None:
         delete_file(db, asset)
+    log_event(db, entity_type=OPEN_QUESTION_ARTEFACT_TYPE, entity_id=open_question_id, action="comment_file_removed",
+              actor_id=current_user.id, project_id=project_id, detail={"file_id": str(file_id)})
     db.commit()
 
 
@@ -2851,13 +2964,13 @@ def unlink_project_open_question_file(
     db.commit()
 
 
-# --- Phase 6: cross-artefact relationships -----------------------------------
+# --- cross-artefact relationships -----------------------------------
 #
 # List + create relationship endpoints for all five project-scoped source
 # artefact types, plus supersession endpoints for the three that support
 # one (Strategy/Future State/Guiding Principle — Pain Point/Open Question
 # have no "supersedes" concept in their own lifecycles). See `service.py`'s
-# own Phase 6 docstring section for the overall design and why Decision is
+# relationships docstring section for the overall design and why Decision is
 # not a valid `target_id` for any of these yet.
 
 
@@ -3145,5 +3258,5 @@ def create_project_open_question_relationship(
     )
 
 
-# Phases 12/12b: reports (core `services.report_framework`, declared in `reports.py`).
+# Reports (core `services.report_framework`, declared in `reports.py`).
 router.include_router(REPORT_ROUTERS.project)

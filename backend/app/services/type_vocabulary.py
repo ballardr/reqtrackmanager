@@ -10,13 +10,18 @@ never imports another module's package.
 Design decisions:
 - No ancestor fallback for nested projects: the org list is the base every
   project already sees, so an empty project table already means "use org
-  defaults" (resolution 3, Decided by: Agent).
+  defaults" (Decided by: Agent).
 - Org types are never deleted while referenced; a project is asked to stop
   using one, or it is disabled instead. Cross-project reassignment has no
   single correct target (same reasoning as Pain Point types).
 - `EffectiveType.id` is either an org type id (no override yet) or a project
   type row id; `get_or_create_project_type` resolves either, lazily creating a
   passthrough row the first time an org type is selected.
+- A project can hide an org type (`hide_org_type`, a tombstone from
+  `services.definition_suppression`) and restore it. Hidden means "not in the
+  project's list and cannot be newly chosen"; a record that already holds the
+  type keeps it, because it references the project's own type row, which is kept.
+  A type with a row (an override, or one a record uses) is not re-created.
 """
 
 from __future__ import annotations
@@ -27,6 +32,8 @@ from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+from app.services import definition_suppression
 
 
 @dataclass(frozen=True)
@@ -54,6 +61,7 @@ class TypeVocabulary:
     """Operations over one artefact's org/project type tables.
 
     Args:
+        kind: Registered `definition_suppression` kind (e.g. `"persona_type"`).
         label: Singular noun used in error messages (e.g. "Persona type").
         org_model: The org-level definition model (`organization_id`, `name`,
             `sort_order`, `is_active`).
@@ -67,16 +75,18 @@ class TypeVocabulary:
     """
 
     def __init__(
-        self, *, label: str, org_model, project_model, default_names: tuple[str, ...],
+        self, *, kind: str, label: str, org_model, project_model, default_names: tuple[str, ...],
         org_type_in_use: Callable[[Session, uuid.UUID], bool],
         project_type_in_use: Callable[[Session, uuid.UUID], bool],
     ) -> None:
+        self.kind = kind
         self.label = label
         self.org_model = org_model
         self.project_model = project_model
         self.default_names = default_names
         self._org_type_in_use = org_type_in_use
         self._project_type_in_use = project_type_in_use
+        definition_suppression.register_definition_kind(kind)
 
     def seed_defaults(self, db: Session, organization_id: uuid.UUID) -> None:
         """Adds the default org types for a new organisation. The caller owns
@@ -112,20 +122,24 @@ class TypeVocabulary:
                 f"This {self.label} is still in use and cannot be removed. "
                 "Disable it instead, or ask each referencing project to stop using it first."
             )
+        definition_suppression.forget_definition(db, self.kind, org_type.id)
         db.delete(org_type)
         db.flush()
 
     def resolve_effective(self, db: Session, project_id: uuid.UUID, organization_id: uuid.UUID) -> list[EffectiveType]:
-        """A project's effective list: every active org type (with the
-        project's override applied) plus every project-local type, ordered
-        by effective display order."""
+        """A project's effective list: every active org type the project has
+        not hidden (with its override applied) plus every project-local type,
+        ordered by effective display order."""
         org_types = db.scalars(
             select(self.org_model).where(self.org_model.organization_id == organization_id, self.org_model.is_active.is_(True))
         ).all()
         rows = db.scalars(select(self.project_model).where(self.project_model.project_id == project_id)).all()
         overrides = {r.org_type_id: r for r in rows if r.org_type_id is not None}
+        hidden = definition_suppression.get_suppressed_ids(db, project_id, self.kind)
         effective: list[EffectiveType] = []
         for org_type in org_types:
+            if org_type.id in hidden:
+                continue
             o = overrides.get(org_type.id)
             if o is None:
                 effective.append(EffectiveType(org_type.id, org_type.name, org_type.sort_order, True, "org"))
@@ -159,10 +173,101 @@ class TypeVocabulary:
         )
         if passthrough is not None:
             return passthrough
+        if org_type.id in definition_suppression.get_suppressed_ids(db, project_id, self.kind):
+            raise ValueError(f"This {self.label} is hidden in this project.")
         passthrough = self.project_model(project_id=project_id, org_type_id=org_type.id, is_enabled=True)
         db.add(passthrough)
         db.flush()
         return passthrough
+
+    def remove_type(self, db: Session, project_id: uuid.UUID, organization_id: uuid.UUID, type_ref_id: uuid.UUID) -> tuple[str, uuid.UUID]:
+        """What "delete" means for a type in a project: a project-local type is
+        deleted (`delete_project_type`); an organisation default (listed by its
+        org id or its override row id) is hidden here (`hide_org_type`).
+
+        Returns:
+            `("deleted", row id)` or `("hidden", org type id)`.
+
+        Raises:
+            LookupError: If the id is no type of this project.
+            ValueError: If a local type is still in use.
+        """
+        row = db.get(self.project_model, type_ref_id)
+        if row is not None and row.project_id == project_id and row.org_type_id is None:
+            self.delete_project_type(db, row)
+            return "deleted", row.id
+        try:
+            return "hidden", self.hide_org_type(db, project_id, organization_id, type_ref_id).id
+        except ValueError as exc:
+            raise LookupError(str(exc)) from exc
+
+    def hide_org_type(self, db: Session, project_id: uuid.UUID, organization_id: uuid.UUID, type_ref_id: uuid.UUID):
+        """Hides an organisation type in a project. `type_ref_id` is an
+        `EffectiveType.id` of an org-backed row: the org type id, or the id of
+        the project's override row for it. The override row is kept, so records
+        that use it are unaffected.
+
+        Returns:
+            The hidden org type.
+
+        Raises:
+            ValueError: If the id is not an org-backed type of this project.
+        """
+        row = db.get(self.project_model, type_ref_id)
+        if row is not None and row.project_id == project_id:
+            org_type_id = row.org_type_id
+        else:
+            org_type_id = type_ref_id
+        org_type = db.get(self.org_model, org_type_id) if org_type_id is not None else None
+        if org_type is None or org_type.organization_id != organization_id:
+            raise ValueError(f"This is not an organisation {self.label} that can be hidden here.")
+        definition_suppression.hide_definition(db, project_id, self.kind, org_type.id)
+        return org_type
+
+    def list_hidden(self, db: Session, project_id: uuid.UUID, organization_id: uuid.UUID) -> list:
+        """The organisation types hidden in the project, in the organisation's order."""
+        hidden = definition_suppression.get_suppressed_ids(db, project_id, self.kind)
+        if not hidden:
+            return []
+        return list(db.scalars(
+            select(self.org_model)
+            .where(self.org_model.organization_id == organization_id, self.org_model.id.in_(hidden))
+            .order_by(self.org_model.sort_order)
+        ).all())
+
+    def restore_hidden(
+        self, db: Session, project_id: uuid.UUID, organization_id: uuid.UUID, org_type_ids: set[uuid.UUID] | None = None,
+    ) -> list:
+        """Shows hidden organisation types in the project again: all of them,
+        or only `org_type_ids`. Returns the restored org types."""
+        hidden = self.list_hidden(db, project_id, organization_id)
+        wanted = {t.id for t in hidden}
+        if org_type_ids is not None:
+            wanted &= org_type_ids
+        restored = definition_suppression.restore_definitions(db, project_id, self.kind, wanted)
+        return [t for t in hidden if t.id in restored]
+
+    def hidden_names(self, db: Session, project_id: uuid.UUID, organization_id: uuid.UUID) -> list[str]:
+        """Names of the organisation types hidden in the project, for a project bundle."""
+        return [t.name for t in self.list_hidden(db, project_id, organization_id)]
+
+    def hide_by_names(self, db: Session, project_id: uuid.UUID, organization_id: uuid.UUID, names: list[str]) -> list[str]:
+        """Hides the organisation types called `names` (a project bundle import).
+
+        Returns:
+            The names the organisation has no type for (skipped).
+        """
+        by_name = {
+            t.name: t for t in db.scalars(select(self.org_model).where(self.org_model.organization_id == organization_id))
+        }
+        missing: list[str] = []
+        for name in names:
+            org_type = by_name.get(name)
+            if org_type is None:
+                missing.append(name)
+            else:
+                definition_suppression.hide_definition(db, project_id, self.kind, org_type.id)
+        return missing
 
     def create_project_local(self, db: Session, project_id: uuid.UUID, name: str, *, display_order: int | None = None):
         """Creates a fully project-local type.

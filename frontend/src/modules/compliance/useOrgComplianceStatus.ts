@@ -2,7 +2,7 @@
  * Module: modules/compliance/useOrgComplianceStatus
  *
  * Shared, deduplicated fetch of `listOrgProjectComplianceStatus(orgId)` —
- * extracted (compliance-module-plan.md Phase 25b hardening) because
+ * extracted because
  * `ComplianceOrgOverviewTiles.tsx` (the `OrgOverviewPage.tsx` header tiles)
  * and `OrgComplianceDashboard.tsx` (the default-active `orgOverviewSections`
  * group on that same page) both need these exact rows and, by construction,

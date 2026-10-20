@@ -1,6 +1,5 @@
-"""Tests for Module 0 (Platform Foundations) Phase 4's module
-sub-component enablement mechanism (`docs/plans/module-00-platform-
-foundations-plan.md`): `ModuleSubComponentDefinition`, the two-tier
+"""Tests for the module
+sub-component enablement mechanism: `ModuleSubComponentDefinition`, the two-tier
 resolution functions (`app.modules.registry.is_module_subcomponent_enabled`/
 `is_org_module_subcomponent_enabled`), the `require_project_subcomponent_
 enabled`/`require_org_subcomponent_enabled` RBAC dependencies' 404-not-403

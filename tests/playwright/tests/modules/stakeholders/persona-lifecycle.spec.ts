@@ -1,14 +1,14 @@
 import { expect, test } from "@playwright/test";
 
 import { installCleanupHook, selectOrgAdminGroup } from "../../e2e-workflows/helpers";
-import { API_BASE_URL, setUpOrg, statusBadge } from "./helpers";
+import { API_BASE_URL, openNew, openPeople, setUpOrg, statusBadge } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
 
 /**
- * Job to be done: docs/plans/module-02-stakeholders-and-personas-plan.md
- * Phase 1.1's exit criteria — Playwright e2e coverage for the Persona UI
+ * Job to be done:
+ * Playwright e2e coverage for the Persona UI
  * (`frontend/src/modules/stakeholders/`) against a real backend.
  *
  * Each test builds a disposable org + admin (+ project) through the API, per
@@ -16,8 +16,8 @@ installCleanupHook();
  * `Date.now()`-suffixes every name. The module is `default_enabled=False`, so
  * each test switches it on from Org Admin's Modules group first.
  *
- * `backend/scripts/seed_e2e_dataset.py` still gains Personas (the plan asks
- * for both seed scripts to carry them), but these specs don't depend on them.
+ * `backend/scripts/seed_e2e_dataset.py` still gains Personas (both seed scripts carry
+ * them), but these specs don't depend on them.
  *
  * The org admin is the project's `PROJECT_MANAGER`, which composes with the
  * module's project-scoped `persona_owner` role, so one persona can create,
@@ -28,18 +28,16 @@ test.describe("Stakeholders & Personas: Persona lifecycle and weight", () => {
     const { suffix, project } = await setUpOrg(page, "Persona");
     const personaName = `Field Technician ${suffix}`;
 
-    await page.goto(`/projects/${project.id}`);
-    await page.getByRole("link", { name: "Personas", exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/stakeholders/personas$`));
+    await openPeople(page, project.id, "persona");
 
-    // --- Create (a Modal layer) with an own weight of 2.
-    await page.getByRole("button", { name: "New Persona" }).click();
+    // --- Create (a Modal layer, from the New menu) with an own weight of 2.
+    await openNew(page, "Persona");
     const dialog = page.getByRole("dialog", { name: "New Persona (project)" });
     await dialog.getByLabel("Persona name").fill(personaName);
     await dialog.getByLabel("Type").selectOption({ label: "Primary" });
     await dialog.getByLabel("Goals").fill("Finish inspections without rework.");
     await dialog.getByLabel("Importance weight").fill("2");
-    await dialog.getByRole("button", { name: "Save" }).click();
+    await dialog.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByRole("button", { name: personaName })).toBeVisible();
 
     await page.getByRole("button", { name: personaName }).click();
@@ -72,7 +70,7 @@ test.describe("Stakeholders & Personas: Persona lifecycle and weight", () => {
     await expect(page.getByRole("button", { name: "Reactivate" })).toBeVisible();
 
     // --- The list shows the final status through its label map.
-    await page.getByRole("link", { name: "← Personas", exact: true }).click();
+    await page.getByRole("link", { name: "← People", exact: true }).click();
     const row = page.locator("tr", { hasText: personaName });
     await expect(row.getByText("Retired", { exact: true })).toBeVisible();
   });

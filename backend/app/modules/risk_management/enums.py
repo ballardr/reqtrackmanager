@@ -1,8 +1,7 @@
 """
 Module: modules.risk_management.enums
 
-Risk Management's own vocabulary (docs/plans/module-03-risk-management-plan.md
-Phase 0 resolutions 4 and 9), kept in this package rather than core.
+Risk Management's own vocabulary, kept in this package rather than core.
 """
 
 from __future__ import annotations
@@ -45,7 +44,7 @@ class TreatmentStrategy(str, enum.Enum):
 
 class TreatmentAssessmentStatus(str, enum.Enum):
     """A risk owner's verdict on whether one treatment link actually reduces
-    the risk (Phase 0 resolution 3). A treatment link with no assessment row is
+    the risk. A treatment link with no assessment row is
     implicitly `PROPOSED`; only `EFFECTIVE` counts toward the risk being treated.
     `NEEDS_REASSESSMENT` marks a verdict that may no longer hold."""
 
@@ -56,7 +55,7 @@ class TreatmentAssessmentStatus(str, enum.Enum):
 
 
 class RiskReviewOutcome(str, enum.Enum):
-    """What a periodic review concluded about a risk (Phase 4). `CONFIRMED` means
+    """What a periodic review concluded about a risk. `CONFIRMED` means
     the current assessment and treatment still stand; `REASSESSED` means the
     reviewer changed the assessment, treatment or status as part of the review
     (those edits are ordinary versions; the review records that they happened)."""

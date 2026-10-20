@@ -3,12 +3,12 @@
  *
  * Thin request functions for the Compliance Module's org-router endpoints
  * (`backend/app/modules/compliance/router.py`, mounted at
- * `/api/v1/orgs/{organization_id}/modules/compliance`) that Phase 12's
+ * `/api/v1/orgs/{organization_id}/modules/compliance`) that the
  * org-level management UI calls: standards CRUD, standard-version
  * CRUD/publish/retire (incl. cloning), the requirement tree, required
  * actions, the two extensible vocabularies (action types, mapping
  * relationship types), cross-standard requirement mappings, and the
- * version-diff endpoint (Phase 11, §27) — plus, since Phase 13, the
+ * version-diff endpoint (§27) — plus the
  * project-router endpoints (`project_router.py`, mounted at
  * `/api/v1/projects/{project_id}/modules/compliance`) the Project
  * Compliance View needs: assignment viewing, per-requirement applicability/
@@ -16,7 +16,7 @@
  * linkage/files, and scheduled reviews. Standard-to-project *assignment
  * itself* (`POST .../projects/{project_id}/project-compliance`) stays on
  * the org router per `router.py`'s own "assigning is a Compliance Manager
- * decision" design (Phase 7 notes) even though the calling UI is
+ * decision" design even though the calling UI is
  * project-scoped — see the "Assignment (org router)" section below.
  *
  * This codebase has no general "one API file per feature" convention —
@@ -26,39 +26,37 @@
  * is a direct, uninteresting pass-through to `api.*`, kept together so
  * `ComplianceAdminPanel.tsx`/`ProjectCompliancePage.tsx` and their children
  * read as UI logic, not fetch plumbing. Deliberately NOT a generic
- * per-module convention this repo now expects elsewhere — see
- * docs/compliance-module-plan.md's Phase 12 notes.
+ * per-module convention this repo now expects elsewhere.
  *
- * Phase 18 ("Compliance Standards" as a first-class, cross-org, project-like
- * nav entity) adds the two global (no org/project id in the path) endpoints
+ * The "Compliance Standards" first-class, cross-org, project-like
+ * nav entity adds the two global (no org/project id in the path) endpoints
  * at the top of this file — `getNavVisibility`/`getStandardById` — plus
  * `getStandardHistory` (an org-router addition, `router.py`'s new
  * `GET .../standards/{id}/history`, mirroring `getRequirementHistory`'s
  * existing shape) for the new `/standards/:standardId` workspace's
  * "History" section.
  *
- * Phase 21 (standard-level import/export) adds `exportStandard`/
+ * Standard-level import/export: `exportStandard`/
  * `importStandard` — `exportStandard` returns a `Blob` (`api.getForBlob`,
  * the same shape `OrgComplianceDashboard.tsx`'s report downloads already
  * use) rather than parsed JSON, since the caller only ever hands it
  * straight to `downloadBlob`; `importStandard` uploads via `api.postFile`,
  * the same helper `ProjectListPage.tsx`'s own project-bundle import uses.
  *
- * Phase 43 adds `downloadOrgComplianceReport`/`downloadProjectComplianceReport`
- * — the same `api.getForBlob` + `downloadBlob` shape as `exportStandard`
- * above, but for the Phase 15 compliance-report endpoints themselves,
+ * `downloadOrgComplianceReport`/`downloadProjectComplianceReport`
+ * use the same `api.getForBlob` + `downloadBlob` shape as `exportStandard`
+ * above, for the compliance-report endpoints themselves,
  * scoped by an optional `ComplianceReportFilters` so a report export
  * triggered from an already-filtered panel (`OrgComplianceStandardsPanel.tsx`,
  * `OrgComplianceOutstandingPanel.tsx`, `OutstandingPanel.tsx`) downloads
  * only what that panel currently shows.
  *
- * Endpoints intentionally NOT covered here (out of this phase's own scope):
+ * Endpoints intentionally NOT covered here:
  * the project-scoped version-migration action (§27, `migrate-version`) —
- * deliberately not built into this phase's UI either, a flagged scope trim
- * recorded in docs/compliance-module-plan.md's Phase 13 notes, mirroring how
- * Phase 12 flagged owner reassignment rather than silently omitting it.
+ * deliberately not built into the UI, a flagged scope trim.
  */
 import { api, ApiError } from "../../api/client";
+import type { ProjectScope } from "../../api/projectScope";
 import type { Organization, PrincipalRef } from "../../api/types";
 import type {
   ComplianceActionType,
@@ -102,7 +100,7 @@ function projectBase(projectId: string): string {
   return `/api/v1/projects/${projectId}/modules/compliance`;
 }
 
-// --- Phase 18: global (no org/project id in the path) endpoints -----------------
+// --- global (no org/project id in the path) endpoints -----------------
 //
 // Mounted via `ModuleDefinition.get_global_router` (`backend/app/modules/
 // compliance/global_router.py`) at the bare `/api/v1/compliance` prefix —
@@ -131,8 +129,7 @@ export interface StandardAcrossOrgsRow extends ComplianceStandard {
 
 /**
  * No cross-org backend listing endpoint exists for standards — every
- * compliance route requires `organization_id` in the path (Phase 6's own
- * design) — so this fans `listStandards` out across every org the caller
+ * compliance route requires `organization_id` in the path (by design) — so this fans `listStandards` out across every org the caller
  * belongs to in parallel. An org whose call 404s (module disabled there)
  * is dropped silently, matching the 404-not-403 "not entitled/disabled
  * looks the same as not present" posture every other compliance endpoint
@@ -140,7 +137,7 @@ export interface StandardAcrossOrgsRow extends ComplianceStandard {
  * rather than failing the whole caller over one org's own hiccup.
  *
  * Shared by `StandardListPage.tsx` (the cross-org standards directory) and
- * `StandardWorkspacePage.tsx`'s `EntitySwitcher` loader (Phase 28), which
+ * `StandardWorkspacePage.tsx`'s `EntitySwitcher` loader, which
  * both need this exact fan-out rather than duplicating it.
  */
 export async function listStandardsAcrossMyOrgs(
@@ -201,7 +198,7 @@ export function getStandardHistory(orgId: string, standardId: string): Promise<C
   return api.get(`${base(orgId)}/standards/${standardId}/history`);
 }
 
-// --- Phase 23: standard workspace Overview stats --------------------------------
+// --- standard workspace Overview stats --------------------------------
 
 /** This standard's own slice of `listOrgProjectComplianceStatus` — the
  * exact same `ProjectComplianceStatus` rows, narrowed server-side to this
@@ -211,19 +208,19 @@ export function getStandardProjectSummary(orgId: string, standardId: string): Pr
   return api.get(`${base(orgId)}/standards/${standardId}/project-summary`);
 }
 
-// --- Phase 21: standard-level import/export -----------------------------------
+// --- standard-level import/export -----------------------------------
 
 export function exportStandard(orgId: string, standardId: string): Promise<Blob> {
   return api.getForBlob(`${base(orgId)}/standards/${standardId}/export`);
 }
 
-// --- Phase 43: scoped compliance report export -----------------------------------
+// --- scoped compliance report export -----------------------------------
 
 /** The Standard/Standard version/Sub-section (+ Project, at org scope)
  * filters a report export narrows to — the same filter dimensions
  * `OrgComplianceStandardsPanel.tsx`, `OrgComplianceOutstandingPanel.tsx`,
- * and `OutstandingPanel.tsx` already hold as client-side filter state
- * (Phase 40), passed through as query params so "Export" always means
+ * and `OutstandingPanel.tsx` already hold as client-side filter state,
+ * passed through as query params so "Export" always means
  * "export what this panel is currently showing," not "export everything." */
 export interface ComplianceReportFilters {
   projectId?: string;
@@ -270,7 +267,7 @@ export function importStandard(orgId: string, file: File, resolution?: "skip" | 
   return api.postFile(`${base(orgId)}/standards/import`, file, resolution ? { resolution } : undefined);
 }
 
-// --- Phase 20: applicability defaults + exceptions (Compliance-Manager-only, ---
+// --- applicability defaults + exceptions (Compliance-Manager-only, ---
 // org-scoped — the standard's own governance, distinct from Project-Manager
 // self-service assignment below, which lives on the project router).
 
@@ -296,7 +293,7 @@ export function removeStandardDefaultExclusion(orgId: string, standardId: string
   return api.delete(`${base(orgId)}/standards/${standardId}/exclusions/${projectId}`);
 }
 
-// --- Phase 22: standard-scoped RBAC (standards_manager/standards_contributor) --
+// --- standard-scoped RBAC (standards_manager/standards_contributor) --
 
 export function getComplianceOrgSettings(orgId: string): Promise<ComplianceOrgSettings> {
   return api.get(`${base(orgId)}/settings`);
@@ -324,7 +321,7 @@ export function revokeStandardMemberRole(
   return api.delete(`${base(orgId)}/standards/${standardId}/members/${userId}/roles/${roleKey}`);
 }
 
-// Compliance module Phase 30 — group-based grants (`GroupModuleRole`).
+// Group-based grants (`GroupModuleRole`).
 export function assignStandardGroupRole(
   orgId: string, standardId: string, orgGroupId: string, roleKey: ComplianceStandardRoleKey
 ): Promise<void> {
@@ -359,7 +356,7 @@ export function retireStandardVersion(orgId: string, standardId: string, version
   return api.post(`${base(orgId)}/standards/${standardId}/versions/${versionId}/retire`);
 }
 
-// --- Phase 24: version summary (editable at any lifecycle stage) + ---------------
+// --- version summary (editable at any lifecycle stage) + ---------------
 // post-publish requirement clarification.
 
 export function updateStandardVersion(
@@ -534,7 +531,7 @@ export function unarchiveRequirementMapping(orgId: string, mappingId: string): P
   return api.post(`${base(orgId)}/requirement-mappings/${mappingId}/unarchive`);
 }
 
-// --- Version diff (Phase 11, §27) ------------------------------------------------
+// --- Version diff (§27) ------------------------------------------------
 
 export function getStandardVersionDiff(
   orgId: string, standardId: string, versionId: string, otherVersionId: string
@@ -542,11 +539,10 @@ export function getStandardVersionDiff(
   return api.get(`${base(orgId)}/standards/${standardId}/versions/${versionId}/diff/${otherVersionId}`);
 }
 
-// --- Phase 14: Org Compliance View + Dashboard (§22, §23) -------------------------
+// --- Org Compliance View + Dashboard (§22, §23) -------------------------
 //
 // Org-wide aggregations across every project in the organisation, all
-// `_require_manage`-gated on the backend (§26 — see docs/compliance-module-
-// plan.md's Phase 14 notes for why this is manage-, not view-, gated despite
+// `_require_manage`-gated on the backend (§26 — notes for why this is manage-, not view-, gated despite
 // §22's own looser-sounding "Compliance Managers and authorised users"
 // text).
 
@@ -578,7 +574,7 @@ export function listOrgRecentActivity(orgId: string, limit = 20): Promise<Compli
   return api.get(`${base(orgId)}/recent-activity?limit=${limit}`);
 }
 
-// --- Phase 14: Project-level outstanding required actions (new alongside the
+// --- Project-level outstanding required actions (new alongside the
 // org-wide aggregation above; consistent with the existing non-compliant-
 // requirements/pending-approvals per-project listing family) ---------------------
 
@@ -593,7 +589,7 @@ export function listOutstandingRequiredActions(projectId: string): Promise<Outst
  * `GET .../requirements` list (`parent_requirement_id` populated on each
  * row) — there is no nested-tree endpoint (confirmed against
  * `router.py::_flatten_requirements_dfs`; see this module's own research
- * notes in docs/compliance-module-plan.md's Phase 12 notes). Mirrors that
+ * notes notes). Mirrors that
  * backend algorithm: group by `parent_requirement_id`, each group already
  * arrives `sort_order`-ordered courtesy of the backend's own DFS emission,
  * so no client-side re-sort is needed — this just re-nests the already-
@@ -620,7 +616,7 @@ export function buildRequirementTree(flat: ComplianceRequirement[]): ComplianceR
 /**
  * Resolves the top-level ancestor (the requirement whose own
  * `parent_requirement_id` is `null`) of `requirementId` within
- * `requirementsById` — Phase 40's "sub-section" filter concept. There is no
+ * `requirementsById` — the "sub-section" filter concept. There is no
  * dedicated "section" field anywhere in the data model (a standard's
  * hierarchy is purely `parent_requirement_id`-based, the same flat listing
  * `buildRequirementTree` above nests), so a requirement's section is just
@@ -674,12 +670,12 @@ export async function resolveStandardIdForVersion(orgId: string, standardVersion
   return null;
 }
 
-// --- Phase 13/20: Assignment ---------------------------------------------------
+// --- Assignment ---------------------------------------------------
 //
-// Two endpoints, same payload shape, different callers/routers — Phase 20
-// makes the project-scoped one (below) the *default, primary* path, usable
+// Two endpoints, same payload shape, different callers/routers:
+// the project-scoped one (below) is the *default, primary* path, usable
 // by a plain Project Manager with no `compliance_officer` grant; this org-
-// scoped one (Phase 7's original design, Compliance-Manager-only) remains
+// scoped one (Compliance-Manager-only) remains
 // the secondary/administrative path, for a Compliance Manager assigning on
 // a project's behalf or in bulk.
 
@@ -690,7 +686,7 @@ export function createProjectCompliance(
   return api.post(`${base(orgId)}/projects/${projectId}/project-compliance`, payload);
 }
 
-/** Phase 20's default, primary assignment path — project-scoped,
+/** The default, primary assignment path — project-scoped,
  * `_require_officer`-gated (`compliance_officer` grant OR
  * `ProjectRole.PROJECT_MANAGER`) — used by `ProjectCompliancePage.tsx`'s
  * own "Assign standard" flow. */
@@ -709,14 +705,16 @@ export function unarchiveProjectCompliance(orgId: string, projectId: string, pro
   return api.post(`${base(orgId)}/projects/${projectId}/project-compliance/${projectComplianceId}/unarchive`);
 }
 
-// --- Phase 13: Project compliance assignments (project router, read + status) ---
+// --- Project compliance assignments (project router, read + status) ---
 
 export function listProjectCompliance(projectId: string): Promise<ProjectCompliance[]> {
   return api.get(`${projectBase(projectId)}/project-compliance`);
 }
 
-export function getProjectComplianceStatus(projectId: string): Promise<ProjectComplianceStatus[]> {
-  return api.get(`${projectBase(projectId)}/status`);
+/** The standards assigned to a project; `projectScope` adds those of its related projects. */
+export function getProjectComplianceStatus(projectId: string, projectScope: ProjectScope = "this"): Promise<ProjectComplianceStatus[]> {
+  const query = projectScope === "this" ? "" : `?project_scope=${projectScope}`;
+  return api.get(`${projectBase(projectId)}/status${query}`);
 }
 
 export function listNonCompliantRequirements(projectId: string): Promise<NonCompliantRequirement[]> {
@@ -727,7 +725,7 @@ export function listPendingApprovals(projectId: string): Promise<PendingApproval
   return api.get(`${projectBase(projectId)}/pending-approvals`);
 }
 
-// --- Phase 13: Per-requirement assessment (§8-§10, §12, §16) ---------------------
+// --- Per-requirement assessment (§8-§10, §12, §16) ---------------------
 
 function pcrBase(projectId: string, projectComplianceId: string): string {
   return `${projectBase(projectId)}/project-compliance/${projectComplianceId}/requirements`;
@@ -783,7 +781,7 @@ export function listRequirementEvidence(
   return api.get(`${pcrBase(projectId, projectComplianceId)}/${pcrId}/evidence`);
 }
 
-// --- Phase 13: Required action assessments (§6/§25) ------------------------------
+// --- Required action assessments (§6/§25) ------------------------------
 
 function assessmentsBase(projectId: string, projectComplianceId: string, pcrId: string): string {
   return `${pcrBase(projectId, projectComplianceId)}/${pcrId}/required-action-assessments`;
@@ -820,7 +818,7 @@ export function listRequiredActionAssessmentEvidence(
   return api.get(`${assessmentsBase(projectId, projectComplianceId, pcrId)}/${assessmentId}/evidence`);
 }
 
-// --- Phase 13: Evidence (§13-§15) -------------------------------------------------
+// --- Evidence (§13-§15) -------------------------------------------------
 
 export function createEvidence(
   projectId: string,
@@ -898,7 +896,7 @@ export function unlinkEvidenceFile(projectId: string, evidenceId: string, fileId
   return api.delete(`${projectBase(projectId)}/evidence/${evidenceId}/files/${fileId}`);
 }
 
-// --- Phase 13: Scheduled reviews, project-level (§17, §18, §28) -----------------
+// --- Scheduled reviews, project-level (§17, §18, §28) -----------------
 
 export function createProjectReview(
   projectId: string, projectComplianceId: string,

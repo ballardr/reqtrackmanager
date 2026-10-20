@@ -1,8 +1,7 @@
 """
 Module: modules.risk_management.mcp_tools
 
-The Risk Management module's MCP tool declarations (docs/plans/module-03-risk-
-management-plan.md Phase 4; `docs/modules.md` section 6). Each tool proxies an
+The Risk Management module's MCP tool declarations (`docs/modules.md` section 6). Each tool proxies an
 existing project-router endpoint, so the endpoint's own authorisation, guards
 and audit logging apply unchanged; declaring a tool grants nothing.
 
@@ -13,7 +12,7 @@ Responsibilities:
   the report framework generates from `reports.REPORT_DEFINITIONS`.
 
 Design decisions:
-- Write-enabled, per the plan's 2026-09-22 instruction (Decided by: User). Writes
+- Write-enabled, per the 2026-09-22 instruction (Decided by: User). Writes
   still need `MCP_WRITES_ENABLED` and the caller's own role.
 - Moving a risk to `accepted` goes through the same `transition_risk` tool: the
   endpoint applies the Risk Acceptor role and the org+project AI-approval gate

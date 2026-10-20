@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -8,6 +8,8 @@ import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
+import { CheckboxField } from "../components/FormFields";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 const PAGE_SIZE = 30;
 
@@ -68,10 +70,7 @@ export function ProjectHistoryPage() {
     await loadChanges(0, false);
   }
 
-  useEffect(() => {
-    reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, since, until, includeComments, entityTypeFilter]);
+  useLoadOnChange(reload, [projectId, since, until, includeComments, entityTypeFilter]);
 
   return (
     <div className="stack">
@@ -96,10 +95,11 @@ export function ProjectHistoryPage() {
             ))}
           </select>
         </label>
-        <label className="row">
-          <input type="checkbox" checked={includeComments} onChange={(e) => setIncludeComments(e.target.checked)} />
-          {strings.history.includeComments}
-        </label>
+        <CheckboxField helpNotNeeded
+          label={strings.history.includeComments}
+          checked={includeComments}
+          onChange={setIncludeComments}
+        />
       </div>
 
       {!changes && <Spinner />}

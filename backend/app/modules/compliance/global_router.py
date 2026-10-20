@@ -1,9 +1,9 @@
 """
 Module: modules.compliance.global_router
 
-The Compliance Module's Phase 18 "Compliance Standards as a first-class,
+The Compliance Module's "Compliance Standards as a first-class,
 cross-org, project-like nav entity" endpoints
-(docs/compliance-module-plan.md Phase 18) — the two HTTP surfaces that
+ — the two HTTP surfaces that
 genuinely have no single `organization_id`/`project_id` to key a path off,
 unlike everything else this module has needed so far (`router.py`'s
 org-scoped endpoints, `project_router.py`'s project-scoped ones):
@@ -24,7 +24,7 @@ org-scoped endpoints, `project_router.py`'s project-scoped ones):
 Both endpoints are mounted via `ModuleDefinition.get_global_router` — a new,
 third, optional router kind (`app.modules.registry`'s own docstring on that
 field explains why `get_router`/`get_project_router` don't fit) added
-specifically for this phase rather than bolting either endpoint onto
+specifically for these endpoints rather than bolting either endpoint onto
 `router.py`'s org-prefixed router or `project_router.py`'s project-prefixed
 one, where neither would have a real path parameter to hang off.
 
@@ -35,7 +35,7 @@ Responsibilities:
   parameter for a `require_org_module_enabled`-style dependency factory to
   bind to:
   - `nav-visibility` iterates every org the caller holds a direct
-    `UserOrgRole` in and applies compliance-module-plan.md Phase 18's exact
+    `UserOrgRole` in and applies exact
     formula ("compliance effectively enabled AND (caller is
     `compliance_manager`/org admin/server admin, OR that org has ≥1
     non-archived standard)"), reusing `service.py::
@@ -92,8 +92,7 @@ _MODULE_KEY = "compliance"
 def get_nav_visibility(
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ) -> ComplianceNavVisibilityOut:
-    """Whether the caller should see the "Compliance Standards" nav-rail tab
-    (compliance-module-plan.md Phase 18).
+    """Whether the caller should see the "Compliance Standards" nav-rail tab.
 
     `True` if, for *any* org the caller directly belongs to (a
     `UserOrgRole` row — the same membership source `require_org_module_

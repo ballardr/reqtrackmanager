@@ -4,8 +4,8 @@ Revision ID: 0020
 Revises: 0019
 Create Date: 2026-08-31
 
-Found incidentally while verifying the follow-up UX batch's Phase D
-(docs/decisions.md) — unrelated to that phase's own work, but a real,
+Found incidentally on 2026-08-31
+(docs/decisions.md) — unrelated to the work being verified, but a real,
 previously-undiscovered bug this repo's own "fix issues found, don't defer"
 rule requires fixing here rather than filing separately.
 
@@ -17,15 +17,15 @@ requests from both observing "no row yet" and both inserting — a classic
 TOCTOU race. This was a *documented*, deliberate omission (the model's own
 prior docstring said so explicitly), not an oversight — but live evidence
 now shows it happens in practice, not just in theory: a database inspected
-during this phase's own Playwright verification sweep had **two** real
+during a Playwright verification sweep had **two** real
 `server_settings` rows with different `signup_mode` values, and
 `db.scalar(select(ServerSettings))`'s "first row" (no `ORDER BY`) is not
 deterministic once more than one exists — different requests can
 transiently see different rows, exactly matching several previously-
 unexplained flaky `self-signup.spec.ts`/`org-bundle-export-import.spec.ts`
-failures this phase's own verification run hit (and, in hindsight,
-matching an earlier "genuine, non-reproducing flake" the Phase C entry
-above already logged against `test_signup.py` without root-causing it).
+failures that run hit (and, in hindsight,
+matching an earlier "genuine, non-reproducing flake" an earlier entry
+already logged against `test_signup.py` without root-causing it).
 
 Fix, in two parts:
   1. This migration deduplicates any existing extra rows (keeping the most

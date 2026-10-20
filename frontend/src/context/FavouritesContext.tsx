@@ -8,7 +8,7 @@
  * a favourite can be toggled" at the time the comment was written. That's
  * no longer true generally (any future favourite-star elsewhere would go
  * stale) and was already a real gap for a session that never revisits
- * either route after the first toggle. See docs/ux-audit-2026-08.md
+ * either route after the first toggle. See
  * "Favourites: no filter, nav-rail lag, no view toggle" and
  * docs/ux-style-guide.md's "Pattern: role display" sibling section for
  * the general shape of this kind of fix.

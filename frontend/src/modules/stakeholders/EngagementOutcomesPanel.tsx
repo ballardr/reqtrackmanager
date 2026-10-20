@@ -3,7 +3,7 @@
  *
  * The Pain Points, Needs and Open Questions an engagement (or one of its
  * research findings) raised or answered — the trace from a contact to the
- * backlog (Phase 0 addendum, item 20). One component for both holders: the
+ * backlog. One component for both holders: the
  * caller passes the matching `OutcomeApi`. A row names the kind and target type
  * through their label maps and links to the target's own page through the
  * generic `getArtefactPath`, so no other module is imported. Only an Open
@@ -29,6 +29,9 @@ import { getArtefactPath } from "../artefactPaths";
 import type { OutcomeApi } from "./api";
 import type { EngagementOutcome, OutcomeKind, OutcomeTarget, OutcomeTargetType } from "./types";
 import { OUTCOME_KIND_LABEL, OUTCOME_TARGET_TYPE_LABEL } from "./types";
+import { FormActions } from "../../components/FormActions";
+import { FormGrid } from "../../components/FormGrid";
+import { STAKEHOLDERS_HELP } from "./help";
 
 const KIND_OPTIONS = Object.entries(OUTCOME_KIND_LABEL).map(([value, label]) => ({ value, label }));
 const ALL_TYPE_OPTIONS = Object.entries(OUTCOME_TARGET_TYPE_LABEL).map(([value, label]) => ({ value, label }));
@@ -109,7 +112,7 @@ export function EngagementOutcomesPanel({
   if (outcomes === null) return null;
 
   return (
-    <RecordFieldGroup
+    <RecordFieldGroup helpNotNeeded
       label={heading}
       gap="0.35rem"
       action={
@@ -117,7 +120,7 @@ export function EngagementOutcomesPanel({
           type="button" className="btn btn-sm btn-icon" aria-label={`Add to ${heading}`} title={`Add to ${heading}`}
           aria-haspopup="dialog" onClick={() => setAdding(true)}
         >
-          <Plus size={14} aria-hidden="true" />
+          <Plus aria-hidden="true" />
         </button>
       }
     >
@@ -139,28 +142,27 @@ export function EngagementOutcomesPanel({
         />
       )}
       {adding && (
-        <Modal title="Record an outcome" onClose={() => setAdding(false)}>
+        <Modal title="Record an outcome" onClose={() => setAdding(false)} size="lg">
           <div className="stack">
-            <LabeledSelect label="Outcome kind" value={kind} placeholder={null} onChange={(v) => changeKind(v as OutcomeKind)} options={KIND_OPTIONS} />
-            <LabeledSelect
-              label="Outcome type" value={targetType} placeholder={null}
-              onChange={(v) => { setTargetType(v as OutcomeTargetType); setPicked(""); }} options={typeOptions}
+            <FormGrid minColumn="18rem">
+              <LabeledSelect help={STAKEHOLDERS_HELP.engagementOutcomeKind} label="Outcome kind" value={kind} placeholder={null} onChange={(v) => changeKind(v as OutcomeKind)} options={KIND_OPTIONS} />
+              <LabeledSelect helpNotNeeded
+                label="Outcome type" value={targetType} placeholder={null}
+                onChange={(v) => { setTargetType(v as OutcomeTargetType); setPicked(""); }} options={typeOptions}
+              />
+              <LabeledSelect helpNotNeeded required label="Outcome record" value={picked} onChange={setPicked} options={candidates} placeholder="Choose…" />
+            </FormGrid>
+            <FormActions
+              onCancel={() => setAdding(false)}
+              onSave={() => {
+                const id = picked;
+                setPicked("");
+                setAdding(false);
+                void mutate(() => api.add(projectId, holderId, kind, targetType, id), "Outcome recorded.", "Could not record the outcome.");
+              }}
+              saveLabel="Add outcome"
+              saveDisabled={!picked}
             />
-            <LabeledSelect label="Outcome record" value={picked} onChange={setPicked} options={candidates} placeholder="Choose…" />
-            <div className="row" style={{ justifyContent: "flex-end" }}>
-              <button className="btn" onClick={() => setAdding(false)}>Cancel</button>
-              <button
-                className="btn btn-primary" disabled={!picked}
-                onClick={() => {
-                  const id = picked;
-                  setPicked("");
-                  setAdding(false);
-                  void mutate(() => api.add(projectId, holderId, kind, targetType, id), "Outcome recorded.", "Could not record the outcome.");
-                }}
-              >
-                Add outcome
-              </button>
-            </div>
           </div>
         </Modal>
       )}

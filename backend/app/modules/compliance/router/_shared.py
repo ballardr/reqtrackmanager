@@ -36,7 +36,7 @@ from app.services.rbac import require_module_role, require_org_module_enabled
 _require_manage = require_module_role("compliance", "compliance_manager")
 _require_view = require_org_module_enabled("compliance")
 
-# Phase 22 (docs/compliance-module-plan.md): standard-scoped gates, built
+# Standard-scoped gates, built
 # from the same `require_module_role` factory as `_require_manage` above —
 # `standards_manager`/`standards_contributor` are declared with the new
 # generalised `scope="standard"` (`app.modules.registry.ModuleRoleDefinition`),
@@ -53,7 +53,7 @@ _require_view = require_org_module_enabled("compliance")
 # check) — `_require_manage`'s own admin/grant bypass has never required
 # membership, and building on `_require_view` here would have silently
 # narrowed that for every standard-scoped action, a real, unintended
-# behaviour change caught by this phase's own test suite.
+# behaviour change caught by the test suite.
 _require_standard_manage = require_module_role("compliance", "standards_manager")
 _require_standard_contribute = require_module_role("compliance", "standards_contributor")
 
@@ -63,7 +63,7 @@ def _require_standard_manage_or_contribute(
     current_user: User = Depends(get_current_user_or_module_frame("compliance")),
     db: Session = Depends(get_db),
 ) -> User:
-    """Manager-**or**-contributor, standard-scoped gate (Phase 22) — for
+    """Manager-**or**-contributor, standard-scoped gate — for
     the draft-only requirement/required-action content mutations a
     `standards_contributor` may also make; `_require_draft_version` still
     separately enforces the "only while the version is still a draft"
@@ -124,7 +124,7 @@ def _require_draft_version(version: ComplianceStandardVersion) -> None:
     creating, editing, deleting, or reordering a requirement or required
     action under a non-draft version 409s. Applied uniformly to *every*
     content mutation under a version (create/update/delete/move alike) —
-    see docs/compliance-module-plan.md's Phase 6 notes for why `move` is
+ notes for why `move` is
     included even though the spec text only explicitly names create/
     update/delete: reordering is still a mutation of the version's content,
     and letting it slip through would silently alter what a published

@@ -8,6 +8,7 @@ import { buildProject, buildUser, withAuth, withRouter, withToast } from "../../
 import { buildNeed, buildPersona, buildStakeholder } from "./fixtures";
 import { NeedDetailPage } from "./NeedDetailPage";
 import type { Need, NeedHolder, NeedRequirement } from "./types";
+import { chooseRecordAction, recordActionNames } from "../../testing/recordActions";
 
 const PROJECT_ID = "project-1";
 const NEED_ID = "need-1";
@@ -21,8 +22,8 @@ const ORG_USERS: OrgUser[] = [
 ];
 
 const HOLDERS: NeedHolder[] = [
-  { link_id: "h1", kind: "stakeholder", id: "stakeholder-1", name: "Pat Regulator", scope: "project" },
-  { link_id: "h2", kind: "persona", id: "persona-1", name: "Field Technician", scope: "project" },
+  { link_id: "h1", kind: "stakeholder", id: "stakeholder-1", name: "Pat Regulator", scope: "project", unique_code: "STK-001", organization_id: null },
+  { link_id: "h2", kind: "persona", id: "persona-1", name: "Field Technician", scope: "project", unique_code: "PER-001", organization_id: null },
 ];
 const REQUIREMENTS: NeedRequirement[] = [{ link_id: "r1", id: "req-1", unique_code: "SW-PERF-001", title: "Remote diagnostics in 30 seconds" }];
 
@@ -91,7 +92,9 @@ export const ActiveShowsFieldsAndLinks: Story = {
     await waitFor(() => expect(canvas.getByRole("link", { name: "Pat Regulator" })).toBeInTheDocument());
     await expect(canvas.getByRole("link", { name: "Pat Regulator" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/stakeholders/stakeholders/stakeholder-1`);
     await expect(canvas.getByRole("link", { name: "Field Technician" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/stakeholders/personas/persona-1`);
-    await expect(canvas.getByRole("link", { name: "SW-PERF-001 Remote diagnostics in 30 seconds" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/requirements/req-1`);
+    await expect(canvas.getByRole("link", { name: "Remote diagnostics in 30 seconds" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/requirements/req-1`);
+    // The code is shown through the one display rule, beside the title rather than inside the link's name.
+    await expect(canvas.getByText(/SW-PERF-001$/)).toBeInTheDocument();
   },
 };
 
@@ -128,11 +131,11 @@ export const ArchiveAsksForConfirmation: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Archive" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Archive" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Stakeholder Need actions" }));
+    await chooseRecordAction(canvas, "Stakeholder Need", "Archive");
     await userEvent.click(within(within(document.body).getByRole("dialog", { name: "Archive this Stakeholder Need?" })).getByRole("button", { name: "Archive" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(`${BASE}/needs/${NEED_ID}/archive`));
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Unarchive" })).toBeInTheDocument());
+    await waitFor(async () => expect(await recordActionNames(canvas, "Stakeholder Need")).toContain("Unarchive"));
   },
 };
 
@@ -193,10 +196,12 @@ export const OwnerCanBeAssigned: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByLabelText("Need owner"));
-    await userEvent.type(canvas.getByLabelText("Need owner"), "Jamie");
-    await waitFor(() => canvas.getByText(/Jamie Lee/));
-    await userEvent.click(canvas.getByText(/Jamie Lee/));
+    await waitFor(() => canvas.getByRole("button", { name: "Assign: Need owner" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Assign: Need owner" }));
+    const picker = within(within(document.body).getByRole("dialog", { name: "Assign: Need owner" }));
+    await userEvent.type(picker.getByLabelText("Need owner"), "Jamie");
+    await waitFor(() => picker.getByText(/Jamie Lee/));
+    await userEvent.click(picker.getByText(/Jamie Lee/));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/needs/${NEED_ID}`, { owner: { type: "user", id: "user-2" } }));
   },
 };
@@ -209,9 +214,11 @@ export const OwnerCanBeAnOrgGroup: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByLabelText("Need owner"));
-    await userEvent.type(canvas.getByLabelText("Need owner"), "platform");
-    await userEvent.click(await canvas.findByText("Platform Architecture"));
+    await waitFor(() => canvas.getByRole("button", { name: "Assign: Need owner" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Assign: Need owner" }));
+    const picker = within(within(document.body).getByRole("dialog", { name: "Assign: Need owner" }));
+    await userEvent.type(picker.getByLabelText("Need owner"), "platform");
+    await userEvent.click(await picker.findByText("Platform Architecture"));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/needs/${NEED_ID}`, { owner: { type: "org_group", id: "group-1" } }));
     await waitFor(() => expect(canvas.getByText("Org group · 3 members")).toBeInTheDocument());
   },
@@ -227,7 +234,7 @@ export const VersionHistoryUsesLabels: Story = {
     }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("heading", { name: "Version history" })).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Versions" })).toBeInTheDocument());
     await expect(canvas.getByText("Initial creation.")).toBeInTheDocument();
     await expect(canvas.queryByText("draft")).not.toBeInTheDocument();
   },

@@ -70,7 +70,7 @@ const OUTSTANDING_ACTIONS: OutstandingRequiredAction[] = [
 
 const EXPIRING_EVIDENCE: OrgExpiringEvidence[] = [
   {
-    id: "ev-1", project_id: "proj-2", project_name: "Beta Tunnel", title: "Thermal test certificate",
+    id: "ev-1", project_id: "proj-2", unique_code: "EVD-001", project_name: "Beta Tunnel", title: "Thermal test certificate",
     description: "", issuing_organisation: "Acme Labs", issued_date: "2025-01-01", expiry_date: "2026-08-01",
     provided_by: "user-1", provided_at: "2025-01-01T00:00:00Z", notes: "", validity_state: "expired",
     is_archived: false, archived_at: null, archived_by: null,
@@ -153,7 +153,7 @@ export const Populated: Story = {
   },
 };
 
-/** Phase 25b — "Download PDF report"/"Download CSV report" moved behind a
+/** "Download PDF report"/"Download CSV report" moved behind a
  * single "Export" `Popover` trigger (Principle 11), the same shape
  * `CsvImportWizard.tsx`'s own Export/Download-template pair already uses,
  * rather than two permanently-visible adjacent buttons. */
@@ -175,7 +175,7 @@ export const DownloadReport: Story = {
   },
 };
 
-/** Phase 25c — the four headline stats and five detail stats now render as
+/** The four headline stats and five detail stats now render as
  * one single `.grid.grid-metrics` grid rather than three separately
  * `flex-wrap`-ped rows of uneven size (4/5). */
 export const StatsRenderAsOneEqualSizeGrid: Story = {
@@ -191,7 +191,7 @@ export const StatsRenderAsOneEqualSizeGrid: Story = {
   },
 };
 
-/** Phase 36 — the top grid's headline cards no longer embed a variable-
+/** The top grid's headline cards no longer embed a variable-
  * length project list as their own `children`; instead each is a
  * `MetricTile` link to a pre-filtered destination (`OrgComplianceStandardsPanel.tsx`'s
  * project pivot, or `OrgComplianceOutstandingPanel.tsx`'s category filter). */
@@ -222,12 +222,12 @@ export const HeadlineTilesLinkToFilteredViews: Story = {
   },
 };
 
-/** Phase 38 — the second block's remaining two cards ("Standards with the
+/** The second block's remaining two cards ("Standards with the
  * most outstanding issues" / "Upcoming compliance deadlines/reviews") sit
  * top-aligned in one row via an explicit `alignItems: "flex-start"` (never
  * `.row`'s own `align-items: center` default, which is what actually
- * produced the "not top justified" complaint — see this file's own Phase 38
- * note), while "Recently changed compliance assessments" now renders as its
+ * produced the "not top justified" complaint — see
+ * `OrgComplianceDashboard.tsx`), while "Recently changed compliance assessments" now renders as its
  * own full-width card entirely outside that row. */
 export const DetailCardsTopAlignedAndRecentActivityFullWidth: Story = {
   beforeEach: mockApis,

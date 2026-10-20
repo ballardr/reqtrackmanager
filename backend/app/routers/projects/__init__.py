@@ -8,7 +8,7 @@ access-inheritance materialization), `report_config`, `lifecycle`
 (archive/unarchive), `stages`, `taxonomy` (components/categories),
 `groups`, `roles` (direct/group/by-email project role assignment,
 pending invites), `module_roles`, and `scoring` (project overrides of
-the generic scoring-matrix default model/bands — Module 1 Phase 10) —
+the generic scoring-matrix default model/bands) —
 into the single `/api/v1/projects` router `main.py` mounts.
 
 Split out from one ~3,500-line module (previously `routers/projects.py`)

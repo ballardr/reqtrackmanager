@@ -5,8 +5,7 @@
  * The requirement report (templates, intro/chapters/appendices, filters; see
  * `RequirementReportPanel`) is always offered, first, and every other report
  * the backend catalogue lists for this project (module enabled, sub-component
- * enabled) is offered beside it in the same picker (`ReportCatalogue`,
- * Module 1 Phase 13). Nothing here names a module or a report: with no
+ * enabled) is offered beside it in the same picker (`ReportCatalogue`). Nothing here names a module or a report: with no
  * catalogue reports the page is the requirement report alone, as before.
  */
 import { useEffect, useState } from "react";

@@ -3,7 +3,7 @@
  *
  * The requirement report's configuration and generation surface (R-F-01 PDF,
  * Word, R-F-02 CSV), extracted from `pages/ReportsPage.tsx` so it can sit beside
- * the catalogue reports in the same Reports picker (Module 1 Phase 13). It
+ * the catalogue reports in the same Reports picker. It
  * carries the project's effective introduction/body chapters/appendices
  * (R-G-01, R-G-02) editable in place, a report-template picker that previews
  * the template's own content when selected (R-G-05), a chapter-per-component/
@@ -35,6 +35,9 @@ import { ReportChapterListEditor } from "./ReportChapterListEditor";
 import { ReportExportButton } from "./ReportExportButton";
 import { RichTextEditor } from "./RichTextEditor";
 import { Spinner } from "./Spinner";
+import { CheckboxField, TextField } from "./FormFields";
+import { FormGrid } from "./FormGrid";
+import { LabeledSelect } from "./LabeledSelect";
 
 /** Same joining `services/reports.py::_chapters_markdown` does server-side
  * — kept in sync deliberately: the panel sends whatever's currently in the
@@ -163,67 +166,68 @@ export function RequirementReportPanel({ project }: { project: Project }) {
       </div>
 
       <CollapsibleSection sectionKey="reports.templateAndLayout" title={strings.reports.templateAndLayout} defaultCollapsed>
-        {reportTemplates.length > 0 && (
-          <label className="stack" style={{ gap: "0.25rem", maxWidth: 280 }}>
-            {strings.reports.reportTemplate}
-            <select className="input" value={reportTemplateId} onChange={(e) => selectTemplate(e.target.value)}>
-              <option value="">{strings.reports.noTemplate}</option>
-              {reportTemplates.map((tpl) => (
-                <option key={tpl.id} value={tpl.id}>
-                  {tpl.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        <label className="stack" style={{ gap: "0.25rem", maxWidth: 280 }}>
-          {strings.reports.chapterLayout}
-          <select
-            className="input"
+        <FormGrid minColumn="16rem">
+          {reportTemplates.length > 0 && (
+            <LabeledSelect help={strings.help.reportBrandingTemplate}
+              label={strings.reports.reportTemplate}
+              value={reportTemplateId}
+              onChange={selectTemplate}
+              options={reportTemplates.map((tpl) => ({ value: tpl.id, label: tpl.name }))}
+              placeholder={strings.reports.noTemplate}
+            />
+          )}
+          <LabeledSelect help={strings.help.reportChapterLayout}
+            label={strings.reports.chapterLayout}
             value={chaptersPerComponent === null ? "" : String(chaptersPerComponent)}
-            onChange={(e) => setChaptersPerComponent(e.target.value === "" ? null : e.target.value === "true")}
-          >
-            <option value="">{strings.reports.chapterLayoutAuto}</option>
-            <option value="true">{strings.reports.chapterLayoutChaptered}</option>
-            <option value="false">{strings.reports.chapterLayoutContinuous}</option>
-          </select>
-        </label>
+            onChange={(next) => setChaptersPerComponent(next === "" ? null : next === "true")}
+            options={[
+              { value: "true", label: strings.reports.chapterLayoutChaptered },
+              { value: "false", label: strings.reports.chapterLayoutContinuous },
+            ]}
+            placeholder={strings.reports.chapterLayoutAuto}
+          />
+        </FormGrid>
       </CollapsibleSection>
 
       <CollapsibleSection sectionKey="reports.filters" title={strings.reports.filters} defaultCollapsed>
-        <div className="row">
-          <select className="input" value={componentId} onChange={(e) => setComponentId(e.target.value)}>
-            <option value="">{strings.reports.allComponents}</option>
-            {components.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-          <select className="input" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-            <option value="">{strings.reports.allCategories}</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-          <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as RequirementStatus | "")}>
-            <option value="">{strings.reports.allStatuses}</option>
-            <option value="draft">{REQUIREMENT_STATUS_LABEL.draft}</option>
-            <option value="reviewed">{REQUIREMENT_STATUS_LABEL.reviewed}</option>
-            <option value="approved">{REQUIREMENT_STATUS_LABEL.approved}</option>
-            {/* C-G-11: "completed" is no longer a `RequirementStatus` value
-                — it's the independent `Requirement.is_completed` overlay,
-                which this report filter doesn't cover. */}
-            <option value="archived">{REQUIREMENT_STATUS_LABEL.archived}</option>
-          </select>
-          <input className="input" placeholder={strings.reports.keywordFilter} value={keyword} onChange={(e) => setKeyword(e.target.value)} />
-        </div>
-        <label className="row">
-          <input type="checkbox" checked={includeArchived} onChange={(e) => setIncludeArchived(e.target.checked)} />
-          {strings.reports.includeArchived}
-        </label>
+        <FormGrid minColumn="14rem">
+          <LabeledSelect helpNotNeeded
+            label={strings.requirements.component}
+            value={componentId}
+            onChange={setComponentId}
+            options={components.map((c) => ({ value: c.id, label: c.name }))}
+            placeholder={strings.reports.allComponents}
+          />
+          <LabeledSelect helpNotNeeded
+            label={strings.requirements.category}
+            value={categoryId}
+            onChange={setCategoryId}
+            options={categories.map((c) => ({ value: c.id, label: c.name }))}
+            placeholder={strings.reports.allCategories}
+          />
+          <LabeledSelect helpNotNeeded
+            label={strings.requirements.status}
+            value={statusFilter}
+            onChange={(next) => setStatusFilter(next as RequirementStatus | "")}
+            // `completed` is not a `RequirementStatus` (it is the independent `Requirement.is_completed`
+            // overlay), which this report filter does not cover.
+            options={(["draft", "reviewed", "approved", "archived"] as RequirementStatus[]).map((st) => ({
+              value: st, label: REQUIREMENT_STATUS_LABEL[st],
+            }))}
+            placeholder={strings.reports.allStatuses}
+          />
+          <TextField helpNotNeeded
+            label={strings.reports.keywordFilter}
+            placeholder={strings.reports.keywordFilter}
+            value={keyword}
+            onChange={setKeyword}
+          />
+        </FormGrid>
+        <CheckboxField helpNotNeeded
+          label={strings.reports.includeArchived}
+          checked={includeArchived}
+          onChange={setIncludeArchived}
+        />
       </CollapsibleSection>
 
       <CollapsibleSection sectionKey="reports.introduction" title={strings.reports.introduction} defaultCollapsed>

@@ -2,7 +2,7 @@
 Module: routers.orgs.groups
 
 Organisation groups (C-U-08, C-U-12): create/list/update (IdP-sync target
-and granted-role configuration, item 522), delete, and member/nested-group
+and granted-role configuration), delete, and member/nested-group
 add/remove.
 
 Split out of the former flat `routers/orgs.py` as a pure code-organization
@@ -45,8 +45,7 @@ def create_org_group(
 ):
     """Creates an organisation group (C-U-08), optionally marking it as
     IdP-synced from creation (`payload.idp_synced_group_name`) and/or
-    granting an org role to anyone synced into it (`payload.
-    granted_org_role`, 2026-08 UX audit roadmap item 522)."""
+    granting an org role to anyone synced into it."""
     if payload.idp_synced_group_name:
         _require_idp_synced_name_available(db, organization_id, payload.idp_synced_group_name)
     _require_granted_role_has_sync_target(payload.granted_org_role, payload.idp_synced_group_name)
@@ -82,14 +81,14 @@ def list_org_groups(
     group id lists.
 
     `search` (name substring, case-insensitive) and `limit`/`offset`
-    (U-P-06, 2026-08 UX audit "Directories at scale") are optional — same
+ are optional — same
     contract as `list_org_users`/`list_requirements`: omitting `limit`
     returns every group unpaginated (existing callers, e.g. Project Admin's
     own org-group nesting picker, rely on exactly this to keep working
     unchanged), and when given, the pre-slice total is returned via
     `X-Total-Count`.
 
-    `order` (Phase B, follow-up UX batch, 2026-08-31 — `DirectoryTable`'s
+    `order` (2026-08-31 — `DirectoryTable`'s
     Name column is this list's only sortable column, so there's no
     separate `sort` param to pick a field the way `list_org_users` has;
     only which direction to apply to the existing name order) defaults to
@@ -98,7 +97,7 @@ def list_org_groups(
     sort/order params" branch, since a client-side sort of only the
     currently-loaded page would misrepresent the true full-list order.
 
-    `granted_org_role` (item 522) is masked to `None` for a non-admin
+    `granted_org_role` is masked to `None` for a non-admin
     caller — this endpoint is deliberately open to any org member (a
     `MEMBER`/`PROJECT_CREATOR` needs group names/ids for the nesting
     picker above), but which group auto-grants which `OrgRole` via SSO
@@ -181,7 +180,7 @@ def update_org_group(
 ):
     """Sets or clears an org group's IdP-sync target
     (`OrgGroup.idp_synced_group_name`) and the org role it grants
-    (`OrgGroup.granted_org_role`, 2026-08 UX audit roadmap item 522) — the
+ — the
     only mutable fields an org group has today (no rename endpoint exists
     for this or `ProjectGroup`). Both are always set wholesale from the
     payload (not merged), matching this endpoint's existing "set or clear"
@@ -392,7 +391,7 @@ def remove_org_group_member(
     against either a user member or a nested-group member (whichever it
     is), same generic-id convention as `remove_project_group_member`.
 
-    Phase 22 (docs/compliance-module-plan.md): when `member_id` names a
+    When `member_id` names a
     genuine *user* member (never a nested-group member — a module-owned
     floor concept is about real people, not group structure), every
     registered module gets a chance to block this specific removal via

@@ -1,8 +1,7 @@
 /**
  * Module: modules/context_strategy/FutureStateFormModal
  *
- * Create/edit dialog for a Future State's content fields (docs/plans/
- * module-01-context-and-strategy-plan.md Phase 7.2) — mirrors
+ * Create/edit dialog for a Future State's content fields — mirrors
  * `StrategyFormModal.tsx`'s exact "shared by create and edit, distinguished
  * by whether `initial` is passed" / create-as-a-layer shape, adapted to
  * Future State's own field list: no `priority`/`time_horizon` (Future State
@@ -19,7 +18,13 @@
  */
 import { useState } from "react";
 
+import { FormActions } from "../../components/FormActions";
+import { DateField, TextAreaField, TextField } from "../../components/FormFields";
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
+import type { CollectedLink } from "../../api/artefactLinks";
 import { Modal } from "../../components/Modal";
+import { QuickLinkField } from "../../components/QuickLinkField";
+import { TagField } from "../../components/TagField";
 import type { FutureState, FutureStateFieldValues } from "./types";
 
 const TEXT_FIELDS: { key: keyof FutureStateFieldValues; label: string; rows: number }[] = [
@@ -34,6 +39,7 @@ const TEXT_FIELDS: { key: keyof FutureStateFieldValues; label: string; rows: num
 export function FutureStateFormModal({
   initial,
   scopeLabel,
+  projectId,
   error,
   onCancel,
   onSave,
@@ -43,9 +49,11 @@ export function FutureStateFormModal({
    * clear which scope a new Future State is being created in, since this
    * same modal serves both the org-scoped and project-scoped pages. */
   scopeLabel: string;
+  /** The project a new record is created in; with it a create form offers the quick-link field. Omit for the organisation scope. */
+  projectId?: string;
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: FutureStateFieldValues) => void;
+  onSave: (values: FutureStateFieldValues, quickLinks: CollectedLink[], tags: string[]) => void;
 }) {
   const [title, setTitle] = useState(initial?.title ?? "");
   const [targetDate, setTargetDate] = useState(initial?.target_date ?? "");
@@ -54,13 +62,16 @@ export function FutureStateFormModal({
     Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, (initial?.[f.key as keyof FutureState] as string | undefined) ?? ""]))
   );
 
+  const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
+
   function save() {
     onSave({
       title,
       target_date: targetDate.trim() === "" ? null : targetDate,
       change_note: changeNote,
       ...(Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, fields[f.key] ?? ""])) as Record<string, string>),
-    } as FutureStateFieldValues);
+    } as FutureStateFieldValues, quickLinks, tags);
   }
 
   const valid = title.trim() !== "" && (fields.desired_state ?? "").trim() !== "";
@@ -68,43 +79,34 @@ export function FutureStateFormModal({
   return (
     <Modal title={initial ? `Edit ${initial.title}` : `New Future State (${scopeLabel})`} onClose={onCancel} size="lg">
       <div className="stack">
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Title</span>
-          <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Future State title" />
-        </label>
-        {TEXT_FIELDS.map((f) => (
-          <label key={f.key} className="stack" style={{ gap: "0.25rem" }}>
-            <span>{f.label}</span>
-            <textarea
-              className="input"
-              rows={f.rows}
-              value={fields[f.key] ?? ""}
-              onChange={(e) => setFields((prev) => ({ ...prev, [f.key]: e.target.value }))}
-              aria-label={f.label}
-            />
-          </label>
-        ))}
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Target date (optional)</span>
-          <input
-            type="date"
-            className="input"
-            value={targetDate ?? ""}
-            onChange={(e) => setTargetDate(e.target.value)}
-            aria-label="Target date"
-          />
-        </label>
-        {initial && (
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            <span>Change note (optional)</span>
-            <input className="input" value={changeNote} onChange={(e) => setChangeNote(e.target.value)} aria-label="Change note" />
-          </label>
-        )}
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" disabled={!valid} onClick={save}>Save</button>
-        </div>
+        <FormGrid minColumn="18rem">
+          <FormGridFull>
+            <TextField helpNotNeeded required label="Title" ariaLabel="Future State title" value={title} onChange={setTitle} />
+          </FormGridFull>
+          {TEXT_FIELDS.map((f) => (
+            <FormGridFull key={f.key}>
+              <TextAreaField helpNotNeeded required={f.key === "desired_state"}
+                label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
+                onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
+              />
+            </FormGridFull>
+          ))}
+          <DateField helpNotNeeded label="Target date" ariaLabel="Target date" value={targetDate ?? ""} onChange={setTargetDate} />
+          {initial && (
+            <FormGridFull>
+              <TextField helpNotNeeded label="Change note" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />
+            </FormGridFull>
+          )}
+          {!initial && projectId && (
+            <FormGridFull>
+              <div className="stack">
+                <QuickLinkField projectId={projectId} artefactType="future_state" value={quickLinks} onChange={setQuickLinks} />
+                <TagField projectId={projectId} artefactType="future_state" value={tags} onChange={setTags} />
+              </div>
+            </FormGridFull>
+          )}
+        </FormGrid>
+        <FormActions error={error} onCancel={onCancel} onSave={save} saveDisabled={!valid} />
       </div>
     </Modal>
   );

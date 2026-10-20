@@ -1,9 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, within } from "storybook/test";
+import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
 import type { ChangeEntry, ProjectMetrics } from "../api/types";
-import { buildChangeEntry, buildProject, buildProjectListItem, withRouter, withTerminology } from "../testing/storybook-helpers";
+import { buildChangeEntry, buildProject, buildProjectListItem, buildUser, withRouter, withStatefulAuth, withTerminology } from "../testing/storybook-helpers";
 import { ProjectOverviewPage } from "./ProjectOverviewPage";
 
 const metrics: ProjectMetrics = {
@@ -21,6 +21,7 @@ const metrics: ProjectMetrics = {
     { stage_id: "s1", name: "Scoping", status: "completed", requirement_count: 10, completed_percent: 100 },
     { stage_id: "s2", name: "Build", status: "scoping", requirement_count: 14, completed_percent: 30 },
   ],
+  scope_project_count: 1,
 };
 
 const activity: ChangeEntry[] = [buildChangeEntry({ action: "updated", actor_display_name: "Alex Morgan" })];
@@ -37,7 +38,7 @@ type Story = StoryObj<typeof ProjectOverviewPage>;
 export const Dashboard: Story = {
   beforeEach: () => {
     spyOn(api, "get").mockImplementation(async (path: string) => {
-      if (path.endsWith("/metrics")) return metrics;
+      if (path.includes("/metrics")) return metrics;
       if (path.endsWith("/changes")) return activity;
       // No parent/children for this fixture — a plain top-level project,
       // so neither the breadcrumb nor the "Child of/Parent of" labels
@@ -72,7 +73,7 @@ export const Dashboard: Story = {
 export const WithHierarchy: Story = {
   beforeEach: () => {
     spyOn(api, "get").mockImplementation(async (path: string) => {
-      if (path.endsWith("/metrics")) return metrics;
+      if (path.includes("/metrics")) return metrics;
       if (path.endsWith("/changes")) return activity;
       if (path.endsWith("/ancestors")) {
         return [
@@ -125,13 +126,13 @@ export const LoadError: Story = {
   },
 };
 
-/** Phase 28 — with more than one project to switch between, a chevron next
+/** With more than one project to switch between, a chevron next
  * to the project name opens a popover listing the others as plain links
  * to their own Project Overview page. */
 export const EntitySwitcherOffersSiblingProjects: Story = {
   beforeEach: () => {
     spyOn(api, "get").mockImplementation(async (path: string) => {
-      if (path.endsWith("/metrics")) return metrics;
+      if (path.includes("/metrics")) return metrics;
       if (path.endsWith("/changes")) return activity;
       if (path.endsWith("/ancestors")) return [];
       if (path.endsWith("/children")) return [];
@@ -161,3 +162,35 @@ export const EntitySwitcherOffersSiblingProjects: Story = {
 
 export const LightTheme: Story = { ...Dashboard, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...Dashboard, globals: { theme: "dark" } };
+
+/** A project with a parent offers the scope filter: widening it re-reads the counts with `project_scope`
+ * and says how many projects they now cover (stage progress stays this project's own). */
+export const WidenedToTheParent: Story = {
+  decorators: [withStatefulAuth(buildUser({ ui_preferences: {} }))],
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.includes("/metrics")) {
+        return path.includes("project_scope=parents")
+          ? { ...metrics, requirement_count: 60, scope_project_count: 2 }
+          : metrics;
+      }
+      if (path.endsWith("/scope-options")) return { has_parents: true, has_children: false, truncated: false };
+      if (path.endsWith("/changes")) return activity;
+      if (path.endsWith("/ancestors") || path.endsWith("/children") || path.endsWith("/enabled-modules")) return [];
+      return buildProject({ id: "project-1", name: "Atlas Platform", summary: "Core platform requirements." });
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const select = await canvas.findByRole("combobox", { name: "Show records from" });
+    // The select sits in the title row, level with the primary button, and nothing is added above the title.
+    const newButton = canvas.getByRole("link", { name: /New requirement|New Requirement/i });
+    await expect(select.getBoundingClientRect().top).toBeLessThan(newButton.getBoundingClientRect().bottom);
+    await userEvent.selectOptions(select, "parents");
+    await waitFor(() => expect(select).toHaveAccessibleDescription(/Counts cover 2 projects; stage progress is this project's own\./));
+    await expect(select).toHaveClass("project-scope-select-widened");
+    await userEvent.hover(select);
+    await expect(await within(document.body).findByRole("tooltip")).toHaveTextContent("Counts cover 2 projects");
+    await expect(canvas.getByText("Requirements").previousSibling).toHaveTextContent("60");
+  },
+};

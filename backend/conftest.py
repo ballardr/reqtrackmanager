@@ -5,7 +5,7 @@ Registers `tests/conftest.py` as a pytest plugin, so its fixtures (`client`,
 `admin_token`, `org_id`, the session-scoped `_schema`/migration setup, etc.)
 apply to test files living *outside* the `tests/` directory tree too — most
 notably each first-party module's own colocated test directory (e.g.
-`app/modules/compliance/tests/`, a compliance-module-plan.md Phase 11
+`app/modules/compliance/tests/`, a
 follow-up: that module's tests moved out of the flat, shared `tests/`
 directory to live alongside the rest of its own code).
 

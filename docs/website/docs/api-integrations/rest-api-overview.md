@@ -39,6 +39,10 @@ A [module](../modules/overview.md) isn't limited to what ships in the core appli
 - **Timestamps are ISO 8601, UTC** (e.g. `"2026-09-15T03:42:37.401458Z"`).
 - **Authentication** is a bearer token on every authenticated request — see [Authenticating](./authenticating.md).
 
+## Your calendar day
+
+A few derived values depend on whether a date has "happened yet", for example a Stakeholder's last-engaged date. The web app sends its own calendar day in an optional **`X-Client-Date`** request header (`YYYY-MM-DD`), so a contact logged this morning in Sydney counts straight away rather than after UTC midnight. A script can send the header too; it is used only when it is within a day of the UTC date, and otherwise (or when omitted) the UTC date applies.
+
 ## Pagination
 
 List endpoints (e.g. `GET /api/v1/projects/{project_id}/requirements`, `GET /api/v1/projects/{project_id}/change-requests`) accept optional `limit`/`offset` query parameters:

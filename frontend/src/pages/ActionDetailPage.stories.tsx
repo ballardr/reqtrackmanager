@@ -15,6 +15,7 @@ import {
 } from "../testing/storybook-helpers";
 import { buildGraph, buildGraphNode } from "../testing/artefactLinksFixtures";
 import { ActionDetailPage } from "./ActionDetailPage";
+import { chooseRecordAction, recordActionNames } from "../testing/recordActions";
 
 const PROJECT_ID = "project-1";
 const ACTION_ID = "action-1";
@@ -130,8 +131,8 @@ export const ArchivingConfirmsAndShowsToast: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Archive" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Archive" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Action actions" })).toBeInTheDocument());
+    await chooseRecordAction(canvas, "Action", "Archive");
 
     const dialog = within(document.body).getByRole("dialog", { name: "Archive this action?" });
     await userEvent.click(within(dialog).getByRole("button", { name: "Archive" }));
@@ -152,10 +153,8 @@ export const ArchivedActionIsReadOnly: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByLabelText("Title")).toBeDisabled());
-    await expect(canvas.queryByRole("button", { name: "Archive" })).not.toBeInTheDocument();
-    // Restore replaces Archive once archived (2026-08 UX audit roadmap:
-    // unarchive endpoint + Restore button).
-    await expect(canvas.getByRole("button", { name: "Restore" })).toBeInTheDocument();
+    // Restore replaces Archive in the menu once archived.
+    await expect(await recordActionNames(canvas, "Action")).toEqual(["Restore"]);
   },
 };
 
@@ -172,8 +171,8 @@ export const RestoreActionShowsToast: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Restore" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Restore" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Action actions" })).toBeInTheDocument());
+    await chooseRecordAction(canvas, "Action", "Restore");
 
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/actions/${ACTION_ID}/unarchive`)

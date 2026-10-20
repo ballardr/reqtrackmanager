@@ -14,6 +14,9 @@ import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useFavourites } from "../context/FavouritesContext";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
+import { Badge } from "../components/Badge";
+import { useResetOnChange } from "../hooks/useResetOnChange";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 const PAGE_SIZE = 30;
 
@@ -67,11 +70,8 @@ export function FavouritesPage() {
     setTotal(page.total);
   }
 
-  useEffect(() => {
-    setProjects(null);
-    load(0, false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  useResetOnChange([search], () => setProjects(null));
+  useLoadOnChange(() => load(0, false), [search]);
 
   async function unfavorite(project: ProjectListItem) {
     try {
@@ -92,6 +92,7 @@ export function FavouritesPage() {
           className="input"
           style={{ maxWidth: 280 }}
           placeholder={strings.projects.search}
+          aria-label={strings.projects.search}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -129,15 +130,15 @@ export function FavouritesPage() {
                   aria-label={strings.projects.unfavorite}
                   style={{ flexShrink: 0 }}
                 >
-                  <Star size={16} fill="currentColor" />
+                  <Star fill="currentColor" />
                 </button>
               </div>
               <div className="text-muted" style={{ fontSize: "0.8rem" }}>{p.organization_name}</div>
               <ProjectHierarchyLabels project={p} />
               {p.current_stage_name && (
-                <span className="badge" style={{ alignSelf: "flex-start" }}>
+                <Badge>
                   {stageBadgeText(p.current_stage_name, p.current_stage_status)}
-                </span>
+                </Badge>
               )}
               <p className="text-muted" style={{ margin: 0, flex: 1 }}>
                 {p.summary || "—"}
@@ -175,7 +176,7 @@ export function FavouritesPage() {
                       title={strings.projects.unfavorite}
                       aria-label={strings.projects.unfavorite}
                     >
-                      <Star size={14} fill="currentColor" />
+                      <Star fill="currentColor" />
                     </button>
                   </td>
                   <td>
@@ -188,7 +189,7 @@ export function FavouritesPage() {
                   <td className="text-muted">{p.organization_name}</td>
                   <td>
                     {p.current_stage_name && (
-                      <span className="badge">{stageBadgeText(p.current_stage_name, p.current_stage_status)}</span>
+                      <Badge>{stageBadgeText(p.current_stage_name, p.current_stage_status)}</Badge>
                     )}
                   </td>
                   <td className="text-muted">{collapseProjectRoles(p.my_roles).map((r) => PROJECT_ROLE_LABEL[r]).join(", ") || "—"}</td>

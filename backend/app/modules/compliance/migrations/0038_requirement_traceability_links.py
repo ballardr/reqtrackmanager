@@ -1,16 +1,16 @@
-"""Traceability links between core Requirements and ComplianceRequirements (compliance module Phase 34)
+"""Traceability links between core Requirements and ComplianceRequirements
 
 Revision ID: 0038
 Revises: 0037
 Create Date: 2026-09-13
 
 Adds `compliance_requirement_traceability_links` (`ComplianceRequirement
-TraceabilityLink`, `models.py`) — docs/compliance-module-plan.md Phase 34's
+TraceabilityLink`, `models.py`) —
 "I can't add a traceability link between a core Requirement and a
 compliance standard requirement" gap. `requirement_id` reaches into core's
 own `requirements` table (a module depending on core is fine; core must
 never depend back on a module's own tables, per CLAUDE.md's "Modular
-Feature System Boundary" — see `models.py`'s own Phase 34 notes),
+Feature System Boundary"),
 `compliance_requirement_id` into this module's own `compliance_requirements`,
 and `link_type_id` reuses core's existing, org-scoped
 `requirement_link_type_definitions` vocabulary rather than a second,

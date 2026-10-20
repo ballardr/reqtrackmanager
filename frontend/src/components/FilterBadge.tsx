@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 
 import type { BadgeTone } from "../api/types";
+import { badgeClassName } from "./badgeClassName";
 
 /**
  * A `.badge` that also acts as a filter shortcut: clicking it applies (or,
@@ -11,11 +12,14 @@ import type { BadgeTone } from "../api/types";
  * whether the underlying filter is already set to this value stays
  * obvious even before hovering.
  *
- * `tone` (platform review 2026-09, Phase 4) applies the status-colour
+ * `tone` applies the status-colour
  * `.badge--<tone>` modifier — pass the value from the relevant `*_TONE`
  * map (api/types.ts) when this badge represents a status/outcome enum;
  * omit it for badges that don't (e.g. a target-stage filter), which keeps
  * today's plain neutral look.
+ *
+ * `pressed` additionally exposes the on/off state to assistive tech (`aria-pressed`) for a badge that is
+ * a stand-alone toggle (`ToggleChips`) rather than a shortcut into a filter shown elsewhere.
  */
 export function FilterBadge({
   active = false,
@@ -24,6 +28,7 @@ export function FilterBadge({
   title,
   style,
   tone,
+  pressed,
 }: {
   active?: boolean;
   onClick: () => void;
@@ -31,12 +36,14 @@ export function FilterBadge({
   title?: string;
   style?: CSSProperties;
   tone?: BadgeTone;
+  pressed?: boolean;
 }) {
   return (
     <button
       type="button"
-      className={tone ? `badge badge--${tone}` : "badge"}
+      className={badgeClassName(tone)}
       onClick={onClick}
+      aria-pressed={pressed}
       title={title}
       style={{
         cursor: "pointer",

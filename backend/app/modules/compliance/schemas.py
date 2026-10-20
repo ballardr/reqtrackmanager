@@ -1,11 +1,10 @@
 """
 Module: modules.compliance.schemas
 
-Pydantic request/response models for the Compliance Module's Phase 6
-Standards Management API (docs/compliance-module-plan.md Phase 6;
-docs/Compliance_Module_Requirements.md §2-§6). Sits alongside `models.py`
-(the Phase 5 ORM shape these schemas expose over HTTP) and `router.py`
-(the endpoints that use them).
+Pydantic request/response models for the Compliance Module's API
+(§2-§6 and following). Sits
+alongside `models.py` (the ORM shape these schemas expose over HTTP) and
+`router.py` (the endpoints that use them).
 
 Design decisions, not left implicit:
 - Every `*Out` schema sets `model_config = {"from_attributes": True}`, this
@@ -24,46 +23,45 @@ Design decisions, not left implicit:
   endpoint (`services.ordering.move_ordered`), never a direct field write.
   The same applies to `ComplianceRequiredActionCreate`/`Update`.
 - `ComplianceRequirementUpdate` has no `parent_requirement_id` field —
-  reparenting a requirement to a different parent is not requested by
-  Phase 6's spec and would complicate the sibling-group semantics `move`
+  reparenting a requirement to a different parent is not requested
+  and would complicate the sibling-group semantics `move`
   relies on (a requirement's sibling group is its
-  `(standard_version_id, parent_requirement_id)` pair); a future phase can
-  add a dedicated reparent endpoint if this is ever needed.
+  `(standard_version_id, parent_requirement_id)` pair); a dedicated reparent endpoint
+  can be added if this is ever needed.
 - `ComplianceStandardUpdate` has no `reference` field — a standard's
   `reference` is its stable, organisation-unique identifier and is treated
   as immutable after creation, the same way this codebase never lets a
   project's own generated `unique_code` change; simply omitting the field
   from the update schema is what enforces this (there is no direct
   precedent for this specific field in this codebase, so this is a new,
-  deliberate judgment call — see docs/compliance-module-plan.md's "Phase 6
-  notes").
-- Phase 8 (§13-§15, Evidence) adds its own schemas at the bottom of this
+  deliberate judgment call.
+- Evidence (§13-§15) has its own schemas at the bottom of this
   file: `ComplianceEvidenceUpdate` deliberately excludes `expiry_date`
   (§15's revalidation-only rule — see that schema's own docstring), and
   `ComplianceEvidenceOut` is built explicitly by the router rather than
   `from_attributes` alone, for the same "computed field" reason as
   `ProjectComplianceRequirementOut`.
-- Phase 9 (§12, §16, §27, Approval/Sign-off) adds `ComplianceApprovalDecisionRequest`
+- Approval/sign-off (§12, §16, §27) uses `ComplianceApprovalDecisionRequest`
   (payload for both `approve` and `reject` — `decision_note` is required at
   the API layer, not the schema layer, exactly when rejecting, mirroring
   every other conditionally-mandatory-justification rule in this module)
   and `PendingApprovalOut` (mirrors `NonCompliantRequirementOut`'s exact
   shape/rationale for the same kind of cross-assignment drillable list, one
   section up).
-- Phase 10 (§17, Scheduled Reviews) adds `ComplianceReviewCreate`/`Update`/
+- Scheduled reviews (§17) use `ComplianceReviewCreate`/`Update`/
   `CompleteRequest`/`Out` and `ComplianceReviewEvidenceLinkCreate` at the
   bottom of this file. `ComplianceReviewOut.schedule_state` is a computed
   field (never stored — see `service.py::compute_review_schedule_state`),
   the same "built explicitly by the router" shape as `ComplianceEvidenceOut.
   validity_state`.
-- Phase 24 (§4, §31, Post-Publish Clarification Edits + Editable Version
-  Descriptions) adds `ComplianceStandardVersionUpdate` (carries only
+- Post-publish clarification edits and editable version descriptions (§4,
+  §31) use `ComplianceStandardVersionUpdate` (carries only
   `summary`, the one version field editable regardless of lifecycle status
-  — see `models.py`'s own Phase 24 notes) and `ComplianceRequirementClarifyRequest`
+  — see `models.py`'s clarification design decisions) and `ComplianceRequirementClarifyRequest`
   (a dedicated, narrower sibling of `ComplianceRequirementUpdate` for a
   `PUBLISHED` version, with a mandatory `clarification_note`). `ComplianceStandardVersionOut`/
-  `ComplianceRequirementOut` grow the corresponding new fields.
-- Phase 11 (§19, §27, Cross-Standard Mapping + Version Impact) adds
+  `ComplianceRequirementOut` carry the corresponding fields.
+- Cross-standard mapping and version impact (§19, §27) use
   `ComplianceMappingRelationshipType*` (the org-scoped vocabulary,
   mirroring `ComplianceActionType*`'s exact shape one section up),
   `ComplianceRequirementMapping*`, the version-diff response shapes
@@ -103,6 +101,7 @@ from app.modules.compliance.enums import (
     ComplianceStatus,
 )
 from app.schemas.principal import PrincipalOut, PrincipalRef
+from app.schemas.project_scope import ProjectScopedRow
 
 # --- Standards ---------------------------------------------------------------
 
@@ -161,11 +160,11 @@ class ComplianceStandardOut(BaseModel):
     updated_at: datetime
 
 
-# --- Phase 21: standard-level import/export -----------------------------------
+# --- standard-level import/export -----------------------------------
 
 
 class StandardImportResult(BaseModel):
-    """Outcome of `POST .../standards/import` (Phase 21) — mirrors
+    """Outcome of `POST .../standards/import` — mirrors
     `OrgImportResult`'s shape (`schemas/org.py`) one level down, scoped to a
     single standard. `standard` is `None` only when `skipped` is `True`
     (the caller chose `"skip"` on a reference collision — see
@@ -176,7 +175,7 @@ class StandardImportResult(BaseModel):
     warnings: list[str] = []
 
 
-# --- Phase 20: applicability defaults, exceptions, PM assignment -------------
+# --- applicability defaults, exceptions, PM assignment -------------
 
 
 class ComplianceStandardApplicabilityDefaultUpdate(BaseModel):
@@ -184,8 +183,8 @@ class ComplianceStandardApplicabilityDefaultUpdate(BaseModel):
     Compliance-Manager-only (§3). Switching to `applies_to_all_projects`
     triggers reconciliation (`service.py::reconcile_standard_
     applicability`); switching back to `opt_in` never retroactively
-    archives rows a prior reconciliation created (see `models.py`'s own
-    Phase 20 design-decisions section)."""
+    archives rows a prior reconciliation created (see `models.py`'s applicability
+    defaults design decisions)."""
 
     applicability_default: ComplianceStandardApplicabilityDefault
 
@@ -253,22 +252,22 @@ class ComplianceStandardVersionOut(BaseModel):
     updated_at: datetime
 
 
-# --- Phase 24: post-publish clarification edits + editable version summary ------
+# --- post-publish clarification edits + editable version summary ------
 
 
 class ComplianceStandardVersionUpdate(BaseModel):
-    """Payload for `PATCH .../versions/{version_id}` (Phase 24). Carries
+    """Payload for `PATCH .../versions/{version_id}`. Carries
     only `summary` — deliberately not every field `ComplianceStandardVersionCreate`
-    accepts, since this endpoint's whole purpose is the one field Phase 6's
-    `_require_draft_version` gate does *not* apply to (see `models.py`'s own
-    Phase 24 design-decisions section); every other version field stays
+    accepts, since this endpoint's whole purpose is the one field the
+    `_require_draft_version` gate does *not* apply to (see `models.py`'s clarification
+    design decisions); every other version field stays
     frozen once the version leaves `DRAFT`, with no update path at all."""
 
     summary: str = ""
 
 
 class ComplianceRequirementClarifyRequest(BaseModel):
-    """Payload for `PATCH .../requirements/{id}/clarify` (Phase 24) — a
+    """Payload for `PATCH .../requirements/{id}/clarify` — a
     non-substantive correction/elaboration to a requirement already
     belonging to a `PUBLISHED` version. `clarification_note` is mandatory
     (400 if blank, enforced by the router, mirroring every other
@@ -300,7 +299,7 @@ class ComplianceRequirementCreate(BaseModel):
 
 class ComplianceRequirementUpdate(BaseModel):
     """Update payload — no `parent_requirement_id`/`sort_order` (see this
-    module's docstring: reparenting isn't supported by this phase, and
+    module's docstring: reparenting isn't supported, and
     reordering is a separate `move` endpoint)."""
 
     reference: str | None = None
@@ -389,7 +388,7 @@ class ComplianceActionTypeOut(BaseModel):
     sort_order: int
 
 
-# --- Phase 7: project-specific compliance assessment ----------------------------
+# --- project-specific compliance assessment ----------------------------
 
 
 class ProjectComplianceCreate(BaseModel):
@@ -399,9 +398,9 @@ class ProjectComplianceCreate(BaseModel):
     and the payload agree on which standard is being assigned — the router
     still verifies `standard_version_id` actually belongs to `standard_id`
     (`router.py::_get_version_or_404`), the same cross-check every other
-    Phase 6 endpoint already performs.
+    standards endpoint already performs.
 
-    Shared, unchanged, by Phase 20's second assignment path: the project-
+    Shared, unchanged, by the second assignment path: the project-
     scoped Project-Manager self-service endpoint (`project_router.py::
     create_project_compliance_self_service`, the *default* way a project
     acquires a standard) uses this exact same payload shape as the org-
@@ -507,7 +506,7 @@ class ComplianceRequiredActionAssessmentOut(BaseModel):
     updated_at: datetime
 
 
-class ProjectComplianceStatusOut(BaseModel):
+class ProjectComplianceStatusOut(ProjectScopedRow):
     """§20's overall status summary for one `ProjectCompliance` assignment
     — see `service.py::summarize_project_compliance` for the exact,
     documented calculation this schema exposes. Always includes the raw
@@ -515,17 +514,16 @@ class ProjectComplianceStatusOut(BaseModel):
     should always display the actual counts as well as any calculated
     percentage so that the percentage cannot be misleading.\"
 
-    `project_name` was added in Phase 14: this schema was already the one
+    `project_name` was added later: this schema was already the one
     exception to every other cross-assignment schema in this module in
     being shared, unmodified, between project scope (`GET .../status`) and
-    org scope (`router.py::list_all_project_compliance`) since Phase 7 —
-    `project_id` has sat here, redundant at project scope, from the start
-    for exactly that reason. Phase 14's own org-wide "Standard | Projects |
+    org scope (`router.py::list_all_project_compliance`) — `project_id` has sat here, redundant at project scope, from the start
+    for exactly that reason. The org-wide "Standard | Projects |
     Compliant | Non-Compliant | In Progress" table (§22) needs a project's
     display name to group/label its rows, so it extends this schema's
     existing dual-use design rather than introducing a third pattern next
     to the `Org*Out` subclass approach used for the module's other,
-    project-scope-first schemas (see this file's own Phase 14 section,
+    project-scope-first schemas (see this file's org-wide section,
     below, for that approach and why it doesn't apply here)."""
 
     project_compliance_id: UUID
@@ -554,7 +552,7 @@ class NonCompliantRequirementOut(BaseModel):
     Compliant requirements" as a distinct, drillable list, not just a
     count).
 
-    `standard_id`/`standard_version_id` (Phase 40) exist alongside the
+    `standard_id`/`standard_version_id` exist alongside the
     display-only `standard_reference`/`standard_name`/`version_label`
     strings above so the frontend's Outstanding-items filters can match on
     a stable id rather than a reference string that only happens to be
@@ -576,7 +574,7 @@ class NonCompliantRequirementOut(BaseModel):
     assessed_by: UUID | None
 
 
-# --- Phase 8: Evidence ----------------------------------------------------------
+# --- Evidence ----------------------------------------------------------
 
 
 class ComplianceEvidenceCreate(BaseModel):
@@ -643,7 +641,7 @@ class ComplianceEvidenceActionLinkCreate(BaseModel):
     required_action_assessment_id: UUID
 
 
-class ComplianceEvidenceOut(BaseModel):
+class ComplianceEvidenceOut(ProjectScopedRow):
     """Response shape for one `ComplianceEvidence` row, plus its *computed*
     (never stored) `validity_state` (§14 — see `service.py::compute_
     evidence_validity_state`) and its current linked requirement/required-
@@ -653,6 +651,7 @@ class ComplianceEvidenceOut(BaseModel):
 
     id: UUID
     project_id: UUID
+    unique_code: str
     title: str
     description: str
     issuing_organisation: str | None
@@ -671,7 +670,7 @@ class ComplianceEvidenceOut(BaseModel):
     linked_required_action_assessment_ids: list[UUID]
 
 
-# --- Phase 9: Approval / sign-off workflow ---------------------------------------
+# --- Approval / sign-off workflow ---------------------------------------
 
 
 class ComplianceApprovalDecisionRequest(BaseModel):
@@ -690,7 +689,7 @@ class PendingApprovalOut(BaseModel):
     its own distinct, drillable list) — the `compliance_list_pending_
     approvals` MCP tool. Mirrors `NonCompliantRequirementOut`'s exact shape
     one section up, for the same kind of cross-assignment listing, including
-    its Phase 40 `standard_id`/`standard_version_id` id fields."""
+    its `standard_id`/`standard_version_id` id fields."""
 
     project_compliance_id: UUID
     standard_id: UUID
@@ -708,22 +707,18 @@ class PendingApprovalOut(BaseModel):
 
 
 class OutstandingRequiredActionOut(BaseModel):
-    """One row of `GET .../outstanding-required-actions` (Phase 14,
-    §22/§23's "outstanding Required Actions" — a flattened, cross-assignment
+    """One row of `GET .../outstanding-required-actions` (§22/§23's "outstanding Required Actions" — a flattened, cross-assignment
     listing of every incomplete `ComplianceRequiredActionAssessment` whose
     owning requirement is currently applicable, mirroring `NonCompliant
     RequirementOut`/`PendingApprovalOut`'s exact shape/rationale for the
-    same kind of listing. This schema did not exist before Phase 14 — no
-    prior phase needed a *flattened* required-action listing (only the
-    per-requirement nested `.../required-action-assessments` endpoint,
-    Phase 7) — so unlike the two schemas above (which predate this phase
-    and already have passing Phase 12/13 consumers left untouched), this one
+    same kind of listing. Unlike the two schemas above (which predate it and
+    have existing consumers left untouched), this one
     carries `project_id`/`project_name` from the start: it is used
     unmodified by both `project_router.py`'s own new per-project endpoint
     and `router.py`'s org-wide aggregation, rather than needing a separate
     `Org*Out` subclass the way the two pre-existing schemas do (see
-    `router.py`'s Phase 14 section for that distinction). Also carries
-    Phase 40's `standard_id`/`standard_version_id` id fields, mirroring
+    `router.py`'s org-wide section for that distinction). Also carries
+    `standard_id`/`standard_version_id` id fields, mirroring
     `NonCompliantRequirementOut`/`PendingApprovalOut`."""
 
     project_id: UUID
@@ -747,7 +742,7 @@ class OutstandingRequiredActionOut(BaseModel):
     notes: str
 
 
-# --- Phase 10: Scheduled reviews --------------------------------------------------
+# --- Scheduled reviews --------------------------------------------------
 
 
 class ComplianceReviewCreate(BaseModel):
@@ -798,7 +793,7 @@ class ComplianceReviewOut(BaseModel):
     review") — built explicitly by the router, the same reason
     `ComplianceEvidenceOut` is.
 
-    `standard_id` is the *resolved* owning standard (Phase 40) — for a
+    `standard_id` is the *resolved* owning standard — for a
     standard-level review this is the same as the underlying model's own
     `standard_id`, but for a project-level review (`project_compliance_id`
     set) it's resolved through that assignment's standard version, so a
@@ -832,7 +827,7 @@ class ComplianceReviewOut(BaseModel):
     linked_evidence_ids: list[UUID]
 
 
-# --- Phase 11: Cross-standard mapping + version impact ---------------------------
+# --- Cross-standard mapping + version impact ---------------------------
 
 
 class ComplianceMappingRelationshipTypeCreate(BaseModel):
@@ -842,7 +837,7 @@ class ComplianceMappingRelationshipTypeCreate(BaseModel):
 
 class ComplianceMappingRelationshipTypeUpdate(BaseModel):
     """Update payload — mirrors `ComplianceActionTypeUpdate`'s rename
-    shape, extended with `implies_equivalence` (Phase 11's carry-forward-
+    shape, extended with `implies_equivalence` (the carry-forward-
     across-a-replaced-mapping gate, see `models.py`'s own notes). Every
     `ComplianceRequirementMapping.relationship_type_id` reference points at
     this row's id, never its name, so renaming never disturbs an existing
@@ -868,7 +863,7 @@ class ComplianceRequirementMappingCreate(BaseModel):
     """Payload for `POST .../requirement-mappings` (§19). `from_requirement_id`/
     `to_requirement_id` may belong to any standard/version in this
     organisation (including two versions of the *same* standard — see
-    `models.py`'s own Phase 11 notes on why this table also serves §27's
+    `models.py`'s cross-standard mapping design decisions on why this table also serves §27's
     "replaced" category) — the router verifies both, and `relationship_type_id`,
     belong to this same organisation (404 on a mismatch, this module's usual
     convention)."""
@@ -943,7 +938,7 @@ class ReplacedRequirementOut(BaseModel):
     requirement with no clone lineage into the new version, but explicitly
     linked (via a `ComplianceRequirementMapping`) to a new-version
     requirement that itself has no clone lineage back — see `models.py`'s
-    own Phase 11 notes for why this reuses the cross-standard mapping table
+    cross-standard mapping design decisions for why this reuses the cross-standard mapping table
     rather than a second mechanism.
 
     `implies_equivalence` mirrors the mapping's own relationship type's
@@ -1008,8 +1003,8 @@ class ProjectComplianceMigrationRequest(BaseModel):
 
     `confirmed_replacement_requirement_ids` is the compliance officer's own,
     per-migration, per-requirement opt-in to carry an assessment forward
-    across a `replaced` version-diff pair (see `models.py`'s own Phase 11
-    notes on `ComplianceMappingRelationshipTypeDefinition.implies_equivalence`
+    across a `replaced` version-diff pair (see `models.py`'s cross-standard
+    mapping design decisions on `ComplianceMappingRelationshipTypeDefinition.implies_equivalence`
     for the full two-gate design) — each id names a *new*-version
     requirement (matching `ReplacedRequirementOut.new_requirement.id` from a
     prior `GET .../diff/...` call, the natural "preview, then confirm" order
@@ -1017,7 +1012,7 @@ class ProjectComplianceMigrationRequest(BaseModel):
     actually part of this migration's `replaced` set, or is but its
     mapping's relationship type has `implies_equivalence=False` — a stale
     or invalid confirmation is rejected outright, never silently ignored.
-    Defaults to empty: an officer who does nothing gets this phase's
+    Defaults to empty: an officer who does nothing gets the
     original behaviour (every `replaced` requirement lands at defaults)."""
 
     new_standard_version_id: UUID
@@ -1070,14 +1065,14 @@ class ProjectComplianceMigrationResultOut(BaseModel):
     requirement_impacts: list[ProjectComplianceMigrationRequirementImpact]
 
 
-# --- Phase 14: Org Compliance View + Dashboard (§22, §23) ------------------------
+# --- Org Compliance View + Dashboard (§22, §23) ------------------------
 #
 # Org-wide aggregations across every project in an organisation, mirroring
 # `router.py::list_all_project_compliance`'s existing "join ProjectCompliance
 # to Project on organization_id" pattern (§26 — Compliance Manager's "View
 # compliance across projects"). Each of `NonCompliantRequirementOut`/
-# `PendingApprovalOut`/`ComplianceEvidenceOut` already existed before this
-# phase with passing Phase 12/13 consumers at project scope; rather than
+# `PendingApprovalOut`/`ComplianceEvidenceOut` already existed first
+# with consumers at project scope; rather than
 # retrofit `project_id`/`project_name` onto those (a response-shape change
 # every existing caller would silently start receiving), each gets its own
 # `Org*Out` subclass here that adds exactly those two fields — the org
@@ -1141,13 +1136,13 @@ class ComplianceRecentActivityOut(BaseModel):
     created_at: datetime
 
 
-# --- Phase 18: cross-org, global (no org/project id in the path) endpoints --
+# --- cross-org, global (no org/project id in the path) endpoints --
 
 
 class ComplianceNavVisibilityOut(BaseModel):
     """Response of `GET /api/v1/compliance/nav-visibility` (`global_router.
     py`) — whether the caller should see the top-level "Compliance
-    Standards" nav-rail tab at all (compliance-module-plan.md Phase 18).
+    Standards" nav-rail tab at all.
     Deliberately a single boolean, not a per-org breakdown: the frontend
     hook this feeds gates one nav item, not a list, and a per-org
     breakdown would leak which specific orgs have compliance-relevant data
@@ -1158,12 +1153,12 @@ class ComplianceNavVisibilityOut(BaseModel):
     visible: bool
 
 
-# --- Phase 22: standard-scoped RBAC (standards_manager/standards_contributor) ----
+# --- standard-scoped RBAC (standards_manager/standards_contributor) ----
 
 
 class ComplianceStandardMemberOut(BaseModel):
     """One user holding at least one direct standard-scoped role grant on a
-    given standard (Phase 22) — `GET .../standards/{id}/members`. Built
+    given standard — `GET .../standards/{id}/members`. Built
     from a plain dict in `router.py` (not `from_attributes`, since this is
     an aggregation across `User`/`UserModuleRole`, not one ORM row)."""
 
@@ -1175,7 +1170,7 @@ class ComplianceStandardMemberOut(BaseModel):
 
 class ComplianceStandardGroupMemberOut(BaseModel):
     """One org group holding at least one direct standard-scoped role grant
-    on a given standard (`GroupModuleRole`, module system Phase 30) — the
+    on a given standard (`GroupModuleRole`) — the
     group-grant sibling of `ComplianceStandardMemberOut`. `member_count` is
     resolved live (every transitive `OrgGroupMember`, via `services.rbac.
     effective_org_group_member_ids`), not stored, so the roster always
@@ -1188,8 +1183,8 @@ class ComplianceStandardGroupMemberOut(BaseModel):
 
 
 class ComplianceStandardMembersOut(BaseModel):
-    """Response of `GET .../standards/{id}/members` (Phase 22; `group_
-    members` added by Phase 30)."""
+    """Response of `GET .../standards/{id}/members` (including `group_
+    members`)."""
 
     members: list[ComplianceStandardMemberOut]
     group_members: list[ComplianceStandardGroupMemberOut] = []
@@ -1202,7 +1197,7 @@ class ComplianceStandardMembersOut(BaseModel):
 
 
 class ComplianceOrgSettingsOut(BaseModel):
-    """Response of `GET .../modules/compliance/settings` (Phase 22) —
+    """Response of `GET .../modules/compliance/settings` —
     `app.modules.compliance.models.ComplianceOrgSettings`, or the all-`None`
     default when this organisation has never set anything (no row yet, see
     that model's own docstring on lazy row creation)."""
@@ -1211,7 +1206,7 @@ class ComplianceOrgSettingsOut(BaseModel):
 
 
 class ComplianceOrgSettingsUpdate(BaseModel):
-    """Payload for `PUT .../modules/compliance/settings` (Phase 22) —
+    """Payload for `PUT .../modules/compliance/settings` —
     `None` explicitly un-sets the fallback group (distinct from omitting
     the field, which Pydantic would otherwise also treat as `None` here
     since this is the only field; a future second field would need
@@ -1221,8 +1216,8 @@ class ComplianceOrgSettingsUpdate(BaseModel):
 
 
 class ComplianceStandardMemberRoleAssign(BaseModel):
-    """Body for `POST .../standards/{id}/members/{user_id}/roles` (Phase
-    22) — mirrors `ModuleRoleAssign`'s "URL, not body, is authoritative"
+    """Body for `POST .../standards/{id}/members/{user_id}/roles` —
+    mirrors `ModuleRoleAssign`'s "URL, not body, is authoritative"
     convention for `user_id`, but narrowed to this module's own two
     standard-scoped role keys (unlike `ModuleRoleAssign`'s generic
     `module_key`/`role_key` pair) since this endpoint only ever grants a
@@ -1232,8 +1227,7 @@ class ComplianceStandardMemberRoleAssign(BaseModel):
 
 
 class ComplianceStandardGroupRoleAssign(BaseModel):
-    """Body for `POST .../standards/{id}/group-roles` (module system
-    Phase 30) — the group-grant counterpart to `ComplianceStandardMember
+    """Body for `POST .../standards/{id}/group-roles` — the group-grant counterpart to `ComplianceStandardMember
     RoleAssign`, mirroring `OrgGroupProjectRoleAssign`'s own "org_group_id
     in the body, not the URL, for the collection-style POST" convention
     (`routers/projects.py::assign_group_project_role`) one level down."""

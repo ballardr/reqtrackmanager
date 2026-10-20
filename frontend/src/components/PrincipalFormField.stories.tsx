@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, fn, within } from "storybook/test";
+import { expect, fn, userEvent, within } from "storybook/test";
 
 import type { OrgUser } from "../api/types";
 import { PrincipalFormField } from "./PrincipalFormField";
@@ -36,5 +36,15 @@ export const Assigned: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByRole("button", { name: "Clear: Owner" })).toBeInTheDocument();
+  },
+};
+
+/** A field with `help` carries the `(?)` button after its caption. */
+export const WithHelp: Story = {
+  args: { help: "Who is accountable for this record. A group can own it too." },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Help: Owner" }));
+    await expect(canvas.getByText("Who is accountable for this record. A group can own it too.")).toBeVisible();
   },
 };

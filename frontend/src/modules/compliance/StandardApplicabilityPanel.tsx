@@ -1,9 +1,9 @@
 /**
  * Module: modules/compliance/StandardApplicabilityPanel
  *
- * Phase 20's "applies to all projects by default, except..." UI —
+ * The "applies to all projects by default, except..." UI —
  * Compliance-Manager-only, rendered inside `StandardWorkspacePage.tsx`'s
- * Overview section (docs/compliance-module-plan.md Phase 20). This is
+ * Overview section. This is
  * deliberately the *secondary*, org-wide-mandate surface: the *default,
  * primary* way a project acquires a standard is `ProjectCompliancePage.
  * tsx`'s own "Assign standard" flow (now calling `createProjectCompliance
@@ -26,7 +26,7 @@
  *   plain irreversible-delete, which is what `ConfirmDialog`/its two
  *   confirmation tiers are for).
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import type { OrgUser, ProjectListItem } from "../../api/types";
 import { api } from "../../api/client";
@@ -38,6 +38,10 @@ import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import type { ComplianceStandard, ComplianceStandardDefaultExclusion } from "./types";
 import { userDisplayName } from "./types";
+import { TextAreaField } from "../../components/FormFields";
+import { FormActions } from "../../components/FormActions";
+import { LabeledSelect } from "../../components/LabeledSelect";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 export function StandardApplicabilityPanel({
   standard,
@@ -66,10 +70,7 @@ export function StandardApplicabilityPanel({
     setOrgUsers(loadedUsers);
   }
 
-  useEffect(() => {
-    void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [standard.organization_id, standard.id]);
+  useLoadOnChange(reload, [standard.organization_id, standard.id]);
 
   async function handleToggle(next: boolean) {
     setToggling(true);
@@ -192,30 +193,21 @@ function ExcludeProjectModal({
         {candidateProjects.length === 0 ? (
           <p className="text-muted">Every project in this organisation is already excluded, or none exist.</p>
         ) : (
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            <span>Project</span>
-            <select className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)} aria-label="Project">
-              <option value="">Select a project…</option>
-              {candidateProjects.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          </label>
+          <LabeledSelect helpNotNeeded required
+            label="Project"
+            value={projectId}
+            onChange={setProjectId}
+            options={candidateProjects.map((p) => ({ value: p.id, label: p.name }))}
+            placeholder="Select a project…"
+          />
         )}
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Reason (required)</span>
-          <textarea className="input" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />
-        </label>
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button
-            className="btn btn-primary"
-            disabled={!projectId || !reason.trim()}
-            onClick={() => onSave({ project_id: projectId, reason })}
-          >
-            Exclude
-          </button>
-        </div>
+        <TextAreaField helpNotNeeded required label="Reason" value={reason} onChange={setReason} rows={2} />
+        <FormActions
+          onCancel={onCancel}
+          onSave={() => onSave({ project_id: projectId, reason })}
+          saveLabel="Exclude"
+          saveDisabled={!projectId || !reason.trim()}
+        />
       </div>
     </Modal>
   );

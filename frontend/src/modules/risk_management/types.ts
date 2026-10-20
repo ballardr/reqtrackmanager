@@ -1,14 +1,14 @@
 /**
  * Module: modules/risk_management/types
  *
- * Frontend vocabulary for the Risk Management module (docs/plans/module-03-
- * risk-management-plan.md): the wire values of the module's enums with their
+ * Frontend vocabulary for the Risk Management module: the wire values of the module's enums with their
  * display label and badge-tone maps, and the response/request shapes of
  * `backend/app/modules/risk_management/schemas.py`. Mirrors that package's
  * `enums.py`/`labels.py`/`schemas.py` by hand; any place that shows an enum
  * value goes through its label map, never the raw string.
  */
 import type { BadgeTone, FileAsset, Principal, PrincipalRef } from "../../api/types";
+import type { ProjectScopedRow } from "../../api/projectScope";
 
 export type RiskStatus =
   | "identified"
@@ -70,7 +70,7 @@ export const RISK_OPEN_STATUSES: RiskStatus[] = [
   "identified", "assessed", "treatment_planned", "treatment_in_progress", "mitigated", "accepted",
 ];
 
-// --- Treatment assessment (Phase 3) ------------------------------------------
+// --- Treatment assessment ------------------------------------------
 
 export type TreatmentAssessmentStatus = "proposed" | "effective" | "ineffective" | "needs_reassessment";
 
@@ -88,7 +88,7 @@ export const TREATMENT_ASSESSMENT_STATUS_TONE: Record<TreatmentAssessmentStatus,
   needs_reassessment: "warning",
 };
 
-// --- Reviews (Phase 4) -------------------------------------------------------
+// --- Reviews -------------------------------------------------------
 
 export type RiskReviewOutcome = "confirmed" | "reassessed";
 
@@ -123,7 +123,7 @@ export interface RiskLevelIds {
   residual_detectability_level_id: string | null;
 }
 
-export interface Risk extends RiskLevelIds {
+export interface Risk extends RiskLevelIds, ProjectScopedRow {
   id: string;
   project_id: string;
   unique_code: string;

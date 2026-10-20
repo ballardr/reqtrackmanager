@@ -6,7 +6,7 @@ import { ProposedLinksSection } from "./ProposedLinksSection";
 
 /**
  * The "Proposed links" card of a change request's page: what the request proposes and what became of
- * each link (docs/plans/platform-enhancements-2026-10-plan.md Phase 6b).
+ * each link.
  */
 const meta: Meta<typeof ProposedLinksSection> = {
   title: "Components/ProposedLinksSection",

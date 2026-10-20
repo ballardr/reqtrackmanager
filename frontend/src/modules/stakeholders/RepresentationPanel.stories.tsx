@@ -2,7 +2,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import { MemoryRouter } from "react-router-dom";
 
-import { withToast } from "../../testing/storybook-helpers";
+import { ProjectContext } from "../../context/ProjectContextValue";
+import { buildUser, withAuth, withToast } from "../../testing/storybook-helpers";
 import { RepresentationPanel } from "./RepresentationPanel";
 import type { RepresentedLink } from "./types";
 
@@ -38,6 +39,33 @@ export const ReadOnlyListLinksToEachRecord: Story = {
     await expect(canvas.getByRole("link", { name: "Safety Officer" })).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: /Remove/ })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Add" })).not.toBeInTheDocument();
+  },
+};
+
+/** A link that carries a code shows it beside the name: an organisation-owned record is always qualified by the organisation's code. */
+export const ShowsEachRecordsCode: Story = {
+  args: {
+    load: fn(async () => [
+      { link_id: "l1", id: "persona-1", name: "Field Technician", scope: "project", unique_code: "PER-001", organization_id: null },
+      { link_id: "l2", id: "persona-2", name: "Safety Officer", scope: "organization", unique_code: "PER-001", organization_id: "org-1" },
+    ] satisfies RepresentedLink[]),
+  },
+  decorators: [
+    withAuth(buildUser({ ui_preferences: { show_project_code: false } })),
+    (Story) => (
+      <ProjectContext.Provider
+        value={{ terminology: {}, projectCode: "PRJ", enforceCodeEverywhere: false, organizationId: "org-1", organizationCode: "ACME" }}
+      >
+        <Story />
+      </ProjectContext.Provider>
+    ),
+  ],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "Field Technician" })).toBeInTheDocument());
+    // The viewer prefers bare codes, so the project's own record stays bare; the organisation's is qualified.
+    await expect(canvas.getByText("PER-001")).toBeInTheDocument();
+    await expect(canvas.getByText("ACME-PER-001")).toBeInTheDocument();
   },
 };
 

@@ -1,11 +1,8 @@
-"""Tests for Decision Management's Phase 2 workflow (docs/plans/module-04-
-decision-management-plan.md Phase 2): status transitions, rejection, and
+"""Tests for Decision Management's workflow: status transitions, rejection, and
 the supersession relationship.
 
-No HTTP endpoint exists yet for any of this (Phase 4 adds the API), so —
-same "data-model-only phase, test through the layer that exists" approach
-`test_decisions_seeding.py` established for Phase 1 — these tests call
-`app.modules.decisions.service`'s Phase 2 functions directly against a real
+These tests call
+`app.modules.decisions.service`'s workflow functions directly against a real
 database session, and assert on `Decision.status` and `AuditEvent` rows
 rather than an HTTP response body.
 """
@@ -52,8 +49,7 @@ def _first_decision_type_id(project_id: uuid.UUID) -> uuid.UUID:
 
 
 def _create_decision(*, project_id: uuid.UUID, decision_type_id: uuid.UUID, user_id: uuid.UUID, code: str) -> uuid.UUID:
-    """Inserts a `Decision` row directly (no create endpoint exists until
-    Phase 4) and returns its id."""
+    """Inserts a `Decision` row directly (bypassing the create endpoint) and returns its id."""
     db = SessionLocal()
     try:
         decision = Decision(

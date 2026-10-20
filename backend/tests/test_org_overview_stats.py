@@ -1,5 +1,5 @@
 """Tests for `GET /orgs/{organization_id}/overview-stats`
-(compliance-module-plan.md Phase 19 — "Organisation Overview" page).
+("Organisation Overview" page).
 
 Covers the permission boundary (no bypass for a caller with no genuine org
 role, matching I-M-05) and the product decision recorded in

@@ -11,6 +11,9 @@
 import type { ReactNode } from "react";
 
 import type { OrgUser, Principal, PrincipalRef } from "../api/types";
+import { DetailCard } from "./DetailCard";
+import { FieldCaption } from "./FieldHelp";
+import type { FieldHelpProps } from "./FieldHelp";
 import { PrincipalBadge } from "./PrincipalBadge";
 import { PrincipalPicker } from "./PrincipalPicker";
 
@@ -29,14 +32,15 @@ export function RecordField({ label, value }: { label: string; value: string }) 
  *
  * @param action A control on the caption's own line, e.g. an `AddPopoverButton`, so adding to a
  *   list costs no extra row.
+ * @param help The group's `(?)` help text; `helpNotNeeded` for a self-explanatory group (see `FieldHelp`).
  */
 export function RecordFieldGroup({
-  label, children, gap = "0.25rem", action,
-}: { label: string; children: ReactNode; gap?: string; action?: ReactNode }) {
+  label, children, gap = "0.25rem", action, help, required,
+}: FieldHelpProps & { label: string; children: ReactNode; gap?: string; action?: ReactNode }) {
   return (
     <div className="stack" style={{ gap }}>
       <span className="row" style={{ gap: "0.35rem", alignItems: "center" }}>
-        <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}</span>
+        <FieldCaption label={label} help={help} muted required={required} />
         {action}
       </span>
       {children}
@@ -52,10 +56,12 @@ export function RecordFieldGroup({
  * @param principal The field's resolved current value (the record's own `PrincipalOut`).
  * @param projectId The record's project, enabling project-group choices; omit for an organisation-level record.
  * @param onChange Called with the picked principal, or null when unassigned.
- * @param compact Use the compact picker (a (+)/pencil button instead of an always-open search box).
+ *
+ * The picker is the compact one (the value with a (+)/pencil button and an "x"), as on every detail page
+ * (docs/ux-style-guide.md, "Show the value, offer the add"); the always-open search box is for create forms.
  */
 export function RecordPrincipalField({
-  label, ariaLabel, principal, orgUsers, organizationId, projectId, readOnly, onChange, compact,
+  label, ariaLabel, principal, orgUsers, organizationId, projectId, readOnly, onChange,
 }: {
   label: string;
   ariaLabel: string;
@@ -65,17 +71,16 @@ export function RecordPrincipalField({
   projectId?: string;
   readOnly: boolean;
   onChange: (principal: PrincipalRef | null) => void;
-  compact?: boolean;
 }) {
   return (
-    <RecordFieldGroup label={label}>
+    <RecordFieldGroup helpNotNeeded label={label}>
       {readOnly ? (
         <PrincipalBadge principal={principal} />
       ) : (
         <PrincipalPicker
           orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
           kinds={projectId ? undefined : ["user", "org_group"]}
-          value={principal} display={principal} onChange={onChange} ariaLabel={ariaLabel} compact={compact}
+          value={principal} display={principal} onChange={onChange} ariaLabel={ariaLabel} compact
         />
       )}
     </RecordFieldGroup>
@@ -97,8 +102,7 @@ export function VersionHistoryTable<V extends { id: string; version_number: numb
 }) {
   if (!versions || versions.length <= 1) return null;
   return (
-    <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-      <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Version history</h3>
+    <DetailCard heading="Versions">
       <table className="table">
         <thead>
           <tr>
@@ -118,6 +122,6 @@ export function VersionHistoryTable<V extends { id: string; version_number: numb
           ))}
         </tbody>
       </table>
-    </div>
+    </DetailCard>
   );
 }

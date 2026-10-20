@@ -2,7 +2,7 @@
  * Module: components/ReportFigureProjectsDialog
  *
  * The "which projects?" list behind an organisation-wide report figure
- * (Module 1, report figure links). A project page can show only one project's
+ * (report figure links). A project page can show only one project's
  * items, so clicking an organisation figure (say "Blockers: 3") opens this
  * dialog: every in-scope project with its own number for that figure, biggest
  * first, each a link to that project's page (the filtered list the figure

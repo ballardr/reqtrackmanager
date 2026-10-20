@@ -1,8 +1,7 @@
 """
 Module: schemas.scoring
 
-Request/response models for the generic scoring-matrix API (Module 1
-Phase 10): a scheme's effective configuration (axes with levels, models
+Request/response models for the generic scoring-matrix API: a scheme's effective configuration (axes with levels, models
 with bands, default model with its resolution source), level CRUD, and the
 default-model/band/cell-rating override payloads. See `services.scoring`.
 """

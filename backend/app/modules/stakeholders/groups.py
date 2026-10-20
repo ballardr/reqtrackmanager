@@ -1,8 +1,7 @@
 """
 Module: modules.stakeholders.groups
 
-Business logic for Stakeholder Groups (Phase 3c, docs/plans/module-02-
-stakeholders-and-personas-plan.md Phase 0 addendum 3): a tree of org- or
+Business logic for Stakeholder Groups: a tree of org- or
 project-scoped classification groups with many-to-many stakeholder membership.
 
 Responsibilities:
@@ -19,7 +18,7 @@ Responsibilities:
 - Proposing and creating groups from the stakeholders' free-text
   "organisation / group" field.
 
-Design decisions (Decided by: Agent, see the plan's addendum 3):
+Design decisions (Decided by: Agent):
 - Walks are cycle-safe and depth-capped (`MAX_GROUP_DEPTH`).
 - A viewer's "universe" is its org's groups plus, in a project, that project's
   own groups: another project's groups are never read or named.
@@ -41,8 +40,10 @@ from sqlalchemy.orm import Session
 from app.modules.stakeholders.enums import StakeholderScope
 from app.modules.stakeholders.models import Stakeholder, StakeholderGroup, StakeholderGroupMember, StakeholderVersion
 from app.services.relationships import delete_link, get_all_links
+from app.services.sequences import code_owner, generate_unique_code
 
 GROUP_ARTEFACT_TYPE = "stakeholder_group"
+GROUP_CODE_PREFIX = "SGP"
 MAX_GROUP_DEPTH = 10
 TEXT_ROOT_NAME = "Organisation / group"
 
@@ -63,6 +64,8 @@ class GroupRef:
     name: str
     scope: StakeholderScope
     parent_group_id: uuid.UUID | None
+    unique_code: str = ""
+    organization_id: uuid.UUID | None = None
 
 
 # --- Universe and tree walks -----------------------------------------------------------------
@@ -223,7 +226,7 @@ def _validate_parent(
     parent_group_id: uuid.UUID, *, own_subtree: dict[uuid.UUID, StakeholderGroup] | None = None,
     own: StakeholderGroup | None = None,
 ) -> StakeholderGroup:
-    """The parent group, after the scope, cycle and depth rules (item 26).
+    """The parent group, after the scope, cycle and depth rules.
 
     Raises:
         GroupRuleError: 400 if the parent is absent/out of reach or the depth cap would be exceeded;
@@ -257,10 +260,14 @@ def create_group(
     last = db.scalar(select(func.max(StakeholderGroup.sort_order)).where(
         *sibling_filters(scope, organization_id, project_id, parent_group_id)
     ))
+    code_scope = code_owner(
+        db, is_org_scope=scope == StakeholderScope.ORGANIZATION, organization_id=organization_id, project_id=project_id
+    )
     group = StakeholderGroup(
         scope=scope, organization_id=organization_id if scope == StakeholderScope.ORGANIZATION else None,
-        project_id=project_id if scope == StakeholderScope.PROJECT else None, parent_group_id=parent_group_id,
-        name=name, description=description or "", exclusive_children=exclusive_children,
+        project_id=project_id if scope == StakeholderScope.PROJECT else None,
+        unique_code=generate_unique_code(db, code_scope, GROUP_ARTEFACT_TYPE, GROUP_CODE_PREFIX),
+        parent_group_id=parent_group_id, name=name, description=description or "", exclusive_children=exclusive_children,
         sort_order=0 if last is None else last + 1,
     )
     db.add(group)
@@ -302,7 +309,7 @@ def update_group(
 def delete_group(db: Session, group: StakeholderGroup) -> tuple[int, int]:
     """Deletes a group: its memberships and every `ArtefactLink` touching it (an Engagement's audience
     link, a Requirement's "affects") go (never the stakeholders) and its children are promoted
-    to its parent (item 32). Returns `(members removed, children promoted)`.
+    to its parent. Returns `(members removed, children promoted)`.
 
     Raises:
         GroupRuleError: 409 if a promoted child's name clashes with a sibling at the new level, or
@@ -381,7 +388,7 @@ def add_member(
     """Adds `stakeholder` to `group` directly.
 
     Raises:
-        GroupRuleError: 400 if the scope rules (item 26) forbid the pair; 409 on a duplicate or an
+        GroupRuleError: 400 if the scope rules forbid the pair; 409 on a duplicate or an
             `exclusive_children` conflict naming the existing branch.
     """
     if group.scope == StakeholderScope.ORGANIZATION:
@@ -493,7 +500,10 @@ def group_refs(
     )).all()
     for sid, gid in rows:
         g = universe[gid]
-        out[sid].append(GroupRef(id=g.id, name=g.name, scope=g.scope, parent_group_id=g.parent_group_id))
+        out[sid].append(GroupRef(
+            id=g.id, name=g.name, scope=g.scope, parent_group_id=g.parent_group_id, unique_code=g.unique_code,
+            organization_id=g.organization_id,
+        ))
     for refs in out.values():
         refs.sort(key=lambda r: r.name.lower())
     return out

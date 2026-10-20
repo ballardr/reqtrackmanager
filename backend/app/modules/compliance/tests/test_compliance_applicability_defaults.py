@@ -1,7 +1,6 @@
-"""Tests for the Compliance Module's Phase 20 "Standard Applicability
+"""Tests for the Compliance Module's "Standard Applicability
 Defaults, Exceptions, and Project-Manager Assignment"
-(docs/compliance-module-plan.md Phase 20; docs/Compliance_Module_
-Requirements.md §3, §7, §11, §26): the `applicability_default` toggle on a
+(§3, §7, §11, §26): the `applicability_default` toggle on a
 standard, its exclusion list, the reconciliation this drives (a standard
 switched to `applies_to_all_projects`, an exclusion removed, a brand-new
 project created), and the RBAC boundary keeping this standard-level setting
@@ -65,7 +64,7 @@ def test_new_standard_defaults_to_opt_in(client, admin_token, org_id):
 def test_only_compliance_manager_can_change_applicability_default(client, admin_token, org_id):
     """§3: switching a standard's own applicability-default setting stays
     Compliance-Manager/org-admin territory — a plain `PROJECT_MANAGER` may
-    act on their own project's own assignment row (Phase 20's default
+    act on their own project's own assignment row (the default
     path), but never on the standard's own governance."""
     standard, _version = _published_standard(client, admin_token, org_id, reference="RBAC-BOUNDARY")
     project = create_project(client, admin_token, org_id, name="RBAC Boundary Project")
@@ -235,7 +234,7 @@ def test_switching_back_to_opt_in_does_not_archive_reconciled_rows(client, admin
     """`applicability_default` only governs *future* reconciliation events
     — switching a standard back to `opt_in` never retroactively archives a
     `ProjectCompliance` row a prior `applies_to_all_projects` reconciliation
-    created (`models.py`'s own Phase 20 design-decisions section)."""
+    created (`models.py`'s applicability defaults design decisions)."""
     standard, version = _published_standard(client, admin_token, org_id, reference="REVERT-OPT-IN")
     project = create_project(client, admin_token, org_id, name="Revert Opt-In Project")
 

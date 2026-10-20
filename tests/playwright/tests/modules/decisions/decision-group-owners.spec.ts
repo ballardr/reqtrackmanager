@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, openOrgGroupPanel } from "../../e2e-workflows/helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, openOrgGroupPanel, recordCodeText } from "../../e2e-workflows/helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -8,8 +8,7 @@ installCleanupHook();
 const API = "http://localhost:8000/api/v1";
 
 /**
- * Job to be done: users and groups on parity, Phase 2 (docs/plans/
- * users-and-groups-parity-plan.md; Module 4 Phase 10) — a Decision's owner and
+ * Job to be done: users and groups on parity — a Decision's owner and
  * decision maker can be an organisation group or a project group, a member of
  * the owner group passes the "owner may propose" gate, and deleting a group
  * that still owns Decisions walks the admin through handing them to someone
@@ -102,7 +101,7 @@ test.describe("Decision Management: groups as owners and decision makers", () =>
       await memberPage.getByLabel("Owned by me or my groups").check();
       await memberPage.getByRole("button", { name: "DEC-001" }).click();
       await memberPage.getByRole("dialog", { name: "DEC-001" }).getByRole("link", { name: "View full details" }).click();
-      await expect(memberPage.getByRole("heading", { name: "DEC-001" })).toBeVisible();
+      await expect(memberPage.locator(".record-header").getByText(recordCodeText("DEC-001"))).toBeVisible();
       await memberPage.getByRole("button", { name: "Propose" }).click();
       await expect(memberPage.getByText("Proposed", { exact: true }).first()).toBeVisible();
     } finally {

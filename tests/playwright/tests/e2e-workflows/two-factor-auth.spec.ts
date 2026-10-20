@@ -20,8 +20,7 @@ const apiBaseUrl = "http://localhost:8000";
  * PERSONAS.orphan — rather than the orphan persona itself, so
  * enabling/disabling 2FA here can't collide with org-login-2fa-handoff.
  * spec.ts or user-directory-and-bans.spec.ts also touching orphan's
- * session/account state concurrently (Phase 1, docs/platform-review-2026-
- * 09-plan.md). The test always ends with 2FA disabled again, but that's
+ * session/account state concurrently. The test always ends with 2FA disabled again, but that's
  * now for tidiness rather than to avoid breaking a shared persona's later
  * plain `loginAs()`.
  */
@@ -75,7 +74,7 @@ test.describe("two-factor authentication enrollment", () => {
       ({ secret } = await enrollResponse.json());
       expect(secret).toBeTruthy();
 
-      await page.getByPlaceholder("Confirm code").fill(generateTotpCode(secret));
+      await page.getByLabel("Confirm code").fill(generateTotpCode(secret));
       await page.getByRole("button", { name: "Confirm code" }).click();
       await expect(page.getByText("Enabled", { exact: true })).toBeVisible();
     });
@@ -102,7 +101,7 @@ test.describe("two-factor authentication enrollment", () => {
       await page.goto("/preferences");
       await selectPreferencesGroup(page, "Security");
       await ensureTwoFactorSectionExpanded(page);
-      await page.getByPlaceholder("Enter a current code to disable 2FA.").fill(generateTotpCode(secret));
+      await page.getByLabel("Authenticator code").fill(generateTotpCode(secret));
       await page.getByRole("button", { name: "Disable 2FA" }).click();
       // Disabling 2FA bumps token_version server-side (same as a password
       // change) to invalidate the current session's token immediately —

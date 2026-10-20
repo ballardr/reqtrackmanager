@@ -8,6 +8,7 @@
  * muted "Not rated".
  */
 import type { RiskRating } from "./types";
+import { Badge } from "../../components/Badge";
 
 /**
  * @param rating The derived rating, or null when the risk has no complete set of levels.
@@ -22,6 +23,6 @@ export function RiskRatingBadge({
   tone?: RiskRating["tone"];
 }) {
   const shown = label ?? rating?.label ?? null;
-  if (!shown) return <span className="badge badge--muted">Not rated</span>;
-  return <span className={`badge badge--${tone ?? rating?.tone ?? "muted"}`}>{shown}</span>;
+  if (!shown) return <Badge tone="muted">Not rated</Badge>;
+  return <Badge tone={tone ?? rating?.tone ?? "muted"}>{shown}</Badge>;
 }

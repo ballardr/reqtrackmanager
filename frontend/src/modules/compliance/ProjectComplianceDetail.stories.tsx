@@ -38,7 +38,7 @@ function status(overrides: Partial<ProjectComplianceStatus> = {}): ProjectCompli
  * `ApplicabilityTree.stories.tsx`'s own, deeper coverage of that behaviour
  * — the same "settle cleanly, don't duplicate" precedent
  * `StandardVersionsSection.stories.tsx` (the retired `StandardsPanel.
- * stories.tsx`'s successor, docs/compliance-module-plan.md Phase 18) set
+ * stories.tsx`'s successor) set
  * for its own `VersionWorkspace` drill-in.
  */
 function mockApis() {
@@ -96,7 +96,8 @@ export const ArchiveFlow: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const body = within(document.body);
-    await userEvent.click(canvas.getByRole("button", { name: "Archive" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Compliance assignment actions" }));
+    await userEvent.click(body.getByRole("menuitem", { name: "Archive" }));
     const confirmDialog = await waitFor(() => body.getByRole("dialog"));
     await userEvent.click(within(confirmDialog).getByRole("button", { name: "Archive" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
@@ -120,7 +121,7 @@ export const NonCompliantAssignment: Story = {
   },
 };
 
-// Phase 31: a standard attached but never assessed must never render the
+// A standard attached but never assessed must never render the
 // same as "assessed and found compliant" — see `types.ts::complianceRiskLabel`.
 export const NotYetAssessedAssignment: Story = {
   beforeEach: () => mockApis(),

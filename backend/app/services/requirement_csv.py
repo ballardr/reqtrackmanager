@@ -27,11 +27,12 @@ from app.models.enums import ArtefactType, PrincipalType
 from app.models.file import FileAsset, RequirementFile
 from app.models.project import Project, ProjectCategory, ProjectComponent, ProjectStage
 from app.models.relationship import ArtefactLink
-from app.models.requirement import Requirement, RequirementKeyword, RequirementVersion
+from app.models.requirement import Requirement, RequirementVersion
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
 from app.services.csv_safety import csv_safe
 from app.services.principals import principal_labels, principal_ref, principal_text
+from app.services.tags import keywords_for_requirements
 
 CUSTOM_FIELD_COLUMN_PREFIX = "cf_"
 
@@ -121,14 +122,7 @@ def export_requirements_csv(db: Session, project: Project, *, include_archived: 
             return emails.get(principal_id, ""), ""
         return "", principal_text(people[(type_value, principal_id)])
 
-    keywords_by_req: dict[UUID, list[str]] = {}
-    if req_ids:
-        for req_id, keyword in db.execute(
-            select(RequirementKeyword.requirement_id, RequirementKeyword.keyword).where(
-                RequirementKeyword.requirement_id.in_(req_ids)
-            )
-        ).all():
-            keywords_by_req.setdefault(req_id, []).append(keyword)
+    keywords_by_req = keywords_for_requirements(db, req_ids)
 
     code_by_id = {r.id: r.unique_code for r in requirements}
     links_by_req: dict[UUID, list[str]] = {}

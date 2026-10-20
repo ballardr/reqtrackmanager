@@ -1,8 +1,8 @@
 """
 Module: modules.stakeholders.service
 
-Business logic for the Stakeholders & Personas module, Phase 1.1 (Persona)
-and Phase 1.2 (Stakeholder — second half of this file):
+Business logic for the Stakeholders & Personas module: Persona and
+Stakeholder (second half of this file):
 
 - Persona CRUD as an identity row plus temporal `PersonaVersion` snapshots
   (`create_persona`, `apply_persona_new_version`), archive/unarchive, and the
@@ -12,22 +12,21 @@ and Phase 1.2 (Stakeholder — second half of this file):
 - Weight resolution (`resolve_persona_weight`): the project's own override,
   then the nearest ancestor project's, then the persona's own weight, then
   `None` (equal weighting).
-- Per-project visibility of org Personas and Stakeholders (Phase 3b):
+- Per-project visibility of org Personas and Stakeholders:
   `resolve_*_visibility`/`hidden_*_ids` (nearest ancestor override wins) and the
   set/clear functions, one implementation bound per record kind.
 - `persona_scoring_targets`, this module's `scoring_target_providers` entry
-  for Module 1's per-persona Pain Point scoring.
+  for Context & Strategy's per-persona Pain Point scoring.
 - `resolve_persona_file_project_id`, the file-ownership hook.
 - Stakeholder CRUD/lifecycle with the same version-table shape, the
   Influence × Interest grid read-out (`grid_quadrant`, `suggest_cadence`),
-  the Stakeholder → Persona "represents" links, and `erase_stakeholder`
-  (hard delete of one person's data, Phase 0 resolution 15).
-- Stakeholder Need (Phase 2, last section): project-scoped CRUD/lifecycle, the
+  the Stakeholder → Persona "represents" links, and `erase_stakeholder`.
+- Stakeholder Need (last section): project-scoped CRUD/lifecycle, the
   "has need" links from Stakeholders/Personas and the "gives rise to" links to
   Requirements.
 
 Design decisions:
-- No content lock: with no approval gate (Phase 0 resolution 6) a persona
+- No content lock: with no approval gate a persona
   stays editable in every status, and each edit is a new version.
 - Only `ACTIVE` personas are offered as scoring targets, so an unvetted
   draft cannot skew a weighted roll-up (Decided by: Agent).
@@ -84,18 +83,24 @@ from app.services.files import delete_file
 from app.services.link_types import ensure_org_link_type
 from app.services.project_hierarchy import get_ancestor_chain
 from app.services.relationships import create_link, delete_link, get_all_links, get_link_between
+from app.services.sequences import code_owner, generate_unique_code
+from app.services.tags import forget_record_tags
 from app.services.type_vocabulary import TypeVocabulary
 
 STAKEHOLDERS_MODULE_KEY = "stakeholders"
 PERSONA_ARTEFACT_TYPE = "persona"
 STAKEHOLDER_ARTEFACT_TYPE = "stakeholder"
 NEED_ARTEFACT_TYPE = "stakeholder_need"
+NEED_CODE_PREFIX = "NEED"
+PERSONA_CODE_PREFIX = "PER"
+STAKEHOLDER_CODE_PREFIX = "STK"
 
-# §10.2 names no persona categories, so these are Agent defaults (Phase 0
-# resolution 3); all are org-editable.
+# §10.2 names no persona categories, so these are Agent defaults;
+# all are org-editable.
 DEFAULT_PERSONA_TYPES: tuple[str, ...] = ("Primary", "Secondary", "Negative")
 
 PERSONA_TYPES = TypeVocabulary(
+    kind="persona_type",
     label="Persona type",
     org_model=PersonaTypeDefinition,
     project_model=ProjectPersonaType,
@@ -180,7 +185,7 @@ def create_persona(
     db: Session, *, scope: PersonaScope, organization_id: uuid.UUID, project_id: uuid.UUID | None, creator: User,
     **content: Any,
 ) -> Persona:
-    """Creates a persona and its version 1 in `DRAFT`.
+    """Creates a persona with the next `PER-nnn` code of its owner and its version 1 in `DRAFT`.
 
     Args:
         scope: Org or project scope.
@@ -190,10 +195,14 @@ def create_persona(
         **content: Any `PERSONA_CONTENT_FIELDS` except `status`; `name` is
             required.
     """
+    code_scope = code_owner(
+        db, is_org_scope=scope == PersonaScope.ORGANIZATION, organization_id=organization_id, project_id=project_id
+    )
     persona = Persona(
         scope=scope,
         organization_id=organization_id if scope == PersonaScope.ORGANIZATION else None,
         project_id=project_id if scope == PersonaScope.PROJECT else None,
+        unique_code=generate_unique_code(db, code_scope, PERSONA_ARTEFACT_TYPE, PERSONA_CODE_PREFIX),
         creator_id=creator.id,
     )
     db.add(persona)
@@ -389,16 +398,17 @@ def resolve_persona_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UUI
 
 
 # =============================================================================
-# Stakeholder (Phase 1.2)
+# Stakeholder
 # =============================================================================
 
-# §10.2's list (Phase 0 resolution 3); all are org-editable.
+# §10.2's list; all are org-editable.
 DEFAULT_STAKEHOLDER_TYPES: tuple[str, ...] = (
     "Customer", "End user", "Operator", "Maintainer", "Service engineer", "Business owner", "Project sponsor",
     "Regulator", "Supplier", "Internal engineering team", "Support organisation",
 )
 
 STAKEHOLDER_TYPES = TypeVocabulary(
+    kind="stakeholder_type",
     label="Stakeholder type",
     org_model=StakeholderTypeDefinition,
     project_model=ProjectStakeholderType,
@@ -427,7 +437,7 @@ STAKEHOLDER_ALLOWED_TRANSITIONS: dict[StakeholderStatus, frozenset[StakeholderSt
 
 GridQuadrant = Literal["manage_closely", "keep_satisfied", "keep_informed", "monitor"]
 
-# Phase 0 addendum 2, resolution 21 (default mapping Decided by: Agent).
+# Default mapping (Decided by: Agent).
 CADENCE_HINT_BY_QUADRANT: dict[GridQuadrant, TargetCadence] = {
     "manage_closely": TargetCadence.MONTHLY,
     "keep_satisfied": TargetCadence.QUARTERLY,
@@ -491,7 +501,7 @@ def create_stakeholder(
     db: Session, *, scope: StakeholderScope, organization_id: uuid.UUID, project_id: uuid.UUID | None,
     creator: User, **content: Any,
 ) -> Stakeholder:
-    """Creates a stakeholder and its version 1 in `DRAFT`.
+    """Creates a stakeholder with the next `STK-nnn` code of its owner and its version 1 in `DRAFT`.
 
     Args:
         scope: Org or project scope.
@@ -501,10 +511,14 @@ def create_stakeholder(
         **content: Any `STAKEHOLDER_CONTENT_FIELDS` except `status`; `name`
             is required.
     """
+    code_scope = code_owner(
+        db, is_org_scope=scope == StakeholderScope.ORGANIZATION, organization_id=organization_id, project_id=project_id
+    )
     stakeholder = Stakeholder(
         scope=scope,
         organization_id=organization_id if scope == StakeholderScope.ORGANIZATION else None,
         project_id=project_id if scope == StakeholderScope.PROJECT else None,
+        unique_code=generate_unique_code(db, code_scope, STAKEHOLDER_ARTEFACT_TYPE, STAKEHOLDER_CODE_PREFIX),
         creator_id=creator.id,
     )
     db.add(stakeholder)
@@ -565,7 +579,7 @@ def transition_stakeholder(
     return new_version
 
 
-# --- Per-project visibility (Phase 3b) ----------------------------------------
+# --- Per-project visibility ----------------------------------------
 # One implementation for the Persona and Stakeholder override tables
 # (`ProjectPersonaVisibility`, `ProjectStakeholderVisibility`), which differ
 # only in the record column; the public functions below bind each kind.
@@ -766,7 +780,7 @@ def grid_quadrant(
 
 
 def suggest_cadence(quadrant: GridQuadrant | None) -> TargetCadence | None:
-    """The cadence hint for a grid quadrant (resolution 21); a hint only, never
+    """The cadence hint for a grid quadrant; a hint only, never
     applied automatically."""
     return CADENCE_HINT_BY_QUADRANT[quadrant] if quadrant is not None else None
 
@@ -876,7 +890,7 @@ def delete_represents_link(db: Session, link: Any) -> None:
 
 def erase_stakeholder(db: Session, stakeholder: Stakeholder, actor: User) -> None:
     """Hard-deletes a stakeholder and everything that holds data about them
-    (Phase 0 resolution 15): version rows (contact info included), comments,
+: version rows (contact info included), comments,
     every file in storage (direct and comment attachments), their group
     memberships and every `ArtefactLink` touching them. Writes one audit event carrying only the id
     and the acting user, never the name or any content. The caller commits.
@@ -890,6 +904,7 @@ def erase_stakeholder(db: Session, stakeholder: Stakeholder, actor: User) -> Non
     file_ids |= set(db.scalars(select(StakeholderCommentFile.file_id).where(StakeholderCommentFile.comment_id.in_(comment_ids))))
     for link in get_all_links(db, STAKEHOLDER_ARTEFACT_TYPE, stakeholder.id, include_cross_project=True):
         delete_link(db, link)
+    forget_record_tags(db, STAKEHOLDER_ARTEFACT_TYPE, stakeholder.id)
     db.execute(delete(StakeholderGroupMember).where(StakeholderGroupMember.stakeholder_id == stakeholder.id))
     # The attachment rows cascade from the stakeholder; the bytes must be
     # removed explicitly, so delete the assets (their FK cascades the links).
@@ -914,7 +929,7 @@ def resolve_stakeholder_file_project_id(db: Session, file_id: uuid.UUID) -> uuid
 
 
 # =============================================================================
-# Stakeholder Need (Phase 2)
+# Stakeholder Need
 # =============================================================================
 
 NEED_CONTENT_FIELDS: tuple[str, ...] = ("name", "description", "rationale", "status", "owner_type", "owner_id")
@@ -948,15 +963,18 @@ def get_current_need_version(db: Session, need_id: uuid.UUID) -> StakeholderNeed
     return version
 
 
-def create_need(db: Session, *, project_id: uuid.UUID, creator: User, **content: Any) -> StakeholderNeed:
-    """Creates a need and its version 1 in `DRAFT`.
+def create_need(db: Session, *, project: Project, creator: User, **content: Any) -> StakeholderNeed:
+    """Creates a need with the project's next `NEED-nnn` code and its version 1 in `DRAFT`.
 
     Args:
-        project_id: The owning project.
+        project: The owning project (its sequence counter is advanced).
         creator: The acting user.
         **content: Any `NEED_CONTENT_FIELDS` except `status`; `name` is required.
     """
-    need = StakeholderNeed(project_id=project_id, creator_id=creator.id)
+    need = StakeholderNeed(
+        project_id=project.id, creator_id=creator.id,
+        unique_code=generate_unique_code(db, project, NEED_ARTEFACT_TYPE, NEED_CODE_PREFIX),
+    )
     db.add(need)
     db.flush()
     now = datetime.now(UTC)

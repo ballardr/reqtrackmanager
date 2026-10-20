@@ -34,7 +34,7 @@ test.describe("comment editing and attachments", () => {
       await composeFileInput.setInputFiles({ name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("first attachment") });
       await page.getByRole("button", { name: "Add comment", exact: true }).click();
       await expect(page.getByText(originalBody)).toBeVisible();
-      await expect(page.locator(".card", { hasText: originalBody }).last().getByText("notes.txt")).toBeVisible();
+      await expect(page.locator(".comment-row", { hasText: originalBody }).getByText("notes.txt")).toBeVisible();
     });
 
     await test.step("a different user has no Edit control on someone else's comment, and the API rejects it too", async () => {
@@ -43,8 +43,8 @@ test.describe("comment editing and attachments", () => {
       await openProject(page, PROJECT_NAMES.alpha1);
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByCode(page, "HW-FN-001");
-      const commentCard = page.locator(".card", { hasText: originalBody }).last();
-      await expect(commentCard.getByRole("button", { name: "Edit" })).toHaveCount(0);
+      const commentRow = page.locator(".comment-row", { hasText: originalBody });
+      await expect(commentRow.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
 
       const projectId = page.url().match(/projects\/([0-9a-f-]+)/)![1];
       const requirementId = page.url().match(/requirements\/([0-9a-f-]+)/)![1];
@@ -69,30 +69,30 @@ test.describe("comment editing and attachments", () => {
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByCode(page, "HW-FN-001");
 
-      await page.locator(".card", { hasText: originalBody }).last().getByRole("button", { name: "Edit" }).click();
+      await page.locator(".comment-row", { hasText: originalBody }).getByRole("button", { name: "Edit", exact: true }).click();
       // Once in edit mode, the original body text no longer appears as DOM
       // text content (replaced by a textarea, whose value isn't matched by
-      // hasText) — re-locate the card as "the one currently being edited"
+      // hasText) — re-locate the row as "the one currently being edited"
       // rather than continuing to filter by the now-stale original text.
-      const editingCard = page.locator(".card", { has: page.locator("textarea") }).last();
-      await editingCard.locator("textarea").fill(editedBody);
-      await editingCard.locator('input[type="file"]').setInputFiles({
+      const editingRow = page.locator(".comment-row", { has: page.locator("textarea") });
+      await editingRow.locator("textarea").fill(editedBody);
+      await editingRow.locator('input[type="file"]').setInputFiles({
         name: "second.txt", mimeType: "text/plain", buffer: Buffer.from("second attachment"),
       });
-      await editingCard.getByRole("button", { name: "Save", exact: true }).click();
+      await editingRow.getByRole("button", { name: "Save", exact: true }).click();
 
       await expect(page.getByText(editedBody)).toBeVisible();
-      const editedCard = page.locator(".card", { hasText: editedBody }).last();
-      await expect(editedCard.getByText("(edited)")).toBeVisible();
-      await expect(editedCard.getByText("second.txt")).toBeVisible();
+      const editedRow = page.locator(".comment-row", { hasText: editedBody });
+      await expect(editedRow.getByText("(edited)")).toBeVisible();
+      await expect(editedRow.getByText("second.txt")).toBeVisible();
     });
 
     await test.step("remove one of the two attachments", async () => {
-      await page.locator(".card", { hasText: editedBody }).last().getByRole("button", { name: "Edit" }).click();
-      const editingCard = page.locator(".card", { has: page.locator("textarea") }).last();
-      await editingCard.getByRole("button", { name: "Remove attachment" }).first().click();
-      await editingCard.getByRole("button", { name: "Save", exact: true }).click();
-      await expect(page.locator(".card", { hasText: editedBody }).last().getByText(/\.txt$/)).toHaveCount(1);
+      await page.locator(".comment-row", { hasText: editedBody }).getByRole("button", { name: "Edit", exact: true }).click();
+      const editingRow = page.locator(".comment-row", { has: page.locator("textarea") });
+      await editingRow.getByRole("button", { name: "Remove attachment" }).first().click();
+      await editingRow.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(page.locator(".comment-row", { hasText: editedBody }).getByText(/\.txt$/)).toHaveCount(1);
     });
   });
 });

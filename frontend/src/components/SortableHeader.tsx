@@ -4,8 +4,7 @@ import type { CSSProperties, ReactNode } from "react";
 import type { SortState } from "./sortState";
 
 /**
- * Style guide "Pattern: sortable column header" (2026-08 UX audit roadmap,
- * "Column-header sorting on data tables") — a clickable `<th>` that cycles
+ * Style guide "Pattern: sortable column header" — a clickable `<th>` that cycles
  * unsorted → ascending → descending → unsorted on click. Renders as a real
  * `<button>` inside the `<th>` (not a bare `<th onClick>`) so it's reachable
  * and operable by keyboard like every other control in the app, and sets
@@ -19,6 +18,10 @@ import type { SortState } from "./sortState";
  * rather than hand-rolled per page — the audit's own Principle 4 ("one
  * component per pattern") was written specifically against the app
  * accumulating a fifth one-off version of a shape like this one.
+ *
+ * `action` is a control that belongs to the column (a settings gear). It sits beside the sort button
+ * inside the `<th>`, never inside the button (a button in a button is invalid HTML and would break
+ * keyboard sorting), so using it never changes the sort.
  */
 export function SortableHeader<K extends string>({
   label,
@@ -26,15 +29,24 @@ export function SortableHeader<K extends string>({
   sort,
   onSort,
   style,
+  action,
 }: {
   label: ReactNode;
   sortKey: K;
   sort: SortState<K> | null;
   onSort: (key: K) => void;
   style?: CSSProperties;
+  action?: ReactNode;
 }) {
   const direction = sort?.key === sortKey ? sort.direction : null;
   const ariaSort = direction === "asc" ? "ascending" : direction === "desc" ? "descending" : "none";
+  const sortButton = (
+    <button type="button" className="th-sort" onClick={() => onSort(sortKey)}>
+      <span>{label}</span>
+      {direction === "asc" && <ArrowUp size={14} aria-hidden="true" />}
+      {direction === "desc" && <ArrowDown size={14} aria-hidden="true" />}
+    </button>
+  );
   return (
     <th style={style} aria-sort={ariaSort}>
       {/* No `aria-label` here deliberately: the WAI-ARIA APG "sortable
@@ -46,11 +58,12 @@ export function SortableHeader<K extends string>({
           label for its content), silently renaming the columnheader from
           e.g. "ID" to "Sort by ID" for every assistive-tech user and any
           `getByRole("columnheader", { name })` query alike. */}
-      <button type="button" className="th-sort" onClick={() => onSort(sortKey)}>
-        <span>{label}</span>
-        {direction === "asc" && <ArrowUp size={14} aria-hidden="true" />}
-        {direction === "desc" && <ArrowDown size={14} aria-hidden="true" />}
-      </button>
+      {action ? (
+        <span className="th-with-action">
+          {sortButton}
+          {action}
+        </span>
+      ) : sortButton}
     </th>
   );
 }

@@ -2,14 +2,14 @@
  * Module: modules/compliance/useComplianceNavVisibility
  *
  * Backs whether the current user should see the top-level "Compliance
- * Standards" nav-rail tab (docs/compliance-module-plan.md Phase 18), via
+ * Standards" nav-rail tab, via
  * the compliance module's own `GET /api/v1/compliance/nav-visibility`
  * (`backend/app/modules/compliance/global_router.py`) — a genuinely
  * compliance-module-owned decision (module effectively enabled for at
  * least one of the caller's orgs, and either a manage-capable role there
  * or that org having a real standard), so this logic lives inside the
  * compliance module rather than as a field bolted onto core `/auth/me/
- * memberships`, per the plan's own design.
+ * memberships`, by design.
  *
  * Deliberately a **self-contained hook backed by a tiny module-level
  * external store** (`useSyncExternalStore`), not a React Context/Provider —
@@ -37,7 +37,7 @@
  * cannot call this without the same core-imports-a-specific-module coupling
  * this file exists to avoid — visibility there converges on the next full
  * page load instead, a deliberate, documented trade-off (see
- * docs/decisions.md's Phase 18 entry) rather than a boundary exception.
+ * docs/decisions.md) rather than a boundary exception.
  */
 import { useEffect, useSyncExternalStore } from "react";
 

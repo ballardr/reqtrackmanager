@@ -111,9 +111,7 @@ def test_direct_edit_allowed_before_lock(client, admin_token, org_id):
     assert resp.json()["name"] == "Edited during scoping"
 
 
-# --- Standalone requirement approval (2026-08 UX audit roadmap, "No
-# requirement approval action; change requests can target draft
-# requirements") -------------------------------------------------------------
+# --- Standalone requirement approval -------------------------------------------------------------
 
 
 def test_approve_requirement_transitions_draft_to_approved(client, admin_token, org_id):
@@ -380,8 +378,7 @@ def test_archiving_preserves_history(client, admin_token, org_id):
 
 def test_unarchive_requirement_restores_it_and_is_idempotent(client, admin_token, org_id):
     """Pins the `/unarchive` counterpart to `test_archiving_preserves_history`
-    above (2026-08 UX audit roadmap: archive was previously one-way for
-    requirements, unlike projects). Also covers the idempotency contract:
+    above. Also covers the idempotency contract:
     unlike `archive_action`'s 409-on-already-archived, calling unarchive on
     an already-active requirement is a no-op, matching
     `unarchive_project`'s own shape."""
@@ -549,8 +546,7 @@ def test_target_stage_and_level_persist_through_create_update_and_change_request
     assert unrelated_edit["target_stage_id"] == second_stage["id"]
 
     # A modify change request can only target an already-locked requirement
-    # (2026-08 UX audit roadmap, "No requirement approval action; change
-    # requests can target draft requirements") — approve it directly first.
+    # — approve it directly first.
     approve_resp = client.post(
         f"/api/v1/projects/{project['id']}/requirements/{created['id']}/approve", headers=auth_headers(admin_token)
     )

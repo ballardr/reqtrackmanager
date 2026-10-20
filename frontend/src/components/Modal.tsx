@@ -80,7 +80,7 @@ export function Modal({
         <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{title}</h2>
           <button className="btn" onClick={onClose} aria-label={strings.common.close} title={strings.common.close}>
-            <X size={14} />
+            <X />
           </button>
         </div>
         {children}

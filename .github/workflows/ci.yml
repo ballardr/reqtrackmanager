@@ -19,7 +19,7 @@
 #                          largest chunks of what used to be a single ~26min
 #                          job — pytest at ~12min, Playwright at ~9min — run
 #                          on two separate runners in parallel instead of
-#                          back-to-back on one (Phase 1's CI-runtime-
+#                          back-to-back on one (an earlier CI-runtime-
 #                          reduction pass only parallelised *within* the
 #                          Playwright step and left this larger, sequential
 #                          cost untouched; see docs/decisions.md). Each job
@@ -38,10 +38,10 @@
 #                          badge files and racing each other — see that job's
 #                          own comment. Doesn't need e2e-tests: nothing it
 #                          reads comes from that job.
-#   5. docker-build      - builds the production backend, frontend, and
-#                          mcp-server images, gated on jobs 1-3 passing; tags
-#                          each with GitVersion's computed SemVer plus the
-#                          commit SHA and `latest`, and pushes all three to
+#   5. docker-build      - builds the production backend, frontend,
+#                          mcp-server and docs-site images, gated on jobs 1-3
+#                          passing; tags each with GitVersion's computed SemVer
+#                          plus the commit SHA and `latest`, and pushes all to
 #                          ghcr.io — except on pull_request runs, which still
 #                          build (proving the Dockerfiles work) but never push
 #   6. docs              - builds docs/website/ (Docusaurus) and fails on any
@@ -643,11 +643,11 @@ jobs:
       #
       # `-e CI=true`: playwright.config.ts's `retries: process.env.CI ? 2 :
       # 0` is meant to retry a test on the transient client-side connection
-      # stall Phase 1 documented (docs/decisions.md) — but `docker run`
+      # stall documented in docs/decisions.md — but `docker run`
       # starts a fresh container with its own empty environment, so without
       # this flag `process.env.CI` was always undefined *inside* the
       # container regardless of the real CI run's own environment, silently
-      # disabling that retry on every CI run since Phase 1 added it (found
+      # disabling that retry on every CI run since it was added (found
       # investigating PR #20's failures: none of the 5 failing tests showed
       # a retry attempt in the log). `true` matches the truthy-string value
       # GitHub Actions itself sets on the runner.
@@ -950,6 +950,42 @@ jobs:
             ghcr.io/${{ github.repository }}-mcp-server:${{ github.sha }}
             ghcr.io/${{ github.repository }}-mcp-server:latest
 
+      # Documentation site image, for hosting the docs inside a deployment
+      # (HELP_URL). The first build uses a non-default base path and is smoke
+      # tested, because a wrong base path is the way this image breaks: the
+      # home page would load but every asset and nested page would 404.
+      - name: Build docs image for smoke test (base path /docs/)
+        uses: docker/build-push-action@v7
+        with:
+          context: ./docs/website
+          file: ./docs/website/Dockerfile.prod
+          load: true
+          push: false
+          build-args: |
+            DOCS_BASE_URL=/docs/
+          tags: docs-smoke:test
+
+      - name: Smoke test docs image
+        run: |
+          docker run -d --name docs-smoke -p 8081:8080 docs-smoke:test
+          for i in $(seq 1 30); do curl -sf http://localhost:8081/health && break; sleep 1; done
+          curl -sf http://localhost:8081/docs/ -o /dev/null
+          curl -sf http://localhost:8081/docs/installation-deployment/overview -o /dev/null
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8081/docs/no-such-page)
+          test "$code" = "404"
+          docker rm -f docs-smoke
+
+      - name: Build and push docs image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./docs/website
+          file: ./docs/website/Dockerfile.prod
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ghcr.io/${{ github.repository }}-docs:${{ steps.gitversion.outputs.semVer }}
+            ghcr.io/${{ github.repository }}-docs:${{ github.sha }}
+            ghcr.io/${{ github.repository }}-docs:latest
+
   docs:
     name: Build documentation website
     runs-on: ubuntu-latest
@@ -970,6 +1006,12 @@ jobs:
           node-version: "24"
           cache: npm
           cache-dependency-path: docs/website/package-lock.json
+      - name: Check documentation references resolve
+        working-directory: .
+        run: python3 scripts/check_doc_links.py
+      - name: Check health probes use 127.0.0.1
+        working-directory: .
+        run: python3 scripts/check_health_probes.py
       - run: npm ci
       - run: npm run typecheck
       # The agent-skill downloads are built from mcp-server/skill and backend/mcp_skill_reference, not committed.

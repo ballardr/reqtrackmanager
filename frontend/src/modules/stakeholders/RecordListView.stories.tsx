@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
+import { ProjectContext } from "../../context/ProjectContextValue";
 import { RecordListView, type ListedRecord } from "./RecordListView";
 
 interface Widget extends ListedRecord {
@@ -13,9 +14,9 @@ const STATUS_TONE = { draft: "muted", active: "accent" } as const;
 const SCOPE_LABEL = { organization: "Organisation", project: "Project" };
 
 const WIDGETS: Widget[] = [
-  { id: "w1", name: "Alpha", status: "active", scope: "project", kind: "Round", size: 3 },
-  { id: "w2", name: "Beta", status: "draft", scope: "organization", kind: "Square", size: 5 },
-  { id: "w3", name: "Gamma", status: "active", scope: "project", kind: null, size: 1 },
+  { id: "w1", unique_code: "WGT-001", name: "Alpha", status: "active", scope: "project", kind: "Round", size: 3 },
+  { id: "w2", unique_code: "WGT-002", organization_id: "org-1", name: "Beta", status: "draft", scope: "organization", kind: "Square", size: 5 },
+  { id: "w3", unique_code: "WGT-003", name: "Gamma", status: "active", scope: "project", kind: null, size: 1 },
 ];
 
 const meta: Meta<typeof RecordListView<Widget, string>> = {
@@ -43,10 +44,26 @@ type Story = StoryObj<typeof RecordListView<Widget, string>>;
 export const RendersFixedAndKindColumnsThroughLabelMaps: Story = {
   play: async ({ canvasElement }) => {
     const table = within(within(canvasElement).getByRole("table", { name: "Widgets" }));
-    for (const header of ["Name", "Type", "Scope", "Size", "Status"]) await expect(table.getByRole("columnheader", { name: header })).toBeInTheDocument();
+    for (const header of ["Name", "Code", "Type", "Scope", "Size", "Status"]) await expect(table.getByRole("columnheader", { name: header })).toBeInTheDocument();
     await expect(table.getByText("Organisation")).toBeInTheDocument();
     await expect(table.getAllByText("Active").length).toBe(2);
     await expect(table.queryByText("organization")).not.toBeInTheDocument();
+  },
+};
+
+/** A record the organisation owns shows its code qualified by the organisation's code; a project record by the project's. */
+export const CodesAreQualifiedByOwner: Story = {
+  decorators: [(Story) => (
+    <ProjectContext.Provider
+      value={{ terminology: {}, projectCode: "PRJ", organizationId: "org-1", organizationCode: "ACME" }}
+    >
+      <Story />
+    </ProjectContext.Provider>
+  )],
+  play: async ({ canvasElement }) => {
+    const table = within(within(canvasElement).getByRole("table", { name: "Widgets" }));
+    await expect(table.getByText("PRJ-WGT-001")).toBeInTheDocument();
+    await expect(table.getByText("ACME-WGT-002")).toBeInTheDocument();
   },
 };
 
@@ -115,7 +132,7 @@ export const CreateRunsTheCallerAndClosesOnSuccess: Story = {
   play: async ({ canvasElement, args }) => {
     await userEvent.click(within(canvasElement).getByRole("button", { name: "New Widget" }));
     await userEvent.click(within(canvasElement).getByRole("button", { name: "Save widget" }));
-    await waitFor(() => expect(args.onCreate).toHaveBeenCalledWith("values"));
+    await waitFor(() => expect(args.onCreate).toHaveBeenCalledWith("values", [], []));
     await waitFor(() => expect(within(canvasElement).queryByRole("dialog")).not.toBeInTheDocument());
   },
 };

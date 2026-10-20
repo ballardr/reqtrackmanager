@@ -1,7 +1,7 @@
 """
 Module: modules.stakeholders.engagement_export
 
-The Engagement part of this module's project bundle export/import (Phase 4);
+The Engagement part of this module's project bundle export/import;
 `module.py` composes it with the Persona, Stakeholder, Need and relationship
 halves, and runs it last because an engagement links to all of them. An
 Engagement is project-scoped, so there is no org-level half.
@@ -53,7 +53,9 @@ from app.modules.stakeholders.service import (
     get_current_stakeholder_version,
 )
 from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
+from app.services.codes import label_title
 from app.services.principals import principal_from_bundle, principal_to_bundle
+from app.services.tags import record_tag_names, restore_record_tags
 
 _KEY = "project_engagements"
 _TEXT_FIELDS = ("title", "purpose", "summary", "notes")
@@ -72,7 +74,7 @@ def _outcomes_json(db: Session, project: Project, holder_type: str, holder_id: U
     for link, kind in eng.list_outcome_links(db, holder_type, holder_id, project.organization_id):
         summary = rel.resolve_target(db, project, link.target_type, link.target_id)
         if summary is not None:
-            out.append({"kind": kind.key, "target_type": link.target_type, "target_ref": summary.label})
+            out.append({"kind": kind.key, "target_type": link.target_type, "target_ref": label_title(summary.label)})
     return out
 
 
@@ -103,6 +105,7 @@ def _engagement_json(
         {
             "unique_code": f.unique_code, "title": f.title, "description": f.description, "created_by_email": emails.get(f.creator_id),
             "created_at": _j(f.created_at), "outcomes": _outcomes_json(db, project, FINDING_ARTEFACT_TYPE, f.id),
+            "tags": record_tag_names(db, FINDING_ARTEFACT_TYPE, f.id),
         }
         for f in eng.list_findings(db, engagement.id)
     ]
@@ -130,6 +133,7 @@ def _engagement_json(
             {"prompt": p.prompt, "response_notes": p.response_notes} for p in eng.list_prompts(db, engagement.id)
         ],
         "anonymous_participants": anonymous, "findings": findings,
+        "tags": record_tag_names(db, ENGAGEMENT_ARTEFACT_TYPE, engagement.id),
     }
 
 
@@ -168,7 +172,7 @@ def _outcome_lookup(db: Session, project: Project) -> Any:
             by_label: dict[str, list[Any]] = {}
             if rel.target_type_available(target_type):
                 for s in rel.list_targets(db, project, target_type):
-                    by_label.setdefault(s.label, []).append(s)
+                    by_label.setdefault(label_title(s.label), []).append(s)
             cache[target_type] = by_label
         matches = cache[target_type].get(label, [])
         return matches[0] if len(matches) == 1 else None
@@ -243,6 +247,10 @@ def import_project_data(
             if ref is not None:
                 facilitators.append(ref)
         eng.set_facilitators(db, engagement, facilitators)
+        restore_record_tags(
+            db, organization_id=organization_id, record_project_id=project.id, actor_id=creator_id,
+            artefact_type=ENGAGEMENT_ARTEFACT_TYPE, artefact_id=engagement.id, names=e.get("tags"),
+        )
         for participant in e.get("participants", []):
             stakeholder_id = stakeholders.get((participant["name"], participant["scope"]))
             if stakeholder_id is None:
@@ -291,6 +299,10 @@ def import_project_data(
             finding = eng.create_finding(
                 db, project, engagement, creator_id=finding_creator, actor=current_user, title=f["title"],
                 description=f.get("description", ""),
+            )
+            restore_record_tags(
+                db, organization_id=organization_id, record_project_id=project.id, actor_id=finding_creator,
+                artefact_type=FINDING_ARTEFACT_TYPE, artefact_id=finding.id, names=f.get("tags"),
             )
             _import_outcomes(
                 db, engagement, FINDING_ARTEFACT_TYPE, finding.id, f.get("outcomes", []), resolve, current_user,

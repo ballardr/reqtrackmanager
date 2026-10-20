@@ -1,8 +1,7 @@
 /**
  * Module: modules/context_strategy/GuidingPrincipleFormModal
  *
- * Create/edit dialog for a Guiding Principle's content fields (docs/plans/
- * module-01-context-and-strategy-plan.md Phase 7.4) — mirrors
+ * Create/edit dialog for a Guiding Principle's content fields — mirrors
  * `StrategyFormModal.tsx`'s exact "shared by create and edit, distinguished
  * by whether `initial` is passed" convention and `docs/ux-style-guide.md`'s
  * "create-as-a-layer" principle.
@@ -16,7 +15,13 @@
  */
 import { useState } from "react";
 
+import type { CollectedLink } from "../../api/artefactLinks";
 import { Modal } from "../../components/Modal";
+import { QuickLinkField } from "../../components/QuickLinkField";
+import { TagField } from "../../components/TagField";
+import { FormActions } from "../../components/FormActions";
+import { TextAreaField, TextField } from "../../components/FormFields";
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { GUIDING_PRINCIPLE_PRIORITY_LABEL } from "./types";
 import type { GuidingPrinciple, GuidingPrincipleFieldValues, GuidingPrinciplePriority } from "./types";
@@ -29,6 +34,7 @@ const TEXT_FIELDS: { key: keyof GuidingPrincipleFieldValues; label: string; rows
 export function GuidingPrincipleFormModal({
   initial,
   scopeLabel,
+  projectId,
   error,
   onCancel,
   onSave,
@@ -38,9 +44,11 @@ export function GuidingPrincipleFormModal({
    * clear which scope a new Guiding Principle is being created in, since
    * this same modal serves both the org-scoped and project-scoped pages. */
   scopeLabel: string;
+  /** The project a new record is created in; with it a create form offers the quick-link field. Omit for the organisation scope. */
+  projectId?: string;
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: GuidingPrincipleFieldValues) => void;
+  onSave: (values: GuidingPrincipleFieldValues, quickLinks: CollectedLink[], tags: string[]) => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [priority, setPriority] = useState<GuidingPrinciplePriority>(initial?.priority ?? "medium");
@@ -51,13 +59,16 @@ export function GuidingPrincipleFormModal({
     )
   );
 
+  const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
+
   function save() {
     onSave({
       name,
       priority,
       change_note: changeNote,
       ...(Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, fields[f.key] ?? ""])) as Record<string, string>),
-    } as GuidingPrincipleFieldValues);
+    } as GuidingPrincipleFieldValues, quickLinks, tags);
   }
 
   const valid = name.trim() !== "" && (fields.principle_statement ?? "").trim() !== "";
@@ -65,39 +76,39 @@ export function GuidingPrincipleFormModal({
   return (
     <Modal title={initial ? `Edit ${initial.name}` : `New Guiding Principle (${scopeLabel})`} onClose={onCancel} size="lg">
       <div className="stack">
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Name</span>
-          <input className="input" value={name} onChange={(e) => setName(e.target.value)} aria-label="Guiding Principle name" />
-        </label>
-        {TEXT_FIELDS.map((f) => (
-          <label key={f.key} className="stack" style={{ gap: "0.25rem" }}>
-            <span>{f.label}</span>
-            <textarea
-              className="input"
-              rows={f.rows}
-              value={fields[f.key] ?? ""}
-              onChange={(e) => setFields((prev) => ({ ...prev, [f.key]: e.target.value }))}
-              aria-label={f.label}
-            />
-          </label>
-        ))}
-        <LabeledSelect
-          label="Priority"
-          value={priority}
-          onChange={(v) => setPriority(v as GuidingPrinciplePriority)}
-          options={Object.entries(GUIDING_PRINCIPLE_PRIORITY_LABEL).map(([value, label]) => ({ value, label }))}
-        />
-        {initial && (
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            <span>Change note (optional)</span>
-            <input className="input" value={changeNote} onChange={(e) => setChangeNote(e.target.value)} aria-label="Change note" />
-          </label>
-        )}
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" disabled={!valid} onClick={save}>Save</button>
-        </div>
+        <FormGrid minColumn="18rem">
+          <FormGridFull>
+            <TextField helpNotNeeded required label="Name" ariaLabel="Guiding Principle name" value={name} onChange={setName} />
+          </FormGridFull>
+          {TEXT_FIELDS.map((f) => (
+            <FormGridFull key={f.key}>
+              <TextAreaField helpNotNeeded required={f.key === "principle_statement"}
+                label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
+                onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
+              />
+            </FormGridFull>
+          ))}
+          <LabeledSelect helpNotNeeded
+            label="Priority"
+            value={priority}
+            onChange={(v) => setPriority(v as GuidingPrinciplePriority)}
+            options={Object.entries(GUIDING_PRINCIPLE_PRIORITY_LABEL).map(([value, label]) => ({ value, label }))}
+          />
+          {initial && (
+            <FormGridFull>
+              <TextField helpNotNeeded label="Change note" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />
+            </FormGridFull>
+          )}
+          {!initial && projectId && (
+            <FormGridFull>
+              <div className="stack">
+                <QuickLinkField projectId={projectId} artefactType="guiding_principle" value={quickLinks} onChange={setQuickLinks} />
+                <TagField projectId={projectId} artefactType="guiding_principle" value={tags} onChange={setTags} />
+              </div>
+            </FormGridFull>
+          )}
+        </FormGrid>
+        <FormActions error={error} onCancel={onCancel} onSave={save} saveDisabled={!valid} />
       </div>
     </Modal>
   );

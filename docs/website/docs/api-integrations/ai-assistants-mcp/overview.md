@@ -22,7 +22,7 @@ Twenty-two read tools, always available:
 | `list_permissions` | An organisation's full Fine-Grained Access Control permission vocabulary |
 | `list_custom_roles` | An organisation's custom roles (each role's own definition, never who holds it) |
 | `get_custom_role` | A single custom role's definition |
-| `list_requirements` | Requirements in a project, with the same filters the UI's filter panel offers (status, component, category, keyword, or a name/code search) |
+| `list_requirements` | Requirements in a project, with the same filters the UI's filter panel offers (status, component, category, keyword, tags, or a name/code search) |
 | `get_requirement` | A single requirement's full current detail |
 | `get_requirement_history` | A requirement's full version history — every prior state, who changed it, and why |
 | `get_artefact_link_graph` | What an artefact is linked to, out to three hops, with each link's direction (upstream, downstream or related) for impact analysis; says when the result is partial |
@@ -30,6 +30,10 @@ Twenty-two read tools, always available:
 | `list_link_candidate_projects` | The projects a link from this project may reach: itself, its parent projects and its child projects you can open |
 | `search_artefact_link_candidates` | Finds the record to link to (the `other_id` for `create_artefact_link`): a short search across every record type a usable link type reaches (two characters or more), or within one type, optionally narrowed by browse choices |
 | `list_artefact_link_browse` | The next browse level of a record type (a compliance clause: standard, then version, then requirement; a requirement: component, then category; most types: a status or type), to narrow the search step by step |
+| `list_tags` | The project's tag vocabulary with usage counts, and whether new tags are free or limited to the list |
+| `get_artefact_tags` | The tags on one record of any type, whether the caller may change them, and the tags to choose from |
+| `find_artefacts_by_tag` | Records of every type that carry some tags (any or all), limited to those the caller can open |
+| `search_records` | Records of every type (and projects) found by text: code, title and tags by default, more fields on request; scoped to all projects, one project or a module's unit such as a Compliance standard. Only what the caller can open; the first 500 matches |
 | `list_change_requests` | Change requests in a project, optionally filtered by status |
 | `get_change_request` | A single change request's full current detail, including the links it proposes (`proposed_links`) |
 | `preview_change_request_links` | Which of a change request's proposed links would merge if it were approved now, each re-checked, with the reason for any that would not (project managers only) |
@@ -49,6 +53,8 @@ Plus seven write tools, only when write mode is enabled. A requirement's `owner`
 | `update_requirement` | Edits an unlocked requirement's content — a partial update; cannot touch `status` |
 | `create_artefact_link` | Links an artefact to another record of the same project, from either end — subject to the organisation's link restrictions and the caller's own permissions |
 | `delete_artefact_link` | Removes a link touching an artefact (irreversible; links with a fixed meaning such as supersession are excluded) |
+| `set_artefact_tags` | Makes a record carry exactly the given tags (new names follow the project's free or restricted mode) |
+| `add_artefact_tag` / `remove_artefact_tag` | Adds or removes one tag on a record, keeping the others |
 | `approve_requirement` | Approves a draft or reviewed requirement — only when AI approval is enabled for the project and its organisation |
 | `decide_change_request` | Approves or rejects a submitted change request — only when AI approval is enabled for the project and its organisation. `merge_link_ids` chooses which proposed links to create (omitted: every valid one; empty: none); a chosen link that is no longer valid fails the call with a conflict |
 | `complete_requirement` | Marks an approved requirement completed — only when AI approval is enabled for the project and its organisation |

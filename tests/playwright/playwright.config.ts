@@ -10,8 +10,7 @@ import { defineConfig } from "@playwright/test";
 // ServerSettings.signup_mode) or a shared org/project's own settings
 // (Beta-2's requirement terminology, Alpha's branding) rather than their
 // own disposable fixtures — safe under the old `workers: 1` serial-only
-// run, but not under real concurrency (Phase 1, docs/platform-review-2026-
-// 09-plan.md's Playwright-parallelism audit). `global-state-mutators` runs
+// run, but not under real concurrency (Playwright-parallelism audit). `global-state-mutators` runs
 // those specs to completion first (each still reverts its own mutation via
 // `afterAll`/an explicit last step, so none of the four collide with each
 // other on *data*); `default`'s `dependencies` entry means Playwright won't
@@ -28,19 +27,18 @@ import { defineConfig } from "@playwright/test";
 // whichever file drew the second worker. Reducing to one worker here
 // lowers that rate; it isn't a complete fix for the underlying flake
 // (`retries` below is), since the same class of stall was also reproduced
-// running a single file alone against this stack — see docs/decisions.md's
-// Phase 1 entry.
+// running a single file alone against this stack — see docs/decisions.md.
 const GLOBAL_STATE_SPECS = [
   "e2e-workflows/org-label.spec.ts",
   "e2e-workflows/self-signup.spec.ts",
   "e2e-workflows/project-admin-groups-and-fields.spec.ts",
   "e2e-workflows/org-branding-override-reset.spec.ts",
-  // Added post-Phase-1 (CI failure on PR #20): this file's "an org admin
+  // Added after a CI failure: this file's "an org admin
   // can disable the relaxed child-creation path" test flips Gamma's own
   // org-wide "Allow ... managers to create sub-projects" security toggle
   // mid-test — exactly the shared-org-setting class the other four files
-  // above are already carved out for. Missed when Phase 1 first wrote this
-  // list, so under `fullyParallel` it raced the toggle against this same
+  // above are already carved out for. Missed when this
+  // list was first written, so under `fullyParallel` it raced the toggle against this same
   // file's other tests (which assume relaxed creation is on), passing or
   // failing depending on interleaving. See docs/decisions.md.
   "e2e-workflows/project-hierarchy.spec.ts",
@@ -72,7 +70,7 @@ export default defineConfig({
   // mocked) occasionally never resolves even though the backend's own
   // access log shows it received and fully answered the request — observed
   // against both a real GitHub Actions Linux runner (the CI failure this
-  // retry setting was added to address, docs/decisions.md's Phase 1 entry)
+  // retry setting was added to address, docs/decisions.md)
   // and a local Docker Desktop run, on different specs each time, so this
   // is a transient client-side connection stall in the test harness, not a
   // deterministic app bug — a full retry (a fresh page/browser context, so

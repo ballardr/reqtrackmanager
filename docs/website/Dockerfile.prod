@@ -1,0 +1,42 @@
+# Production image for docs/website/: the static Docusaurus build served by
+# unprivileged nginx, for hosting the documentation inside a deployment
+# (point the app's HELP_URL at it). Distinct from `Dockerfile`, the
+# dev/test-stack preview that runs `docusaurus serve`.
+#
+# The site bakes its base path into every asset URL, so DOCS_BASE_URL is a
+# build argument: `/` for an own host (the published image), `/docs/` to serve
+# behind a reverse proxy under a sub-path (build the image yourself with
+# `--build-arg DOCS_BASE_URL=/docs/`; see docs/deployment.md).
+FROM node:24-alpine AS build
+
+ARG DOCS_URL=http://localhost:8080
+ARG DOCS_BASE_URL=/
+ENV DOCS_URL=${DOCS_URL} \
+    DOCS_BASE_URL=${DOCS_BASE_URL}
+
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM nginxinc/nginx-unprivileged:1.27-alpine
+
+ARG DOCS_BASE_URL=/
+# The stock entrypoint renders /etc/nginx/templates/*.template with this
+# variable at startup (only variables set in the environment are substituted,
+# so nginx's own `$uri` is left alone).
+ENV DOCS_BASE_URL=${DOCS_BASE_URL}
+
+# Drop the stock nginx welcome page so nothing but the docs is served.
+USER root
+RUN rm -f /usr/share/nginx/html/index.html /usr/share/nginx/html/50x.html
+USER nginx
+
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+COPY --from=build /app/build /usr/share/nginx/html${DOCS_BASE_URL}
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=10 \
+    CMD wget -qO- http://127.0.0.1:8080/health || exit 1

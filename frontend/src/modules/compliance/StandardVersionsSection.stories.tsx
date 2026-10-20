@@ -46,12 +46,12 @@ function mockVersionApis(versions: ComplianceStandardVersion[] = [version()]) {
 
 /**
  * `StandardVersionsSection` — the "Versions" content of `StandardWorkspacePage
- * .tsx` (docs/compliance-module-plan.md Phase 18), extracted from
+ * .tsx`, extracted from
  * `StandardsPanel.tsx`'s old `SidePanel`/`VersionWorkspace` drill-in.
  * `VersionWorkspace`'s own publish/retire/requirement-tree behaviour is
  * covered by `VersionWorkspace.stories.tsx`, not duplicated here.
  *
- * Phase 23 moved "which version is open" from local state to the URL
+ * "Which version is open" lives in the URL
  * (`initialVersionId`, the real `StandardWorkspacePage.tsx`'s own
  * `:versionId?` route param) — `Harness` below stands in for that parent,
  * reading the same param straight out of a real router so a story can

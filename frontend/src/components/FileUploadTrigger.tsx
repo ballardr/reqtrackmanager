@@ -8,7 +8,7 @@
  * than the browser's bare native control — so every other file input
  * (attachments, avatar, org/platform logo & login background, shared
  * resources) can share one implementation instead of re-deriving the same
- * JSX per call site. See docs/ux-audit-2026-08.md "File upload triggers:
+ * JSX per call site. See "File upload triggers:
  * three different visual treatments".
  *
  * Deliberately not used for the three bundle-import (.zip) forms

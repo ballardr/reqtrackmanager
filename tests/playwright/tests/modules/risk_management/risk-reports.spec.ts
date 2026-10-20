@@ -9,7 +9,7 @@ import { API_BASE_URL, createRisk, riskLevels, setUpOrg } from "./helpers";
 installCleanupHook();
 
 /**
- * Job to be done: docs/plans/module-03-risk-management-plan.md Phase 7 — the
+ * Job to be done: — the
  * four Risk Management reports appear in the shared Reports page (rendered by
  * the generic viewer, no custom view), show the project's risks with display
  * labels, narrow through the generated option controls, and download as PDF and
@@ -112,7 +112,11 @@ test.describe("Risk Management: reports", () => {
           ]);
           expect(download.suggestedFilename()).toBe(`${report.value}.${kind.toLowerCase()}`);
           if (kind === "CSV" && report.value === "risk-register") {
-            expect(await readFile((await download.path())!, "utf8")).toContain(titles.scored);
+            const csv = await readFile((await download.path())!, "utf8");
+            expect(csv).toContain(titles.scored);
+            // A report names each record by its code, and lists its tags.
+            expect(csv.split("\n")[0]).toMatch(/^Code,Title,.*,Tags/);
+            expect(csv).toContain("RSK-001,");
           }
         }
       });

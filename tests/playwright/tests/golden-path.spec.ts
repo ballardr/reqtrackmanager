@@ -33,7 +33,7 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     // "New project" opens a Modal (style guide "Pattern: modal dialog for
     // entity create/rename") — scoped to it rather than a bare ".card", and
     // its Name/Summary fields are real <label>s now, not placeholder-only
-    // (2026-08 UX audit roadmap item 521).
+    //.
     await page.getByRole("button", { name: "New project" }).click();
     const newProjectDialog = page.getByRole("dialog", { name: "New project" });
     // The org picker only renders at all when the caller belongs to more
@@ -92,7 +92,7 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     // `:not([placeholder])`: the "add component" row's own Name field
     // shares this same value transiently (not yet cleared) right after
     // creating "Software", which — since Structure now shares one tab
-    // panel with Stages (2026-08 UX audit roadmap: 8 tabs -> 5) — would
+    // panel with Stages — would
     // otherwise let the xpath ancestor climb below escape all the way up
     // to that shared panel and pick up Stages' own "Name" field too, a
     // real (if narrow-window) strict-mode violation. Only a genuine
@@ -154,7 +154,7 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     const reasoningCheckbox = page.getByRole("checkbox", { name: "Reasoning", exact: true });
     await reasoningCheckbox.check();
     await reasoningCheckbox.locator("xpath=../..").locator("textarea.input").fill("Tighter UX target");
-    await page.getByPlaceholder("Reason for change").fill("Field feedback showed 5s felt slow");
+    await page.getByLabel("Reason for change").fill("Field feedback showed 5s felt slow");
     await page.getByRole("button", { name: "Create", exact: true }).click();
 
     await page.getByText("Boot in under 3 seconds").click();

@@ -1,15 +1,14 @@
-"""Tests for Fine-Grained Access Control's Phase 1 data model
-(`docs/plans/core-fine-grained-access-control-plan.md`): the
+"""Tests for Fine-Grained Access Control's data model: the
 `CustomRoleDefinition`/`CustomRolePermission`/`UserCustomRoleGrant`/
 `GroupCustomRoleGrant` tables, the permission-atom vocabulary
 (`app.services.permissions`), and the new sub-type-provider registry
 (`app.modules.registry.get_subtype_providers`/`get_subtypes`) — including
-Decision Management's own registration, this phase's "real consumer on day
-one" (Phase 1 scope).
+Decision Management's own registration, the "real consumer on day
+one".
 
-Phase 2 (`require_permission`/`get_effective_permissions`) doesn't exist
-yet, so nothing here exercises an actual authorization decision — only that
-the vocabulary and storage this phase builds behave as designed.
+Nothing here exercises an actual authorization decision (see
+`test_effective_permissions.py`) — only that the vocabulary and storage
+behave as designed.
 """
 
 import uuid
@@ -91,15 +90,15 @@ def test_user_and_group_custom_role_grants_round_trip(client, admin_token):
         db.add_all([user_grant, group_grant])
         db.commit()
 
-        # Fine-Grained Access Control (core) Phase 5 widened this table's
-        # unique constraint to a 4th column, `scope_entity_id` (NULL for
+        # This table's unique
+        # constraint includes a 4th column, `scope_entity_id` (NULL for
         # both rows here, this test's `role.scope == "project"`) — Postgres
         # treats NULL as distinct from NULL for uniqueness purposes, so an
         # exact-duplicate (user, role, project, NULL) row no longer raises
         # `IntegrityError` at the DB layer, the identical NULL-distinctness
         # caveat `0034_module_role_scope_entity.py`'s own docstring already
-        # documents for `user_module_roles` one tier up since module system
-        # Phase 22. This was never the actual dedup mechanism in practice —
+        # documents for `user_module_roles` one tier up.
+        # This was never the actual dedup mechanism in practice —
         # `grant_custom_role_to_user`'s own check-then-insert shape is (see
         # `test_grant_custom_role_no_op_on_duplicate`, `test_custom_roles_
         # api.py`) — so this is a documented behaviour change, not a
@@ -120,7 +119,7 @@ def test_user_and_group_custom_role_grants_round_trip(client, admin_token):
         # simply inert, only that a NULL column no longer triggers it.
         # `role`'s own `scope` is irrelevant to this DB-level mechanics
         # check (no CHECK constraint ties `scope_entity_id` to `role.scope`
-        # — that pairing is validated at the router layer, Phase 5).
+        # — that pairing is validated at the router layer).
         entity_id = uuid.uuid4()
         db.add(
             UserCustomRoleGrant(
@@ -159,7 +158,7 @@ def test_get_all_permissions_includes_administrative_and_artefact_atoms(client, 
     for admin_key in ADMINISTRATIVE_PERMISSIONS:
         assert admin_key in keys
 
-    # A pure-VIEW atom exists independently of any write tier (Phase 0 Q1).
+    # A pure-VIEW atom exists independently of any write tier.
     view_key = encode_permission("requirement", PermissionLevel.VIEW.value)
     assert view_key in keys
     manage_key = encode_permission("requirement", PermissionLevel.MANAGE.value)
@@ -190,7 +189,7 @@ def test_validate_permission_key_accepts_valid_and_rejects_invalid(client, admin
 
 def test_decision_management_registers_a_subtype_provider(client, admin_token):
     """Decision Management's `subtype_providers["decision"]` registration
-    (Phase 1's "real consumer on day one") is live in the merged registry,
+    (the "real consumer on day one") is live in the merged registry,
     and returns that organisation's actual current Decision Type names."""
     assert "decision" in get_subtype_providers()
 

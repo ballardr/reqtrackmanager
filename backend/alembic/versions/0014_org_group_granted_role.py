@@ -4,7 +4,7 @@ Revision ID: 0014
 Revises: 0013
 Create Date: 2026-08-25
 
-2026-08 UX audit roadmap item 522: role-granting via an SSO group claim
+Role-granting via an SSO group claim
 should be a property of the `OrgGroup` being synced into, not a
 disconnected flat list (`Organization.sso_group_mappings`, a JSONB list of
 `{"sso_group": ..., "org_role": ...}` entries with no relationship to
@@ -14,8 +14,7 @@ every existing `sso_group_mappings` entry — matched against an existing
 or a newly created one (named after the SSO group string) where it doesn't
 — then retires `organizations.sso_group_mappings` entirely.
 
-Migration decision, made explicit here since the roadmap item itself
-flagged this as needing one: `granted_org_role` is a single nullable
+Migration decision, made explicit here: `granted_org_role` is a single nullable
 column, not a list, so an organisation that (unusually — not exercised by
 any existing test or seed data, confirmed by grep before writing this)
 mapped the same `sso_group` string to two different `org_role`s across two

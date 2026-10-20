@@ -1,12 +1,11 @@
-"""Compliance evidence (compliance module Phase 8)
+"""Compliance evidence
 
 Revision ID: 0028
 Revises: 0027
 Create Date: 2026-09-05
 
 Adds the five tables backing the Compliance Module's evidence support
-(docs/Compliance_Module_Requirements.md §13-§15; docs/compliance-module-plan.md
-Phase 8), built on top of Phase 7's project-specific assessment layer, never
+(§13-§15), built on top of the project-specific assessment layer, never
 modifying it:
 
 - `compliance_evidence` (`app.modules.compliance.models.ComplianceEvidence`)

@@ -18,9 +18,9 @@ An action is never hard-deleted, only archived (`is_archived`, mirroring
 `Requirement.is_archived`, C-A-06) — the same "preserve history, hide from
 default views" rule this codebase already applies to requirements.
 
-Prior to Module 0 (Platform Foundations), Phase 1, action-to-requirement
-membership was its own dedicated `RequirementActionLink` join table; that
-phase folded it into the generic polymorphic `ArtefactLink` table instead
+Prior to Platform Foundations, action-to-requirement
+membership was its own dedicated `RequirementActionLink` join table; it was
+folded into the generic polymorphic `ArtefactLink` table instead
 (an untyped link, `link_type_id IS NULL`) — see `models.relationship`'s
 module docstring for the full design.
 """

@@ -1,7 +1,7 @@
 /**
  * Module: components/ReportRunner
  *
- * Runs one catalogue report and shows it (Module 1 Phase 13): the generated
+ * Runs one catalogue report and shows it: the generated
  * parameter form, the on-screen result, and PDF/Word/CSV downloads. Everything
  * that is the same for every report lives here; only the result view varies,
  * and that is resolved generically (`getReportView`) so core never imports a
@@ -16,7 +16,7 @@
  * - For an organisation-wide report, offer a "Project" picker (`project_id`)
  *   listing the catalogue entry's `projects`: exactly the ones the report
  *   accepts for this caller, so the picker never offers one that would fail.
- * - Offer an optional branding template for downloads (PDF and Word; it never
+ * - Offer an optional branding template for downloads (it never
  *   changes the on-screen result) and download through the shared
  *   `ReportExportButton`, with a toast on success or failure. Downloads send
  *   the same values as the screen so a file never silently widens the view
@@ -46,6 +46,7 @@ import { ReportExportButton } from "./ReportExportButton";
 import { ReportParamsForm } from "./ReportParamsForm";
 import { ReportViewer, type ReportFigureActionResolver } from "./ReportViewer";
 import { Spinner } from "./Spinner";
+import { useStrings } from "../context/TerminologyContext";
 
 const RERUN_DELAY_MS = 300;
 
@@ -73,6 +74,7 @@ export function ReportRunner({
   organizationId: string;
   focusSection?: string;
 }) {
+  const strings = useStrings();
   const { showToast } = useToast();
   const [values, setValues] = useState<ReportRunValues>(() => initialValues(entry));
   const [result, setResult] = useState<ReportResult | null>(null);
@@ -171,8 +173,8 @@ export function ReportRunner({
         />
         <div className="row" style={{ alignItems: "flex-end", gap: "0.75rem" }}>
           {templates.length > 0 && (
-            <LabeledSelect
-              label="Branding template (PDF and Word)"
+            <LabeledSelect help={strings.help.reportBrandingTemplate}
+              label="Branding template"
               value={templateId}
               onChange={setTemplateId}
               options={templates.map((t) => ({ value: t.id, label: t.name }))}

@@ -33,7 +33,7 @@ export const SubmitsNewFutureState: Story = {
     await userEvent.click(body.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Regional #1 by 2028", desired_state: "We are the top provider in our region.", target_date: null })
+      expect.objectContaining({ title: "Regional #1 by 2028", desired_state: "We are the top provider in our region.", target_date: null }), [], []
     ));
   },
 };
@@ -58,7 +58,7 @@ export const SubmitsWithTargetDate: Story = {
     await userEvent.click(body.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ target_date: "2028-06-30" })
+      expect.objectContaining({ target_date: "2028-06-30" }), [], []
     ));
   },
 };
@@ -66,7 +66,7 @@ export const SubmitsWithTargetDate: Story = {
 export const EditExisting: Story = {
   args: {
     initial: {
-      id: "future-state-1", scope: "project", organization_id: null, project_id: "project-1", creator_id: "user-1",
+      id: "future-state-1", scope: "project", organization_id: null, project_id: "project-1", unique_code: "FUT-001", creator_id: "user-1",
       is_archived: false, archived_at: null, archived_by: null, title: "Regional #1 by 2028",
       current_state: "We are #3 in the region.", desired_state: "We are #1 in the region.", target_date: "2028-06-30",
       outcomes: "Revenue up 20%.", success_measures: "Market share.", constraints: "Limited hiring budget.",
@@ -86,7 +86,7 @@ export const EditExisting: Story = {
 export const ClearingTargetDateSendsNull: Story = {
   args: {
     initial: {
-      id: "future-state-1", scope: "project", organization_id: null, project_id: "project-1", creator_id: "user-1",
+      id: "future-state-1", scope: "project", organization_id: null, project_id: "project-1", unique_code: "FUT-001", creator_id: "user-1",
       is_archived: false, archived_at: null, archived_by: null, title: "Regional #1 by 2028",
       current_state: "", desired_state: "We are #1 in the region.", target_date: "2028-06-30",
       outcomes: "", success_measures: "", constraints: "", assumptions: "",
@@ -98,7 +98,21 @@ export const ClearingTargetDateSendsNull: Story = {
     const body = within(document.body);
     await userEvent.clear(body.getByLabelText("Target date"));
     await userEvent.click(body.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ target_date: null })));
+    await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ target_date: null }), [], []));
+  },
+};
+
+/** Worst case: a long save error and a long unbroken title. The error is shown, and the dialog neither scrolls
+ * sideways nor pushes Save out of reach. */
+export const LongErrorAndLongTitleKeepTheActionsReachable: Story = {
+  args: { error: "Could not save: " + "the server rejected this request for a reason that takes a while to explain. ".repeat(4) },
+  play: async () => {
+    const body = within(document.body);
+    await userEvent.type(body.getByLabelText("Future State title"), "W".repeat(200));
+    await expect(body.getByText(/Could not save:/)).toBeVisible();
+    await expect(body.getByRole("button", { name: "Save" })).toBeVisible();
+    const dialog = body.getByRole("dialog");
+    await expect(dialog.scrollWidth).toBeLessThanOrEqual(dialog.clientWidth + 1);
   },
 };
 

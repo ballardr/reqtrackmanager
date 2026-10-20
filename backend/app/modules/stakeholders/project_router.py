@@ -1,19 +1,18 @@
 """
 Module: modules.stakeholders.project_router
 
-Project-scoped API for the Stakeholders & Personas module (Phase 1.1), mounted
+Project-scoped API for the Stakeholders & Personas module, mounted
 at `/api/v1/projects/{project_id}/modules/stakeholders`: project-scoped
 Persona CRUD/lifecycle/comments/files, the project's Persona type vocabulary
 (effective list plus rename/reorder/disable/add) and the per-project weight
 override and the per-project visibility override of an org persona.
 
 Reads (`GET /personas`, `GET /personas/{id}`) return the project's own
-personas *and* the organisation's live org-scoped ones (Phase 0 resolution
-2), each with the project's `effective_weight`. Every mutation targets a
+personas *and* the organisation's live org-scoped ones, each with the project's `effective_weight`. Every mutation targets a
 project-scoped persona only; an org persona is edited through the org router.
 The weight override and the visibility override are the exceptions: a project
 may override the weight of any persona it can see, and hide an org persona from
-itself (Phase 3b; nearest ancestor project's setting wins). A hidden persona is
+itself (nearest ancestor project's setting wins). A hidden persona is
 absent from the project's list and 404s here, so it cannot be scored or linked;
 `include_hidden=true` lists it for the manage UI.
 
@@ -36,7 +35,7 @@ from app.models.user import User
 from app.modules.stakeholders import _shared as sh
 from app.modules.stakeholders._principals import PERSONA_PRINCIPAL_FIELDS, versions_out
 from app.modules.stakeholders.enums import PersonaScope, PersonaStatus
-from app.modules.stakeholders.models import Persona, ProjectPersonaType
+from app.modules.stakeholders.models import Persona
 from app.modules.stakeholders.schemas import (
     PersonaCommentCreate,
     PersonaCommentOut,
@@ -62,9 +61,20 @@ from app.modules.stakeholders.service import (
     unarchive_persona,
 )
 from app.schemas.file import FileAssetOut
-from app.schemas.type_vocabulary import EffectiveTypeOut, ProjectTypeCreate, ProjectTypeOut, ProjectTypeOverrideUpdate
+from app.schemas.type_vocabulary import (
+    EffectiveTypeOut,
+    HiddenTypeOut,
+    ProjectTypeCreate,
+    ProjectTypeOut,
+    ProjectTypeOverrideUpdate,
+    RestoreTypesOut,
+    RestoreTypesRequest,
+)
 from app.services.audit import log_event
+from app.services.project_scope import ProjectScope
 from app.services.rbac import require_project_subcomponent_enabled
+from app.services.tags import TagFilter
+from app.services.type_vocabulary_routes import list_hidden_types, remove_project_type, restore_hidden_types
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/modules/stakeholders", tags=["stakeholders-project"])
 
@@ -154,21 +164,39 @@ def override_project_persona_type(
     return row
 
 
-@router.delete("/persona-types/{project_type_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/persona-types/{type_ref_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_project_persona_type(
-    project_id: UUID, project_type_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    project_id: UUID, type_ref_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    """Removes a project type row (an override reverts to the org default);
-    409 while a persona still uses it."""
+    """Deletes a project-local type, or hides an organisation default in this
+    project (restore it with `POST /persona-types/restore`); `type_ref_id` is an
+    `EffectiveTypeOut.id`. Hiding keeps the project's row, so existing records
+    are unaffected. 409 while a project-local type is still in use."""
     project = _project(db, project_id)
     _require_manage(db, current_user, project)
-    row = db.get(ProjectPersonaType, project_type_id)
-    if row is None or row.project_id != project_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Persona type not found.")
-    sh.apply_value_error_as_conflict(PERSONA_TYPES.delete_project_type, db, row)
-    log_event(db, entity_type="project_persona_type", entity_id=project_type_id, action="deleted",
-              actor_id=current_user.id, project_id=project_id)
-    db.commit()
+    remove_project_type(db, PERSONA_TYPES, project, type_ref_id, current_user, "project_persona_type")
+
+
+@router.get("/persona-types/hidden", response_model=list[HiddenTypeOut])
+def list_hidden_project_persona_types(
+    project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """The organisation defaults this project has hidden. Needs the manage role."""
+    project = _project(db, project_id)
+    _require_manage(db, current_user, project)
+    return list_hidden_types(db, PERSONA_TYPES, project)
+
+
+@router.post("/persona-types/restore", response_model=RestoreTypesOut)
+def restore_hidden_project_persona_types(
+    project_id: UUID, payload: RestoreTypesRequest, current_user: User = Depends(_require_view),
+    db: Session = Depends(get_db),
+):
+    """Shows hidden organisation defaults in this project again: every one, or
+    only `org_type_ids`. Needs the manage role."""
+    project = _project(db, project_id)
+    _require_manage(db, current_user, project)
+    return restore_hidden_types(db, PERSONA_TYPES, project, payload, current_user, "project_persona_type")
 
 
 # --- Persona CRUD ------------------------------------------------------------
@@ -190,18 +218,28 @@ def create_project_persona(
 @router.get("/personas", response_model=list[PersonaOut])
 def list_project_personas(
     project_id: UUID, include_archived: bool = False, include_org: bool = True, include_hidden: bool = False,
-    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    tag_filter: TagFilter = Depends(), current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    project_scope: ProjectScope = Depends(),
 ):
     """The project's personas, plus the organisation's unless `include_org=false`.
     Org personas hidden from the project are left out unless `include_hidden=true`
     (the manage UI), where they carry `project_hidden`."""
-    project = _project(db, project_id)
-    personas = list_project_visible_personas(
-        db, project, include_archived=include_archived, include_hidden=include_hidden
+
+    def rows_for(pid: UUID) -> list:
+        """This endpoint's rows for one project of the scope."""
+        project = _project(db, pid)
+        personas = list_project_visible_personas(
+            db, project, include_archived=include_archived, include_hidden=include_hidden
+        )
+        if not include_org:
+            personas = [p for p in personas if p.scope == PersonaScope.PROJECT]
+        personas = tag_filter.keep(db, pid, PERSONA_ARTEFACT_TYPE, personas)
+        return sh.personas_to_out(db, personas, project_id=pid)
+
+    return project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, PERSONA_ARTEFACT_TYPE, rows_for,
+        gate=("stakeholders", "persona"),
     )
-    if not include_org:
-        personas = [p for p in personas if p.scope == PersonaScope.PROJECT]
-    return sh.personas_to_out(db, personas, project_id=project_id)
 
 
 @router.get("/personas/{persona_id}", response_model=PersonaOut)

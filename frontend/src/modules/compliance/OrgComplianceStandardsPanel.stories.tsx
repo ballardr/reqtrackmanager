@@ -78,7 +78,7 @@ export const GroupedByStandard: Story = {
   },
 };
 
-/** Phase 39d — a standard assigned to projects on two different versions
+/** A standard assigned to projects on two different versions
  * groups its expanded row as Standard -> Version -> Project, each version
  * listing only the projects actually on it. */
 export const GroupedByStandardWithMultipleVersions: Story = {
@@ -141,7 +141,7 @@ export const FilterByProject: Story = {
   },
 };
 
-/** Phase 36 — the "Group by" pivot, and its URL-driven initial state
+/** The "Group by" pivot, and its URL-driven initial state
  * (`?groupBy=project&state=non_compliant`) so `OrgComplianceDashboard.tsx`'s
  * "Non-compliant projects" tile can link straight into a pre-filtered,
  * project-pivoted view. */
@@ -165,7 +165,7 @@ export const GroupedByProjectViaUrl: Story = {
   },
 };
 
-/** Phase 43: the "Export" trigger scopes its download to this panel's
+/** The "Export" trigger scopes its download to this panel's
  * current Standard/Standard version/Project filters, so the exported
  * report matches what's on screen rather than the whole organisation. */
 export const ExportPassesActiveFiltersAsQueryParams: Story = {

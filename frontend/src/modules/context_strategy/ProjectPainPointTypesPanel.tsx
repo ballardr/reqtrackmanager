@@ -1,8 +1,7 @@
 /**
  * Module: modules/context_strategy/ProjectPainPointTypesPanel
  *
- * The project-scoped tier of Pain Point's type vocabulary (Phase 0 Q3,
- * source overview §6.2) — a thin wrapper over the shared
+ * The project-scoped tier of Pain Point's type vocabulary (§6.2) — a thin wrapper over the shared
  * `ProjectTypeVocabularyPanel` (`components/TypeVocabularyPanels.tsx`, which
  * documents the shared behaviour, including the client-side reorder and why
  * delete blocks instead of offering reassignment). Shows this project's
@@ -22,6 +21,8 @@ const api = {
     projectPainPointApi.createLocalType(projectId, name, displayOrder),
   override: projectPainPointApi.overrideType,
   delete: projectPainPointApi.deleteType,
+  listHidden: projectPainPointApi.listHiddenTypes,
+  restore: projectPainPointApi.restoreTypes,
 };
 
 export function ProjectPainPointTypesPanel({ projectId }: { projectId: string }) {
@@ -33,7 +34,7 @@ export function ProjectPainPointTypesPanel({ projectId }: { projectId: string })
       description={
         <>
           This project's effective Pain Point type list — every active organisation type (with this project's own
-          override, if any) plus any type added directly for this project only. Disabling a type here only affects
+          override, if any) plus any type added directly for this project only. Disabling or hiding a type here only affects
           this project; the organisation's own list (Org Management) is unaffected.
         </>
       }

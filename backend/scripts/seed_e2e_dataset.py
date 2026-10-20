@@ -163,16 +163,15 @@ TERMINOLOGY_PROJECT_NAME = "Delta-1 Terminology Demo"
 TERMINOLOGY_OVERRIDE = {"stage": "Phase", "requirement": "Spec", "change_request": "ECR"}
 
 # A real, standing compliance standard for Alpha — Fine-Grained Access
-# Control Phase 6 (`docs/plans/core-fine-grained-access-control-plan.md`)
-# needs one real registered `"standard"` entity-scope entity for role-
-# management.spec.ts's entity-picker coverage to select (Phase 5 built the
-# picker generically; this module's own compliance standard is its first
+# Control needs one real registered `"standard"` entity-scope entity for role-
+# management.spec.ts's entity-picker coverage to select (the picker is built
+# generically; this module's own compliance standard is its first
 # real thing to pick). This module previously had no seeded data in this
 # script at all.
 FGAC_STANDARD_REFERENCE = "FGAC-1"
 FGAC_STANDARD_NAME = "FGAC Demo Standard"
 
-# Platform review 2026-09, Phase 8: a project dedicated solely to the
+# A project dedicated solely to the
 # require-change-request-for-links Playwright coverage, per this file's own
 # established "dedicated project, not a shared one" convention (see
 # TERMINOLOGY_PROJECT_NAME's own comment just above, and GAMMA3_NAME/
@@ -181,7 +180,7 @@ FGAC_STANDARD_NAME = "FGAC Demo Standard"
 # explicitly reserved for terminology-override coverage alone.
 LINK_LOCK_PROJECT_NAME = "Epsilon-1 Link Lock Demo"
 
-# Platform Enhancements Phase 6b: a project holding one submitted modify-requirement change request that proposes three
+# A project holding one submitted modify-requirement change request that proposes three
 # links, the last made unmergeable on purpose (its record was linked directly after the request was made), so the
 # approval dialog's "can no longer be merged, with the reason" state has a fixed fixture. Read-only: nothing here may
 # approve or reject that request (change-request-proposed-links.spec.ts builds its own disposable organisation for that).
@@ -192,14 +191,14 @@ PROPOSED_LINKS_PROJECT_NAME = "Zeta-1 Proposed Links Demo"
 # Gamma-4 (reverse, member-source). See docs/decisions.md's "Hierarchical
 # projects" entry. No other spec may depend on this pair's configuration.
 GAMMA3_NAME = "Gamma-3 Hierarchy Parent"
-# Phase 5c (docs/plans/platform-enhancements-2026-10-plan.md): a parent that owns a project-level link type, and a
+# A parent that owns a project-level link type, and a
 # child that uses it and inherits its hide of an organisation type. Kept apart from Gamma-3/4 so the hierarchy spec's
 # fixture stays untouched.
 LINK_TYPES_PARENT_NAME = "Gamma-5 Link Types Parent"
 LINK_TYPES_CHILD_NAME = "Gamma-6 Link Types Child"
 LINK_TYPES_PARENT_VERB = "E2E Parent verb"
 LINK_TYPES_HIDDEN_ORG_TYPE = "Mitigates"
-# Phase 5d: the same pair carries one cross-level link of each kind — a directional type (the upstream end must be
+# The same pair carries one cross-level link of each kind — a directional type (the upstream end must be
 # in the same or a parent project) and an either-way symmetric one ("Related to").
 NESTING_DIRECTIONAL_TYPE = "E2E Derives (nested)"
 GAMMA4_NAME = "Gamma-4 Hierarchy Child"
@@ -371,8 +370,7 @@ def set_action_outcome(headers: dict, project_id: str, action: dict, outcome_sta
     return r.json()
 
 
-# Stakeholders & Personas (docs/plans/module-02-stakeholders-and-personas-plan.md
-# Phase 1.1). The module is default-off, so it is enabled for Gamma only —
+# Stakeholders & Personas. The module is default-off, so it is enabled for Gamma only —
 # Alpha/Beta keep the nav and module list the existing specs were written
 # against. Fixed names the persona specs may rely on; the persona Playwright
 # spec itself builds its own disposable org rather than depending on these.
@@ -399,7 +397,7 @@ def create_persona(headers: dict, *, org_id: str | None = None, project_id: str 
     return persona
 
 
-# Per-persona Pain Point scoring (docs/plans/module-01-context-and-strategy-plan.md Phase 11). Context &
+# Per-persona Pain Point scoring. Context &
 # Strategy is default-off, so it is enabled for Gamma only. Fixed titles a spec may rely on; the scoring
 # Playwright spec itself builds its own disposable org rather than depending on these.
 PAIN_POINT_MULTI_PERSONA_NAME = "E2E Scored Across Personas"
@@ -453,21 +451,21 @@ def set_persona_weight_override(headers: dict, project_id: str, persona_id: str,
     return r.json()
 
 
-# Stakeholders (Phase 1.2) — enabled with the rest of the module on Gamma only.
+# Stakeholders — enabled with the rest of the module on Gamma only.
 # Fixed names a spec may rely on; the stakeholder Playwright spec itself builds
 # its own disposable org rather than depending on these.
 STAKEHOLDER_ORG_NAME = "E2E Safety Regulator"
 STAKEHOLDER_PROJECT_NAME = "E2E Plant Manager"
-# Phase 3b — an org stakeholder hidden from Gamma-3 (and so from its child Gamma-4).
+# An org stakeholder hidden from Gamma-3 (and so from its child Gamma-4).
 STAKEHOLDER_HIDDEN_NAME = "E2E Hidden Stakeholder"
 PERSONA_HIDDEN_NAME = "E2E Hidden Persona"
-# Stakeholder Needs (Phase 2) — one on the Gamma-3 hierarchy parent, held by the
+# Stakeholder Needs — one on the Gamma-3 hierarchy parent, held by the
 # project stakeholder; the need Playwright spec builds its own disposable data.
 NEED_PROJECT_NAME = "E2E Keep the line running"
-# Engagements (Phase 4) on Gamma-3: a quick email log, and a focus group with anonymous participants and a finding.
+# Engagements on Gamma-3: a quick email log, and a focus group with anonymous participants and a finding.
 ENGAGEMENT_EMAIL_NAME = "E2E Email follow-up"
 ENGAGEMENT_FOCUS_GROUP_NAME = "E2E Focus group"
-# Stakeholder groups (Phase 3c) on Gamma: an org taxonomy (a Client root whose children are mutually exclusive, and a
+# Stakeholder groups on Gamma: an org taxonomy (a Client root whose children are mutually exclusive, and a
 # Business group root), the regulator in two groups, and a Gamma-3 project group nested under an org group.
 GROUP_CLIENT_NAME = "E2E Client"
 GROUP_CLIENT_CHILD_NAME = "E2E Northern Utilities"
@@ -578,7 +576,7 @@ def create_engagement(
     headers: dict, project_id: str, *, outcomes: tuple[tuple[str, str, str], ...] = (), prompts: tuple[tuple[str, str], ...] = (),
     anonymous: tuple[tuple[str, str | None], ...] = (), findings: tuple[dict, ...] = (), **fields,
 ) -> dict:
-    """Logs a project Engagement (Module 2 Phase 4). `fields` are the create payload (title, channel, engagement_date,
+    """Logs a project Engagement. `fields` are the create payload (title, channel, engagement_date,
     stakeholder_ids, persona_ids, group_ids, ...). `outcomes` are `(kind, target_type, target_id)` raised/answered links,
     `prompts` `(prompt, response_notes)`, `anonymous` `(label, persona_id)` and `findings` `{title, description,
     outcomes}` dicts; the last three need the `research_extras` sub-component."""
@@ -607,7 +605,7 @@ def create_engagement(
 def add_stakeholder_relationship(
     headers: dict, project_id: str, holder_kind: str, holder_id: str, kind: str, target_type: str, target_id: str,
 ) -> dict:
-    """Adds a §10.5 relationship (Phase 3) from a Stakeholder/Persona (`holder_kind` `"stakeholder"`/`"persona"`) to a
+    """Adds a §10.5 relationship from a Stakeholder/Persona (`holder_kind` `"stakeholder"`/`"persona"`) to a
     record of `project_id`."""
     r = httpx.post(
         f"{BASE}/projects/{project_id}/modules/stakeholders/{holder_kind}s/{holder_id}/relationships",
@@ -749,7 +747,7 @@ def main() -> None:
     set_project_terminology(h_ab, delta1["id"], TERMINOLOGY_OVERRIDE)
 
     print(f"Creating {LINK_LOCK_PROJECT_NAME!r} (link-lock fixture for link-and-action-change-request-locking"
-          ".spec.ts, Platform review 2026-09 Phase 8) — its own dedicated project, per this file's existing"
+          ".spec.ts) — its own dedicated project, per this file's existing"
           " convention (PROJECT_NAMES.delta1/gamma3/gamma4) of a project no other spec may depend on rather than"
           " repurposing a shared one. Given components/categories only (no requirements of its own) — that spec"
           " creates, links, and approves its own throwaway requirements dynamically each run (the same fix"
@@ -768,7 +766,7 @@ def main() -> None:
     seed_project_content(h_ab, epsilon1, 0)
 
     print(f"Creating {PROPOSED_LINKS_PROJECT_NAME!r} with a submitted change request that proposes three links, the"
-          " last made unmergeable (Platform Enhancements Phase 6b)...")
+          " last made unmergeable...")
     zeta1 = create_project(
         h_ab, alpha["id"], PROPOSED_LINKS_PROJECT_NAME,
         "E2E seed project holding a pending change request with proposed links (read-only fixture).",
@@ -935,7 +933,7 @@ def main() -> None:
     beta1_reqs = seed_project_content(h_ab, beta1, 7)
     seed_project_content(h_ab, beta2, 6)
     gamma1_reqs = seed_project_content(h_g, gamma1, 7)
-    print("Seeding Stakeholder/Persona relationships on Gamma-1 (Phase 3): the org regulator reviews, and the org Field"
+    print("Seeding Stakeholder/Persona relationships on Gamma-1: the org regulator reviews, and the org Field"
           " Inspector persona is affected by, its first requirement...")
     add_stakeholder_relationship(
         h_g, gamma1["id"], "stakeholder", org_regulator["id"], "reviews", "requirement", gamma1_reqs[0]["id"],
@@ -945,7 +943,7 @@ def main() -> None:
     )
     seed_project_content(h_g, gamma2, 6)
 
-    print(f"Seeding project-level link types (Phase 5c): {LINK_TYPES_PARENT_NAME!r} owns {LINK_TYPES_PARENT_VERB!r} and hides"
+    print(f"Seeding project-level link types: {LINK_TYPES_PARENT_NAME!r} owns {LINK_TYPES_PARENT_VERB!r} and hides"
           f" the organisation's {LINK_TYPES_HIDDEN_ORG_TYPE!r}; its child {LINK_TYPES_CHILD_NAME!r} inherits both and links"
           " two of its requirements with the parent's type. Beta forbids project-level link types (the org switch).")
     gamma5 = create_project(h_g, gamma["id"], LINK_TYPES_PARENT_NAME, "E2E seed project — project-level link types parent.", can_be_parent=True)
@@ -955,7 +953,7 @@ def main() -> None:
     )
     gamma5_reqs = seed_project_content(h_g, gamma5, 2)
     gamma6_reqs = seed_project_content(h_g, gamma6, 2)
-    print("Seeding per-report-type content (Phase 10): Gamma's organisation default for 'all reports', and a requirements"
+    print("Seeding per-report-type content: Gamma's organisation default for 'all reports', and a requirements"
           " introduction and chapter on Gamma-5 that its child Gamma-6 (which sets none) inherits.")
     put_report_content(h_g, f"/orgs/{gamma['id']}/report-defaults", [
         {"report_key": "*", "intro": "Prepared by {{organisation}} for {{project_name}}.", "chapters": [], "appendices": []},
@@ -970,7 +968,7 @@ def main() -> None:
     create_artefact_link(h_g, gamma6["id"], "requirement", gamma6_reqs[0]["id"], parent_type["id"], "requirement", gamma6_reqs[1]["id"])
     gamma_types = {t["forward_name"]: t for t in httpx.get(f"{BASE}/orgs/{gamma['id']}/link-types", headers=h_g, timeout=30).json()}
     set_link_type_visibility(h_g, gamma5["id"], gamma_types[LINK_TYPES_HIDDEN_ORG_TYPE]["id"], True)
-    print("Seeding cross-level links (Phase 5d) between Gamma-6 (child) and Gamma-5 (parent): one with a directional type"
+    print("Seeding cross-level links between Gamma-6 (child) and Gamma-5 (parent): one with a directional type"
           f" ({NESTING_DIRECTIONAL_TYPE!r}, the upstream end in the parent) and one either-way symmetric 'Related to'...")
     directional = create_link_type(
         h_g, gamma["id"], forward_name=NESTING_DIRECTIONAL_TYPE, reverse_name="E2E Is source of (nested)",
@@ -992,7 +990,7 @@ def main() -> None:
     delta1_reqs = seed_project_content(h_ab, delta1, 3)
 
     print("Locking Delta-1's first requirement so terminology-coverage.spec.ts can reach its 'Make {changeRequest}' link"
-          " (only rendered once a requirement is locked, 2026-08 UX audit roadmap 'No requirement approval action')...")
+          "...")
     r = httpx.post(f"{BASE}/projects/{delta1['id']}/requirements/{delta1_reqs[0]['id']}/approve", headers=h_ab, timeout=30)
     r.raise_for_status()
 
@@ -1003,7 +1001,7 @@ def main() -> None:
         json={
             "name": locked_req["name"], "reasoning": locked_req["reasoning"], "clarification": "",
             "component_id": locked_req["component_id"], "category_id": locked_req["category_id"],
-            "owner": locked_req["owner"], "status": "approved", "keywords": [],
+            "owner": locked_req["owner"], "status": "approved",
             "change_note": "E2E seed: locking for change-request workflow testing.",
         },
         headers=h_ab, timeout=30,
@@ -1014,8 +1012,7 @@ def main() -> None:
     for headers, project, reqs in [(h_ab, beta1, beta1_reqs), (h_g, gamma1, gamma1_reqs)]:
         target = reqs[1]
         # A modify change request can only target an already-locked
-        # requirement (2026-08 UX audit roadmap, "No requirement approval
-        # action; change requests can target draft requirements") — approve
+        # requirement — approve
         # it directly first.
         r = httpx.post(f"{BASE}/projects/{project['id']}/requirements/{target['id']}/approve", headers=headers, timeout=30)
         r.raise_for_status()
@@ -1038,7 +1035,7 @@ def main() -> None:
     )
     create_requirement_link(h_ab, alpha1["id"], alpha1_reqs[1]["id"], alpha1_reqs[0]["id"], e2e_link_type["id"])
     # A restricted type (a requirement may start it, only an action may be its target) for the link-type
-    # restriction specs; the Pain Point -> Decision -> Requirement chain arrives with Phase 6's links panel
+    # restriction specs; the Pain Point -> Decision -> Requirement chain is covered by the links panel
     # spec, since Alpha has no Decisions module.
     create_link_type(
         h_ab, alpha["id"], forward_name="E2E Validated by action", reverse_name="E2E Validates",

@@ -53,8 +53,11 @@ import { toErrorMessage, useToast } from "../context/ToastContext";
 import { AddPopoverButton } from "./AddPopoverButton";
 import { AddArtefactLinkModal, type LinksChangeRequestMode } from "./AddArtefactLinkModal";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { ItemRow } from "./ItemRow";
 import { LinkedRecordSummary } from "./LinkedRecordSummary";
 import { LinkTraceModal } from "./LinkTraceModal";
+import { useInDetailAside } from "./detailAsideContext";
+import { TextAreaField } from "./FormFields";
 
 export type { LinksChangeRequestMode } from "./AddArtefactLinkModal";
 
@@ -126,6 +129,8 @@ export function ArtefactLinksPanel({
 }) {
   const strings = useStrings();
   const { showToast } = useToast();
+  // Inside a detail page's aside the card and the title belong to the aside (its tab strip), not to this panel.
+  const inAside = useInDetailAside();
   const [graph, setGraph] = useState<LinkGraph | null>(null);
   const [failed, setFailed] = useState(false);
   const [reload, setReload] = useState(0);
@@ -213,8 +218,8 @@ export function ArtefactLinksPanel({
 
   if (!projectId) {
     return (
-      <section className={compactView ? "stack artefact-links--compact" : "card stack"} aria-label={strings.artefactLinks.title}>
-        <h2 className="artefact-links__title">{strings.artefactLinks.title}</h2>
+      <section className={compactView ? "stack artefact-links--compact" : inAside ? "stack" : "card stack"} aria-label={strings.artefactLinks.title}>
+        {!inAside && <h2 className="artefact-links__title">{strings.artefactLinks.title}</h2>}
         <p className="text-muted" style={{ margin: 0 }}>{strings.artefactLinks.orgScopedNote}</p>
         {actions && <div className="row">{typeof actions === "function" ? actions({ reload: changed }) : actions}</div>}
       </section>
@@ -227,11 +232,11 @@ export function ArtefactLinksPanel({
     <AddPopoverButton label={strings.artefactLinks.viewOptions} icon={SlidersHorizontal} size={compactView ? "sm" : "md"}>
       {() => (
         <div className="stack" style={{ gap: "0.5rem" }}>
-          <label className="row" style={{ gap: "0.4rem", alignItems: "flex-start" }}>
+          <label className="checkbox-label">
             <input type="checkbox" aria-label={strings.artefactLinks.viewCompact} checked={compactView} onChange={(e) => setCompactView(e.target.checked)} />
             <span>{strings.artefactLinks.viewCompact}</span>
           </label>
-          <label className="row" style={{ gap: "0.4rem", alignItems: "flex-start" }}>
+          <label className="checkbox-label">
             <input type="checkbox" aria-label={strings.artefactLinks.viewRelationships} checked={showRelationships} onChange={(e) => chooseRelationships(e.target.checked)} />
             <span className="stack" style={{ gap: "0.15rem" }}>
               <span>{strings.artefactLinks.viewRelationships}</span>
@@ -243,9 +248,9 @@ export function ArtefactLinksPanel({
     </AddPopoverButton>
   );
   return (
-    <section className={compactView ? "stack artefact-links--compact" : "card stack"} aria-label={strings.artefactLinks.title}>
-      <div className="row artefact-links__header">
-        <h2 className="artefact-links__title">{strings.artefactLinks.title}</h2>
+    <section className={compactView ? "stack artefact-links--compact" : inAside ? "stack" : "card stack"} aria-label={strings.artefactLinks.title}>
+      <div className={`row artefact-links__header${inAside ? " artefact-links__header--untitled" : ""}`}>
+        {!inAside && <h2 className="artefact-links__title">{strings.artefactLinks.title}</h2>}
         {/* One structure and one order for both layouts (Add, Trace, then View options at the end), so the
             buttons do not move when the layout flips and the View options popover stays open. */}
         <div className="row artefact-links__buttons">
@@ -255,11 +260,11 @@ export function ArtefactLinksPanel({
                 className="btn btn-sm btn-icon" aria-label={strings.artefactLinks.addLink} title={strings.artefactLinks.addLink}
                 aria-haspopup="dialog" onClick={() => setAdding(true)}
               >
-                <Plus size={14} aria-hidden="true" />
+                <Plus aria-hidden="true" />
               </button>
             ) : (
               <button className="btn btn-primary" onClick={() => setAdding(true)}>
-                <Plus size={14} /> {strings.artefactLinks.addLink}
+                <Plus /> {strings.artefactLinks.addLink}
               </button>
             )
           )}
@@ -269,11 +274,11 @@ export function ArtefactLinksPanel({
                 className="btn btn-sm btn-icon" aria-label={strings.artefactLinks.traceButton} title={strings.artefactLinks.traceButton}
                 aria-haspopup="dialog" onClick={() => setTracing(true)}
               >
-                <GitBranch size={14} aria-hidden="true" />
+                <GitBranch aria-hidden="true" />
               </button>
             ) : (
               <button className="btn" onClick={() => setTracing(true)}>
-                <GitBranch size={14} /> {strings.artefactLinks.traceButton}
+                <GitBranch /> {strings.artefactLinks.traceButton}
               </button>
             )
           )}
@@ -381,13 +386,12 @@ export function ArtefactLinksPanel({
             changeRequest ? (
               <span className="stack" style={{ gap: "0.5rem" }}>
                 <span>{strings.artefactLinks.removeConfirmViaChangeRequest}</span>
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.artefactLinks.reasonLabel}
-                  <textarea
-                    className="input" rows={2} aria-label={strings.artefactLinks.reasonLabel}
-                    value={removeReason} onChange={(e) => setRemoveReason(e.target.value)}
-                  />
-                </label>
+                <TextAreaField helpNotNeeded
+                  label={strings.artefactLinks.reasonLabel}
+                  value={removeReason}
+                  onChange={setRemoveReason}
+                  rows={2}
+                />
               </span>
             ) : (
               strings.artefactLinks.removeConfirm
@@ -419,18 +423,25 @@ function LinkRowView({
   const { edge, node } = row;
   const phrase = edge.phrase ?? strings.artefactLinks.untyped;
   return (
-    <li className="artefact-links__row" title={phrase}>
-      <LinkedRecordSummary edge={edge} node={node} currentProjectId={currentProjectId} layout="list" />
-      {canRemove && (
+    <ItemRow
+      as="li"
+      className="artefact-links__row"
+      title={phrase}
+      actions={canRemove && (
         <button
-          className="btn btn-danger btn-sm btn-icon artefact-links__remove"
+          className="btn btn-danger btn-sm btn-icon"
           title={strings.artefactLinks.removeAction}
           aria-label={strings.artefactLinks.removeLabel(phrase, node.label)}
           onClick={onRemove}
         >
-          <Trash2 size={14} />
+          <Trash2 />
         </button>
       )}
-    </li>
+    >
+      {/* The record's own metadata (status, project, warning) may wrap below its title; the Remove action may not. */}
+      <div className="artefact-links__summary" data-wrap-ok>
+        <LinkedRecordSummary edge={edge} node={node} currentProjectId={currentProjectId} layout="list" />
+      </div>
+    </ItemRow>
   );
 }

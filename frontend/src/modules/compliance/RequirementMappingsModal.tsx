@@ -16,6 +16,11 @@ import { Modal } from "../../components/Modal";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import type { ComplianceMappingRelationshipType, ComplianceRequirement, ComplianceRequirementMapping, ComplianceStandard, ComplianceStandardVersion } from "./types";
+import { TextField } from "../../components/FormFields";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useStrings } from "../../context/TerminologyContext";
+import { COMPLIANCE_HELP } from "./help";
 
 interface Props {
   orgId: string;
@@ -26,6 +31,7 @@ interface Props {
 }
 
 export function RequirementMappingsModal({ orgId, standardId, versionId, requirement, onClose }: Props) {
+  const strings = useStrings();
   const { showToast } = useToast();
   const [mappings, setMappings] = useState<ComplianceRequirementMapping[] | null>(null);
   const [relationshipTypes, setRelationshipTypes] = useState<ComplianceMappingRelationshipType[]>([]);
@@ -47,25 +53,30 @@ export function RequirementMappingsModal({ orgId, standardId, versionId, require
     }
   }
 
-  useEffect(() => {
+  useLoadOnChange(() => {
     void reload();
     void complianceApi.listMappingRelationshipTypes(orgId).then(setRelationshipTypes);
     void complianceApi.listStandards(orgId).then(setStandards);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId, standardId, versionId, requirement.id]);
 
-  useEffect(() => {
+  useResetOnChange([orgId, targetStandardId], () => {
     setTargetVersionId("");
     setTargetVersions([]);
     setTargetRequirements([]);
     setTargetRequirementId("");
+  });
+
+  useEffect(() => {
     if (!targetStandardId) return;
     void complianceApi.listStandardVersions(orgId, targetStandardId).then(setTargetVersions);
   }, [orgId, targetStandardId]);
 
-  useEffect(() => {
+  useResetOnChange([orgId, targetStandardId, targetVersionId], () => {
     setTargetRequirements([]);
     setTargetRequirementId("");
+  });
+
+  useEffect(() => {
     if (!targetStandardId || !targetVersionId) return;
     void complianceApi.listRequirements(orgId, targetStandardId, targetVersionId).then(setTargetRequirements);
   }, [orgId, targetStandardId, targetVersionId]);
@@ -143,20 +154,20 @@ export function RequirementMappingsModal({ orgId, standardId, versionId, require
 
         <h3 style={{ margin: "0.5rem 0 0" }}>Add mapping</h3>
         <div className="row" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
-          <LabeledSelect
+          <LabeledSelect helpNotNeeded
             label="Target standard"
             value={targetStandardId}
             onChange={setTargetStandardId}
             options={standards.map((s) => ({ value: s.id, label: `${s.reference} — ${s.name}` }))}
           />
-          <LabeledSelect
+          <LabeledSelect help={strings.help.requirementTargetVersion}
             label="Target version"
             value={targetVersionId}
             onChange={setTargetVersionId}
             options={targetVersions.map((v) => ({ value: v.id, label: v.version_label }))}
             disabled={!targetStandardId}
           />
-          <LabeledSelect
+          <LabeledSelect helpNotNeeded
             label="Target requirement"
             value={targetRequirementId}
             onChange={setTargetRequirementId}
@@ -165,17 +176,14 @@ export function RequirementMappingsModal({ orgId, standardId, versionId, require
               .map((r) => ({ value: r.id, label: `${r.reference ? `${r.reference} — ` : ""}${r.name}` }))}
             disabled={!targetVersionId}
           />
-          <LabeledSelect
+          <LabeledSelect help={COMPLIANCE_HELP.complianceMappingRelationship}
             label="Relationship type"
             value={relationshipTypeId}
             onChange={setRelationshipTypeId}
             options={relationshipTypes.map((t) => ({ value: t.id, label: t.name }))}
           />
         </div>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Notes</span>
-          <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} />
-        </label>
+        <TextField helpNotNeeded label="Notes" value={notes} onChange={setNotes} />
         <div className="row" style={{ justifyContent: "flex-end" }}>
           <button className="btn" onClick={onClose}>Close</button>
           <button className="btn btn-primary" disabled={!targetRequirementId || !relationshipTypeId} onClick={handleCreate}>

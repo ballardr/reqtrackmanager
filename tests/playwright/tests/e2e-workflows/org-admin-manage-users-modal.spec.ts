@@ -3,8 +3,7 @@ import { expect, test } from "@playwright/test";
 import { loginAs, ORG_NAMES, PERSONAS, selectOrgAdminGroup } from "./helpers";
 
 /**
- * Job to be done: Phase 5 (docs/decisions.md), rebuilt in Phase D (follow-up
- * UX batch, 2026-08-31) — Org Admin's per-project "Manage users" opens a
+ * Job to be done: (docs/decisions.md) Org Admin's per-project "Manage users" opens a
  * `Modal` wrapping the exact same `ProjectMembersTable`
  * `ProjectAdminPage.tsx`'s own Members section uses, fed by the same
  * `GET /effective-members`/`GET /pending-invites` endpoints — one real
@@ -63,7 +62,7 @@ test.describe("org admin: Manage users modal", () => {
     await test.step("shows the project's creator as a direct manager, disabled as the only manager source (C-U-08)", async () => {
       // The project's creator (this org admin) holds their manager role via
       // a direct grant on a brand-new project — no default group exists any
-      // more (follow-up UX batch Phase C, 2026-08-31) — and is its only
+      // more (2026-08-31) — and is its only
       // manager source, the same client-side last-manager hint
       // `ProjectAdminPage.tsx`'s own Members section gives.
       const rolesButton = modal.getByRole("button", { name: `${PERSONAS.orgAdminGamma.name}'s roles` });
@@ -79,7 +78,7 @@ test.describe("org admin: Manage users modal", () => {
       await page.keyboard.press("Escape");
     });
 
-    await test.step("adding a direct member via the modal's own add control (PR3, members/groups directory rework: 'Add member' opens the control in a second, nested Modal instead of it sitting permanently inside this outer 'Manage users' Modal, per docs/ux-style-guide.md Principle 3; rebuilt onto the shared `AddMembersModal` staged multi-add — see that component's own module docstring)", async () => {
+    await test.step("adding a direct member via the modal's own add control (members/groups directory rework: 'Add member' opens the control in a second, nested Modal instead of it sitting permanently inside this outer 'Manage users' Modal, per docs/ux-style-guide.md Principle 3; rebuilt onto the shared `AddMembersModal` staged multi-add — see that component's own module docstring)", async () => {
       await modal.getByRole("button", { name: "Add member" }).click();
       const addMemberModal = page.getByRole("dialog", { name: "Add member" });
       await addMemberModal.getByPlaceholder("Type a name to add, or an email to invite…").fill(PERSONAS.projectMgrGamma.name);

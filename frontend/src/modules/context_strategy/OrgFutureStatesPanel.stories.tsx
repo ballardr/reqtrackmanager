@@ -10,7 +10,7 @@ const ORG_ID = "org-1";
 
 function futureState(overrides: Partial<FutureState> = {}): FutureState {
   return {
-    id: "future-state-1", scope: "organization", organization_id: ORG_ID, project_id: null, creator_id: "user-1",
+    id: "future-state-1", scope: "organization", organization_id: ORG_ID, project_id: null, unique_code: "FUT-001", creator_id: "user-1",
     is_archived: false, archived_at: null, archived_by: null, title: "Regional #1 by 2028",
     current_state: "", desired_state: "We are the top provider in our region.", target_date: "2028-06-30",
     outcomes: "", success_measures: "", constraints: "", assumptions: "",

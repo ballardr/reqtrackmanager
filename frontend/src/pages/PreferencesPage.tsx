@@ -15,6 +15,9 @@ import { useOrgLabel, useOrgLabelPlural } from "../context/BrandingContext";
 import { useTheme, type ThemePreference } from "../context/ThemeContext";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
+import { PROJECT_SCOPES, parseProjectScope } from "../api/projectScope";
+import { DEFAULT_PROJECT_SCOPE_PREFERENCE } from "../hooks/useProjectScope";
+import { SHOW_PROJECT_CODE_PREFERENCE } from "../hooks/useRecordCode";
 import { useUiPreference } from "../hooks/useUiPreference";
 import type {
   DigestMode,
@@ -29,6 +32,13 @@ import type {
   ProjectListItem,
 } from "../api/types";
 import { collapseProjectRoles, ORG_ROLE_LABEL, PROJECT_ROLE_LABEL } from "../api/types";
+import { Badge } from "../components/Badge";
+import { CheckboxField, DateField, TextField } from "../components/FormFields";
+import { LabeledSelect } from "../components/LabeledSelect";
+import { SearchPreferencesPanel } from "../components/SearchPreferencesPanel";
+import { FormGrid, FormGridFull } from "../components/FormGrid";
+import { FormActions } from "../components/FormActions";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 type LandingMode = "auto" | "overview" | "project";
 
@@ -39,7 +49,7 @@ function landingModeFor(preference: string | undefined): LandingMode {
 }
 
 /**
- * The 5 resource-menu groups Preferences' previous 5-tab bar was converted
+ * The resource-menu groups Preferences' previous tab bar was converted
  * into. Each key is also the route segment under `/preferences/:group?`
  * (App.tsx), so a group selection is a real navigation, not client-only
  * state. An unrecognised or absent `:group` (including the bare
@@ -52,9 +62,9 @@ function landingModeFor(preference: string | undefined): LandingMode {
  * ResourceMenu call, since this page never exceeded 5 tabs on its own.
  * See `docs/ux-style-guide.md` Principle 1 and `docs/decisions.md`.
  */
-type PreferencesGroupKey = "profile" | "security" | "access" | "pats" | "notifications";
+type PreferencesGroupKey = "profile" | "search" | "security" | "access" | "pats" | "notifications";
 
-const PREFERENCES_GROUP_KEYS: PreferencesGroupKey[] = ["profile", "security", "access", "pats", "notifications"];
+const PREFERENCES_GROUP_KEYS: PreferencesGroupKey[] = ["profile", "search", "security", "access", "pats", "notifications"];
 
 /**
  * User preferences: theme (U-U-01), post-login landing page (U-U-03),
@@ -77,6 +87,9 @@ export function PreferencesPage() {
   const [patToRevoke, setPatToRevoke] = useState<string | null>(null);
   const [revokeAllPatsOpen, setRevokeAllPatsOpen] = useState(false);
   const [contentBoxed, setContentBoxed] = useUiPreference<boolean>("content_boxed", false);
+  const [showProjectCode, setShowProjectCode] = useUiPreference<boolean>(SHOW_PROJECT_CODE_PREFERENCE, true);
+  const [storedProjectScope, setDefaultProjectScope] = useUiPreference<string>(DEFAULT_PROJECT_SCOPE_PREFERENCE, "this");
+  const defaultProjectScope = parseProjectScope(storedProjectScope) ?? "this";
   const [landingMode, setLandingMode] = useState<LandingMode>(landingModeFor(user?.landing_preference));
   const [landingProjectId, setLandingProjectId] = useState(
     landingModeFor(user?.landing_preference) === "project" ? user?.landing_preference ?? "" : ""
@@ -104,8 +117,7 @@ export function PreferencesPage() {
   const [myOrgs, setMyOrgs] = useState<Organization[]>([]);
   const [myOrgRoles, setMyOrgRoles] = useState<Record<string, OrgRole[]>>({});
   const [myGroupsByOrg, setMyGroupsByOrg] = useState<Record<string, MyOrgGroup[]>>({});
-  // "Leave organisation" (2026-08 UX audit roadmap item 520, moved here
-  // from Org Admin) — Tier 1 `ConfirmDialog`, keyed on the whole
+  // "Leave organisation" — Tier 1 `ConfirmDialog`, keyed on the whole
   // `Organization` rather than just its id so the dialog can name it.
   const [orgToLeave, setOrgToLeave] = useState<Organization | null>(null);
   const [pats, setPats] = useState<PersonalAccessToken[]>([]);
@@ -114,13 +126,13 @@ export function PreferencesPage() {
   const [newPatProjectIds, setNewPatProjectIds] = useState<Set<string>>(new Set());
   const [newPatExpiry, setNewPatExpiry] = useState("");
   const [expiryAutoFilled, setExpiryAutoFilled] = useState(true);
-  const [maxExpiresAt, setMaxExpiresAt] = useState<string | null>(null);
+  const [fetchedMaxExpiresAt, setMaxExpiresAt] = useState<string | null>(null);
   const [patError, setPatError] = useState<string | null>(null);
   const [createdPat, setCreatedPat] = useState<PersonalAccessTokenCreateResult | null>(null);
   // The "New personal access token" form creates a brand-new entity, not
   // contextual detail about anything already on screen — per the revised
   // Principle 3 it opens in a `Modal`, not the permanently-visible nested
-  // accordion it used to be (2026-08 UX audit roadmap item 526).
+  // accordion it used to be.
   const [patFormOpen, setPatFormOpen] = useState(false);
 
   /**
@@ -167,11 +179,10 @@ export function PreferencesPage() {
     setMyOrgRoles(Object.fromEntries(memberships.map(([org, roles]) => [org.id, roles])));
   }
 
-  useEffect(() => {
+  useLoadOnChange(() => {
     api.get<NotificationPreference[]>("/api/v1/notifications/preferences").then(setNotificationPrefs);
     api.get<PersonalAccessToken[]>("/api/v1/me/pats").then(setPats);
     loadMyAccess();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function leaveOrg(orgId: string) {
@@ -223,11 +234,10 @@ export function PreferencesPage() {
   // actual date. Only overwrites the field while it still holds a
   // previous auto-filled value (or is empty) — a value the user typed in
   // themselves is left alone.
+  const maxExpiresAt = newPatOrgIds.size === 0 ? null : fetchedMaxExpiresAt;
+
   useEffect(() => {
-    if (newPatOrgIds.size === 0) {
-      setMaxExpiresAt(null);
-      return;
-    }
+    if (newPatOrgIds.size === 0) return;
     const params = new URLSearchParams();
     for (const orgId of newPatOrgIds) params.append("organization_ids", orgId);
     api.get<{ max_expires_at: string }>(`/api/v1/me/pats/max-lifetime?${params.toString()}`).then(({ max_expires_at }) => {
@@ -378,8 +388,12 @@ export function PreferencesPage() {
 
   async function startEnrollment() {
     setTwoFactorError(null);
-    const result = await api.post<{ secret: string; qr_code_png_base64: string }>("/api/v1/auth/2fa/enroll");
-    setEnrollment({ secret: result.secret, qrCodePngBase64: result.qr_code_png_base64 });
+    try {
+      const result = await api.post<{ secret: string; qr_code_png_base64: string }>("/api/v1/auth/2fa/enroll");
+      setEnrollment({ secret: result.secret, qrCodePngBase64: result.qr_code_png_base64 });
+    } catch (err) {
+      setTwoFactorError(err instanceof ApiError ? err.message : strings.common.error);
+    }
   }
 
   async function confirmEnrollment() {
@@ -388,6 +402,7 @@ export function PreferencesPage() {
       await api.post("/api/v1/auth/2fa/status", { action: "confirm", code: confirmCode });
       setEnrollment(null);
       setConfirmCode("");
+      showToast(strings.mutation.success("two-factor authentication", strings.mutation.past.enable));
       await refreshUser();
     } catch (err) {
       setTwoFactorError(err instanceof ApiError ? err.message : strings.common.error);
@@ -413,6 +428,7 @@ export function PreferencesPage() {
 
   const groups: ResourceMenuGroupDef<PreferencesGroupKey>[] = [
     { key: "profile", label: strings.preferences.profile, href: "/preferences/profile" },
+    { key: "search", label: strings.preferences.searchGroup, href: "/preferences/search" },
     { key: "security", label: strings.preferences.security, href: "/preferences/security" },
     { key: "access", label: strings.preferences.access, href: "/preferences/access" },
     { key: "pats", label: strings.preferences.pats, href: "/preferences/pats" },
@@ -457,71 +473,69 @@ export function PreferencesPage() {
           </div>
           {avatarError && <div style={{ color: "var(--color-danger)" }}>{avatarError}</div>}
         </div>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.preferences.displayName}
-          <input
-            className="input"
+        <FormGrid minColumn="18rem">
+          <TextField helpNotNeeded
+            label={strings.preferences.displayName}
             value={displayName}
+            onChange={setDisplayName}
             disabled={user?.display_name_locked}
-            onChange={(e) => setDisplayName(e.target.value)}
+            hint={user?.display_name_locked ? strings.preferences.displayNameLocked(orgLabel) : undefined}
           />
-          {user?.display_name_locked && <span className="text-muted">{strings.preferences.displayNameLocked(orgLabel)}</span>}
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.preferences.pronouns}
-          <input className="input" value={pronouns} onChange={(e) => setPronouns(e.target.value)} />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.preferences.theme}
-          <select className="input" value={theme} onChange={(e) => setTheme(e.target.value as ThemePreference)}>
-            <option value="light">{strings.preferences.light}</option>
-            <option value="dark">{strings.preferences.dark}</option>
-            <option value="system">{strings.preferences.system}</option>
-          </select>
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.preferences.contentWidth}
-          <select
-            className="input"
+          <TextField helpNotNeeded label={strings.preferences.pronouns} value={pronouns} onChange={setPronouns} />
+          <LabeledSelect helpNotNeeded
+            label={strings.preferences.theme}
+            value={theme}
+            onChange={(next) => setTheme(next as ThemePreference)}
+            options={[{ value: "light", label: strings.preferences.light }, { value: "dark", label: strings.preferences.dark }, { value: "system", label: strings.preferences.system }]}
+            placeholder={null}
+          />
+          <LabeledSelect helpNotNeeded
+            label={strings.preferences.contentWidth}
             value={contentBoxed ? "boxed" : "full"}
-            onChange={(e) => setContentBoxed(e.target.value === "boxed")}
-          >
-            <option value="full">{strings.preferences.contentWidthFull}</option>
-            <option value="boxed">{strings.preferences.contentWidthBoxed}</option>
-          </select>
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.preferences.landing}
-          <select
-            className="input"
+            onChange={(next) => setContentBoxed(next === "boxed")}
+            options={[{ value: "full", label: strings.preferences.contentWidthFull }, { value: "boxed", label: strings.preferences.contentWidthBoxed }]}
+            placeholder={null}
+          />
+          <FormGridFull>
+            <CheckboxField helpNotNeeded
+              label={strings.preferences.showProjectCode}
+              checked={showProjectCode}
+              onChange={setShowProjectCode}
+              hint={strings.preferences.showProjectCodeHint}
+            />
+          </FormGridFull>
+          <LabeledSelect helpNotNeeded
+            label={strings.preferences.defaultProjectScope}
+            value={defaultProjectScope}
+            onChange={setDefaultProjectScope}
+            options={PROJECT_SCOPES.map((scope) => ({ value: scope, label: strings.projectScope.options[scope] }))}
+            placeholder={null}
+            hint={strings.preferences.defaultProjectScopeHint}
+          />
+          <LabeledSelect helpNotNeeded
+            label={strings.preferences.landing}
             value={landingMode}
-            onChange={(e) => setLandingMode(e.target.value as LandingMode)}
-          >
-            <option value="auto">{strings.preferences.landingAuto}</option>
-            <option value="overview">{strings.preferences.landingOverview}</option>
-            <option value="project">{strings.preferences.landingProject}</option>
-          </select>
-        </label>
-        {landingMode === "project" && (
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.preferences.landingProjectSelect}
-            <select className="input" value={landingProjectId} onChange={(e) => setLandingProjectId(e.target.value)}>
-              {myProjects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.preferences.emailDigest}
-          <select className="input" value={digestMode} onChange={(e) => setDigestMode(e.target.value as DigestMode)}>
-            <option value="instant">{strings.preferences.digestInstant}</option>
-            <option value="daily">{strings.preferences.digestDaily}</option>
-            <option value="none">{strings.preferences.digestNone}</option>
-          </select>
-        </label>
+            onChange={(next) => setLandingMode(next as LandingMode)}
+            options={[{ value: "auto", label: strings.preferences.landingAuto }, { value: "overview", label: strings.preferences.landingOverview }, { value: "project", label: strings.preferences.landingProject }]}
+            placeholder={null}
+          />
+          {landingMode === "project" && (
+            <LabeledSelect helpNotNeeded
+              label={strings.preferences.landingProjectSelect}
+              value={landingProjectId}
+              onChange={setLandingProjectId}
+              options={myProjects.map((p) => ({ value: p.id, label: p.name }))}
+              placeholder={null}
+            />
+          )}
+          <LabeledSelect helpNotNeeded
+            label={strings.preferences.emailDigest}
+            value={digestMode}
+            onChange={(next) => setDigestMode(next as DigestMode)}
+            options={[{ value: "instant", label: strings.preferences.digestInstant }, { value: "daily", label: strings.preferences.digestDaily }, { value: "none", label: strings.preferences.digestNone }]}
+            placeholder={null}
+          />
+        </FormGrid>
         {profileError && <div style={{ color: "var(--color-danger)" }}>{profileError}</div>}
         <button className="btn btn-primary" onClick={save} style={{ alignSelf: "flex-start" }}>
           {strings.preferences.save}
@@ -530,24 +544,26 @@ export function PreferencesPage() {
       </div>
       )}
 
+      {activeGroup === "search" && <SearchPreferencesPanel />}
+
       {activeGroup === "security" && (
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.preferences.security}</h2>
         <CollapsibleSection sectionKey="preferences.security.change_password" variant="plain" title={strings.preferences.changePassword}>
-          <input
-            className="input"
-            type="password"
-            placeholder={strings.preferences.currentPassword}
-            value={currentPassword}
-            onChange={(e) => setCurrentPassword(e.target.value)}
-          />
-          <input
-            className="input"
-            type="password"
-            placeholder={strings.preferences.newPassword}
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-          />
+          <FormGrid minColumn="18rem">
+            <TextField helpNotNeeded
+              label={strings.preferences.currentPassword}
+              value={currentPassword}
+              onChange={setCurrentPassword}
+              inputProps={{ type: "password" }}
+            />
+            <TextField helpNotNeeded
+              label={strings.preferences.newPassword}
+              value={newPassword}
+              onChange={setNewPassword}
+              inputProps={{ type: "password" }}
+            />
+          </FormGrid>
           {passwordError && <div style={{ color: "var(--color-danger)" }}>{passwordError}</div>}
           <button className="btn" onClick={changePassword} style={{ alignSelf: "flex-start" }}>
             {strings.preferences.changePassword}
@@ -570,9 +586,9 @@ export function PreferencesPage() {
                 onChange={() => startEnrollment()}
                 label={strings.preferences.enable2fa}
               />
-              <span className="badge">
+              <Badge>
                 {user?.is_2fa_enabled ? strings.preferences.twoFactorEnabled : strings.preferences.twoFactorDisabled}
-              </span>
+              </Badge>
             </span>
           }
         >
@@ -586,13 +602,12 @@ export function PreferencesPage() {
                 alt="2FA QR code"
                 style={{ width: 180, height: 180 }}
               />
-              <div className="row">
-                <input
-                  className="input"
-                  style={{ maxWidth: 160 }}
-                  placeholder={strings.preferences.confirmCode}
+              <div className="row" style={{ alignItems: "flex-end" }}>
+                <TextField helpNotNeeded
+                  label={strings.preferences.confirmCode}
                   value={confirmCode}
-                  onChange={(e) => setConfirmCode(e.target.value)}
+                  onChange={setConfirmCode}
+                  inputProps={{ style: { maxWidth: 160 } }}
                 />
                 <button className="btn btn-primary" onClick={confirmEnrollment}>
                   {strings.preferences.confirmCode}
@@ -602,13 +617,13 @@ export function PreferencesPage() {
           )}
 
           {user?.is_2fa_enabled && (
-            <div className="row">
-              <input
-                className="input"
-                style={{ maxWidth: 160 }}
-                placeholder={strings.preferences.enterCodeToDisable}
+            <div className="row" style={{ alignItems: "flex-end" }}>
+              <TextField helpNotNeeded
+                label={strings.preferences.authenticatorCode}
+                hint={strings.preferences.enterCodeToDisable}
                 value={disableCode}
-                onChange={(e) => setDisableCode(e.target.value)}
+                onChange={setDisableCode}
+                inputProps={{ style: { maxWidth: 160 } }}
               />
               <button className="btn btn-danger" onClick={disable2fa}>
                 {strings.preferences.disable2fa}
@@ -633,15 +648,14 @@ export function PreferencesPage() {
                 <span>
                   <strong>{org.name}</strong>{" "}
                   {roles.map((r) => (
-                    <span key={r} className="badge">{ORG_ROLE_LABEL[r]}</span>
+                    <Badge key={r}>{ORG_ROLE_LABEL[r]}</Badge>
                   ))}
                 </span>
                 <div className="row" style={{ gap: "0.4rem" }}>
                   {roles.includes("org_admin") && (
                     <Link to={`/orgs/${org.id}/admin`} className="btn">{strings.preferences.manageOrganisation(orgLabel)}</Link>
                   )}
-                  {/* Moved here from Org Admin (2026-08 UX audit roadmap
-                      item 520) — leaving is about this user's own
+                  {/* Moved here from Org Admin — leaving is about this user's own
                       membership, not an org-level setting, so it lives
                       alongside the rest of "your access" rather than Org
                       Admin's danger-zone-adjacent controls. Previously
@@ -697,7 +711,7 @@ export function PreferencesPage() {
             <p className="text-muted" style={{ margin: 0 }}>{strings.preferences.patsHint(orgLabel)}</p>
           </div>
           <button className="btn btn-primary" onClick={openPatForm}>
-            <Plus size={14} /> {strings.preferences.patNew}
+            <Plus /> {strings.preferences.patNew}
           </button>
         </div>
 
@@ -747,80 +761,75 @@ export function PreferencesPage() {
         )}
 
         {patFormOpen && (
-          <Modal title={strings.preferences.patNew} onClose={closePatForm}>
-            <input
-              className="input"
-              placeholder={strings.preferences.patNamePlaceholder}
-              value={newPatName}
-              onChange={(e) => setNewPatName(e.target.value)}
-            />
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.preferences.patOrgs(orgLabelPlural)}
-              <div className="stack" style={{ gap: "0.25rem" }}>
-                {myOrgs.map((org) => (
-                  <label key={org.id} className="row" style={{ gap: "0.5rem" }}>
-                    <input
-                      type="checkbox"
-                      checked={newPatOrgIds.has(org.id)}
-                      onChange={() => toggleNewPatOrg(org.id)}
-                    />
-                    {org.name}
-                  </label>
-                ))}
-              </div>
-            </label>
-            {newPatOrgIds.size > 0 && (
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.preferences.patProjects}
-                {(() => {
-                  const scopedProjects = myProjects.filter((p) => newPatOrgIds.has(p.organization_id));
-                  return scopedProjects.length === 0 ? (
-                    <span className="text-muted">{strings.preferences.patNoProjectsInOrgs(orgLabel)}</span>
-                  ) : (
+          <Modal title={strings.preferences.patNew} onClose={closePatForm} size="lg">
+            <div className="stack">
+              <FormGrid minColumn="18rem">
+                <TextField helpNotNeeded
+                  label={strings.preferences.patName}
+                  placeholder={strings.preferences.patNamePlaceholder}
+                  value={newPatName}
+                  onChange={setNewPatName}
+                />
+                <DateField helpNotNeeded
+                  label={strings.preferences.patExpiry}
+                  value={newPatExpiry}
+                  onChange={(next) => {
+                    setExpiryAutoFilled(false);
+                    setNewPatExpiry(next);
+                  }}
+                  hint={
+                    expiryTooLong && maxExpiresAt ? (
+                      <span style={{ color: "var(--color-danger)" }}>
+                        {strings.preferences.patExpiryTooLong(orgLabelPlural).replace(
+                          "{date}", new Date(maxExpiresAt).toLocaleDateString()
+                        )}
+                      </span>
+                    ) : undefined
+                  }
+                />
+                <FormGridFull>
+                  <div className="stack" style={{ gap: "0.25rem" }}>
+                    <span>{strings.preferences.patOrgs(orgLabelPlural)}</span>
+                    {myOrgs.map((org) => (
+                      <CheckboxField helpNotNeeded
+                        key={org.id}
+                        label={org.name}
+                        checked={newPatOrgIds.has(org.id)}
+                        onChange={() => toggleNewPatOrg(org.id)}
+                      />
+                    ))}
+                  </div>
+                </FormGridFull>
+                {newPatOrgIds.size > 0 && (
+                  <FormGridFull>
                     <div className="stack" style={{ gap: "0.25rem" }}>
-                      {scopedProjects.map((project) => (
-                        <label key={project.id} className="row" style={{ gap: "0.5rem" }}>
-                          <input
-                            type="checkbox"
-                            checked={newPatProjectIds.has(project.id)}
-                            onChange={() => toggleNewPatProject(project.id)}
-                          />
-                          {project.name}
-                        </label>
-                      ))}
+                      <span>{strings.preferences.patProjects}</span>
+                      {(() => {
+                        const scopedProjects = myProjects.filter((p) => newPatOrgIds.has(p.organization_id));
+                        return scopedProjects.length === 0 ? (
+                          <span className="text-muted">{strings.preferences.patNoProjectsInOrgs(orgLabel)}</span>
+                        ) : (
+                          scopedProjects.map((project) => (
+                            <CheckboxField helpNotNeeded
+                              key={project.id}
+                              label={project.name}
+                              checked={newPatProjectIds.has(project.id)}
+                              onChange={() => toggleNewPatProject(project.id)}
+                            />
+                          ))
+                        );
+                      })()}
+                      <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.preferences.patProjectsHint(orgLabelPlural)}</span>
                     </div>
-                  );
-                })()}
-                <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.preferences.patProjectsHint(orgLabelPlural)}</span>
-              </label>
-            )}
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.preferences.patExpiry}
-              <input
-                className="input"
-                type="date"
-                value={newPatExpiry}
-                onChange={(e) => {
-                  setExpiryAutoFilled(false);
-                  setNewPatExpiry(e.target.value);
-                }}
+                  </FormGridFull>
+                )}
+              </FormGrid>
+              <FormActions
+                error={patError}
+                onCancel={closePatForm}
+                onSave={createPat}
+                saveLabel={strings.preferences.patCreate}
               />
-              {expiryTooLong && maxExpiresAt && (
-                <span style={{ color: "var(--color-danger)", fontSize: "0.8rem" }}>
-                  {strings.preferences.patExpiryTooLong(orgLabelPlural).replace(
-                    "{date}", new Date(maxExpiresAt).toLocaleDateString()
-                  )}
-                </span>
-              )}
-            </label>
-            {patError && <div style={{ color: "var(--color-danger)" }}>{patError}</div>}
-            <div className="row">
-              <button className="btn btn-primary" onClick={createPat} style={{ alignSelf: "flex-start" }}>
-                {strings.preferences.patCreate}
-              </button>
-              <button className="btn" onClick={closePatForm} style={{ alignSelf: "flex-start" }}>
-                {strings.common.cancel}
-              </button>
             </div>
           </Modal>
         )}

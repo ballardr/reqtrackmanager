@@ -1,20 +1,25 @@
 /**
  * Module: modules/context_strategy/ProjectPainPointsPage
  *
- * The Context & Strategy module's project-scoped Pain Point list route
- * (docs/plans/module-01-context-and-strategy-plan.md Phase 7.3), mounted at
+ * The Context & Strategy module's project-scoped Pain Point list route,
+ * mounted at
  * `/projects/:projectId/modules/context_strategy/pain-points`, reached via
- * this module's third top-level nav-rail entry (Phase 0 Q7). Mirrors
+ * this module's third top-level nav-rail entry. Mirrors
  * `ProjectStrategiesPage.tsx`'s exact `DirectoryTable` + `FilterPanel` +
- * "New X" `Modal` shape — Pain Point is project-scoped only (source overview
- * §6), so unlike that page there is no org-scoped sibling panel.
+ * "New X" `Modal` shape — Pain Point is project-scoped only (§6), so unlike that page there is no org-scoped sibling panel.
  *
- * Phase 11 adds per-persona scoring to the list: a Score column (the
- * roll-up under the model and persona roll-up picked in the switcher above
- * the table, "chosen when viewing") and a Blocker badge that stays visible
- * whichever is chosen. The Score column is sortable, so switching model
- * re-ranks the list. Intentional limitations carry an "Intentional" badge
- * and can be hidden from the list via a filter.
+ * Per-persona scoring shows in the list: a Score column (the
+ * roll-up under the model and persona roll-up picked in the gear on the
+ * column header, "chosen when viewing") and a Blocker badge after the title
+ * that stays visible whichever is chosen. The Score column is sortable, so
+ * switching model re-ranks the list. Intentional limitations carry an
+ * "Intentional" badge and can be hidden from the list via a filter.
+ *
+ * The list opens on open Pain Points only (the "Open only" filter is ticked
+ * and stays visible). A link that names a slice (`status`, `scored`,
+ * `blocker`, `intentional=only`) or says `open=0` starts with it off, so the
+ * filters in the link are the ones applied and a link never lands on an empty
+ * list.
  *
  * Also loads this project's effective Pain Point type list
  * (`projectPainPointApi.listTypes`) once, up front — both the type filter
@@ -23,7 +28,7 @@
  * "New Pain Point" modal opens.
  *
  * Filters can be pre-set from the URL (a report figure links here, e.g.
- * `?open=1&blocker=1`): `status`, `priority`, `open=1` (still being worked),
+ * `?open=1&blocker=1`): `status`, `priority`, `open=1|0` (still being worked; the default),
  * `intentional=hide|only`, `blocker=1`, `scored=yes|no`, and `model` /
  * `rollup` (the scoring the report ran with). They only seed the state; each
  * is a visible control in the filter panel, so it can be changed or cleared.
@@ -36,7 +41,9 @@ import { api } from "../../api/client";
 import { projectScoringApi, type ScoringScheme } from "../../api/scoring";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ListPageLayout } from "../../components/ListPageLayout";
 import { ScoringModelSwitcher } from "../../components/ScoringModelSwitcher";
+import { SettingsPopoverButton } from "../../components/SettingsPopoverButton";
 import { Spinner } from "../../components/Spinner";
 import { cycleSort, type SortState } from "../../components/sortState";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -49,15 +56,48 @@ import {
 } from "./types";
 import type {
   EffectivePainPointType, PainPoint, PainPointFieldValues, PainPointPriority, PainPointRollup,
-  PainPointScoringList, PainPointScoringSummary, PainPointStatus,
+  PainPointScoringList, PainPointScoringSummary, PainPointScoringTargets, PainPointStatus,
 } from "./types";
+import { Badge } from "../../components/Badge";
+import { RecordCode } from "../../components/RecordCode";
+import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
+import { useCommitTags } from "../../hooks/useCommitTags";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { rowProjectId } from "../../api/projectScope";
+import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
+import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
+import { useProjectScope } from "../../hooks/useProjectScope";
+import { useTagFilter } from "../../hooks/useTagFilter";
+import { TagFilterField } from "../../components/TagFilterField";
 
 const SCHEME_KEY = "pain_point";
+const DEFAULT_ROLLUP: PainPointRollup = "weighted_average";
+
+/**
+ * Whether the list starts on open Pain Points only: yes, unless the link says `open=0` or asks for a
+ * particular slice (a status, scored or not, blockers, only the intentional ones), which the default
+ * would otherwise hide.
+ *
+ * @param initial The URL's search parameters when the page opened.
+ */
+function opensOnOpenOnly(initial: URLSearchParams): boolean {
+  const open = initial.get("open");
+  if (open === "1") return true;
+  if (open === "0") return false;
+  // Only values the page understands count; an unknown one is ignored, as it is for the filters themselves.
+  const namesASlice = (initial.get("status") ?? "") in PAIN_POINT_STATUS_LABEL
+    || ["yes", "no"].includes(initial.get("scored") ?? "")
+    || initial.get("blocker") === "1"
+    || initial.get("intentional") === "only";
+  return !namesASlice;
+}
 
 export function ProjectPainPointsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "pain_point");
+  const commitTags = useCommitTags(projectId ?? "", "pain_point");
   const initial = useInitialSearchParams();
   const [project, setProject] = useState<Project | null>(null);
   const [painPoints, setPainPoints] = useState<PainPoint[] | null>(null);
@@ -68,16 +108,19 @@ export function ProjectPainPointsPage() {
   const [statusFilter, setStatusFilter] = useState<PainPointStatus | "">(() => oneOf(initial.get("status"), Object.keys(PAIN_POINT_STATUS_LABEL) as PainPointStatus[]));
   const [priorityFilter, setPriorityFilter] = useState<PainPointPriority | "">(() => oneOf(initial.get("priority"), Object.keys(PAIN_POINT_PRIORITY_LABEL) as PainPointPriority[]));
   const [includeArchived, setIncludeArchived] = useState(false);
+  const tagFilter = useTagFilter();
+  const projectScope = useProjectScope(projectId);
   const [hideIntentional, setHideIntentional] = useState(initial.get("intentional") === "hide");
   const [onlyIntentional, setOnlyIntentional] = useState(initial.get("intentional") === "only");
-  const [openOnly, setOpenOnly] = useState(initial.get("open") === "1");
+  const [openOnly, setOpenOnly] = useState(() => opensOnOpenOnly(initial));
   const [blockersOnly, setBlockersOnly] = useState(initial.get("blocker") === "1");
   const [scoredFilter, setScoredFilter] = useState<"" | "yes" | "no">(() => oneOf(initial.get("scored"), ["yes", "no"] as const));
 
   const [scheme, setScheme] = useState<ScoringScheme | null>(null);
+  const [scoringTargets, setScoringTargets] = useState<PainPointScoringTargets | null>(null);
   const [model, setModel] = useState<string | null>(initial.get("model"));
   const [rollup, setRollup] = useState<PainPointRollup>(
-    () => oneOf(initial.get("rollup"), Object.keys(PAIN_POINT_ROLLUP_LABEL) as PainPointRollup[]) || "weighted_average",
+    () => oneOf(initial.get("rollup"), Object.keys(PAIN_POINT_ROLLUP_LABEL) as PainPointRollup[]) || DEFAULT_ROLLUP,
   );
   const [scoring, setScoring] = useState<PainPointScoringList | null>(null);
   const [sort, setSort] = useState<SortState | null>(null);
@@ -88,7 +131,7 @@ export function ProjectPainPointsPage() {
   async function reloadPainPoints() {
     if (!projectId) return;
     try {
-      setPainPoints(await projectPainPointApi.list(projectId, { include_archived: includeArchived }));
+      setPainPoints(await projectPainPointApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }));
       setLoadError(null);
     } catch (err) {
       setLoadError(toErrorMessage(err, "The Context & Strategy module isn't enabled for this project's organisation, or you don't have access to it."));
@@ -101,14 +144,13 @@ export function ProjectPainPointsPage() {
     void projectPainPointApi.listTypes(projectId).then(setTypes).catch(() => setTypes([]));
   }, [projectId]);
 
-  useEffect(() => {
-    void reloadPainPoints();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, includeArchived]);
+  useLoadOnChange(reloadPainPoints, [projectId, includeArchived, tagFilter.query, projectScope.scope]);
 
   useEffect(() => {
     if (!projectId) return;
     void projectScoringApi.get(projectId, SCHEME_KEY).then(setScheme).catch(() => setScheme(null));
+    // Whether the create form may offer scoring; a failure just leaves the section out.
+    void projectPainPointApi.getScoringTargets(projectId).then(setScoringTargets).catch(() => setScoringTargets(null));
   }, [projectId]);
 
   // Scores are secondary to the list itself: a failure here just leaves the
@@ -128,17 +170,20 @@ export function ProjectPainPointsPage() {
   const summaryById = new Map<string, PainPointScoringSummary>((scoring?.items ?? []).map((i) => [i.pain_point_id, i]));
   const scoreOf = (p: PainPoint) => summaryById.get(p.id)?.score?.normalised ?? null;
 
-  const filtered = painPoints.filter((p) => {
+  const matches = (p: PainPoint, applyOpenOnly: boolean) => {
     if (hideIntentional && p.is_intentional) return false;
     if (onlyIntentional && !p.is_intentional) return false;
-    if (openOnly && !PAIN_POINT_OPEN_STATUSES.includes(p.status)) return false;
+    if (applyOpenOnly && !PAIN_POINT_OPEN_STATUSES.includes(p.status)) return false;
     if (blockersOnly && !summaryById.get(p.id)?.is_blocker) return false;
     if (scoredFilter && (scoreOf(p) !== null) !== (scoredFilter === "yes")) return false;
     if (statusFilter && p.status !== statusFilter) return false;
     if (priorityFilter && p.priority !== priorityFilter) return false;
-    if (search && !p.title.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !`${p.unique_code} ${p.title}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
-  });
+  };
+  const filtered = painPoints.filter((p) => matches(p, openOnly));
+  // An empty list the "Open only" default caused says so, so it is not read as "nothing recorded".
+  const emptyBecauseOfOpenOnly = openOnly && filtered.length === 0 && painPoints.some((p) => matches(p, false));
 
   // Unscored items always sort last, in either direction.
   const rows = sort?.key === "score"
@@ -149,116 +194,147 @@ export function ProjectPainPointsPage() {
       })
     : filtered;
 
+  const scoreSettingsLabel = scheme && model
+    ? `Score settings: ${scheme.models.find((m) => m.key === model)?.label ?? model}, combined by ${PAIN_POINT_ROLLUP_LABEL[rollup]}`
+    : "Score settings";
+
   const columns: DirectoryColumn<PainPoint>[] = [
     {
       key: "title", label: "Title",
       render: (p) => (
         <>
           {p.title}
-          {p.is_intentional && <span className="badge badge--info" style={{ marginLeft: "0.5rem" }}>Intentional</span>}
+          <ProjectScopeLabel row={p} />
+          {p.is_intentional && <Badge tone="info" className="badge-after">Intentional</Badge>}
+          {summaryById.get(p.id) && <BlockerBadge summary={summaryById.get(p.id)!} className="badge-after" />}
         </>
       ),
     },
+    { key: "code", label: "Code", render: (p) => <RecordCode code={p.unique_code} ownerProjectCode={p.from_project_code} /> },
     { key: "type", label: "Type", render: (p) => p.pain_point_type_name },
     { key: "priority", label: "Priority", render: (p) => PAIN_POINT_PRIORITY_LABEL[p.priority] },
     {
       key: "status", label: "Status",
-      render: (p) => <span className={`badge badge--${PAIN_POINT_STATUS_TONE[p.status]}`}>{PAIN_POINT_STATUS_LABEL[p.status]}</span>,
+      render: (p) => <Badge tone={PAIN_POINT_STATUS_TONE[p.status]}>{PAIN_POINT_STATUS_LABEL[p.status]}</Badge>,
     },
     {
       key: "score", label: "Score", sortable: true,
+      headerAction: scheme && model && (
+        <SettingsPopoverButton
+          label={scoreSettingsLabel} title="Score settings"
+          marked={model !== scheme.default_model_key || rollup !== DEFAULT_ROLLUP}
+        >
+          <div className="stack">
+            <ScoringModelSwitcher
+              models={scheme.models.map((m) => ({ value: m.key, label: m.label }))}
+              model={model}
+              onModelChange={setModel}
+              rollups={Object.entries(PAIN_POINT_ROLLUP_LABEL).map(([value, label]) => ({ value, label }))}
+              rollup={rollup}
+              onRollupChange={(next) => setRollup(next as PainPointRollup)}
+            />
+            <span className="text-muted" style={{ fontSize: "0.8rem" }}>
+              Applies to this view only; it is not saved.
+            </span>
+          </div>
+        </SettingsPopoverButton>
+      ),
       render: (p) => {
         const summary = summaryById.get(p.id);
         if (!summary) return "–";
-        return (
-          <span className="row" style={{ gap: "0.35rem", alignItems: "center" }}>
-            <PainPointScoreBadge score={summary.score} />
-            <BlockerBadge summary={summary} />
-          </span>
-        );
+        return <PainPointScoreBadge score={summary.score} />;
       },
     },
   ];
 
   return (
     <div className="container stack">
-      <h1 style={{ margin: 0 }}>Pain Point</h1>
-      <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
-        New Pain Point
-      </button>
-      {scheme && model && (
-        <ScoringModelSwitcher
-          models={scheme.models.map((m) => ({ value: m.key, label: m.label }))}
-          model={model}
-          onModelChange={setModel}
-          rollups={Object.entries(PAIN_POINT_ROLLUP_LABEL).map(([value, label]) => ({ value, label }))}
-          rollup={rollup}
-          onRollupChange={(next) => setRollup(next as PainPointRollup)}
-        />
-      )}
-      <div className="side-grid">
-        <DirectoryTable
-          ariaLabel="Pain Points"
-          columns={columns}
-          rows={rows}
-          sort={sort}
-          onSort={(key) => setSort((current) => cycleSort(current, key))}
-          rowKey={(p) => p.id}
-          onRowClick={(p) => navigate(`/projects/${projectId}/modules/context_strategy/pain-points/${p.id}`)}
-          emptyState={<p className="text-muted">No Pain Points recorded for this project yet.</p>}
-        />
-        <FilterPanel
-          sectionKey="context_strategy.pain_points.list" total={filtered.length}
-          search={search} onSearchChange={setSearch} searchPlaceholder="Search Pain Points…" searchAriaLabel="Search Pain Points"
-        >
-          <FilterField label="Status">
-            <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as PainPointStatus | "")}>
-              <option value="">All statuses</option>
-              {Object.entries(PAIN_POINT_STATUS_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label="Priority">
-            <select className="input" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as PainPointPriority | "")}>
-              <option value="">All priorities</option>
-              {Object.entries(PAIN_POINT_PRIORITY_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label="Scoring">
-            <select className="input" value={scoredFilter} onChange={(e) => setScoredFilter(e.target.value as "" | "yes" | "no")}>
-              <option value="">Any scoring</option>
-              <option value="yes">Scored</option>
-              <option value="no">Not scored</option>
-            </select>
-          </FilterField>
-          <FilterCheckbox label="Open only" checked={openOnly} onChange={setOpenOnly} />
-          <FilterCheckbox label="Blockers only" checked={blockersOnly} onChange={setBlockersOnly} />
-          <FilterCheckbox
-            label="Hide intentional limitations" checked={hideIntentional}
-            onChange={(next) => { setHideIntentional(next); if (next) setOnlyIntentional(false); }}
+      <ListPageLayout
+        title="Pain Point"
+        actions={
+          <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
+            New Pain Point
+          </button>
+        }
+        filter={
+          <FilterPanel
+            sectionKey="context_strategy.pain_points.list" total={filtered.length}
+            search={search} onSearchChange={setSearch} searchPlaceholder="Search Pain Points…" searchAriaLabel="Search Pain Points"
+          >
+            <FilterField label="Status">
+              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as PainPointStatus | "")}>
+                <option value="">All statuses</option>
+                {Object.entries(PAIN_POINT_STATUS_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterField label="Priority">
+              <select className="input" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as PainPointPriority | "")}>
+                <option value="">All priorities</option>
+                {Object.entries(PAIN_POINT_PRIORITY_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterField label="Scoring">
+              <select className="input" value={scoredFilter} onChange={(e) => setScoredFilter(e.target.value as "" | "yes" | "no")}>
+                <option value="">Any scoring</option>
+                <option value="yes">Scored</option>
+                <option value="no">Not scored</option>
+              </select>
+            </FilterField>
+            <FilterCheckbox label="Open only" checked={openOnly} onChange={setOpenOnly} />
+            <FilterCheckbox label="Blockers only" checked={blockersOnly} onChange={setBlockersOnly} />
+            <FilterCheckbox
+              label="Hide intentional limitations" checked={hideIntentional}
+              onChange={(next) => { setHideIntentional(next); if (next) setOnlyIntentional(false); }}
+            />
+            <FilterCheckbox
+              label="Only intentional limitations" checked={onlyIntentional}
+              onChange={(next) => { setOnlyIntentional(next); if (next) setHideIntentional(false); }}
+            />
+            <ProjectScopeFilter scope={projectScope} />
+            {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
+          </FilterPanel>
+        }
+      >
+          <DirectoryTable
+            ariaLabel="Pain Points"
+            columns={columns}
+            rows={rows}
+            sort={sort}
+            onSort={(key) => setSort((current) => cycleSort(current, key))}
+            rowKey={(p) => p.id}
+            onRowClick={(p) => navigate(`/projects/${rowProjectId(p, projectId)}/modules/context_strategy/pain-points/${p.id}`)}
+            emptyState={
+              <p className="text-muted">
+                {emptyBecauseOfOpenOnly
+                  ? "No open Pain Points. Untick Open only to include rejected, duplicate, addressed and closed ones."
+                  : painPoints.length > 0
+                    ? "No Pain Points match these filters."
+                    : "No Pain Points recorded for this project yet."}
+              </p>
+            }
           />
-          <FilterCheckbox
-            label="Only intentional limitations" checked={onlyIntentional}
-            onChange={(next) => { setOnlyIntentional(next); if (next) setHideIntentional(false); }}
-          />
-          <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
-        </FilterPanel>
-      </div>
+      </ListPageLayout>
 
       {creating && (
         <PainPointFormModal
+          projectId={projectId}
           types={types}
+          scoring={scheme && scoringTargets?.can_score ? { scheme, targets: scoringTargets.available_targets } : undefined}
           error={createError}
           onCancel={() => { setCreating(false); setCreateError(null); }}
-          onSave={async (values: PainPointFieldValues) => {
+          onSave={async (values: PainPointFieldValues, quickLinks, tags) => {
             setCreateError(null);
             try {
-              await projectPainPointApi.create(projectId, values);
+              const created = await projectPainPointApi.create(projectId, values);
               showToast("Pain Point created.");
               setCreating(false);
+              await commitQuickLinks(created.id, quickLinks);
+              await commitTags(created.id, tags);
               await reloadPainPoints();
             } catch (err) {
               setCreateError(toErrorMessage(err, "Could not create Pain Point."));

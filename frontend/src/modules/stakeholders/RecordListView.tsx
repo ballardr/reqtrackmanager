@@ -19,33 +19,63 @@
  * `columnsAfterScope` slot the kind's own columns around them.
  *
  * A kind can add its own filters (`extraFilters`) and narrow `records` before
- * passing them in (Stakeholders do both for groups, Phase 3c).
+ * passing them in. A list whose records are created elsewhere (the People page's "New" menu) omits
+ * `onCreate`/`renderCreateModal`: it then shows no New button and no create form.
  *
- * Per-project visibility (Phase 3b): a page that lets the project hide org
+ * Per-project visibility: a page that lets the project hide org
  * records passes `onIncludeHiddenChange` for a "Show hidden" filter and
  * `onShowHidden`, which adds a Visibility column to a hidden row stating who
  * hid it and offering "Show". A hidden row is not openable (the project API
  * treats a hidden record as absent), so `onOpen` is skipped for it.
  */
-import { useState, type ReactNode } from "react";
+import type { CollectedLink } from "../../api/artefactLinks";
+import { useState, type HTMLAttributes, type ReactNode } from "react";
 
 import type { BadgeTone } from "../../api/types";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterBadge } from "../../components/FilterBadge";
+import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ListPageLayout } from "../../components/ListPageLayout";
+import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
+import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
+import { TagFilterField } from "../../components/TagFilterField";
+import type { ProjectScopeState } from "../../hooks/useProjectScope";
+import type { TagFilterState } from "../../hooks/useTagFilter";
 import { toErrorMessage } from "../../context/ToastContext";
 import { HIDDEN_SOURCE_LABEL, type HiddenSource } from "./types";
+import { Badge } from "../../components/Badge";
 
 /** What the list needs of any record kind. */
+/** The page-level header a list owns when it is a whole page: its title, actions and anything above the table. */
+export interface RecordListPage {
+  title: ReactNode;
+  /** Replaces the list's own New button and toolbar when given. */
+  actions?: ReactNode;
+  /** A tab strip shown under the title; the list column is its panel (`contentProps`). */
+  tabs?: ReactNode;
+  contentProps?: HTMLAttributes<HTMLDivElement>;
+  /** Chips or a switcher shown above the table in the list column. */
+  above?: ReactNode;
+}
+
 export interface ListedRecord {
   id: string;
   name: string;
+  /** The record's code (`PER-001`), shown as the Code column. */
+  unique_code: string;
+  /** Set for a record an organisation can own: qualifies the code of an organisation-owned one. */
+  organization_id?: string | null;
   /** Omit for a kind with no lifecycle. */
   status?: string;
   scope?: string;
   /** Set only by project endpoints, for an org record: whether the project hides it. */
   project_hidden?: boolean | null;
   hidden_source?: HiddenSource | null;
+  /** Set only on a row of a related project in a widened list. */
+  from_project_id?: string | null;
+  from_project_name?: string | null;
+  from_project_code?: string | null;
 }
 
 export function RecordListView<R extends ListedRecord, V>({
@@ -63,10 +93,14 @@ export function RecordListView<R extends ListedRecord, V>({
   typeName,
   typeLabel = "Type",
   searchText,
+  nameIcon,
+  page,
   columnsBeforeType,
   columnsAfterScope,
   toolbar,
   extraFilters,
+  tagFilter,
+  projectScope,
   includeArchived = false,
   onIncludeArchivedChange,
   includeHidden = false,
@@ -98,12 +132,20 @@ export function RecordListView<R extends ListedRecord, V>({
   typeLabel?: string;
   /** The text the search box matches against. */
   searchText: (record: R) => string;
+  /** Page-level header (title, actions, tabs) shown in the list column so the filter panel starts at the title (`ListPageLayout`); omit for a list embedded in another page. */
+  page?: RecordListPage;
+  /** A kind icon shown before each name (`PeopleKindIcon`); omit for a list that has one kind. */
+  nameIcon?: (record: R) => ReactNode;
   columnsBeforeType: DirectoryColumn<R>[];
   columnsAfterScope: DirectoryColumn<R>[];
   /** Extra controls beside the New button (e.g. "Add from org user"). */
   toolbar?: ReactNode;
   /** Extra `FilterField`s a kind adds to the filter panel (e.g. Stakeholders' group filter). */
   extraFilters?: ReactNode;
+  /** Offers the project's tag filter; the page keeps the state (`useTagFilter`) and sends it with its list read. */
+  tagFilter?: { projectId: string; filter: TagFilterState };
+  /** The project page's list scope; offers the scope filter and labels rows of related projects. */
+  projectScope?: ProjectScopeState;
   includeArchived?: boolean;
   /** Offered when passed; omit for a kind that cannot be archived. */
   onIncludeArchivedChange?: (next: boolean) => void;
@@ -113,16 +155,17 @@ export function RecordListView<R extends ListedRecord, V>({
   /** Re-shows a hidden record in this project (the Visibility cell's "Show" action). */
   onShowHidden?: (record: R) => void;
   onOpen: (record: R) => void;
-  /** Resolves on success; a rejection keeps the modal open and shows its message. */
-  onCreate: (values: V) => Promise<void>;
+  /** Resolves on success; a rejection keeps the modal open and shows its message. Omit (with `renderCreateModal`) when records are created elsewhere. */
+  onCreate?: (values: V, quickLinks: CollectedLink[], tags: string[]) => Promise<void>;
   /** Renders the create form; `onSave` is already wired to `onCreate` and the error state. */
-  renderCreateModal: (props: { scopeLabel: string; error: string | null; onCancel: () => void; onSave: (values: V) => void }) => ReactNode;
+  renderCreateModal?: (props: { scopeLabel: string; error: string | null; onCancel: () => void; onSave: (values: V, quickLinks?: CollectedLink[], tags?: string[]) => void }) => ReactNode;
 }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const canCreate = !!onCreate && !!renderCreateModal;
 
   const typeNames = typeName ? Array.from(new Set(records.map(typeName).filter((n): n is string => !!n))).sort() : [];
   const filtered = records.filter((r) => {
@@ -133,7 +176,8 @@ export function RecordListView<R extends ListedRecord, V>({
   });
 
   const columns: DirectoryColumn<R>[] = [
-    { key: "name", label: "Name", render: (r) => r.name },
+    { key: "name", label: "Name", render: (r) => <>{nameIcon && <span className="record-name-icon">{nameIcon(r)}</span>}{r.name}<ProjectScopeLabel row={r} /></> },
+    { key: "code", label: "Code", render: (r) => <span className="text-muted"><ScopedRecordCode record={r} /></span> },
     ...columnsBeforeType,
     ...(typeName
       ? [{
@@ -158,7 +202,7 @@ export function RecordListView<R extends ListedRecord, V>({
           render: (r: R) =>
             r.project_hidden && r.hidden_source ? (
               <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
-                <span className="badge">{HIDDEN_SOURCE_LABEL[r.hidden_source]}</span>
+                <Badge>{HIDDEN_SOURCE_LABEL[r.hidden_source]}</Badge>
                 <button className="btn" aria-label={`Show ${r.name} in this project`} onClick={() => onShowHidden(r)}>
                   Show
                 </button>
@@ -179,23 +223,12 @@ export function RecordListView<R extends ListedRecord, V>({
       : []),
   ];
 
-  return (
-    <div className="stack">
-      <div className="row" style={{ gap: "0.5rem", alignSelf: "flex-start" }}>
-        <button className="btn btn-primary" onClick={() => setCreating(true)}>
-          {newLabel ?? `New ${noun}`}
-        </button>
-        {toolbar}
-      </div>
-      <div className="side-grid">
-        <DirectoryTable
-          ariaLabel={ariaLabel}
-          columns={columns}
-          rows={filtered}
-          rowKey={(r) => r.id}
-          onRowClick={(r) => { if (!r.project_hidden) onOpen(r); }}
-          emptyState={<p className="text-muted">{emptyText}</p>}
-        />
+  const newButton = canCreate && (
+    <button className="btn btn-primary" onClick={() => setCreating(true)}>
+      {newLabel ?? `New ${noun}`}
+    </button>
+  );
+  const filterPanel = (
         <FilterPanel
           sectionKey={sectionKey} total={filtered.length}
           search={search} onSearchChange={setSearch} searchPlaceholder={`Search ${noun}s…`} searchAriaLabel={`Search ${ariaLabel}`}
@@ -221,6 +254,8 @@ export function RecordListView<R extends ListedRecord, V>({
             </FilterField>
           )}
           {extraFilters}
+          {projectScope && <ProjectScopeFilter scope={projectScope} />}
+          {tagFilter && <TagFilterField projectId={tagFilter.projectId} filter={tagFilter.filter} />}
           {onIncludeArchivedChange && (
             <FilterCheckbox label="Show archived" checked={includeArchived} onChange={onIncludeArchivedChange} />
           )}
@@ -228,17 +263,55 @@ export function RecordListView<R extends ListedRecord, V>({
             <FilterCheckbox label="Show hidden" checked={includeHidden} onChange={onIncludeHiddenChange} />
           )}
         </FilterPanel>
-      </div>
+  );
+  const table = (
+        <DirectoryTable
+          ariaLabel={ariaLabel}
+          columns={columns}
+          rows={filtered}
+          rowKey={(r) => r.id}
+          onRowClick={(r) => { if (!r.project_hidden) onOpen(r); }}
+          emptyState={<p className="text-muted">{emptyText}</p>}
+        />
+  );
 
-      {creating &&
+  return (
+    <div className="stack">
+      {page ? (
+        <ListPageLayout
+          title={page.title}
+          actions={page.actions ?? ((newButton || toolbar) && <div className="row" style={{ gap: "0.5rem", alignSelf: "flex-start" }}>{newButton}{toolbar}</div>)}
+          tabs={page.tabs}
+          contentProps={page.contentProps}
+          filter={filterPanel}
+        >
+          {page.above}
+          {table}
+        </ListPageLayout>
+      ) : (
+        <>
+          {(canCreate || toolbar) && (
+            <div className="row" style={{ gap: "0.5rem", alignSelf: "flex-start" }}>
+              {newButton}
+              {toolbar}
+            </div>
+          )}
+          <div className="side-grid">
+            {table}
+            {filterPanel}
+          </div>
+        </>
+      )}
+
+      {creating && onCreate && renderCreateModal &&
         renderCreateModal({
           scopeLabel,
           error: createError,
           onCancel: () => { setCreating(false); setCreateError(null); },
-          onSave: async (values) => {
+          onSave: async (values, quickLinks = [], tags = []) => {
             setCreateError(null);
             try {
-              await onCreate(values);
+              await onCreate(values, quickLinks, tags);
               setCreating(false);
             } catch (err) {
               setCreateError(toErrorMessage(err, `Could not create ${noun}.`));

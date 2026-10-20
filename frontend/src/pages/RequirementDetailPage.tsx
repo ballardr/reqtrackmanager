@@ -1,11 +1,13 @@
-import { Activity as ActivityIcon, ArchiveRestore, CheckCircle, FolderOpen, GitPullRequest, Plus, Table as TableIcon, Trash2 } from "lucide-react";
+import { useMutation } from "../hooks/useMutation";
+import { useRecordCode } from "../hooks/useRecordCode";
+import { Bell, BellOff, CheckCircle, FolderOpen, GitPullRequest, Plus, Trash2 } from "lucide-react";
+import { RecordCode } from "../components/RecordCode";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type {
   ActionTypeDefinition,
-  ChangeEntry,
   Comment,
   CustomFieldDefinition,
   FileAsset,
@@ -15,7 +17,6 @@ import type {
   ProjectStage,
   Requirement,
   RequirementAction,
-  RequirementLevel,
   RequirementReviewOutcome,
   PrincipalRef,
   RequirementVersionEntry,
@@ -28,13 +29,14 @@ import {
   REQUIREMENT_STATUS_LABEL,
   principalRef,
   REQUIREMENT_STATUS_TONE,
-  savedPrincipalDisplay,
 } from "../api/types";
-import { ActivityPanel } from "../components/ActivityPanel";
 import { ArtefactLinksPanel, type LinksChangeRequestMode } from "../components/ArtefactLinksPanel";
+import { RecordActivity } from "../components/RecordActivity";
+import { RecordTags } from "../components/RecordTags";
 import { PrincipalBadge } from "../components/PrincipalBadge";
 import { WatchingGroupsPanel } from "../components/WatchingGroupsPanel";
-import { PrincipalFormField } from "../components/PrincipalFormField";
+import { RequirementFields } from "../components/RequirementFields";
+import { EMPTY_REQUIREMENT_FIELDS, type RequirementFieldValues } from "../components/requirementFieldValues";
 import { CommentThread } from "../components/CommentThread";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
@@ -44,15 +46,23 @@ import { Modal } from "../components/Modal";
 import { Popover } from "../components/Popover";
 import { ResourcePickerModal } from "../components/ResourcePickerModal";
 import { Spinner } from "../components/Spinner";
-import { SubscribeButton } from "../components/SubscribeButton";
+import { RecordHeader } from "../components/RecordHeader";
+import { useConfirmedAction } from "../components/useConfirmedAction";
 import { useAuth } from "../context/AuthContext";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
 import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
-import { useUiPreference } from "../hooks/useUiPreference";
 import { getInstalledModule } from "../modules/registry";
+import { Badge } from "../components/Badge";
+import { TextAreaField, TextField } from "../components/FormFields";
+import { LabeledSelect } from "../components/LabeledSelect";
+import { FormActions } from "../components/FormActions";
+import { ActionFields } from "../components/ActionFields";
+import { FormGrid, FormGridFull } from "../components/FormGrid";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { DetailCard } from "../components/DetailCard";
 
 /**
  * Requirement detail view: direct editing while unlocked, a discussion
@@ -65,14 +75,11 @@ import { getInstalledModule } from "../modules/registry";
  * Links aren't gated by `is_locked` — they're metadata about the
  * requirement, not its own governed content, *by default* — a project (or
  * an org-wide force, minus a per-project exemption) can opt into gating
- * link add/remove too (platform review 2026-09, Phase 8:
+ * link add/remove too (platform review 2026-09:
  * `Project.require_change_request_for_approved_links`/
  * `Organization.force_require_change_request_for_approved_links`), routing
  * through `ADD_LINK`/`REMOVE_LINK` change requests the same way actions
- * already do. Actions *are* always gated once locked (2026-08 UX audit
- * roadmap item 514, a deliberate reversal of this page's own former
- * "actions are metadata too" stance, extended by Phase 8 to the remove
- * side too — `unlink_action` had no lock check at all until then): once
+ * already do. Actions *are* always gated once locked: once
  * locked, adding, linking, or removing one requires an `ADD_ACTION`/
  * `REMOVE_ACTION` change request instead of the direct endpoint, the same
  * change-request-only-once-locked rule the requirement's own fields
@@ -80,7 +87,9 @@ import { getInstalledModule } from "../modules/registry";
  * `docs/decisions.md` for the reasoning.
  */
 export function RequirementDetailPage() {
+  const run = useMutation();
   const strings = useStrings();
+  const recordCode = useRecordCode();
   const { projectId, requirementId } = useParams<{ projectId: string; requirementId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -92,25 +101,13 @@ export function RequirementDetailPage() {
   // approval as a Project Manager privilege specifically, not shared with
   // Administrator — the same split `decide_change_request` and
   // `update_requirement`'s own status=approved branch already enforce
-  // server-side (2026-08 UX audit roadmap, "No requirement approval action").
+  // server-side.
   const canApprove = myRoles.includes("project_manager");
   const canEdit = canArchive || myRoles.includes("stakeholder");
   const [requirement, setRequirement] = useState<Requirement | null>(null);
   const [history, setHistory] = useState<RequirementVersionEntry[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
-  const [form, setForm] = useState({
-    name: "",
-    reasoning: "",
-    clarification: "",
-    description: "",
-    changeNote: "",
-    targetStageId: "",
-    level: "requirement" as RequirementLevel,
-    reviewDate: "",
-    reviewLeadDays: "",
-    owner: null as PrincipalRef | null,
-    reviewer: null as PrincipalRef | null,
-  });
+  const [form, setForm] = useState<RequirementFieldValues & { changeNote: string }>({ ...EMPTY_REQUIREMENT_FIELDS, changeNote: "" });
   // Guards `form` against `reload()` — called after every unrelated
   // mutation on this page (posting a comment, uploading a file, linking an
   // action, ...) and not awaited by its callers, so it can still be
@@ -132,28 +129,17 @@ export function RequirementDetailPage() {
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>([]);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [stages, setStages] = useState<ProjectStage[]>([]);
-  const [activity, setActivity] = useState<ChangeEntry[]>([]);
-  // History/Activity merged into one card with a view toggle (2026-08 UX
-  // audit roadmap item 516) — server-synced per-user via `useUiPreference`,
-  // the same mechanism `useViewMode` (tile/list) already uses, so the
-  // user's last-selected view becomes their remembered default. Defaults to
-  // "activity" (the broader feed) rather than "versions", since Activity
-  // was the one of the two previously visible in the persistent sidebar
-  // regardless of scroll position — a judgment call, see docs/decisions.md.
-  const [historyViewRaw, setHistoryView] = useUiPreference<string>("requirement_detail_history_view", "activity");
-  const historyView: "versions" | "activity" = historyViewRaw === "versions" ? "versions" : "activity";
   const [reviewOutcome, setReviewOutcome] = useState<RequirementReviewOutcome>("met");
   const [reviewComment, setReviewComment] = useState("");
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
-  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   // Organisation id, needed to browse that org's shared resources (style
   // guide "Pattern: resource picker dialog") — set as soon as the project
   // itself resolves, independent of whether the org-member-only calls
   // right after it (org users, link types) succeed for this user.
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [showResourcePicker, setShowResourcePicker] = useState(false);
-  // Platform review 2026-09, Phase 8 — the project's own
+  // The project's own
   // `require_change_request_for_approved_links` plus the org's
   // `force_require_change_request_for_approved_links` (minus this
   // project's `exempt_from_org_link_lock`) determine whether link
@@ -167,7 +153,7 @@ export function RequirementDetailPage() {
 
   // --- Traceability links (C-G-09) ------------------------------------
   // Links are shown and edited by the shared Links panel in the aside
-  // (`ArtefactLinksPanel`, Phase 6 of the October 2026 platform enhancements) —
+  // (`ArtefactLinksPanel`) —
   // requirement-to-requirement, module-origin (Decisions, Pain Points,
   // Compliance, ...) and cross-project links alike. This page only decides
   // whether link changes must go through a change request (`linksLockedForCR`,
@@ -210,12 +196,12 @@ export function RequirementDetailPage() {
   const [newActionAssignee, setNewActionAssignee] = useState<PrincipalRef | null>(null);
   const [newActionDueDate, setNewActionDueDate] = useState("");
   // Once locked, both flows above route through an ADD_ACTION change
-  // request instead of the direct endpoint (item 514) — same "reason for
+  // request instead of the direct endpoint — same "reason for
   // change" field every other change request requires.
   const [addActionReason, setAddActionReason] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionToUnlink, setActionToUnlink] = useState<RequirementAction | null>(null);
-  // Platform review 2026-09, Phase 8 — only rendered/required once
+  // Only rendered/required once
   // `requirement.is_locked` (unlinking an action is unconditionally gated
   // once locked, unlike links above).
   const [unlinkActionReason, setUnlinkActionReason] = useState("");
@@ -227,14 +213,13 @@ export function RequirementDetailPage() {
 
   async function reload() {
     if (!projectId || !requirementId) return;
-    const [req, hist, comm, fls, defs, stgs, act, actTypes, linkedActs, allActs] = await Promise.all([
+    const [req, hist, comm, fls, defs, stgs, actTypes, linkedActs, allActs] = await Promise.all([
       api.get<Requirement>(`/api/v1/projects/${projectId}/requirements/${requirementId}`),
       api.get<RequirementVersionEntry[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/history`),
       api.get<Comment[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/comments`),
       api.get<FileAsset[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/files`),
       api.get<CustomFieldDefinition[]>(`/api/v1/projects/${projectId}/custom-fields?entity_kind=requirement`),
       api.get<ProjectStage[]>(`/api/v1/projects/${projectId}/stages`),
-      api.get<ChangeEntry[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/activity`),
       api.get<ActionTypeDefinition[]>(`/api/v1/projects/${projectId}/action-types`),
       api.get<RequirementAction[]>(`/api/v1/projects/${projectId}/requirements/${requirementId}/actions`),
       api.get<RequirementAction[]>(`/api/v1/projects/${projectId}/actions`),
@@ -248,7 +233,6 @@ export function RequirementDetailPage() {
     // shares formDirtyRef's guard against the same reload() race.
     if (!formDirtyRef.current) setCustomFieldValues(req.custom_fields);
     setStages(stgs);
-    setActivity(act);
     setProjectActionTypes(actTypes);
     setLinkedActions(linkedActs);
     setProjectActions(allActs);
@@ -275,18 +259,18 @@ export function RequirementDetailPage() {
   }
 
   async function uploadFile(file: File) {
-    await api.postFile(`/api/v1/projects/${projectId}/requirements/${requirementId}/files`, file);
+    if (!(await run(() => api.postFile(`/api/v1/projects/${projectId}/requirements/${requirementId}/files`, file), "upload", "file"))) return;
     reload();
   }
 
   async function removeFile(fileId: string) {
-    await api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}/files/${fileId}`);
+    if (!(await run(() => api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}/files/${fileId}`), "remove", "file"))) return;
     reload();
   }
 
   /** Links one or more already-uploaded organisation shared resources onto
    * this requirement, via the `POST .../files/link` endpoint (previously
-   * unused from the frontend — see docs/ux-audit-2026-08.md "Shared org
+   * unused from the frontend — "Shared org
    * resources have almost no way to consume them"). One request per file
    * id, sequentially — the endpoint itself only accepts one id at a time. */
   async function linkOrgResources(fileIds: string[]) {
@@ -358,7 +342,7 @@ export function RequirementDetailPage() {
     }
   }
 
-  /** Platform review 2026-09, Phase 8 — `unlink_action` previously had no
+  /** `unlink_action` previously had no
    * lock check at all, an asymmetry with the already-gated add side (item
    * 514); unconditional across every project, unlike `removeLink` above
    * which only gates when `linksLockedForCR`. */
@@ -375,10 +359,7 @@ export function RequirementDetailPage() {
     reload();
   }
 
-  useEffect(() => {
-    reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, requirementId]);
+  useLoadOnChange(reload, [projectId, requirementId]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -394,7 +375,7 @@ export function RequirementDetailPage() {
       try {
         const users = await api.get<OrgUser[]>(`/api/v1/orgs/${proj.organization_id}/users`);
         setOrgUsers(users);
-        // Platform review 2026-09, Phase 8 — `OrganizationOut.
+        // `OrganizationOut.
         // force_require_change_request_for_approved_links` is readable by
         // any org member (unlike most other org policy toggles), so this
         // shares the same try/catch as the org-member-only calls above.
@@ -409,7 +390,7 @@ export function RequirementDetailPage() {
     })();
   }, [projectId]);
 
-  // Platform review 2026-09, Phase 8 — mirrors `services.requirements.
+  // Mirrors `services.requirements.
   // requires_change_request_for_links`'s resolution exactly: the project's
   // own opt-in always wins when set; otherwise the org's force applies
   // unless this project is marked exempt.
@@ -419,7 +400,7 @@ export function RequirementDetailPage() {
   );
   const linksLockedForCR = !!requirement?.is_locked && requiresCRForLinks;
 
-  /** Platform review 2026-09, Phase 8 — once `linksLockedForCR`, the Links panel
+  /** Once `linksLockedForCR`, the Links panel
    * proposes link changes as `add_link`/`remove_link` change requests instead of
    * calling the link endpoints (the same branch `linkExistingAction` below takes
    * for `add_action`). `undefined` when links are not locked. An `add_link` request
@@ -456,7 +437,6 @@ export function RequirementDetailPage() {
         owner: form.owner,
         target_stage_id: form.targetStageId,
         level: form.level,
-        keywords: requirement.keywords,
         custom_fields: customFieldValues,
         change_note: form.changeNote,
         review_date: form.reviewDate || null,
@@ -464,6 +444,7 @@ export function RequirementDetailPage() {
         reviewer: form.reviewer,
       });
       formDirtyRef.current = false;
+      showToast(strings.mutation.success("{requirement}", strings.mutation.past.save));
       reload();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : strings.common.error);
@@ -471,7 +452,6 @@ export function RequirementDetailPage() {
   }
 
   async function archive() {
-    setArchiveDialogOpen(false);
     try {
       await api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}`);
       showToast(strings.requirements.archived);
@@ -484,8 +464,7 @@ export function RequirementDetailPage() {
   // Restore: no `ConfirmDialog` (unlike archive above) — mirrors
   // `ProjectAdminPage.tsx`'s existing unarchive button, which also fires
   // immediately, since restoring is reversible again (archive it right
-  // back) rather than a Tier-1-confirmed action (2026-08 UX audit roadmap:
-  // unarchive endpoint + Restore button).
+  // back) rather than a Tier-1-confirmed action.
   async function restore() {
     try {
       await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/unarchive`);
@@ -534,6 +513,7 @@ export function RequirementDetailPage() {
         comment: reviewComment || null,
       });
       setReviewComment("");
+      showToast(strings.mutation.success("review", strings.mutation.past.submit));
       reload();
     } catch (err) {
       setReviewError(err instanceof Error ? err.message : strings.common.error);
@@ -542,11 +522,7 @@ export function RequirementDetailPage() {
 
   async function toggleSubscription() {
     if (!requirement) return;
-    if (requirement.is_subscribed) {
-      await api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}/subscription`);
-    } else {
-      await api.put(`/api/v1/projects/${projectId}/requirements/${requirementId}/subscription`);
-    }
+    if (!(await run(() => (requirement.is_subscribed ? api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}/subscription`) : api.put(`/api/v1/projects/${projectId}/requirements/${requirementId}/subscription`)), { failure: "Could not update the subscription." }))) return;
     reload();
   }
 
@@ -562,16 +538,12 @@ export function RequirementDetailPage() {
   }
 
   async function removeCommentAttachment(commentId: string, fileId: string) {
-    await api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}/comments/${commentId}/files/${fileId}`);
+    if (!(await run(() => api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}/comments/${commentId}/files/${fileId}`), "remove", "comment attachment"))) return;
     reload();
   }
 
   async function toggleReaction(commentId: string, reacted: boolean) {
-    if (reacted) {
-      await api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}/comments/${commentId}/reaction`);
-    } else {
-      await api.put(`/api/v1/projects/${projectId}/requirements/${requirementId}/comments/${commentId}/reaction`);
-    }
+    if (!(await run(() => (reacted ? api.delete(`/api/v1/projects/${projectId}/requirements/${requirementId}/comments/${commentId}/reaction`) : api.put(`/api/v1/projects/${projectId}/requirements/${requirementId}/comments/${commentId}/reaction`)), { failure: "Could not update the reaction." }))) return;
     reload();
   }
 
@@ -580,10 +552,24 @@ export function RequirementDetailPage() {
     reload();
   }
 
+  const archiveAction = useConfirmedAction(
+    requirement && {
+      label: requirement.is_archived ? strings.requirements.restore : strings.requirements.archive,
+      danger: !requirement.is_archived,
+      hidden: !canArchive,
+      immediate: requirement.is_archived,
+      title: strings.requirements.archiveTitle,
+      message: strings.requirements.archiveConfirm,
+      confirmLabel: strings.requirements.archive,
+      onConfirm: requirement.is_archived ? restore : archive,
+    },
+  );
+
   if (!requirement) return <Spinner />;
 
   return (
     <DetailLayout
+      activity={projectId && requirementId ? <RecordActivity projectId={projectId} artefactType="requirement" artefactId={requirementId} refreshToken={linksRefreshToken} /> : undefined}
       contained={false}
       aside={
         projectId && requirementId ? (
@@ -603,70 +589,60 @@ export function RequirementDetailPage() {
         ) : null
       }
     >
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <h1 style={{ margin: 0 }}>
-          {requirement.unique_code} — {requirement.name}
-        </h1>
-        <div className="row">
-          <SubscribeButton subscribed={requirement.is_subscribed} onToggle={toggleSubscription} />
-          {canApprove && requirement.requires_approval && (
-            <button className="btn btn-primary" onClick={approveRequirement}>
-              <CheckCircle size={14} /> {strings.requirements.approve}
-            </button>
-          )}
-          {/* Only offered once the {requirement} is actually locked — a
-              change request against a still-draft/reviewed one is rejected
-              server-side (2026-08 UX audit roadmap, "No requirement approval
-              action; change requests can target draft requirements"); an
-              unlocked {requirement} is edited directly instead. */}
-          {requirement.is_locked && (
-            <Link className="btn" to={`/projects/${projectId}/change-requests?requirement=${requirementId}`}>
-              <GitPullRequest size={14} /> {strings.requirements.makeChangeRequest}
-            </Link>
-          )}
-          {canArchive && requirement.status === "approved" && !requirement.is_completed && (
-            <button className="btn" onClick={markCompleted}>
-              {strings.requirements.markCompleted}
-            </button>
-          )}
-          {canArchive && requirement.is_completed && (
-            <button className="btn" onClick={unmarkCompleted}>
-              {strings.requirements.unmarkCompleted}
-            </button>
-          )}
-          {canArchive && !requirement.is_archived && (
-            <button className="btn btn-danger" onClick={() => setArchiveDialogOpen(true)}>
-              {strings.requirements.archive}
-            </button>
-          )}
-          {canArchive && requirement.is_archived && (
-            <button className="btn" onClick={restore}>
-              <ArchiveRestore size={14} /> {strings.requirements.restore}
-            </button>
-          )}
-        </div>
-      </div>
+      <RecordHeader
+        recordLabel={strings.requirements.recordLabel}
+        title={requirement.name}
+        code={requirement.unique_code}
+        tags={projectId && requirementId ? <RecordTags projectId={projectId} artefactType="requirement" artefactId={requirementId} /> : undefined}
+        badges={
+          <>
+            {requirement.is_archived && <Badge>{strings.requirements.archivedBadge}</Badge>}
+            {requirement.is_subscribed && <Badge tone="info">{strings.requirements.subscribed}</Badge>}
+          </>
+        }
+        actions={[
+          {
+            label: requirement.is_subscribed ? strings.requirements.unsubscribe : strings.requirements.subscribe,
+            icon: requirement.is_subscribed ? <BellOff /> : <Bell />,
+            onSelect: toggleSubscription,
+          },
+          archiveAction.item,
+        ]}
+        transitions={
+          <>
+            {canApprove && requirement.requires_approval && (
+              <button className="btn btn-primary" onClick={approveRequirement}>
+                <CheckCircle /> {strings.requirements.approve}
+              </button>
+            )}
+            {/* Only offered once the {requirement} is actually locked — a
+                change request against a still-draft/reviewed one is rejected
+                server-side; an
+                unlocked {requirement} is edited directly instead. */}
+            {requirement.is_locked && (
+              <Link className="btn" to={`/projects/${projectId}/change-requests?requirement=${requirementId}`}>
+                <GitPullRequest /> {strings.requirements.makeChangeRequest}
+              </Link>
+            )}
+            {canArchive && requirement.status === "approved" && !requirement.is_completed && (
+              <button className="btn" onClick={markCompleted}>
+                {strings.requirements.markCompleted}
+              </button>
+            )}
+            {canArchive && requirement.is_completed && (
+              <button className="btn" onClick={unmarkCompleted}>
+                {strings.requirements.unmarkCompleted}
+              </button>
+            )}
+          </>
+        }
+      />
+      {archiveAction.dialog}
 
       {projectId && (
         <WatchingGroupsPanel
           recordPath={`/api/v1/projects/${projectId}/requirements/${requirementId}`}
           organizationId={organizationId ?? undefined} projectId={projectId} canManage={canArchive}
-        />
-      )}
-
-      {requirement.is_archived && (
-        <div className="badge" style={{ alignSelf: "flex-start" }}>
-          {strings.requirements.archivedBadge}
-        </div>
-      )}
-
-      {archiveDialogOpen && (
-        <ConfirmDialog
-          title={strings.requirements.archiveTitle}
-          message={strings.requirements.archiveConfirm}
-          confirmLabel={strings.requirements.archive}
-          onConfirm={archive}
-          onCancel={() => setArchiveDialogOpen(false)}
         />
       )}
 
@@ -677,11 +653,11 @@ export function RequirementDetailPage() {
           second column to hold. */}
       <div className="stack">
       {requirement.is_locked || !canEdit ? (
-        <div className="card stack">
+        <DetailCard>
           {requirement.is_locked && (
-            <div className="badge" style={{ alignSelf: "flex-start" }}>
+            <Badge>
               {strings.requirements.locked} — {strings.requirements.lockedNotice}
-            </div>
+            </Badge>
           )}
           <div>
             <div className="text-muted">{strings.requirements.reasoning}</div>
@@ -700,216 +676,97 @@ export function RequirementDetailPage() {
             </div>
           )}
           <div className="row">
-            <span className={`badge badge--${REQUIREMENT_STATUS_TONE[requirement.status]}`}>
+            <Badge tone={REQUIREMENT_STATUS_TONE[requirement.status]}>
               {strings.requirements.status}: {REQUIREMENT_STATUS_LABEL[requirement.status]}
-            </span>
+            </Badge>
             {/* C-G-11: completion is a separate overlay marker from lifecycle
                 status — rendered as its own badge rather than merged into the
                 status badge above, since the two are now independent
                 concepts (a completed requirement's status badge still reads
                 "Approved"). */}
-            {requirement.is_completed && <span className="badge">{strings.requirements.completedBadge}</span>}
-            <span className="badge">Target: {stageName(requirement.target_stage_id)}</span>
-            <span className="badge">Level: {REQUIREMENT_LEVEL_LABEL[requirement.level]}</span>
-            {requirement.review_date && <span className="badge">{strings.requirements.reviewDate}: {requirement.review_date}</span>}
-            <span className="badge">
+            {requirement.is_completed && <Badge>{strings.requirements.completedBadge}</Badge>}
+            <Badge>Target: {stageName(requirement.target_stage_id)}</Badge>
+            <Badge>Level: {REQUIREMENT_LEVEL_LABEL[requirement.level]}</Badge>
+            {requirement.review_date && <Badge>{strings.requirements.reviewDate}: {requirement.review_date}</Badge>}
+            <Badge>
               {strings.requirements.owner}: <PrincipalBadge principal={requirement.owner} />
-            </span>
-            {requirement.keywords.map((k) => (
-              <span key={k} className="badge">
-                {k}
-              </span>
-            ))}
+            </Badge>
           </div>
           <CustomFieldsForm definitions={customFieldDefs} values={customFieldValues} disabled onChange={() => {}} />
-        </div>
+        </DetailCard>
       ) : (
-        <div className="card stack">
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.requirements.name}
-            <input className="input" value={form.name} onChange={(e) => updateForm((f) => ({ ...f, name: e.target.value }))} />
-          </label>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.requirements.reasoning}
-            <textarea
-              className="input"
-              rows={3}
-              value={form.reasoning}
-              onChange={(e) => updateForm((f) => ({ ...f, reasoning: e.target.value }))}
+        <DetailCard>
+          <FormGrid minColumn="18rem">
+            <RequirementFields
+              values={form}
+              onChange={(next) => updateForm((f) => ({ ...f, ...next }))}
+              stages={stages}
+              orgUsers={orgUsers}
+              organizationId={organizationId ?? undefined}
+              projectId={projectId}
+              saved={{ owner: requirement.owner, reviewer: requirement.reviewer }}
+              ownerRequired
             />
-          </label>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.requirements.clarification}
-            <textarea
-              className="input"
-              rows={2}
-              value={form.clarification}
-              onChange={(e) => updateForm((f) => ({ ...f, clarification: e.target.value }))}
-            />
-          </label>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.requirements.description}
-            <textarea
-              className="input"
-              rows={2}
-              value={form.description}
-              onChange={(e) => updateForm((f) => ({ ...f, description: e.target.value }))}
-            />
-          </label>
-          <div className="row">
-            <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-              {strings.requirements.targetVersion}
-              <select
-                className="input"
-                value={form.targetStageId}
-                onChange={(e) => updateForm((f) => ({ ...f, targetStageId: e.target.value }))}
-              >
-                {stages.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-              {strings.requirements.level}
-              <select
-                className="input"
-                value={form.level}
-                onChange={(e) => updateForm((f) => ({ ...f, level: e.target.value as RequirementLevel }))}
-              >
-                <option value="requirement">{REQUIREMENT_LEVEL_LABEL.requirement}</option>
-                <option value="recommended">{REQUIREMENT_LEVEL_LABEL.recommended}</option>
-                <option value="optional">{REQUIREMENT_LEVEL_LABEL.optional}</option>
-              </select>
-            </label>
-          </div>
-          <div className="row">
-            <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-              {strings.requirements.reviewDate}
-              <input
-                className="input" type="date" value={form.reviewDate}
-                onChange={(e) => updateForm((f) => ({ ...f, reviewDate: e.target.value }))}
+            <FormGridFull>
+              <CustomFieldsForm
+                definitions={customFieldDefs}
+                values={customFieldValues}
+                onChange={(fieldId, value) => {
+                  formDirtyRef.current = true;
+                  setCustomFieldValues((v) => ({ ...v, [fieldId]: value }));
+                }}
               />
-            </label>
-            <label className="stack" style={{ gap: "0.25rem", flex: 1 }}>
-              {strings.requirements.reviewLeadDays}
-              <input
-                className="input" type="number" min={0} value={form.reviewLeadDays}
-                onChange={(e) => updateForm((f) => ({ ...f, reviewLeadDays: e.target.value }))}
+            </FormGridFull>
+            <FormGridFull>
+              <TextField helpNotNeeded
+                label={strings.requirements.changeNote}
+                placeholder={strings.requirements.changeNote}
+                value={form.changeNote}
+                onChange={(next) => updateForm((f) => ({ ...f, changeNote: next }))}
               />
-            </label>
-            <div style={{ flex: 1 }}>
-              <PrincipalFormField
-                label={strings.requirements.reviewer} orgUsers={orgUsers} organizationId={organizationId ?? undefined}
-                projectId={projectId} value={form.reviewer} display={savedPrincipalDisplay(form.reviewer, requirement.reviewer)}
-                onChange={(reviewer) => updateForm((f) => ({ ...f, reviewer }))}
-                ariaLabel={strings.requirements.reviewer} placeholder={strings.reviews.unassigned}
-              />
-            </div>
-          </div>
-          <PrincipalFormField
-            label={strings.requirements.owner} orgUsers={orgUsers} organizationId={organizationId ?? undefined}
-            projectId={projectId} value={form.owner} display={savedPrincipalDisplay(form.owner, requirement.owner)}
-            onChange={(owner) => updateForm((f) => ({ ...f, owner }))}
-            ariaLabel={strings.requirements.owner} placeholder={strings.reviews.unassigned} clearLabel="Clear"
-          />
-          <CustomFieldsForm
-            definitions={customFieldDefs}
-            values={customFieldValues}
-            onChange={(fieldId, value) => {
-              formDirtyRef.current = true;
-              setCustomFieldValues((v) => ({ ...v, [fieldId]: value }));
-            }}
-          />
-          <input
-            className="input"
-            placeholder={strings.requirements.changeNote}
-            value={form.changeNote}
-            onChange={(e) => updateForm((f) => ({ ...f, changeNote: e.target.value }))}
-          />
+            </FormGridFull>
+          </FormGrid>
           {saveError && <div style={{ color: "var(--color-danger)" }}>{saveError}</div>}
           <button className="btn btn-primary" onClick={save} disabled={!form.owner} style={{ alignSelf: "flex-start" }}>
             {strings.requirements.save}
           </button>
-        </div>
+        </DetailCard>
       )}
 
       {requirement.review_date && (
-        <div className="card stack">
-          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.reviewSection}</h2>
+        <DetailCard heading={strings.requirements.reviewSection}>
           <div className="row">
-            <span className="badge">{strings.requirements.reviewDate}: {requirement.review_date}</span>
-            <span className="badge">
+            <Badge>{strings.requirements.reviewDate}: {requirement.review_date}</Badge>
+            <Badge>
               {strings.requirements.reviewer}: <PrincipalBadge principal={requirement.reviewer} placeholder={strings.reviews.unassigned} />
-            </span>
+            </Badge>
           </div>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            {strings.requirements.recordReviewOutcome}
-            <select
-              className="input" value={reviewOutcome}
-              onChange={(e) => setReviewOutcome(e.target.value as RequirementReviewOutcome)}
-            >
-              <option value="met">{strings.requirements.reviewOutcomeMet}</option>
-              <option value="failed">{strings.requirements.reviewOutcomeFailed}</option>
-            </select>
-          </label>
+          <LabeledSelect helpNotNeeded
+            label={strings.requirements.recordReviewOutcome}
+            value={reviewOutcome}
+            onChange={(next) => setReviewOutcome(next as RequirementReviewOutcome)}
+            options={[{ value: "met", label: strings.requirements.reviewOutcomeMet }, { value: "failed", label: strings.requirements.reviewOutcomeFailed }]}
+            placeholder={null}
+          />
           {reviewOutcome === "failed" && (
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.requirements.reviewComment}
-              <textarea
-                className="input" rows={2} value={reviewComment}
-                onChange={(e) => setReviewComment(e.target.value)}
-              />
-            </label>
+            <TextAreaField helpNotNeeded
+              label={strings.requirements.reviewComment}
+              value={reviewComment}
+              onChange={setReviewComment}
+              rows={2}
+            />
           )}
           {reviewError && <div style={{ color: "var(--color-danger)" }}>{reviewError}</div>}
           <button className="btn btn-primary" onClick={submitReview} style={{ alignSelf: "flex-start" }}>
             {strings.requirements.submitReview}
           </button>
-        </div>
+        </DetailCard>
       )}
 
-      {/* History and Activity merged into one card with a view toggle
-          (2026-08 UX audit roadmap item 516) — "Version history" is
-          specifically this requirement's own approved version/status
-          transitions (the RequirementVersion ledger); "Activity" is the
-          broader audit-log feed covering everything that happened to it,
-          including but not limited to those same version changes. Both
-          renderings are kept, not one dropped in favour of the other — see
-          docs/ux-style-guide.md's "Pattern: view toggle" for the shape this
-          follows (a `useUiPreference`-backed toggle, same mechanism as
-          tile/list view elsewhere), and docs/decisions.md for why this
-          isn't literally the shared `ViewToggle` component (different
-          icon/label pair, not tile-vs-list). */}
-      <div className="card stack">
-        <div className="row" style={{ justifyContent: "space-between" }}>
-          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>
-            {historyView === "versions" ? strings.requirements.versionHistory : strings.requirements.activity}
-          </h2>
-          <div className="row" style={{ gap: "0.25rem" }}>
-            <button
-              className={`btn ${historyView === "versions" ? "btn-primary" : ""}`}
-              onClick={() => setHistoryView("versions")}
-              title={strings.requirements.versionHistory}
-              aria-label={strings.requirements.versionHistory}
-              aria-pressed={historyView === "versions"}
-            >
-              <TableIcon size={16} />
-            </button>
-            <button
-              className={`btn ${historyView === "activity" ? "btn-primary" : ""}`}
-              onClick={() => setHistoryView("activity")}
-              title={strings.requirements.activity}
-              aria-label={strings.requirements.activity}
-              aria-pressed={historyView === "activity"}
-            >
-              <ActivityIcon size={16} />
-            </button>
-          </div>
-        </div>
-        {historyView === "versions" ? (
-          <div style={{ overflowX: "auto" }}>
+      {/* The requirement's own version ledger stays in the body (a wide table never goes in the
+          aside); what happened to it, links included, is the aside's Activity tab. */}
+      <DetailCard heading={strings.requirements.versions}>
+        <div style={{ overflowX: "auto" }}>
           <table>
             <thead>
               <tr>
@@ -932,21 +789,18 @@ export function RequirementDetailPage() {
               ))}
             </tbody>
           </table>
-          </div>
-        ) : (
-          <ActivityPanel entries={activity} bare />
-        )}
-      </div>
-
-      <div className="card stack">
-        <div className="row" style={{ justifyContent: "space-between" }}>
-          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.attachments}</h2>
-          {!requirement.is_locked && organizationId && (
-            <button className="btn" onClick={() => setShowResourcePicker(true)}>
-              <FolderOpen size={14} /> {strings.resourcePicker.linkFromSharedResources}
-            </button>
-          )}
         </div>
+      </DetailCard>
+
+      <DetailCard heading={strings.requirements.attachments} action={
+        <>
+            {!requirement.is_locked && organizationId && (
+              <button className="btn" onClick={() => setShowResourcePicker(true)}>
+                <FolderOpen /> {strings.resourcePicker.linkFromSharedResources}
+              </button>
+            )}
+        </>
+      }>
         <FileAttachmentList
           files={files}
           onUpload={uploadFile}
@@ -954,7 +808,7 @@ export function RequirementDetailPage() {
           disabled={requirement.is_locked}
           emptyHint={strings.requirements.attachmentsLockedNotice}
         />
-      </div>
+      </DetailCard>
       {showResourcePicker && organizationId && (
         <ResourcePickerModal
           title={strings.resourcePicker.linkFromSharedResources}
@@ -970,76 +824,63 @@ export function RequirementDetailPage() {
         />
       )}
 
-      <div className="card stack">
-        <div className="row" style={{ justifyContent: "space-between" }}>
-          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.actionsSection}</h2>
-          <div className="row">
-            <button
-              ref={linkExistingActionTriggerRef}
-              className="btn"
-              onClick={() => {
-                setActionError(null);
-                setLinkExistingActionPopoverOpen((o) => !o);
-              }}
-            >
-              <Plus size={14} /> {strings.requirements.linkExistingAction}
-            </button>
-            <button
-              className="btn btn-primary"
-              onClick={() => {
-                setActionError(null);
-                setShowCreateAction(true);
-              }}
-            >
-              <Plus size={14} /> {strings.requirements.createAndLinkAction}
-            </button>
-          </div>
-          {linkExistingActionPopoverOpen && (
-            <Popover
-              anchorRef={linkExistingActionTriggerRef}
-              title={strings.requirements.linkExistingAction}
-              onClose={() => setLinkExistingActionPopoverOpen(false)}
-            >
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.requirements.linkExistingAction}
-                <select
-                  className="input" aria-label={strings.requirements.linkExistingAction}
-                  value={existingActionToLink} onChange={(e) => setExistingActionToLink(e.target.value)}
-                >
-                  <option value="">{strings.requirements.selectAnActionToLink}</option>
-                  {projectActions
+      <DetailCard heading={strings.requirements.actionsSection} action={
+        <>
+            <div className="row">
+              <button
+                ref={linkExistingActionTriggerRef}
+                className="btn"
+                onClick={() => {
+                  setActionError(null);
+                  setLinkExistingActionPopoverOpen((o) => !o);
+                }}
+              >
+                <Plus /> {strings.requirements.linkExistingAction}
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  setActionError(null);
+                  setShowCreateAction(true);
+                }}
+              >
+                <Plus /> {strings.requirements.createAndLinkAction}
+              </button>
+            </div>
+            {linkExistingActionPopoverOpen && (
+              <Popover
+                anchorRef={linkExistingActionTriggerRef}
+                title={strings.requirements.linkExistingAction}
+                onClose={() => setLinkExistingActionPopoverOpen(false)}
+              >
+                <LabeledSelect helpNotNeeded
+                  label={strings.requirements.linkExistingAction}
+                  value={existingActionToLink}
+                  onChange={setExistingActionToLink}
+                  options={projectActions
                     .filter((a) => !linkedActions.some((la) => la.id === a.id))
-                    .map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.unique_code} — {a.title}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              {requirement.is_locked && (
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.changeRequests.reason}
-                  <textarea
-                    className="input" rows={2} aria-label={strings.changeRequests.reason}
-                    value={addActionReason} onChange={(e) => setAddActionReason(e.target.value)}
+                    .map((a) => ({ value: a.id, label: `${recordCode.code(a.unique_code)} — ${a.title}` }))}
+                  placeholder={strings.requirements.selectAnActionToLink}
+                />
+                {requirement.is_locked && (
+                  <TextAreaField helpNotNeeded
+                    label={strings.changeRequests.reason}
+                    value={addActionReason}
+                    onChange={setAddActionReason}
+                    rows={2}
                   />
-                </label>
-              )}
-              {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
-              <div className="row" style={{ justifyContent: "flex-end" }}>
-                <button className="btn" onClick={() => setLinkExistingActionPopoverOpen(false)}>
-                  {strings.common.cancel}
-                </button>
-                <button
-                  className="btn btn-primary" onClick={linkExistingAction}
-                  disabled={!existingActionToLink || (requirement.is_locked && !addActionReason.trim())}
-                >
-                  {strings.requirements.linkExistingAction}
-                </button>
-              </div>
-            </Popover>
-          )}
-        </div>
+                )}
+                {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
+                <FormActions
+                  onCancel={() => setLinkExistingActionPopoverOpen(false)}
+                  onSave={linkExistingAction}
+                  saveLabel={strings.requirements.linkExistingAction}
+                  saveDisabled={!existingActionToLink || (requirement.is_locked && !addActionReason.trim())}
+                />
+              </Popover>
+            )}
+        </>
+      }>
         {linkedActions.length === 0 && (
           <p className="text-muted" style={{ margin: 0 }}>{strings.requirements.noLinkedActions}</p>
         )}
@@ -1054,10 +895,10 @@ export function RequirementDetailPage() {
             }}
           >
             <span>
-              <Link to={`/projects/${projectId}/actions/${a.id}`}>{a.unique_code} — {a.title}</Link>{" "}
-              <span className={`badge badge--${REQUIREMENT_ACTION_OUTCOME_TONE[a.outcome_status]}`}>
+              <Link to={`/projects/${projectId}/actions/${a.id}`}><RecordCode code={a.unique_code} /> — {a.title}</Link>{" "}
+              <Badge tone={REQUIREMENT_ACTION_OUTCOME_TONE[a.outcome_status]}>
                 {REQUIREMENT_ACTION_OUTCOME_LABEL[a.outcome_status]}
-              </span>
+              </Badge>
             </span>
             <button
               className="btn btn-danger"
@@ -1068,7 +909,7 @@ export function RequirementDetailPage() {
                 setActionToUnlink(a);
               }}
             >
-              <Trash2 size={14} />
+              <Trash2 />
             </button>
           </div>
         ))}
@@ -1079,13 +920,12 @@ export function RequirementDetailPage() {
               requirement.is_locked ? (
                 <span className="stack" style={{ gap: "0.5rem" }}>
                   <span>{strings.requirements.unlinkActionViaChangeRequestConfirm}</span>
-                  <label className="stack" style={{ gap: "0.25rem" }}>
-                    {strings.changeRequests.reason}
-                    <textarea
-                      className="input" rows={2} aria-label={strings.changeRequests.reason}
-                      value={unlinkActionReason} onChange={(e) => setUnlinkActionReason(e.target.value)}
-                    />
-                  </label>
+                  <TextAreaField helpNotNeeded
+                    label={strings.changeRequests.reason}
+                    value={unlinkActionReason}
+                    onChange={setUnlinkActionReason}
+                    rows={2}
+                  />
                 </span>
               ) : (
                 strings.requirements.unlinkActionConfirm
@@ -1103,62 +943,32 @@ export function RequirementDetailPage() {
           />
         )}
         {showCreateAction && (
-          <Modal title={strings.requirements.createAndLinkAction} onClose={() => setShowCreateAction(false)}>
-            <input
-              className="input" placeholder={strings.actions.name} value={newActionTitle}
-              onChange={(e) => setNewActionTitle(e.target.value)}
-            />
-            <textarea
-              className="input" rows={2} placeholder={strings.actions.description} value={newActionDescription}
-              onChange={(e) => setNewActionDescription(e.target.value)}
-            />
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.actions.actionType}
-              {/* An explicit `aria-label` (matching the visible label
-                  text) is required here, not just the wrapping <label>:
-                  a native <select>'s ARIA accessible-name computation
-                  when label-wrapped folds in every descendant <option>'s
-                  text too, not just the selected one, which would
-                  otherwise make this resolve to something like
-                  "TypeTypeReviewTest" instead of "Type" for automated
-                  (Playwright) lookups — an aria-label always wins over
-                  that content-based computation. */}
-              <select
-                className="input" aria-label={strings.actions.actionType}
-                value={newActionTypeId} onChange={(e) => setNewActionTypeId(e.target.value)}
-              >
-                <option value="">{strings.actions.actionType}</option>
-                {projectActionTypes.map((at) => (
-                  <option key={at.id} value={at.id}>
-                    {at.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <PrincipalFormField
-              label={strings.actions.assignee}
+          <Modal title={strings.requirements.createAndLinkAction} onClose={() => setShowCreateAction(false)} size="lg">
+            <ActionFields
+              values={{
+                title: newActionTitle, description: newActionDescription, actionTypeId: newActionTypeId,
+                assignee: newActionAssignee, dueDate: newActionDueDate,
+              }}
+              onChange={(v) => {
+                setNewActionTitle(v.title);
+                setNewActionDescription(v.description);
+                setNewActionTypeId(v.actionTypeId);
+                setNewActionAssignee(v.assignee);
+                setNewActionDueDate(v.dueDate);
+              }}
+              actionTypes={projectActionTypes}
+              typePlaceholder={strings.actions.actionType}
               orgUsers={orgUsers}
               organizationId={organizationId ?? undefined}
               projectId={projectId}
-              value={newActionAssignee}
-              onChange={setNewActionAssignee}
-              ariaLabel={strings.actions.assignee}
             />
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.actions.dueDate}
-              <input
-                className="input" type="date" value={newActionDueDate}
-                onChange={(e) => setNewActionDueDate(e.target.value)}
-              />
-            </label>
             {requirement.is_locked && (
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.changeRequests.reason}
-                <textarea
-                  className="input" rows={2} aria-label={strings.changeRequests.reason}
-                  value={addActionReason} onChange={(e) => setAddActionReason(e.target.value)}
-                />
-              </label>
+              <TextAreaField helpNotNeeded
+                label={strings.changeRequests.reason}
+                value={addActionReason}
+                onChange={setAddActionReason}
+                rows={2}
+              />
             )}
             {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
             <button
@@ -1170,10 +980,9 @@ export function RequirementDetailPage() {
             </button>
           </Modal>
         )}
-      </div>
+      </DetailCard>
 
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.discussion}</h2>
+      <DetailCard heading={strings.requirements.discussion}>
         <CommentThread
           comments={comments}
           onPost={postComment}
@@ -1183,7 +992,7 @@ export function RequirementDetailPage() {
           onEdit={editComment}
           currentUserId={user?.id}
         />
-      </div>
+      </DetailCard>
       </div>
     </DetailLayout>
   );

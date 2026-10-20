@@ -11,7 +11,7 @@ const daysFromNow = (days: number) => new Date(Date.now() + days * 86_400_000).t
 
 function question(overrides: Partial<OpenQuestion> = {}): OpenQuestion {
   return {
-    id: "oq-1", project_id: PROJECT_ID, creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null,
+    id: "oq-1", project_id: PROJECT_ID, unique_code: "OQ-001", creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null,
     question: "Which regions are in scope?", context: "", evidence: "", priority: "high", status: "open",
     owner: null, due_date: null, is_locked: false, created_at: "2026-01-05T09:00:00Z", updated_at: "2026-01-05T09:00:00Z",
     ...overrides,
@@ -56,6 +56,8 @@ export const ListsOpenQuestions: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Overdue and unowned")).toBeInTheDocument());
     await expect(canvas.getByText("Resolved long ago")).toBeInTheDocument();
+    await expect(canvas.getByRole("columnheader", { name: "Code" })).toBeInTheDocument();
+    await expect(canvas.getAllByText(/OQ-\d{3}/).length).toBeGreaterThan(0);
   },
 };
 

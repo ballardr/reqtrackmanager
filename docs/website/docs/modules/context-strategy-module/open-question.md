@@ -15,6 +15,7 @@ An **Open Question** records something that still needs deciding before a Strate
 
 | Field | Holds |
 | --- | --- |
+| `unique_code` | The record code, `OQ-001`: numbered per project and never reused. |
 | `question` | The question itself — this artefact's core content and display title. |
 | `context` | Background context. |
 | `evidence` | Supporting evidence (in addition to any file attachments). |

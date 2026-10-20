@@ -1,17 +1,18 @@
 """
 Module: modules.context_strategy.models
 
-Context & Strategy's Phase 1 data model (docs/plans/module-01-context-and-
-strategy-plan.md Phase 1 — Organisation & Project Strategy):
+Context & Strategy's data model.
 
-- `Strategy` — the identity row (Phase 0 Q2): one table with a `scope`
+Strategy (organisation & project scope):
+
+- `Strategy` — the identity row: one table with a `scope`
   discriminator and exactly one of `organization_id`/`project_id` set,
   rather than two separate org/project tables, so a future Portfolio/
   Programme scope can be added later without a redesign. Holds only
   stable identity fields (scope, owning org/project, creator, archival
   flag) — every mutable/content field lives on `StrategyVersion`, exactly
   mirroring `models.requirement.Requirement`/`RequirementVersion`'s split
-  (Phase 0 Q4: a full version-history table, not an audit-log-only model).
+  (a full version-history table, not an audit-log-only model).
 - `StrategyVersion` — one point-in-time content snapshot, temporal shape
   (`valid_from`/`valid_to`/`version_number`) copied directly from
   `RequirementVersion`. `status` (`enums.StrategyStatus`) lives here, not
@@ -22,9 +23,8 @@ strategy-plan.md Phase 1 — Organisation & Project Strategy):
   `services.requirements.apply_new_version` rather than a separate
   identity-row column. This is a deliberate divergence from Decision
   Management's own shape (`Decision.status` lives on the identity row,
-  transitions recorded only via the audit log) — Phase 0 Q4 explicitly
-  requires the fuller temporal model for Strategy, not Decision's lighter
-  one.
+  transitions recorded only via the audit log) — the fuller temporal model is
+  required for Strategy, not Decision's lighter one.
 - `StrategyComment` / `StrategyCommentFile` / `StrategyFile` — this
   module's own module-local comment-thread and attachment tables,
   mirroring `app.modules.decisions.models`' identical `DecisionComment`/
@@ -33,30 +33,26 @@ strategy-plan.md Phase 1 — Organisation & Project Strategy):
   been extended by any module (Decision Management deliberately declined
   to, for the same reason), and a Strategy comment/attachment only ever
   targets one `Strategy` — no polymorphic target is needed. **Decided by:
-  Agent** — this is a deliberate deviation from this phase's own brief,
-  which asked for a new `ReviewTargetType.STRATEGY` member; see this
-  module's own package docstring (`__init__.py`) for the full reasoning,
-  and `docs/decisions.md`'s dated entry for this phase for the account
-  flagged back to the user.
+  Agent** — a deliberate deviation from the original brief, which asked for
+  a new `ReviewTargetType.STRATEGY` member; see this module's own package
+  docstring (`__init__.py`) for the full reasoning, and `docs/decisions.md`
+  for the account flagged back to the user.
 
-Phase 2 (Future State, docs/plans/module-01-context-and-strategy-plan.md
-Phase 2) adds `FutureState`/`FutureStateVersion`/`FutureStateComment`/
+Future State has `FutureState`/`FutureStateVersion`/`FutureStateComment`/
 `FutureStateCommentFile`/`FutureStateFile` — an exact structural mirror of
-the five classes above, for the standalone Future State artefact (Phase 0
-Q1: a separate, first-class artefact, not fields folded onto `Strategy`).
+the five classes above, for the standalone Future State artefact (a separate, first-class artefact, not fields folded onto `Strategy`).
 `FutureStateVersion`'s own field set differs from `StrategyVersion`'s (no
 `priority`/`time_horizon`; adds `target_date`, `outcomes`,
-`success_measures`, `constraints`, `assumptions` per source overview §7),
+`success_measures`, `constraints`, `assumptions` per §7),
 but every structural decision — identity/version split, module-local
 comments/files, the CHECK-constraint scope pattern — repeats identically,
 so see the `Strategy`/`StrategyVersion` docstrings above rather than
 duplicating the reasoning here.
 
-Phase 3 (Pain Points, docs/plans/module-01-context-and-strategy-plan.md
-Phase 3) adds six classes with a genuinely different shape from Strategy/
+Pain Points have six classes with a genuinely different shape from Strategy/
 Future State's identity+version split, not a further structural mirror:
 
-- `PainPointTypeDefinition` — org-scoped base type vocabulary (Phase 0 Q3's
+- `PainPointTypeDefinition` — org-scoped base type vocabulary (the
   two-tier design), same shape as `RequirementLinkTypeDefinition`/
   `models.action_type.ActionTypeDefinition` (name, `sort_order`-equivalent
   `display_order`, org admin managed).
@@ -70,8 +66,8 @@ Future State's identity+version split, not a further structural mirror:
   project-local row — resolved by `service.resolve_effective_pain_point_types`,
   never a stored/materialized view.
 - `PainPoint` — the artefact itself. **No identity+version split** and
-  **no `PainPointVersion` table** — Phase 3's own scope explicitly does not
-  require one (see `enums.PainPointStatus`'s own docstring for the full
+  **no `PainPointVersion` table** — no version table is
+  required (see `enums.PainPointStatus`'s own docstring for the full
   reasoning), so every mutable field lives directly on this one row,
   updated in place (`service.update_pain_point`), with every change
   recorded only via `services.audit.log_event` (a plain audit trail, not a
@@ -82,41 +78,38 @@ Future State's identity+version split, not a further structural mirror:
   is org-backed-with-no-override, org-backed-with-an-override, or fully
   project-local (see `service.get_or_create_project_pain_point_type`).
   Pain Point is **project-scoped only** — no `scope`/`organization_id`
-  discriminator the way Strategy/Future State have one (source overview
-  §6 describes no organisation-level Pain Point; only its *type*
+  discriminator the way Strategy/Future State have one (§6 describes no organisation-level Pain Point; only its *type*
   vocabulary has an org-level component, via `PainPointTypeDefinition`
   above).
 - `PainPointComment` / `PainPointCommentFile` / `PainPointFile` — this
   module's own module-local comment-thread and attachment tables, exact
   structural mirror of `StrategyComment`/`StrategyCommentFile`/
-  `StrategyFile` (Phase 0 Q6: module-local tables, not a `ReviewTargetType`
+  `StrategyFile` (module-local tables, not a `ReviewTargetType`
   member — see this module's own `__init__.py` docstring for the full
   reasoning, repeated identically for Pain Point).
 
-Phase 4 (Guiding Principles, docs/plans/module-01-context-and-strategy-
-plan.md Phase 4) adds `GuidingPrinciple`/`GuidingPrincipleVersion`/
+Guiding Principles have `GuidingPrinciple`/`GuidingPrincipleVersion`/
 `GuidingPrincipleComment`/`GuidingPrincipleCommentFile`/
 `GuidingPrincipleFile` — a structural mirror of `Strategy`/`StrategyVersion`
 and friends (identity+version split, org/project `scope` discriminator,
-module-local comments/files, Phase 0 Q4's full version-history requirement
-applied here too), with a smaller field set (source overview §8.3: `name`,
+module-local comments/files, and the full version-history requirement
+applied here too), with a smaller field set (§8.3: `name`,
 `principle_statement`, `rationale`, `priority`, `owner_id` — no `type`
 field, no `time_horizon`/`expected_outcomes`/`constraints`/`measures_of_
 success`) and a **shorter** `status` lifecycle (`enums.GuidingPrincipleStatus`
 — see that enum's own docstring for the full reconciliation of source
 overview §8's scope text against its six actual members). `owner_id` lives
 on `GuidingPrincipleVersion`, not the identity row — every mutable field on
-this artefact is versioned, per Phase 0 Q4, unlike `PainPoint.owner_id`
-(Phase 3, no version table at all).
+this artefact is versioned, unlike `PainPoint.owner_id`
+(no version table at all).
 
-Phase 5 (Open Questions, docs/plans/module-01-context-and-strategy-plan.md
-Phase 5) adds `OpenQuestion`/`OpenQuestionComment`/`OpenQuestionCommentFile`/
-`OpenQuestionFile` — back to Pain Point's shape (Phase 3), not Strategy/
+Open Questions have `OpenQuestion`/`OpenQuestionComment`/`OpenQuestionCommentFile`/
+`OpenQuestionFile` — back to Pain Point's shape, not Strategy/
 Future State/Guiding Principle's identity+version split:
 
-- **No `OpenQuestionVersion` table (Decided by: Agent).** Phase 0 Q4's full
+- **No `OpenQuestionVersion` table (Decided by: Agent).** The full
   version-history requirement was scoped explicitly to Strategy, Future
-  State, and (by its own follow-on) Guiding Principle; Open Question was
+  State and Guiding Principle; Open Question was
   never named there, the same absence-of-instruction reasoning
   `enums.PainPointStatus`'s own docstring already used to skip a version
   table for Pain Point. An Open Question is an operational, investigatory
@@ -128,7 +121,7 @@ Future State/Guiding Principle's identity+version split:
 - **Project-scoped only, no `scope`/`organization_id` discriminator
   (Decided by: Agent).** Source overview §9 never discusses an
   organisation-level Open Question at all (unlike Strategy/Future State/
-  Guiding Principle, whose org/project duality Phase 0 Q2 resolved
+  Guiding Principle, whose org/project duality was resolved
   explicitly by name) — the strongest single signal is §9.5's own "Create
   Decision from Open Question" workflow: `Decision` (`app.modules.decisions.
   models.Decision`) is itself project-scoped only, with no organisation-
@@ -136,24 +129,24 @@ Future State/Guiding Principle's identity+version split:
   valid resolution path into a Decision in the first place. This is
   reinforced by §9.1's own framing ("what's blocking this decision") and by
   Pain Point's precedent as this module's other project-scoped-only
-  artefact. See `docs/decisions.md`'s dated entry for this phase for the
+  artefact. See `docs/decisions.md` for the
   full reasoning.
 - `OpenQuestion.question`/`context`/`evidence` are `Text`, not `String`
-  (source overview §9.2's own field names — no separate `title` the way
+  (§9.2's own field names — no separate `title` the way
   Strategy/Future State needed one, mirroring `GuidingPrinciple.name`'s own
   precedent that the artefact's natural primary field doubles as its
   display title when the source text already gives one).
 - `OpenQuestionComment`/`OpenQuestionCommentFile`/`OpenQuestionFile` — this
   module's own module-local comment-thread and attachment tables, exact
   structural mirror of `PainPointComment`/`PainPointCommentFile`/
-  `PainPointFile` (Phase 0 Q6: module-local tables, not a `ReviewTargetType`
+  `PainPointFile` (module-local tables, not a `ReviewTargetType`
   member).
 
-Phase 11 (Reporting extension) adds `PainPoint.is_intentional` and
+Reporting adds `PainPoint.is_intentional` and
 `PainPointScore` — one Severity/Frequency/Confidence rating of a Pain Point
 for one target (a persona, or "all personas" when the target is null).
 `target_type`/`target_id` are a plain validated pair, never an FK into the
-owning module's table (Module 1 cannot import Module 2); the level columns
+owning module's table (Context & Strategy cannot import Stakeholders & Personas); the level columns
 are FKs into core's generic `scoring_levels`.
 """
 
@@ -208,6 +201,8 @@ class Strategy(UUIDPKMixin, TimestampMixin, Base):
             Strategy.
         project_id: Set (and `organization_id` null) for a project-scoped
             Strategy.
+        unique_code: Human-readable code (e.g. `"STR-003"`), from `services.sequences.generate_unique_code`;
+            numbered per owner (the project, or the organisation for an organisation-scoped record) and never reused.
         creator_id: Who created this record.
         is_archived / archived_at / archived_by: Soft-delete, matching
             `Requirement`/`Decision`'s own convention.
@@ -215,6 +210,8 @@ class Strategy(UUIDPKMixin, TimestampMixin, Base):
 
     __tablename__ = "strategies"
     __table_args__ = (
+        UniqueConstraint("project_id", "unique_code", name="uq_strategies_project_unique_code"),
+        UniqueConstraint("organization_id", "unique_code", name="uq_strategies_organization_unique_code"),
         CheckConstraint(
             "(scope = 'organization' AND organization_id IS NOT NULL AND project_id IS NULL) OR "
             "(scope = 'project' AND project_id IS NOT NULL AND organization_id IS NULL)",
@@ -229,6 +226,7 @@ class Strategy(UUIDPKMixin, TimestampMixin, Base):
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    unique_code: Mapped[str] = mapped_column(String(64))
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -250,8 +248,8 @@ class StrategyVersion(UUIDPKMixin, Base):
         title: Short display title.
         objective: The strategic theme/objective statement.
         current_state / desired_future_state: Short free-text fields
-            (Phase 1 scope — the fuller structured elaboration lives on
-            the separate Future State artefact, Phase 2, per Phase 0 Q1).
+            (the fuller structured elaboration lives on
+            the separate Future State artefact).
         rationale: Why this Strategy exists.
         expected_outcomes: What this Strategy is expected to achieve.
         constraints: Known constraints bounding this Strategy.
@@ -357,7 +355,7 @@ class StrategyFile(UUIDPKMixin, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
-# --- Future State (Phase 2) -------------------------------------------------
+# --- Future State -------------------------------------------------
 
 
 class FutureState(UUIDPKMixin, TimestampMixin, Base):
@@ -371,6 +369,8 @@ class FutureState(UUIDPKMixin, TimestampMixin, Base):
             Future State.
         project_id: Set (and `organization_id` null) for a project-scoped
             Future State.
+        unique_code: Human-readable code (e.g. `"FUT-003"`), from `services.sequences.generate_unique_code`;
+            numbered per owner (the project, or the organisation for an organisation-scoped record) and never reused.
         creator_id: Who created this record.
         is_archived / archived_at / archived_by: Soft-delete, matching
             `Strategy`'s own convention.
@@ -378,6 +378,8 @@ class FutureState(UUIDPKMixin, TimestampMixin, Base):
 
     __tablename__ = "future_states"
     __table_args__ = (
+        UniqueConstraint("project_id", "unique_code", name="uq_future_states_project_unique_code"),
+        UniqueConstraint("organization_id", "unique_code", name="uq_future_states_organization_unique_code"),
         CheckConstraint(
             "(scope = 'organization' AND organization_id IS NOT NULL AND project_id IS NULL) OR "
             "(scope = 'project' AND project_id IS NOT NULL AND organization_id IS NULL)",
@@ -392,6 +394,7 @@ class FutureState(UUIDPKMixin, TimestampMixin, Base):
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    unique_code: Mapped[str] = mapped_column(String(64))
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -405,7 +408,7 @@ class FutureState(UUIDPKMixin, TimestampMixin, Base):
 class FutureStateVersion(UUIDPKMixin, Base):
     """A single point-in-time snapshot of a Future State's content — exact
     temporal shape of `StrategyVersion` (see module docstring), with the
-    Phase 2 field set from source overview §7 in place of Strategy's own.
+    Future State field set from §7 in place of Strategy's own.
 
     Attributes:
         valid_from / valid_to: Effective time interval; `valid_to` is null
@@ -521,14 +524,14 @@ class FutureStateFile(UUIDPKMixin, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
-# --- Pain Points (Phase 3) ---------------------------------------------------
+# --- Pain Points ---------------------------------------------------
 
 
 class PainPointTypeDefinition(UUIDPKMixin, TimestampMixin, Base):
-    """Organisation-scoped base Pain Point type vocabulary (Phase 0 Q3) —
+    """Organisation-scoped base Pain Point type vocabulary —
     same shape as `RequirementLinkTypeDefinition`/`ActionTypeDefinition`.
     Seeded with Market/User/Operator defaults for every organisation
-    (source overview §6.2) at organisation-creation time, mirroring
+    (§6.2) at organisation-creation time, mirroring
     `services.definitions.seed_link_types`'s own seeding convention (see
     `service.seed_default_pain_point_types`).
 
@@ -563,8 +566,7 @@ class PainPointTypeDefinition(UUIDPKMixin, TimestampMixin, Base):
 
 
 class ProjectPainPointType(UUIDPKMixin, TimestampMixin, Base):
-    """A project's own view onto the Pain Point type vocabulary (Phase 0
-    Q3) — either a local override of one org type, or a fully project-local
+    """A project's own view onto the Pain Point type vocabulary — either a local override of one org type, or a fully project-local
     type not backed by any org row.
 
     Attributes:
@@ -613,12 +615,14 @@ class ProjectPainPointType(UUIDPKMixin, TimestampMixin, Base):
 
 
 class PainPoint(UUIDPKMixin, TimestampMixin, Base):
-    """A Pain Point (source overview §6) — project-scoped only, no
+    """A Pain Point (§6) — project-scoped only, no
     identity+version split (see this module's own docstring for why),
     every mutable field on this one row.
 
     Attributes:
         project_id: The owning project.
+        unique_code: Project-scoped identifier (e.g. `"PP-003"`), from
+            `services.sequences.generate_unique_code`; never reused.
         pain_point_type_id: FK to `ProjectPainPointType.id` — never
             directly to `PainPointTypeDefinition` (see module docstring).
         title / description: Core identifying content.
@@ -641,7 +645,7 @@ class PainPoint(UUIDPKMixin, TimestampMixin, Base):
             to the creation date if not supplied (`service.create_pain_point`).
         is_intentional: A deliberate limitation (e.g. in a lower product
             tier, to drive upgrades): still scored, but excluded from fix
-            rankings by default and reported separately (Phase 9 Q10).
+            rankings by default and reported separately.
         creator_id: Who submitted this Pain Point (§6.5's broad-creation
             model — any project member).
         is_archived / archived_at / archived_by: Soft-delete, matching
@@ -649,12 +653,16 @@ class PainPoint(UUIDPKMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "pain_points"
-    __table_args__ = (principal_check_constraint("owner", nullable=True),)
+    __table_args__ = (
+        principal_check_constraint("owner", nullable=True),
+        UniqueConstraint("project_id", "unique_code", name="uq_pain_points_project_unique_code"),
+    )
 
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
     pain_point_type_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("project_pain_point_types.id")
     )
+    unique_code: Mapped[str] = mapped_column(String(64))
 
     title: Mapped[str] = mapped_column(String(300))
     description: Mapped[str] = mapped_column(Text, default="")
@@ -676,7 +684,7 @@ class PainPoint(UUIDPKMixin, TimestampMixin, Base):
 
 
 class PainPointScore(UUIDPKMixin, TimestampMixin, Base):
-    """One rating of a Pain Point for one target (Phase 11).
+    """One rating of a Pain Point for one target.
 
     A Pain Point has either exactly one all-targets row (`target_id` NULL) or
     one row per target, never both (`service.set_pain_point_scores`
@@ -782,7 +790,7 @@ class PainPointFile(UUIDPKMixin, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
-# --- Guiding Principles (Phase 4) --------------------------------------------
+# --- Guiding Principles --------------------------------------------
 
 
 class GuidingPrinciple(UUIDPKMixin, TimestampMixin, Base):
@@ -797,6 +805,8 @@ class GuidingPrinciple(UUIDPKMixin, TimestampMixin, Base):
             Guiding Principle.
         project_id: Set (and `organization_id` null) for a project-scoped
             Guiding Principle.
+        unique_code: Human-readable code (e.g. `"GP-003"`), from `services.sequences.generate_unique_code`;
+            numbered per owner (the project, or the organisation for an organisation-scoped record) and never reused.
         creator_id: Who created this record.
         is_archived / archived_at / archived_by: Soft-delete, matching
             `Strategy`/`FutureState`'s own convention.
@@ -804,6 +814,8 @@ class GuidingPrinciple(UUIDPKMixin, TimestampMixin, Base):
 
     __tablename__ = "guiding_principles"
     __table_args__ = (
+        UniqueConstraint("project_id", "unique_code", name="uq_guiding_principles_project_unique_code"),
+        UniqueConstraint("organization_id", "unique_code", name="uq_guiding_principles_organization_unique_code"),
         CheckConstraint(
             "(scope = 'organization' AND organization_id IS NOT NULL AND project_id IS NULL) OR "
             "(scope = 'project' AND project_id IS NOT NULL AND organization_id IS NULL)",
@@ -818,6 +830,7 @@ class GuidingPrinciple(UUIDPKMixin, TimestampMixin, Base):
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    unique_code: Mapped[str] = mapped_column(String(64))
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -831,12 +844,12 @@ class GuidingPrinciple(UUIDPKMixin, TimestampMixin, Base):
 class GuidingPrincipleVersion(UUIDPKMixin, Base):
     """A single point-in-time snapshot of a Guiding Principle's content —
     exact temporal shape of `StrategyVersion`/`FutureStateVersion` (see
-    module docstring), for the Phase 4 field set (source overview §8.3).
+    module docstring), for the Guiding Principle field set (§8.3).
 
     Attributes:
         valid_from / valid_to: Effective time interval; `valid_to` is null
             for the current version.
-        name: Short display name (source overview §8.3's own field, not an
+        name: Short display name (§8.3's own field, not an
             added-by-convention `title` the way Strategy/Future State
             needed one).
         principle_statement: The principle's own statement text — this
@@ -849,7 +862,7 @@ class GuidingPrincipleVersion(UUIDPKMixin, Base):
         owner_type / owner_id: The principal (a user, an organisation group or,
             on a project principle, a project group — `models.principal`)
             responsible for this principle — `NULL` if unassigned. Versioned along with every other content field
-            (Phase 0 Q4's full version-history model applies to the whole
+            (the full version-history model applies to the whole
             row here, unlike `PainPoint.owner_id`, which has no version
             table to live on).
         change_note: Free-text reason for the change.
@@ -949,18 +962,20 @@ class GuidingPrincipleFile(UUIDPKMixin, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
-# --- Open Questions (Phase 5) -------------------------------------------------
+# --- Open Questions -------------------------------------------------
 
 
 class OpenQuestion(UUIDPKMixin, TimestampMixin, Base):
-    """An Open Question (source overview §9) — project-scoped only, no
+    """An Open Question (§9) — project-scoped only, no
     identity+version split (see this module's own docstring for why), every
     mutable field on this one row.
 
     Attributes:
         project_id: The owning project.
+        unique_code: Project-scoped identifier (e.g. `"OQ-003"`), from
+            `services.sequences.generate_unique_code`; never reused.
         question: The question itself — this artefact's core content and
-            natural display title (source overview §9.2's own field name;
+            natural display title (§9.2's own field name;
             no separate `title` field, mirroring `GuidingPrinciple.name`'s
             precedent).
         context: Free-text background — why this question matters / what
@@ -983,9 +998,13 @@ class OpenQuestion(UUIDPKMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "open_questions"
-    __table_args__ = (principal_check_constraint("owner", nullable=True),)
+    __table_args__ = (
+        principal_check_constraint("owner", nullable=True),
+        UniqueConstraint("project_id", "unique_code", name="uq_open_questions_project_unique_code"),
+    )
 
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+    unique_code: Mapped[str] = mapped_column(String(64))
 
     question: Mapped[str] = mapped_column(Text)
     context: Mapped[str] = mapped_column(Text, default="")

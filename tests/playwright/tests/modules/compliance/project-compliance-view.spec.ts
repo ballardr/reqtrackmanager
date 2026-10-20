@@ -4,14 +4,10 @@ import { loginAs, openProject, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "../../
 import { createStandardWithVersion, selectFilterOption } from "./helpers";
 
 /**
- * Job to be done: Compliance Module Phase 13 (docs/compliance-module-plan.md)
- * — the project-scoped Project Compliance View
+ * Job to be done: the project-scoped Project Compliance View
  * (`frontend/src/modules/compliance/ProjectCompliancePage.tsx`), mounted
- * for real through Phase 3's Tier A `installedModules`/`buildModuleRoutes`
- * mechanism (a "Compliance" nav-rail entry under a project, unlike Phase
- * 12's org-level panel which had to be mounted directly on `OrgAdminPage`
- * since that mechanism is project-scoped end to end — see that phase's own
- * notes). Covers the core project-assessment flow §7-§10, §12, §13, §21
+ * for real through the Tier A `installedModules`/`buildModuleRoutes`
+ * mechanism (a "Compliance" nav-rail entry under a project). Covers the core project-assessment flow §7-§10, §12, §13, §21
  * describe: assign a published standard to a project, mark a requirement's
  * applicability, assess it compliant, submit for approval, approve it, and
  * attach supporting evidence — then confirms the applicability tree/status
@@ -19,7 +15,7 @@ import { createStandardWithVersion, selectFilterOption } from "./helpers";
  *
  * `orgAdminAlphaBeta` is reused rather than a dedicated persona: they are
  * Alpha's org admin (composes with `compliance_manager` for the org-level
- * standard authoring/assignment step, module system Phase 2) and, as the
+ * standard authoring/assignment step) and, as the
  * creator of Alpha-1, also its `PROJECT_MANAGER` (composes with
  * `compliance_officer` for every project-level assessment/approval action)
  * — no new seed persona or module-role grant is needed.
@@ -30,7 +26,7 @@ import { createStandardWithVersion, selectFilterOption } from "./helpers";
  * another spec's named fixtures, and re-running this spec (alone, repeated,
  * or out of order) only ever adds new, uniquely-named rows.
  */
-test.describe("Compliance Module: project compliance view (Phase 13)", () => {
+test.describe("Compliance Module: project compliance view", () => {
   test("assign a standard, assess a requirement, approve it, and attach evidence", async ({ page }) => {
     const suffix = Date.now();
     const reference = `E2E-PCV-${suffix}`;
@@ -45,7 +41,7 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     // --- An action type is needed for the required action below —
     // created first via org compliance settings, same flow
     // `compliance-standards-management.spec.ts` uses.
-    // `exact: true`: Phase 35a's default tiles view renders every standard
+    // `exact: true`: the default tiles view renders every standard
     // as a card whose accessible name also contains the org name, so a
     // plain substring match on `ORG_NAMES.alpha` now also resolves to
     // every tile card, not just the "Compliance settings" link below.
@@ -60,8 +56,8 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     }).toPass();
 
     // --- Author a published standard/version/requirement to assign, via
-    // the top-level `/standards` page (compliance-module-plan.md Phase 18 —
-    // supersedes Phase 12's org-admin "Compliance" group entirely).
+    // the top-level `/standards` page (replaces the
+    // old org-admin "Compliance" group entirely).
     await createStandardWithVersion(page, { orgName: ORG_NAMES.alpha, reference, name: standardName, versionLabel: "v1.0" });
 
     await page.getByRole("link", { name: "Versions", exact: true }).click();
@@ -72,7 +68,7 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     await page.getByRole("dialog", { name: "New requirement" }).getByRole("button", { name: "Save" }).click();
     await expect(page.getByText(requirementName)).toBeVisible();
 
-    // --- Phase 32: give this requirement a required action, so the
+    // --- give this requirement a required action, so the
     // project-side assessment panel's assignee field (a searchable
     // `AssigneePicker`, not a plain unfiltered `<select>`) has something to
     // exercise below.
@@ -87,11 +83,11 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     await page.getByRole("dialog", { name: "Publish this version?" }).getByRole("button", { name: "Publish" }).click();
     await expect(page.getByText("Published", { exact: true })).toBeVisible();
 
-    // --- Switch to the project's own Compliance nav entry (Phase 3 Tier A routing).
+    // --- Switch to the project's own Compliance nav entry (Tier A routing).
     await page.goto("/projects");
     await openProject(page, PROJECT_NAMES.alpha1);
     // exact: true — the project overview page's own compliance summary
-    // tiles (Phase 17d) render as cards whose accessible name contains
+    // tiles render as cards whose accessible name contains
     // "Compliance" too (e.g. a standard's name), which would otherwise
     // collide with this nav-rail link under substring matching once any
     // standard has ever been assigned to this project.
@@ -106,13 +102,13 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     await assignDialog.getByRole("button", { name: "Assign" }).click();
     await expect(page.getByText(new RegExp(reference))).toBeVisible();
 
-    // --- Phase 31: fresh assignment, zero assessments yet — the
+    // --- fresh assignment, zero assessments yet — the
     //     "Non-compliant" column must read "Unknown", never "No" (which
     //     would misleadingly imply this has been checked and found clean).
     const assignmentRow = page.getByRole("row", { name: new RegExp(reference) });
     await expect(assignmentRow.getByRole("cell", { name: "Unknown", exact: true })).toBeVisible();
 
-    // --- Phase 17d: the project overview page now shows a compliance
+    // --- the project overview page now shows a compliance
     //     summary tile for this standard, linking straight back here.
     await page.getByRole("link", { name: "Overview", exact: true }).click();
     await expect(page).toHaveURL(/\/projects\/[^/]+$/);
@@ -121,9 +117,9 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     await complianceTile.click();
     await expect(page).toHaveURL(/\/projects\/[^/]+\/modules\/compliance$/);
 
-    // --- Phase 15: download the project's own compliance report, PDF and
-    // CSV — behind the shared `ReportExportButton`'s "Export" trigger since
-    // Phase 43 (previously two permanently-visible buttons).
+    // --- download the project's own compliance report, PDF and
+    // CSV — behind the shared `ReportExportButton`'s "Export" trigger
+    // (rather than two permanently-visible buttons).
     await page.getByRole("button", { name: "Export" }).click();
     const exportMenu = page.getByRole("dialog", { name: "Export" });
     const pdfDownloadPromise = page.waitForEvent("download");
@@ -144,7 +140,7 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     // --- Open the requirement, assess it Compliant, submit and approve.
     await page.getByText(requirementName).click();
 
-    // --- Phase 32: the required action's assignee field is a searchable
+    // --- the required action's assignee field is a searchable
     // `AssigneePicker`, not a plain unfiltered `<select>` — search narrows
     // to the matching org member, picking them persists it, and
     // "Unassign" clears it back to "Unassigned".
@@ -172,7 +168,7 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     await page.getByRole("button", { name: "Add evidence" }).click();
     const addEvidenceDialog = page.getByRole("dialog", { name: "Add evidence" });
     await addEvidenceDialog.getByLabel("Evidence title").fill(evidenceTitle);
-    // Phase 41: attach a file in the same create step, not as a separate
+    // Attach a file in the same create step, not as a separate
     // action after the record already exists.
     await addEvidenceDialog.locator('input[type="file"]').setInputFiles({
       name: "evidence-file.txt", mimeType: "text/plain", buffer: Buffer.from("Playwright evidence creation file attachment test"),
@@ -180,6 +176,8 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     await expect(addEvidenceDialog.getByText("evidence-file.txt")).toBeVisible();
     await addEvidenceDialog.getByRole("button", { name: "Save" }).click();
     await expect(page.getByText(evidenceTitle)).toBeVisible();
+    // The new evidence has its record code (EVD-nnn) in its row.
+    await expect(page.getByRole("row", { name: new RegExp(evidenceTitle) }).getByText(/^(?:[A-Z0-9]+-)?EVD-\d{3}$/)).toBeVisible();
 
     // The file was attached during creation, not as a separate upload step —
     // confirm it's already present on the newly-created record.
@@ -194,9 +192,9 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     await page.getByRole("button", { name: "Link", exact: true }).click();
     await expect(page.getByRole("button", { name: `Unlink ${evidenceTitle}` })).toBeVisible();
 
-    // --- Phase 33: "Upload new evidence" creates a new evidence record and
+    // --- "Upload new evidence" creates a new evidence record and
     //     auto-links it to this requirement (no separate manual "link
-    //     existing" step). Phase 41: the create dialog itself now stages a
+    // existing" step). The create dialog itself stages a
     //     file, so attaching one there uploads it in the same step and
     //     skips the old follow-up "Attach files to..." modal entirely.
     const inlineEvidenceTitle = `E2E Inline Upload Evidence ${suffix}`;
@@ -225,7 +223,7 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
   });
 
   /**
-   * Phase 40 (docs/compliance-module-plan.md) — parity with the org-level
+   * Parity with the org-level
    * "Outstanding compliance items" filters (`org-compliance-view.spec.ts`),
    * minus a Project filter (this tab is already scoped to one project).
    * Same fixture shape: one top-level requirement ("section") with a
@@ -282,7 +280,7 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     await page.getByText(new RegExp(reference)).click();
     await page.getByText(childRequirementName).click();
     await page.getByLabel("Compliance status", { exact: true }).selectOption({ label: "Non-compliant" });
-    await page.getByLabel("Justification (required)").fill("Failed the required E2E filter-fixture inspection.");
+    await page.getByLabel("Justification", { exact: true }).fill("Failed the required E2E filter-fixture inspection.");
     await page.getByRole("button", { name: "Update assessment" }).click();
     await expect(page.getByText("Current state: Assessed")).toBeVisible();
     await page.getByRole("button", { name: "Close" }).click();
@@ -299,7 +297,7 @@ test.describe("Compliance Module: project compliance view (Phase 13)", () => {
     await selectFilterOption(page, "Sub-section", sectionAName);
     await expect(page.getByText(childRequirementName)).toBeVisible();
 
-    // Phase 43: the Outstanding tab's Export trigger carries its active
+    // The Outstanding tab's Export trigger carries its active
     // Standard/Sub-section filters as query params, mirroring the org-wide
     // Outstanding group's identical coverage in `org-compliance-view.spec.ts`.
     const reportRequestPromise = page.waitForRequest(

@@ -1,7 +1,7 @@
 """
 Module: routers.projects.module_roles
 
-Module-contributed roles at the project scope (module system Phase 2/3):
+Module-contributed roles at the project scope:
 which module roles/nav entries are currently available on this project,
 minting a `<ModuleFrame>` frame token, and granting/revoking a
 module-contributed role for a member.
@@ -68,8 +68,7 @@ def list_project_module_roles(
 ):
     """Lists the project-scoped module-contributed roles currently
     available to grant on this project — i.e. declared by a module that is
-    currently effectively enabled for the project's owning organisation
-    (module system Phase 2).
+    currently effectively enabled for the project's owning organisation.
 
     Gated by `require_project_view_or_manage`, the same dependency
     `list_project_groups` uses: this exposes role/group *structure*
@@ -95,8 +94,7 @@ def list_project_enabled_modules(
 ):
     """Lists every module currently *effectively enabled* for this
     project's owning organisation, with enough of its frontend manifest for
-    the frontend to render a nav entry and route for it (module system
-    Phase 3).
+    the frontend to render a nav entry and route for it .
 
     Deliberately lean and enabled-only, unlike `GET /orgs/{id}/modules`
     (`OrgModuleOut`) which is an org-admin bookkeeping view that
@@ -113,8 +111,8 @@ def list_project_enabled_modules(
     an example, e.g. `"/projects/{project_id}/modules/compliance"`) — this
     is the one endpoint that actually knows a concrete `project_id`, so it
     interpolates the placeholder into every manifest field before returning
-    it (Phase 13, `docs/compliance-module-plan.md`: Compliance is the first
-    module to populate this placeholder for real). `GET /orgs/{id}/modules`
+    it (Compliance is the first
+    module to populate this placeholder). `GET /orgs/{id}/modules`
     (`OrgModuleOut`, `routers/orgs.py`) has no single project in scope and
     deliberately leaves the placeholder un-interpolated for its own
     admin-bookkeeping display. `ModuleFrontendManifest.remote_entry_url`/
@@ -129,7 +127,7 @@ def list_project_enabled_modules(
     result: list[ModuleNavEntryOut] = []
     for definition in get_module_registry().values():
         # `is_module_enabled_for_project`, not the org-only `is_module_
-        # enabled` — Module 0 Phase 5's project-level override means a
+        # enabled` — the project-level override means a
         # project's own effective state can now diverge from its
         # organisation's default in either direction; using the org-only
         # check here would either keep showing a nav entry for a module
@@ -162,8 +160,8 @@ def list_project_enabled_modules(
                 # ever contain that placeholder.
                 remote_entry_url=manifest.remote_entry_url,
                 exposed_module=manifest.exposed_module,
-                # additional_nav_entries (Module 1 — Context & Strategy —
-                # Phase 7.1): same "{project_id}" interpolation as nav_path
+                # additional_nav_entries (Context & Strategy):
+                # same "{project_id}" interpolation as nav_path
                 # itself — every one of a Tier A module's own multiple nav
                 # entries follows the same convention as its primary one.
                 additional_nav_entries=[
@@ -171,13 +169,24 @@ def list_project_enabled_modules(
                         nav_label=entry.nav_label,
                         nav_path=entry.nav_path.replace("{project_id}", str(project_id)),
                         nav_icon=entry.nav_icon,
+                        sub_component=entry.sub_component,
+                        sub_components_any=list(entry.sub_components_any),
                     )
                     for entry in manifest.additional_nav_entries
                 ],
                 nav_icon=manifest.nav_icon,
+                nav_sub_component=manifest.nav_sub_component,
+                nav_sub_components_any=list(manifest.nav_sub_components_any),
             )
+        disabled_sub_components = [
+            sub.key for sub in definition.sub_components
+            if not is_module_subcomponent_enabled(db, project_id, definition.key, sub.key)
+        ]
         result.append(
-            ModuleNavEntryOut(module_key=definition.key, name=definition.name, frontend_manifest=frontend_manifest_out)
+            ModuleNavEntryOut(
+                module_key=definition.key, name=definition.name, frontend_manifest=frontend_manifest_out,
+                disabled_sub_components=disabled_sub_components,
+            )
         )
     return result
 
@@ -189,8 +198,7 @@ def list_project_modules(
     db: Session = Depends(get_db),
 ):
     """Lists every registered module with this project's own effective
-    whole-module enablement state (Module 0 — Platform Foundations —
-    Phase 5 follow-up, added alongside the Project Admin Modules tab this
+    whole-module enablement state (added alongside the Project Admin Modules tab this
     endpoint exists to feed) — mirrors `routers.orgs.settings.
     list_org_modules`'s own loop shape one tier down, but reachable by a
     plain project manager who isn't also an org admin. Before this
@@ -203,6 +211,11 @@ def list_project_modules(
     content" dependency this file's other read endpoints (`list_project_
     module_roles`, `list_project_enabled_modules`, `list_project_module_
     subcomponents`) already use.
+
+    Modules the organisation has disabled, or has no entitlement for, are
+    omitted (Decided by: User): a project admin cannot use them and is not
+    offered them. A project's own override row for an omitted module is kept,
+    so it reappears with its state if the organisation re-enables the module.
     """
     project = db.get(Project, project_id)
     if project is None:
@@ -225,6 +238,7 @@ def list_project_modules(
             ),
         )
         for definition in get_module_registry().values()
+        if is_module_enabled(db, project.organization_id, definition.key)
     ]
 
 
@@ -236,7 +250,7 @@ def create_project_module_frame_token(
     current_user: User = Depends(require_project_module_enabled_dynamic),
 ) -> ModuleFrameTokenOut:
     """Project-scoped sibling of `orgs.create_org_module_frame_token`
-    (module system Phase 3) — mints a token scoped to `(module_key,
+ — mints a token scoped to `(module_key,
     project_id, current_user)` for a Tier B `<ModuleFrame>` mounted on a
     project-scoped page. See that endpoint's and `app.security.create_
     module_frame_token`'s docstrings for the full scoping rationale.
@@ -259,19 +273,19 @@ def get_project_module_enablement(
     db: Session = Depends(get_db),
 ):
     """Returns this project's own effective whole-module enablement state
-    for `module_key` (Module 0 — Platform Foundations — Phase 5): the
+    for `module_key` (Platform Foundations): the
     effective state, the organisation's own default, and whether this
     project has an explicit override of its own — deliberately all three,
     not just the effective boolean, so the frontend can render "using org
     default: X" vs. "overridden to: Y" distinctly, the same "platform-
-    default override visibility" reasoning Phase 4's sub-component
+    default override visibility" reasoning the sub-component
     endpoints already follow one level down. Gated by `require_project_
     view_or_manage`, the same "structure, not content" dependency this
     file's other read endpoints already use.
 
     Path is `.../modules/{module_key}/enablement`, not the bare `.../
     modules/{module_key}` the task brief originally sketched — found and
-    corrected during this phase's own verification: this router is
+    corrected during verification: this router is
     included into the app *before* any module's own `get_project_router()`
     (`main.py`'s mount order), so a bare `GET/PUT .../modules/{module_key}`
     here would shadow any module whose own project router happens to
@@ -280,7 +294,7 @@ def get_project_module_enablement(
     does, and the full pytest suite's own `test_decisions_api.py` caught
     directly (a decisions list request silently returning this endpoint's
     `ProjectModuleEnablementOut` shape instead). The extra `/enablement`
-    segment, mirroring Phase 4's own `/subcomponents` convention one field
+    segment, mirroring the `/subcomponents` convention one field
     over, makes this path structurally impossible for a module's own
     bare-base route to collide with, current or future.
 
@@ -325,8 +339,8 @@ def update_project_module_enablement(
     db: Session = Depends(get_db),
 ):
     """Sets this project's own explicit override of whole-module
-    enablement for `module_key` (Module 0 — Platform Foundations — Phase
-    5; corrected 2026-09-29) — **symmetric against the organisation's own
+    enablement for `module_key` (Platform Foundations;
+    corrected 2026-09-29) — **symmetric against the organisation's own
     `default_project_enabled` value** (Decided by: User): a project
     admin's own choice always wins over that default in either direction
     (turning on a module the organisation defaults off for new projects,
@@ -334,7 +348,7 @@ def update_project_module_enablement(
     `enabled=True` floor — see below.
 
     Gated by `require_project_manage` — the same project-settings-
-    management dependency Phase 4's own project-tier sub-component
+    management dependency the project-tier sub-component
     endpoints in this file already use, not a new role.
 
     **Entitlement and the organisation's own hard `enabled` flag are both
@@ -433,8 +447,8 @@ def list_project_module_subcomponents(
     db: Session = Depends(get_db),
 ):
     """Lists every sub-component `module_key` declares, from this
-    project's own point of view (Module 0 — Platform Foundations — Phase
-    4): its effective state, its organisation's own default, and whether
+    project's own point of view (Platform Foundations):
+    its effective state, its organisation's own default, and whether
     this project has an explicit override of its own — deliberately all
     three, not just the effective boolean, so the frontend can render the
     UX style guide's "platform-default override visibility" pattern
@@ -445,6 +459,8 @@ def list_project_module_subcomponents(
 
     404s if the project doesn't exist or `module_key` isn't registered. A
     module with no declared `sub_components` simply returns an empty list.
+    Sub-components the organisation has switched off are omitted, as are all
+    of them when the organisation has the module itself off.
     """
     project = db.get(Project, project_id)
     if project is None:
@@ -462,7 +478,10 @@ def list_project_module_subcomponents(
             )
         )
     }
-    return [_project_subcomponent_out(db, project, module_key, sub, project_rows.get(sub.key)) for sub in definition.sub_components]
+    return [
+        out for sub in definition.sub_components
+        if (out := _project_subcomponent_out(db, project, module_key, sub, project_rows.get(sub.key))).org_hard_enabled
+    ]
 
 
 @router.put(
@@ -478,7 +497,7 @@ def update_project_module_subcomponent_enablement(
     db: Session = Depends(get_db),
 ):
     """Sets this project's own explicit override for one sub-component of
-    `module_key` (Module 0 — Platform Foundations — Phase 4) — a project
+    `module_key` (Platform Foundations) — a project
     admin's own choice for this project only, taking precedence over the
     organisation's own default (`routers.orgs.settings.
     update_org_module_subcomponent_default`).
@@ -545,13 +564,12 @@ def assign_project_module_role(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Grants a project-scoped module-contributed role to a user (module
-    system Phase 2) — the module-role counterpart to `routers.projects.
+    """Grants a project-scoped module-contributed role to a user — the module-role counterpart to `routers.projects.
     roles.assign_project_role`, same gate (a project manager already
     implicitly holds every project-scoped module role via `require_module_
     role`'s own override, so it's consistent that a project manager is
     also who explicitly grants/revokes the row) plus a `grant_roles`
-    holder (Fine-Grained Access Control Phase 0 Q6/Phase 3).
+    holder.
 
     400s if `(payload.module_key, payload.role_key)` doesn't name a real
     `scope="project"` role of a currently-enabled module for this

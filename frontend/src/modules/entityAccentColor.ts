@@ -22,8 +22,8 @@
  * `Record` in a core file with one entry per entity kind including
  * `"compliance"` — a per-module value hand-added to a core, closed-set map,
  * the exact same failure mode CLAUDE.md's "Modular Feature System Boundary"
- * section already documents for `ProjectSequenceCounter.artefact_type`
- * (Module 4 Phase 1), just applied to a display colour instead of an artefact-
+ * section already documents for `ProjectSequenceCounter.artefact_type`,
+ * just applied to a display colour instead of an artefact-
  * type string. A second instance of the identical mistake (an attempted
  * `"decision"` entry) was caught and reverted before landing — see this
  * repo's own memory/decisions log — which is what prompted pulling this

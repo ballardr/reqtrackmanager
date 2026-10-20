@@ -9,7 +9,7 @@ const API_BASE_URL = "http://localhost:8000";
 const CS = "context_strategy";
 
 /**
- * Job to be done: docs/plans/module-01-context-and-strategy-plan.md Phase 13
+ * Job to be done:
  * — the shared Reports UI over the core report catalogue. Covers the project
  * Reports page (catalogue reports beside the requirement report), the R1 and
  * R4 custom views, PDF/CSV downloads (every catalogue report, plus branding
@@ -287,11 +287,14 @@ test.describe("Context & Strategy: Reports UI", () => {
       const csv = await readFile((await download.path())!, "utf8");
       expect(csv).toContain(titles.major);
       expect(csv).toContain(titles.blocker);
+      // Each Pain Point is named by its code and the Tags column follows the data.
+      expect(csv).toMatch(/PP-001 /);
+      expect(csv.split("\n")[0]).toMatch(/,Tags\r?$/);
     });
 
     await test.step("the chosen branding template is sent with the PDF download", async () => {
       await picker(page).selectOption("pain-point-prioritisation");
-      await page.getByRole("combobox", { name: "Branding template (PDF and Word)" }).selectOption({ label: template.name });
+      await page.getByRole("combobox", { name: "Branding template" }).selectOption({ label: template.name });
       await page.getByRole("button", { name: "Export" }).click();
       const pdf = page.waitForResponse((r) => r.url().includes("format=pdf") && r.url().includes(`report_template_id=${template.id}`));
       await page.getByRole("button", { name: "Download PDF report" }).click();

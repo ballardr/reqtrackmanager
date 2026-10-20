@@ -86,7 +86,7 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     // "New project" opens a Modal (style guide "Pattern: modal dialog for
     // entity create/rename") — scoped to it rather than the old bare-".card"
     // xpath-ancestor climb, and its Name/Summary fields are real <label>s
-    // now, not placeholder-only (2026-08 UX audit roadmap item 521).
+    // now, not placeholder-only.
     await page.getByRole("button", { name: "New project" }).click();
     const newProjectDialog = page.getByRole("dialog", { name: "New project" });
     await newProjectDialog.getByLabel("Name", { exact: true }).waitFor();
@@ -149,8 +149,7 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     // the "add component" row's own Name field transiently shares this
     // value right after creating "Software", which would otherwise let
     // the xpath ancestor climb escape up to the shared "Structure" tab
-    // panel (Stages + Components & categories, 2026-08 UX audit roadmap:
-    // 8 tabs -> 5) and pick up Stages' own "Name" field too.
+    // panel and pick up Stages' own "Name" field too.
     const softwareRow = page.locator('input[value="Software"]:not([placeholder])').locator("xpath=../../..");
     await softwareRow.getByPlaceholder("Name").fill("Performance");
     await softwareRow.getByPlaceholder("Prefix").fill("PERF");
@@ -230,8 +229,8 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     try {
       await page.getByTitle("Preferences").click();
       await selectPreferencesGroup(page, "Security");
-      await page.getByPlaceholder("Current password").fill(orgAdminPassword);
-      await page.getByPlaceholder("New password").fill(TEMP_PASSWORD);
+      await page.getByLabel("Current password").fill(orgAdminPassword);
+      await page.getByLabel("New password").fill(TEMP_PASSWORD);
       const changeResponsePromise = page.waitForResponse(
         (resp) => resp.url().includes("/api/v1/auth/change-password") && resp.request().method() === "POST",
       );
@@ -256,8 +255,8 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
       // rest of this spec.
       await page.getByTitle("Preferences").click();
       await selectPreferencesGroup(page, "Security");
-      await page.getByPlaceholder("Current password").fill(TEMP_PASSWORD);
-      await page.getByPlaceholder("New password").fill(orgAdminPassword);
+      await page.getByLabel("Current password").fill(TEMP_PASSWORD);
+      await page.getByLabel("New password").fill(orgAdminPassword);
       const revertResponsePromise = page.waitForResponse(
         (resp) => resp.url().includes("/api/v1/auth/change-password") && resp.request().method() === "POST",
       );
@@ -307,8 +306,7 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
 
   await test.step("create a new project from the template and verify configuration was copied", async () => {
     // "New project" opens a Modal — scoped to it, and its Name/Summary
-    // fields are real <label>s now, not placeholder-only (2026-08 UX audit
-    // roadmap item 521).
+    // fields are real <label>s now, not placeholder-only.
     await page.getByRole("button", { name: "New project" }).click();
     const newProjectDialog = page.getByRole("dialog", { name: "New project" });
     await newProjectDialog.getByLabel("Name", { exact: true }).waitFor();

@@ -2,7 +2,7 @@
  * Module: modules/context_strategy/OrgGuidingPrinciplesPanel
  *
  * The org-scoped equivalent of `ProjectGuidingPrinciplesPage.tsx` — an
- * organisation's own org-scoped Guiding Principle records (Phase 0 Q2's
+ * organisation's own org-scoped Guiding Principle records (the
  * org/project scope discriminator), rendered as an `OrgOverviewPage.tsx`
  * `ResourceMenu` group (`module.ts`'s `orgOverviewSections`).
  *
@@ -14,24 +14,27 @@
  * Owner/Approver works with day to day, not an admin-configuration table —
  * so it lands on `orgOverviewSections` (Org Dashboard) too, for the same
  * reasoning those two components' own docstrings already give. Pain Point
- * Type (Phase 7.3) landed on `orgAdminSections` instead because it *is* a
+ * Type landed on `orgAdminSections` instead because it *is* a
  * configuration table with no org-scoped artefact behind it at all — a
  * different case entirely, not a competing precedent for this one. No
  * deviation found worth flagging: Guiding Principle's org/project dual scope
  * is exactly the case that precedent's own "revisit" note anticipated, and
  * it confirms rather than overturns the existing placement.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { orgGuidingPrincipleApi } from "./api";
 import { GuidingPrincipleFormModal } from "./GuidingPrincipleFormModal";
 import { GUIDING_PRINCIPLE_PRIORITY_LABEL, GUIDING_PRINCIPLE_STATUS_LABEL, GUIDING_PRINCIPLE_STATUS_TONE } from "./types";
 import type { GuidingPrinciple, GuidingPrincipleFieldValues, GuidingPrinciplePriority, GuidingPrincipleStatus } from "./types";
+import { Badge } from "../../components/Badge";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 export function OrgGuidingPrinciplesPanel({ orgId }: { orgId: string }) {
   const navigate = useNavigate();
@@ -56,10 +59,7 @@ export function OrgGuidingPrinciplesPanel({ orgId }: { orgId: string }) {
     }
   }
 
-  useEffect(() => {
-    void reloadGuidingPrinciples();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, includeArchived]);
+  useLoadOnChange(reloadGuidingPrinciples, [orgId, includeArchived]);
 
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (guidingPrinciples === null) return <Spinner />;
@@ -67,16 +67,17 @@ export function OrgGuidingPrinciplesPanel({ orgId }: { orgId: string }) {
   const filtered = guidingPrinciples.filter((g) => {
     if (statusFilter && g.status !== statusFilter) return false;
     if (priorityFilter && g.priority !== priorityFilter) return false;
-    if (search && !g.name.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !`{g.unique_code} {g.name}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
   const columns: DirectoryColumn<GuidingPrinciple>[] = [
     { key: "name", label: "Name", render: (g) => g.name },
+    { key: "code", label: "Code", render: (g) => <span className="text-muted"><ScopedRecordCode record={g} /></span> },
     { key: "priority", label: "Priority", render: (g) => GUIDING_PRINCIPLE_PRIORITY_LABEL[g.priority] },
     {
       key: "status", label: "Status",
-      render: (g) => <span className={`badge badge--${GUIDING_PRINCIPLE_STATUS_TONE[g.status]}`}>{GUIDING_PRINCIPLE_STATUS_LABEL[g.status]}</span>,
+      render: (g) => <Badge tone={GUIDING_PRINCIPLE_STATUS_TONE[g.status]}>{GUIDING_PRINCIPLE_STATUS_LABEL[g.status]}</Badge>,
     },
     { key: "version", label: "Version", render: (g) => `v${g.version_number}` },
   ];

@@ -17,22 +17,23 @@
  * list, since a hidden stakeholder is no longer reachable from the project.
  *
  * Personal data: contact info is Confidential, so it sits behind the same
- * visibility as the record. "Delete permanently" (Phase 0 resolution 15) is
+ * visibility as the record. "Delete permanently" is
  * the module's one irreversible action, so it is a tier-2 `ConfirmDialog`
  * requiring the stakeholder's exact name to be typed, and says exactly what is
  * removed. Every mutating control always renders regardless of role; the
  * backend enforces `stakeholder_owner`/`org_stakeholder_owner` and a 403
  * surfaces as a toast.
  */
-import { Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../../api/client";
 import type { OrgUser, Project } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
+import { RecordActivity } from "../../components/RecordActivity";
+import { recordActivityKey } from "../../components/recordActivityKey";
+import { RecordTags } from "../../components/RecordTags";
 import { DetailLayout } from "../../components/DetailLayout";
-import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
@@ -45,7 +46,10 @@ import { EngagementTimelinePanel } from "./EngagementTimelinePanel";
 import { HeldNeedsPanel } from "./HeldNeedsPanel";
 import { RecordField, RecordFieldGroup, RecordPrincipalField, VersionHistoryTable } from "../../components/RecordDetailParts";
 import { RecordDiscussion } from "../../components/RecordDiscussion";
-import { RecordLifecycleControls, type LifecycleAction } from "./RecordLifecycleControls";
+import { RecordHeader } from "../../components/RecordHeader";
+import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
+import { RecordLifecycleControls, type LifecycleAction } from "../../components/RecordLifecycleControls";
+import { useArchiveAction, useConfirmedAction } from "../../components/useConfirmedAction";
 import { RecordVisibilityControl } from "./RecordVisibilityControl";
 import { RepresentationPanel } from "./RepresentationPanel";
 import { StakeholderFormModal } from "./StakeholderFormModal";
@@ -55,6 +59,9 @@ import {
   GRID_QUADRANT_LABEL, STAKEHOLDER_SCOPE_LABEL, STAKEHOLDER_STATUS_LABEL, STAKEHOLDER_STATUS_TONE, TARGET_CADENCE_LABEL,
 } from "./types";
 import { levelName, useStakeholderScheme } from "./useStakeholderScheme";
+import { Badge } from "../../components/Badge";
+import { STAKEHOLDERS_HELP } from "./help";
+import { DetailCard } from "../../components/DetailCard";
 
 const TRANSITION_DONE: Record<LifecycleAction, string> = {
   activate: "Stakeholder activated.",
@@ -73,8 +80,8 @@ export function StakeholderDetailPage() {
   const scopedApi = projectId ? projectStakeholderApi : orgStakeholderApi;
   const groupApi = projectId ? projectStakeholderGroupApi : orgStakeholderGroupApi;
   const scopeId = projectId ?? organizationId;
-  const listPath = projectId ? `/projects/${projectId}/modules/stakeholders/stakeholders` : "/org-overview";
-  const backLabel = projectId ? "← Stakeholders" : "← Organisation overview";
+  const listPath = projectId ? `/projects/${projectId}/modules/stakeholders/people?kind=stakeholder` : "/org-overview";
+  const backLabel = projectId ? "← People" : "← Organisation overview";
 
   const [stakeholder, setStakeholder] = useState<Stakeholder | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -87,7 +94,6 @@ export function StakeholderDetailPage() {
   const [fetchedHint, setFetchedHint] = useState<{ key: string; hint: CadenceHint } | null>(null);
   const [editing, setEditing] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [erasing, setErasing] = useState(false);
   const scheme = useStakeholderScheme(projectId ? { projectId } : { orgId: organizationId ?? "" });
 
   // An org stakeholder opened inside a project can't be mutated through the project API.
@@ -196,7 +202,6 @@ export function StakeholderDetailPage() {
 
   async function erase() {
     if (!scopeId || !stakeholder) return;
-    setErasing(false);
     try {
       await scopedApi.erase(scopeId, stakeholder.id);
       showToast("Stakeholder permanently deleted.");
@@ -206,6 +211,33 @@ export function StakeholderDetailPage() {
     }
   }
 
+  const archive = useArchiveAction({
+    noun: "Stakeholder",
+    isArchived: stakeholder?.is_archived ?? false,
+    hidden: !stakeholder || readOnlyInProject,
+    archiveBody: "This Stakeholder will no longer appear in the active list. Nothing is deleted.",
+    onToggle: async () => {
+      if (!scopeId || !stakeholder) return;
+      await run(
+        () => (stakeholder.is_archived ? scopedApi.unarchive(scopeId, stakeholder.id) : scopedApi.archive(scopeId, stakeholder.id)),
+        stakeholder.is_archived ? "Stakeholder unarchived." : "Stakeholder archived.",
+      );
+    },
+  });
+  const eraseAction = useConfirmedAction({
+    label: "Delete permanently",
+    danger: true,
+    hidden: !stakeholder || readOnlyInProject,
+    title: `Permanently delete ${stakeholder?.name ?? "this Stakeholder"}?`,
+    message:
+      "This cannot be undone. It deletes this Stakeholder's record, every version of it (including contact " +
+      "information), its comments, its attachments and files, and its links to Personas. The audit trail " +
+      "keeps only that a deletion happened, not who the person was.",
+    requireTypedText: stakeholder?.name,
+    onConfirm: erase,
+  });
+
+  const codeOwner = useRecordOwnerCode(stakeholder ?? {});
   if (!scopeId || !stakeholderId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (stakeholder === null) return <Spinner />;
@@ -214,6 +246,7 @@ export function StakeholderDetailPage() {
 
   return (
     <DetailLayout
+      activity={projectId ? <RecordActivity projectId={projectId} artefactType="stakeholder" artefactId={stakeholder.id} refreshToken={recordActivityKey(stakeholder)} /> : undefined}
       aside={
         <ArtefactLinksPanel
           projectId={projectId}
@@ -222,28 +255,40 @@ export function StakeholderDetailPage() {
         />
       }
     >
-      <Link to={listPath}>{backLabel}</Link>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ margin: 0 }}>{stakeholder.name}</h1>
-        <span className="row" style={{ gap: "0.5rem" }}>
-          <span className="badge">{STAKEHOLDER_SCOPE_LABEL[stakeholder.scope]}</span>
-          <span className={`badge badge--${STAKEHOLDER_STATUS_TONE[stakeholder.status]}`}>{STAKEHOLDER_STATUS_LABEL[stakeholder.status]}</span>
-        </span>
-      </div>
+      <RecordHeader
+        recordLabel="Stakeholder"
+        title={stakeholder.name}
+        code={stakeholder.unique_code}
+        tags={projectId ? <RecordTags projectId={projectId} artefactType="stakeholder" artefactId={stakeholder.id} /> : undefined}
+        codeOwner={codeOwner}
+        back={{ to: listPath, label: backLabel }}
+        badges={
+          <>
+            <Badge>{STAKEHOLDER_SCOPE_LABEL[stakeholder.scope]}</Badge>
+            <Badge tone={STAKEHOLDER_STATUS_TONE[stakeholder.status]}>{STAKEHOLDER_STATUS_LABEL[stakeholder.status]}</Badge>
+            {stakeholder.is_archived && <Badge tone="muted">Archived</Badge>}
+          </>
+        }
+        version={stakeholder.version_number}
+        subtitle={[stakeholder.stakeholder_type_name, stakeholder.role, stakeholder.organisation_group].filter(Boolean).join(" · ") || "No type or role set"}
+        onEdit={readOnlyInProject ? undefined : () => setEditing(true)}
+        actions={[archive.item, eraseAction.item]}
+        transitions={
+          readOnlyInProject ? undefined : (
+            <RecordLifecycleControls
+              noun="Stakeholder"
+              status={stakeholder.status}
+              activateBody="An Active stakeholder is part of the current stakeholder register. A comment is optional."
+              retireBody="A Retired stakeholder is no longer part of the current register, but keeps its history and can be reactivated. A comment is optional."
+              onTransition={(action, comment) => run(() => scopedApi[action](scopeId, stakeholder.id, comment), TRANSITION_DONE[action])}
+            />
+          )
+        }
+      />
+      {archive.dialog}
+      {eraseAction.dialog}
 
       <div className="stack">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-          <p className="text-muted" style={{ margin: 0 }}>
-            {[stakeholder.stakeholder_type_name, stakeholder.role, stakeholder.organisation_group].filter(Boolean).join(" · ") || "No type or role set"} · v{stakeholder.version_number}
-            {stakeholder.is_archived && " · Archived"}
-          </p>
-          {!readOnlyInProject && (
-            <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
-              <Pencil size={14} />
-            </button>
-          )}
-        </div>
-
         {readOnlyInProject && (
           <p className="text-muted" style={{ margin: 0 }}>
             This is an organisation-wide Stakeholder shared by every project. Edit it from the{" "}
@@ -258,108 +303,90 @@ export function StakeholderDetailPage() {
           />
         )}
 
-        {stakeholder.description && <RecordField label="Description" value={stakeholder.description} />}
-        {stakeholder.interests && <RecordField label="Interests" value={stakeholder.interests} />}
-        {stakeholder.responsibilities && <RecordField label="Responsibilities" value={stakeholder.responsibilities} />}
-        {stakeholder.goals_needs && <RecordField label="Goals and needs" value={stakeholder.goals_needs} />}
-        {stakeholder.priorities && <RecordField label="Priorities" value={stakeholder.priorities} />}
-        {stakeholder.constraints && <RecordField label="Constraints" value={stakeholder.constraints} />}
-        {stakeholder.workflows_scenarios && <RecordField label="Workflows / use scenarios" value={stakeholder.workflows_scenarios} />}
-        {stakeholder.contact_info && <RecordField label="Contact / reference information" value={stakeholder.contact_info} />}
+        <DetailCard>
+          {stakeholder.description && <RecordField label="Description" value={stakeholder.description} />}
+          {stakeholder.interests && <RecordField label="Interests" value={stakeholder.interests} />}
+          {stakeholder.responsibilities && <RecordField label="Responsibilities" value={stakeholder.responsibilities} />}
+          {stakeholder.goals_needs && <RecordField label="Goals and needs" value={stakeholder.goals_needs} />}
+          {stakeholder.priorities && <RecordField label="Priorities" value={stakeholder.priorities} />}
+          {stakeholder.constraints && <RecordField label="Constraints" value={stakeholder.constraints} />}
+          {stakeholder.workflows_scenarios && <RecordField label="Workflows / use scenarios" value={stakeholder.workflows_scenarios} />}
+          {stakeholder.contact_info && <RecordField label="Contact / reference information" value={stakeholder.contact_info} />}
 
-        <RecordFieldGroup label="Influence and interest">
-          <span data-testid="grid-position">
-            Influence: {levelName(scheme, "influence", stakeholder.influence_level_id)} · Interest: {levelName(scheme, "interest", stakeholder.interest_level_id)}
-            {hint?.quadrant && ` · ${GRID_QUADRANT_LABEL[hint.quadrant]}`}
-          </span>
-        </RecordFieldGroup>
-
-        <RecordFieldGroup label="Engagement">
-          <span data-testid="cadence">
-            Target cadence: {stakeholder.target_cadence ? TARGET_CADENCE_LABEL[stakeholder.target_cadence] : "Not set"}
-            {hint?.suggested_cadence && hint.suggested_cadence !== stakeholder.target_cadence &&
-              ` (suggested by their position: ${TARGET_CADENCE_LABEL[hint.suggested_cadence]})`}
-          </span>
-          {stakeholder.availability_constraints && (
-            <span className="text-muted">Their availability: {stakeholder.availability_constraints}</span>
-          )}
-          {projectId && <span data-testid="last-engaged">Last engaged: {stakeholder.last_engaged ?? "Never"}</span>}
-        </RecordFieldGroup>
-
-        <RecordPrincipalField
-          label="Owner" ariaLabel="Stakeholder owner" principal={stakeholder.owner} orgUsers={orgUsers}
-          organizationId={ownerOrgId} projectId={stakeholder.scope === "project" ? projectId : undefined}
-          readOnly={readOnlyInProject}
-          onChange={(owner) =>
-            run(() => scopedApi.update(scopeId, stakeholder.id, { owner }), "Owner updated.", "Could not update this Stakeholder's owner.")
-          }
-        />
-        <StakeholderGroupsField
-          current={stakeholder.groups}
-          groups={groups}
-          tier={projectId ? "project" : "organization"}
-          onSave={async (groupIds) => {
-            const refs = await groupApi.setStakeholderGroups(scopeId, stakeholder.id, groupIds);
-            setStakeholder({ ...stakeholder, groups: refs });
-            return refs;
-          }}
-        />
-        {stakeholder.user_id && (
-          <RecordFieldGroup label="Platform user">
-            <span>{linkedUser?.display_name ?? "A platform user"}</span>
+          <RecordFieldGroup help={STAKEHOLDERS_HELP.stakeholderInfluenceInterest} label="Influence and interest">
+            <span data-testid="grid-position">
+              Influence: {levelName(scheme, "influence", stakeholder.influence_level_id)} · Interest: {levelName(scheme, "interest", stakeholder.interest_level_id)}
+              {hint?.quadrant && ` · ${GRID_QUADRANT_LABEL[hint.quadrant]}`}
+            </span>
           </RecordFieldGroup>
-        )}
 
-        <RepresentationPanel
-          heading="Represents these Personas"
-          emptyText="This Stakeholder doesn't represent any Persona yet."
-          load={() => scopedApi.listPersonas(scopeId, stakeholder.id)}
-          linkFor={(persona) =>
-            projectId
-              ? `/projects/${projectId}/modules/stakeholders/personas/${persona.id}`
-              : `/orgs/${scopeId}/modules/stakeholders/personas/${persona.id}`
-          }
-          edit={
-            readOnlyInProject
-              ? undefined
-              : {
-                  options: personaOptions,
-                  pickerLabel: "Persona to represent",
-                  onAdd: async (personaId) => {
-                    await scopedApi.addPersona(scopeId, stakeholder.id, personaId);
-                  },
-                  onRemove: (persona) => scopedApi.removePersona(scopeId, stakeholder.id, persona.id),
-                }
-          }
-        />
+          <RecordFieldGroup helpNotNeeded label="Engagement">
+            <span data-testid="cadence">
+              Target cadence: {stakeholder.target_cadence ? TARGET_CADENCE_LABEL[stakeholder.target_cadence] : "Not set"}
+              {hint?.suggested_cadence && hint.suggested_cadence !== stakeholder.target_cadence &&
+                ` (suggested by their position: ${TARGET_CADENCE_LABEL[hint.suggested_cadence]})`}
+            </span>
+            {stakeholder.availability_constraints && (
+              <span className="text-muted">Their availability: {stakeholder.availability_constraints}</span>
+            )}
+            {projectId && <span data-testid="last-engaged">Last engaged: {stakeholder.last_engaged ?? "Never"}</span>}
+          </RecordFieldGroup>
 
-        <HeldNeedsPanel projectId={projectId} load={() => projectNeedApi.listStakeholderNeeds(projectId ?? "", stakeholder.id)} />
-
-        <EngagementTimelinePanel
-          projectId={projectId}
-          subject={{ kind: "stakeholder", id: stakeholder.id, name: stakeholder.name }}
-          load={() => projectEngagementApi.listForStakeholder(projectId ?? "", stakeholder.id)}
-        />
-
-        {!readOnlyInProject && (
-          <RecordLifecycleControls
-            noun="Stakeholder"
-            status={stakeholder.status}
-            isArchived={stakeholder.is_archived}
-            activateBody="An Active stakeholder is part of the current stakeholder register. A comment is optional."
-            retireBody="A Retired stakeholder is no longer part of the current register, but keeps its history and can be reactivated. A comment is optional."
-            archiveBody="This Stakeholder will no longer appear in the active list. Nothing is deleted."
-            onTransition={(action, comment) => run(() => scopedApi[action](scopeId, stakeholder.id, comment), TRANSITION_DONE[action])}
-            onArchiveToggle={() =>
-              run(
-                () => (stakeholder.is_archived ? scopedApi.unarchive(scopeId, stakeholder.id) : scopedApi.archive(scopeId, stakeholder.id)),
-                stakeholder.is_archived ? "Stakeholder unarchived." : "Stakeholder archived.",
-              )
+          <RecordPrincipalField
+            label="Owner" ariaLabel="Stakeholder owner" principal={stakeholder.owner} orgUsers={orgUsers}
+            organizationId={ownerOrgId} projectId={stakeholder.scope === "project" ? projectId : undefined}
+            readOnly={readOnlyInProject}
+            onChange={(owner) =>
+              run(() => scopedApi.update(scopeId, stakeholder.id, { owner }), "Owner updated.", "Could not update this Stakeholder's owner.")
             }
-          >
-            <button className="btn btn-danger" onClick={() => setErasing(true)}>Delete permanently</button>
-          </RecordLifecycleControls>
-        )}
+          />
+          <StakeholderGroupsField
+            current={stakeholder.groups}
+            groups={groups}
+            tier={projectId ? "project" : "organization"}
+            onSave={async (groupIds) => {
+              const refs = await groupApi.setStakeholderGroups(scopeId, stakeholder.id, groupIds);
+              setStakeholder({ ...stakeholder, groups: refs });
+              return refs;
+            }}
+          />
+          {stakeholder.user_id && (
+            <RecordFieldGroup helpNotNeeded label="Platform user">
+              <span>{linkedUser?.display_name ?? "A platform user"}</span>
+            </RecordFieldGroup>
+          )}
+
+          <RepresentationPanel
+            heading="Represents these Personas"
+            emptyText="This Stakeholder doesn't represent any Persona yet."
+            load={() => scopedApi.listPersonas(scopeId, stakeholder.id)}
+            linkFor={(persona) =>
+              projectId
+                ? `/projects/${projectId}/modules/stakeholders/personas/${persona.id}`
+                : `/orgs/${scopeId}/modules/stakeholders/personas/${persona.id}`
+            }
+            edit={
+              readOnlyInProject
+                ? undefined
+                : {
+                    options: personaOptions,
+                    pickerLabel: "Persona to represent",
+                    onAdd: async (personaId) => {
+                      await scopedApi.addPersona(scopeId, stakeholder.id, personaId);
+                    },
+                    onRemove: (persona) => scopedApi.removePersona(scopeId, stakeholder.id, persona.id),
+                  }
+            }
+          />
+
+          <HeldNeedsPanel projectId={projectId} load={() => projectNeedApi.listStakeholderNeeds(projectId ?? "", stakeholder.id)} />
+
+          <EngagementTimelinePanel
+            projectId={projectId}
+            subject={{ kind: "stakeholder", id: stakeholder.id, name: stakeholder.name }}
+            load={() => projectEngagementApi.listForStakeholder(projectId ?? "", stakeholder.id)}
+          />
+        </DetailCard>
 
         <VersionHistoryTable
           versions={versions}
@@ -394,20 +421,6 @@ export function StakeholderDetailPage() {
         />
       )}
 
-      {erasing && (
-        <ConfirmDialog
-          title={`Permanently delete ${stakeholder.name}?`}
-          message={
-            "This cannot be undone. It deletes this Stakeholder's record, every version of it (including contact " +
-            "information), its comments, its attachments and files, and its links to Personas. The audit trail " +
-            "keeps only that a deletion happened, not who the person was."
-          }
-          confirmLabel="Delete permanently"
-          requireTypedText={stakeholder.name}
-          onConfirm={erase}
-          onCancel={() => setErasing(false)}
-        />
-      )}
     </DetailLayout>
   );
 }

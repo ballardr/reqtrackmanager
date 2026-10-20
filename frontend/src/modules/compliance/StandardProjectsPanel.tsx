@@ -1,8 +1,7 @@
 /**
  * Module: modules/compliance/StandardProjectsPanel
  *
- * The standard workspace's "Projects" section (docs/compliance-module-
- * plan.md Phase 23) — the destination for the Overview's "Projects"/
+ * The standard workspace's "Projects" section — the destination for the Overview's "Projects"/
  * "Compliant" `MetricTile`s: a simple, single-standard list of every
  * project this standard is assigned to, each with its own §20 overall
  * status, drilling through to that project's own Compliance page
@@ -24,6 +23,8 @@ import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import { COMPLIANCE_OVERALL_STATE_LABEL, type ComplianceOverallState, type ComplianceStandard, type ProjectComplianceStatus } from "./types";
+import { Badge } from "../../components/Badge";
+import { LabeledSelect } from "../../components/LabeledSelect";
 
 export function StandardProjectsPanel({ orgId, standard }: { orgId: string; standard: ComplianceStandard }) {
   const { showToast } = useToast();
@@ -44,22 +45,15 @@ export function StandardProjectsPanel({ orgId, standard }: { orgId: string; stan
 
   return (
     <div className="stack">
-      <label className="stack" style={{ gap: "0.25rem", maxWidth: 220 }}>
-        <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>Compliance state</span>
-        <select
-          className="input"
-          value={stateFilter}
-          onChange={(e) => {
-            const value = e.target.value;
-            setSearchParams(value ? { state: value } : {});
-          }}
-        >
-          <option value="">All states</option>
-          {(Object.keys(COMPLIANCE_OVERALL_STATE_LABEL) as ComplianceOverallState[]).map((state) => (
-            <option key={state} value={state}>{COMPLIANCE_OVERALL_STATE_LABEL[state]}</option>
-          ))}
-        </select>
-      </label>
+      <LabeledSelect helpNotNeeded
+        label="Compliance state"
+        value={stateFilter}
+        onChange={(next) => setSearchParams(next ? { state: next } : {})}
+        options={(Object.keys(COMPLIANCE_OVERALL_STATE_LABEL) as ComplianceOverallState[]).map((state) => ({
+          value: state, label: COMPLIANCE_OVERALL_STATE_LABEL[state],
+        }))}
+        placeholder="All states"
+      />
 
       {filtered.length === 0 ? (
         <p className="text-muted">No projects match this filter.</p>
@@ -76,7 +70,7 @@ export function StandardProjectsPanel({ orgId, standard }: { orgId: string; stan
                 <span className="text-muted"> — {row.version_label}</span>
               </span>
               <span>
-                <span className="badge">{COMPLIANCE_OVERALL_STATE_LABEL[row.overall_compliance_state]}</span>{" "}
+                <Badge>{COMPLIANCE_OVERALL_STATE_LABEL[row.overall_compliance_state]}</Badge>{" "}
                 {row.compliance_percentage.toFixed(1)}%
               </span>
             </li>

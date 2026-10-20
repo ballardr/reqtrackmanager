@@ -5,7 +5,7 @@ import { ensureExpanded, loginAs, ORG_NAMES, PERSONAS, selectOrgAdminGroup } fro
 const apiBaseUrl = "http://localhost:8000";
 
 /**
- * Style guide "Pattern: platform default vs. override" (2026-08 UX audit):
+ * Style guide "Pattern: platform default vs. override":
  * every overridable branding field now shows its current source as a pill
  * ("Platform default"/"Custom") and, when custom, an explicit "Reset to
  * platform default" action — previously the only way back was to know to
@@ -52,7 +52,7 @@ test.describe("org branding: platform-default/override pill and reset", () => {
 
     await page.goto(`/orgs/${alphaOrgId}/admin`);
     // Branding moved into the "Branding & defaults" resource-menu group
-    // (2026-08 UX audit's Org Admin restructure) — a real navigation, so
+    // — a real navigation, so
     // it must be selected before the section is reachable at all.
     await selectOrgAdminGroup(page, "Branding & defaults");
     await ensureExpanded(page, "Branding");
@@ -126,8 +126,7 @@ test.describe("org branding: platform-default/override pill and reset", () => {
 
     await test.step("login-background image (now part of the same Branding card as the logo, moved out of Single sign-on) has the same reset behaviour", async () => {
       // No section/group change needed here — login-background moved into
-      // the Branding card itself (2026-08 UX audit's Org Admin restructure:
-      // it's a branding concern, not an SSO/OIDC one), which is already
+      // the Branding card itself, which is already
       // open in the "Branding & defaults" group from the steps above.
       const backgroundRow = page.locator('label[for="org-login-background-input"]').locator("..");
       await expect(backgroundRow.getByText("Platform default")).toBeVisible();

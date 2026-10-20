@@ -19,8 +19,9 @@ import { Modal } from "../../components/Modal";
 import { RecordFieldGroup } from "../../components/RecordDetailParts";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectResearchApi } from "./api";
-import { TextAreaField } from "./RecordFormFields";
+import { TextAreaField, TextField } from "../../components/FormFields";
 import type { EngagementPrompt } from "./types";
+import { FormActions } from "../../components/FormActions";
 
 function PromptEditModal({
   prompt, onCancel, onSave,
@@ -34,14 +35,13 @@ function PromptEditModal({
   return (
     <Modal title="Edit session prompt" onClose={onCancel} size="lg">
       <div className="stack">
-        <TextAreaField label="Prompt" rows={2} value={text} onChange={setText} />
-        <TextAreaField label="Response notes" rows={5} value={notes} onChange={setNotes} hint="What was said. Notes can name people and are deleted with the engagement." />
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" disabled={text.trim() === ""} onClick={() => onSave({ prompt: text.trim(), response_notes: notes })}>
-            Save
-          </button>
-        </div>
+        <TextAreaField helpNotNeeded required label="Prompt" rows={2} value={text} onChange={setText} />
+        <TextAreaField helpNotNeeded label="Response notes" rows={5} value={notes} onChange={setNotes} hint="What was said. Notes can name people and are deleted with the engagement." />
+        <FormActions
+          onCancel={onCancel}
+          onSave={() => onSave({ prompt: text.trim(), response_notes: notes })}
+          saveDisabled={text.trim() === ""}
+        />
       </div>
     </Modal>
   );
@@ -77,29 +77,23 @@ export function ResearchPromptsPanel({ projectId, engagementId }: { projectId: s
 
   const addForm = (close: () => void) => (
     <div className="stack">
-      <label className="stack" style={{ gap: "0.25rem" }}>
-        <span>New session prompt</span>
-        <input className="input" value={draft} onChange={(e) => setDraft(e.target.value)} aria-label="New session prompt" autoFocus />
-      </label>
-      <div className="row" style={{ justifyContent: "flex-end" }}>
-        <button className="btn" onClick={close}>Cancel</button>
-        <button
-          className="btn btn-primary" disabled={draft.trim() === ""}
-          onClick={() => {
-            const text = draft.trim();
-            setDraft("");
-            close();
-            void mutate(() => projectResearchApi.addPrompt(projectId, engagementId, { prompt: text }), "Prompt added.", "Could not add the prompt.");
-          }}
-        >
-          Add prompt
-        </button>
-      </div>
+      <TextField helpNotNeeded required label="New session prompt" value={draft} onChange={setDraft} inputProps={{ autoFocus: true }} />
+      <FormActions
+        onCancel={close}
+        onSave={() => {
+          const text = draft.trim();
+          setDraft("");
+          close();
+          void mutate(() => projectResearchApi.addPrompt(projectId, engagementId, { prompt: text }), "Prompt added.", "Could not add the prompt.");
+        }}
+        saveLabel="Add prompt"
+        saveDisabled={draft.trim() === ""}
+      />
     </div>
   );
 
   return (
-    <RecordFieldGroup label="Session prompts" gap="0.35rem" action={<AddPopoverButton label="Add to Session prompts">{addForm}</AddPopoverButton>}>
+    <RecordFieldGroup helpNotNeeded label="Session prompts" gap="0.35rem" action={<AddPopoverButton label="Add to Session prompts">{addForm}</AddPopoverButton>}>
       {prompts.length === 0 ? (
         <span className="text-muted">No session prompts yet.</span>
       ) : (
@@ -113,13 +107,13 @@ export function ResearchPromptsPanel({ projectId, engagementId }: { projectId: s
             actions: (
               <>
                 <button className="btn btn-sm btn-icon" aria-label={`Move ${p.prompt} up`} title={`Move ${p.prompt} up`} disabled={index === 0} onClick={() => mutate(() => projectResearchApi.movePrompt(projectId, engagementId, p.id, "up"), "Prompt moved.", "Could not move the prompt.")}>
-                  <ArrowUp size={14} />
+                  <ArrowUp />
                 </button>
                 <button className="btn btn-sm btn-icon" aria-label={`Move ${p.prompt} down`} title={`Move ${p.prompt} down`} disabled={index === prompts.length - 1} onClick={() => mutate(() => projectResearchApi.movePrompt(projectId, engagementId, p.id, "down"), "Prompt moved.", "Could not move the prompt.")}>
-                  <ArrowDown size={14} />
+                  <ArrowDown />
                 </button>
-                <button className="btn btn-sm btn-icon" aria-label={`Edit ${p.prompt}`} title={`Edit ${p.prompt}`} onClick={() => setEditing(p)}><Pencil size={14} /></button>
-                <button className="btn btn-sm btn-icon" aria-label={`Delete ${p.prompt}`} title={`Delete ${p.prompt}`} onClick={() => setDeleting(p)}><Trash2 size={14} /></button>
+                <button className="btn btn-sm btn-icon" aria-label={`Edit ${p.prompt}`} title={`Edit ${p.prompt}`} onClick={() => setEditing(p)}><Pencil /></button>
+                <button className="btn btn-sm btn-icon" aria-label={`Delete ${p.prompt}`} title={`Delete ${p.prompt}`} onClick={() => setDeleting(p)}><Trash2 /></button>
               </>
             ),
             detail: p.response_notes ? <span style={{ whiteSpace: "pre-wrap" }}>{p.response_notes}</span> : undefined,

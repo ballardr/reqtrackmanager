@@ -1,8 +1,7 @@
 """
 Module: services.custom_role_presets
 
-Ready-made custom roles an organisation can use as they are or copy
-(`docs/plans/platform-enhancements-2026-10-plan.md` Phase 6d).
+Ready-made custom roles an organisation can use as they are or copy.
 
 Responsibilities:
 - Define the presets once (`PRESETS`), for both the seeding of a new organisation

@@ -2,8 +2,7 @@ import { expect, test } from "@playwright/test";
 
 /**
  * `ResultCount`'s two display states and `FilterPanel`'s header/collapsible-
- * body restructure (2026-08 UX audit roadmap: persistent "showing X of Y"
- * result count) — verified against the demo dataset (scripts/
+ * body restructure — verified against the demo dataset (scripts/
  * seed_demo_data.py) on `RequirementsPage`, which seeds requirements at
  * varied lifecycle statuses so a status filter and a name search are both
  * guaranteed to narrow the list without emptying it.
@@ -39,10 +38,10 @@ async function loginAsDemoAdminAndOpenRequirements(page: import("@playwright/tes
 }
 
 /** Reads the current, single result-count line from `FilterPanel`'s header
- * — scoped to `.side-grid` so a `<select>` option's own text (e.g. the
+ * — scoped to `.list-page` (`ListPageLayout`) so a `<select>` option's own text (e.g. the
  * Status dropdown's "Completed") can never false-match. */
 function resultCountLocator(page: import("@playwright/test").Page) {
-  return page.locator(".side-grid").getByText(/total$/);
+  return page.locator(".list-page").getByText(/total$/);
 }
 
 /** `FilterPanel` itself — `.side-grid`'s second child (the main list
@@ -57,7 +56,7 @@ function resultCountLocator(page: import("@playwright/test").Page) {
  * option's* text (e.g. "StatusApproved"), which changes with the filter
  * and would never equal a fixed "Status" string. */
 function filterPanelLocator(page: import("@playwright/test").Page) {
-  return page.locator(".side-grid > div").nth(1);
+  return page.locator(".filter-panel").first();
 }
 
 test("ResultCount shows total-only by default, matching-plus-total once a status filter is applied, and total-only again once cleared", async ({
@@ -77,7 +76,7 @@ test("ResultCount shows total-only by default, matching-plus-total once a status
   // .ts`'s equivalent chart-segment fix, and mirrors `badge-filters.spec
   // .ts`'s established "click a real row's own badge" pattern for the
   // exact same reason.
-  const mainColumn = page.locator(".side-grid > div").first();
+  const mainColumn = page.locator(".list-page__content");
   const firstBadge = mainColumn.locator("button.badge").first();
   const statusLabel = (await firstBadge.textContent())?.trim();
   expect(statusLabel).toBeTruthy();
@@ -104,12 +103,11 @@ test("ResultCount's matching count re-fetches as the user types in the relocated
   const baselineTotal = Number((await resultCount.textContent())?.match(/^(\d+) total$/)?.[1]);
   expect(baselineTotal).toBeGreaterThan(0);
 
-  // The search box now lives in `FilterPanel`'s header (moved there from
-  // the main content column, 2026-08 UX audit roadmap) — resolve a real,
+  // The search box now lives in `FilterPanel`'s header — resolve a real,
   // currently-rendered requirement name from the page itself rather than
   // hardcoding demo-data content, so this doesn't drift if the seed script
   // changes what it creates.
-  const mainColumn = page.locator(".side-grid > div").first();
+  const mainColumn = page.locator(".list-page__content");
   const firstRequirementName = (await mainColumn.locator("a").first().textContent())?.trim();
   expect(firstRequirementName).toBeTruthy();
   const searchTerm = firstRequirementName!.slice(0, Math.min(5, firstRequirementName!.length));
@@ -195,7 +193,7 @@ test("FilterPanel's filter body starts collapsed below the mobile breakpoint, wi
  * desktop's two-column layout, but on the single-column mobile collapse
  * (`@media (max-width: 860px)`, `theme.css`) that put filters visually
  * *after* the entire list, forcing a scroll past everything to reach them.
- * Fixed with a mobile-only `order: -1` on `.side-grid > .filter-panel`
+ * Fixed with a mobile-only `order: -1` on the narrow-viewport grid areas of `.list-page` (`theme.css`)
  * (`theme.css`), which doesn't move the DOM, only the rendered position —
  * these tests assert the rendered (visual) top position, not DOM order.
  */
@@ -204,7 +202,7 @@ test.describe("FilterPanel renders first on narrow viewports, unaffected on desk
     await page.setViewportSize({ width: 400, height: 900 });
     await loginAsDemoAdminAndOpenRequirements(page);
 
-    const mainColumn = page.locator(".side-grid > div").first();
+    const mainColumn = page.locator(".list-page__content");
     const filterPanel = filterPanelLocator(page);
     await expect(filterPanel).toBeVisible();
     await expect(mainColumn).toBeVisible();
@@ -225,8 +223,11 @@ test.describe("FilterPanel renders first on narrow viewports, unaffected on desk
     const mainBoxDesktop = await mainColumn.boundingBox();
     expect(filterBoxDesktop).not.toBeNull();
     expect(mainBoxDesktop).not.toBeNull();
-    // Same row (not reordered above), and to the right of the main column.
-    expect(Math.abs(filterBoxDesktop!.y - mainBoxDesktop!.y)).toBeLessThan(5);
+    // Level with the page title (`ListPageLayout`, not reordered above the list), to the right of the main column.
+    const titleBoxDesktop = await page.getByRole("heading", { level: 1 }).first().boundingBox();
+    expect(titleBoxDesktop).not.toBeNull();
+    expect(Math.abs(filterBoxDesktop!.y - titleBoxDesktop!.y)).toBeLessThan(5);
+    expect(filterBoxDesktop!.y).toBeLessThan(mainBoxDesktop!.y + 1);
     expect(filterBoxDesktop!.x).toBeGreaterThan(mainBoxDesktop!.x);
   });
 
@@ -244,7 +245,7 @@ test.describe("FilterPanel renders first on narrow viewports, unaffected on desk
     await page.waitForURL(/\/change-requests$/);
     await expect(page.getByText("Loading…")).toBeHidden();
 
-    const mainColumn = page.locator(".side-grid > div").first();
+    const mainColumn = page.locator(".list-page__content");
     const filterPanel = filterPanelLocator(page);
     await expect(filterPanel).toBeVisible();
     await expect(mainColumn).toBeVisible();

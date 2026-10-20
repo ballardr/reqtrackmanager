@@ -2,8 +2,7 @@
  * Module: components/AddToGroupControl
  *
  * Small anchored quick-pick — "add this org member to one of this
- * organisation's groups" — from the member's own row (PR6 of the
- * members/groups directory rework plan, docs/decisions.md): previously
+ * organisation's groups" — from the member's own row (docs/decisions.md): previously
  * reachable only from the *group's* own `SidePanel` (a member picker
  * scoped to that one group), never from the user's own row on
  * `OrgAdminPage.tsx`'s Users table. Pure UI reachability fix — no new
@@ -29,6 +28,8 @@ import { useRef, useState } from "react";
 import type { OrgGroup, OrgUser } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import { Popover } from "./Popover";
+import { FormActions } from "./FormActions";
+import { LabeledSelect } from "./LabeledSelect";
 
 export function AddToGroupControl({
   user,
@@ -66,44 +67,29 @@ export function AddToGroupControl({
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
-        <UserPlus size={14} />
+        <UserPlus />
       </button>
       {open && (
         <Popover anchorRef={triggerRef} title={label} onClose={() => setOpen(false)}>
           <div className="stack">
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {strings.orgAdmin.addToGroupSelectLabel}
-              <select
-                className="input"
-                aria-label={strings.orgAdmin.addToGroupSelectLabel}
-                value={groupId}
-                onChange={(e) => setGroupId(e.target.value)}
-                autoFocus
-              >
-                <option value="">{strings.orgAdmin.addToGroupSelectPlaceholder}</option>
-                {availableGroups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="row" style={{ justifyContent: "flex-end" }}>
-              <button className="btn" onClick={() => setOpen(false)}>
-                {strings.common.cancel}
-              </button>
-              <button
-                className="btn btn-primary"
-                disabled={!groupId}
-                onClick={() => {
-                  onAdd(groupId, user.user_id);
-                  setGroupId("");
-                  setOpen(false);
-                }}
-              >
-                {strings.membersTable.add}
-              </button>
-            </div>
+            <LabeledSelect helpNotNeeded
+              label={strings.orgAdmin.addToGroupSelectLabel}
+              value={groupId}
+              onChange={setGroupId}
+              options={availableGroups.map((g) => ({ value: g.id, label: g.name }))}
+              placeholder={strings.orgAdmin.addToGroupSelectPlaceholder}
+              inputProps={{ autoFocus: true }}
+            />
+            <FormActions
+              onCancel={() => setOpen(false)}
+              onSave={() => {
+                onAdd(groupId, user.user_id);
+                setGroupId("");
+                setOpen(false);
+              }}
+              saveLabel={strings.membersTable.add}
+              saveDisabled={!groupId}
+            />
           </div>
         </Popover>
       )}

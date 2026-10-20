@@ -1,8 +1,7 @@
 """
 Module: tests.test_module_tools
 
-Unit tests for the module-contributed MCP tools mechanism (compliance-
-module-plan.md Phase 4, see server.py's own "Module-contributed tools"
+Unit tests for the module-contributed MCP tools mechanism (see server.py's own "Module-contributed tools"
 section) — parsing the backend's manifest, building/registering a
 `_DeclarativeModuleTool`, path/query/body param mapping (including that a
 path-location value is URL-encoded, not trusted as a bare path segment),

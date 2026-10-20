@@ -1,7 +1,7 @@
 """
 Module: modules.stakeholders.group_project_router
 
-Project-scoped Stakeholder Group API (Phase 3c), mounted at
+Project-scoped Stakeholder Group API, mounted at
 `/api/v1/projects/{project_id}/modules/stakeholders` next to the Stakeholder routes: the group tree
 (list/create/edit/move/reorder/delete), direct membership, a stakeholder's group
 set, and the "create groups from organisation / group text" action. The bodies
@@ -9,10 +9,10 @@ live in `_group_shared.py`; this file declares the routes and the gates.
 
 The project sees the organisation's groups (read-only here: they are edited through the org
 router) and its own, which may sit under an org group and hold org or project stakeholders.
-Stakeholders hidden from the project (Phase 3b) are neither listed nor addable.
+Stakeholders hidden from the project are neither listed nor addable.
 
 Viewing needs the `stakeholder` sub-component to be enabled; every write needs
-`_group_shared.require_group_manage` (item 31 of the plan's addendum 3: a group is
+`_group_shared.require_group_manage` (a group is
 managed by whoever manages Stakeholders, or holds a `(stakeholder_group, manage)` grant).
 """
 
@@ -27,6 +27,7 @@ from app.database import get_db
 from app.models.project import Project
 from app.models.user import User
 from app.modules.stakeholders import _group_shared as gsh
+from app.modules.stakeholders.groups import GROUP_ARTEFACT_TYPE
 from app.modules.stakeholders.schemas import (
     GroupFromTextCreate,
     GroupFromTextOut,
@@ -40,7 +41,9 @@ from app.modules.stakeholders.schemas import (
     StakeholderGroupUpdate,
 )
 from app.schemas.project import MoveDirection
+from app.services.project_scope import ProjectScope
 from app.services.rbac import require_project_subcomponent_enabled
+from app.services.tags import TagFilter
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/modules/stakeholders", tags=["stakeholder-groups-project"])
 
@@ -59,13 +62,31 @@ def _require_manage(db: Session, user: User, ctx: gsh.GroupContext) -> None:
 
 
 def _refs(refs) -> list[StakeholderGroupRefOut]:
-    return [StakeholderGroupRefOut(id=r.id, name=r.name, scope=r.scope, parent_group_id=r.parent_group_id) for r in refs]
+    return [
+        StakeholderGroupRefOut(
+            id=r.id, name=r.name, scope=r.scope, parent_group_id=r.parent_group_id, unique_code=r.unique_code,
+            organization_id=r.organization_id,
+        )
+        for r in refs
+    ]
 
 
 @router.get("/stakeholder-groups", response_model=list[StakeholderGroupOut])
-def list_groups(project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db)):
+def list_groups(
+    project_id: UUID, tag_filter: TagFilter = Depends(), current_user: User = Depends(_require_view),
+    db: Session = Depends(get_db),
+    project_scope: ProjectScope = Depends(),
+):
     """The organisation's groups and this project's own, flat; the client builds the tree from `parent_group_id`."""
-    return gsh.list_groups(db, _ctx(db, project_id))
+
+    def rows_for(pid: UUID) -> list:
+        """This endpoint's rows for one project of the scope."""
+        return tag_filter.keep(db, pid, GROUP_ARTEFACT_TYPE, gsh.list_groups(db, _ctx(db, pid)))
+
+    return project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, GROUP_ARTEFACT_TYPE, rows_for,
+        gate=("stakeholders", "stakeholder"),
+    )
 
 
 @router.get("/stakeholder-groups/text-proposals", response_model=list[GroupTextProposalOut])

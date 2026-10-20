@@ -59,3 +59,32 @@ export async function setUpOrg(page: Page, label: string, withChildProject = fal
 }
 
 export const statusBadge = (page: Page, label: string) => page.locator("span.badge", { hasText: new RegExp(`^${label}$`) });
+
+export type PeopleKind = "persona" | "stakeholder" | "group";
+
+/**
+ * Opens the People page from the project's nav rail, narrowed to one kind through its `?kind=` URL (the
+ * state the kind chips write), so a list assertion sees that kind's own columns and filters.
+ */
+export async function openPeople(page: Page, projectId: string, kind?: PeopleKind) {
+  await page.goto(`/projects/${projectId}`);
+  await page.getByRole("link", { name: "People", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/modules/stakeholders/people$`));
+  if (kind) {
+    await page.goto(`/projects/${projectId}/modules/stakeholders/people?kind=${kind}`);
+  }
+}
+
+/** Chooses an item from the People page's New menu (`Persona`, `Stakeholder`, `Stakeholder Need`, ...). */
+export async function openNew(page: Page, item: string) {
+  await page.getByRole("button", { name: "New", exact: true }).click();
+  await page.getByRole("menuitem", { name: item, exact: true }).click();
+}
+
+/** Opens the Needs tab (Stakeholder Needs list) beside People, from the project's nav rail. */
+export async function openNeeds(page: Page, projectId: string) {
+  await page.goto(`/projects/${projectId}`);
+  await page.getByRole("link", { name: "People", exact: true }).click();
+  await page.getByRole("tab", { name: "Needs" }).click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/modules/stakeholders/needs$`));
+}

@@ -1,6 +1,5 @@
-"""Tests for the Compliance Module's Phase 11 Cross-Standard Mapping +
-Version Impact (docs/compliance-module-plan.md Phase 11; docs/Compliance_
-Module_Requirements.md §19, §27): the org-scoped, extensible mapping-
+"""Tests for the Compliance Module's Cross-Standard Mapping +
+Version Impact (§19, §27): the org-scoped, extensible mapping-
 relationship-type vocabulary, the `ComplianceRequirementMapping` CRUD
 surface (visibility from both requirements, navigation, cross-org
 isolation, audit logging), the added/removed/modified/replaced/re-mapped
@@ -100,8 +99,8 @@ def test_create_list_rename_relationship_type(client, admin_token, org_id):
 
 
 def test_relationship_type_implies_equivalence_create_and_toggle(client, admin_token, org_id):
-    """§27's migration-carry-forward gate (`models.py`'s own Phase 11
-    notes on `ComplianceMappingRelationshipTypeDefinition.implies_
+    """§27's migration-carry-forward gate (`models.py`'s cross-standard mapping
+    design decisions on `ComplianceMappingRelationshipTypeDefinition.implies_
     equivalence`) is an org-level, Compliance-Manager-only decision made on
     the relationship-type vocabulary itself, independent of any specific
     mapping."""
@@ -759,7 +758,7 @@ def test_migrate_logs_audit_events(client, admin_token, org_id):
 
 # --- Confirmed carry-forward across a `replaced` mapping (§27 follow-up) -----------
 #
-# Direct feedback on the original Phase 11 implementation: always treating a
+# Direct feedback on the original implementation: always treating a
 # `replaced` requirement like `added` (nothing ever carried forward) was too
 # blunt when a Compliance Manager has already judged two requirements
 # genuinely equivalent (e.g. an old "IPX6 water ingress" requirement
@@ -836,7 +835,7 @@ def _requirement_impact(result_body, requirement_id):
 
 
 def test_migrate_replaced_defaults_when_not_confirmed(client, admin_token, org_id):
-    """Baseline (unchanged from before this addendum): doing nothing about
+    """Baseline: doing nothing about
     a `replaced` pair leaves it at materialised defaults, exactly like
     `added` — the officer must explicitly opt in for anything else."""
     ctx = _setup_migration_scenario_with_replacement(client, admin_token, org_id, implies_equivalence=True)

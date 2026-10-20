@@ -12,6 +12,7 @@ const org: Organization = {
   default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
   disabled_at: null, accent_color_hex: null, header_title: null,
   email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
+  code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto" }, enforce_code_everywhere: false,
   force_require_change_request_for_approved_links: false,
   allow_ai_approvals: false,
 };
@@ -85,6 +86,18 @@ export const ProfileTabSave: Story = {
   },
 };
 
+/** Project codes inside a project are on by default; the viewer can turn them off. */
+export const ProfileTabProjectCodePreference: Story = {
+  beforeEach: () => mockPreferencesApis("user-1"),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const toggle = canvas.getByRole("checkbox", { name: "Show the project code on record codes" });
+    await expect(toggle).toBeChecked();
+    await userEvent.click(toggle);
+    await expect(toggle).not.toBeChecked();
+  },
+};
+
 export const SecurityTabChangePassword: Story = {
   beforeEach: () => {
     mockPreferencesApis("user-1");
@@ -95,8 +108,8 @@ export const SecurityTabChangePassword: Story = {
     await userEvent.click(canvas.getByRole("link", { name: "Security" }));
     // "Change password" is a `variant="plain"` CollapsibleSection with no
     // `defaultCollapsed`, so it's already expanded — no click needed.
-    await userEvent.type(canvas.getByPlaceholderText("Current password"), "old-password");
-    await userEvent.type(canvas.getByPlaceholderText("New password"), "new-password-123");
+    await userEvent.type(canvas.getByLabelText("Current password"), "old-password");
+    await userEvent.type(canvas.getByLabelText("New password"), "new-password-123");
     await userEvent.click(canvas.getByRole("button", { name: "Change password" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith("/api/v1/auth/change-password", {
@@ -118,7 +131,7 @@ export const SecurityTabStart2FAEnrollment: Story = {
     await expect(canvas.getByText("Not enabled")).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("switch", { name: "Enable 2FA" }));
     await waitFor(() => expect(canvas.getByText(/Scan this QR code/)).toBeInTheDocument());
-    await expect(canvas.getByPlaceholderText("Confirm code")).toBeInTheDocument();
+    await expect(canvas.getByLabelText("Confirm code")).toBeInTheDocument();
   },
 };
 
@@ -136,7 +149,7 @@ export const AccessTabShowsOrgsAndProjects: Story = {
   },
 };
 
-/** "Leave organisation" (2026-08 UX audit roadmap item 520) moved here
+/** "Leave organisation" moved here
  * from Org Admin — it's about this user's own membership, not an org-level
  * setting. Previously fired with zero confirmation; now Tier 1
  * `ConfirmDialog` + `Toast`, matching every other ordinary/reversible
@@ -203,9 +216,7 @@ export const PatsTabCreateToken: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Personal Access Tokens" }));
-    // The create form opens in a `Modal` (2026-08 UX audit roadmap item
-    // 526 — a brand-new PAT has no "what came before it" to be contextual
-    // detail about, per the revised Principle 3), portalled to
+    // The create form opens in a `Modal`, portalled to
     // `document.body` rather than nested inside the tab panel.
     await userEvent.click(canvas.getByRole("button", { name: "New personal access token" }));
     const dialog = within(document.body).getByRole("dialog", { name: "New personal access token" });

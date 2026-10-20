@@ -55,7 +55,7 @@ USER nginx
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=10s --timeout=5s --retries=10 \
-    CMD wget -qO- http://localhost:3000/health || exit 1
+HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=10 \
+    CMD wget -qO- http://127.0.0.1:3000/health || exit 1
 
 ENTRYPOINT ["/docker/env-config-entrypoint.sh"]

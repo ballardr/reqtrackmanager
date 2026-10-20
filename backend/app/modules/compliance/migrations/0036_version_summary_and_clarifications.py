@@ -1,11 +1,11 @@
-"""Version summary + post-publish clarification tracking (compliance module Phase 24)
+"""Version summary + post-publish clarification tracking
 
 Revision ID: 0036
 Revises: 0035
 Create Date: 2026-09-09
 
-Adds the two schema changes docs/compliance-module-plan.md's Phase 24 needs
-(docs/Compliance_Module_Requirements.md §4, §31 — the human-review request
+Adds the two schema changes needs
+(§4, §31 — the human-review request
 that a published version remain editable for clarifications/minor updates,
 fully tracked, and that a version's own description/summary be editable at
 any time):
@@ -13,7 +13,7 @@ any time):
 - `compliance_standard_versions.summary` — a version's own current-standing
   description, distinct from the existing `change_note` (what changed
   *relative to the previous version*). Editable at any lifecycle stage; see
-  `models.py`'s own Phase 24 design-decisions section.
+  `models.py`'s clarification design decisions.
 - Four new columns on `compliance_requirements` recording the most recent
   post-publish clarification made to a requirement's wording:
   `clarification_count`, `last_clarified_at`, `last_clarified_by`,

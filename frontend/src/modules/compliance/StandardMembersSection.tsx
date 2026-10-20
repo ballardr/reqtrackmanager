@@ -1,16 +1,12 @@
 /**
  * Module: modules/compliance/StandardMembersSection
  *
- * The "Members" section of a standard's workspace (docs/compliance-module-
- * plan.md Phase 22) — this standard's own dedicated working group:
+ * The "Members" section of a standard's workspace — this standard's own dedicated working group:
  * `standards_manager`/`standards_contributor` role grants, direct and
- * scoped to just this one `ComplianceStandard` row (module system Phase 2's
- * new generalised entity-scope mechanism). Renders through the same
+ * scoped to just this one `ComplianceStandard` row (the generalised entity-scope mechanism). Renders through the same
  * `DirectoryTable` + `MultiSelectDropdown` combination every other role
  * roster in this app already uses (`OrgAdminPage.tsx`'s Users table,
- * `ProjectMembersTable.tsx`) — per docs/compliance-module-plan.md's own
- * "Reused Existing Patterns" section, the single most-corrected point in
- * this plan's whole design history, this is not a bespoke roster table.
+ * `ProjectMembersTable.tsx`) — this is not a bespoke roster table.
  *
  * The last remaining `standards_manager` row's checkbox is disabled (with
  * an explanatory `title`) whenever unchecking it would leave the standard
@@ -21,8 +17,8 @@
  * role`'s own 400) regardless of what this component renders — this is a
  * UX hint, not the authorization boundary.
  *
- * Phase 30 (module system's generic group-based module-role grants,
- * `GroupModuleRole`) rebuilt this section's add-member flow onto
+ * The add-member flow (module system's generic group-based module-role grants,
+ * `GroupModuleRole`) is built on
  * `UserAutocomplete` — search-as-you-type over this org's real user
  * directory (`organizationId` set, debounced server-side search) plus
  * org-group matching (`groups`/`onSelectGroup`), mirroring `OrgAdminPage.
@@ -41,7 +37,7 @@
  * group), not every user a group happens to currently reach.
  */
 import { UserPlus, Users } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import type { OrgGroup, OrgUser } from "../../api/types";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
@@ -59,6 +55,10 @@ import {
   type ComplianceStandardMembers,
   type ComplianceStandardRoleKey,
 } from "./types";
+import { Badge } from "../../components/Badge";
+import { LabeledSelect } from "../../components/LabeledSelect";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 const STANDARD_ROLE_KEYS: ComplianceStandardRoleKey[] = ["standards_manager", "standards_contributor"];
 
@@ -101,11 +101,10 @@ export function StandardMembersSection({
     }
   }
 
-  useEffect(() => {
+  useResetOnChange([orgId, standard.id], () => {
     setData(null);
-    void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, standard.id]);
+  });
+  useLoadOnChange(reload, [orgId, standard.id]);
 
   async function handleToggleUserRole(member: ComplianceStandardMember, roleKey: ComplianceStandardRoleKey, checked: boolean) {
     try {
@@ -180,7 +179,7 @@ export function StandardMembersSection({
         ) : (
           <span className="row" style={{ gap: "0.35rem", alignItems: "center" }}>
             <Users size={14} aria-hidden="true" />
-            {row.group.group_name} <span className="badge">Org group</span>
+            {row.group.group_name} <Badge>Org group</Badge>
           </span>
         ),
     },
@@ -231,26 +230,19 @@ export function StandardMembersSection({
     <div className="stack">
       <div className="row" style={{ justifyContent: "flex-end" }}>
         <button ref={addTriggerRef} type="button" className="btn" onClick={() => setAddOpen((o) => !o)}>
-          <UserPlus size={14} /> Add member
+          <UserPlus /> Add member
         </button>
       </div>
       {addOpen && (
         <Popover anchorRef={addTriggerRef} title="Add a member" onClose={() => setAddOpen(false)}>
           <div className="stack">
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              Role
-              <select
-                className="input"
-                value={addRoleKey}
-                onChange={(e) => setAddRoleKey(e.target.value as ComplianceStandardRoleKey)}
-              >
-                {STANDARD_ROLE_KEYS.map((roleKey) => (
-                  <option key={roleKey} value={roleKey}>
-                    {COMPLIANCE_STANDARD_ROLE_LABEL[roleKey]}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <LabeledSelect helpNotNeeded
+              label="Role"
+              value={addRoleKey}
+              onChange={(next) => setAddRoleKey(next as ComplianceStandardRoleKey)}
+              options={STANDARD_ROLE_KEYS.map((roleKey) => ({ value: roleKey, label: COMPLIANCE_STANDARD_ROLE_LABEL[roleKey] }))}
+              placeholder={null}
+            />
             <UserAutocomplete
               users={orgUsers}
               organizationId={orgId}

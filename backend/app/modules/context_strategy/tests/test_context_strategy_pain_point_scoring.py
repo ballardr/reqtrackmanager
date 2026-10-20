@@ -1,12 +1,12 @@
-"""Tests for per-persona Pain Point scoring and the intentional flag
-(docs/plans/module-01-context-and-strategy-plan.md Phase 11), through the
+"""Tests for per-persona Pain Point scoring and the intentional flag,
+through the
 real HTTP endpoints.
 
 Covers: the `is_intentional` round trip, the either/or (all-personas XOR
 per-persona) rule, level validation (wrong axis / other org), the three
 roll-up methods and their maths, the Blocker flag surviving an average,
 "not scored under this model" input gaps, retired and unavailable personas
-(including Module 2 being switched off), RBAC and lock rules, level-usage
+(including the Stakeholders module being switched off), RBAC and lock rules, level-usage
 reassignment on delete, audit logging and model/roll-up parameter checks.
 """
 

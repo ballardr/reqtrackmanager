@@ -1,8 +1,7 @@
 """
 Module: modules.risk_management.reports
 
-Report data layer for Risk Management (docs/plans/module-03-risk-management-
-plan.md Phase 7): four project-level reports, one `collect_*` function each,
+Report data layer for Risk Management: four project-level reports, one `collect_*` function each,
 returning the core framework's `ReportResult`, plus the `REPORT_DEFINITIONS`
 that declare them to the registry. Result shapes, scope (`readable_projects`),
 PDF/CSV/Word rendering, routes, MCP tools and the catalogue all live in
@@ -24,7 +23,7 @@ Design decisions (all Decided by: Agent unless stated):
   Realised ones have left the exposure picture (one never arose, one already
   has), so counting them would flatter or distort the residual column.
 - "Expected to be treated" (RK3) are Assessed, Treatment planned, Treatment in
-  progress and Mitigated: the states where the plan says something is reducing
+  progress and Mitigated: the states where something is reducing
   the risk. Accepted and Transferred risks are deliberate non-treatment.
 - A treatment link counts toward a verdict bucket by its `RiskTreatmentAssessment`
   row; a link with none is Proposed (the module's own rule). Links whose far end
@@ -63,7 +62,7 @@ from app.modules.risk_management.labels import (
 )
 from app.modules.risk_management.models import Risk, RiskReview, RiskTreatmentAssessment, RiskVersion
 from app.modules.risk_management.ratings import RiskRating, load_rating_context, rate_version
-from app.modules.risk_management.service import RISK_SUBCOMPONENT_KEY, RISK_TYPES
+from app.modules.risk_management.service import RISK_ARTEFACT_TYPE, RISK_SUBCOMPONENT_KEY, RISK_TYPES
 from app.modules.risk_management.treatment import effective_treatment_counts, treatment_link_ids
 from app.services.principals import principal_labels, principal_ref, principal_text
 from app.services.report_framework import (
@@ -119,6 +118,7 @@ class RiskRow:
         type_name: The risk's effective type name ("" when untyped).
         owner: The owner as text (`principal_text`: a user's name, or a group's name with its kind; "" when none).
         effective: How many treatment links are assessed effective.
+        tags: The risk's tags as comma-separated text ("" when none).
     """
 
     risk: Risk
@@ -129,6 +129,7 @@ class RiskRow:
     type_name: str
     owner: str
     effective: int
+    tags: str = ""
 
 
 def _load_rows(db: Session, req: ReportContext, *, include_archived: bool = False) -> tuple[list[Project], list[RiskRow]]:
@@ -154,6 +155,7 @@ def _load_rows(db: Session, req: ReportContext, *, include_archived: bool = Fals
     pairs = db.execute(query).all()
     owners = principal_labels(db, [principal_ref(v.owner_type, v.owner_id) for _, v in pairs])
     effective = effective_treatment_counts(db, [r.id for r, _ in pairs])
+    tags = req.tag_text(db, RISK_ARTEFACT_TYPE, [r.id for r, _ in pairs])
     contexts = {p.id: load_rating_context(db, p) for p in projects}
     type_names: dict[uuid.UUID, str] = {}
     rows: list[RiskRow] = []
@@ -167,7 +169,7 @@ def _load_rows(db: Session, req: ReportContext, *, include_archived: bool = Fals
             risk, version, by_id[risk.project_id], inherent, residual,
             type_names.get(version.project_type_id, "") if version.project_type_id else "",
             principal_text(owners.get((version.owner_type, version.owner_id))) if version.owner_id else "",
-            effective.get(risk.id, 0),
+            effective.get(risk.id, 0), tags.get(risk.id, ""),
         ))
     rows.sort(key=lambda r: (r.project.name.lower(), r.risk.unique_code))
     return projects, rows
@@ -228,14 +230,15 @@ def collect_risk_register(db: Session, req: ReportContext) -> ReportResult:
     ])
     columns = [
         "Code", "Title", "Project", "Type", "Status", "Owner", "Strategy", "Inherent", "Residual", "Effective treatments",
-        "Next review",
+        "Next review", "Tags",
     ]
     result.sections = [
         ReportSection("register", "Risks", columns, [
             [
-                r.risk.unique_code, r.version.title, r.project.name, r.type_name, risk_status_label(r.version.status.value),
+                req.code(r.risk.unique_code, r.project.id), r.version.title, r.project.name, r.type_name, risk_status_label(r.version.status.value),
                 r.owner, TREATMENT_STRATEGY_LABEL.get(r.version.treatment_strategy.value, "") if r.version.treatment_strategy else "",
                 _label(r.inherent), _label(r.residual), str(r.effective), _fmt_date(r.version.review_date),
+                r.tags,
             ]
             for r in rows
         ]),
@@ -256,7 +259,7 @@ def collect_risk_register(db: Session, req: ReportContext) -> ReportResult:
         ReportMetric("Review overdue", overdue, gap=True),
     ]
     result.data = {"items": [
-        {"id": r.risk.id, "project_id": r.project.id, "code": r.risk.unique_code, "title": r.version.title} for r in rows
+        {"id": r.risk.id, "project_id": r.project.id, "code": req.code(r.risk.unique_code, r.project.id), "title": r.version.title} for r in rows
     ]}
     return result
 
@@ -295,12 +298,12 @@ def collect_risk_exposure(db: Session, req: ReportContext) -> ReportResult:
         (r for r in exposed if r.residual is not None),
         key=lambda r: (-r.residual.normalised, -(r.inherent.normalised if r.inherent else 0.0), r.risk.unique_code),
     )[:TOP_RESIDUAL_ROWS]
-    columns = ["Code", "Title", "Project", "Status", "Owner", "Inherent", "Residual"]
+    columns = ["Code", "Title", "Project", "Status", "Owner", "Inherent", "Residual", "Tags"]
 
     def row(r: RiskRow) -> list[str]:
         return [
-            r.risk.unique_code, r.version.title, r.project.name, risk_status_label(r.version.status.value), r.owner,
-            _label(r.inherent), _label(r.residual),
+            req.code(r.risk.unique_code, r.project.id), r.version.title, r.project.name, risk_status_label(r.version.status.value), r.owner,
+            _label(r.inherent), _label(r.residual), r.tags,
         ]
 
     result.sections = [
@@ -357,16 +360,16 @@ def collect_treatment_coverage(db: Session, req: ReportContext) -> ReportResult:
     verdicts = _verdict_counts(db, expected)
     columns = [
         "Code", "Title", "Project", "Status", "Owner", "Inherent", "Treatment links", "Effective", "Proposed", "Ineffective",
-        "Needs reassessment",
+        "Needs reassessment", "Tags",
     ]
 
     def row(r: RiskRow) -> list[str]:
         c = verdicts[r.risk.id]
         return [
-            r.risk.unique_code, r.version.title, r.project.name, risk_status_label(r.version.status.value), r.owner,
+            req.code(r.risk.unique_code, r.project.id), r.version.title, r.project.name, risk_status_label(r.version.status.value), r.owner,
             _label(r.inherent), str(sum(c.values())), str(c[TreatmentAssessmentStatus.EFFECTIVE]),
             str(c[TreatmentAssessmentStatus.PROPOSED]), str(c[TreatmentAssessmentStatus.INEFFECTIVE]),
-            str(c[TreatmentAssessmentStatus.NEEDS_REASSESSMENT]),
+            str(c[TreatmentAssessmentStatus.NEEDS_REASSESSMENT]), r.tags,
         ]
 
     untreated = [r for r in expected if verdicts[r.risk.id][TreatmentAssessmentStatus.EFFECTIVE] == 0]
@@ -434,14 +437,14 @@ def collect_review_schedule(db: Session, req: ReportContext) -> ReportResult:
         key=lambda r: (r.version.review_date, r.risk.unique_code),
     )
     unscheduled = [r for r in reviewable if r.version.review_date is None and r.version.status != RiskStatus.IDENTIFIED]
-    columns = ["Code", "Title", "Project", "Status", "Owner", "Review date", "Days", "Last reviewed"]
+    columns = ["Code", "Title", "Project", "Status", "Owner", "Review date", "Days", "Last reviewed", "Tags"]
 
     def row(r: RiskRow) -> list[str]:
         days = (r.version.review_date - req.today).days if r.version.review_date else None
         return [
-            r.risk.unique_code, r.version.title, r.project.name, risk_status_label(r.version.status.value), r.owner,
+            req.code(r.risk.unique_code, r.project.id), r.version.title, r.project.name, risk_status_label(r.version.status.value), r.owner,
             _fmt_date(r.version.review_date), "" if days is None else (f"{-days} overdue" if days < 0 else str(days)),
-            _fmt_date(last.get(r.risk.id)),
+            _fmt_date(last.get(r.risk.id)), r.tags,
         ]
 
     result = _result(req, "rk4", "Review schedule", eligible=len(projects), notes=[
@@ -485,21 +488,25 @@ REPORT_DEFINITIONS: tuple[ReportDefinition, ...] = (
         "rk1", "risk-register", "Risk register",
         "Every Risk with its type, status, owner, strategy, inherent and residual rating, and next review.",
         collect_risk_register, subcomponent=RISK_SUBCOMPONENT_KEY, params=(_STATUS, _RISK_TYPE, _INCLUDE_ARCHIVED),
+        record_types=("risk",),
     ),
     ReportDefinition(
         "rk2", "risk-exposure", "Risk exposure",
         "Inherent against residual rating across live Risks, the highest remaining Risks, and Risks with no rating.",
         collect_risk_exposure, subcomponent=RISK_SUBCOMPONENT_KEY,
+        record_types=("risk",),
     ),
     ReportDefinition(
         "rk3", "treatment-coverage", "Treatment coverage",
         "Risks expected to be treated that have no effective treatment, or rest on a verdict to reassess.",
         collect_treatment_coverage, subcomponent=RISK_SUBCOMPONENT_KEY,
+        record_types=("risk",),
     ),
     ReportDefinition(
         "rk4", "review-schedule", "Review schedule",
         "Overdue and upcoming Risk reviews, and assessed Risks with no review scheduled.",
         collect_review_schedule, subcomponent=RISK_SUBCOMPONENT_KEY, params=(_DUE_WITHIN,),
+        record_types=("risk",),
     ),
 )
 

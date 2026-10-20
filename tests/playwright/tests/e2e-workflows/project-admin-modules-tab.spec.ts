@@ -124,13 +124,17 @@ test.describe("project admin Modules tab", () => {
     await expectEveryModuleListed(page, modules);
   });
 
-  test("an org-disabled module is locked with a hint; an available one toggles with a Toast", async ({ page }) => {
+  test("an org-disabled module is hidden; an available one toggles with a Toast", async ({ page }) => {
     const { org, project, projectAdmin, adminHeaders, listModules } = await setup(page);
 
-    // Make the org-level state explicit rather than relying on registry defaults.
-    const before = await listModules();
+    // Make the org-level state explicit rather than relying on defaults: switch the module on so
+    // the project is offered it, then off again.
     const offKey = "context_strategy";
-    const off = before.find((m) => m.module_key === offKey);
+    const turnedOn = await page.request.put(`${apiBaseUrl}/api/v1/orgs/${org.id}/modules/${offKey}`, {
+      headers: adminHeaders, data: { enabled: true },
+    });
+    expect(turnedOn.ok()).toBeTruthy();
+    const off = (await listModules()).find((m) => m.module_key === offKey);
     expect(off, "Context & Strategy is registered").toBeTruthy();
     const turnedOff = await page.request.put(`${apiBaseUrl}/api/v1/orgs/${org.id}/modules/${offKey}`, {
       headers: adminHeaders, data: { enabled: false },
@@ -144,10 +148,9 @@ test.describe("project admin Modules tab", () => {
     await loginAs(page, projectAdmin.email, PASSWORD);
     await page.goto(`/projects/${project.id}/admin/modules`);
 
-    await test.step("org-disabled: switch is disabled and the hint explains why", async () => {
-      const row = moduleRow(page, off!.name);
-      await expect(row.getByText("Turned off for your organisation — ask an organisation admin to turn it on.")).toBeVisible();
-      await expect(row.getByRole("switch")).toBeDisabled();
+    await test.step("org-disabled: the module is not offered at all", async () => {
+      await expect(moduleRow(page, toggleable!.name)).toBeVisible();
+      await expect(moduleRow(page, off!.name)).toHaveCount(0);
     });
 
     await test.step("available module: enabled switch round-trips, each change confirmed by a Toast", async () => {

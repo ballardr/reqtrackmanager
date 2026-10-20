@@ -7,9 +7,7 @@ import { buildUser, withStatefulAuth } from "../testing/storybook-helpers";
 import { FilterCheckbox, FilterField, FilterPanel } from "./FilterPanel";
 
 /** Wraps `FilterPanel` the way `RequirementsPage`/`ProjectListPage`
- * actually compose it post-restructure (2026-08 UX audit roadmap: a
- * `ResultCount` + relocated search field in the always-visible header,
- * and the dropdown/checkbox filters as the collapsible body). Needs a
+ * actually compose it post-restructure. Needs a
  * real, stateful `AuthContext` (`withStatefulAuth`, not the no-op stub
  * `withAuth` defaults to) because the collapsible body goes through
  * `CollapsibleSection`, which persists collapsed/expanded state via
@@ -59,7 +57,7 @@ type Story = StoryObj<typeof Interactive>;
  * (theme.css's own `.side-grid` collapse width): the result count and the
  * relocated search field sit in the always-visible header, and the filter
  * body renders fully expanded with no toggle affordance at all — "no
- * visible toggle friction" on desktop, per the 2026-08 UX audit roadmap. */
+ * visible toggle friction" on desktop. */
 export const DesktopAlwaysExpanded: Story = {
   play: async ({ canvasElement }) => {
     await page.viewport(1280, 800);

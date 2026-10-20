@@ -22,6 +22,8 @@
   --header-height: 56px;
   --nav-rail-width: 220px;
   --nav-rail-width-collapsed: 56px;
+  --nav-toggle-overhang: 14px;
+  --chip-height: 1.5rem;
 }
 
 :root[data-theme="light"] {
@@ -30,6 +32,7 @@
   --color-surface-alt: #eef0f3;
   --color-border: #c3c9d1;
   --color-text: #1a202c;
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231a202c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   --color-text-muted: #5a6472;
   --color-primary: #475569;
   --color-primary-hover: #334155;
@@ -37,13 +40,13 @@
   --color-accent: #2f855a;
   --color-danger: #c53030;
   --color-warning: #b7791f;
-  /* Platform review 2026-09, Phase 4: "awaiting decision" status tone
+  /* "awaiting decision" status tone
      (reviewed/submitted/in_review/pending), deliberately distinct from
      --color-warning so routine in-progress states don't compete visually
      with things that actually need attention (e.g. an applicability
      override, an overdue review). See docs/decisions.md. */
   --color-info: #0e7490;
-  /* Entity-type accent (Phase 4, item 2) — the 3 entity kinds core itself
+  /* Entity-type accent — the 3 entity kinds core itself
      owns (requirement/action/change_request) only. A *module's* own accent
      colour (e.g. Compliance's) is never a variable here — see
      frontend/src/modules/entityAccentColor.ts's own docstring for why a
@@ -63,6 +66,7 @@
   --color-surface-alt: #242b37;
   --color-border: #333c4a;
   --color-text: #e6e9ef;
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23e6e9ef' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   --color-text-muted: #9aa4b2;
   --color-primary: #94a3b8;
   --color-primary-hover: #a9b6c7;
@@ -128,6 +132,9 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+  /* Text beside a control wraps; the control does not (style guide "Pattern: text beside controls"). */
+  flex: none;
+  white-space: nowrap;
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   color: var(--color-text);
@@ -191,6 +198,20 @@ textarea {
   height: 1.75rem;
 }
 
+/* One icon size per button size (style guide "Pattern: button sizes"): the button decides, not a
+   `size` prop on each icon, so the rule cannot drift per call site. `flex: none` stops a long label
+   squeezing the icon. The pill rule (`.badge svg`, 12px) sits with the pill styles. */
+.btn svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.btn-sm svg {
+  width: 14px;
+  height: 14px;
+}
+
 /* `SplitButtonTrigger` (style guide "Pattern: split-button trigger"): two
    adjacent `.btn`s read as one joined control — the primary action on the
    left, a narrow chevron affordance revealing alternatives on the right,
@@ -215,8 +236,7 @@ textarea {
 
 /* `Tabs` (style guide "Pattern: Tabs") — deliberately distinct from `.btn`:
    the active tab used to be styled `.btn btn-primary`, making it
-   pixel-identical to a primary button (see docs/decisions.md, "Platform
-   review 2026-09, Phase 3"). An underline indicator reads as "the current
+   pixel-identical to a primary button (see docs/decisions.md). An underline indicator reads as "the current
    view of this object," not "an action to take," which a filled button
    shape doesn't. */
 .tabs-list {
@@ -298,18 +318,46 @@ textarea.input {
   padding: 0.5rem 0.6rem;
 }
 
-/* A native <select>'s own dropdown arrow (appearance: auto — this app
-   draws no custom chevron) renders inside its padding box, not in space
-   the browser reserves beyond it — the shared 0.6rem right padding above
-   left the arrow sitting almost flush against the border on every select
-   in the app. Extra right padding only, so the value text's own left
-   alignment is unaffected. */
-select.input {
+/* Every single-value <select> draws the same chevron, at the same place: the browser's own arrow
+   (appearance: auto) sits at a different distance from the edge in each browser and at different
+   widths, so two selects in one panel could disagree, and it never matched the chevron of the custom
+   dropdowns (`MultiSelectDropdown`, the tag filter). The chevron is the lucide `ChevronDown`, 14px, in
+   the theme's text colour (`--select-chevron`, set per theme), 0.6rem from the right edge, which is
+   where `MultiSelectDropdown` puts its own. Right padding keeps the value text clear of it. A
+   multi-line (`multiple`, `size`) select keeps its native look. */
+select.input:not([multiple]):not([size]) {
+  appearance: none;
   padding-right: 2rem;
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  background-size: 14px 14px;
+}
+
+select.input[multiple],
+select.input[size] {
+  padding-right: 0.6rem;
 }
 
 .badge {
-  display: inline-block;
+  /* Plain text: a vertical -webkit-box so the text clamps to two lines with an ellipsis. */
+  display: -webkit-inline-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  box-sizing: border-box;
+  /* Pill contract (style guide "Pattern: pills"): never shrinks or stretches to fill its row, stays on
+     one line up to --badge-max-width, then wraps to at most two lines and is clipped after that.
+     A list sets --badge-min-width on its container so every pill in it is the same width. */
+  flex: none;
+  width: max-content;
+  min-width: var(--badge-min-width, 0);
+  max-width: var(--badge-max-width, 22ch);
+  max-height: calc(2 * 1.25em + 0.3rem + 2px);
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  text-align: center;
+  line-height: 1.25;
   border-radius: 999px;
   padding: 0.15rem 0.6rem;
   font-size: 0.75rem;
@@ -317,7 +365,45 @@ select.input {
   border: 1px solid var(--color-border);
 }
 
-/* Platform review 2026-09, Phase 4 — status colour, applied as a modifier
+.badge[data-align="start"] {
+  text-align: start;
+}
+
+.badge[data-align="end"] {
+  text-align: end;
+}
+
+/* Content that is not plain text (an icon, a nested element): laid out in a row, not clamped. */
+.badge--rich {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  max-width: none;
+  max-height: none;
+  overflow: visible;
+}
+
+.badge--rich[data-align="start"] {
+  justify-content: flex-start;
+}
+
+.badge--rich[data-align="end"] {
+  justify-content: flex-end;
+}
+
+.badge svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+/* A container that gives every pill in it one width (a status column, a list of statuses). */
+.badge-column {
+  --badge-min-width: 8rem;
+}
+
+/* Status colour, applied as a modifier
    on top of the plain `.badge` shape rather than a parallel badge
    implementation. Text + border colour only (fill stays the neutral
    --color-surface-alt) to keep this additive to the graphite palette
@@ -346,7 +432,7 @@ select.input {
   border-color: var(--color-warning);
 }
 
-/* Entity-type accent (Phase 4, item 2): a left-border stripe applied to a
+/* Entity-type accent: a left-border stripe applied to a
    list row or card, coloured via the `--entity-accent-color` custom
    property each call site sets from `ENTITY_ACCENT_COLOR` (api/types.ts)
    — not a bespoke colour per call site. `<tr>` uses a box-shadow inset
@@ -413,6 +499,160 @@ select.input {
   background: var(--color-surface-alt);
 }
 
+/* The global search box in the top bar (components/HeaderSearch.tsx). It sits on the dark header
+   bar, so its field takes the header's translucent-white treatment like `.app-header .btn`; the
+   dropdown under it is a normal light card, so it resets the header's white text like
+   `.notification-dropdown` above. Below the nav-rail breakpoint the box collapses to an icon button
+   and, when opened, covers the header (`--overlay`). */
+.header-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.header-search__input {
+  width: 17rem;
+  max-width: 28vw;
+  padding: 0.4rem 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-header-text);
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.header-search__input::placeholder {
+  color: var(--color-header-text-muted);
+}
+
+.header-search__input:focus-visible {
+  outline: 2px solid var(--color-header-text);
+  outline-offset: 1px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.header-search--overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  padding: 0 1rem;
+  background: var(--color-header-bg);
+}
+
+.header-search--overlay .header-search__input {
+  flex: 1;
+  width: auto;
+  max-width: none;
+}
+
+.header-search__spinner {
+  position: absolute;
+  right: 3.4rem;
+  color: var(--color-header-text-muted);
+  animation: search-spin 0.8s linear infinite;
+}
+
+@keyframes search-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.app-header .search-dropdown {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  width: min(34rem, 92vw);
+  max-height: 70vh;
+  overflow-y: auto;
+  z-index: 30;
+  gap: 0.5rem;
+  color: var(--color-text);
+}
+
+.header-search--overlay .search-dropdown {
+  left: 1rem;
+  right: 1rem;
+  width: auto;
+}
+
+.app-header .search-dropdown .text-muted {
+  color: var(--color-text-muted);
+}
+
+.search-option {
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.search-option[aria-selected="true"],
+.search-option:hover {
+  background: var(--color-surface-alt);
+}
+
+.app-header .search-dropdown {
+  gap: 0.25rem;
+  padding: 0.5rem;
+}
+
+.search-group-heading {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.25rem 0.5rem 0;
+}
+
+/* One line per hit in the dropdown: the title takes the slack and truncates, the code and place keep their width. */
+.search-hit-compact {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.search-hit-compact__code,
+.search-hit-compact__where {
+  flex: none;
+  font-size: 0.75rem;
+}
+
+.search-hit-compact__where {
+  margin-left: auto;
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-hit-compact__title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.search-hit-compact__text {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-option--footer {
+  border-top: 1px solid var(--color-border);
+  border-radius: 0;
+  padding-top: 0.55rem;
+  font-weight: 600;
+}
+
+.search-mark {
+  background: color-mix(in srgb, var(--color-warning) 30%, transparent);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
 /* See components/Tooltip.tsx — appears immediately on hover/focus rather
    than relying on the native `title` attribute's slow, OS-dependent delay.
    Rendered through a portal into `document.body` with `top`/`left` set
@@ -447,8 +687,7 @@ select.input {
    no minWidth of its own, so it just gets a slightly roomier column, but a
    track minimum *smaller* than an item's own minimum content width made
    `auto-fit` resolve columns narrower than the `StatCard`s placed in them,
-   overlapping neighbouring tiles at moderate viewport widths (Phase 27a —
-   confirmed on `OrgOverviewPage.tsx`, which can carry up to 7 tiles in one
+   overlapping neighbouring tiles at moderate viewport widths (confirmed on `OrgOverviewPage.tsx`, which can carry up to 7 tiles in one
    grid once a module contributes headline tiles). */
 .grid-metrics {
   /* `min(100%, 220px)` lets a track shrink below 220px in a narrow container instead of overflowing it. */
@@ -666,65 +905,54 @@ a.figure-projects-link:hover {
   flex-wrap: wrap;
 }
 
+/* A checkbox, radio or switch with its text: the control never wraps away from the text. A long label
+   wraps inside its own text box, hanging beside the control, not under it (unlike `.row`, which wraps
+   its items). Use it for every `<label>` around a checkbox; `CheckboxField` already does. */
+.checkbox-label {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.checkbox-label > :first-child {
+  flex: none;
+}
+
+/* The box sits on the first line of text, not centred on a wrapped block. */
+.checkbox-label > input[type="checkbox"],
+.checkbox-label > input[type="radio"] {
+  margin: 0.25em 0 0;
+}
+
+/* `ItemRow` (components/ItemRow.tsx): text beside controls. The content wraps inside its own box;
+   the actions never move to a new line. Unlike `.row` (toolbars, filter bars: wrapping is right),
+   this never wraps, because its one job is keeping the actions beside the text. */
+.item-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.item-row__content {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.item-row__actions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
+}
+
 .text-muted {
   color: var(--color-text-muted);
-}
-
-/* Rendered Markdown on the help page (utils/markdown.ts) — plain h1-h3/p/ul
-   with no classes of their own, styled here to match the rest of the
-   app's typography rather than raw browser defaults. */
-.help-content h1 {
-  font-size: 1.3rem;
-  margin: 1.5rem 0 0.5rem;
-}
-
-.help-content h1:first-child {
-  margin-top: 0;
-}
-
-.help-content h2 {
-  font-size: 1.05rem;
-  margin: 1.1rem 0 0.4rem;
-}
-
-.help-content p {
-  margin: 0.5rem 0;
-  max-width: 70ch;
-}
-
-.help-content ul {
-  margin: 0.5rem 0;
-  padding-left: 1.4rem;
-}
-
-.help-content li {
-  margin-bottom: 0.3rem;
-}
-
-.help-content code {
-  background: var(--color-surface-alt);
-  border-radius: 4px;
-  padding: 0.1rem 0.3rem;
-  font-size: 0.9em;
-}
-
-.help-content .mermaid {
-  display: flex;
-  justify-content: center;
-  overflow-x: auto;
-  margin: 0.75rem 0;
-}
-
-.help-content pre {
-  background: var(--color-surface-alt);
-  border-radius: 6px;
-  padding: 0.75rem 1rem;
-  overflow-x: auto;
-}
-
-.help-content pre code {
-  background: none;
-  padding: 0;
 }
 
 /* components/RichTextEditor.tsx's WYSIWYG surface — a plain
@@ -768,15 +996,51 @@ a.figure-projects-link:hover {
   border: none;
   border-right: 1px solid var(--color-border);
   border-radius: 0;
-  padding: 0.75rem;
+  padding: 0;
   position: fixed;
   top: var(--header-height);
   left: 0;
   bottom: 0;
   width: var(--nav-rail-width);
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   z-index: 10;
   transition: width 0.15s ease;
+}
+
+/* The rail's item list is its scroll container, not the rail itself, and starts level with the top
+   of the rail (the first link is level with the collapse toggle, not below it). The toggle
+   (.nav-rail-toggle-wrapper: 12px below the header, 28px tall) straddles the rail's right edge, so
+   the inner half of it, --nav-toggle-overhang, lies over the rail. The container leaves that
+   strip free (margin-right) so neither a link nor the scrollbar can run under the toggle, in
+   every browser: a WebKit-only track inset would leave Firefox's thin bar under it. The bar is
+   thin and drawn from theme tokens so it suits both themes. */
+.nav-rail-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-right: var(--nav-toggle-overhang);
+  padding: 1rem 0.5rem 0.75rem 0.75rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.nav-rail-icons .nav-rail-scroll {
+  padding-left: 0.4rem;
+  padding-right: 0.4rem;
+}
+
+.nav-rail-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.nav-rail-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.nav-rail-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
 }
 
 .nav-rail-icons {
@@ -904,6 +1168,23 @@ a.figure-projects-link:hover {
   font-size: 1.1rem;
 }
 
+/* In the detail aside the title is the aside's own tab strip, so the buttons sit at the right edge. */
+.artefact-links__header--untitled,
+.artefact-links--compact .artefact-links__header--untitled {
+  justify-content: flex-end;
+}
+
+.comment-row {
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.detail-card__title,
+.detail-layout__aside-title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
 .artefact-links__actions {
   flex-wrap: wrap;
 }
@@ -984,6 +1265,10 @@ a.figure-projects-link:hover {
 }
 
 .artefact-links__row {
+  min-width: 0;
+}
+
+.artefact-links__summary {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -994,10 +1279,6 @@ a.figure-projects-link:hover {
 .artefact-links__target {
   min-width: 0;
   overflow-wrap: anywhere;
-}
-
-.artefact-links__remove {
-  margin-left: auto;
 }
 
 .artefact-links__note {
@@ -1404,6 +1685,11 @@ a.figure-projects-link:hover {
   font-size: 0.92rem;
 }
 
+/* A long label squeezed the icon (16px rendered as 12.8 or 15.8); the label shrinks, the icon does not. */
+.nav-link svg {
+  flex: none;
+}
+
 /* Wraps a nav-rail link while the rail is collapsed (see
    components/Tooltip.tsx) — without this, the tooltip's own shrink-wrapped
    `inline-flex` box would only cover the icon's own width, not the full
@@ -1428,7 +1714,7 @@ a.figure-projects-link:hover {
 }
 
 /* Joins a disclosure toggle to its own nav-rail link into one shared
-   hover/active surface (compliance-module-plan.md Phase 29d —
+   hover/active surface (e.g.
    StandardNavSection.tsx's expandable "Versions" row). The background
    moves to this wrapping row rather than the inner link, so hovering
    anywhere in the row — including the toggle's own area — highlights the
@@ -1531,10 +1817,10 @@ a.figure-projects-link:hover {
   display: none;
 }
 
-/* `EntitySwitcher`'s chevron trigger (compliance-module-plan.md Phase 35b)
+/* `EntitySwitcher`'s chevron trigger
    — the same "no separately bordered chip" fix `.nav-link-row-toggle`
-   above already applies to the expandable nav-rail disclosure toggle
-   (Phase 29d), given to the entity quick-switch chevron itself since it
+   above already applies to the expandable nav-rail disclosure toggle,
+given to the entity quick-switch chevron itself since it
    has no wrapping row of its own to inherit a shared hover surface from
    (it sits directly beside a page's plain `<h1>` text, owned by each
    caller, not by this component). Borderless and transparent at rest so
@@ -1559,6 +1845,12 @@ a.figure-projects-link:hover {
 
 .nav-rail-icons .nav-link {
   justify-content: center;
+}
+
+/* The icon-only rail uses the smaller icon (14px, the same step as other small-context icons). */
+.nav-rail-icons .nav-link svg {
+  width: 14px;
+  height: 14px;
 }
 
 /* Collapsed section labels ("Project", "Global", "Server Management")
@@ -1614,12 +1906,15 @@ td {
   border-bottom: 1px solid var(--color-border);
 }
 
-/* Sortable column headers (`SortableHeader`, 2026-08 UX audit roadmap
-   "Column-header sorting on data tables") — the button fills the `<th>`'s
+/* Sortable column headers — the button fills the `<th>`'s
    own padding rather than adding its own, so a sortable header lines up
    exactly with a plain-text one next to it. */
-th:has(> .th-sort) {
+th:has(> .th-sort),
+th:has(> .th-with-action > .th-sort) {
   padding: 0;
+}
+.th-with-action > .th-sort {
+  width: auto;
 }
 .th-sort {
   display: inline-flex;
@@ -1648,9 +1943,9 @@ th:has(> .th-sort) {
    a plain cell next to it), but with a hover *background* rather than a
    text-colour change, since this control's whole row is the click target,
    not just its text. Introduced for `OrgComplianceStandardsPanel.tsx`
-   (compliance-module-plan.md Phase 39a) — the third instance of "no
+ — the third instance of "no
    bolted-on `.btn` chip on a disclosure control" after `.nav-link-row-
-   toggle` (Phase 29d) and `.entity-switcher-trigger` (Phase 35b); see
+   toggle` and `.entity-switcher-trigger`; see
    docs/ux-style-guide.md's "Pattern: expandable nav-rail group". */
 td:has(> .disclosure-toggle) {
   padding: 0;
@@ -1704,6 +1999,11 @@ td:has(> .disclosure-toggle) {
      changes the layout. */
   .nav-rail-toggle-wrapper {
     display: none;
+  }
+  .nav-rail-scroll {
+    margin-right: 0;
+    padding-left: 0.4rem;
+    padding-right: 0.4rem;
   }
   .nav-rail:not(.nav-rail-icons) {
     width: var(--nav-rail-width-collapsed);
@@ -1848,6 +2148,58 @@ td:has(> .disclosure-toggle) {
    it can't get pushed past the screen edge on a phone. */
 .popover-bubble {
   max-width: calc(100vw - 1rem);
+}
+
+/* A menu item (`ActionMenuList`) is a button whose label may be long: it wraps onto a second line
+   rather than clipping, once the menu has grown to the viewport's width. */
+.menu-item {
+  justify-content: flex-start;
+  text-align: left;
+  white-space: normal;
+}
+
+/* Field help (`FieldCaption`/`FieldHelp`, style guide "Pattern: field help"): the caption line of a
+   field, with a `(?)` button after the label that reveals the help text in place. The text takes the
+   whole line under the caption, so it never squeezes the caption. The icon is 14px (beside caption
+   text) and `flex: none` keeps a long label from squeezing it. */
+.field-caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+}
+
+.field-help__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.125rem;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  flex: none;
+  position: relative; /* anchors the visually-hidden name inside it */
+}
+
+.field-help__button:hover,
+.field-help__button[aria-expanded="true"] {
+  color: var(--color-accent);
+}
+
+.field-help__button svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.field-help__text {
+  flex-basis: 100%;
+  font-size: 0.8rem;
+  font-weight: normal;
+  line-height: 1.4;
+  color: var(--color-text-muted);
 }
 
 /* Form and detail fields laid out in a grid (`FormGrid`): as many equal columns as fit at the
@@ -2000,7 +2352,7 @@ td:has(> .disclosure-toggle) {
   padding: 0.35rem 0;
 }
 
-/* Scoring matrix (components/ScoringMatrixChart.tsx, Module 1 Phase 10):
+/* Scoring matrix (components/ScoringMatrixChart.tsx):
    cells tinted with the same 5 BadgeTone colours as `.badge--<tone>`,
    mixed into the surface so text stays readable in both themes. The
    wrapper scrolls horizontally rather than the page on narrow screens. */
@@ -2060,3 +2412,200 @@ td:has(> .disclosure-toggle) {
 .scoring-cell--accent { background: color-mix(in srgb, var(--color-accent) 22%, var(--color-surface)); }
 .scoring-cell--warning { background: color-mix(in srgb, var(--color-warning) 28%, var(--color-surface)); }
 .scoring-cell--danger { background: color-mix(in srgb, var(--color-danger) 28%, var(--color-surface)); }
+
+/* `RemovableChip`: a value with a remove control inside it. Text wraps; the control never moves to a new
+   line. Not a pill (`.badge`). */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: 100%;
+  /* One height for every chip and chip-shaped control in a row (style guide "Pattern: chips"); a label
+     that wraps grows past it. */
+  min-height: var(--chip-height);
+  box-sizing: border-box;
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.75rem;
+  line-height: 1.25;
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+}
+
+/* A tag: the user's own colour (inline `--tag-colour`) marks the left edge; the label keeps the theme's text colour. */
+.tag-chip {
+  border-left: 3px solid var(--tag-colour, var(--color-border));
+  border-radius: 6px;
+}
+
+/* The `[+]` that opens the tag picker: a chip-sized, tag-shaped button at the end of the chip row. */
+.tag-add {
+  width: var(--chip-height);
+  padding: 0;
+  justify-content: center;
+  border-radius: 6px;
+  cursor: pointer;
+  color: inherit;
+}
+
+.tag-add:hover {
+  background: var(--color-surface);
+  border-color: var(--color-accent);
+}
+
+/* The scope select sized to its chosen option (it sits in a title row), outlined in the accent while
+   widened so the state shows without hovering for its explanation. */
+select.input.project-scope-select {
+  width: auto;
+  max-width: 100%;
+}
+
+.project-scope-select-widened {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 0;
+}
+
+.chip__label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.chip__remove {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* The comment typed with a change, quoted under an activity sentence; collapsed to three lines until expanded. */
+.activity-note {
+  margin: 0;
+  padding: 0.15rem 0 0.15rem 0.6rem;
+  border-left: 3px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.activity-note-collapsed {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+/* A column header's own control (a settings gear) beside its text or sort button. */
+.th-with-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+th:has(> .th-with-action > .th-sort) > .th-with-action {
+  padding-right: 0.4rem;
+}
+
+/* A settings control whose current choice is not the default: an accent mark on the button, so a changed view shows while it is closed. */
+.btn-marked {
+  border-color: var(--color-accent);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+
+/* A pill that follows running text on the same line (a status after a title): a gap, not a margin hack at each use. */
+.badge-after {
+  margin-inline-start: 0.5rem;
+}
+
+/* A preset swatch in `ColorField`: a round colour chip; the pressed one carries a ring (not colour alone: aria-pressed too). */
+.colour-swatch {
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid var(--color-surface);
+  box-shadow: 0 0 0 1px var(--color-border);
+  cursor: pointer;
+}
+
+.colour-swatch[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--color-text);
+}
+
+/* The kind icon before a person's name (`PeopleKindIcon`); muted so the name stays the strongest text. */
+.record-name-icon {
+  display: inline-flex;
+  margin-right: 0.45rem;
+  vertical-align: text-bottom;
+  color: var(--color-text-muted);
+}
+
+.people-kind-icon {
+  display: inline-flex;
+}
+
+/* `ListPageLayout`: title, actions and list in the left column; the filter panel spans the right column
+   from the title's row down, so its top edge lines up with the title. One column on narrow viewports,
+   in the order title, filter, list. */
+.list-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  grid-template-areas:
+    "header filter"
+    "content filter";
+  grid-template-rows: auto 1fr;
+  align-items: start;
+  column-gap: 1rem;
+  row-gap: 1rem;
+}
+
+.list-page__header {
+  grid-area: header;
+  min-width: 0;
+}
+
+.list-page__filter {
+  grid-area: filter;
+  min-width: 0;
+}
+
+.list-page__content {
+  grid-area: content;
+  min-width: 0;
+}
+
+@media (max-width: 860px) {
+  .list-page {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "header"
+      "filter"
+      "content";
+    grid-template-rows: auto;
+  }
+}
+
+/* A required field's `*` (`RequiredMark`) and the form's one-line legend, shown only while the form has a mark. */
+.field-required {
+  color: var(--color-danger);
+}
+
+.field-required::after {
+  content: " *";
+}
+
+.form-required-legend {
+  display: none;
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+}
+
+.form-grid-wrap:has(.field-required) > .form-required-legend {
+  display: block;
+}

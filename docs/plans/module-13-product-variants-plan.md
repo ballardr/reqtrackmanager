@@ -3,7 +3,7 @@
 See [future-modules-2026-09-index.md](future-modules-2026-09-index.md) for
 cross-cutting architecture. Not in the overview. Requested by the user on
 2026-10-04 while scoping
-[Module 1's Reporting extension](module-01-context-and-strategy-plan.md)
+[Module 1's Reporting extension](completed/module-01-context-and-strategy-plan.md)
 (Phase 9 Q9–Q11), originally as "Product Tiers"; generalised to "Product
 Variants" on 2026-10-12.
 

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../../api/client";
 import { withToast } from "../../testing/storybook-helpers";
@@ -12,8 +12,18 @@ const PROJECT_ID = "project-1";
  * harness shape, against the project-scoped endpoints instead. */
 function mockProjectTypeApis(initial: EffectivePainPointType[]) {
   let items = initial;
-  spyOn(api, "get").mockImplementation(async () => items);
+  let hidden: EffectivePainPointType[] = [];
+  spyOn(api, "get").mockImplementation(async (path: string) =>
+    path.endsWith("/hidden") ? hidden.map((h) => ({ id: h.id, name: h.name })) : items,
+  );
   spyOn(api, "post").mockImplementation(async (path: string, body?: unknown) => {
+    if (path.endsWith("/pain-point-types/restore")) {
+      const ids = (body as { org_type_ids: string[] | null }).org_type_ids;
+      const back = hidden.filter((h) => !ids || ids.includes(h.id));
+      hidden = hidden.filter((h) => !back.includes(h));
+      items = [...items, ...back];
+      return { restored: back };
+    }
     if (path.endsWith("/pain-point-types")) {
       const payload = body as { name: string; display_order: number | null };
       const created = { id: `local-${items.length + 1}`, name: payload.name, display_order: payload.display_order ?? 0, is_enabled: true, source: "project_local" as const };
@@ -32,6 +42,8 @@ function mockProjectTypeApis(initial: EffectivePainPointType[]) {
     const id = path.split("/pain-point-types/")[1];
     const inUse = items.find((i) => i.id === id)?.name === "Field team";
     if (inUse) throw new ApiError(409, "1 Pain Point still references this type.");
+    const row = items.find((i) => i.id === id);
+    if (row && row.source !== "project_local") hidden = [...hidden, row];
     items = items.filter((i) => i.id !== id);
   });
 }
@@ -110,7 +122,7 @@ export const ToggleEnabledState: Story = {
   },
 };
 
-export const CannotDeleteUntouchedOrgDefault: Story = {
+export const DeletingAnOrgDefaultHidesItAndItCanBeAddedBack: Story = {
   beforeEach: () => mockProjectTypeApis([
     { id: "type-market", name: "Market", display_order: 0, is_enabled: true, source: "org" },
     { id: "local-1", name: "Field team", display_order: 1, is_enabled: true, source: "project_local" },
@@ -119,11 +131,20 @@ export const CannotDeleteUntouchedOrgDefault: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => canvas.getByDisplayValue("Market"));
     const marketRow = canvas.getByDisplayValue("Market").closest("div")!.parentElement!;
-    await userEvent.click(within(marketRow).getByRole("button", { name: "Delete Pain Point type" }));
+    await userEvent.click(within(marketRow).getByRole("button", { name: "Hide Pain Point type in this project" }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Hide" }));
 
-    await waitFor(() => expect(
-      canvas.getByText(/there is nothing to delete. Disable it instead/)
-    ).toBeInTheDocument());
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/pain-point-types/type-market`
+    ));
+    await waitFor(() => expect(canvas.queryByDisplayValue("Market")).not.toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Add organisation defaults (1)" }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Add 1 default" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/pain-point-types/restore`, { org_type_ids: ["type-market"] }
+    ));
+    await waitFor(() => expect(canvas.getByDisplayValue("Market")).toBeInTheDocument());
   },
 };
 

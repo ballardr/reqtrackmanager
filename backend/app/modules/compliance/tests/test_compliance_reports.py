@@ -1,6 +1,5 @@
-"""Tests for Phase 15's PDF/CSV compliance report generation
-(docs/compliance-module-plan.md Phase 15; docs/Compliance_Module_
-Requirements.md §29): `GET /projects/{id}/modules/compliance/reports` and
+"""Tests for PDF/CSV compliance report generation
+(§29): `GET /projects/{id}/modules/compliance/reports` and
 `GET /orgs/{id}/modules/compliance/reports`, both taking a required
 `format=pdf|csv` query param (merged from separate `/reports/pdf`/
 `/reports/csv` GETs, 2026-09-22 — see docs/decisions.md), mirroring
@@ -27,6 +26,7 @@ from app.modules.compliance.reports import (
     collect_org_compliance_report,
     collect_project_compliance_report,
 )
+from app.modules.compliance.tests.test_compliance_evidence_api import _create_evidence, _setup_project_with_assessment
 from app.modules.compliance.tests.test_compliance_standards_api import (
     _base,
     _create_action_type,
@@ -106,7 +106,7 @@ def test_project_compliance_csv_report_includes_assessment_and_neutralizes_injec
     data_rows = rows[1:]
     assert len(data_rows) == 2  # parent + child requirement
 
-    # Phase 42: the "Requirement name" column was relabelled "Requirement
+    # The "Requirement name" column was relabelled "Requirement
     # title" for clarity, since "Requirement path"/"Requirement reference"/
     # "Requirement title" otherwise leaves a reader guessing which column is
     # the human-readable one.
@@ -187,11 +187,11 @@ def test_org_compliance_csv_report_lists_project_assignment_roll_up(client, admi
     assert row[non_compliant_col] == "1"
 
 
-# --- Phase 42: narrative requirement cell (title always shown) ------------------
+# --- narrative requirement cell (title always shown) ------------------
 
 
 def test_narrative_requirement_paragraph_always_shows_title_and_folds_in_free_text_fields(client, admin_token, org_id):
-    """Phase 42's core fix: a requirement with a `reference` set must still
+    """A requirement with a `reference` set must still
     show its own `name` (title) in the PDF's requirement cell — the PDF's
     "Requirement" column used to be built from `_requirement_path`'s
     breadcrumb, which drops a leaf requirement's `name` whenever it also
@@ -199,7 +199,7 @@ def test_narrative_requirement_paragraph_always_shows_title_and_folds_in_free_te
     Also pins the narrative-cell format itself: title first, then each of
     reasoning/description/clarification/justification/notes present, in
     that order, bold-prefixed on its own line — the `docs/requirements.md`-
-    style single-cell layout this phase replaces one-column-per-field with.
+    style single-cell layout that replaces one-column-per-field.
     """
     _create_action_type(client, admin_token, org_id, name="Verification")
     standard = _create_standard(client, admin_token, org_id, reference="NAR-1", name="Narrative Cell Standard")
@@ -282,7 +282,7 @@ def test_narrative_requirement_paragraph_omits_empty_sections(client, admin_toke
     assert "Justification:" in text  # the Not Applicable decision's own justification is present and must still show
 
 
-# --- Phase 43: scoped report export (standard/version/sub-section/project) ------
+# --- scoped report export (standard/version/sub-section/project) ------
 
 
 def test_project_compliance_report_filters_by_standard_version_and_sub_section(client, admin_token, org_id):
@@ -445,11 +445,11 @@ def test_org_compliance_report_csv_endpoint_accepts_project_filter(client, admin
     assert len(empty_rows) == 1  # header only, no data rows
 
 
-# --- Phase 43 hardening pass: filtered-empty vs. genuinely-unassigned PDF message -
+# --- Filtered-empty vs. genuinely-unassigned PDF message -
 
 
 def test_project_report_empty_message_distinguishes_filtered_from_unassigned():
-    """Found during Phase 43's own hardening pass: the PDF's empty-state
+    """The PDF's empty-state
     text must not claim "this project has no assigned compliance standards"
     when the true cause is a Standard/Standard version/Sub-section filter
     matching none of several real assignments — a materially misleading
@@ -462,8 +462,8 @@ def test_project_report_empty_message_distinguishes_filtered_from_unassigned():
 
 
 def test_org_report_empty_message_distinguishes_filtered_from_unassigned():
-    """Org-level counterpart to the project-level test above — same Phase 43
-    hardening-pass finding, `OrgComplianceReportData.filtered` set whenever
+    """Org-level counterpart to the project-level test above — same
+    finding, `OrgComplianceReportData.filtered` set whenever
     any of `project_id`/`standard_id`/`standard_version_id`/`requirement_id`
     is non-`None`."""
     assert _org_report_empty_message(OrgComplianceReportData()) == "No projects in this organisation are assigned any compliance standard."
@@ -501,3 +501,39 @@ def test_collect_org_compliance_report_sets_filtered_flag_from_any_scoping_kwarg
         assert collect_org_compliance_report(db, org_uuid, requirement_id=uuid.uuid4()).filtered is True
     finally:
         db.close()
+
+
+def test_report_evidence_carries_its_code_and_tags_and_follows_the_project_code_rule(client, admin_token, org_id):
+    """Evidence is named `EVD-001` in its own project's report (and in the requirement table's Evidence cell), always
+    qualified in the organisation-wide report, and qualified everywhere once the organisation enforces the project
+    code. Its tags are listed. (A compliance requirement carries its standard's own reference and has no code.)"""
+    project, _assignment, pcr_id, _assessment_id = _setup_project_with_assessment(client, admin_token, org_id)
+    evidence = _create_evidence(
+        client, admin_token, project["id"], project_compliance_requirement_ids=[pcr_id], expiry_date="2020-01-01",
+    )
+    assert evidence["unique_code"] == "EVD-001"
+    assert client.put(
+        f"/api/v1/projects/{project['id']}/artefacts/compliance_evidence/{evidence['id']}/tags", json={"tags": ["Audit"]},
+        headers=auth_headers(admin_token),
+    ).status_code == 200
+
+    def collect(enforced: bool):
+        policy = {"kind": "alphanumeric", "min_length": 2, "max_length": 6, "assignment": "auto", "enforce_code_everywhere": enforced}
+        assert client.put(f"/api/v1/orgs/{org_id}/code-policy", json=policy, headers=auth_headers(admin_token)).status_code == 200
+        db = SessionLocal()
+        try:
+            own = collect_project_compliance_report(db, db.get(Project, uuid.UUID(project["id"])))
+            whole = collect_org_compliance_report(db, uuid.UUID(org_id))
+            return own, whole
+        finally:
+            db.close()
+
+    own, whole = collect(False)
+    assert [(e.code, e.tags) for e in own.evidence_rows] == [("EVD-001", "Audit")]
+    assert [r.evidence_titles for r in own.requirement_rows if r.evidence_titles] == [f"EVD-001 {evidence['title']}"]
+    assert [e.code for _, e in whole.expiring_evidence_rows] == [f"{project['code']}-EVD-001"]
+
+    own, _ = collect(True)
+    assert [e.code for e in own.evidence_rows] == [f"{project['code']}-EVD-001"]
+    csv_text = client.get(f"{_project_base(project['id'])}/reports", params={"format": "csv"}, headers=auth_headers(admin_token)).text
+    assert f"{project['code']}-EVD-001 {evidence['title']}" in csv_text

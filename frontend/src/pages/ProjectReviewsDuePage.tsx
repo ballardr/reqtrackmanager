@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
+import { RecordCode } from "../components/RecordCode";
 import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { Component, RequirementDueForReview } from "../api/types";
 import { principalText } from "../api/types";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
+import { ListPageLayout } from "../components/ListPageLayout";
 import { PrincipalBadge } from "../components/PrincipalBadge";
 import { Spinner } from "../components/Spinner";
 import { useStrings } from "../context/TerminologyContext";
@@ -52,9 +54,30 @@ export function ProjectReviewsDuePage() {
 
   return (
     <div className="stack">
-      <h1 style={{ margin: 0 }}>{strings.reviews.projectTitle}</h1>
-
-      <div className="side-grid">
+      <ListPageLayout
+        title={strings.reviews.projectTitle}
+        filter={
+          <FilterPanel sectionKey="projectReviewsDueFilters">
+            <FilterField label={strings.requirements.component}>
+              <select className="input" value={componentId} onChange={(e) => setComponentId(e.target.value)}>
+                <option value="">{strings.reviews.allComponents}</option>
+                {components.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterField label="Reviewer">
+              <select className="input" value={reviewerKey} onChange={(e) => setReviewerKey(e.target.value)}>
+                <option value="">{strings.reviews.allReviewers}</option>
+                {reviewers.map(([key, name]) => (
+                  <option key={key} value={key}>{name}</option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterCheckbox label={strings.reviews.assignedToMe} checked={mineOnly} onChange={setMineOnly} />
+          </FilterPanel>
+        }
+      >
         <div className="stack">
           {items.length === 0 ? (
             <p className="text-muted">{strings.reviews.empty}</p>
@@ -73,7 +96,7 @@ export function ProjectReviewsDuePage() {
                 <tbody>
                   {items.map((item) => (
                     <tr key={item.requirement_id}>
-                      <td>{item.unique_code}</td>
+                      <td><RecordCode code={item.unique_code} /></td>
                       <td>
                         <Link to={`/projects/${item.project_id}/requirements/${item.requirement_id}`}>{item.name}</Link>
                       </td>
@@ -87,27 +110,7 @@ export function ProjectReviewsDuePage() {
             </div>
           )}
         </div>
-
-        <FilterPanel sectionKey="projectReviewsDueFilters">
-          <FilterField label={strings.requirements.component}>
-            <select className="input" value={componentId} onChange={(e) => setComponentId(e.target.value)}>
-              <option value="">{strings.reviews.allComponents}</option>
-              {components.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label="Reviewer">
-            <select className="input" value={reviewerKey} onChange={(e) => setReviewerKey(e.target.value)}>
-              <option value="">{strings.reviews.allReviewers}</option>
-              {reviewers.map(([key, name]) => (
-                <option key={key} value={key}>{name}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterCheckbox label={strings.reviews.assignedToMe} checked={mineOnly} onChange={setMineOnly} />
-        </FilterPanel>
-      </div>
+      </ListPageLayout>
     </div>
   );
 }

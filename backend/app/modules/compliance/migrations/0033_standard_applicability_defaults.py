@@ -1,17 +1,17 @@
-"""Standard applicability defaults, exceptions, and PM assignment (compliance module Phase 20)
+"""Standard applicability defaults, exceptions, and PM assignment
 
 Revision ID: 0033
 Revises: 0032
 Create Date: 2026-09-08
 
-Adds the two things docs/compliance-module-plan.md's Phase 20 needs
-(docs/Compliance_Module_Requirements.md §3, §7, §11, §26):
+Adds the two things needs
+(§3, §7, §11, §26):
 
 - `compliance_standards.applicability_default` — a new `VARCHAR(30)` column,
   `NOT NULL DEFAULT 'opt_in'`, so every existing standard (including the
   seeded `ASA-1`) keeps today's fully-manual, per-project assignment
-  behaviour unchanged. See `models.py`'s own Phase 20 design-decisions
-  section and `enums.py::ComplianceStandardApplicabilityDefault`.
+  behaviour unchanged. See `models.py`'s applicability defaults design decisions
+  and `enums.py::ComplianceStandardApplicabilityDefault`.
 - `compliance_standard_default_exclusions`
   (`app.modules.compliance.models.ComplianceStandardDefaultExclusion`) — the
   "...except" list of projects excepted out of a standard's

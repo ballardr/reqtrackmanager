@@ -26,6 +26,9 @@ Design decisions:
 - Global search is bounded: at least `GLOBAL_MIN_QUERY` characters, only types some
   usable link type can reach from this record, `GLOBAL_PER_TYPE` records per type,
   merged to `CANDIDATE_LIMIT`, so one large type cannot crowd out or stall the rest.
+- A code typed the way it is displayed elsewhere (`ACME-REQ-001`, qualified by the project or the
+  organisation) finds the record too: the finder searches the stored label (`REQ-001 Title`), so the
+  qualifying prefix is also tried stripped.
 - Narrowing defaults to the records' own `facets` (a status, a type); a type with
   too many records to load (Requirement, Compliance requirement) supplies its own
   SQL `filter`.
@@ -46,6 +49,7 @@ from sqlalchemy.orm import Session
 
 from app.models.action_type import ActionTypeDefinition
 from app.models.enums import ArtefactType
+from app.models.organization import Organization
 from app.models.project import Project, ProjectCategory, ProjectComponent
 from app.models.requirement import Requirement, RequirementVersion
 from app.models.requirement_action import RequirementAction
@@ -55,6 +59,10 @@ from app.modules.registry import (
     get_all_registered_artefact_types,
     get_artefact_type_label,
     list_artefact_summaries,
+)
+from app.services.change_request_summary import (
+    CHANGE_REQUEST_STATUS_LABEL,
+    change_request_candidates,
 )
 from app.services.link_authoring import (
     linkable_types_for_project,
@@ -74,6 +82,7 @@ _SPARE = 2
 
 _REQUIREMENT = ArtefactType.REQUIREMENT.value
 _ACTION = ArtefactType.REQUIREMENT_ACTION.value
+_CHANGE_REQUEST = ArtefactType.CHANGE_REQUEST.value
 
 
 @dataclass(frozen=True)
@@ -138,12 +147,20 @@ def _action_type_options(
     return [(str(t.id), t.name) for t in db.scalars(stmt.order_by(ActionTypeDefinition.name))]
 
 
+def _change_request_status_options(
+    db: Session, project_id: uuid.UUID, selected: Mapping[str, str], query: str
+) -> list[tuple[str, str]]:
+    needle = query.lower()
+    return [(key, label) for key, label in CHANGE_REQUEST_STATUS_LABEL.items() if needle in label.lower()]
+
+
 _CORE_LEVELS: dict[str, tuple[BrowseLevel, ...]] = {
     _REQUIREMENT: (
         BrowseLevel("component", "Component", _requirement_component_options),
         BrowseLevel("category", "Category", _requirement_category_options),
     ),
     _ACTION: (BrowseLevel("action_type", "Action type", _action_type_options),),
+    _CHANGE_REQUEST: (BrowseLevel("status", "Status", _change_request_status_options),),
 }
 
 
@@ -295,6 +312,7 @@ class _Scope:
     project: Project
     searched: Project
     resolver: ArtefactResolver
+    code_prefixes: tuple[str, ...]
 
 
 def _authorise(
@@ -313,7 +331,9 @@ def _authorise(
     if other_project_id is not None and other_project_id != project.id:
         searched = related_project_or_404(db, project, user_id, other_project_id)
     resolver = page_resolver if searched is project else ArtefactResolver(db, searched, user_id)
-    return _Scope(project=project, searched=searched, resolver=resolver)
+    org_code = db.scalar(select(Organization.code).where(Organization.id == searched.organization_id))
+    prefixes = tuple(c.lower() for c in (searched.code, org_code) if c)
+    return _Scope(project=project, searched=searched, resolver=resolver, code_prefixes=prefixes)
 
 
 def _type_searchable(db: Session, scope: _Scope, other_type: str) -> bool:
@@ -381,15 +401,75 @@ def next_browse_step(
     )
 
 
+def _needle_variants(scope: _Scope, needle: str) -> list[str]:
+    """`needle` plus the same text without a leading project or organisation code.
+
+    A person types a record's code the way it is shown (`ACME-REQ-001`), while the finder matches the
+    stored label (`REQ-001 Title`), so the prefix of the searched project, or of its organisation (for an
+    organisation-owned record), is also removed. The original stays first: a project whose code is `PP`
+    has a pain point `PP-001`, which the unstripped text still finds.
+    """
+    variants = [needle]
+    for prefix in scope.code_prefixes:
+        stripped = needle[len(prefix) + 1:].strip() if needle.startswith(f"{prefix}-") else ""
+        if stripped and stripped not in variants:
+            variants.append(stripped)
+    return variants
+
+
+# Records fetched for the longest search word before the other words narrow them in Python.
+_MULTI_WORD_FETCH = 200
+
+
+def _word_in_label(scope: _Scope, word: str, label: str) -> bool:
+    """Whether `word` (or, for a qualified code, `word` without its project or organisation prefix) is in `label`."""
+    return any(variant in label for variant in _needle_variants(scope, word))
+
+
 def _records_of_type(
     db: Session, scope: _Scope, other_type: str, selected: Mapping[str, str], needle: str, limit: int
 ) -> list[ArtefactSummary]:
-    """Up to `limit` + `_SPARE` unarchived records of `other_type` in the searched project matching the scope."""
+    """Up to `limit` + `_SPARE` unarchived records of `other_type` in the searched project matching the scope.
+
+    The search is by words, not by one run of text: every word of `needle` must appear somewhere in the
+    record's label (its code and title), in any order, so `limit voltage` finds `Voltage limit`. A word
+    written with its project or organisation code (see `_needle_variants`) also matches by the bare code.
+    """
+    words = needle.split()
+    if len(words) > 1:
+        # The type's own query narrows by the longest word; the other words filter what it returns.
+        pivot = max(words, key=len)
+        candidates = _records_of_type_for_word(db, scope, other_type, selected, pivot, _MULTI_WORD_FETCH)
+        matching = [
+            s for s in candidates
+            if all(_word_in_label(scope, w, s.label.lower()) for w in words)
+        ]
+        return matching[: limit + _SPARE]
+    return _records_of_type_for_word(db, scope, other_type, selected, needle, limit)
+
+
+def _records_of_type_for_word(
+    db: Session, scope: _Scope, other_type: str, selected: Mapping[str, str], needle: str, limit: int
+) -> list[ArtefactSummary]:
+    """`_records_of_type` for one word (or none): the needle and its prefix-stripped variants."""
+    found: dict[uuid.UUID, ArtefactSummary] = {}
+    for variant in _needle_variants(scope, needle) if needle else [needle]:
+        for summary in _records_matching(db, scope, other_type, selected, variant, limit):
+            found.setdefault(summary.id, summary)
+    return list(found.values())
+
+
+def _records_matching(
+    db: Session, scope: _Scope, other_type: str, selected: Mapping[str, str], needle: str, limit: int
+) -> list[ArtefactSummary]:
+    """`_records_of_type` for one literal needle."""
     searched = scope.searched
     if other_type == _REQUIREMENT:
         return _requirement_candidates(db, searched.id, selected, needle, limit)
     if other_type == _ACTION:
         return _action_candidates(db, searched.id, selected, needle, limit)
+    if other_type == _CHANGE_REQUEST:
+        return change_request_candidates(db, searched.id, selected, needle, limit + _SPARE)
     from app.modules.registry import get_module_registry
 
     provider = next(

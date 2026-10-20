@@ -1,8 +1,7 @@
 """
 Module: routers.projects.groups
 
-Project groups (C-U-10/C-U-11, PR7 of the members/groups directory
-rework — docs/decisions.md): bare-group creation, listing, per-group role
+Project groups (C-U-10/C-U-11, the members/groups directory rework — docs/decisions.md): bare-group creation, listing, per-group role
 grant/revoke, deletion, and membership (user/org-group/source-project)
 add/remove. A `ProjectGroup` can hold zero, one, or several
 `ProjectRole`s at once, each independently revocable.
@@ -55,8 +54,7 @@ def create_project_group(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Creates a bare project group with no role at all (PR7, docs/
-    decisions.md) — a role is a separate, explicit grant added afterward via
+    """Creates a bare project group with no role at all (docs/decisions.md) — a role is a separate, explicit grant added afterward via
     `POST /{project_id}/groups/{group_id}/roles`, symmetric with how
     `create_org_group` already creates an org group bare."""
     group = ProjectGroup(project_id=project.id, name=payload.name)
@@ -87,12 +85,12 @@ def list_project_groups(
     group id lists.
 
     `search` (name substring, case-insensitive) and `limit`/`offset`
-    (U-P-06, 2026-08 UX audit "Directories at scale") are optional, same
+ are optional, same
     contract as `list_org_groups`: omitting `limit` returns every group
     unpaginated, and the pre-slice total is returned via `X-Total-Count`
     when given.
 
-    `order` (Phase B, follow-up UX batch, 2026-08-31 — same reasoning as
+    `order` (2026-08-31 — same reasoning as
     `list_org_groups`'s own `order` param) flips the existing name
     ascending order to descending; `DirectoryTable`'s Name column is this
     list's only sortable column, so there's no separate `sort` field param.
@@ -157,12 +155,12 @@ def assign_project_group_role(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Grants a project group one more role (PR7, docs/decisions.md) —
+    """Grants a project group one more role (docs/decisions.md) —
     replaces the old `PATCH /{project_id}/groups/{group_id}` "change the
     group's one role" endpoint now that a group can hold zero, one, or
     several roles at once: each is its own independently-revocable
     `ProjectGroupRole` row rather than a single mutable field. Mirrors
-    `assign_group_project_role` (PR4's org-group-role grant, in
+    `assign_group_project_role` (the org-group-role grant, in
     `routers.projects.roles`) as closely as sensible, adapted for a
     project-group target instead of an org-group one — same 204-no-body
     shape, and no cross-tenant check is needed here (unlike that endpoint's
@@ -202,7 +200,7 @@ def revoke_project_group_role(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Revokes one role from a project group (PR7) — the group-scoped
+    """Revokes one role from a project group — the group-scoped
     C-U-08 guard site this PR adds, shaped like `delete_project_group`'s
     (lock the project row, perform the delete, flush, then re-check
     `get_effective_project_managers` before commit) rather than a single-
@@ -285,7 +283,7 @@ def delete_project_group(
 ):
     """Deletes a project group entirely; its `ProjectGroupMember` rows go
     with it via `ondelete="CASCADE"`. No group is specially protected from
-    deletion any more (follow-up UX batch Phase C, 2026-08-31 removed the
+    deletion any more (2026-08-31 removed the
     four auto-created "standard" groups and their `is_default` flag
     entirely — see docs/decisions.md) — the only thing standing between a
     delete and an unmanaged project is the C-U-08 guard immediately below,
@@ -294,8 +292,7 @@ def delete_project_group(
 
     Same C-U-08 guard as `assign_project_group_role`/`revoke_project_group_
     role`, shaped for a whole-group removal rather than a single-role
-    change: if this group currently holds a `PROJECT_MANAGER` grant (PR7:
-    checked against `ProjectGroupRole`, not the old scalar `ProjectGroup.
+    change: if this group currently holds a `PROJECT_MANAGER` grant (checked against `ProjectGroupRole`, not the old scalar `ProjectGroup.
     role`), the project row is locked first, then the group (and every
     membership/role under it) is deleted and flushed, then `get_effective_
     project_managers` is re-checked before commit. The check has to run
@@ -420,7 +417,7 @@ def remove_project_group_member(
     """Removes a member (user or nested org group) from a project group.
 
     Blocks the removal if `group` currently holds a `PROJECT_MANAGER` grant
-    (PR7: checked against `ProjectGroupRole`, not the old scalar
+ (checked against `ProjectGroupRole`, not the old scalar
     `ProjectGroup.role` — a group can now hold that grant alongside others)
     and `member_id` is currently the project's only manager (C-U-08),
     mirroring the same guard `revoke_project_role` (in `routers.projects.

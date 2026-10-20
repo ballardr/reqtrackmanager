@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { clickAndAwaitSave, selectProjectAdminGroup } from "./e2e-workflows/helpers";
+import { chooseRecordAction, clickAndAwaitSave, selectProjectAdminGroup, recordCodeText } from "./e2e-workflows/helpers";
 
 /**
  * Coverage for the mockup-driven engagement features added on top of the
@@ -31,7 +31,7 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
     // "New project" opens a Modal (style guide "Pattern: modal dialog for
     // entity create/rename") — scoped to it rather than a bare ".card", and
     // its Name/Summary fields are real <label>s now, not placeholder-only
-    // (2026-08 UX audit roadmap item 521).
+    //.
     await page.getByRole("button", { name: "New project" }).click();
     const newProjectDialog = page.getByRole("dialog", { name: "New project" });
     // The org picker only renders at all when the caller belongs to more
@@ -85,8 +85,7 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
     // `:not([placeholder])`: the "add component" row's own Name field
     // shares this same value transiently (not yet cleared) right after
     // creating "Web" — see golden-path.spec.ts's identical guard for the
-    // full reasoning (Structure now shares one tab panel with Stages,
-    // 2026-08 UX audit roadmap: 8 tabs -> 5).
+    // full reasoning.
     const webRow = page.locator('input[value="Web"]:not([placeholder])').locator("xpath=../../..");
     await webRow.getByPlaceholder("Name").fill("Functional");
     await webRow.getByPlaceholder("Prefix").fill("FN");
@@ -102,34 +101,31 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
     await expect(page.getByText("WEB-FN-001")).toBeVisible();
 
     await page.getByText("Users can export their data").click();
-    await expect(page.getByRole("heading", { name: /WEB-FN-001/ })).toBeVisible();
+    await expect(page.locator(".record-header").getByText(recordCodeText("WEB-FN-001"))).toBeVisible();
   });
 
   await test.step("approve the requirement so a change request can target it later", async () => {
     // A modify change request can only target an already-locked requirement
-    // (2026-08 UX audit roadmap, "No requirement approval action; change
-    // requests can target draft requirements") — this spec never baselines
+    // — this spec never baselines
     // a stage (unlike golden-path.spec.ts), so approve it directly instead.
     await page.getByRole("button", { name: "Approve", exact: true }).click();
     await expect(page.getByText("Locked (approved)")).toBeVisible();
   });
 
   await test.step("subscribe to the requirement", async () => {
-    await page.getByRole("button", { name: "Subscribe" }).click();
-    await expect(page.getByRole("button", { name: "Subscribed" })).toBeVisible();
+    await chooseRecordAction(page, "Requirement", "Subscribe");
+    await expect(page.getByText("Subscribed", { exact: true })).toBeVisible();
   });
 
   await test.step("post a comment and react to it", async () => {
     await page.getByPlaceholder("Add comment").fill("This looks ready for review.");
     await page.getByRole("button", { name: "Add comment", exact: true }).click();
-    // Scoped to the posted comment's own card: a page-wide exact "Server
+    // Scoped to the posted comment's own row: a page-wide exact "Server
     // Administrator" text match is now ambiguous against both the nav
     // rail's own "Server Administrator" link and the requirement's Change
     // log table, which gained a "Changed by" column showing the same name
-    // for the requirement's own creation entry. `.card` is nested (the
-    // Discussion section's own card wraps each individual comment's card),
-    // so `.last()` picks the innermost, most specific match.
-    const postedComment = page.locator(".card", { hasText: "This looks ready for review." }).last();
+    // for the requirement's own creation entry.
+    const postedComment = page.locator(".comment-row", { hasText: "This looks ready for review." });
     await expect(postedComment.getByText("Server Administrator", { exact: true })).toBeVisible();
     await expect(postedComment).toBeVisible();
 
@@ -165,12 +161,12 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
     const reasoningCheckbox = page.getByRole("checkbox", { name: "Reasoning", exact: true });
     await reasoningCheckbox.check();
     await reasoningCheckbox.locator("xpath=../..").locator("textarea.input").fill("Stakeholders want a choice of format");
-    await page.getByPlaceholder("Reason for change").fill("Clarifying the export format options");
+    await page.getByLabel("Reason for change").fill("Clarifying the export format options");
     await page.getByRole("button", { name: "Create", exact: true }).click();
 
     await page.getByText("Export as CSV or JSON").click();
-    await page.getByRole("button", { name: "Subscribe" }).click();
-    await expect(page.getByRole("button", { name: "Subscribed" })).toBeVisible();
+    await chooseRecordAction(page, "Change request", "Subscribe");
+    await expect(page.getByText("Subscribed", { exact: true })).toBeVisible();
 
     await page.getByPlaceholder("Add comment").fill("Let's default to CSV.");
     await page.getByRole("button", { name: "Add comment", exact: true }).click();
@@ -179,7 +175,7 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
 
   await test.step("the Project Overview dashboard shows status/CR charts and activity", async () => {
     // Not a bare `getByText("Overview")`: the nav rail also carries an
-    // "Organisation overview" link (Phase 19), and `getByText` matches by
+    // "Organisation overview" link, and `getByText` matches by
     // case-insensitive substring, so that link's text now resolves too —
     // scope to the project-level nav-rail link's own exact accessible
     // name, matching the existing precedent in

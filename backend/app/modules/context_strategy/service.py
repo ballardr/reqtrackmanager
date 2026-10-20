@@ -1,8 +1,9 @@
 """
 Module: modules.context_strategy.service
 
-Context & Strategy's Phase 1 business logic (docs/plans/module-01-context-
-and-strategy-plan.md Phase 1 — Organisation & Project Strategy):
+Context & Strategy's business logic.
+
+Strategy (organisation & project scope):
 
 - `create_strategy` — creates a `Strategy` identity row plus its initial
   (version 1) content snapshot, mirroring `services.requirements.
@@ -10,7 +11,7 @@ and-strategy-plan.md Phase 1 — Organisation & Project Strategy):
 - `apply_new_version` — closes the current `StrategyVersion` and inserts a
   new one, carrying forward any field left unspecified — the exact
   `services.requirements.apply_new_version` pattern, applied here because
-  Phase 0 Q4 requires Strategy to have the same full temporal
+  Strategy has the same full temporal
   version-history model Requirement has, not Decision Management's lighter
   identity-row-status-plus-audit-log approach.
 - `propose_strategy` / `submit_strategy_for_review` / `send_strategy_back_
@@ -29,74 +30,64 @@ and-strategy-plan.md Phase 1 — Organisation & Project Strategy):
   mirroring `modules.decisions.service.resolve_decision_file_project_id`'s
   shape for the half of this module's files that *do* need it.
 
-No relationship/MCP-tool logic lives here — cross-artefact relationship
-wiring (Pain Point -> drives -> Strategy, Strategy -> defines -> Future
-State, etc.) and MCP tools are both Phase 6's job, explicitly out of scope
-for this phase (see the plan's own Phase 6 section).
+Future State has the same shape of functions for the standalone artefact —
+`create_future_state`, `apply_future_state_new_version`,
+`archive_future_state`/`unarchive_future_state`, the seven `FutureStateStatus`
+lifecycle transitions, and `resolve_future_state_file_project_id`. Distinct
+function/constant names throughout (not a reuse of the Strategy names above)
+since every artefact type shares this one file — see each function's own
+docstring for anything that isn't a pure rename of its Strategy counterpart.
 
-Phase 2 (Future State) adds the same shape of functions for the
-standalone Future State artefact — `create_future_state`,
-`apply_future_state_new_version`, `archive_future_state`/
-`unarchive_future_state`, the seven `FutureStateStatus` lifecycle
-transitions, and `resolve_future_state_file_project_id`. Distinct
-function/constant names throughout (not a reuse of the Strategy names
-above) since both artefact types now share this one file — see each
-function's own docstring for anything that isn't a pure rename of its
-Strategy counterpart.
-
-Phase 3 (Pain Points) adds a third, structurally different shape — no
-version table (`enums.PainPointStatus`'s own docstring), so `create_
-pain_point`/`update_pain_point` mutate one row directly rather than
-opening/closing `...Version` snapshots — plus the Phase 0 Q3 two-tier type
-vocabulary's own resolution logic (`resolve_effective_pain_point_types`,
+Pain Points have a structurally different shape — no version table
+(`enums.PainPointStatus`'s own docstring), so `create_pain_point`/
+`update_pain_point` mutate one row directly rather than opening/closing
+`...Version` snapshots — plus the two-tier type vocabulary's own resolution
+logic (`resolve_effective_pain_point_types`,
 `get_or_create_project_pain_point_type`) and org-/project-scoped type CRUD
-(`create_org_pain_point_type`/`delete_org_pain_point_type`/`create_
-project_local_pain_point_type`/`set_project_pain_point_type_override`/
+(`create_org_pain_point_type`/`delete_org_pain_point_type`/
+`create_project_local_pain_point_type`/`set_project_pain_point_type_override`/
 `delete_project_pain_point_type`). The `_PP_ALLOWED_TRANSITIONS` state
 machine expresses `PainPointStatus`'s **branching** shape (`TRIAGED` has
-three legal next states), unlike `_ALLOWED_TRANSITIONS`/`_FS_ALLOWED_
-TRANSITIONS`'s linear-chain-plus-terminal-branch shape above, but is built
-from the same dict-of-frozensets pattern, not a new mechanism.
+three legal next states), unlike `_ALLOWED_TRANSITIONS`/
+`_FS_ALLOWED_TRANSITIONS`'s linear-chain-plus-terminal-branch shape above, but
+is built from the same dict-of-frozensets pattern, not a new mechanism.
 
-Phase 4 (Guiding Principles) adds `create_guiding_principle`,
+Guiding Principles have `create_guiding_principle`,
 `apply_guiding_principle_new_version`, `archive_guiding_principle`/
 `unarchive_guiding_principle`, the six `GuidingPrincipleStatus` lifecycle
 transitions (`_GP_ALLOWED_TRANSITIONS` — a linear chain with no
-`UNDER_REVIEW` step, see that enum's own docstring), and `resolve_guiding_
-principle_file_project_id` — a structural mirror of Phase 1/2's Strategy/
-Future State shape (full version-history table, org/project scope), not
-Phase 3's version-less Pain Point shape.
+`UNDER_REVIEW` step, see that enum's own docstring), and
+`resolve_guiding_principle_file_project_id` — a structural mirror of
+Strategy/Future State (full version-history table, org/project scope), not
+Pain Point's version-less shape.
 
-Phase 5 (Open Questions) adds `create_open_question`/`update_open_question`
-(no version table — back to Phase 3's Pain Point shape, see `models.
-OpenQuestion`'s own docstring), `archive_open_question`/`unarchive_open_
-question`, and the branching `OpenQuestionStatus` lifecycle transitions
-(`investigate_open_question`/`mark_open_question_ready_for_decision`/
-`withdraw_open_question`/`resolve_open_question`, `_OQ_ALLOWED_TRANSITIONS`
-— built from the same dict-of-frozensets mechanism as `_PP_ALLOWED_
-TRANSITIONS`, with two branch points instead of one: both `INVESTIGATING`
-and `READY_FOR_DECISION` can reach `WITHDRAWN`), plus `resolve_open_
-question_file_project_id`. `resolve_open_question` is deliberately a plain
-status transition here, not the actual "Create Decision from Open Question"
-workflow (§9.5) or its `ArtefactLink` — that workflow lives in Module 4's
-own Phase 7 (Phase 0 Q5), the same "ship the plain transition now, wire the
-real relationship later" posture `supersede_strategy`/`supersede_future_
-state`/`supersede_guiding_principle` already established for their own
-deferred `ArtefactLink` side effects.
+Open Questions have `create_open_question`/`update_open_question` (no version
+table — Pain Point's shape, see `models.OpenQuestion`'s own docstring),
+`archive_open_question`/`unarchive_open_question`, and the branching
+`OpenQuestionStatus` lifecycle transitions (`investigate_open_question`/
+`mark_open_question_ready_for_decision`/`withdraw_open_question`/
+`resolve_open_question`, `_OQ_ALLOWED_TRANSITIONS` — built from the same
+dict-of-frozensets mechanism as `_PP_ALLOWED_TRANSITIONS`, with two branch
+points instead of one: both `INVESTIGATING` and `READY_FOR_DECISION` can reach
+`WITHDRAWN`), plus `resolve_open_question_file_project_id`.
+`resolve_open_question` is deliberately a plain status transition, not the
+actual "Create Decision from Open Question" workflow (§9.5) or its
+`ArtefactLink` — that workflow belongs to Decision Management, the same "ship
+the plain transition now, wire the real relationship later" posture
+`supersede_strategy`/`supersede_future_state`/`supersede_guiding_principle`
+take for their own `ArtefactLink` side effects.
 
-Phase 6 (Cross-artefact relationships) adds the actual `ArtefactLink`
-wiring Phases 1-5 deferred, using Module 0's generic `services.
-relationships` layer directly rather than a bespoke storage mechanism —
-mirrors `modules.decisions.service`'s own Phase 3 "relationships" section
-structurally (a lazy fetch-or-create `RequirementLinkTypeDefinition` for
-each typed relationship name, `services.relationships.create_link`/
-`get_link_between` underneath) but is organised around one kind-enum per
-*source* artefact type (`StrategyLinkKind`/`PainPointLinkKind`/
-`GuidingPrincipleLinkKind`/`FutureStateLinkKind`/`OpenQuestionLinkKind`)
-rather than Decision's per-target-type kind enums, since this module has
-five source types fanning out to a shared pool of targets (Requirement,
-each other, and — reserved, see below — Decision) rather than Decision's
-one source type fanning out to two.
+Cross-artefact relationships use the platform's generic `services.relationships`
+layer directly rather than a bespoke storage mechanism — structurally
+mirroring `modules.decisions.service`'s "relationships" section (a lazy
+fetch-or-create `RequirementLinkTypeDefinition` for each typed relationship
+name, `services.relationships.create_link`/`get_link_between` underneath) but
+organised around one kind-enum per *source* artefact type
+(`StrategyLinkKind`/`PainPointLinkKind`/`GuidingPrincipleLinkKind`/
+`FutureStateLinkKind`/`OpenQuestionLinkKind`) rather than Decision's
+per-target-type kind enums, since this module has five source types fanning
+out to a shared pool of targets (Requirement, each other, and — reserved, see
+below — Decision) rather than Decision's one source type fanning out to two.
 
 - `resolve_link_target_organization_id` / `_resolve_scope_organization_id`
   — resolves any link *target* this module knows how to link to (core
@@ -112,7 +103,7 @@ one source type fanning out to two.
 - `create_context_strategy_link` — the single generic dispatcher every
   `create_*_link` wrapper below calls: validates same-organisation,
   fetches-or-creates the named link type (or leaves `link_type_id` `None`
-  for an untyped "related to" association — source overview §6.6's own
+  for an untyped "related to" association — §6.6's own
   instruction that "the relationship type should distinguish causation/
   rationale from generic association" is what the typed/untyped split
   below implements), pre-checks for a duplicate, then calls `services.
@@ -127,39 +118,29 @@ one source type fanning out to two.
   side effect `supersede_strategy`/`supersede_future_state`/`supersede_
   guiding_principle`'s own docstrings promised: each creates the typed
   `"Supersedes"` link, reusing this module's own plain status-transition
-  function underneath (unchanged from Phases 1/2/4, exactly as those
-  docstrings said a future Phase 6 pass could layer on top of them without
-  changing their contract) rather than duplicating the transition logic.
+  function underneath (unchanged, exactly as those docstrings
+  said a relationship pass could layer on top of them without changing their
+  contract) rather than duplicating the transition logic.
 
-**Decision-target relationships stay reserved, not built here (Decided by:
-Agent — see `docs/decisions.md`'s dated Phase 6 entry for the full
-reasoning).** Source overview §5.6/§8.5/§9.5 name three relationship types
-whose target is a Decision Management `Decision` (Strategy -> informs ->
-Decision, Guiding Principle -> guides -> Decision, Open Question ->
-resolved by -> Decision) — this module's own earlier plan text called these
-"reserved... only become populatable once Module 4's own Phase 7 lands."
-Checked directly against `docs/plans/module-04-decision-management-plan.md`
-before starting this phase: Module 4's Phase 7 is **not** complete (its own
-Status table still reads "blocked until Module 1 and/or Module 6 exist"),
-and that phase's own Goal text explicitly assigns "wire the four Module-1-
-reserved relationship types" to Module 4 itself, once Module 1 ships — not
-to Module 1. Building the Decision-target wiring here anyway would also hit
-the same structural problem Module 4's own Phase 7 exists to solve: this
-module cannot import `app.modules.decisions.models.Decision` to validate a
-target Decision id (the Modular Feature System Boundary rule — Decision is
-module-owned, not core, unlike `Requirement`), and Decision Management
-would hit the identical problem in reverse trying to import this module's
-own models. Module 4's Phase 7 remains the right place to resolve that
-(most likely by adding `create_decision_strategy_link`/`create_decision_
-guiding_principle_link`/`create_decision_open_question_link` to `modules.
-decisions.service`, mirroring `create_decision_requirement_link` exactly,
-now that Strategy/Guiding Principle/Open Question all exist as real,
-registered artefact types for it to target) — this phase does not attempt
-it. `Decision` (`DECISION_ARTEFACT_TYPE = "decision"`, `modules.decisions.
-service`) is nonetheless a real, fully shipped, registered artefact type as
-of this phase (Decision Management shipped through its own Phase 9) — so
-the *target* itself is no longer hypothetical, only the wiring code is
-still pending, on Module 4's side.
+**Decision-target relationships stay reserved, not built (Decided by:
+Agent — see `docs/decisions.md` for the full reasoning).** Source overview
+§5.6/§8.5/§9.5 name three relationship types whose target is a Decision
+Management `Decision` (Strategy -> informs -> Decision, Guiding Principle ->
+guides -> Decision, Open Question -> resolved by -> Decision). They are
+reserved because wiring them here would hit a structural problem: this module
+cannot import `app.modules.decisions.models.Decision` to validate a target
+Decision id (the Modular Feature System Boundary rule — Decision is
+module-owned, not core, unlike `Requirement`), and Decision Management would
+hit the identical problem in reverse trying to import this module's own
+models. The right place to resolve that is Decision Management (most likely by
+adding `create_decision_strategy_link`/`create_decision_guiding_principle_link`/
+`create_decision_open_question_link` to `modules.decisions.service`, mirroring
+`create_decision_requirement_link` exactly, now that Strategy/Guiding
+Principle/Open Question all exist as real, registered artefact types for it to
+target). `Decision` (`DECISION_ARTEFACT_TYPE = "decision"`,
+`modules.decisions.service`) is a real, registered artefact type, so the
+*target* itself is not hypothetical, only the wiring code is still pending, on
+Decision Management's side.
 
 **MCP tools and the `require_ai_approvals_enabled` gate** (`module.py`'s
 `mcp_tools`, 2026-09-22 write-enabled decision, `docs/decisions.md`):
@@ -169,7 +150,7 @@ are declared as normal write tools, gated only by `MCP_WRITES_ENABLED` +
 the calling account's own RBAC role — no special treatment. Five specific
 actions additionally require `app.services.rbac.require_ai_approvals_
 enabled` when reached through MCP (`get_request_channel(request) ==
-"mcp"`), per the plan's own literal list: `approve_strategy`, `approve_
+"mcp"`), per the agreed list: `approve_strategy`, `approve_
 future_state`, `activate_guiding_principle`, `retire_guiding_principle`,
 and `resolve_open_question` — project-scoped only (the gate itself needs a
 `Project` to check both its own and its organisation's `allow_ai_approvals`
@@ -178,13 +159,13 @@ approve/activate/retire endpoints are not declared as MCP tools at all,
 rather than gated against a project that doesn't exist for them). Note
 Guiding Principle's own gated pair is `activate`/`retire`, **not**
 `approve` — asymmetric with Strategy/Future State's own gated `approve` —
-this is the plan's own literal text (2026-09-22 update), not a rewording:
+this is the agreed text (2026-09-22 update), not a rewording:
 Guiding Principle's lifecycle has no `UNDER_REVIEW` step (`enums.
 GuidingPrincipleStatus`'s own docstring), so `approve` there is closer to a
 review-sign-off than the "this Principle governs Decisions now" /
 "this Principle no longer applies" decisions `activate`/`retire` actually
-make — the plan's own authors evidently drew the "is this a real decision"
-line one step later for this artefact than for Strategy/Future State.
+make — the "is this a real decision"
+line is drawn one step later for this artefact than for Strategy/Future State.
 """
 
 from __future__ import annotations
@@ -198,6 +179,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.enums import ArtefactType
+from app.models.project import Project
 from app.models.relationship import ArtefactLink
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
@@ -245,16 +227,18 @@ from app.modules.context_strategy.models import (
 )
 from app.modules.registry import LinkTypeSeed
 from app.schemas.principal import PrincipalRef
+from app.services import definition_suppression
 from app.services.audit import log_event
 from app.services.link_types import ensure_org_link_type
 from app.services.relationships import create_link, get_link_between
+from app.services.sequences import code_owner, generate_unique_code
 
 # This module's own artefact-type string, registered on `ModuleDefinition.
-# artefact_types` (module.py) — Phase 6's cross-artefact relationship
-# wiring (`ArtefactLink`) is out of scope for this phase, but registering
-# the string now means Phase 6 doesn't also need a core-file edit later,
-# following Decision Management's own precedent exactly (see module.py).
+# artefact_types` (module.py), so relationship wiring (`ArtefactLink`)
+# needs no core-file edit, following Decision Management's own precedent
+# exactly (see module.py).
 STRATEGY_ARTEFACT_TYPE = "strategy"
+STRATEGY_CODE_PREFIX = "STR"
 
 
 def get_current_version(db: Session, strategy_id: uuid.UUID) -> StrategyVersion:
@@ -304,10 +288,14 @@ def create_strategy(
             unless `scope` is `ORGANIZATION`).
         project_id: Required when `scope` is `PROJECT`, ignored otherwise.
     """
+    code_scope = code_owner(
+        db, is_org_scope=scope == StrategyScope.ORGANIZATION, organization_id=organization_id, project_id=project_id
+    )
     strategy = Strategy(
         scope=scope,
         organization_id=organization_id if scope == StrategyScope.ORGANIZATION else None,
         project_id=project_id if scope == StrategyScope.PROJECT else None,
+        unique_code=generate_unique_code(db, code_scope, STRATEGY_ARTEFACT_TYPE, STRATEGY_CODE_PREFIX),
         creator_id=creator.id,
     )
     db.add(strategy)
@@ -403,8 +391,8 @@ def unarchive_strategy(db: Session, strategy: Strategy) -> None:
 # Legal `StrategyStatus` transitions (`enums.StrategyStatus`'s own
 # docstring): forward through the five "in-flight"/active states, with
 # `PROPOSED`/`UNDER_REVIEW` both able to send a Strategy back to `DRAFT`
-# (this module's "reject"-equivalent, since the plan's own lifecycle text
-# names no separate rejected state), and `APPROVED`/`ACTIVE` both able to
+# (this module's "reject"-equivalent, since the lifecycle names no separate
+# rejected state), and `APPROVED`/`ACTIVE` both able to
 # reach `RETIRED` directly (a Strategy approved but never activated can
 # still be retired without passing through `ACTIVE` first).
 _ALLOWED_TRANSITIONS: dict[StrategyStatus, frozenset[StrategyStatus]] = {
@@ -440,7 +428,7 @@ def _transition(
     `apply_new_version`, and records it via `services.audit.log_event` —
     mirrors `modules.decisions.service._transition_status`'s validate-then-
     apply-then-log shape, adapted to also create a new `StrategyVersion`
-    row (Phase 0 Q4's full version-history model) rather than only mutating
+    row (the full version-history model) rather than only mutating
     an identity-row column.
 
     Raises:
@@ -502,12 +490,10 @@ def supersede_strategy(
     db: Session, strategy: Strategy, current_version: StrategyVersion, actor: User, *, comment: str | None = None
 ) -> StrategyVersion:
     """`ACTIVE` -> `SUPERSEDED`. Deliberately a plain status transition,
-    unlike Decision Management's `create_supersession` — this phase does
+    unlike Decision Management's `create_supersession` — this function does
     not create a typed `ArtefactLink` recording *which* Strategy supersedes
-    this one; that relationship (and any other Strategy<->Strategy link)
-    is Phase 6's job, per this module's plan. A future phase wiring that
-    relationship can layer it on top of this same status transition
-    without needing to change this function's own contract."""
+    this one; `create_strategy_supersession` layers that on top of this same
+    status transition without changing this function's own contract."""
     return _transition(db, strategy, current_version, StrategyStatus.SUPERSEDED, actor, action="superseded", comment=comment)
 
 
@@ -551,14 +537,14 @@ def resolve_strategy_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UU
     return None
 
 
-# --- Future State (Phase 2) -------------------------------------------------
+# --- Future State -------------------------------------------------
 
-# This module's second artefact-type string (Phase 0 Q1: Future State is a
+# This module's second artefact-type string (Future State is a
 # standalone artefact, not fields on Strategy), registered on
 # `ModuleDefinition.artefact_types` (module.py) for the same reason
-# `STRATEGY_ARTEFACT_TYPE` is — Phase 6's relationship wiring doesn't also
-# need a core-file edit later.
+# `STRATEGY_ARTEFACT_TYPE` is.
 FUTURE_STATE_ARTEFACT_TYPE = "future_state"
+FUTURE_STATE_CODE_PREFIX = "FUT"
 
 
 def get_current_future_state_version(db: Session, future_state_id: uuid.UUID) -> FutureStateVersion:
@@ -596,7 +582,7 @@ def create_future_state(
 ) -> FutureState:
     """Creates a Future State and its initial (version 1) content snapshot,
     in `DRAFT` status — exact mirror of `create_strategy`'s shape, for the
-    Phase 2 field set (source overview §7: no `objective`/`rationale`/
+    Future State field set (§7: no `objective`/`rationale`/
     `priority`/`time_horizon`, adds `target_date`/`outcomes`/
     `success_measures`/`assumptions`).
 
@@ -606,10 +592,14 @@ def create_future_state(
             to populate when `scope` is `ORGANIZATION`.
         project_id: Required when `scope` is `PROJECT`, ignored otherwise.
     """
+    code_scope = code_owner(
+        db, is_org_scope=scope == FutureStateScope.ORGANIZATION, organization_id=organization_id, project_id=project_id
+    )
     future_state = FutureState(
         scope=scope,
         organization_id=organization_id if scope == FutureStateScope.ORGANIZATION else None,
         project_id=project_id if scope == FutureStateScope.PROJECT else None,
+        unique_code=generate_unique_code(db, code_scope, FUTURE_STATE_ARTEFACT_TYPE, FUTURE_STATE_CODE_PREFIX),
         creator_id=creator.id,
     )
     db.add(future_state)
@@ -841,13 +831,14 @@ def resolve_future_state_file_project_id(db: Session, file_id: uuid.UUID) -> uui
     return None
 
 
-# --- Pain Points (Phase 3) ---------------------------------------------------
+# --- Pain Points ---------------------------------------------------
 
 # This module's third artefact-type string (Pain Point is project-scoped
-# only — source overview §6 — so it never needs a `scope` discriminator the
+# only — §6 — so it never needs a `scope` discriminator the
 # way Strategy/Future State do), registered on `ModuleDefinition.
 # artefact_types` for the same reason `STRATEGY_ARTEFACT_TYPE` is.
 PAIN_POINT_ARTEFACT_TYPE = "pain_point"
+PAIN_POINT_CODE_PREFIX = "PP"
 
 # Source overview §6.2's own named defaults — seeded once per organisation
 # (`seed_default_pain_point_types`), the same "organisation may optionally
@@ -912,7 +903,7 @@ def delete_org_pain_point_type(db: Session, pain_point_type: PainPointTypeDefini
     reassignment does. **Decided by: Agent.** Blocks outright (`ValueError`,
     translated to a 409 by the router) while any project still references
     this type; the org admin must ask each such project to stop using it
-    first (no automated tooling for that within this phase — a reasonable
+    first (no automated tooling for that — a reasonable
     scope boundary given how rarely an in-use org type should be removed
     outright rather than merely disabled via `is_active`).
 
@@ -928,6 +919,7 @@ def delete_org_pain_point_type(db: Session, pain_point_type: PainPointTypeDefini
             "This Pain Point type is still referenced by at least one project and cannot be removed. "
             "Disable it instead, or ask each referencing project to stop using it first."
         )
+    definition_suppression.forget_definition(db, PAIN_POINT_TYPE_KIND, pain_point_type.id)
     db.delete(pain_point_type)
     db.flush()
 
@@ -937,8 +929,8 @@ def delete_org_pain_point_type(db: Session, pain_point_type: PainPointTypeDefini
 
 @dataclass(frozen=True)
 class EffectivePainPointType:
-    """One row of a project's *effective* Pain Point type list (Phase 0
-    Q3) — the merged view `resolve_effective_pain_point_types` builds, never
+    """One row of a project's *effective* Pain Point type list
+    — the merged view `resolve_effective_pain_point_types` builds, never
     itself a stored/materialized table.
 
     Attributes:
@@ -966,18 +958,21 @@ class EffectivePainPointType:
     source: str
 
 
+PAIN_POINT_TYPE_KIND = "pain_point_type"
+definition_suppression.register_definition_kind(PAIN_POINT_TYPE_KIND)
+
+
 def resolve_effective_pain_point_types(db: Session, project_id: uuid.UUID, organization_id: uuid.UUID) -> list[EffectivePainPointType]:
-    """Resolves a project's effective Pain Point type list (Phase 0 Q3):
+    """Resolves a project's effective Pain Point type list:
     every active org type (using its project override's name/order/enabled
     state if one exists) plus every project-local type. Sorted by effective
     `display_order`.
 
     No `resolve_effective_action_types`-style parent/child project walk —
-    per the plan's own Phase 0 Q3 nested-projects note, an empty
+    per the nested-projects decision, an empty
     `ProjectPainPointType` table already means "use org defaults as-is,"
     which is a correct, self-contained empty-state reading requiring no
-    further inheritance from a parent project (see `docs/plans/module-01-
-    context-and-strategy-plan.md`'s Phase 0 Q3 for the full reasoning).
+    further inheritance from a parent project.
     """
     org_types = db.scalars(
         select(PainPointTypeDefinition)
@@ -997,8 +992,12 @@ def resolve_effective_pain_point_types(db: Session, project_id: uuid.UUID, organ
         )
     ).all()
 
+    hidden = definition_suppression.get_suppressed_ids(db, project_id, PAIN_POINT_TYPE_KIND)
+
     effective: list[EffectivePainPointType] = []
     for org_type in org_types:
+        if org_type.id in hidden:
+            continue
         override = overrides.get(org_type.id)
         if override is not None:
             effective.append(
@@ -1065,11 +1064,105 @@ def get_or_create_project_pain_point_type(
     )
     if passthrough is not None:
         return passthrough
+    if org_type.id in definition_suppression.get_suppressed_ids(db, project_id, PAIN_POINT_TYPE_KIND):
+        raise ValueError("This Pain Point type is hidden in this project.")
 
     passthrough = ProjectPainPointType(project_id=project_id, org_type_id=org_type.id, is_enabled=True)
     db.add(passthrough)
     db.flush()
     return passthrough
+
+
+def hide_org_pain_point_type(
+    db: Session, project_id: uuid.UUID, organization_id: uuid.UUID, type_ref_id: uuid.UUID
+) -> PainPointTypeDefinition:
+    """Hides an organisation Pain Point type in a project (see
+    `TypeVocabulary.hide_org_type`, which this mirrors). `type_ref_id` is the
+    org type id or the project's override row id for it; the override row is
+    kept so Pain Points that use it are unaffected.
+
+    Raises:
+        ValueError: if the id is not an org-backed type of this project.
+    """
+    row = db.get(ProjectPainPointType, type_ref_id)
+    org_type_id = row.org_type_id if row is not None and row.project_id == project_id else type_ref_id
+    org_type = db.get(PainPointTypeDefinition, org_type_id) if org_type_id is not None else None
+    if org_type is None or org_type.organization_id != organization_id:
+        raise ValueError("This is not an organisation Pain Point type that can be hidden here.")
+    definition_suppression.hide_definition(db, project_id, PAIN_POINT_TYPE_KIND, org_type.id)
+    return org_type
+
+
+def remove_pain_point_type(
+    db: Session, project_id: uuid.UUID, organization_id: uuid.UUID, type_ref_id: uuid.UUID
+) -> tuple[str, uuid.UUID]:
+    """What "delete" means for a Pain Point type in a project: a project-local
+    type is deleted (`delete_project_pain_point_type`); an organisation default
+    (by org id or override row id) is hidden here (`hide_org_pain_point_type`).
+
+    Returns:
+        `("deleted", row id)` or `("hidden", org type id)`.
+
+    Raises:
+        LookupError: if the id is no type of this project.
+        ValueError: if a local type is still in use.
+    """
+    row = db.get(ProjectPainPointType, type_ref_id)
+    if row is not None and row.project_id == project_id and row.org_type_id is None:
+        delete_project_pain_point_type(db, row)
+        return "deleted", row.id
+    try:
+        return "hidden", hide_org_pain_point_type(db, project_id, organization_id, type_ref_id).id
+    except ValueError as exc:
+        raise LookupError(str(exc)) from exc
+
+
+def list_hidden_pain_point_types(
+    db: Session, project_id: uuid.UUID, organization_id: uuid.UUID
+) -> list[PainPointTypeDefinition]:
+    """The organisation Pain Point types hidden in the project, in the organisation's order."""
+    hidden = definition_suppression.get_suppressed_ids(db, project_id, PAIN_POINT_TYPE_KIND)
+    if not hidden:
+        return []
+    return list(db.scalars(
+        select(PainPointTypeDefinition)
+        .where(PainPointTypeDefinition.organization_id == organization_id, PainPointTypeDefinition.id.in_(hidden))
+        .order_by(PainPointTypeDefinition.sort_order)
+    ).all())
+
+
+def restore_hidden_pain_point_types(
+    db: Session, project_id: uuid.UUID, organization_id: uuid.UUID, org_type_ids: set[uuid.UUID] | None = None,
+) -> list[PainPointTypeDefinition]:
+    """Shows hidden organisation Pain Point types in the project again: all of
+    them, or only `org_type_ids`. Returns the restored org types."""
+    hidden = list_hidden_pain_point_types(db, project_id, organization_id)
+    wanted = {t.id for t in hidden}
+    if org_type_ids is not None:
+        wanted &= org_type_ids
+    restored = definition_suppression.restore_definitions(db, project_id, PAIN_POINT_TYPE_KIND, wanted)
+    return [t for t in hidden if t.id in restored]
+
+
+class _PainPointTypeHiding:
+    """Adapts the Pain Point type functions to `services.type_vocabulary_routes.HideableVocabulary`."""
+
+    label = "Pain Point type"
+
+    @staticmethod
+    def remove_type(db: Session, project_id: uuid.UUID, organization_id: uuid.UUID, type_ref_id: uuid.UUID):
+        return remove_pain_point_type(db, project_id, organization_id, type_ref_id)
+
+    @staticmethod
+    def list_hidden(db: Session, project_id: uuid.UUID, organization_id: uuid.UUID):
+        return list_hidden_pain_point_types(db, project_id, organization_id)
+
+    @staticmethod
+    def restore_hidden(db: Session, project_id: uuid.UUID, organization_id: uuid.UUID, org_type_ids=None):
+        return restore_hidden_pain_point_types(db, project_id, organization_id, org_type_ids)
+
+
+PAIN_POINT_TYPE_HIDING = _PainPointTypeHiding()
 
 
 def create_project_local_pain_point_type(
@@ -1142,10 +1235,10 @@ def delete_project_pain_point_type(db: Session, project_pain_point_type: Project
     **Decided by: Agent** — no `reassign_to_id` support (unlike `services.
     definitions.delete_definition_with_reassignment`): a Pain Point's own
     `pain_point_type_id` is NOT NULL, so removing a project-local type
-    still in use by a Pain Point would orphan it. This phase blocks that
+    still in use by a Pain Point would orphan it. This blocks that
     outright rather than adding reassignment machinery `RequirementLinkTypeDefinition`/
     `ActionTypeDefinition` already have elsewhere, disproportionate to a
-    single phase's own scope (an org-backed override row is never "in use"
+    single change's scope (an org-backed override row is never "in use"
     on its own — a Pain Point can still reference it, so the same check
     applies to both cases uniformly, not only the project-local one).
 
@@ -1166,7 +1259,7 @@ def delete_project_pain_point_type(db: Session, project_pain_point_type: Project
 def create_pain_point(
     db: Session,
     *,
-    project_id: uuid.UUID,
+    project: Project,
     pain_point_type: ProjectPainPointType,
     creator: User,
     title: str,
@@ -1179,9 +1272,11 @@ def create_pain_point(
     is_intentional: bool = False,
 ) -> PainPoint:
     """Creates a Pain Point in `SUBMITTED` status (§6.5's broad-creation
-    model — any project member, not just a `pain_point_manager`).
+    model — any project member, not just a `pain_point_manager`), with the
+    project's next `PP-nnn` code.
 
     Args:
+        project: The owning project (its sequence counter is advanced).
         pain_point_type: Already resolved via `get_or_create_project_
             pain_point_type` — this function does not resolve it itself so
             callers can validate `is_enabled` against the effective list
@@ -1192,7 +1287,8 @@ def create_pain_point(
             server-side rather than requiring explicitly.
     """
     pain_point = PainPoint(
-        project_id=project_id, pain_point_type_id=pain_point_type.id, creator_id=creator.id,
+        project_id=project.id, pain_point_type_id=pain_point_type.id, creator_id=creator.id,
+        unique_code=generate_unique_code(db, project, PAIN_POINT_ARTEFACT_TYPE, PAIN_POINT_CODE_PREFIX),
         title=title, description=description, source=source, impact=impact, evidence=evidence,
         priority=priority, status=PainPointStatus.SUBMITTED, is_intentional=is_intentional,
         date_identified=date_identified if date_identified is not None else date.today(),
@@ -1273,7 +1369,7 @@ def unarchive_pain_point(db: Session, pain_point: PainPoint) -> None:
 # --- Pain Point lifecycle (branching) ----------------------------------------
 
 # Legal `PainPointStatus` transitions (`enums.PainPointStatus`'s own
-# docstring) — the branching shape source overview §6.4 describes:
+# docstring) — the branching shape §6.4 describes:
 # `Submitted -> Triaged -> {Rejected | Duplicate | Accepted -> Addressed ->
 # Closed}`. `TRIAGED` alone has three legal next states, unlike every other
 # lifecycle in this module.
@@ -1338,10 +1434,8 @@ def reject_pain_point(db: Session, pain_point: PainPoint, actor: User, *, commen
 
 
 def mark_pain_point_duplicate(db: Session, pain_point: PainPoint, actor: User, *, comment: str) -> PainPoint:
-    """`TRIAGED` -> `DUPLICATE`. A comment is required — until Phase 6
-    wires the real `ArtefactLink` to the canonical Pain Point (§6.5's
-    "Merge duplicates" — this phase is deliberately just the status
-    transition, per this module's own plan), the mandatory comment is
+    """`TRIAGED` -> `DUPLICATE`. A comment is required — this function is deliberately just the status
+    transition (§6.5's "Merge duplicates"); the mandatory comment is
     where the canonical Pain Point is noted."""
     return _pp_transition(db, pain_point, PainPointStatus.DUPLICATE, actor, action="marked_duplicate", comment=comment)
 
@@ -1391,11 +1485,12 @@ def resolve_pain_point_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.
     return None
 
 
-# --- Guiding Principles (Phase 4) --------------------------------------------
+# --- Guiding Principles --------------------------------------------
 
 # This module's fourth artefact-type string, registered on `ModuleDefinition.
 # artefact_types` (module.py) for the same reason `STRATEGY_ARTEFACT_TYPE` is.
 GUIDING_PRINCIPLE_ARTEFACT_TYPE = "guiding_principle"
+GUIDING_PRINCIPLE_CODE_PREFIX = "GP"
 
 
 def get_current_guiding_principle_version(db: Session, guiding_principle_id: uuid.UUID) -> GuidingPrincipleVersion:
@@ -1432,7 +1527,7 @@ def create_guiding_principle(
 ) -> GuidingPrinciple:
     """Creates a Guiding Principle and its initial (version 1) content
     snapshot, in `DRAFT` status — exact mirror of `create_strategy`/`create_
-    future_state`'s shape, for the Phase 4 field set (source overview §8.3:
+    future_state`'s shape, for the Guiding Principle field set (§8.3:
     no `type` field, no `time_horizon`/`expected_outcomes`/`constraints`/
     `measures_of_success`).
 
@@ -1443,10 +1538,14 @@ def create_guiding_principle(
         project_id: Required when `scope` is `PROJECT`, ignored otherwise.
         owner: The principal responsible (the caller has validated it), or None.
     """
+    code_scope = code_owner(
+        db, is_org_scope=scope == GuidingPrincipleScope.ORGANIZATION, organization_id=organization_id, project_id=project_id
+    )
     guiding_principle = GuidingPrinciple(
         scope=scope,
         organization_id=organization_id if scope == GuidingPrincipleScope.ORGANIZATION else None,
         project_id=project_id if scope == GuidingPrincipleScope.PROJECT else None,
+        unique_code=generate_unique_code(db, code_scope, GUIDING_PRINCIPLE_ARTEFACT_TYPE, GUIDING_PRINCIPLE_CODE_PREFIX),
         creator_id=creator.id,
     )
     db.add(guiding_principle)
@@ -1646,7 +1745,8 @@ def supersede_guiding_principle(
     """`ACTIVE` -> `SUPERSEDED`. Deliberately a plain status transition, for
     the same reason `supersede_strategy`/`supersede_future_state` are — see
     those functions' own docstrings. Recording *which* Guiding Principle
-    supersedes this one (a typed `ArtefactLink`) is Phase 6's job."""
+    supersedes this one (a typed `ArtefactLink`) is
+    `create_guiding_principle_supersession`'s job."""
     return _guiding_principle_transition(
         db, guiding_principle, current_version, GuidingPrincipleStatus.SUPERSEDED, actor, action="superseded",
         comment=comment,
@@ -1695,19 +1795,20 @@ def resolve_guiding_principle_file_project_id(db: Session, file_id: uuid.UUID) -
     return None
 
 
-# --- Open Questions (Phase 5) -------------------------------------------------
+# --- Open Questions -------------------------------------------------
 
 # This module's fifth artefact-type string, registered on `ModuleDefinition.
 # artefact_types` (module.py) for the same reason `STRATEGY_ARTEFACT_TYPE`
 # is. Open Question is project-scoped only, like Pain Point (see `models.
 # OpenQuestion`'s own docstring for the scope reasoning).
 OPEN_QUESTION_ARTEFACT_TYPE = "open_question"
+OPEN_QUESTION_CODE_PREFIX = "OQ"
 
 
 def create_open_question(
     db: Session,
     *,
-    project_id: uuid.UUID,
+    project: Project,
     creator: User,
     question: str,
     context: str = "",
@@ -1716,10 +1817,12 @@ def create_open_question(
     due_date: date | None = None,
 ) -> OpenQuestion:
     """Creates an Open Question in `OPEN` status (§9.4's broad-creation
-    model — any project member, not just an `open_question_owner`)."""
+    model — any project member, not just an `open_question_owner`), with the
+    project's next `OQ-nnn` code."""
     open_question = OpenQuestion(
-        project_id=project_id, creator_id=creator.id, question=question, context=context, evidence=evidence,
-        priority=priority, status=OpenQuestionStatus.OPEN, due_date=due_date,
+        project_id=project.id, creator_id=creator.id,
+        unique_code=generate_unique_code(db, project, OPEN_QUESTION_ARTEFACT_TYPE, OPEN_QUESTION_CODE_PREFIX),
+        question=question, context=context, evidence=evidence, priority=priority, status=OpenQuestionStatus.OPEN, due_date=due_date,
     )
     db.add(open_question)
     db.flush()
@@ -1782,7 +1885,7 @@ def unarchive_open_question(db: Session, open_question: OpenQuestion) -> None:
 # --- Open Question lifecycle (branching) --------------------------------------
 
 # Legal `OpenQuestionStatus` transitions (`enums.OpenQuestionStatus`'s own
-# docstring) — the branching shape source overview §9.3 describes, with two
+# docstring) — the branching shape §9.3 describes, with two
 # branch points (unlike Pain Point's one): `Open -> Investigating ->
 # {Withdrawn | Ready for Decision -> {Resolved | Withdrawn}}`.
 _OQ_ALLOWED_TRANSITIONS: dict[OpenQuestionStatus, frozenset[OpenQuestionStatus]] = {
@@ -1894,9 +1997,9 @@ def resolve_open_question_file_project_id(db: Session, file_id: uuid.UUID) -> uu
     return None
 
 
-# --- Phase 6: cross-artefact relationships ----------------------------------
+# --- cross-artefact relationships ----------------------------------
 #
-# See module docstring's Phase 6 section for the overall design. Every
+# See the module docstring's relationships section for the overall design. Every
 # *typed* relationship name below is created lazily, on first use, as an
 # org-shared `RequirementLinkTypeDefinition` row (mirroring `modules.
 # decisions.service._get_or_create_link_type` exactly) — no migration/
@@ -1939,7 +2042,7 @@ def resolve_link_target_organization_id(db: Session, target_type: str, target_id
     belongs to the same organisation as the link's source, before creating
     the `ArtefactLink` row. Deliberately does not (and structurally cannot)
     resolve a Decision id — see module docstring's "Decision-target
-    relationships stay reserved" section for why that's Module 4's own job,
+    relationships stay reserved" section for why that's Decision Management's own job,
     not a gap in this function.
 
     Raises:
@@ -2056,7 +2159,7 @@ def create_context_strategy_link(
     )
 
 
-# --- Strategy relationships (source overview §5.6) --------------------------
+# --- Strategy relationships (§5.6) --------------------------
 
 
 class StrategyLinkKind(str, enum.Enum):
@@ -2114,9 +2217,8 @@ def create_strategy_supersession(
 ) -> tuple[ArtefactLink, StrategyVersion]:
     """Records that `new_strategy` supersedes `old_strategy`: creates the
     typed `"Supersedes"` `ArtefactLink`, then transitions `old_strategy` to
-    `SUPERSEDED` via the existing `supersede_strategy` (unchanged since
-    Phase 1 — this is the deferred `ArtefactLink` side effect its own
-    docstring promised a future Phase 6 pass would layer on top of it).
+    `SUPERSEDED` via the existing `supersede_strategy` (unchanged). This is the
+    `ArtefactLink` side effect layered on top of that plain transition.
     Deliberately simpler than Decision Management's `create_supersession`:
     Strategy has no "flip only once the new one is already approved"
     condition to satisfy (`supersede_strategy`'s own `_ALLOWED_TRANSITIONS`
@@ -2158,7 +2260,7 @@ def create_strategy_supersession(
     return link, new_version
 
 
-# --- Pain Point relationships (source overview §6.6) -------------------------
+# --- Pain Point relationships (§6.6) -------------------------
 
 
 class PainPointLinkKind(str, enum.Enum):
@@ -2167,13 +2269,10 @@ class PainPointLinkKind(str, enum.Enum):
     Point) is the reserved Decision-target relationship (module docstring)
     and is not present here.
 
-    `DUPLICATE_OF` is not one of §6.6's own named relationships — it closes
-    a gap Phase 3's own notes explicitly flagged for this phase: `mark_
-    pain_point_duplicate`'s mandatory comment names the canonical Pain
-    Point in free text only ("standing in for the real `ArtefactLink`
-    Phase 6 will add" — Phase 3 notes, `docs/plans/module-01-context-and-
-    strategy-plan.md`), pending this phase's actual relationship
-    infrastructure existing to record it for real."""
+    `DUPLICATE_OF` is not one of §6.6's own named relationships — it records
+    the canonical Pain Point as a real `ArtefactLink`, which
+    `mark_pain_point_duplicate`'s mandatory comment otherwise names only in
+    free text."""
 
     DRIVES_STRATEGY = "drives_strategy"
     MOTIVATES_REQUIREMENT = "motivates_requirement"
@@ -2209,7 +2308,7 @@ def create_pain_point_link(
     )
 
 
-# --- Guiding Principle relationships (source overview §8.5) ------------------
+# --- Guiding Principle relationships (§8.5) ------------------
 
 
 class GuidingPrincipleLinkKind(str, enum.Enum):
@@ -2285,7 +2384,7 @@ def create_guiding_principle_supersession(
     return link, new_version
 
 
-# --- Future State relationships (source overview §7) -------------------------
+# --- Future State relationships (§7) -------------------------
 
 
 class FutureStateLinkKind(str, enum.Enum):
@@ -2297,7 +2396,7 @@ class FutureStateLinkKind(str, enum.Enum):
     ... Decisions") is the reserved Decision-target relationship (module
     docstring) and is not present here. `RELATED_TO_STRATEGY` isn't present
     either — that relationship is `StrategyLinkKind.DEFINES_FUTURE_STATE`,
-    built once from Strategy's own side (source overview §5.6's "Defines ->
+    built once from Strategy's own side (§5.6's "Defines ->
     Future State"), not duplicated from both ends."""
 
     RELATED_TO_PAIN_POINT = "related_to_pain_point"
@@ -2363,7 +2462,7 @@ def create_future_state_supersession(
     return link, new_version
 
 
-# --- Open Question relationships (source overview §9.2) ----------------------
+# --- Open Question relationships (§9.2) ----------------------
 
 
 class OpenQuestionLinkKind(str, enum.Enum):

@@ -1,13 +1,12 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, logout, ORG_NAMES, PERSONAS } from "../../e2e-workflows/helpers";
+import { loginAs, logout, ORG_NAMES, PERSONAS, chooseRecordAction } from "../../e2e-workflows/helpers";
 import { createStandardWithVersion } from "./helpers";
 
 const apiBaseUrl = "http://localhost:8000";
 
 /**
- * Job to be done: Compliance Module Phase 22 (docs/compliance-module-plan.md)
- * — a standard's own "Members" section (`standards_manager`/
+ * Job to be done: a standard's own "Members" section (`standards_manager`/
  * `standards_contributor`, scoped to just this one standard). Covers:
  *
  * - Creating a standard auto-grants the creator a direct `standards_manager`
@@ -16,9 +15,8 @@ const apiBaseUrl = "http://localhost:8000";
  *   an explanatory title) when no fallback compliance-managers group is
  *   configured for the organisation.
  * - Adding another org member as `standards_contributor` via the "Add
- *   member" picker (rebuilt on `UserAutocomplete` search-as-you-type by
- *   module system Phase 30 — see that phase's own second test below for its
- *   group-matching half), and revoking that grant again — a contributor's
+ * member" picker (rebuilt on `UserAutocomplete` search-as-you-type; see the
+ * second test below for its group-matching half), and revoking that grant again — a contributor's
  *   own checkbox is never disabled (there's always at least one manager
  *   already, this add/revoke doesn't touch the floor).
  *
@@ -29,7 +27,7 @@ const apiBaseUrl = "http://localhost:8000";
  * added as a contributor. The standard itself is dynamically named with a
  * per-run timestamp suffix, per this repo's standing test-idempotency rule.
  */
-test.describe("Compliance Module: standard-scoped RBAC — Members section (Phase 22)", () => {
+test.describe("Compliance Module: standard-scoped RBAC — Members section", () => {
   test("standard creation auto-grants the creator, the last manager checkbox is disabled, and a contributor can be added and revoked", async ({ page }) => {
     const suffix = Date.now();
     const reference = `E2E-RBAC-${suffix}`;
@@ -41,7 +39,7 @@ test.describe("Compliance Module: standard-scoped RBAC — Members section (Phas
     await page.getByRole("link", { name: "Members" }).click();
     await expect(page).toHaveURL(/\/standards\/[0-9a-f-]+\/members$/);
 
-    // The creator is auto-granted `standards_manager` (Phase 22).
+    // The creator is auto-granted `standards_manager`.
     await expect(page.getByText(PERSONAS.orgAdminAlphaBeta.name)).toBeVisible();
     await page.getByRole("button", { name: `Roles for ${PERSONAS.orgAdminAlphaBeta.name}` }).click();
     const creatorGroup = page.getByRole("group", { name: `Roles for ${PERSONAS.orgAdminAlphaBeta.name}` });
@@ -56,8 +54,8 @@ test.describe("Compliance Module: standard-scoped RBAC — Members section (Phas
     await page.keyboard.press("Escape");
 
     // Add `memberAlphaBeta` as a Standards Contributor, via the
-    // `UserAutocomplete` search-as-you-type add flow (module system
-    // Phase 30 rebuilt this from a plain, unfiltered `<select>`).
+    // `UserAutocomplete` search-as-you-type add flow (rebuilt from a plain,
+    // unfiltered `<select>`).
     await page.getByRole("button", { name: "Add member" }).click();
     const addDialog = page.getByRole("dialog", { name: "Add a member" });
     await addDialog.getByLabel("Role").selectOption({ label: "Standards Contributor" });
@@ -83,7 +81,7 @@ test.describe("Compliance Module: standard-scoped RBAC — Members section (Phas
   });
 
   /**
-   * Job to be done: module system Phase 30 — group-based grants for
+   * Job to be done: group-based grants for
    * module-contributed roles (`GroupModuleRole`), exercised here through
    * Compliance's own Standards Manager/Contributor picker: granting
    * `standards_manager` to a dynamically-created org group (via the same
@@ -148,7 +146,7 @@ test.describe("Compliance Module: standard-scoped RBAC — Members section (Phas
     await loginAs(page, PERSONAS.memberAlphaBeta.email);
     await page.goto(`/standards/${standardId}`);
     await expect(page.getByRole("heading", { name: new RegExp(`${reference} — ${standardName}`) })).toBeVisible();
-    await page.getByRole("button", { name: "Archive" }).click();
+    await chooseRecordAction(page, "Standard", "Archive");
     await page.getByRole("dialog").getByRole("button", { name: "Archive" }).click();
     await expect(page.getByText("Archived", { exact: true })).toBeVisible();
   });

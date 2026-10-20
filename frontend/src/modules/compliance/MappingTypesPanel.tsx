@@ -13,13 +13,14 @@
  * fields together, so each handler always sends the other field's current,
  * unchanged value alongside the one it's actually changing).
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { DefinitionList } from "../../components/DefinitionList";
 import { ToggleSwitch } from "../../components/ToggleSwitch";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import type { ComplianceMappingRelationshipType } from "./types";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 export function MappingTypesPanel({ orgId }: { orgId: string }) {
   const { showToast } = useToast();
@@ -35,10 +36,7 @@ export function MappingTypesPanel({ orgId }: { orgId: string }) {
     }
   }
 
-  useEffect(() => {
-    void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId]);
+  useLoadOnChange(reload, [orgId]);
 
   if (error) return <div style={{ color: "var(--color-danger)" }}>{error}</div>;
   if (items === null) return <p>Loading…</p>;

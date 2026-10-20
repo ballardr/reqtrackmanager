@@ -75,7 +75,7 @@ function TreeViewRow<N extends TreeViewNode<N>>({
             aria-label={expanded ? `Collapse ${label}` : `Expand ${label}`}
             aria-expanded={expanded}
           >
-            {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            {expanded ? <ChevronDown /> : <ChevronRight />}
           </button>
         ) : (
           <span style={{ width: "1.65rem", display: "inline-block" }} />

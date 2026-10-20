@@ -1,3 +1,4 @@
+import { useMutation } from "../hooks/useMutation";
 import { Download, Eye, Lock, Pencil, Plus, Send, Trash2, Unlock, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -56,6 +57,7 @@ import {
   PROJECT_ROLE_LABEL,
   toModuleAvailability,
 } from "../api/types";
+import { OrgTagsPanel } from "../components/OrgTagsPanel";
 import { ActionMenu } from "../components/ActionMenu";
 import type { StagedMember } from "../components/AddMembersModal";
 import { AddMembersModal } from "../components/AddMembersModal";
@@ -72,18 +74,22 @@ import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPa
 import { ImportConflictPanel } from "../components/ImportConflictPanel";
 import { LinkTypesPanel } from "../components/LinkTypesPanel";
 import { Modal } from "../components/Modal";
+import { AddUserMenu } from "../components/AddUserMenu";
+import { NewUserFields } from "../components/NewUserFields";
+import { EMPTY_NEW_USER, type NewUserValues } from "../components/newUserValues";
 import { ModuleAvailabilitySelect, ModuleSettingsList } from "../components/ModuleSettingsList";
 import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
 import { OverridePill } from "../components/OverridePill";
 import { PermissionPicker } from "../components/PermissionPicker";
 import { ProjectMembersTable } from "../components/ProjectMembersTable";
 import { ReportContentEditor } from "../components/ReportContentEditor";
+import { OrganizationCodePanel } from "../components/OrganizationCodePanel";
+import { ProjectCodePolicyPanel } from "../components/ProjectCodePolicyPanel";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { ResourceMenu } from "../components/ResourceMenu";
 import { SidePanel } from "../components/SidePanel";
 import { cycleSort, type SortState } from "../components/sortState";
 import { Spinner } from "../components/Spinner";
-import { ToggleSwitch } from "../components/ToggleSwitch";
 import { UserAutocomplete } from "../components/UserAutocomplete";
 import { useFederatedModules } from "../hooks/useFederatedModules";
 import { installedModules } from "../modules/registry";
@@ -91,11 +97,16 @@ import { loadOrgSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { downloadBlob } from "../utils/download";
 import { defaultResolutions } from "../utils/mergeConflicts";
 import { useRequestSequence } from "../hooks/useRequestSequence";
+import { Badge } from "../components/Badge";
+import { CheckboxField, ColorField, FileField, TextAreaField, TextField, ToggleField, UploadField } from "../components/FormFields";
+import { FormActions } from "../components/FormActions";
+import { FormGrid, FormGridFull } from "../components/FormGrid";
+import { LabeledSelect } from "../components/LabeledSelect";
+import { RecordFieldGroup } from "../components/RecordDetailParts";
 
 /**
  * The 7 resource-menu groups Org Admin's previous 15 flat accordions were
- * regrouped into (2026-08 UX audit, style guide "Pattern: settings
- * hierarchy" — see its "after" diagram). Each key is also the route
+ * regrouped into. Each key is also the route
  * segment under `/orgs/:orgId/admin/:group?` (App.tsx), so a group
  * selection is a real navigation, not client-only state: back/forward and
  * a bookmark to one specific group both work. An unrecognised or absent
@@ -116,9 +127,8 @@ import { useRequestSequence } from "../hooks/useRequestSequence";
  * Module system follow-up (2026-09-07, see `docs/decisions.md`'s "Module
  * system follow-up: dynamic org-admin panel registration" entry): this used
  * to also hardcode two more literals, `"compliance"`/`"compliance-overview"`
- * — Phase 12/14's own groups, hand-mounted here since Phase 3's routing/
- * nav-discovery mechanism is project-scoped only (see Phase 12's notes in
- * `docs/compliance-module-plan.md`). Every *installed and enabled* module's
+ * — the module's own groups, hand-mounted here since the routing/
+ * nav-discovery mechanism is project-scoped only. Every *installed and enabled* module's
  * own `orgAdminSections` (`modules/types.ts`) now contributes its own
  * group(s) dynamically instead (built into `orgAdminGroups` below), so this
  * type only names the ten groups genuinely fixed at this file's own compile
@@ -135,10 +145,10 @@ const CORE_ORG_ADMIN_GROUP_KEYS = [
   "email",
   "security",
   "modules",
-  // Fine-Grained Access Control (core, not a module — `docs/plans/
-  // core-fine-grained-access-control-plan.md` Phase 3): custom-role
+  "tags",
+  // Fine-Grained Access Control (core, not a module —): custom-role
   // definition (ORG_ADMIN-only) plus the broader grant_roles-based
-  // assignment surface, named "Role Management" per Phase 0 Q8/Q9.
+  // assignment surface, named "Role Management".
   "role-management",
 ] as const;
 type CoreOrgAdminGroupKey = (typeof CORE_ORG_ADMIN_GROUP_KEYS)[number];
@@ -165,10 +175,10 @@ type CoreOrgAdminGroupKey = (typeof CORE_ORG_ADMIN_GROUP_KEYS)[number];
  */
 type OrgAdminGroupKey = CoreOrgAdminGroupKey | string;
 
-/** One row of the Org Users `DirectoryTable` (Phase A, follow-up UX batch)
+/** One row of the Org Users `DirectoryTable`
  * — a real user or a not-yet-accepted org-only invite, merged client-side.
  * Same `kind`-discriminated union row-merge pattern `ProjectMembersTable`
- * (Phase D) later applied one level down, for a project's own members. */
+ * later applied one level down, for a project's own members. */
 type UsersRow = { kind: "user"; user: OrgUser } | { kind: "invited"; invite: OrgPendingInvite };
 
 /**
@@ -188,6 +198,7 @@ type UsersRow = { kind: "user"; user: OrgUser } | { kind: "invited"; invite: Org
  * status/type before the delete retries.
  */
 export function OrgAdminPage() {
+  const run = useMutation();
   const strings = useStrings();
   const { orgId, group: groupParam } = useParams<{ orgId: string; group?: string }>();
   const { user } = useAuth();
@@ -217,13 +228,12 @@ export function OrgAdminPage() {
   const [usersTotal, setUsersTotal] = useState(0);
   const [userSearch, setUserSearch] = useState("");
   const [viewingUser, setViewingUser] = useState<OrgUser | null>(null);
-  // "Remove from {org}" (Users table Actions column, PR6) — the user
+  // "Remove from {org}" (Users table Actions column) — the user
   // pending confirmation in the `ConfirmDialog` below, or null when none.
   const [confirmRemoveUser, setConfirmRemoveUser] = useState<OrgUser | null>(null);
   const [userAccess, setUserAccess] = useState<UserAccess | null>(null);
   const [userAccessError, setUserAccessError] = useState<string | null>(null);
-  // "View access" panel (2026-08 UX audit reversal — see docs/decisions.md
-  // and docs/ux-style-guide.md's "Pattern: role display" section): each
+  // "View access" panel: each
   // project row shows `collapseProjectRoles()`'s summary by default, with
   // this per-project-id set tracking which rows the viewer has explicitly
   // expanded to the full, uncollapsed role list. Reset whenever a new
@@ -234,16 +244,15 @@ export function OrgAdminPage() {
   const [groupSearch, setGroupSearch] = useState("");
   // Every org group by id/name, unpaginated and unfiltered by
   // `groupSearch` — the paginated/searched `groups` above drives which
-  // groups render as full cards (2026-08 UX audit "Directories at
-  // scale"), but nesting a group into another needs to pick from *every*
+  // groups render as full cards, but nesting a group into another needs to pick from *every*
   // group in the org regardless of what's currently searched/paged, so
   // the nested-group name resolution and the "add nested group" dropdown
   // both read from this instead.
   const [allGroups, setAllGroups] = useState<OrgGroup[]>([]);
-  // Org Groups table (Phase B, follow-up UX batch, 2026-08-31): replaces
+  // Org Groups table : replaces
   // the old `CollapsibleSection`-of-`CollapsibleSection`s accordion with
   // `DirectoryTable` + a per-row `SidePanel`, the same shape Project
-  // Groups already used before this phase also retrofitted it onto
+  // Groups already used (and were retrofitted onto)
   // `DirectoryTable`. `list_org_groups` already pages via `limit`/`offset`,
   // so Name sort is a backend-sorted refetch (its new `order` param) like
   // Org Users' own table, not a client-side sort of only the loaded page —
@@ -256,7 +265,7 @@ export function OrgAdminPage() {
   // Org group pending deletion in its Tier 1 `ConfirmDialog`, or null.
   const [deletingOrgGroupId, setDeletingOrgGroupId] = useState<string | null>(null);
   const [inUseOrgGroup, setInUseOrgGroup] = useState<{ id: string; usage: PrincipalUsage } | null>(null);
-  // Per-group SSO-sync enable/disable toggle (Phase B bug-fix pass) —
+  // Per-group SSO-sync enable/disable toggle —
   // `undefined` means "not yet touched this session," in which case the
   // checkbox's displayed state derives from `idp_synced_group_name != null`
   // instead. Unchecking clears both synced fields immediately via the same
@@ -265,7 +274,7 @@ export function OrgAdminPage() {
   const [syncEnabledEdits, setSyncEnabledEdits] = useState<Record<string, boolean>>({});
   const [resources, setResources] = useState<FileAsset[]>([]);
   const [templateProjects, setTemplateProjects] = useState<ProjectListItem[]>([]);
-  // Fine-Grained Access Control (core) Phase 3: this org's projects the
+  // Fine-Grained Access Control (core): this org's projects the
   // *caller* has some visibility into (`GET /api/v1/projects`, already
   // fetched unconditionally for `templateProjects` above) — the Role
   // Management page's project-scoped-role grant picker's fallback source
@@ -283,10 +292,7 @@ export function OrgAdminPage() {
 
   // --- Requirement link types (C-G-09) ---------------------------------
 
-  const [newUserEmail, setNewUserEmail] = useState("");
-  const [newUserName, setNewUserName] = useState("");
-  const [newUserPassword, setNewUserPassword] = useState("");
-  const [newUserRole, setNewUserRole] = useState<OrgRole>("member");
+  const [newUser, setNewUser] = useState<NewUserValues>(EMPTY_NEW_USER);
   // "New user" now opens in a `Modal` (style guide "Pattern: modal dialog
   // for entity create/rename") rather than the permanently-visible inline
   // form it used to be — the first real usage of that pattern, setting the
@@ -306,14 +312,14 @@ export function OrgAdminPage() {
   const [testEmailError, setTestEmailError] = useState<string | null>(null);
   const [testEmailSuccess, setTestEmailSuccess] = useState(false);
   const [advancedError, setAdvancedError] = useState<string | null>(null);
-  // Module system Phase 1 (compliance-module-plan.md): the org's own
+  // The org's own
   // enable/disable choice among modules it's entitled to. Fetched inside
   // the same try/catch-403-and-hide-section block as `advanced` above
   // (non-admins simply don't see the section) — `[]` before that resolves,
   // which also correctly renders as "no modules" for a deployment with
-  // none registered yet (there are zero implemented modules until Phase 5).
+  // none registered yet (there may be zero implemented modules).
   const [modules, setModules] = useState<OrgModule[]>([]);
-  // Module 0 (Platform Foundations) Phase 4 — each module's own declared
+  // Each module's own declared
   // sub-components (empty for every module except Context & Strategy
   // today), keyed by `module_key`, fetched alongside `modules` itself once
   // the module list is known. `GET .../subcomponents` safely returns `[]`
@@ -333,17 +339,15 @@ export function OrgAdminPage() {
   // panel. See `useFederatedModules`'s own docstring and `frontend/src/
   // modules/federatedLoader.ts` for the full mechanism.
   useFederatedModules(modules.filter((m) => m.enabled));
-  // Module system Phase 2: org-scoped module-contributed role definitions
+  // Org-scoped module-contributed role definitions
   // currently available to grant in this org, fed into the Users table's
   // Roles column `MultiSelectDropdown` alongside the three fixed `OrgRole`
   // options. Fetched in the same block as `modules` above (both non-admin-
   // hidden, both need this org's own module registry state) — `[]` before
   // that resolves, which also correctly renders as "no module roles" for a
-  // deployment with none registered yet (no module has any roles until
-  // Phase 5).
+  // deployment with none registered yet (no module has any roles).
   const [availableOrgModuleRoles, setAvailableOrgModuleRoles] = useState<ModuleRoleDefinition[]>([]);
-  // Fine-Grained Access Control (core, `docs/plans/core-fine-grained-
-  // access-control-plan.md` Phase 3) — Role Management group state.
+  // Fine-Grained Access Control (core) — Role Management group state.
   // `permissions`/`customRoles` are fetched in the main (non-admin-gated)
   // `reload()` bundle below: `GET .../permissions` and `GET .../
   // custom-roles` are both open to any real org role (`_VIEW_ROLES` on the
@@ -352,7 +356,7 @@ export function OrgAdminPage() {
   // like role *definition* itself.
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [customRoles, setCustomRoles] = useState<CustomRoleDefinition[]>([]);
-  // Fine-Grained Access Control (core) Phase 5 — every registered
+  // Fine-Grained Access Control (core): every registered
   // module-owned entity scope (e.g. compliance's `"standard"`), fetched
   // alongside `permissions`/`customRoles` above from the same non-admin-
   // gated `GET /orgs/{id}/entity-scopes` endpoint. Powers the scope
@@ -373,7 +377,7 @@ export function OrgAdminPage() {
   // below currently target — keyed by `CustomRoleDefinition.id`. An
   // org-scoped role needs no entry here (its grants carry no project_id).
   const [customRoleGrantProjectId, setCustomRoleGrantProjectId] = useState<Record<string, string>>({});
-  // Same, but for a role scoped to a registered entity scope (Phase 5) —
+  // Same, but for a role scoped to a registered entity scope —
   // which entity (e.g. which standard) each such role's grant/revoke
   // pickers currently target, keyed by `CustomRoleDefinition.id`.
   const [customRoleGrantEntityId, setCustomRoleGrantEntityId] = useState<Record<string, string>>({});
@@ -381,7 +385,7 @@ export function OrgAdminPage() {
   // `ProjectMembersTable`, keyed by whichever project that modal currently
   // has open (see `openManageUsers` below).
   const [manageUsersAvailableModuleRoles, setManageUsersAvailableModuleRoles] = useState<ModuleRoleDefinition[]>([]);
-  // Users table filters (Phase A, follow-up UX batch, 2026-08-31): the
+  // Users table filters : the
   // three access-review filters used to be a single-select "" | "stale" |
   // "no2fa" | "noaccess" toggle-button row (mutually exclusive, so e.g.
   // "stale AND no 2FA" couldn't be expressed even though the backend's
@@ -389,13 +393,13 @@ export function OrgAdminPage() {
   // independent) — migrated onto `FilterCheckbox`es inside the shared
   // `FilterPanel`, one boolean each, now genuinely independent. `roleFilter`
   // is new: `GET /orgs/{id}/users`'s existing `org_role` param had no
-  // frontend control wired up to it before this phase.
+  // frontend control wired up to it originally.
   const [userFilterStale, setUserFilterStale] = useState(false);
   const [userFilterNo2fa, setUserFilterNo2fa] = useState(false);
   const [userFilterNoAccess, setUserFilterNoAccess] = useState(false);
   const [userRoleFilter, setUserRoleFilter] = useState<OrgRole | "">("");
   // Pending (unaccepted) org-only invites, merged into the Users table as
-  // `kind: "invited"` rows (Phase A) — fetched unpaginated (there are
+  // `kind: "invited"` rows — fetched unpaginated (there are
   // never many at once) alongside the paginated `users` list, and always
   // rendered ahead of it regardless of the user rows' own sort/page state.
   const [orgInvites, setOrgInvites] = useState<OrgPendingInvite[]>([]);
@@ -403,7 +407,7 @@ export function OrgAdminPage() {
   const [resendingOrgInviteId, setResendingOrgInviteId] = useState<string | null>(null);
   const [inviteUserModalOpen, setInviteUserModalOpen] = useState(false);
   const [inviteUserEmail, setInviteUserEmail] = useState("");
-  // Column-header sorting (2026-08 UX audit roadmap) — backend `sort`/
+  // Column-header sorting — backend `sort`/
   // `order`, same reasoning as the Requirements/Change Requests lists:
   // this table is backend-paginated (`USERS_PAGE_SIZE`/`LoadMoreButton`
   // below), so sorting has to be honoured server-side.
@@ -415,7 +419,7 @@ export function OrgAdminPage() {
   const [autoAcceptEmailDomain, setAutoAcceptEmailDomain] = useState("");
   const [externalUserPolicy, setExternalUserPolicy] = useState<ExternalUserPolicy>("disabled");
   const [allowRelaxedChildProjectCreation, setAllowRelaxedChildProjectCreation] = useState(true);
-  // Platform review 2026-09, Phase 8 — org-wide force of `Project.
+  // Org-wide force of `Project.
   // require_change_request_for_approved_links`, minus a per-project
   // `exempt_from_org_link_lock` opt-out. See `Organization`'s own field
   // docstring for the full resolution.
@@ -450,21 +454,20 @@ export function OrgAdminPage() {
   const [revokeAllPatsOpen, setRevokeAllPatsOpen] = useState(false);
   const [patToRevoke, setPatToRevoke] = useState<string | null>(null);
   const [orgProjects, setOrgProjects] = useState<OrgProjectSummary[] | null>(null);
-  // "Manage users" (Phase 5, docs/decisions.md; rebuilt again in Phase D,
-  // follow-up UX batch, 2026-08-31): the old inline expand-in-place
+  // "Manage users" (docs/decisions.md): the old inline expand-in-place
   // (`expandedProjectId`/`expandedProjectGroups`/`toggleExpandedProject`/
   // `addExpandedProjectGroupMember`/`removeExpandedProjectGroupMember`) is
   // now a `Modal` wrapping the same `ProjectMembersTable`
   // `ProjectAdminPage.tsx`'s own Members section uses — literally the same
   // component, not a duplicate, worse reimplementation (the concrete
-  // complaint this phase fixes). `manageUsersProjectId` is which project's
+  // complaint this fixes). `manageUsersProjectId` is which project's
   // modal is open (`null` = closed); its effective-members/pending-invites
   // are fetched fresh on open, the same two endpoints `ProjectAdminPage.tsx`
   // itself uses.
   const [manageUsersProjectId, setManageUsersProjectId] = useState<string | null>(null);
   const [manageUsersProjectName, setManageUsersProjectName] = useState("");
   const [manageUsersMembers, setManageUsersMembers] = useState<EffectiveMember[]>([]);
-  // Phase 6 (docs/platform-review-2026-09-plan.md): this modal's own copy
+  // This modal's own copy
   // of `ProjectMembersTable`'s third data source — same "fetched fresh on
   // open, re-fetched after every mutation" treatment `manageUsersMembers`
   // already gets.
@@ -579,7 +582,7 @@ export function OrgAdminPage() {
     }
   }
 
-  /** Pending org-only invites (Phase A) — gated at org-admin/server-admin
+  /** Pending org-only invites — gated at org-admin/server-admin
    * tier server-side (same as `create_org_user`), so a plain member simply
    * sees none rather than an error; every other 403 still surfaces. */
   async function loadOrgInvites() {
@@ -637,14 +640,14 @@ export function OrgAdminPage() {
         api.get<ProjectListItem[]>(`/api/v1/projects?archived=false&organization_id=${orgId}`),
         api.get<ReportTemplate[]>(`/api/v1/orgs/${orgId}/report-templates`),
         api.get<ProjectStatusDefinition[]>(`/api/v1/orgs/${orgId}/project-statuses`),
-        // Fine-Grained Access Control Phase 3 — open to any real org role
+        // Open to any real org role
         // (backend `_VIEW_ROLES`), same tier as every other call in this
         // bundle, so it belongs here rather than the ORG_ADMIN-gated
         // catch-403 block below (a `grant_roles` holder who isn't an
         // ORG_ADMIN still needs to see what's grantable).
         api.get<Permission[]>(`/api/v1/orgs/${orgId}/permissions`),
         api.get<CustomRoleDefinition[]>(`/api/v1/orgs/${orgId}/custom-roles`),
-        // Fine-Grained Access Control (core) Phase 5 — same tier as
+        // Fine-Grained Access Control (core): same tier as
         // `permissions`/`custom-roles` above.
         api.get<EntityScope[]>(`/api/v1/orgs/${orgId}/entity-scopes`),
       ]);
@@ -793,8 +796,7 @@ export function OrgAdminPage() {
   }
 
   /** Backend-sorted refetch, same shape as `applyUserSort` — `list_org_
-   * groups` already pages via `limit`/`offset` (Phase 0/B design review:
-   * a client-side sort of only the currently-loaded page would misrepresent
+   * groups` already pages via `limit`/`offset` (a client-side sort of only the currently-loaded page would misrepresent
    * the true full-list order, style guide "Pattern: sortable column
    * header"). */
   function applyGroupSort(key: OrgGroupSortKey) {
@@ -908,33 +910,38 @@ export function OrgAdminPage() {
   async function revokeOrgPat(patId: string) {
     if (!orgId) return;
     setPatToRevoke(null);
-    await api.post(`/api/v1/orgs/${orgId}/pats/${patId}/revoke`);
+    if (!(await run(() => api.post(`/api/v1/orgs/${orgId}/pats/${patId}/revoke`), "revoke", "personal access token"))) return;
     setOrgPats((current) => current.filter((p) => p.id !== patId));
   }
 
   async function descopeOrgPat(patId: string) {
     if (!orgId) return;
     setPatToDescope(null);
-    await api.post(`/api/v1/orgs/${orgId}/pats/${patId}/descope`);
+    if (!(await run(() => api.post(`/api/v1/orgs/${orgId}/pats/${patId}/descope`), {
+      success: "Token removed from this organisation.", failure: "Could not remove the token from this organisation.",
+    }))) return;
     setOrgPats((current) => current.filter((p) => p.id !== patId));
   }
 
   async function revokeAllOrgPats() {
     if (!orgId) return;
     setRevokeAllPatsOpen(false);
-    const result = await api.post<{ revoked_count: number }>(`/api/v1/orgs/${orgId}/pats/revoke-all`);
+    let revokedCount = 0;
+    const done = await run(async () => {
+      revokedCount = (await api.post<{ revoked_count: number }>(`/api/v1/orgs/${orgId}/pats/revoke-all`)).revoked_count;
+    }, { failure: "Could not revoke the tokens." });
+    if (!done) return;
     setOrgPats([]);
-    setPatBulkResult(strings.orgAdmin.patRevokeAllResult.replace("{n}", String(result.revoked_count)));
+    setPatBulkResult(strings.orgAdmin.patRevokeAllResult.replace("{n}", String(revokedCount)));
   }
 
   async function setDefaultTemplate(projectId: string) {
-    await api.put(`/api/v1/orgs/${orgId}/default-template`, { project_id: projectId || null });
+    if (!(await run(() => api.put(`/api/v1/orgs/${orgId}/default-template`, { project_id: projectId || null }), "set", "default template"))) return;
     reload();
   }
 
-  /** Opens the "Manage users" `Modal` for one project (Phase 5,
-   * docs/decisions.md; rebuilt in Phase D, follow-up UX batch, 2026-08-31)
-   * — fetches its effective-members + pending invites fresh every open,
+  /** Opens the "Manage users" `Modal` for one project
+   * (docs/decisions.md) — fetches its effective-members + pending invites fresh every open,
    * the same two calls `ProjectAdminPage.tsx`'s own Members section makes
    * on its own `reload()`. */
   async function openManageUsers(project: OrgProjectSummary) {
@@ -942,11 +949,11 @@ export function OrgAdminPage() {
     setManageUsersProjectName(project.name);
     const [members, groupRoles, invites, moduleRoles] = await Promise.all([
       api.get<EffectiveMember[]>(`/api/v1/projects/${project.id}/effective-members`),
-      // Phase 6: this modal's own copy of `ProjectMembersTable`'s third
+      // This modal's own copy of `ProjectMembersTable`'s third
       // data source — fetched fresh per open, same as `members` above.
       api.get<OrgGroupProjectRoleSummary[]>(`/api/v1/projects/${project.id}/group-roles`),
       api.get<PendingInvite[]>(`/api/v1/projects/${project.id}/pending-invites`),
-      // Module system Phase 2: this project's own available project-scoped
+      // This project's own available project-scoped
       // module roles — fetched fresh per open, same as `members`/`invites`
       // above, since a different project can have a different owning org
       // (and therefore a different set of currently-enabled modules).
@@ -973,7 +980,7 @@ export function OrgAdminPage() {
     setManageUsersMembers(await api.get<EffectiveMember[]>(`/api/v1/projects/${manageUsersProjectId}/effective-members`));
   }
 
-  /** `ProjectMembersTable`'s own third data source (Phase 6), scoped to
+  /** `ProjectMembersTable`'s own third data source, scoped to
    * `manageUsersProjectId` — same "re-fetch just this" treatment
    * `reloadManageUsersMembers` uses. */
   async function reloadManageUsersGroupRoles() {
@@ -1001,7 +1008,7 @@ export function OrgAdminPage() {
     }
   }
 
-  /** `ProjectMembersTable`'s `onToggleModuleRole` (module system Phase 2),
+  /** `ProjectMembersTable`'s `onToggleModuleRole`,
    * scoped to `manageUsersProjectId` — same "re-fetch just effective-
    * members" treatment `toggleManageUsersRole` above uses. */
   async function toggleManageUsersModuleRole(userId: string, moduleKey: string, roleKey: string, grant: boolean) {
@@ -1027,11 +1034,10 @@ export function OrgAdminPage() {
     await api.post(`/api/v1/projects/${manageUsersProjectId}/roles`, { user_id: userId, role });
   }
 
-  /** The group branch of the same add-control (PR5 of the members/groups
-   * directory rework plan) — `UserAutocomplete`'s combined user-or-group
+  /** The group branch of the same add-control — `UserAutocomplete`'s combined user-or-group
    * autocomplete calls this instead of `addManageUsersMember` when the
    * selected match is an org group, granting it a role *directly* on
-   * `manageUsersProjectId` via PR4's new mechanism, the same pattern
+   * `manageUsersProjectId` via the new mechanism, the same pattern
    * `ProjectAdminPage.tsx`'s own `addProjectGroupRole` uses. No
    * `ProjectGroup` wrapper is created, and nesting stays out of scope for
    * this control — see that function's own docstring for the full
@@ -1043,7 +1049,7 @@ export function OrgAdminPage() {
     await api.post(`/api/v1/projects/${manageUsersProjectId}/group-roles`, { org_group_id: orgGroupId, role });
   }
 
-  /** `ProjectMembersTable`'s own `onToggleGroupRole` (Phase 6), scoped to
+  /** `ProjectMembersTable`'s own `onToggleGroupRole`, scoped to
    * `manageUsersProjectId` — same pattern `ProjectAdminPage.tsx`'s own
    * `toggleProjectMemberOrgGroupRole` uses. */
   async function toggleManageUsersOrgGroupRole(orgGroupId: string, role: ProjectRole, checked: boolean) {
@@ -1061,7 +1067,7 @@ export function OrgAdminPage() {
     }
   }
 
-  /** `ProjectMembersTable`'s own "Remove group" (Phase 6), scoped to
+  /** `ProjectMembersTable`'s own "Remove group", scoped to
    * `manageUsersProjectId` — same pattern `ProjectAdminPage.tsx`'s own
    * `removeProjectMemberOrgGroup` uses. */
   async function removeManageUsersOrgGroup(orgGroupId: string) {
@@ -1083,7 +1089,7 @@ export function OrgAdminPage() {
   }
 
   /** `ProjectMembersTable`'s per-row "Remove all access" (Actions column,
-   * PR6 of the members/groups directory rework plan) — same treatment
+   * the members/groups directory rework) — same treatment
    * `ProjectAdminPage.tsx`'s own `removeAllProjectMemberAccess` uses,
    * scoped to `manageUsersProjectId`/`manageUsersMembers`. */
   async function removeAllManageUsersMemberAccess(userId: string) {
@@ -1103,7 +1109,7 @@ export function OrgAdminPage() {
   }
 
   /** `ProjectMembersTable`'s per-row "Convert inherited access to direct
-   * roles" (Actions column, PR6) — same treatment
+   * roles" (Actions column) — same treatment
    * `ProjectAdminPage.tsx`'s own `convertProjectMemberToDirect` uses,
    * scoped to `manageUsersProjectId`/`manageUsersMembers`. */
   async function convertManageUsersMemberToDirect(userId: string) {
@@ -1185,6 +1191,7 @@ export function OrgAdminPage() {
   async function addProjectStatus(name: string) {
     if (!orgId) return;
     await api.post(`/api/v1/orgs/${orgId}/project-statuses`, { name });
+    showToast(strings.mutation.success("{project} status", strings.mutation.past.add));
     reload();
   }
 
@@ -1195,6 +1202,7 @@ export function OrgAdminPage() {
 
   async function renameProjectStatus(id: string, name: string) {
     await api.patch(`/api/v1/orgs/${orgId}/project-statuses/${id}`, { name });
+    showToast(strings.mutation.success("{project} status", strings.mutation.past.rename));
     reload();
   }
 
@@ -1204,6 +1212,7 @@ export function OrgAdminPage() {
    * server's own count message rather than a generic one. */
   async function deleteProjectStatus(id: string, reassignToId?: string) {
     await api.delete(`/api/v1/orgs/${orgId}/project-statuses/${id}${reassignToId ? `?reassign_to_id=${reassignToId}` : ""}`);
+    showToast(strings.mutation.success("{project} status", strings.mutation.past.delete));
     reload();
   }
 
@@ -1223,6 +1232,7 @@ export function OrgAdminPage() {
     setEnabling(true);
     try {
       await api.post(`/api/v1/orgs/${orgId}/enable`);
+      showToast(strings.mutation.success(orgLabel, strings.mutation.past.enable));
       await reload();
     } catch (err) {
       setEnableError(err instanceof ApiError ? err.message : strings.common.error);
@@ -1240,6 +1250,7 @@ export function OrgAdminPage() {
     setJoining(true);
     try {
       await api.post(`/api/v1/orgs/${orgId}/join-as-admin`);
+      showToast(strings.mutation.success("administrator access", strings.mutation.past.grant));
       await reload();
     } catch (err) {
       setJoinError(err instanceof ApiError ? err.message : strings.common.error);
@@ -1273,12 +1284,9 @@ export function OrgAdminPage() {
   async function createUser() {
     try {
       await api.post(`/api/v1/orgs/${orgId}/users`, {
-        email: newUserEmail, display_name: newUserName, password: newUserPassword, role: newUserRole,
+        email: newUser.email, display_name: newUser.displayName, password: newUser.password, role: newUser.role,
       });
-      setNewUserEmail("");
-      setNewUserName("");
-      setNewUserPassword("");
-      setNewUserRole("member");
+      setNewUser(EMPTY_NEW_USER);
       setNewUserModalOpen(false);
       showToast(strings.orgAdmin.userCreated);
       reload();
@@ -1287,7 +1295,7 @@ export function OrgAdminPage() {
     }
   }
 
-  /** "Invite user" (Phase A) — the org-level counterpart to `createUser`
+  /** "Invite user" — the org-level counterpart to `createUser`
    * above: emails a sign-up link instead of setting a password immediately.
    * Only refreshes `orgInvites` (not the whole page, matching `grantOrgRole`/
    * `revokeOrgRole`'s own reasoning above) since nothing else on the page
@@ -1351,7 +1359,7 @@ export function OrgAdminPage() {
     }
   }
 
-  // Module system Phase 2: same single-row local-state patch as
+  // Same single-row local-state patch as
   // `grantOrgRole`/`revokeOrgRole` above, for the same reasoning (a
   // single grant/revoke only ever changes this one row's own module-role
   // set, so a full `reload()` would refresh nothing else it needs).
@@ -1389,11 +1397,11 @@ export function OrgAdminPage() {
     }
   }
 
-  // --- Fine-Grained Access Control (core) Phase 3: Role Management ------
-  // Custom-role *definition* (ORG_ADMIN-only, never delegable — Phase 0
-  // Q5) and *assignment* (delegable via grant_roles — Phase 0 Q6) actions.
+  // --- Fine-Grained Access Control (core): Role Management --------------
+  // Custom-role *definition* (ORG_ADMIN-only, never delegable)
+  // and *assignment* (delegable via grant_roles) actions.
   // The backend deliberately exposes no "who currently holds this role"
-  // listing endpoint at all (Phase 3's own MCP-tools addendum: a grant
+  // listing endpoint at all (a grant
   // roster is a privilege-reconnaissance disclosure, not a safe default) —
   // so unlike the fixed/module-role checkboxes above, granting/revoking a
   // custom role to/from a user *by picking them from a directory search*
@@ -1524,8 +1532,8 @@ export function OrgAdminPage() {
     }
   }
 
-  /** Whether `scope` is a registered module-owned entity scope (Phase 5,
-   * e.g. compliance's `"standard"`) rather than the two core-recognised
+  /** Whether `scope` is a registered module-owned entity scope (e.g.
+   * compliance's `"standard"`) rather than the two core-recognised
    * `"org"`/`"project"` values — drives the entity picker below, generically,
    * for any current or future module's own entity scope. */
   function isRegisteredEntityScope(scope: string): boolean {
@@ -1721,7 +1729,7 @@ export function OrgAdminPage() {
   }
 
   async function removeGroupMember(groupId: string, userId: string) {
-    await api.delete(`/api/v1/orgs/${orgId}/groups/${groupId}/members/${userId}`);
+    if (!(await run(() => api.delete(`/api/v1/orgs/${orgId}/groups/${groupId}/members/${userId}`), "remove", "group member"))) return;
     reload();
   }
 
@@ -1732,6 +1740,7 @@ export function OrgAdminPage() {
     setNestErrors((prev) => ({ ...prev, [groupId]: null }));
     try {
       await api.post(`/api/v1/orgs/${orgId}/groups/${groupId}/members`, { member_org_group_id: memberOrgGroupId });
+      showToast(strings.mutation.success("nested group", strings.mutation.past.add));
       setNestSelections((prev) => ({ ...prev, [groupId]: "" }));
       reload();
     } catch (err) {
@@ -1740,12 +1749,12 @@ export function OrgAdminPage() {
   }
 
   async function removeNestedGroupMember(groupId: string, memberOrgGroupId: string) {
-    await api.delete(`/api/v1/orgs/${orgId}/groups/${groupId}/members/${memberOrgGroupId}`);
+    if (!(await run(() => api.delete(`/api/v1/orgs/${orgId}/groups/${groupId}/members/${memberOrgGroupId}`), "remove", "nested group member"))) return;
     reload();
   }
 
   const [idpSyncEdits, setIdpSyncEdits] = useState<Record<string, string>>({});
-  // Granted-role edits (2026-08 UX audit roadmap item 522), saved together
+  // Granted-role edits, saved together
   // with the sync name above via one button — a role only makes sense
   // alongside a sync name, so splitting them into separate save actions
   // would let the UI momentarily represent the invalid "role with no sync
@@ -1780,8 +1789,7 @@ export function OrgAdminPage() {
     }
   }
 
-  /** The SSO-sync enable/disable checkbox (Phase B bug-fix pass,
-   * 2026-08-31): checking it just reveals the name/role fields for editing
+  /** The SSO-sync enable/disable checkbox: checking it just reveals the name/role fields for editing
    * (no request until "Save sync settings" is clicked) — unchecking clears
    * both fields immediately via the same `PATCH` the Save button uses,
    * since there's nothing left to edit once sync is off. */
@@ -1914,6 +1922,7 @@ export function OrgAdminPage() {
     setScimError(null);
     try {
       await api.delete(`/api/v1/orgs/${orgId}/scim-token`);
+      showToast(strings.mutation.success("SCIM token", strings.mutation.past.revoke));
       setScimGeneratedToken(null);
       setScimStatus({ enabled: false, token_prefix: null });
     } catch (err) {
@@ -1965,28 +1974,31 @@ export function OrgAdminPage() {
       content: newTemplateContent,
       chapters_per_component: newTemplateChaptersPerComponent,
     };
-    if (editingTemplateId) {
-      await api.put(`/api/v1/orgs/${orgId}/report-templates/${editingTemplateId}`, payload);
-    } else {
-      await api.post(`/api/v1/orgs/${orgId}/report-templates`, payload);
-    }
+    const editing = editingTemplateId !== null;
+    const saved = await run(
+      () => (editing
+        ? api.put(`/api/v1/orgs/${orgId}/report-templates/${editingTemplateId}`, payload)
+        : api.post(`/api/v1/orgs/${orgId}/report-templates`, payload)),
+      editing ? "save" : "create", "report template",
+    );
+    if (!saved) return;
     closeTemplateForm();
     reload();
   }
 
   async function deleteReportTemplate(templateId: string) {
-    await api.delete(`/api/v1/orgs/${orgId}/report-templates/${templateId}`);
+    if (!(await run(() => api.delete(`/api/v1/orgs/${orgId}/report-templates/${templateId}`), "delete", "report template"))) return;
     if (editingTemplateId === templateId) resetTemplateForm();
     reload();
   }
 
   async function uploadResource(file: File) {
-    await api.postFile(`/api/v1/orgs/${orgId}/resources`, file);
+    if (!(await run(() => api.postFile(`/api/v1/orgs/${orgId}/resources`, file), "upload", "resource"))) return;
     reload();
   }
 
   async function deleteResource(fileId: string) {
-    await api.delete(`/api/v1/orgs/${orgId}/resources/${fileId}`);
+    if (!(await run(() => api.delete(`/api/v1/orgs/${orgId}/resources/${fileId}`), "delete", "resource"))) return;
     reload();
   }
 
@@ -2006,7 +2018,7 @@ export function OrgAdminPage() {
     showToast(strings.orgAdmin.displayNameLockSaved(user.display_name, locked));
   }
 
-  /** Users table Actions column, "Remove from {org}" (PR6 of the members/
+  /** Users table Actions column, "Remove from {org}" (of the members/
    * groups directory rework plan, docs/decisions.md) — the new admin-
    * initiated `DELETE /{organization_id}/users/{user_id}/membership`
    * endpoint. Confirmed via `ConfirmDialog` (`confirmRemoveUser` below)
@@ -2104,7 +2116,7 @@ export function OrgAdminPage() {
       <div className="stack">
         <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
           <h1 style={{ margin: 0 }}>{degradedOrgName ?? strings.orgAdmin.organizations(orgLabelPlural)}</h1>
-          {/* Phase 28: an escape hatch off a dead-end degraded org page —
+          {/* An escape hatch off a dead-end degraded org page —
               this org is disabled, but a server admin can still jump
               straight to a different (working) one. */}
           {orgId && <EntitySwitcher label="Switch organisation" currentId={orgId} loadOptions={() => loadOrgSwitcherOptions("admin")} />}
@@ -2150,7 +2162,7 @@ export function OrgAdminPage() {
       <div className="stack">
         <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
           <h1 style={{ margin: 0 }}>{degradedOrgName ?? strings.orgAdmin.organizations(orgLabelPlural)}</h1>
-          {/* Phase 28: same escape hatch as the disabled-org case above —
+          {/* Same escape hatch as the disabled-org case above —
               a server admin isn't a member here, but can still jump
               straight to a different org they already administer. */}
           {orgId && <EntitySwitcher label="Switch organisation" currentId={orgId} loadOptions={() => loadOrgSwitcherOptions("admin")} />}
@@ -2165,15 +2177,16 @@ export function OrgAdminPage() {
         </div>
         <div className="card stack">
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.createInitialAdmin}</h2>
-          <input className="input" placeholder={strings.orgAdmin.email} value={bootstrapEmail} onChange={(e) => setBootstrapEmail(e.target.value)} />
-          <input className="input" placeholder={strings.orgAdmin.name} value={bootstrapName} onChange={(e) => setBootstrapName(e.target.value)} />
-          <input
-            className="input"
-            type="password"
-            placeholder={strings.orgAdmin.password}
-            value={bootstrapPassword}
-            onChange={(e) => setBootstrapPassword(e.target.value)}
-          />
+          <FormGrid minColumn="14rem">
+            <TextField helpNotNeeded required label={strings.orgAdmin.email} value={bootstrapEmail} onChange={setBootstrapEmail} />
+            <TextField helpNotNeeded required label={strings.orgAdmin.name} value={bootstrapName} onChange={setBootstrapName} />
+            <TextField helpNotNeeded required
+              label={strings.orgAdmin.password}
+              value={bootstrapPassword}
+              onChange={setBootstrapPassword}
+              inputProps={{ type: "password" }}
+            />
+          </FormGrid>
           {bootstrapError && <div style={{ color: "var(--color-danger)" }}>{bootstrapError}</div>}
           {bootstrapCreated && <div style={{ color: "var(--color-accent)" }}>{strings.orgAdmin.initialAdminCreated(orgLabel)}</div>}
           <button
@@ -2243,6 +2256,7 @@ export function OrgAdminPage() {
     { key: "email", label: strings.orgAdmin.groupEmail, href: `/orgs/${orgId}/admin/email` },
     { key: "security", label: strings.orgAdmin.groupSecurity, href: `/orgs/${orgId}/admin/security` },
     { key: "modules", label: strings.orgAdmin.groupModules, href: `/orgs/${orgId}/admin/modules` },
+    { key: "tags", label: strings.orgAdmin.groupTags, href: `/orgs/${orgId}/admin/tags` },
     { key: "role-management", label: strings.orgAdmin.groupRoleManagement, href: `/orgs/${orgId}/admin/role-management` },
     ...moduleAdminSections.map((section) => ({
       key: section.key,
@@ -2254,7 +2268,7 @@ export function OrgAdminPage() {
     ? (groupParam as OrgAdminGroupKey)
     : "overview";
 
-  // Users table row merge (Phase A, follow-up UX batch, 2026-08-31): pending
+  // Users table row merge : pending
   // org-only invites are merged client-side into the same `DirectoryTable`
   // as real users, `kind: "user" | "invited"` — the same union-row pattern
   // `MemberRoleTable` established. Invited rows aren't part of `users`'
@@ -2272,7 +2286,7 @@ export function OrgAdminPage() {
     ...filteredOrgInvites.map((invite): UsersRow => ({ kind: "invited", invite })),
     ...users.map((u): UsersRow => ({ kind: "user", user: u })),
   ];
-  // Module system Phase 2: resolves a module role definition's own
+  // Resolves a module role definition's own
   // `module_key` to that module's display `name` (from the already-fetched
   // `modules` list), for the Roles column option label "<role name>
   // (<module name>)" — falls back to the raw key only if `modules` hasn't
@@ -2330,14 +2344,14 @@ export function OrgAdminPage() {
                   onToggle: () => (checked ? revokeOrgRole(u, role) : grantOrgRole(u, role)),
                 };
               }),
-              // Module system Phase 2: merged in alongside the three core
+              // Merged in alongside the three core
               // roles above — same dropdown, never disabled (module roles
               // carry no "own row" self-targeting restriction the way
               // ORG_ADMIN does). Label renders the role definition's own
               // `name` directly (already human-readable API data, not a
               // raw closed-enum wire value), plus the owning module's
-              // display name for context, per the plan's own worked
-              // example ("Compliance Officer (Compliance)").
+              // display name for context, e.g.
+              // "Compliance Officer (Compliance)".
               ...availableOrgModuleRoles.map((d) => {
                 const checked = u.module_roles.some((g) => g.module_key === d.module_key && g.role_key === d.role_key);
                 const label = `${d.name} (${moduleDisplayNameFor(d.module_key)})`;
@@ -2352,7 +2366,7 @@ export function OrgAdminPage() {
                     checked ? revokeModuleRole(u, d.module_key, d.role_key) : grantModuleRole(u, d.module_key, d.role_key),
                 };
               }),
-              // Fine-Grained Access Control (core) Phase 3: org-scoped
+              // Fine-Grained Access Control (core): org-scoped
               // custom roles, merged in the same way module roles are
               // above — a project-scoped custom role isn't offered here
               // (see `grantOrgScopedCustomRoleToUser`'s docstring), only
@@ -2386,7 +2400,7 @@ export function OrgAdminPage() {
           const invite = row.invite;
           return (
             <div className="row" style={{ gap: "0.4rem", alignItems: "center" }}>
-              <span className="badge">{PENDING_INVITE_STATUS_LABEL[invite.status]}</span>
+              <Badge>{PENDING_INVITE_STATUS_LABEL[invite.status]}</Badge>
               <button
                 className="btn"
                 disabled={resendingOrgInviteId === invite.id}
@@ -2394,7 +2408,7 @@ export function OrgAdminPage() {
                 title={strings.admin.resendInviteAria(invite.email)}
                 aria-label={strings.admin.resendInviteAria(invite.email)}
               >
-                <Send size={14} /> {strings.admin.resendInvite}
+                <Send /> {strings.admin.resendInvite}
               </button>
             </div>
           );
@@ -2425,8 +2439,7 @@ export function OrgAdminPage() {
       render: (row) => (row.kind === "invited" ? "" : row.user.is_2fa_enabled ? strings.common.yes : strings.common.no),
     },
     {
-      // Users table Actions column (PR6 of the members/groups directory
-      // rework plan, docs/decisions.md) — the two previously-bare buttons
+      // Users table Actions column (docs/decisions.md) — the two previously-bare buttons
       // (View access, lock/unlock display name) consolidated into one
       // `ActionMenu`, plus "Remove from {org}" (new, access-mutating).
       // "Add to group" sits as its own small control next to the menu,
@@ -2465,14 +2478,14 @@ export function OrgAdminPage() {
                     ]),
               ]}
             />
-            <AddToGroupControl user={u} groups={allGroups} onAdd={addGroupMember} />
+            <AddToGroupControl user={u} groups={allGroups} onAdd={(groupId, userId) => run(() => addGroupMember(groupId, userId), "add", "group member")} />
           </div>
         );
       },
     },
   ];
 
-  // Org Groups `DirectoryTable` (Phase B, follow-up UX batch, 2026-08-31) —
+  // Org Groups `DirectoryTable` —
   // `groups` itself is already sorted server-side (`applyGroupSort`/
   // `loadGroups`'s `order` param), no client-side re-sort needed.
   const orgGroupColumns: DirectoryColumn<OrgGroup>[] = [
@@ -2535,29 +2548,19 @@ export function OrgAdminPage() {
             {renameModalOpen && (
               <Modal title={strings.orgAdmin.rename} onClose={() => setRenameModalOpen(false)}>
                 <div className="stack">
-                  <label className="stack" style={{ gap: "0.25rem" }}>
-                    {strings.orgAdmin.rename}
-                    <input
-                      className="input"
-                      autoFocus
-                      value={orgNameEdit}
-                      onChange={(e) => setOrgNameEdit(e.target.value)}
-                    />
-                  </label>
+                  <TextField helpNotNeeded required
+                    label={strings.orgAdmin.rename}
+                    value={orgNameEdit}
+                    onChange={setOrgNameEdit}
+                    inputProps={{ autoFocus: true }}
+                  />
                   <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.renameHint(orgLabel)}</span>
                   {renameError && <div style={{ color: "var(--color-danger)" }}>{renameError}</div>}
-                  <div className="row" style={{ justifyContent: "flex-end" }}>
-                    <button className="btn" onClick={() => setRenameModalOpen(false)}>
-                      {strings.common.cancel}
-                    </button>
-                    <button
-                      className="btn btn-primary"
-                      onClick={renameOrg}
-                      disabled={!orgNameEdit.trim() || orgNameEdit === org.name}
-                    >
-                      {strings.common.save}
-                    </button>
-                  </div>
+                  <FormActions
+                    onCancel={() => setRenameModalOpen(false)}
+                    onSave={renameOrg}
+                    saveDisabled={!orgNameEdit.trim() || orgNameEdit === org.name}
+                  />
                 </div>
               </Modal>
             )}
@@ -2566,18 +2569,12 @@ export function OrgAdminPage() {
               <p className="text-muted" style={{ margin: 0 }}>{strings.importMerge.hint(orgLabel)}</p>
               {!importMergeConflicts && !importMergeResult && (
                 <div className="stack">
-                  <label className="stack" style={{ gap: "0.25rem" }}>
-                    {strings.importMerge.chooseFile}
-                    <input
-                      type="file" accept=".zip,application/zip"
-                      onChange={(e) => setImportMergeFile(e.target.files?.[0] ?? null)}
-                    />
-                  </label>
+                  <FileField helpNotNeeded label={strings.importMerge.chooseFile} accept=".zip,application/zip" onChange={setImportMergeFile} />
                   <button
                     className="btn btn-primary" onClick={previewImportMerge}
                     disabled={!importMergeFile || importMergePreviewing} style={{ alignSelf: "flex-start" }}
                   >
-                    <Upload size={14} /> {importMergePreviewing ? strings.importMerge.previewing : strings.importMerge.preview}
+                    <Upload /> {importMergePreviewing ? strings.importMerge.previewing : strings.importMerge.preview}
                   </button>
                 </div>
               )}
@@ -2638,7 +2635,7 @@ export function OrgAdminPage() {
                     aria-label={strings.orgAdmin.deleteResource(r.filename)}
                     onClick={() => deleteResource(r.id)}
                   >
-                    <Trash2 size={14} />
+                    <Trash2 />
                   </button>
                 </div>
               ))}
@@ -2654,21 +2651,7 @@ export function OrgAdminPage() {
           <div className="stack">
             <CollapsibleSection sectionKey="orgAdmin.users" title={strings.orgAdmin.users(orgLabelCap)}>
               <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.5rem" }}>
-                <div className="stack" style={{ gap: "0.25rem" }}>
-                  <div className="row" style={{ gap: "0.5rem" }}>
-                    <button className="btn" onClick={() => setInviteUserModalOpen(true)}>
-                      <Send size={14} /> {strings.orgAdmin.inviteUser}
-                    </button>
-                    <button className="btn btn-primary" onClick={() => setNewUserModalOpen(true)}>
-                      <Plus size={14} /> {strings.orgAdmin.newUser}
-                    </button>
-                  </div>
-                  {/* "New user" (immediate password account) vs. "Invite
-                      user" (email sign-up link) — distinct, both-legitimate
-                      flows (docs/decisions.md) that read as ambiguous
-                      without this hint. */}
-                  <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.newUserVsInviteHint}</span>
-                </div>
+                <AddUserMenu onInvite={() => setInviteUserModalOpen(true)} onNewUser={() => setNewUserModalOpen(true)} />
                 {advanced?.auto_accept_email_domain && (
                   <button
                     className={`btn${outsideDomainUsers !== null ? " btn-primary" : ""}`}
@@ -2708,10 +2691,10 @@ export function OrgAdminPage() {
                 </div>
               )}
 
-              {/* Rebuilt on the shared `DirectoryTable` (Phase 0), with
+              {/* Rebuilt on the shared `DirectoryTable`, with
                   `FilterPanel` as a full-width bar ABOVE the table rather
                   than the standard `.side-grid` side layout every other
-                  list page uses (2026-08-31, Phase A, follow-up UX batch;
+                  list page uses (2026-08-31;
                   moved to `layout="top"` in a later follow-up fix — see
                   docs/decisions.md and docs/ux-style-guide.md's "Pattern:
                   filter panel placement — side vs. top"). This table has 6
@@ -2779,47 +2762,16 @@ export function OrgAdminPage() {
             </CollapsibleSection>
 
             {newUserModalOpen && (
-              <Modal title={strings.orgAdmin.newUser} onClose={() => setNewUserModalOpen(false)}>
+              <Modal title={strings.orgAdmin.newUser} onClose={() => setNewUserModalOpen(false)} size="lg">
                 <div className="stack">
-                  <label className="stack" style={{ gap: "0.25rem" }}>
-                    {strings.orgAdmin.email}
-                    <input
-                      className="input"
-                      type="email"
-                      autoFocus
-                      value={newUserEmail}
-                      onChange={(e) => setNewUserEmail(e.target.value)}
-                    />
-                  </label>
-                  <label className="stack" style={{ gap: "0.25rem" }}>
-                    {strings.orgAdmin.name}
-                    <input className="input" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} />
-                  </label>
-                  <label className="stack" style={{ gap: "0.25rem" }}>
-                    {strings.orgAdmin.password}
-                    <input
-                      className="input"
-                      type="password"
-                      value={newUserPassword}
-                      onChange={(e) => setNewUserPassword(e.target.value)}
-                    />
-                  </label>
-                  <label className="stack" style={{ gap: "0.25rem" }}>
-                    {strings.orgAdmin.role}
-                    <select className="input" value={newUserRole} onChange={(e) => setNewUserRole(e.target.value as OrgRole)}>
-                      <option value="member">{ORG_ROLE_LABEL.member}</option>
-                      <option value="project_creator">{ORG_ROLE_LABEL.project_creator}</option>
-                      <option value="org_admin">{ORG_ROLE_LABEL.org_admin}</option>
-                    </select>
-                  </label>
-                  <div className="row" style={{ justifyContent: "flex-end" }}>
-                    <button className="btn" onClick={() => setNewUserModalOpen(false)}>
-                      {strings.common.cancel}
-                    </button>
-                    <button className="btn btn-primary" onClick={createUser} disabled={!newUserEmail || !newUserName || !newUserPassword}>
-                      {strings.common.create}
-                    </button>
-                  </div>
+                  <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.newUserModalHint}</p>
+                  <NewUserFields values={newUser} onChange={(patch) => setNewUser((prev) => ({ ...prev, ...patch }))} />
+                  <FormActions
+                    onCancel={() => setNewUserModalOpen(false)}
+                    onSave={createUser}
+                    saveLabel={strings.common.create}
+                    saveDisabled={!newUser.email || !newUser.displayName || !newUser.password}
+                  />
                 </div>
               </Modal>
             )}
@@ -2828,24 +2780,18 @@ export function OrgAdminPage() {
               <Modal title={strings.orgAdmin.inviteUser} onClose={() => setInviteUserModalOpen(false)}>
                 <div className="stack">
                   <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.inviteUserModalHint}</p>
-                  <label className="stack" style={{ gap: "0.25rem" }}>
-                    {strings.orgAdmin.email}
-                    <input
-                      className="input"
-                      type="email"
-                      autoFocus
-                      value={inviteUserEmail}
-                      onChange={(e) => setInviteUserEmail(e.target.value)}
-                    />
-                  </label>
-                  <div className="row" style={{ justifyContent: "flex-end" }}>
-                    <button className="btn" onClick={() => setInviteUserModalOpen(false)}>
-                      {strings.common.cancel}
-                    </button>
-                    <button className="btn btn-primary" onClick={inviteOrgUser} disabled={!inviteUserEmail}>
-                      {strings.orgAdmin.sendInvite}
-                    </button>
-                  </div>
+                  <TextField helpNotNeeded required
+                    label={strings.orgAdmin.email}
+                    value={inviteUserEmail}
+                    onChange={setInviteUserEmail}
+                    inputProps={{ autoFocus: true, type: "email" }}
+                  />
+                  <FormActions
+                    onCancel={() => setInviteUserModalOpen(false)}
+                    onSave={inviteOrgUser}
+                    saveLabel={strings.orgAdmin.sendInvite}
+                    saveDisabled={!inviteUserEmail}
+                  />
                 </div>
               </Modal>
             )}
@@ -2883,7 +2829,7 @@ export function OrgAdminPage() {
                               <Link to={`/projects/${p.project_id}`}>{p.project_name}</Link>
                               <div className="row" style={{ gap: "0.25rem", flexWrap: "wrap", alignItems: "center" }}>
                                 {shownRoles.map((r) => (
-                                  <span key={r} className="badge">{PROJECT_ROLE_LABEL[r]}</span>
+                                  <Badge key={r}>{PROJECT_ROLE_LABEL[r]}</Badge>
                                 ))}
                                 {canExpand && (
                                   <button
@@ -2923,7 +2869,7 @@ export function OrgAdminPage() {
                 style={{ alignSelf: "flex-start" }}
                 onClick={() => setNewGroupModalOpen(true)}
               >
-                <Plus size={14} /> {strings.orgAdmin.newGroup}
+                <Plus /> {strings.orgAdmin.newGroup}
               </button>
               {newGroupModalOpen && (
                 // Style guide "Pattern: modal dialog for entity create/rename"
@@ -2932,36 +2878,29 @@ export function OrgAdminPage() {
                 // Popover for a one/two-field quick action on something
                 // that already exists, not creating a new entity.
                 <Modal title={strings.orgAdmin.newGroup} onClose={() => setNewGroupModalOpen(false)}>
-                  <label className="stack" style={{ gap: "0.25rem" }}>
-                    {strings.admin.name}
-                    <input
-                      className="input"
-                      autoFocus
-                      placeholder={strings.orgAdmin.groupNamePlaceholder}
-                      value={newGroupName}
-                      onChange={(e) => setNewGroupName(e.target.value)}
-                      onKeyDown={(e) => {
+                  <TextField helpNotNeeded required
+                    label={strings.admin.name}
+                    value={newGroupName}
+                    onChange={setNewGroupName}
+                    placeholder={strings.orgAdmin.groupNamePlaceholder}
+                    inputProps={{ autoFocus: true, onKeyDown: (e) => {
                         if (e.key === "Enter" && newGroupName) createGroup();
-                      }}
-                    />
-                  </label>
-                  <div className="row" style={{ justifyContent: "flex-end" }}>
-                    <button className="btn" onClick={() => setNewGroupModalOpen(false)}>
-                      {strings.common.cancel}
-                    </button>
-                    <button className="btn btn-primary" onClick={createGroup} disabled={!newGroupName}>
-                      {strings.common.create}
-                    </button>
-                  </div>
+                      } }}
+                  />
+                  <FormActions
+                    onCancel={() => setNewGroupModalOpen(false)}
+                    onSave={createGroup}
+                    saveLabel={strings.common.create}
+                    saveDisabled={!newGroupName}
+                  />
                 </Modal>
               )}
 
-              {/* Rebuilt on the shared `DirectoryTable` (Phase 0) inside the
+              {/* Rebuilt on the shared `DirectoryTable` inside the
                   standard `.side-grid` + `FilterPanel` layout, replacing the
                   old `CollapsibleSection`-of-`CollapsibleSection`s accordion
                   that rendered every group's full member list open and
-                  inline, unconditionally (2026-08-31, Phase B, follow-up UX
-                  batch — see docs/decisions.md). Each row now opens a
+                  inline, unconditionally (docs/decisions.md). Each row now opens a
                   `SidePanel` instead — style guide "Pattern: entity detail
                   panel." */}
               <div className="side-grid">
@@ -3006,8 +2945,7 @@ export function OrgAdminPage() {
               // unpaginated), not the paginated/searched `groups` above —
               // a nested group's name, or a candidate to nest, can easily
               // fall outside whatever page/search the Groups list itself
-              // is currently showing (2026-08 UX audit "Directories at
-              // scale").
+              // is currently showing.
               const nestedGroups = allGroups.filter((og) => nestedGroupIds.has(og.id));
               const nestableGroups = allGroups.filter((og) => og.id !== g.id && !nestedGroupIds.has(og.id));
               // SSO-sync gating (2026-08-31 bug-fix pass): the name input,
@@ -3034,7 +2972,7 @@ export function OrgAdminPage() {
                                 aria-label={strings.admin.removeMember(u.display_name)}
                                 onClick={() => removeGroupMember(g.id, u.user_id)}
                               >
-                                <Trash2 size={14} />
+                                <Trash2 />
                               </button>
                             </span>
                           </li>
@@ -3044,7 +2982,7 @@ export function OrgAdminPage() {
                     <UserAutocomplete
                       users={nonMembers}
                       placeholder={strings.admin.addMemberPlaceholder}
-                      onSelect={(userId) => addGroupMember(g.id, userId)}
+                      onSelect={(userId) => run(() => addGroupMember(g.id, userId), "add", "group member")}
                     />
                     {nestedGroups.length > 0 && (
                       <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
@@ -3058,7 +2996,7 @@ export function OrgAdminPage() {
                                 aria-label={strings.admin.removeNestedGroup(strings.orgAdmin.nestedGroupLabel(og.name))}
                                 onClick={() => removeNestedGroupMember(g.id, og.id)}
                               >
-                                <Trash2 size={14} />
+                                <Trash2 />
                               </button>
                             </span>
                           </li>
@@ -3069,6 +3007,7 @@ export function OrgAdminPage() {
                       <div className="row">
                         <select
                           className="input"
+                          aria-label={strings.orgAdmin.addNestedGroup}
                           value={nestSelections[g.id] ?? ""}
                           onChange={(e) => setNestSelections((prev) => ({ ...prev, [g.id]: e.target.value }))}
                         >
@@ -3086,7 +3025,7 @@ export function OrgAdminPage() {
                           aria-label={strings.orgAdmin.addNestedGroup}
                           onClick={() => addNestedGroupMember(g.id, nestSelections[g.id])}
                         >
-                          <Plus size={14} />
+                          <Plus />
                         </button>
                       </div>
                     )}
@@ -3097,39 +3036,33 @@ export function OrgAdminPage() {
                         only the muted hint renders, nothing else. */}
                     {ssoConfigured ? (
                       <div className="stack" style={{ gap: "0.5rem" }}>
-                        <label className="row" style={{ gap: "0.4rem" }}>
-                          <input
-                            type="checkbox"
-                            checked={syncEnabled}
-                            onChange={(e) => toggleGroupSync(g.id, e.target.checked)}
-                          />
-                          {strings.orgAdmin.syncFromSso}
-                        </label>
+                        <CheckboxField help={strings.help.ssoGroupSync}
+                          label={strings.orgAdmin.syncFromSso}
+                          checked={syncEnabled}
+                          onChange={(next) => toggleGroupSync(g.id, next)}
+                        />
                         {syncEnabled && (
                           <>
-                            <label className="row" style={{ gap: "0.25rem" }}>
-                              {strings.orgAdmin.idpSyncedGroupName}
-                              <input
-                                className="input"
+                            <FormGrid minColumn="16rem">
+                              <TextField help={strings.help.ssoGroupName}
+                                label={strings.orgAdmin.idpSyncedGroupName}
                                 placeholder={strings.orgAdmin.idpSyncedGroupNamePlaceholder}
                                 value={idpSyncEdits[g.id] ?? g.idp_synced_group_name ?? ""}
-                                onChange={(e) => setIdpSyncEdits((prev) => ({ ...prev, [g.id]: e.target.value }))}
+                                onChange={(next) => setIdpSyncEdits((prev) => ({ ...prev, [g.id]: next }))}
                               />
-                            </label>
-                            <label className="row" style={{ gap: "0.25rem" }}>
-                              {strings.orgAdmin.grantedOrgRole}
-                              <select
-                                className="input"
+                              <LabeledSelect helpNotNeeded
+                                label={strings.orgAdmin.grantedOrgRole}
                                 value={grantedRoleEdits[g.id] ?? g.granted_org_role ?? ""}
-                                onChange={(e) => setGrantedRoleEdits((prev) => ({ ...prev, [g.id]: e.target.value as OrgRole | "" }))}
-                              >
-                                <option value="">{strings.orgAdmin.grantedOrgRoleNone}</option>
-                                <option value="member">{ORG_ROLE_LABEL.member}</option>
-                                <option value="project_creator">{ORG_ROLE_LABEL.project_creator}</option>
-                                <option value="org_admin">{ORG_ROLE_LABEL.org_admin}</option>
-                              </select>
-                            </label>
-                            <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.grantedOrgRoleHint}</span>
+                                onChange={(next) => setGrantedRoleEdits((prev) => ({ ...prev, [g.id]: next as OrgRole | "" }))}
+                                options={[
+                                  { value: "member", label: ORG_ROLE_LABEL.member },
+                                  { value: "project_creator", label: ORG_ROLE_LABEL.project_creator },
+                                  { value: "org_admin", label: ORG_ROLE_LABEL.org_admin },
+                                ]}
+                                placeholder={strings.orgAdmin.grantedOrgRoleNone}
+                                hint={strings.orgAdmin.grantedOrgRoleHint}
+                              />
+                            </FormGrid>
                             <button
                               className="btn" style={{ alignSelf: "flex-start" }}
                               onClick={() =>
@@ -3154,7 +3087,7 @@ export function OrgAdminPage() {
                       style={{ alignSelf: "flex-start" }}
                       onClick={() => setDeletingOrgGroupId(g.id)}
                     >
-                      <Trash2 size={14} /> {strings.admin.deleteGroup}
+                      <Trash2 /> {strings.admin.deleteGroup}
                     </button>
                   </div>
                 </SidePanel>
@@ -3197,7 +3130,7 @@ export function OrgAdminPage() {
                     <div className="row" style={{ justifyContent: "space-between" }}>
                       <span className="row" style={{ gap: "0.5rem" }}>
                         {p.name}
-                        {p.is_archived && <span className="badge">{strings.projects.archived}</span>}
+                        {p.is_archived && <Badge>{strings.projects.archived}</Badge>}
                       </span>
                       <button className="btn" onClick={() => openManageUsers(p)}>
                         {strings.orgAdmin.manageUsers}
@@ -3209,24 +3142,22 @@ export function OrgAdminPage() {
             )}
 
             {manageUsersProjectId && (
-              // Phase 5 (docs/decisions.md; rebuilt in Phase D, follow-up UX
-              // batch, 2026-08-31): the same `ProjectMembersTable`
+              // (docs/decisions.md): the same `ProjectMembersTable`
               // `ProjectAdminPage.tsx`'s own Members section renders — this
               // is the direct fix for "should show up in a similar way to
               // the project admin page," not a parallel reimplementation.
               <Modal title={strings.orgAdmin.manageUsersModalTitle(manageUsersProjectName)} onClose={closeManageUsers} size="lg">
                 <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
                   <button className="btn btn-primary" onClick={() => setManageUsersAddMemberModalOpen(true)}>
-                    <Plus size={14} /> {strings.admin.addMember}
+                    <Plus /> {strings.admin.addMember}
                   </button>
-                  {/* No sibling "Add group" button (PR5 of the members/groups
-                      directory rework plan, corrected during PR5's own
+                  {/* No sibling "Add group" button (corrected during the own
                       review): the autocomplete below is expanded to match
                       org groups too — see UserAutocomplete's own module
                       docstring. */}
                 </div>
                 {manageUsersAddMemberModalOpen && (
-                  // PR3/PR5 of the members/groups directory rework plan
+                  // the members/groups directory rework
                   // originally opened a nested Modal here submitting one
                   // person at a time; now the shared staged multi-add
                   // component (`AddMembersModal`) — see that component's own
@@ -3261,6 +3192,14 @@ export function OrgAdminPage() {
               </Modal>
             )}
 
+            <CollapsibleSection sectionKey="orgAdmin.projectCodes" title={strings.orgAdmin.projectCodes}>
+              <ProjectCodePolicyPanel org={org} onSaved={setOrg} />
+            </CollapsibleSection>
+
+            <CollapsibleSection sectionKey="orgAdmin.organizationCode" title={strings.orgAdmin.organizationCode}>
+              <OrganizationCodePanel org={org} onSaved={setOrg} />
+            </CollapsibleSection>
+
             <CollapsibleSection sectionKey="orgAdmin.projectStatuses" title={strings.orgAdmin.projectStatuses}>
               <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.projectStatusesHint}</p>
               <DefinitionList
@@ -3285,15 +3224,16 @@ export function OrgAdminPage() {
         {activeGroup === "branding-defaults" && (
           <div className="stack">
             <CollapsibleSection sectionKey="orgAdmin.branding" title={strings.orgAdmin.branding}>
-              <div className="stack" style={{ gap: "0.25rem" }}>
-                <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
-                  <label htmlFor="org-logo-input">{strings.orgAdmin.logo(orgLabel)}</label>
-                  <OverridePill custom={org.logo_file_id != null} onReset={removeLogo} disabled={logoUploading} />
-                </span>
-                <FileUploadTrigger id="org-logo-input" accept="image/*" disabled={logoUploading} onSelect={uploadLogo}>
-                  <Upload size={14} /> {strings.common.chooseFile}
-                </FileUploadTrigger>
-              </div>
+              <UploadField helpNotNeeded
+                id="org-logo-input"
+                label={strings.orgAdmin.logo(orgLabel)}
+                labelExtra={<OverridePill custom={org.logo_file_id != null} onReset={removeLogo} disabled={logoUploading} />}
+                accept="image/*"
+                disabled={logoUploading}
+                onSelect={uploadLogo}
+              >
+                <Upload size={14} /> {strings.common.chooseFile}
+              </UploadField>
               {logoUploading && <Spinner />}
               {logoError && <div style={{ color: "var(--color-danger)" }}>{logoError}</div>}
               {logoUploaded && <div style={{ color: "var(--color-accent)" }}>{strings.orgAdmin.logoUploaded}</div>}
@@ -3303,24 +3243,22 @@ export function OrgAdminPage() {
                   "after" diagram, G4a: "Branding — logo, colour, footer") —
                   moved here from the SSO section, where it previously sat
                   for no reason connected to SSO/OIDC itself. */}
-              <div className="stack" style={{ gap: "0.25rem" }}>
-                <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
-                  <label htmlFor="org-login-background-input">{strings.orgAdmin.loginBackground}</label>
+              <UploadField helpNotNeeded
+                id="org-login-background-input"
+                label={strings.orgAdmin.loginBackground}
+                labelExtra={
                   <OverridePill
                     custom={org.login_background_file_id != null}
                     onReset={removeLoginBackground}
                     disabled={loginBackgroundUploading}
                   />
-                </span>
-                <FileUploadTrigger
-                  id="org-login-background-input"
-                  accept="image/*"
-                  disabled={loginBackgroundUploading}
-                  onSelect={uploadLoginBackground}
-                >
-                  <Upload size={14} /> {strings.common.chooseFile}
-                </FileUploadTrigger>
-              </div>
+                }
+                accept="image/*"
+                disabled={loginBackgroundUploading}
+                onSelect={uploadLoginBackground}
+              >
+                <Upload size={14} /> {strings.common.chooseFile}
+              </UploadField>
               {loginBackgroundUploading && <Spinner />}
               {loginBackgroundError && <div style={{ color: "var(--color-danger)" }}>{loginBackgroundError}</div>}
               {loginBackgroundUploaded && (
@@ -3330,64 +3268,52 @@ export function OrgAdminPage() {
                 <img src={fileUrl(org.login_background_file_id)} alt="" style={{ maxHeight: 100, borderRadius: 4 }} />
               )}
 
-              <div className="stack" style={{ gap: "0.25rem" }}>
-                <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
-                  <label htmlFor="org-header-title">{strings.orgAdmin.headerTitle}</label>
-                  <OverridePill custom={org.header_title != null} onReset={() => setHeaderTitleInput("")} />
-                </span>
-                <input
-                  id="org-header-title"
-                  className="input" placeholder={strings.appName}
-                  value={headerTitleInput} onChange={(e) => setHeaderTitleInput(e.target.value)}
-                />
-                <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.headerTitleHint}</span>
-              </div>
-              <label className="row">
-                <input type="checkbox" checked={useOwnAccentColor} onChange={(e) => setUseOwnAccentColor(e.target.checked)} />
-                {strings.orgAdmin.useOwnAccentColor(orgLabel)}
-              </label>
+              <TextField helpNotNeeded
+                label={strings.orgAdmin.headerTitle}
+                labelExtra={<OverridePill custom={org.header_title != null} onReset={() => setHeaderTitleInput("")} />}
+                placeholder={strings.appName}
+                value={headerTitleInput}
+                onChange={setHeaderTitleInput}
+                hint={strings.orgAdmin.headerTitleHint}
+                inputProps={{ id: "org-header-title" }}
+              />
+              <CheckboxField helpNotNeeded
+                label={strings.orgAdmin.useOwnAccentColor(orgLabel)}
+                checked={useOwnAccentColor}
+                onChange={setUseOwnAccentColor}
+              />
               {useOwnAccentColor && (
-                <input
-                  type="color" value={accentColorInput} onChange={(e) => setAccentColorInput(e.target.value)}
-                  style={{ width: 60, height: 36, padding: 2 }}
-                />
+                <ColorField helpNotNeeded label={strings.admin.accentColor} value={accentColorInput} onChange={setAccentColorInput} />
               )}
               <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)" }} />
               <h4 style={{ margin: 0 }}>{strings.orgAdmin.emailFooterTitle}</h4>
               <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{strings.orgAdmin.emailFooterHint(orgLabel)}</p>
-              <div className="stack" style={{ gap: "0.25rem" }}>
-                <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
-                  <label htmlFor="org-email-footer-company">{strings.orgAdmin.emailFooterCompanyName}</label>
-                  <OverridePill custom={org.email_footer_company_name != null} onReset={() => setEmailFooterCompanyNameInput("")} />
-                </span>
-                <input
-                  id="org-email-footer-company"
-                  className="input"
-                  value={emailFooterCompanyNameInput} onChange={(e) => setEmailFooterCompanyNameInput(e.target.value)}
+              <FormGrid minColumn="18rem">
+                <TextField helpNotNeeded
+                  label={strings.orgAdmin.emailFooterCompanyName}
+                  labelExtra={<OverridePill custom={org.email_footer_company_name != null} onReset={() => setEmailFooterCompanyNameInput("")} />}
+                  value={emailFooterCompanyNameInput}
+                  onChange={setEmailFooterCompanyNameInput}
+                  inputProps={{ id: "org-email-footer-company" }}
                 />
-              </div>
-              <div className="stack" style={{ gap: "0.25rem" }}>
-                <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
-                  <label htmlFor="org-email-footer-website">{strings.orgAdmin.emailFooterWebsite}</label>
-                  <OverridePill custom={org.email_footer_website != null} onReset={() => setEmailFooterWebsiteInput("")} />
-                </span>
-                <input
-                  id="org-email-footer-website"
-                  className="input"
-                  value={emailFooterWebsiteInput} onChange={(e) => setEmailFooterWebsiteInput(e.target.value)}
+                <TextField helpNotNeeded
+                  label={strings.orgAdmin.emailFooterWebsite}
+                  labelExtra={<OverridePill custom={org.email_footer_website != null} onReset={() => setEmailFooterWebsiteInput("")} />}
+                  value={emailFooterWebsiteInput}
+                  onChange={setEmailFooterWebsiteInput}
+                  inputProps={{ id: "org-email-footer-website" }}
                 />
-              </div>
-              <div className="stack" style={{ gap: "0.25rem" }}>
-                <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
-                  <label htmlFor="org-email-footer-address">{strings.orgAdmin.emailFooterAddress}</label>
-                  <OverridePill custom={org.email_footer_address != null} onReset={() => setEmailFooterAddressInput("")} />
-                </span>
-                <textarea
-                  id="org-email-footer-address"
-                  className="input" rows={3}
-                  value={emailFooterAddressInput} onChange={(e) => setEmailFooterAddressInput(e.target.value)}
-                />
-              </div>
+                <FormGridFull>
+                  <TextAreaField helpNotNeeded
+                    label={strings.orgAdmin.emailFooterAddress}
+                    labelExtra={<OverridePill custom={org.email_footer_address != null} onReset={() => setEmailFooterAddressInput("")} />}
+                    rows={3}
+                    value={emailFooterAddressInput}
+                    onChange={setEmailFooterAddressInput}
+                    inputProps={{ id: "org-email-footer-address" }}
+                  />
+                </FormGridFull>
+              </FormGrid>
               {brandingError && <div style={{ color: "var(--color-danger)" }}>{brandingError}</div>}
               <button className="btn btn-primary" onClick={saveBranding} style={{ alignSelf: "flex-start" }}>
                 {strings.orgAdmin.saveBranding}
@@ -3398,6 +3324,7 @@ export function OrgAdminPage() {
               <CollapsibleSection sectionKey="orgAdmin.defaultTemplate" title={strings.orgAdmin.defaultTemplate}>
                 <select
                   className="input"
+                  aria-label={strings.orgAdmin.defaultTemplate}
                   value={org.default_template_project_id ?? ""}
                   onChange={(e) => setDefaultTemplate(e.target.value)}
                 >
@@ -3434,13 +3361,13 @@ export function OrgAdminPage() {
             <CollapsibleSection sectionKey="orgAdmin.reportTemplates" title={strings.admin.reportTemplates}>
               <div className="row" style={{ justifyContent: "flex-end" }}>
                 <button className="btn btn-primary" onClick={openNewTemplateForm}>
-                  <Plus size={14} /> {strings.admin.newReportTemplate}
+                  <Plus /> {strings.admin.newReportTemplate}
                 </button>
               </div>
               {reportTemplates.map((tpl) => (
                 <div key={tpl.id} className="row" style={{ justifyContent: "space-between" }}>
                   <span>
-                    {tpl.name} <span className="badge" style={{ background: tpl.accent_color_hex }}>&nbsp;&nbsp;</span>
+                    {tpl.name} <Badge style={{ background: tpl.accent_color_hex }}>&nbsp;&nbsp;</Badge>
                   </span>
                   <div className="row" style={{ gap: "0.4rem" }}>
                     <button className="btn" onClick={() => startEditTemplate(tpl)}>
@@ -3452,7 +3379,7 @@ export function OrgAdminPage() {
                       aria-label={strings.orgAdmin.deleteReportTemplate(tpl.name)}
                       onClick={() => deleteReportTemplate(tpl.id)}
                     >
-                      <Trash2 size={14} />
+                      <Trash2 />
                     </button>
                   </div>
                 </div>
@@ -3464,62 +3391,47 @@ export function OrgAdminPage() {
                 onClose={closeTemplateForm}
                 size="lg"
               >
-                <div className="row">
-                  <input
-                    className="input" placeholder={strings.admin.templateName}
-                    value={newTemplateName} onChange={(e) => setNewTemplateName(e.target.value)}
+                <div className="stack">
+                  <FormGrid minColumn="18rem">
+                    <TextField helpNotNeeded required label={strings.admin.templateName} value={newTemplateName} onChange={setNewTemplateName} />
+                    <ColorField helpNotNeeded label={strings.admin.accentColor} value={newTemplateAccentColor} onChange={setNewTemplateAccentColor} />
+                    <FormGridFull>
+                      <TextField helpNotNeeded label={strings.admin.footerText} value={newTemplateFooterText} onChange={setNewTemplateFooterText} />
+                    </FormGridFull>
+                    <CheckboxField helpNotNeeded
+                      label={strings.admin.includeCoverPage} checked={newTemplateIncludeCoverPage}
+                      onChange={setNewTemplateIncludeCoverPage}
+                    />
+                    <CheckboxField helpNotNeeded
+                      label={strings.admin.includeLogo(orgLabel)} checked={newTemplateIncludeLogo}
+                      onChange={setNewTemplateIncludeLogo}
+                    />
+                    <FormGridFull>
+                      <div className="stack" style={{ gap: "0.25rem" }}>
+                        <strong>{strings.admin.templateContent}</strong>
+                        <ReportContentEditor
+                          idPrefix="template-report-content"
+                          reportTypes={reportTypes}
+                          value={newTemplateContent}
+                          onChange={setNewTemplateContent}
+                          organizationId={orgId}
+                        />
+                        <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.admin.templateContentHint(orgLabel)}</span>
+                      </div>
+                    </FormGridFull>
+                    <FormGridFull>
+                      <CheckboxField help={strings.help.reportChapterDefault}
+                        label={strings.admin.templateChaptersPerComponent} checked={newTemplateChaptersPerComponent}
+                        onChange={setNewTemplateChaptersPerComponent}
+                      />
+                    </FormGridFull>
+                  </FormGrid>
+                  <FormActions
+                    onCancel={closeTemplateForm}
+                    onSave={saveReportTemplate}
+                    saveLabel={editingTemplateId ? strings.common.save : strings.common.create}
+                    saveDisabled={!newTemplateName}
                   />
-                  <label className="row" style={{ gap: "0.4rem" }}>
-                    {strings.admin.accentColor}
-                    <input
-                      type="color" value={newTemplateAccentColor} onChange={(e) => setNewTemplateAccentColor(e.target.value)}
-                      style={{ width: 44, height: 32, padding: 2 }}
-                    />
-                  </label>
-                </div>
-                <div className="row">
-                  <label className="row" style={{ gap: "0.4rem" }}>
-                    <input
-                      type="checkbox" checked={newTemplateIncludeCoverPage}
-                      onChange={(e) => setNewTemplateIncludeCoverPage(e.target.checked)}
-                    />
-                    {strings.admin.includeCoverPage}
-                  </label>
-                  <label className="row" style={{ gap: "0.4rem" }}>
-                    <input
-                      type="checkbox" checked={newTemplateIncludeLogo}
-                      onChange={(e) => setNewTemplateIncludeLogo(e.target.checked)}
-                    />
-                    {strings.admin.includeLogo(orgLabel)}
-                  </label>
-                </div>
-                <input
-                  className="input" placeholder={strings.admin.footerText}
-                  value={newTemplateFooterText} onChange={(e) => setNewTemplateFooterText(e.target.value)}
-                />
-                <strong>{strings.admin.templateContent}</strong>
-                <ReportContentEditor
-                  idPrefix="template-report-content"
-                  reportTypes={reportTypes}
-                  value={newTemplateContent}
-                  onChange={setNewTemplateContent}
-                  organizationId={orgId}
-                />
-                <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.admin.templateContentHint(orgLabel)}</span>
-                <label className="row" style={{ gap: "0.4rem" }}>
-                  <input
-                    type="checkbox" checked={newTemplateChaptersPerComponent}
-                    onChange={(e) => setNewTemplateChaptersPerComponent(e.target.checked)}
-                  />
-                  {strings.admin.templateChaptersPerComponent}
-                </label>
-                <div className="row">
-                  <button className="btn btn-primary" onClick={saveReportTemplate} disabled={!newTemplateName}>
-                    <Plus size={14} /> {editingTemplateId ? strings.common.save : strings.common.create}
-                  </button>
-                  <button className="btn" onClick={closeTemplateForm}>
-                    {strings.common.cancel}
-                  </button>
                 </div>
               </Modal>
             )}
@@ -3530,51 +3442,35 @@ export function OrgAdminPage() {
           <div className="stack">
             {ssoConfig && (
               <CollapsibleSection sectionKey="orgAdmin.sso" title={strings.orgAdmin.ssoConfig}>
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.orgAdmin.slug}
-                  <input className="input" value={slugInput} onChange={(e) => setSlugInput(e.target.value)} />
-                  <span className="text-muted" style={{ fontSize: "0.8rem" }}>
-                    {strings.orgAdmin.slugHint(orgLabel).replace("{slug}", slugInput || "…")}
-                  </span>
-                </label>
-                <label className="row">
-                  <input type="checkbox" checked={ssoEnabled} onChange={(e) => setSsoEnabled(e.target.checked)} />
-                  {strings.orgAdmin.ssoEnabled}
-                </label>
-                <label className="row">
-                  <input type="checkbox" checked={ssoOnly} onChange={(e) => setSsoOnly(e.target.checked)} />
-                  {strings.orgAdmin.ssoOnly}
-                </label>
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.orgAdmin.oidcIssuerUrl}
-                  <input className="input" value={oidcIssuerUrl} onChange={(e) => setOidcIssuerUrl(e.target.value)} />
-                </label>
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.orgAdmin.oidcClientId}
-                  <input className="input" value={oidcClientId} onChange={(e) => setOidcClientId(e.target.value)} />
-                </label>
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.orgAdmin.oidcClientSecret}
-                  <input
-                    className="input" type="password" value={oidcClientSecret}
-                    onChange={(e) => setOidcClientSecret(e.target.value)}
-                  />
-                </label>
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.orgAdmin.oidcRequiredGroup}
-                  <input
-                    className="input" value={oidcRequiredGroup}
-                    onChange={(e) => setOidcRequiredGroup(e.target.value)}
-                  />
-                  <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.oidcRequiredGroupHint}</span>
-                </label>
+                <TextField helpNotNeeded
+                  label={strings.orgAdmin.slug}
+                  value={slugInput}
+                  onChange={setSlugInput}
+                  hint={strings.orgAdmin.slugHint(orgLabel).replace("{slug}", slugInput || "…")}
+                />
+                <CheckboxField help={strings.help.ssoEnable} label={strings.orgAdmin.ssoEnabled} checked={ssoEnabled} onChange={setSsoEnabled} />
+                <CheckboxField help={strings.help.ssoNativeFormHidden} label={strings.orgAdmin.ssoOnly} checked={ssoOnly} onChange={setSsoOnly} />
+                <TextField help={strings.help.ssoIssuerUrl} label={strings.orgAdmin.oidcIssuerUrl} value={oidcIssuerUrl} onChange={setOidcIssuerUrl} />
+                <TextField help={strings.help.ssoClientId} label={strings.orgAdmin.oidcClientId} value={oidcClientId} onChange={setOidcClientId} />
+                <TextField help={strings.help.ssoClientSecret}
+                  label={strings.orgAdmin.oidcClientSecret}
+                  value={oidcClientSecret}
+                  onChange={setOidcClientSecret}
+                  inputProps={{ type: "password" }}
+                />
+                <TextField helpNotNeeded
+                  label={strings.orgAdmin.oidcRequiredGroup}
+                  value={oidcRequiredGroup}
+                  onChange={setOidcRequiredGroup}
+                  hint={strings.orgAdmin.oidcRequiredGroupHint}
+                />
 
                 {/* SSO group → org-role mapping used to live here, as a
                     flat, disconnected list (`sso_group_mappings`) — it's
                     now a property of the org group being synced into
                     instead (`OrgGroup.granted_org_role`, alongside
                     `idp_synced_group_name`), managed from the Groups
-                    section (2026-08 UX audit roadmap item 522). */}
+                    section. */}
                 <p className="text-muted" style={{ fontSize: "0.85rem" }}>{strings.orgAdmin.ssoMappingsMovedHint}</p>
 
                 {ssoError && <div style={{ color: "var(--color-danger)" }}>{ssoError}</div>}
@@ -3597,7 +3493,7 @@ export function OrgAdminPage() {
                 {scimGeneratedToken && (
                   <div className="stack" style={{ gap: "0.25rem" }}>
                     <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.scimTokenShownOnce}</span>
-                    <input className="input" readOnly value={scimGeneratedToken} onFocus={(e) => e.target.select()} />
+                    <input className="input" readOnly value={scimGeneratedToken} aria-label={strings.orgAdmin.scimTokenLabel} onFocus={(e) => e.target.select()} />
                   </div>
                 )}
                 {scimError && <div style={{ color: "var(--color-danger)" }}>{scimError}</div>}
@@ -3620,70 +3516,62 @@ export function OrgAdminPage() {
           <div className="stack">
             {advanced && (
               <CollapsibleSection sectionKey="orgAdmin.smtpEmail" title={strings.orgAdmin.smtpEmailTitle}>
-                <div className="row">
-                  <input
-                    className="input"
-                    placeholder={strings.orgAdmin.smtpHost}
+                <FormGrid minColumn="14rem">
+                  <TextField helpNotNeeded
+                    label={strings.orgAdmin.smtpHost}
                     value={smtpHost}
-                    onChange={(e) => {
+                    onChange={(next) => {
                       advancedDirtyRef.current = true;
-                      setSmtpHost(e.target.value);
+                      setSmtpHost(next);
                     }}
                   />
-                  <input
-                    className="input"
-                    style={{ maxWidth: 120 }}
-                    placeholder={strings.orgAdmin.smtpPort}
+                  <TextField helpNotNeeded
+                    label={strings.orgAdmin.smtpPort}
                     value={smtpPort}
-                    onChange={(e) => {
+                    onChange={(next) => {
                       advancedDirtyRef.current = true;
-                      setSmtpPort(e.target.value);
+                      setSmtpPort(next);
                     }}
                   />
-                </div>
-                <div className="row">
-                  <input
-                    className="input"
-                    placeholder={strings.orgAdmin.smtpUsername}
+                  <TextField helpNotNeeded
+                    label={strings.orgAdmin.smtpUsername}
                     value={smtpUsername}
-                    onChange={(e) => {
+                    onChange={(next) => {
                       advancedDirtyRef.current = true;
-                      setSmtpUsername(e.target.value);
+                      setSmtpUsername(next);
                     }}
                   />
-                  <input
-                    className="input"
-                    type="password"
-                    placeholder={strings.orgAdmin.smtpPassword}
+                  <TextField helpNotNeeded
+                    label={strings.orgAdmin.smtpPassword}
                     value={smtpPassword}
-                    onChange={(e) => {
+                    onChange={(next) => {
                       advancedDirtyRef.current = true;
-                      setSmtpPassword(e.target.value);
+                      setSmtpPassword(next);
                     }}
+                    inputProps={{ type: "password" }}
                   />
-                </div>
-                <label className="row">
-                  <input
-                    type="checkbox"
-                    checked={smtpUseTls}
-                    onChange={(e) => {
-                      advancedDirtyRef.current = true;
-                      setSmtpUseTls(e.target.checked);
-                    }}
-                  />
-                  {strings.orgAdmin.smtpUseTls}
-                </label>
+                  <FormGridFull>
+                    <CheckboxField helpNotNeeded
+                      label={strings.orgAdmin.smtpUseTls}
+                      checked={smtpUseTls}
+                      onChange={(next) => {
+                        advancedDirtyRef.current = true;
+                        setSmtpUseTls(next);
+                      }}
+                    />
+                  </FormGridFull>
+                </FormGrid>
 
                 <div className="stack" style={{ gap: "0.4rem" }}>
                   <strong>{strings.orgAdmin.testEmail}</strong>
                   <span className="text-muted" style={{ fontSize: "0.85rem" }}>{strings.orgAdmin.testEmailHint(orgLabel)}</span>
-                  <div className="row">
-                    <input
-                      className="input"
-                      type="email"
-                      placeholder={strings.orgAdmin.testEmailRecipientPlaceholder}
+                  <div className="row" style={{ alignItems: "flex-end" }}>
+                    <TextField helpNotNeeded
+                      label={strings.orgAdmin.testEmailRecipient}
+                      hint={strings.orgAdmin.testEmailRecipientHint}
                       value={testEmailRecipient}
-                      onChange={(e) => setTestEmailRecipient(e.target.value)}
+                      onChange={setTestEmailRecipient}
+                      inputProps={{ type: "email" }}
                     />
                     <button className="btn" onClick={sendOrgTestEmail} disabled={!smtpHost || sendingTestEmail}>
                       {sendingTestEmail ? strings.orgAdmin.testEmailSending : strings.orgAdmin.testEmail}
@@ -3698,8 +3586,7 @@ export function OrgAdminPage() {
                     previously a shared button on the same page ("saved
                     with the Security settings below"), now its own
                     explicit button now that Email and Security are
-                    separate top-level groups (2026-08 UX audit roadmap
-                    item 523). See the SSO mappings save button's own
+                    separate top-level groups. See the SSO mappings save button's own
                     comment for why calling the same `saveAdvanced()` from
                     here is still correct. */}
                 {advancedError && <div style={{ color: "var(--color-danger)" }}>{advancedError}</div>}
@@ -3720,121 +3607,87 @@ export function OrgAdminPage() {
           <div className="stack">
             {advanced && (
               <CollapsibleSection sectionKey="orgAdmin.security" title={strings.orgAdmin.securityTitle}>
-                <label className="row" style={{ gap: "0.6rem" }}>
-                  <ToggleSwitch
-                    checked={require2fa}
-                    onChange={(next) => {
-                      advancedDirtyRef.current = true;
-                      setRequire2fa(next);
-                    }}
-                    label={strings.orgAdmin.require2fa}
-                  />
-                  <span className="stack" style={{ gap: 0 }}>
-                    {strings.orgAdmin.require2fa}
-                    <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.require2faHint(orgLabel)}</span>
-                  </span>
-                </label>
+                <ToggleField helpNotNeeded
+                  label={strings.orgAdmin.require2fa}
+                  checked={require2fa}
+                  onChange={(next) => {
+                    advancedDirtyRef.current = true;
+                    setRequire2fa(next);
+                  }}
+                  hint={strings.orgAdmin.require2faHint(orgLabel)}
+                />
 
-                <label className="row" style={{ gap: "0.6rem" }}>
-                  <ToggleSwitch
-                    checked={allowSelfSignup}
-                    onChange={(next) => {
-                      advancedDirtyRef.current = true;
-                      setAllowSelfSignup(next);
-                    }}
-                    label={strings.orgAdmin.allowSelfSignup}
-                  />
-                  <span className="stack" style={{ gap: 0 }}>
-                    {strings.orgAdmin.allowSelfSignup}
-                    <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.allowSelfSignupHint(orgLabel)}</span>
-                  </span>
-                </label>
+                <ToggleField helpNotNeeded
+                  label={strings.orgAdmin.allowSelfSignup}
+                  checked={allowSelfSignup}
+                  onChange={(next) => {
+                    advancedDirtyRef.current = true;
+                    setAllowSelfSignup(next);
+                  }}
+                  hint={strings.orgAdmin.allowSelfSignupHint(orgLabel)}
+                />
 
                 {selfSignupConflict && (
                   <div style={{ color: "var(--color-danger)" }}>{strings.orgAdmin.selfSignupSsoConflict(orgLabel)}</div>
                 )}
 
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.orgAdmin.autoAcceptEmailDomain}
-                  <input
-                    className="input"
-                    placeholder="acme.com"
-                    value={autoAcceptEmailDomain}
-                    onChange={(e) => {
-                      advancedDirtyRef.current = true;
-                      setAutoAcceptEmailDomain(e.target.value);
-                    }}
-                  />
-                  <span className="text-muted">{strings.orgAdmin.autoAcceptEmailDomainHint}</span>
-                </label>
+                <TextField helpNotNeeded
+                  label={strings.orgAdmin.autoAcceptEmailDomain}
+                  value={autoAcceptEmailDomain}
+                  onChange={(next) => {
+                    advancedDirtyRef.current = true;
+                    setAutoAcceptEmailDomain(next);
+                  }}
+                  placeholder="acme.com"
+                  hint={strings.orgAdmin.autoAcceptEmailDomainHint}
+                />
 
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.orgAdmin.externalUserPolicy}
-                  <select
-                    className="input"
-                    value={externalUserPolicy}
-                    onChange={(e) => {
-                      advancedDirtyRef.current = true;
-                      setExternalUserPolicy(e.target.value as ExternalUserPolicy);
-                    }}
-                  >
-                    <option value="disabled">{strings.orgAdmin.externalUserPolicyDisabled(orgLabel)}</option>
-                    <option value="org_domain_only">{strings.orgAdmin.externalUserPolicyDomainOnly}</option>
-                    <option value="anyone">{strings.orgAdmin.externalUserPolicyAnyone}</option>
-                  </select>
-                </label>
+                <LabeledSelect help={strings.help.externalUserPolicy}
+                  label={strings.orgAdmin.externalUserPolicy}
+                  value={externalUserPolicy}
+                  onChange={(next) => {
+                    advancedDirtyRef.current = true;
+                    setExternalUserPolicy(next as ExternalUserPolicy);
+                  }}
+                  options={[{ value: "disabled", label: strings.orgAdmin.externalUserPolicyDisabled(orgLabel) }, { value: "org_domain_only", label: strings.orgAdmin.externalUserPolicyDomainOnly }, { value: "anyone", label: strings.orgAdmin.externalUserPolicyAnyone }]}
+                  placeholder={null}
+                />
 
-                <label className="row" style={{ gap: "0.6rem" }}>
-                  <ToggleSwitch
-                    checked={allowRelaxedChildProjectCreation}
-                    onChange={(next) => {
-                      advancedDirtyRef.current = true;
-                      setAllowRelaxedChildProjectCreation(next);
-                    }}
-                    label={strings.orgAdmin.allowRelaxedChildProjectCreation}
-                  />
-                  <span className="stack" style={{ gap: 0 }}>
-                    {strings.orgAdmin.allowRelaxedChildProjectCreation}
-                    <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.allowRelaxedChildProjectCreationHint}</span>
-                  </span>
-                </label>
+                <ToggleField helpNotNeeded
+                  label={strings.orgAdmin.allowRelaxedChildProjectCreation}
+                  checked={allowRelaxedChildProjectCreation}
+                  onChange={(next) => {
+                    advancedDirtyRef.current = true;
+                    setAllowRelaxedChildProjectCreation(next);
+                  }}
+                  hint={strings.orgAdmin.allowRelaxedChildProjectCreationHint}
+                />
 
-                {/* Platform review 2026-09, Phase 8 */}
-                <label className="row" style={{ gap: "0.6rem" }}>
-                  <ToggleSwitch
-                    checked={forceRequireCrForLinks}
-                    onChange={(next) => {
-                      advancedDirtyRef.current = true;
-                      setForceRequireCrForLinks(next);
-                    }}
-                    label={strings.orgAdmin.forceRequireChangeRequestForApprovedLinks}
-                  />
-                  <span className="stack" style={{ gap: 0 }}>
-                    {strings.orgAdmin.forceRequireChangeRequestForApprovedLinks}
-                    <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.forceRequireChangeRequestForApprovedLinksHint}</span>
-                  </span>
-                </label>
+                <ToggleField helpNotNeeded
+                  label={strings.orgAdmin.forceRequireChangeRequestForApprovedLinks}
+                  checked={forceRequireCrForLinks}
+                  onChange={(next) => {
+                    advancedDirtyRef.current = true;
+                    setForceRequireCrForLinks(next);
+                  }}
+                  hint={strings.orgAdmin.forceRequireChangeRequestForApprovedLinksHint}
+                />
 
                 {/* AI approval via MCP (docs/decisions.md) */}
-                <label className="row" style={{ gap: "0.6rem" }}>
-                  <ToggleSwitch
-                    checked={allowAiApprovals}
-                    onChange={(next) => {
-                      if (next) {
-                        setAiApprovalsAckChecked(false);
-                        setAiApprovalsAckPending(true);
-                      } else {
-                        advancedDirtyRef.current = true;
-                        setAllowAiApprovals(false);
-                      }
-                    }}
-                    label={strings.orgAdmin.allowAiApprovals}
-                  />
-                  <span className="stack" style={{ gap: 0 }}>
-                    {strings.orgAdmin.allowAiApprovals}
-                    <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.allowAiApprovalsHint}</span>
-                  </span>
-                </label>
+                <ToggleField helpNotNeeded
+                  label={strings.orgAdmin.allowAiApprovals}
+                  checked={allowAiApprovals}
+                  onChange={(next) => {
+                    if (next) {
+                      setAiApprovalsAckChecked(false);
+                      setAiApprovalsAckPending(true);
+                    } else {
+                      advancedDirtyRef.current = true;
+                      setAllowAiApprovals(false);
+                    }
+                  }}
+                  hint={strings.orgAdmin.allowAiApprovalsHint}
+                />
 
                 {advancedError && <div style={{ color: "var(--color-danger)" }}>{advancedError}</div>}
                 {/* `onClick={saveAdvanced}` submits the *whole*
@@ -3843,8 +3696,7 @@ export function OrgAdminPage() {
                     "OAuth/SSO" group) are all part of the same underlying
                     settings resource/PUT, just split across three separate
                     top-level resource-menu groups by what they actually
-                    govern (2026-08 UX audit roadmap item 523, splitting
-                    the earlier "Integrations & security" group further)
+                    govern
                     rather than one combined page. Each group that touches
                     a field on this object now has its own save button
                     calling the same `saveAdvanced()` — see the SSO
@@ -3871,25 +3723,22 @@ export function OrgAdminPage() {
                     Security-card button above, on this same "Security"
                     group/page, since it's one field on the same
                     OrgAdvancedSettings object. */}
-                <label className="stack" style={{ gap: "0.25rem" }}>
-                  {strings.orgAdmin.patMaxLifetime}
-                  <input
-                    className="input"
-                    type="number"
-                    min={1}
-                    max={3650}
-                    style={{ maxWidth: 160 }}
-                    value={patMaxLifetimeDays}
-                    onChange={(e) => {
-                      advancedDirtyRef.current = true;
-                      setPatMaxLifetimeDays(e.target.value);
-                    }}
-                  />
-                  <span className="text-muted">{strings.orgAdmin.patMaxLifetimeHint(orgLabel)}</span>
-                  <span className="text-muted" style={{ fontSize: "0.8rem" }}>
-                    Saved with the Security settings above.
-                  </span>
-                </label>
+                <TextField helpNotNeeded
+                  label={strings.orgAdmin.patMaxLifetime}
+                  value={patMaxLifetimeDays}
+                  onChange={(next) => {
+                    advancedDirtyRef.current = true;
+                    setPatMaxLifetimeDays(next);
+                  }}
+                  hint={
+                    <>
+                      {strings.orgAdmin.patMaxLifetimeHint(orgLabel)}
+                      <br />
+                      Saved with the Security settings above.
+                    </>
+                  }
+                  inputProps={{ type: "number", min: 1, max: 3650, style: { maxWidth: 160 } }}
+                />
 
                 {orgPats.length === 0 ? (
                   <p className="text-muted">{strings.orgAdmin.patNone(orgLabel)}</p>
@@ -3947,6 +3796,14 @@ export function OrgAdminPage() {
                 {patBulkResult && <div style={{ color: "var(--color-accent)" }}>{patBulkResult}</div>}
               </CollapsibleSection>
             )}
+          </div>
+        )}
+
+        {activeGroup === "tags" && orgId && (
+          <div className="stack">
+            <CollapsibleSection sectionKey="orgAdmin.tags" title={strings.tags.admin.title}>
+              <OrgTagsPanel organizationId={orgId} />
+            </CollapsibleSection>
           </div>
         )}
 
@@ -4008,15 +3865,14 @@ export function OrgAdminPage() {
 
         {activeGroup === "role-management" && (
           <div className="stack">
-            {/* Role *definition* — ORG_ADMIN-only, never delegable (Phase 0
-                Q5). Gated on `advanced !== null`, the same signal every
+            {/* Role *definition* — ORG_ADMIN-only, never delegable. Gated on `advanced !== null`, the same signal every
                 other ORG_ADMIN-only section on this page already uses
                 (`GET .../advanced-settings` is `require_org_role(ORG_ADMIN)`
                 with no server-admin/grant_roles bypass) — reused rather
                 than inventing a second "am I an admin" check, per style
                 guide Principle 4. A `grant_roles` holder who isn't an
                 ORG_ADMIN sees the assignment half below but not this one,
-                matching Phase 0 Q8's own "without necessarily seeing the
+                matching the "without necessarily seeing the
                 ORG_ADMIN-only role-definition half" requirement. */}
             {advanced !== null && (
               <CollapsibleSection sectionKey="orgAdmin.roleManagement.definitions" title={strings.orgAdmin.customRolesTitle}>
@@ -4026,7 +3882,7 @@ export function OrgAdminPage() {
                   style={{ alignSelf: "flex-start" }}
                   onClick={openCreateCustomRoleModal}
                 >
-                  <Plus size={14} /> {strings.orgAdmin.newCustomRole}
+                  <Plus /> {strings.orgAdmin.newCustomRole}
                 </button>
                 <DirectoryTable
                   ariaLabel={strings.orgAdmin.customRolesTitle}
@@ -4057,7 +3913,7 @@ export function OrgAdminPage() {
                             title={strings.orgAdmin.editCustomRole(r.name)}
                             onClick={() => openEditCustomRoleModal(r)}
                           >
-                            <Pencil size={14} />
+                            <Pencil />
                           </button>
                           <button
                             className="btn"
@@ -4065,7 +3921,7 @@ export function OrgAdminPage() {
                             title={strings.orgAdmin.deleteCustomRole(r.name)}
                             onClick={() => setConfirmDeleteCustomRole(r)}
                           >
-                            <Trash2 size={14} />
+                            <Trash2 />
                           </button>
                         </div>
                       ),
@@ -4083,84 +3939,70 @@ export function OrgAdminPage() {
                     size="lg"
                   >
                     <div className="stack">
-                      {!editingCustomRoleId && customRolePresets.length > 0 && (
-                        <label className="stack" style={{ gap: "0.25rem" }}>
-                          {strings.orgAdmin.customRolePreset}
-                          <select
-                            className="input"
-                            value=""
-                            onChange={(e) => applyCustomRolePreset(e.target.value)}
-                          >
-                            <option value="">{strings.orgAdmin.customRolePresetNone}</option>
-                            {customRolePresets.map((p) => (
-                              <option key={p.key} value={p.key}>{p.name}</option>
-                            ))}
-                          </select>
-                        </label>
-                      )}
-                      <label className="stack" style={{ gap: "0.25rem" }}>
-                        {strings.orgAdmin.customRoleName}
-                        <input
-                          className="input"
-                          autoFocus
+                      <FormGrid minColumn="18rem">
+                        {!editingCustomRoleId && customRolePresets.length > 0 && (
+                          <FormGridFull>
+                            <LabeledSelect helpNotNeeded
+                              label={strings.orgAdmin.customRolePreset}
+                              value=""
+                              onChange={applyCustomRolePreset}
+                              options={customRolePresets.map((p) => ({ value: p.key, label: p.name }))}
+                              placeholder={strings.orgAdmin.customRolePresetNone}
+                            />
+                          </FormGridFull>
+                        )}
+                        <TextField helpNotNeeded required
+                          label={strings.orgAdmin.customRoleName}
                           value={customRoleFormName}
-                          onChange={(e) => setCustomRoleFormName(e.target.value)}
+                          onChange={setCustomRoleFormName}
+                          inputProps={{ autoFocus: true }}
                         />
-                      </label>
-                      <label className="stack" style={{ gap: "0.25rem" }}>
-                        {strings.orgAdmin.customRoleDescription}
-                        <input
-                          className="input"
-                          value={customRoleFormDescription}
-                          onChange={(e) => setCustomRoleFormDescription(e.target.value)}
-                        />
-                      </label>
-                      <label className="stack" style={{ gap: "0.25rem" }}>
-                        {strings.orgAdmin.customRoleScope}
-                        <select
-                          className="input"
+                        <LabeledSelect help={strings.help.customRoleScope}
+                          label={strings.orgAdmin.customRoleScope}
                           value={customRoleFormScope}
-                          onChange={(e) => setCustomRoleFormScope(e.target.value)}
-                        >
-                          <option value="org">{strings.orgAdmin.customRoleScopeOrg}</option>
-                          <option value="project">{strings.orgAdmin.customRoleScopeProject}</option>
-                          {/* Fine-Grained Access Control (core) Phase 5 — every
-                              registered module-owned entity scope, rendered
-                              generically rather than a hardcoded per-module
-                              option (e.g. compliance's "standard"). */}
-                          {entityScopes.map((s) => (
-                            <option key={s.key} value={s.key}>{s.label}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <div className="stack" style={{ gap: "0.25rem" }}>
-                        <span>{strings.orgAdmin.customRolePermissionsLabel}</span>
-                        <PermissionPicker
-                          permissions={permissions}
-                          selected={customRoleFormPermissions}
-                          onChange={setCustomRoleFormPermissions}
-                          disabled={customRoleFormSaving}
+                          onChange={setCustomRoleFormScope}
+                          placeholder={null}
+                          options={[
+                            { value: "org", label: strings.orgAdmin.customRoleScopeOrg },
+                            { value: "project", label: strings.orgAdmin.customRoleScopeProject },
+                            // Fine-Grained Access Control (core): every registered module-owned entity scope,
+                            // rendered generically rather than a hardcoded per-module option.
+                            ...entityScopes.map((s) => ({ value: s.key, label: s.label })),
+                          ]}
                         />
-                      </div>
-                      {customRoleFormError && <div style={{ color: "var(--color-danger)" }}>{customRoleFormError}</div>}
-                      <div className="row" style={{ justifyContent: "flex-end" }}>
-                        <button className="btn" onClick={closeCustomRoleModal}>{strings.common.cancel}</button>
-                        <button
-                          className="btn btn-primary"
-                          disabled={!customRoleFormName.trim() || customRoleFormSaving}
-                          onClick={saveCustomRole}
-                        >
-                          {strings.common.save}
-                        </button>
-                      </div>
+                        <FormGridFull>
+                          <TextField helpNotNeeded
+                            label={strings.orgAdmin.customRoleDescription}
+                            value={customRoleFormDescription}
+                            onChange={setCustomRoleFormDescription}
+                          />
+                        </FormGridFull>
+                        <FormGridFull>
+                          <div className="stack" style={{ gap: "0.25rem" }}>
+                            <span>{strings.orgAdmin.customRolePermissionsLabel}</span>
+                            <PermissionPicker
+                              permissions={permissions}
+                              selected={customRoleFormPermissions}
+                              onChange={setCustomRoleFormPermissions}
+                              disabled={customRoleFormSaving}
+                            />
+                          </div>
+                        </FormGridFull>
+                      </FormGrid>
+                      <FormActions
+                        error={customRoleFormError}
+                        onCancel={closeCustomRoleModal}
+                        onSave={saveCustomRole}
+                        saveDisabled={!customRoleFormName.trim() || customRoleFormSaving}
+                      />
                     </div>
                   </Modal>
                 )}
               </CollapsibleSection>
             )}
 
-            {/* Role *assignment* — ORG_ADMIN or a `grant_roles` holder
-                (Phase 0 Q6). Always shown to anyone who can reach this page
+            {/* Role *assignment* — ORG_ADMIN or a `grant_roles` holder.
+                Always shown to anyone who can reach this page
                 at all, the same convention the Users table's own fixed/
                 module-role controls above already follow: authorization is
                 enforced server-side (403 + toast on failure), not by
@@ -4184,52 +4026,34 @@ export function OrgAdminPage() {
                       <div className="card stack" key={role.id} style={{ gap: "0.5rem" }}>
                         <div className="row" style={{ justifyContent: "space-between" }}>
                           <strong>{role.name}</strong>
-                          <span className="badge">{customRoleScopeLabel(role.scope)}</span>
+                          <Badge>{customRoleScopeLabel(role.scope)}</Badge>
                         </div>
                         {role.scope === "project" && (
-                          <label className="stack" style={{ gap: "0.25rem", maxWidth: 320 }}>
-                            {strings.orgAdmin.projects}
-                            <select
-                              className="input"
-                              value={projectId}
-                              onChange={(e) => setCustomRoleGrantProjectId((prev) => ({ ...prev, [role.id]: e.target.value }))}
-                            >
-                              <option value="">{strings.common.selectOption}</option>
-                              {/* `orgProjects` (every project in the org) when available —
-                                  ORG_ADMIN only; a `grant_roles` holder who isn't an
-                                  ORG_ADMIN falls back to `thisOrgVisibleProjects` (their
-                                  own visible projects) rather than an empty picker — see
-                                  that state's own docstring. */}
-                              {(orgProjects ?? thisOrgVisibleProjects).map((p) => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
-                              ))}
-                            </select>
-                          </label>
+                          <LabeledSelect helpNotNeeded
+                            label={strings.orgAdmin.projects}
+                            value={projectId}
+                            onChange={(next) => setCustomRoleGrantProjectId((prev) => ({ ...prev, [role.id]: next }))}
+                            // `orgProjects` (every project in the org) when available — ORG_ADMIN only; a
+                            // `grant_roles` holder who isn't an ORG_ADMIN falls back to `thisOrgVisibleProjects`
+                            // (their own visible projects) rather than an empty picker.
+                            options={(orgProjects ?? thisOrgVisibleProjects).map((p) => ({ value: p.id, label: p.name }))}
+                            placeholder={strings.common.selectOption}
+                          />
                         )}
-                        {/* Fine-Grained Access Control (core) Phase 5 — the
-                            generalised form of the project picker above, for
-                            a role scoped to a registered module-owned entity
-                            scope (e.g. compliance's "standard"): populated
-                            via that scope's own `entities` list rather than
-                            a hardcoded per-module fetch. */}
+                        {/* Fine-Grained Access Control (core): the generalised form of the project picker above,
+                            for a role scoped to a registered module-owned entity scope (e.g. compliance's
+                            "standard"), populated through that scope's own `entities` list. */}
                         {matchingEntityScope !== undefined && (
-                          <label className="stack" style={{ gap: "0.25rem", maxWidth: 320 }}>
-                            {matchingEntityScope.label}
-                            <select
-                              className="input"
-                              value={entityId}
-                              onChange={(e) => setCustomRoleGrantEntityId((prev) => ({ ...prev, [role.id]: e.target.value }))}
-                            >
-                              <option value="">{strings.common.selectOption}</option>
-                              {matchingEntityScope.entities.map((entity) => (
-                                <option key={entity.id} value={entity.id}>{entity.name}</option>
-                              ))}
-                            </select>
-                          </label>
+                          <LabeledSelect helpNotNeeded
+                            label={matchingEntityScope.label}
+                            value={entityId}
+                            onChange={(next) => setCustomRoleGrantEntityId((prev) => ({ ...prev, [role.id]: next }))}
+                            options={matchingEntityScope.entities.map((entity) => ({ value: entity.id, label: entity.name }))}
+                            placeholder={strings.common.selectOption}
+                          />
                         )}
                         <div className="row" style={{ gap: "1rem", flexWrap: "wrap" }}>
-                          <label className="stack" style={{ gap: "0.25rem" }}>
-                            {strings.orgAdmin.customRoleGrantFieldLabel}
+                          <RecordFieldGroup helpNotNeeded label={strings.orgAdmin.customRoleGrantFieldLabel}>
                             <UserAutocomplete
                               users={users}
                               groups={allGroups}
@@ -4247,9 +4071,8 @@ export function OrgAdminPage() {
                                 grantCustomRoleToGroupById(role, groupId, target?.name ?? groupId);
                               }}
                             />
-                          </label>
-                          <label className="stack" style={{ gap: "0.25rem" }}>
-                            {strings.orgAdmin.customRoleRevokeFieldLabel}
+                          </RecordFieldGroup>
+                          <RecordFieldGroup helpNotNeeded label={strings.orgAdmin.customRoleRevokeFieldLabel}>
                             <UserAutocomplete
                               users={users}
                               groups={allGroups}
@@ -4267,7 +4090,7 @@ export function OrgAdminPage() {
                                 revokeCustomRoleFromGroupById(role, groupId, target?.name ?? groupId);
                               }}
                             />
-                          </label>
+                          </RecordFieldGroup>
                         </div>
                       </div>
                     );
@@ -4349,13 +4172,11 @@ export function OrgAdminPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>{strings.orgAdmin.allowAiApprovalsAckBody}</span>
-              <label className="row" style={{ gap: "0.4rem" }}>
-                <input
-                  type="checkbox" checked={aiApprovalsAckChecked}
-                  onChange={(e) => setAiApprovalsAckChecked(e.target.checked)}
-                />
-                {strings.orgAdmin.allowAiApprovalsAckCheckbox}
-              </label>
+              <CheckboxField helpNotNeeded
+                label={strings.orgAdmin.allowAiApprovalsAckCheckbox}
+                checked={aiApprovalsAckChecked}
+                onChange={setAiApprovalsAckChecked}
+              />
             </span>
           }
           confirmLabel={strings.orgAdmin.allowAiApprovalsAckConfirm}

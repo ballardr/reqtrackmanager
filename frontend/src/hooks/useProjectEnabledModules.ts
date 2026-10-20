@@ -21,36 +21,49 @@ interface State {
   loaded: boolean;
 }
 
+/** Subscribers of `refreshProjectEnabledModules`, one per mounted `useProjectEnabledModules`. */
+const refreshListeners = new Set<(projectId: string) => void>();
+
+/**
+ * Tells every mounted `useProjectEnabledModules` for `projectId` to re-fetch. Call it after anything
+ * that changes which modules or sub-components are on for the project (the Modules tab toggles), so
+ * the nav rail and module routes follow without a reload.
+ *
+ * Args:
+ *   projectId: The project whose module state changed.
+ */
+export function refreshProjectEnabledModules(projectId: string): void {
+  refreshListeners.forEach((listener) => listener(projectId));
+}
+
 /**
  * Fetches the currently-enabled modules for `projectId`'s owning
  * organisation, with enough of each one's frontend manifest to render a nav
- * entry/route (`GET /projects/{id}/enabled-modules`, module system Phase
- * 3). Both `Layout.tsx` (nav rendering) and `App.tsx` (Tier A/B route
+ * entry/route (`GET /projects/{id}/enabled-modules`). Both `Layout.tsx` (nav rendering) and `App.tsx` (Tier A/B route
  * splicing) call this independently, the same "each concern fetches its
  * own project-derived data" convention `BrandingContext`/`TerminologyContext`
  * already use rather than a shared provider, since this is a small, cheap,
  * already-cached-by-the-browser GET.
  *
- * `loaded` was added by Phase 13 (Project Compliance View) after it
- * surfaced a real bug in `App.tsx`'s own route-splicing: `modules` starts
+ * `loaded` exists because of a real bug in `App.tsx`'s own route-splicing: `modules` starts
  * `[]` while the fetch is in flight, `buildModuleRoutes([], projectId)`
  * then contributes zero `<Route>`s, and — because Compliance is the first
  * *real* Tier A module ever mounted at a project-scoped path — a fresh
  * navigation straight to a module's own URL (e.g. clicking its nav-rail
  * link) landed on `<Routes>`'s wildcard fallback (`<Navigate to="/projects"
  * />`) before the fetch could resolve and contribute the matching route,
- * bouncing the user straight back to `/projects` every time. No earlier
- * phase caught this: Phase 3's own tests only proved the mechanism against
+ * bouncing the user straight back to `/projects` every time. The routing tests
+ * only proved the mechanism against
  * a fixture module with `enabledModules` pre-seeded synchronously
- * (`App.stories.tsx`'s `TierARoutingHarness`), and Phase 12's org-level
+ * (`App.stories.tsx`'s `TierARoutingHarness`), and the org-level
  * panel never used this routing mechanism at all (mounted directly on
- * `OrgAdminPage` instead — see that phase's own notes). `App.tsx` now reads
+ * `OrgAdminPage` instead). `App.tsx` now reads
  * `loaded` to hold off the wildcard `Navigate` specifically while a
  * project-scoped path's module routes are still unknown, rather than
  * delaying every project page's render on this fetch — see that file's own
  * comment at the wildcard route.
  *
- * Found during compliance-module-plan.md Phase 39: that fix only covered a
+ * Found during: that fix only covered a
  * *fresh page load* landing directly on a project-scoped URL (`loaded`'s
  * `useState` initializer reads the right `projectId` from the very first
  * render). It missed the same race one step earlier — a client-side
@@ -95,6 +108,19 @@ export function useProjectEnabledModules(projectId: string | null, ready: boolea
     setState({ forId: projectId, modules: [], loaded: projectId === null });
   }
 
+  // Bumped by `refreshProjectEnabledModules`; re-runs the fetch below without resetting `loaded`, so a
+  // refresh never flashes the route-splicing spinner.
+  const [refreshTick, setRefreshTick] = useState(0);
+  useEffect(() => {
+    const listener = (changedId: string) => {
+      if (changedId === projectId) setRefreshTick((tick) => tick + 1);
+    };
+    refreshListeners.add(listener);
+    return () => {
+      refreshListeners.delete(listener);
+    };
+  }, [projectId]);
+
   useEffect(() => {
     if (!projectId || !ready) return;
     let cancelled = false;
@@ -114,13 +140,17 @@ export function useProjectEnabledModules(projectId: string | null, ready: boolea
         // safe default this hook already returns while a fetch is in
         // flight — worst case a module's nav entry/route is briefly
         // unavailable, never a hang.
-        if (!cancelled) setState({ forId: projectId, modules: [], loaded: true });
+        // `prev.modules` survives a failed refresh: a transient error must not empty a nav rail that
+        // was already showing the right entries.
+        if (!cancelled) {
+          setState((prev) => ({ forId: projectId, modules: prev.forId === projectId ? prev.modules : [], loaded: true }));
+        }
       }
     );
     return () => {
       cancelled = true;
     };
-  }, [projectId, ready]);
+  }, [projectId, ready, refreshTick]);
 
   // By this point `state.forId === projectId` always holds: calling
   // `setState` during render (above) makes React immediately discard this

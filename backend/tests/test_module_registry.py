@@ -1,5 +1,5 @@
-"""Tests for the module system's Phase 1 two-tier gating and backend
-plugin-loading infrastructure (docs/compliance-module-plan.md): effective
+"""Tests for the module system's two-tier gating and backend
+plugin-loading infrastructure: effective
 entitlement/enablement resolution (`app.modules.registry.
 is_module_entitled`/`is_module_enabled`), the `require_org_module_enabled`/
 `require_project_module_enabled` RBAC dependencies' 404-not-403 behaviour,
@@ -729,7 +729,7 @@ def test_run_on_org_created_hooks_skips_modules_with_no_hook(org_id, fake_module
         db.close()
 
 
-# --- `org_creation_choices` / `on_org_created_with_choices` (Module 4, Decision Management, Phase 1) ---
+# --- `org_creation_choices` / `on_org_created_with_choices` ---
 
 
 def _register_fake_choice_module(*, default_selected: bool):

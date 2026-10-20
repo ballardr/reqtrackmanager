@@ -1,7 +1,7 @@
 """
 Module: modules.risk_management
 
-The Risk Management module (docs/plans/module-03-risk-management-plan.md): a
+The Risk Management module: a
 first-class, project-scoped Risk register. A risk is a versioned record with a
 configurable type, an owner, a derived inherent and residual rating, comments
 and attachments.
@@ -20,7 +20,7 @@ Responsibilities:
 
 Design decisions: there is no Risk-specific matrix table. Ratings come from
 core's scoring service, so the per-cell override, org default and project
-override all apply with no module code (plan Phase 0 resolution 1).
+override all apply with no module code.
 
 External dependencies: core `services.scoring`, `services.type_vocabulary`,
 `services.module_attachments` and `services.sequences`; no other module.

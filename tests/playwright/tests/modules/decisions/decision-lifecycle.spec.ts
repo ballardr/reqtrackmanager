@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, setOrgModuleAvailability, showLinkRelationships } from "../../e2e-workflows/helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, setOrgModuleAvailability, showLinkRelationships, recordCodeText } from "../../e2e-workflows/helpers";
 import { selectLabeledOption } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -9,15 +9,14 @@ installCleanupHook();
 const API_BASE_URL = "http://localhost:8000";
 
 /**
- * Job to be done: docs/plans/module-04-decision-management-plan.md Phase 5's
- * own exit criteria — "Playwright e2e coverage for create -> propose ->
- * approve -> supersede," updated for Phase 9's (2026-09-22) quick-view +
+ * Job to be done: Playwright e2e coverage for create -> propose ->
+ * approve -> supersede, with the quick-view +
  * full-page detail split. Exercises the full Decision Management frontend
  * (`frontend/src/modules/decisions/`) against a real backend: creating a
  * Decision, moving it through its lifecycle to Approved on its own detail
  * page, then creating a second Decision that supersedes the first and
  * watching the first flip to Superseded once the second is itself Approved
- * (source overview §13/10.6 — see `service.py`'s own `_maybe_supersede`/
+ * (§13/10.6 — see `service.py`'s own `_maybe_supersede`/
  * `_supersede_predecessors`).
  *
  * A row click on the Decisions list opens `DecisionQuickViewPanel` — a
@@ -26,7 +25,7 @@ const API_BASE_URL = "http://localhost:8000";
  * `DecisionDetailPage`, a real routed page (not a dialog) carrying every
  * lifecycle action, the Links panel, comments, and attachments.
  * Locators below are scoped to `page` (not a `dialog` role) once on that
- * page, unlike the pre-Phase-9 version of this spec.
+ * page, unlike the earlier version of this spec.
  *
  * Uses a brand-new, disposable organisation + admin + project created via
  * the API, not a shared seeded org/project — mirrors `org-admin-modules
@@ -82,7 +81,7 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     ).json();
 
     // --- Enable Decision Management for this org (default_enabled=False —
-    // module.py's Phase 1/4 deliberate opt-in design, unchanged by Phase 9).
+    // module.py's deliberate opt-in design).
     // `OrgListPage.tsx` auto-redirects straight to `/orgs/:orgId/admin`
     // when the caller belongs to exactly one org (true here — this admin
     // was just created in this one disposable org), so there's no "org
@@ -117,18 +116,24 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     await quickView.getByRole("link", { name: "View full details" }).click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/decisions/[^/]+$`));
 
-    await expect(page.getByRole("heading", { name: "DEC-001" })).toBeVisible();
+    await expect(page.locator(".record-header").getByText(recordCodeText("DEC-001"))).toBeVisible();
     // Scoped to the detail header: the list page's own "Draft" badges and
     // Status filter option can still be in the DOM while the route swaps.
-    await expect(page.getByRole("heading", { name: "DEC-001" }).locator("..").getByText("Draft", { exact: true })).toBeVisible();
+    await expect(page.locator(".record-header").getByText("Draft", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Propose" }).click();
     await expect(page.getByText("Proposed", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Submit for review" }).click();
     await expect(page.getByText("Under review", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Approve" }).click();
     let confirmDialog = page.getByRole("dialog", { name: "Approve this Decision?" });
+    await confirmDialog.getByLabel("Approval comment").fill("Agreed at the architecture board.");
     await confirmDialog.getByRole("button", { name: "Approve" }).click();
     await expect(page.getByText("Approved", { exact: true })).toBeVisible();
+
+    // The comment given at approval is shown, quoted, in the record's own Activity tab.
+    await page.getByRole("tab", { name: "Activity" }).click();
+    await expect(page.locator("blockquote.activity-note", { hasText: "Agreed at the architecture board." })).toBeVisible();
+    await page.getByRole("tab", { name: "Links" }).click();
 
     // --- Back to the list, create Decision B ("DEC-002") and move it to
     // Approved too.
@@ -155,7 +160,7 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     // window can hit a real Playwright strict-mode violation (multiple
     // matches) rather than a plain "not found yet" retry.
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/decisions/[^/]+$`));
-    await expect(page.getByRole("heading", { name: "DEC-002" })).toBeVisible();
+    await expect(page.locator(".record-header").getByText(recordCodeText("DEC-002"))).toBeVisible();
 
     await page.getByRole("button", { name: "Propose" }).click();
     await page.getByRole("button", { name: "Submit for review" }).click();
@@ -192,7 +197,7 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     // quick view (also headed "DEC-001"), table badge and status filter
     // option all match too. Wait for the list's own table to go first.
     await expect(page.getByRole("table")).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "DEC-001" })).toBeVisible();
+    await expect(page.locator(".record-header").getByText(recordCodeText("DEC-001"))).toBeVisible();
     await expect(page.getByText("Superseded", { exact: true })).toBeVisible();
   });
 });

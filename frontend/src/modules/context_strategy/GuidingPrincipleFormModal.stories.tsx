@@ -36,7 +36,7 @@ export const SubmitsNewGuidingPrinciple: Story = {
       expect.objectContaining({
         name: "Field data is captured once",
         principle_statement: "Every field observation is recorded exactly once, at the point of inspection.",
-      })
+      }), [], []
     ));
   },
 };
@@ -55,7 +55,7 @@ export const SaveDisabledUntilRequiredFieldsFilled: Story = {
 export const EditExisting: Story = {
   args: {
     initial: {
-      id: "gp-1", scope: "project", organization_id: null, project_id: "project-1", creator_id: "user-1",
+      id: "gp-1", scope: "project", organization_id: null, project_id: "project-1", unique_code: "GP-001", creator_id: "user-1",
       is_archived: false, archived_at: null, archived_by: null, name: "Field data is captured once",
       principle_statement: "Every field observation is recorded exactly once, at the point of inspection.",
       rationale: "Re-keying paper forms introduces errors and delay.", priority: "high", status: "draft",
@@ -68,6 +68,20 @@ export const EditExisting: Story = {
     await expect(body.getByRole("heading", { name: "Edit Field data is captured once" })).toBeInTheDocument();
     await expect(body.getByDisplayValue("Re-keying paper forms introduces errors and delay.")).toBeInTheDocument();
     await expect(body.getByLabelText("Change note")).toBeInTheDocument();
+  },
+};
+
+/** Worst case: a long save error and a long unbroken title. The error is shown, and the dialog neither scrolls
+ * sideways nor pushes Save out of reach. */
+export const LongErrorAndLongTitleKeepTheActionsReachable: Story = {
+  args: { error: "Could not save: " + "the server rejected this request for a reason that takes a while to explain. ".repeat(4) },
+  play: async () => {
+    const body = within(document.body);
+    await userEvent.type(body.getByLabelText("Guiding Principle name"), "W".repeat(200));
+    await expect(body.getByText(/Could not save:/)).toBeVisible();
+    await expect(body.getByRole("button", { name: "Save" })).toBeVisible();
+    const dialog = body.getByRole("dialog");
+    await expect(dialog.scrollWidth).toBeLessThanOrEqual(dialog.clientWidth + 1);
   },
 };
 

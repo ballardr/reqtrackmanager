@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 from app.modules.risk_management.enums import RiskReviewOutcome, RiskStatus, TreatmentAssessmentStatus, TreatmentStrategy
 from app.schemas.file import FileAssetOut
 from app.schemas.principal import PrincipalOut, PrincipalRef
+from app.schemas.project_scope import ProjectScopedRow
 
 
 class RiskCreate(BaseModel):
@@ -88,7 +89,7 @@ class RiskRatingOut(BaseModel):
     tone: str | None
 
 
-class RiskOut(BaseModel):
+class RiskOut(ProjectScopedRow):
     """A risk merged with its current version and derived ratings."""
 
     id: UUID

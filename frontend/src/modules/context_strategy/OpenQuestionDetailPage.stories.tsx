@@ -30,7 +30,7 @@ const SQUAD: Principal = { type: "project_group", id: "pgroup-1", label: "Releas
 
 function openQuestion(overrides: Partial<OpenQuestion> = {}): OpenQuestion {
   return {
-    id: OPEN_QUESTION_ID, project_id: PROJECT_ID, creator_id: "user-1",
+    id: OPEN_QUESTION_ID, project_id: PROJECT_ID, unique_code: "OQ-001", creator_id: "user-1",
     is_archived: false, archived_at: null, archived_by: null,
     question: "Should we standardise on a single battery vendor?",
     context: "Two vendors are currently qualified.", evidence: "12 field reports so far.",
@@ -164,9 +164,11 @@ export const OwnerCanBeAssigned: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => canvas.getByText("Unassigned"));
-    await userEvent.type(canvas.getByLabelText("Open Question owner"), "Jamie");
-    await waitFor(() => canvas.getByText(/Jamie Lee/));
-    await userEvent.click(canvas.getByText(/Jamie Lee/));
+    await userEvent.click(canvas.getByRole("button", { name: "Assign: Open Question owner" }));
+    const picker = within(within(document.body).getByRole("dialog", { name: "Assign: Open Question owner" }));
+    await userEvent.type(picker.getByLabelText("Open Question owner"), "Jamie");
+    await waitFor(() => picker.getByText(/Jamie Lee/));
+    await userEvent.click(picker.getByText(/Jamie Lee/));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/open-questions/${OPEN_QUESTION_ID}`,
       expect.objectContaining({ owner: { type: "user", id: "user-2" } })
@@ -182,9 +184,11 @@ export const OwnerCanBeAnOrgGroup: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByLabelText("Open Question owner"));
-    await userEvent.type(canvas.getByLabelText("Open Question owner"), "platform");
-    await userEvent.click(await canvas.findByText("Platform Architecture"));
+    await waitFor(() => canvas.getByRole("button", { name: "Assign: Open Question owner" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Assign: Open Question owner" }));
+    const picker = within(within(document.body).getByRole("dialog", { name: "Assign: Open Question owner" }));
+    await userEvent.type(picker.getByLabelText("Open Question owner"), "platform");
+    await userEvent.click(await picker.findByText("Platform Architecture"));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/open-questions/${OPEN_QUESTION_ID}`,
       expect.objectContaining({ owner: { type: "org_group", id: "group-1" } })
@@ -201,9 +205,11 @@ export const OwnerCanBeAProjectGroup: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByLabelText("Open Question owner"));
-    await userEvent.type(canvas.getByLabelText("Open Question owner"), "release");
-    await userEvent.click(await canvas.findByText("Release board"));
+    await waitFor(() => canvas.getByRole("button", { name: "Assign: Open Question owner" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Assign: Open Question owner" }));
+    const picker = within(within(document.body).getByRole("dialog", { name: "Assign: Open Question owner" }));
+    await userEvent.type(picker.getByLabelText("Open Question owner"), "release");
+    await userEvent.click(await picker.findByText("Release board"));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/open-questions/${OPEN_QUESTION_ID}`,
       expect.objectContaining({ owner: { type: "project_group", id: "pgroup-1" } })

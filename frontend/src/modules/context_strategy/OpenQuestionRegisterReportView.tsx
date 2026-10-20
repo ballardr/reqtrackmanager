@@ -2,7 +2,7 @@
  * Module: modules/context_strategy/OpenQuestionRegisterReportView
  *
  * The on-screen view of report R4 (Open Question register), registered as
- * `TierAModuleDefinition.reportViews.r4` (Module 1 Phase 13). The generic
+ * `TierAModuleDefinition.reportViews.r4`. The generic
  * tables list overdue and unowned questions separately from the register, so
  * a reader has to cross-reference; this view shows one ageing table with
  * overdue and unowned rows highlighted in place, then the by-priority and
@@ -15,6 +15,7 @@ import { ReportNothingToReport, ReportSectionTable, ReportSummary } from "../../
 import type { ReportViewProps } from "../types";
 import type { OpenQuestionRegisterData } from "./reportTypes";
 import { OPEN_QUESTION_PRIORITY_LABEL, OPEN_QUESTION_STATUS_LABEL, OPEN_QUESTION_STATUS_TONE } from "./types";
+import { Badge } from "../../components/Badge";
 
 /** Sections replaced by the ageing table (the register and the two gap lists it highlights). */
 const REPLACED_SECTIONS = new Set(["open", "overdue", "unowned"]);
@@ -40,6 +41,7 @@ export function OpenQuestionRegisterReportView({ result, scope, values, figureAc
             <table>
               <thead>
                 <tr>
+                  <th scope="col">Code</th>
                   <th scope="col">Question</th>
                   {showProject && <th scope="col">Project</th>}
                   <th scope="col">Priority</th>
@@ -52,21 +54,22 @@ export function OpenQuestionRegisterReportView({ result, scope, values, figureAc
               <tbody>
                 {items.map((item) => (
                   <tr key={item.id} data-overdue={item.is_overdue || undefined}>
+                    <td className="text-muted">{item.code}</td>
                     <td>
                       <Link to={`/projects/${item.project_id}/modules/context_strategy/open-questions/${item.id}`}>{item.question}</Link>
                     </td>
                     {showProject && <td>{item.project_name}</td>}
                     <td>{OPEN_QUESTION_PRIORITY_LABEL[item.priority]}</td>
                     <td>
-                      <span className={`badge badge--${OPEN_QUESTION_STATUS_TONE[item.status]}`}>{OPEN_QUESTION_STATUS_LABEL[item.status]}</span>
+                      <Badge tone={OPEN_QUESTION_STATUS_TONE[item.status]}>{OPEN_QUESTION_STATUS_LABEL[item.status]}</Badge>
                     </td>
-                    <td>{item.owner ?? <span className="badge badge--warning">Unowned</span>}</td>
+                    <td>{item.owner ?? <Badge tone="warning">Unowned</Badge>}</td>
                     <td>
                       {item.due_date ?? "–"}
                       {item.is_overdue && (
-                        <span className="badge badge--danger" style={{ marginLeft: "0.5rem" }}>
+                        <Badge tone="danger" className="badge-after">
                           Overdue
-                        </span>
+                        </Badge>
                       )}
                     </td>
                     <td>{item.days_open}</td>

@@ -7,8 +7,7 @@ import { API_BASE_URL, setUpOrg } from "../stakeholders/helpers";
 installCleanupHook();
 
 /**
- * Job to be done: users and groups on parity, Phase 4 (docs/plans/
- * users-and-groups-parity-plan.md) — a Pain Point, a Guiding Principle and an
+ * Job to be done: users and groups on parity — a Pain Point, a Guiding Principle and an
  * Open Question can each be owned by an organisation group or a project group,
  * the Open Question register names a group owner with its kind, and deleting a
  * group that still owns them lets the admin hand them to someone else.
@@ -48,12 +47,14 @@ test.describe("Context & Strategy: groups as owners", () => {
     // --- Assign the org group to the Pain Point and the project group to the Open Question.
     await page.goto(`/projects/${project.id}/modules/context_strategy/pain-points/${painPoint.id}`);
     await expect(page.getByRole("heading", { name: `Reports arrive late ${suffix}` })).toBeVisible();
+    await page.getByRole("button", { name: /^(Assign|Change): Pain Point owner$/ }).click();
     await page.getByRole("combobox", { name: "Pain Point owner" }).fill("Strategy Board");
     await page.getByRole("option", { name: new RegExp(teamName) }).click();
     await expect(page.getByText("Owner updated.")).toBeVisible();
 
     await page.goto(`/projects/${project.id}/modules/context_strategy/open-questions/${question.id}`);
     await expect(page.getByRole("heading", { name: `One vendor ${suffix}?` })).toBeVisible();
+    await page.getByRole("button", { name: /^(Assign|Change): Open Question owner$/ }).click();
     await page.getByRole("combobox", { name: "Open Question owner" }).fill("Field Squad");
     await page.getByRole("option", { name: new RegExp(squadName) }).click();
     await expect(page.getByText("Owner updated.")).toBeVisible();

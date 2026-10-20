@@ -1,7 +1,7 @@
 /**
  * Module: modules/stakeholders/StakeholderGroupsField
  *
- * A Stakeholder's groups on its detail page (Phase 3c): the group names as
+ * A Stakeholder's groups on its detail page: the group names as
  * badges (with their full path on hover) and a `TreeSelect` to change them,
  * applied with an explicit Save so a multi-group change lands in one request
  * (and an `exclusive_children` conflict rejects the whole set, not half of it).
@@ -12,11 +12,13 @@
  */
 import { useState } from "react";
 
+import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { TreeSelect } from "../../components/TreeSelect";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { RecordFieldGroup } from "../../components/RecordDetailParts";
 import { buildGroupTree, groupPath, groupSelectNodes } from "./groupTree";
 import type { StakeholderGroup, StakeholderGroupRef } from "./types";
+import { Badge } from "../../components/Badge";
 
 export function StakeholderGroupsField({
   current,
@@ -49,13 +51,18 @@ export function StakeholderGroupsField({
   }
 
   return (
-    <RecordFieldGroup label="Groups">
+    <RecordFieldGroup helpNotNeeded label="Groups">
       {current.length === 0 ? (
         <span className="text-muted">Not in any group.</span>
       ) : (
         <span className="row" style={{ gap: "0.35rem" }}>
           {current.map((g) => (
-            <span key={g.id} className="badge" title={groupPath(groups, g.id)}>{g.name}</span>
+            <Badge key={g.id} title={groupPath(groups, g.id)}>
+              {g.name}{" "}
+              <span className="text-muted">
+                <ScopedRecordCode record={g} />
+              </span>
+            </Badge>
           ))}
         </span>
       )}

@@ -11,11 +11,10 @@ import { withToast } from "./testing/storybook-helpers";
 const FIXTURE_MODULE_KEY = "fake_tier_a_fixture_module";
 
 /**
- * A minimal Tier A module page (compliance-module-plan.md Phase 3) —
+ * A minimal Tier A module page —
  * exists only to prove the mechanism, the same way `backend/tests/
  * test_module_registry.py`'s `fake_module` proves the backend registry
- * without a real module existing yet (none does until Phase 12 registers
- * Compliance's own frontend here). Deliberately calls the real `useToast()`
+ * without a real module existing yet. Deliberately calls the real `useToast()`
  * — the whole point of Tier A is that an installed module's route
  * components are compiled directly into this bundle and can use every real
  * shared component/context exactly like a first-party page, not a

@@ -3,10 +3,12 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { page } from "vitest/browser";
 
 import { api } from "../api/client";
-import type { Organization, Project, ProjectListItem, ServerSettings, SystemVersion } from "../api/types";
+import type { ClientConfig, ModuleNavEntry, Organization, Project, ProjectListItem, ServerSettings, SystemVersion } from "../api/types";
 import { ThemeProvider } from "../context/ThemeContext";
 import { buildProject, buildUser, withAuth, withRouter } from "../testing/storybook-helpers";
 import { Layout } from "./Layout";
+
+const DEFAULT_CLIENT_CONFIG: ClientConfig = { help_enabled: true, help_url: "https://docs.example.com/" };
 
 const BACKEND_VERSION: SystemVersion = { version: "1.4.0", git_sha: "abc1234", build_date: "2026-08-15T09:00:00Z" };
 
@@ -27,6 +29,7 @@ const ORG: Organization = {
   default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
   disabled_at: null, accent_color_hex: null, header_title: null,
   email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
+  code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto" }, enforce_code_everywhere: false,
   force_require_change_request_for_approved_links: false,
   allow_ai_approvals: false,
 };
@@ -38,7 +41,7 @@ const PROJECT: Project = buildProject({ id: "project-1", organization_id: "org-1
  * prefix — Layout composes several providers each with their own fetch, so
  * a single path-matching mock is far more maintainable than one spy per
  * story. */
-function mockLayoutApis() {
+function mockLayoutApis(clientConfig: ClientConfig = DEFAULT_CLIENT_CONFIG, enabledModules: ModuleNavEntry[] = []) {
   spyOn(api, "get").mockImplementation(async (path: string): Promise<unknown> => {
     if (path === "/api/v1/system/branding") return SERVER_SETTINGS;
     if (path === "/api/v1/orgs") return [ORG];
@@ -47,15 +50,15 @@ function mockLayoutApis() {
     if (path.startsWith("/api/v1/projects?")) return [] as ProjectListItem[];
     if (path === "/api/v1/notifications") return [];
     if (path === "/api/v1/system/version") return BACKEND_VERSION;
-    // `useProjectEnabledModules` (module system Phase 3) — Layout's nav
+    if (path === "/api/v1/system/client-config") return clientConfig;
+    // `useProjectEnabledModules` — Layout's nav
     // rail calls this whenever a project route is active, independently of
     // whether any module is actually registered; found as a real,
     // pre-existing gap (an unhandled promise rejection during the full
-    // Storybook suite) while verifying Phase 13's own changes here — fixed
+    // Storybook suite) while verifying changes here — fixed
     // in passing rather than left, per this repo's "fix, don't defer" rule.
-    if (path.endsWith("/enabled-modules")) return [];
-    // Compliance's own `globalNavItems` contribution (compliance-module-
-    // plan.md Phase 18, `ComplianceGlobalNavLink.tsx`) fetches this
+    if (path.endsWith("/enabled-modules")) return enabledModules;
+    // Compliance's own `globalNavItems` contribution (`ComplianceGlobalNavLink.tsx`) fetches this
     // unconditionally whenever a user is logged in, via `Layout.tsx`'s
     // generic module-nav-item mechanism — not something Layout.tsx itself
     // knows or cares about, but this mock intercepts every `api.get` call
@@ -101,8 +104,7 @@ export const LoggedInNoProject: Story = {
     await expect(canvas.getByRole("navigation")).toBeInTheDocument();
     await expect(canvas.queryByText("Project")).not.toBeInTheDocument();
     await expect(canvas.queryByText("Administration")).not.toBeInTheDocument();
-    // The only path to org administration for a non-server-admin (2026-08
-    // UX audit finding: /orgs previously had no rail entry at all).
+    // The only path to org administration for a non-server-admin.
     await expect(canvas.getByRole("link", { name: "My organisations" })).toBeInTheDocument();
   },
 };
@@ -131,9 +133,7 @@ export const ServerAdmin: Story = {
   },
 };
 
-/** The nav rail's build-identity footer (2026-08 UX audit follow-up: "a
- * way to see the version and date of the frontend and backend in the
- * UI") — the frontend's own build constants (unset in a Storybook build,
+/** The nav rail's build-identity footer — the frontend's own build constants (unset in a Storybook build,
  * so `version.ts`'s documented "dev"/"unknown" fallback applies) plus the
  * backend's, fetched from `GET /api/v1/system/version` and rendered once
  * it resolves. Hidden entirely when the rail is collapsed to icons-only,
@@ -149,6 +149,34 @@ export const ShowsVersionFooter: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.getByText("App vdev")).toBeInTheDocument();
     await expect(canvas.getByText("API v1.4.0")).toBeInTheDocument();
+  },
+};
+
+/** The header Help icon is an external link to the operator-configured URL
+ * (`HELP_URL`), opening in a new tab. */
+export const HelpLinkOpensConfiguredUrl: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Alex Morgan", is_server_admin: false })), withRouter("/projects")],
+  beforeEach: () => {
+    mockLayoutApis();
+  },
+  play: async ({ canvasElement }) => {
+    const link = await within(canvasElement).findByRole("link", { name: "Help (opens in a new tab)" });
+    await expect(link).toHaveAttribute("href", "https://docs.example.com/");
+    await expect(link).toHaveAttribute("target", "_blank");
+    await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  },
+};
+
+/** `HELP_ENABLED=false` removes the Help icon entirely. */
+export const HelpLinkHiddenWhenDisabled: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Alex Morgan", is_server_admin: false })), withRouter("/projects")],
+  beforeEach: () => {
+    mockLayoutApis({ help_enabled: false, help_url: "https://docs.example.com/" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByText("API v1.4.0");
+    await expect(canvas.queryByRole("link", { name: /^Help/ })).not.toBeInTheDocument();
   },
 };
 
@@ -215,6 +243,136 @@ export const NarrowViewportShowsLinkTooltips: Story = {
     await waitFor(() => expect(bubble).toHaveStyle({ opacity: "1" }));
   },
 };
+
+/** A module with five nav entries, one per sub-component, as Context & Strategy declares them. */
+function subComponentModule(disabled: string[]): ModuleNavEntry {
+  const entry = (nav_label: string, path: string, sub_component: string) => ({
+    nav_label, nav_path: `/projects/${PROJECT.id}/modules/demo/${path}`, nav_icon: "puzzle", sub_component,
+  });
+  return {
+    module_key: "demo", name: "Demo module", disabled_sub_components: disabled,
+    frontend_manifest: {
+      tier: "installed", nav_label: "Alpha", nav_path: `/projects/${PROJECT.id}/modules/demo/alpha`, nav_icon: "puzzle",
+      nav_sub_component: "alpha", frame_url: null, remote_entry_url: null, exposed_module: null,
+      additional_nav_entries: [entry("Beta", "beta", "beta"), entry("Gamma", "gamma", "gamma")],
+    },
+  };
+}
+
+/** An entry whose sub-component is off for the project is not in the rail, and History and Project admin
+ * come last, after the module's entries. */
+export const HidesNavEntriesOfDisabledSubComponents: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Alex Morgan" })), withRouter(`/projects/${PROJECT.id}/requirements`)],
+  beforeEach: () => {
+    mockLayoutApis(DEFAULT_CLIENT_CONFIG, [subComponentModule(["beta"])]);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("link", { name: "Alpha" });
+    await expect(canvas.getByRole("link", { name: "Gamma" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("link", { name: "Beta" })).not.toBeInTheDocument();
+    const names = canvas.getAllByRole("link").map((link) => link.getAttribute("aria-label") ?? link.textContent);
+    const order = ["Requirements due for review", "Alpha", "Gamma", "Project history", "Project admin"].map((name) => names.indexOf(name));
+    await expect(order.every((index) => index >= 0)).toBe(true);
+    await expect(order).toEqual([...order].sort((a, b) => a - b));
+  },
+};
+
+/** The primary entry hides by the same rule. */
+export const HidesPrimaryNavEntryOfDisabledSubComponent: Story = {
+  ...HidesNavEntriesOfDisabledSubComponents,
+  beforeEach: () => {
+    mockLayoutApis(DEFAULT_CLIENT_CONFIG, [subComponentModule(["alpha"])]);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("link", { name: "Beta" });
+    await expect(canvas.queryByRole("link", { name: "Alpha" })).not.toBeInTheDocument();
+  },
+};
+
+/** One page serving several sub-components (`nav_sub_components_any`), as the People page does. */
+function anyOfModule(disabled: string[]): ModuleNavEntry {
+  return {
+    module_key: "demo", name: "Demo module", disabled_sub_components: disabled,
+    frontend_manifest: {
+      tier: "installed", nav_label: "People", nav_path: `/projects/${PROJECT.id}/modules/demo/people`, nav_icon: "users",
+      nav_sub_components_any: ["alpha", "beta", "gamma"], frame_url: null, remote_entry_url: null, exposed_module: null,
+      additional_nav_entries: [],
+    },
+  };
+}
+
+/** A combined entry stays while any one of the sub-components it serves is on. */
+export const KeepsCombinedNavEntryWhileAnySubComponentIsOn: Story = {
+  ...HidesNavEntriesOfDisabledSubComponents,
+  beforeEach: () => {
+    mockLayoutApis(DEFAULT_CLIENT_CONFIG, [anyOfModule(["alpha", "beta"])]);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("link", { name: "People" })).toBeInTheDocument();
+  },
+};
+
+/** ...and goes only when every one of them is off. */
+export const HidesCombinedNavEntryWhenAllSubComponentsAreOff: Story = {
+  ...HidesNavEntriesOfDisabledSubComponents,
+  beforeEach: () => {
+    mockLayoutApis(DEFAULT_CLIENT_CONFIG, [anyOfModule(["alpha", "beta", "gamma"])]);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("link", { name: "Project history" });
+    await expect(canvas.queryByRole("link", { name: "People" })).not.toBeInTheDocument();
+  },
+};
+
+/** 40 modules' worth of entries: the item list scrolls inside the rail, below the collapse toggle, so the
+ * scrollbar and the toggle never overlap (the collapsed rail is covered by the Playwright spec). */
+function longRailModules(): ModuleNavEntry[] {
+  return Array.from({ length: 40 }, (_, i) => ({
+    module_key: `m${i}`, name: `Module ${i}`,
+    frontend_manifest: {
+      tier: "installed" as const, nav_label: `Module entry ${i}`, nav_path: `/projects/${PROJECT.id}/modules/m${i}/x`,
+      nav_icon: "puzzle", frame_url: null, remote_entry_url: null, exposed_module: null,
+    },
+  }));
+}
+
+export const LongRailScrollbarClearsToggle: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Alex Morgan" })), withRouter(`/projects/${PROJECT.id}/requirements`)],
+  beforeEach: () => {
+    mockLayoutApis(DEFAULT_CLIENT_CONFIG, longRailModules());
+  },
+  play: async ({ canvasElement }) => {
+    await page.viewport(1280, 700);
+    const canvas = within(canvasElement);
+    await canvas.findByRole("link", { name: "Module entry 39" });
+    const scroll = canvasElement.querySelector<HTMLElement>(".nav-rail-scroll")!;
+    await expect(scroll.scrollHeight).toBeGreaterThan(scroll.clientHeight);
+    const rail = canvasElement.querySelector<HTMLElement>(".nav-rail")!;
+    await expect(getComputedStyle(rail).overflowY).not.toBe("auto");
+    const toggle = canvas.getByRole("button", { name: "Collapse navigation" });
+    // The list starts at the top of the rail, level with the toggle, and leaves the strip under the toggle free
+    // so neither a link nor the scrollbar runs under it.
+    const t = toggle.getBoundingClientRect();
+    await expect(scroll.getBoundingClientRect().top).toBeLessThanOrEqual(canvasElement.querySelector(".nav-rail")!.getBoundingClientRect().top + 1);
+    await expect(scroll.getBoundingClientRect().right).toBeLessThanOrEqual(t.left + 1);
+    // The first item (a section label or a link) is level with the toggle, not below it.
+    const first = (scroll.firstElementChild as HTMLElement).getBoundingClientRect();
+    await expect(first.top).toBeGreaterThanOrEqual(t.top - 1);
+    await expect(first.top).toBeLessThanOrEqual(t.bottom);
+    for (const link of canvasElement.querySelectorAll<HTMLElement>(".nav-rail-scroll a")) {
+      const r = link.getBoundingClientRect();
+      const overlaps = r.left < t.right && r.right > t.left && r.top < t.bottom && r.bottom > t.top;
+      await expect(overlaps).toBe(false);
+    }
+  },
+};
+
+export const LongRailLight: Story = { ...LongRailScrollbarClearsToggle, globals: { theme: "light" } };
+export const LongRailDark: Story = { ...LongRailScrollbarClearsToggle, globals: { theme: "dark" } };
 
 export const LightTheme: Story = { ...LoggedInWithProjectRoute, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...LoggedInWithProjectRoute, globals: { theme: "dark" } };

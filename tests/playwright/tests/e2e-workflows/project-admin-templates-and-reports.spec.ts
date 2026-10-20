@@ -25,7 +25,7 @@ test.describe("org report templates and project report setup", () => {
 
     // Scoped to the Report templates section itself, not the whole page —
     // other CollapsibleSections within the same "Templates & reports"
-    // resource-menu group (2026-08 UX audit's Org Admin restructure) can be
+    // resource-menu group can be
     // left expanded/collapsed server-side by an earlier spec sharing this
     // same Gamma admin persona, and "Report Defaults" — the other section
     // in this group — has its own "Name"-adjacent fields too. A page-wide,
@@ -41,21 +41,20 @@ test.describe("org report templates and project report setup", () => {
 
     await test.step("create a report template", async () => {
       // Report templates moved into the "Templates & reports" resource-menu
-      // group (2026-08 UX audit's Org Admin restructure) — a real
+      // group — a real
       // navigation, so it must be selected before the section is reachable
       // at all.
       await selectOrgAdminGroup(page, "Templates & reports");
       await ensureExpanded(page, "Report templates");
       // The create/edit form itself opens in a `Modal`, not inline within
-      // the section (2026-08 UX audit roadmap item 526, "Modal conversion
-      // sweep") — portalled to `document.body`, so it's queried from
+      // the section — portalled to `document.body`, so it's queried from
       // `page`, not scoped to `reportTemplatesSection`.
       await reportTemplatesSection.getByRole("button", { name: "New template" }).click();
       const createDialog = page.getByRole("dialog", { name: "New template" });
-      await createDialog.getByPlaceholder("Name", { exact: true }).fill(templateName);
+      await createDialog.getByLabel("Name", { exact: true }).fill(templateName);
       await createDialog.getByLabel("Include cover page").check();
       await createDialog.getByLabel("Include organisation logo").check();
-      await createDialog.getByPlaceholder("Footer text").fill("Confidential — E2E Gamma Labs");
+      await createDialog.getByLabel("Footer text").fill("Confidential — E2E Gamma Labs");
       await createDialog.getByLabel("Chapter per component by default").check();
       await createDialog.getByRole("button", { name: "Create", exact: true }).click();
       await expect(createDialog).not.toBeVisible();
@@ -67,7 +66,7 @@ test.describe("org report templates and project report setup", () => {
       const row = reportTemplatesSection.locator(".row", { hasText: templateName }).first();
       await row.getByRole("button", { name: "Edit" }).click();
       const editDialog = page.getByRole("dialog", { name: "Edit template" });
-      await editDialog.getByPlaceholder("Name", { exact: true }).fill(revisedName);
+      await editDialog.getByLabel("Name", { exact: true }).fill(revisedName);
       await editDialog.getByRole("button", { name: "Save", exact: true }).click();
       await expect(editDialog).not.toBeVisible();
       await expect(reportTemplatesSection.getByText(revisedName)).toBeVisible();

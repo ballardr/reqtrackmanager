@@ -40,7 +40,7 @@ def test_own_org_and_foreign_personas(client, admin_token):
 
     found = _summaries(project["id"], "persona", [mine["id"], theirs["id"], shared["id"]])
 
-    assert {s.label for s in found.values()} == {"Mine", "Shared"}
+    assert {s.label for s in found.values()} == {"PER-001 Mine", "PER-001 Shared"}
     org_summary = found[uuid.UUID(shared["id"])]
     assert org_summary.project_id is None and org_summary.organization_id == uuid.UUID(org["id"])
     assert org_summary.status == "draft"
@@ -76,7 +76,7 @@ def test_stakeholders_and_needs(client, admin_token):
 
     assert set(stakeholders) == {uuid.UUID(own["id"]), uuid.UUID(org_owned["id"])}
     assert set(needs) == {uuid.UUID(need["id"])}
-    assert next(iter(needs.values())).label == need["name"]
+    assert next(iter(needs.values())).label == f"{need['unique_code']} {need['name']}"
 
 
 def test_link_graph_shows_a_need_linked_to_a_requirement(client, admin_token):
@@ -100,4 +100,4 @@ def test_link_graph_shows_a_need_linked_to_a_requirement(client, admin_token):
     ).json()
 
     node = next(n for n in graph["nodes"] if n["type"] == "stakeholder_need")
-    assert node["label"] == need["name"] and node["type_label"] == "Stakeholder need"
+    assert node["label"] == f"{need['unique_code']} {need['name']}" and node["type_label"] == "Stakeholder need"

@@ -1,8 +1,7 @@
 """
 Module: modules.risk_management.reviews
 
-Periodic risk reviews (docs/plans/module-03-risk-management-plan.md Phase 4,
-overview §11.6).
+Periodic risk reviews (overview §11.6).
 
 Responsibilities:
 - `record_review`: validate and store one review, snapshot the ratings it was

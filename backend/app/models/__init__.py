@@ -22,9 +22,10 @@ from app.models.custom_role import (
     GroupCustomRoleGrant,
     UserCustomRoleGrant,
 )
+from app.models.definition_suppression import ProjectDefinitionSuppression
 from app.models.engagement import CommentReaction, Subscription
 from app.models.file import CommentFile, FileAsset, RequirementActionFile, RequirementFile
-from app.models.module import OrganizationModuleEnablement, OrganizationModuleEntitlement
+from app.models.module import OrganizationModuleEnablement, OrganizationModuleEntitlement, ServerModuleDefault
 from app.models.module_role import GroupModuleRole, ModuleRoleDefinitionRow, UserModuleRole
 from app.models.notification import Notification, NotificationPreference
 from app.models.organization import (
@@ -58,7 +59,6 @@ from app.models.requirement import (
     Baseline,
     BaselineItem,
     Requirement,
-    RequirementKeyword,
     RequirementReview,
     RequirementVersion,
 )
@@ -70,12 +70,15 @@ from app.models.requirement_link_type import (
     RequirementLinkTypeDefinition,
 )
 from app.models.scoring import ScoringBand, ScoringCellRating, ScoringLevel, ScoringModelDefault
-from app.models.sequence import ProjectSequenceCounter
+from app.models.sequence import OrganizationSequenceCounter, ProjectSequenceCounter
 from app.models.server_role import UserServerRole
+from app.models.tag import ArtefactTag, Tag
 from app.models.user import User
 
 __all__ = [
     "ActionTypeDefinition",
+    "ArtefactTag",
+    "Tag",
     "AuditEvent",
     "LoginEvent",
     "ChangeRequest",
@@ -123,14 +126,15 @@ __all__ = [
     "Baseline",
     "BaselineItem",
     "Requirement",
-    "RequirementKeyword",
     "ArtefactTypeLinkRule",
     "ArtefactTypeLinkRuleEntry",
+    "ProjectDefinitionSuppression",
     "ProjectLinkTypeVisibility",
     "RequirementLinkTypeDefinition",
     "RequirementAction",
     "RequirementReview",
     "RequirementVersion",
+    "OrganizationSequenceCounter",
     "ProjectSequenceCounter",
     "ScoringBand",
     "ScoringCellRating",
@@ -139,6 +143,7 @@ __all__ = [
     "UserServerRole",
     "OrganizationModuleEntitlement",
     "OrganizationModuleEnablement",
+    "ServerModuleDefault",
     "GroupModuleRole",
     "ModuleRoleDefinitionRow",
     "UserModuleRole",

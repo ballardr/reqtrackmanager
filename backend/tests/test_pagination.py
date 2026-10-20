@@ -42,8 +42,7 @@ def test_requirements_list_paginates_and_reports_total(client, admin_token, org_
 
 
 def test_requirements_list_reports_unfiltered_count_alongside_filtered_total(client, admin_token, org_id):
-    """`X-Total-Unfiltered-Count` (2026-08 UX audit roadmap, persistent
-    "showing X of Y" result count on `RequirementsPage`/`ResultCount`) must
+    """`X-Total-Unfiltered-Count` must
     stay fixed at the mandatory project + default archived-visibility scope
     regardless of `search`/`status` filters, while the existing
     `X-Total-Count` continues to reflect them — this is what lets the
@@ -175,7 +174,7 @@ def test_change_requests_list_paginates_and_reports_total(client, admin_token, o
 
 def test_project_changes_paginates_and_reports_total(client, admin_token, org_id):
     """The project changes-over-time timeline (C-A-10) — one of the audit's
-    two flagged unbounded lists (docs/ux-audit-2026-08.md, "Scale: two
+    two flagged unbounded lists ("Scale: two
     unbounded lists"). Each created requirement writes a "created"
     RequirementVersion entry (services/changes.py), so five requirements
     guarantee at least five timeline entries to page through."""
@@ -213,7 +212,7 @@ def test_project_changes_paginates_and_reports_total(client, admin_token, org_id
 
 
 def test_projects_list_favorite_only_filters_to_favourited_projects(client, admin_token, org_id):
-    """Powers `FavouritesPage` (docs/ux-audit-2026-08.md's "unify the three
+    """Powers `FavouritesPage` ("unify the three
     aggregate list pages" item) — a `favorite_only` filter on the same
     paginated endpoint `ProjectListPage` already uses, rather than a
     separate one, so favouriting gets the same search/pagination for free."""
@@ -231,7 +230,7 @@ def test_my_reviews_due_paginates_reports_total_and_includes_project_name(client
     """The cross-project "my reviews due" listing (C-R-09) — unlike its
     project-scoped sibling, this spans every project the reviewer has a
     role on, so each row needs its own `project_name` to be usable at all
-    (docs/ux-audit-2026-08.md's "unify the three aggregate list pages")."""
+    ("unify the three aggregate list pages")."""
     reviewer_id = create_org_user(client, admin_token, org_id, "paged_reviewer@example.com", role="member")
     reviewer_token = login(client, "paged_reviewer@example.com", "Password123!")
 
@@ -282,8 +281,7 @@ def test_system_users_paginates_and_reports_total(client, admin_token, org_id):
 
 
 def test_org_users_search_and_paginate(client, admin_token, org_id):
-    """Org Admin's Users directory (2026-08 UX audit, sixth pass:
-    "Directories at scale") — a plain member/project-creator can call this
+    """Org Admin's Users directory — a plain member/project-creator can call this
     unfiltered (existing behaviour), and `search`/`limit`/`offset` stay
     available to them too, unlike the access-review filters."""
     create_org_user(client, admin_token, org_id, "priya.patel@example.com")
@@ -332,7 +330,7 @@ def test_org_groups_search_and_paginate(client, admin_token, org_id):
     by_search = client.get(f"/api/v1/orgs/{org_id}/groups?search=finance", headers=auth_headers(admin_token))
     assert [g["name"] for g in by_search.json()] == ["Finance Reviewers"]
 
-    # `order` (Phase B, follow-up UX batch, 2026-08-31) — `DirectoryTable`'s
+    # `order` — `DirectoryTable`'s
     # Name column sort refetches with this rather than sorting only the
     # currently-loaded page, since this list already pages via limit/offset
     # (style guide "Pattern: sortable column header").
@@ -358,8 +356,7 @@ def test_project_groups_search_and_paginate(client, admin_token, org_id):
 
     unpaginated = client.get(f"/api/v1/projects/{project['id']}/groups", headers=auth_headers(admin_token))
     total = len(unpaginated.json())
-    # No groups are auto-created on project creation any more (follow-up UX
-    # batch Phase C, 2026-08-31 removed the four default groups) — only the
+    # No groups are auto-created on project creation any more (2026-08-31 removed the four default groups) — only the
     # 5 created just above by this test exist.
     assert total >= 5
     assert int(unpaginated.headers["x-total-count"]) == total
@@ -373,7 +370,7 @@ def test_project_groups_search_and_paginate(client, admin_token, org_id):
     )
     assert [g["name"] for g in by_search.json()] == ["Safety Reviewers"]
 
-    # `order` (Phase B, follow-up UX batch, 2026-08-31) — same reasoning as
+    # `order` — same reasoning as
     # `test_org_groups_search_and_paginate`'s own `order` assertions.
     ascending = client.get(f"/api/v1/projects/{project['id']}/groups?order=asc", headers=auth_headers(admin_token)).json()
     descending = client.get(f"/api/v1/projects/{project['id']}/groups?order=desc", headers=auth_headers(admin_token)).json()

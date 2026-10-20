@@ -9,14 +9,14 @@ import { LinkTraceMap } from "./LinkTraceMap";
 import { wrapLabel } from "./linkTrace";
 
 /**
- * The trace map (docs/plans/platform-enhancements-2026-10-plan.md Phase 7): a layered, read-only SVG
+ * The trace map: a layered, read-only SVG
  * (upstream left, downstream right, related below) that scrolls and grows as records are opened.
  */
 const meta: Meta<typeof LinkTraceMap> = {
   title: "Components/LinkTraceMap",
   component: LinkTraceMap,
   decorators: [withRouter("/")],
-  // The trace views are part of the plan's a11y acceptance: violations fail here, not just show in the UI.
+  // The trace views are part of the a11y acceptance: violations fail here, not just show in the UI.
   parameters: { a11y: { test: "error" } },
   args: { projectId: LINKS_PROJECT_ID, artefactType: "requirement", artefactId: FOCUS_ID },
 };

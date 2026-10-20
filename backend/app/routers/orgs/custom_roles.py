@@ -1,15 +1,14 @@
 """
 Module: routers.orgs.custom_roles
 
-Fine-Grained Access Control (`docs/plans/core-fine-grained-access-control-
-plan.md` Phase 3) — the permission vocabulary listing, `CustomRoleDefinition`
+Fine-Grained Access Control — the permission vocabulary listing, `CustomRoleDefinition`
 CRUD, and its user/group grant endpoints.
 
 `CustomRoleDefinition` create/update/delete stays `ORG_ADMIN`-only
 (`require_org_admin_or_server_admin`) and is never delegable via any
-permission atom (Phase 0 Q5: no "manage custom roles" atom exists) — only
+permission atom (no "manage custom roles" atom exists) — only
 the *grant* endpoints (assigning an already-defined role to a user/group)
-additionally accept a `grant_roles` holder (Phase 0 Q6), via
+additionally accept a `grant_roles` holder, via
 `app.services.rbac.require_org_admin_or_grant_roles`.
 
 Split out as its own router in the `orgs` package, following the same
@@ -57,8 +56,8 @@ router = APIRouter(tags=["organizations-custom-roles"])
 # `list_org_module_roles` already uses for the analogous "what role options
 # exist" listing (`routers.orgs.membership`), since a `grant_roles` holder
 # needs to see this to know what's grantable, and it carries no more
-# sensitivity than the existing fixed/module role option lists do (Phase 3
-# task's own judgment call — the alternative, `require_org_admin_or_server_
+# sensitivity than the existing fixed/module role option lists do (a
+# judgment call — the alternative, `require_org_admin_or_server_
 # admin`, would block a non-admin `grant_roles` holder from seeing what
 # they can actually grant).
 _VIEW_ROLES = (OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR, OrgRole.MEMBER)
@@ -96,7 +95,7 @@ def _custom_role_definition_out(role: CustomRoleDefinition, permissions: list[st
 
 def _get_org_custom_role(db: Session, organization_id: UUID, role_id: UUID) -> CustomRoleDefinition:
     """Loads a `CustomRoleDefinition` and 404s unless it belongs to
-    `organization_id` — tenant isolation (Design Principle 2): a role from
+    `organization_id` — tenant isolation: a role from
     another organisation must never be visible or actionable through this
     org's own URL, so a cross-org id gets the same 404 a nonexistent id
     would, never a 403 that would confirm the role exists elsewhere."""
@@ -132,14 +131,14 @@ def _validate_grant_target(
     """Enforces `CustomRoleGrantTarget.project_id`/`scope_entity_id`'s own
     documented constraints against the actual role being granted: exactly
     one of `project_id` (iff `role.scope == "project"`) or `scope_entity_id`
-    (iff `role.scope` is a registered entity scope, Phase 5) may be set,
+    (iff `role.scope` is a registered entity scope) may be set,
     matching whichever scope the role actually declares — never left to the
     schema layer alone, since the schema has no access to the role's own
     `scope` to validate against.
 
     A `scope_entity_id` is additionally checked to resolve (via the
     registered scope's own `resolve_organization_id`) to this exact
-    `organization_id` — tenant isolation (Design Principle 2), the same
+    `organization_id` — tenant isolation, the same
     check already implicit on the existing module-role entity-scope grant
     path (`require_module_role`'s own entity branch)."""
     if role.scope == "project":
@@ -176,7 +175,7 @@ def list_org_permissions(
 ):
     """Lists this organisation's full, currently-valid permission-atom
     vocabulary (`app.services.permissions.get_all_permissions`) — backs the
-    Role Management UI's permission-atom picker (Phase 3) so the frontend
+    Role Management UI's permission-atom picker so the frontend
     never hardcodes the vocabulary itself, mirroring `GET /orgs/{id}/
     module-roles`'s identical "derived, not hand-maintained" role."""
     return [
@@ -207,8 +206,7 @@ def list_org_entity_scopes(
     current_user: User = Depends(require_org_role(*_VIEW_ROLES)),
     db: Session = Depends(get_db),
 ):
-    """Lists every registered module-owned entity scope (Fine-Grained
-    Access Control (core) plan Phase 5, `app.modules.registry.
+    """Lists every registered module-owned entity scope (`app.modules.registry.
     get_all_registered_entity_scopes()`), with this organisation's current
     entities of each kind — backs the Role Management UI's scope/entity
     pickers so the frontend never hardcodes a specific module's scope kind
@@ -269,8 +267,7 @@ def create_custom_role(
     current_user: User = Depends(require_org_admin_or_server_admin),
     db: Session = Depends(get_db),
 ):
-    """Defines a new organisation-scoped custom role (Phase 0 Q5:
-    `ORG_ADMIN`/server-admin only, never delegable via `grant_roles` — no
+    """Defines a new organisation-scoped custom role (`ORG_ADMIN`/server-admin only, never delegable via `grant_roles` — no
     "manage custom roles" permission atom exists or should be invented).
 
     400s on an invalid `scope` or any permission key that isn't currently
@@ -431,7 +428,7 @@ def grant_custom_role_to_user(
     db: Session = Depends(get_db),
 ):
     """Grants a custom role to a user — `ORG_ADMIN` or a `grant_roles`
-    holder (Phase 0 Q6: role *assignment*, unlike *definition* above, is
+    holder (role *assignment*, unlike *definition* above, is
     delegable). The affected user is always the `{user_id}` path
     parameter, never a body field (see `CustomRoleGrantTarget`'s
     docstring). `payload.project_id`/`payload.scope_entity_id` is required
@@ -513,7 +510,7 @@ def revoke_custom_role_from_user(
     ),
     scope_entity_id: UUID | None = Query(
         None,
-        description="Required iff the role's scope is a registered entity scope (Phase 5, e.g. 'standard') — "
+        description="Required iff the role's scope is a registered entity scope (e.g. 'standard') — "
         "the specific grant to revoke must be named explicitly, mirroring project_id above.",
     ),
     current_user: User = Depends(require_org_admin_or_grant_roles),

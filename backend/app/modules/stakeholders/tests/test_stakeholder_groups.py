@@ -1,10 +1,9 @@
-"""Tests for Stakeholder Groups (Module 2 Phase 3c, docs/plans/module-02-
-stakeholders-and-personas-plan.md Phase 0 addendum 3).
+"""Tests for Stakeholder Groups.
 
 Covers: the tree (create/rename/move, sibling names, cycle and depth guards),
 scope rules (org vs project groups and members, cross-org isolation), transitive
 membership and the list filters, `exclusive_children`, delete with child
-promotion, hidden stakeholders (Phase 3b), the free-text proposals action,
+promotion, hidden stakeholders, the free-text proposals action,
 stakeholder erasure, audit logging without personal data, RBAC, and bundle
 round-tripping.
 """
@@ -308,7 +307,7 @@ def test_deleting_an_org_group_promotes_a_projects_child_group(client, admin_tok
     assert shown["Project child"]["parent_group_id"] == top["id"] and shown["Project child"]["id"] == child["id"]
 
 
-# --- Phase 3b hidden stakeholders, erasure ---------------------------------------------------
+# --- Hidden stakeholders, erasure ---------------------------------------------------
 
 
 def test_hidden_stakeholder_is_left_out_of_a_projects_view_of_a_group(client, admin_token):

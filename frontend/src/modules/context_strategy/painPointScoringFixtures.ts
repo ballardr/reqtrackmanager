@@ -1,8 +1,7 @@
 /**
  * Module: modules/context_strategy/painPointScoringFixtures
  *
- * Storybook-only fixture builders for Pain Point scoring responses (Phase
- * 11), shaped like the backend's `PainPointScoresOut`/`PainPointScoringListOut`
+ * Storybook-only fixture builders for Pain Point scoring responses, shaped like the backend's `PainPointScoresOut`/`PainPointScoringListOut`
  * for the shared `buildScoringScheme` levels (ids `sev-*`, `freq-*`,
  * `conf-*`). Kept beside the stories rather than in the global
  * `testing/storybook-helpers` so core test helpers never import a module's

@@ -1,4 +1,7 @@
 import type { CustomFieldDefinition } from "../api/types";
+import { CheckboxField, TextAreaField, TextField } from "./FormFields";
+import { FormGrid, FormGridFull } from "./FormGrid";
+import { LabeledSelect } from "./LabeledSelect";
 
 /**
  * Renders dynamic form fields for a project's custom attribute definitions
@@ -19,55 +22,35 @@ export function CustomFieldsForm({
   if (definitions.length === 0) return null;
 
   return (
-    <div className="stack">
-      {definitions.map((def) => (
-        <label key={def.id} className="stack" style={{ gap: "0.25rem" }}>
-          {def.name}
-          {def.required && " *"}
-          {def.field_type === "short_text" && (
-            <input
-              className="input"
-              disabled={disabled}
-              value={(values[def.id] as string) ?? ""}
-              onChange={(e) => onChange(def.id, e.target.value)}
+    <FormGrid minColumn="18rem">
+      {definitions.map((def) => {
+        const label = def.required ? `${def.name} *` : def.name;
+        const value = (values[def.id] as string) ?? "";
+        if (def.field_type === "long_text") {
+          return (
+            <FormGridFull key={def.id}>
+              <TextAreaField helpNotNeeded label={label} rows={3} disabled={disabled} value={value} onChange={(next) => onChange(def.id, next)} />
+            </FormGridFull>
+          );
+        }
+        if (def.field_type === "checkbox") {
+          return (
+            <CheckboxField helpNotNeeded
+              key={def.id} label={label} disabled={disabled}
+              checked={Boolean(values[def.id])} onChange={(next) => onChange(def.id, next)}
             />
-          )}
-          {def.field_type === "long_text" && (
-            <textarea
-              className="input"
-              rows={3}
-              disabled={disabled}
-              value={(values[def.id] as string) ?? ""}
-              onChange={(e) => onChange(def.id, e.target.value)}
+          );
+        }
+        if (def.field_type === "list") {
+          return (
+            <LabeledSelect helpNotNeeded
+              key={def.id} label={label} disabled={disabled} value={value} onChange={(next) => onChange(def.id, next)}
+              options={(def.options ?? []).map((opt) => ({ value: String(opt), label: String(opt) }))}
             />
-          )}
-          {def.field_type === "checkbox" && (
-            <input
-              type="checkbox"
-              disabled={disabled}
-              checked={Boolean(values[def.id])}
-              onChange={(e) => onChange(def.id, e.target.checked)}
-            />
-          )}
-          {def.field_type === "list" && (
-            <select
-              className="input"
-              disabled={disabled}
-              value={(values[def.id] as string) ?? ""}
-              onChange={(e) => onChange(def.id, e.target.value)}
-            >
-              <option value="" disabled>
-                Select…
-              </option>
-              {(def.options ?? []).map((opt) => (
-                <option key={String(opt)} value={String(opt)}>
-                  {String(opt)}
-                </option>
-              ))}
-            </select>
-          )}
-        </label>
-      ))}
-    </div>
+          );
+        }
+        return <TextField helpNotNeeded key={def.id} label={label} disabled={disabled} value={value} onChange={(next) => onChange(def.id, next)} />;
+      })}
+    </FormGrid>
   );
 }

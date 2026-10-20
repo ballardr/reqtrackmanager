@@ -1,22 +1,22 @@
 /**
  * Module: modules/compliance/OrgComplianceOutstandingPanel
  *
- * The org-wide counterpart to `OutstandingPanel.tsx` (Phase 13's own
+ * The org-wide counterpart to `OutstandingPanel.tsx` (the
  * per-project "what remains outstanding" summary) — §22's own explicit
  * list of things a Compliance Manager must be able to identify across
  * every project at once: Non-Compliant requirements, outstanding Required
  * Actions, expired/expiring evidence, overdue compliance reviews, and
  * assessments awaiting approval. Each row is tagged with the project it
- * belongs to (every Phase 14 org-wide schema carries `project_id`/
- * `project_name` — see `types.ts`'s own Phase 14 section) and links back
+ * belongs to (every org-wide schema carries `project_id`/
+ * `project_name` — see `types.ts`'s org-wide section) and links back
  * to that project's Compliance page for further drill-down, the same
  * reuse-the-existing-page approach `OrgComplianceStandardsPanel` uses.
  *
  * Read-only by design, mirroring `OutstandingPanel`'s own posture — acting
  * on a row happens on the linked project's own Compliance page.
  *
- * Phase 36 added a "Category"/"Evidence status" filter pair (reading an
- * initial value off `?category=`/`?validity=`) so `OrgComplianceDashboard.tsx`'s
+ * A "Category"/"Evidence status" filter pair reads an
+ * initial value off `?category=`/`?validity=` so `OrgComplianceDashboard.tsx`'s
  * top-grid tiles ("Projects with outstanding actions," "...expired
  * evidence," "...evidence approaching expiry," "...overdue compliance
  * reviews," "Assessments awaiting approval") can link straight to the one
@@ -28,7 +28,7 @@
  * since that's the one section covering two distinct tile conditions
  * (expired vs. expiring soon) sharing one underlying list.
  *
- * Phase 40 adds real filtering on top of the category picker: Project,
+ * Real filtering sits on top of the category picker: Project,
  * Standard, Standard version, and (once a single standard is picked)
  * Sub-section — following `OrgComplianceStandardsPanel.tsx`'s own
  * client-side-derived-options pattern — and moves the filter panel from a
@@ -48,7 +48,7 @@
  * `api.ts::findTopLevelAncestor`'s own docstring for why "section" means
  * "top-level ancestor requirement" here.
  *
- * Phase 43 adds an "Export" trigger (`ReportExportButton`) scoped to this
+ * An "Export" trigger (`ReportExportButton`) is scoped to this
  * panel's current Project/Standard/Standard version/Sub-section filters —
  * `complianceApi.downloadOrgComplianceReport` passes them through as query
  * params, matching `_matches_requirement_filter`'s server-side "sub-section
@@ -78,6 +78,8 @@ import {
   type OrgReviewDue,
   type OutstandingRequiredAction,
 } from "./types";
+import { Badge } from "../../components/Badge";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
 
 type Category = "" | "non_compliant" | "pending" | "actions" | "evidence" | "reviews";
 type EvidenceValidityFilter = "" | Extract<ComplianceEvidenceValidityState, "expired" | "expiring_soon">;
@@ -134,11 +136,10 @@ export function OrgComplianceOutstandingPanel({ orgId }: { orgId: string }) {
   // changes, not derived from the (possibly already version-narrowed) rows
   // already on screen, so switching the version filter afterward doesn't
   // require a second fetch.
+  useResetOnChange([orgId, standardFilter], () => setRequirementsById(new Map()));
+
   useEffect(() => {
-    if (!standardFilter) {
-      setRequirementsById(new Map());
-      return;
-    }
+    if (!standardFilter) return;
     let cancelled = false;
     complianceApi
       .listStandardVersions(orgId, standardFilter)
@@ -220,7 +221,7 @@ export function OrgComplianceOutstandingPanel({ orgId }: { orgId: string }) {
 
   async function downloadReport(kind: "pdf" | "csv") {
     try {
-      // Scoped to this panel's own current filters (Phase 43) — matches
+      // Scoped to this panel's own current filters — matches
       // `OrgComplianceStandardsPanel.tsx`'s identical convention.
       // `category`/`evidenceValidity` have no report-side equivalent (the
       // exported report always covers every category) and aren't passed
@@ -333,7 +334,7 @@ export function OrgComplianceOutstandingPanel({ orgId }: { orgId: string }) {
                 {filteredEvidence.map((row) => (
                   <li key={row.id} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
                     <ProjectLink projectId={row.project_id} projectName={row.project_name} /> — {row.title}
-                    <span className="badge" style={{ marginLeft: "0.5rem" }}>{COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL[row.validity_state]}</span>
+                    <Badge className="badge-after">{COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL[row.validity_state]}</Badge>
                     {row.expiry_date && <span className="text-muted"> (expires {row.expiry_date})</span>}
                   </li>
                 ))}
@@ -352,7 +353,7 @@ export function OrgComplianceOutstandingPanel({ orgId }: { orgId: string }) {
                 {filteredReviewsDue.map((row) => (
                   <li key={`${row.project_id}-${row.review.id}`} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.3rem 0" }}>
                     <ProjectLink projectId={row.project_id} projectName={row.project_name} /> — {row.review.frequency_label} — due {row.review.next_due_date}
-                    {row.review.schedule_state && <span className="badge" style={{ marginLeft: "0.5rem" }}>{COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL[row.review.schedule_state]}</span>}
+                    {row.review.schedule_state && <Badge className="badge-after">{COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL[row.review.schedule_state]}</Badge>}
                   </li>
                 ))}
               </ul>

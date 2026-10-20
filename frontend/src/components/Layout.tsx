@@ -9,6 +9,7 @@ import { useAuth } from "../context/AuthContext";
 import { BrandingProvider, useBranding, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
 import { FavouritesProvider, useFavourites } from "../context/FavouritesContext";
 import { TerminologyProvider, useStrings } from "../context/TerminologyContext";
+import { useClientConfig } from "../hooks/useClientConfig";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
 import { useUiPreference } from "../hooks/useUiPreference";
@@ -16,6 +17,7 @@ import { resolveNavIcon } from "../modules/navIcons";
 import type { ProjectNavItem } from "../navigation/projectNav";
 import { installedModules } from "../modules/registry";
 import { APP_VERSION, BUILD_DATE, GIT_SHA } from "../version";
+import { HeaderSearch } from "./HeaderSearch";
 import { NotificationBell } from "./NotificationBell";
 import { NavRailLink } from "./NavRailLink";
 import { ProjectNavSection } from "./ProjectNavSection";
@@ -94,6 +96,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
   // arrival at /projects or /favourites — see `FavouritesContext`.
   const { hasFavourites } = useFavourites();
   const [backendVersion, setBackendVersion] = useState<SystemVersion | null>(null);
+  const clientConfig = useClientConfig(!!user);
 
   const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
   const projectId = projectMatch ? projectMatch[1] : null;
@@ -101,7 +104,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
   // Every installed module's own top-level nav links (`globalNavItems`) and
   // "standalone workspace" nav sections (`standaloneWorkspaces`,
   // `modules/types.ts`) — a generic mechanism a module registers into
-  // (compliance-module-plan.md Phase 18 is its first user, "Compliance
+  // (is its first user, "Compliance
   // Standards"/"Standard"), the same "core doesn't hardcode a specific
   // module's UI" boundary `orgAdminSections` already establishes for
   // `OrgAdminPage.tsx`. Each global nav item owns its own visibility
@@ -122,12 +125,13 @@ function LayoutShell({ children }: { children: ReactNode }) {
     }
   }
 
-  // The Project nav section's items, in product-default order: the core entries, then one per
+  // The Project nav section's items, in product-default order: the core work items, then one per
   // (module, nav entry) pair for every currently-enabled module that declares a frontend
-  // manifest, Tier A or Tier B alike (compliance-module-plan.md Phase 3; several entries per
-  // module since Module 1 — Context & Strategy — Phase 7.1). A module whose manifest was
+  // manifest, Tier A or Tier B alike (several entries per
+  // module since Context & Strategy). A module whose manifest was
   // rejected (e.g. a Tier B frame_url outside the deployment's allowlist) simply has no entry,
-  // since `get_frontend_manifest` already omitted it server-side. `ProjectNavSection` applies
+  // since `get_frontend_manifest` already omitted it server-side. History and Project admin come
+  // last, after the module items. `ProjectNavSection` applies
   // the user's order/"More" preference to this list without knowing what any item is.
   const projectNavItems: ProjectNavItem[] = projectId
     ? [
@@ -138,16 +142,24 @@ function LayoutShell({ children }: { children: ReactNode }) {
         { key: "files", to: `/projects/${projectId}/files`, label: strings.files.title, icon: <Files size={16} /> },
         { key: "reports", to: `/projects/${projectId}/reports`, label: strings.nav.reports, icon: <FileText size={16} /> },
         { key: "reviews-due", to: `/projects/${projectId}/reviews-due`, label: strings.reviews.projectTitle, icon: <Clock size={16} /> },
-        { key: "history", to: `/projects/${projectId}/history`, label: strings.history.title, icon: <History size={16} /> },
-        { key: "admin", to: `/projects/${projectId}/admin`, label: strings.nav.admin, icon: <Settings size={16} /> },
         ...enabledModules.flatMap((moduleEntry) => {
           const manifest = moduleEntry.frontend_manifest;
           if (!manifest) return [];
           const entries = [
-            { nav_label: manifest.nav_label, nav_path: manifest.nav_path, nav_icon: manifest.nav_icon },
+            {
+              nav_label: manifest.nav_label, nav_path: manifest.nav_path, nav_icon: manifest.nav_icon,
+              sub_component: manifest.nav_sub_component, sub_components_any: manifest.nav_sub_components_any,
+            },
             ...(manifest.additional_nav_entries ?? []),
           ];
-          return entries.map((entry) => {
+          // An entry whose sub-component is off for this project is hidden: its API routes 404, so the
+          // link would lead to a page that cannot load. A page serving several sub-components
+          // (`sub_components_any`) goes only when all of them are off. Generic; no module is named here.
+          const disabled = moduleEntry.disabled_sub_components ?? [];
+          const visible = (entry: (typeof entries)[number]) =>
+            (!entry.sub_component || !disabled.includes(entry.sub_component)) &&
+            (!entry.sub_components_any?.length || entry.sub_components_any.some((key) => !disabled.includes(key)));
+          return entries.filter(visible).map((entry) => {
             const EntryIcon = resolveNavIcon(entry.nav_icon);
             return {
               key: `${moduleEntry.module_key}:${entry.nav_path}`,
@@ -157,6 +169,8 @@ function LayoutShell({ children }: { children: ReactNode }) {
             };
           });
         }),
+        { key: "history", to: `/projects/${projectId}/history`, label: strings.history.title, icon: <History size={16} /> },
+        { key: "admin", to: `/projects/${projectId}/admin`, label: strings.nav.admin, icon: <Settings size={16} /> },
       ]
     : [];
 
@@ -185,12 +199,21 @@ function LayoutShell({ children }: { children: ReactNode }) {
         </Link>
         {user && (
           <div className="row">
+            <HeaderSearch />
             <NotificationBell />
-            <Tooltip label={strings.nav.help}>
-              <Link to="/help" className="btn" aria-label={strings.nav.help}>
-                <HelpCircle size={16} />
-              </Link>
-            </Tooltip>
+            {clientConfig?.help_enabled && (
+              <Tooltip label={strings.nav.help}>
+                <a
+                  href={clientConfig.help_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn"
+                  aria-label={strings.nav.helpNewTab}
+                >
+                  <HelpCircle />
+                </a>
+              </Tooltip>
+            )}
             <Tooltip label={strings.nav.preferences}>
               <Link
                 to="/preferences"
@@ -204,7 +227,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
             </Tooltip>
             <Tooltip label={strings.nav.signOut}>
               <button className="btn" onClick={logout} aria-label={strings.nav.signOut}>
-                <LogOut size={16} />
+                <LogOut />
               </button>
             </Tooltip>
           </div>
@@ -212,74 +235,76 @@ function LayoutShell({ children }: { children: ReactNode }) {
       </header>
       {user && (
         <nav
-          className={`nav-rail stack ${railIconOnly ? "nav-rail-icons" : ""}`}
-          style={{ gap: "0.15rem" }}
+          className={`nav-rail ${railIconOnly ? "nav-rail-icons" : ""}`}
         >
-          {projectId && <ProjectNavSection projectId={projectId} items={projectNavItems} railCollapsed={railIconOnly} />}
-          {/* A module-contributed "standalone workspace" section (Phase
-              18's "Standard" is the first one) — a sibling structural
-              pattern to "Project" above, not nested inside it. See this
-              file's own `activeStandaloneWorkspace` computation above. */}
-          {activeStandaloneWorkspace &&
-            activeStandaloneWorkspace.render({ entityId: activeStandaloneWorkspace.entityId, railCollapsed: railIconOnly })}
-          <div className="nav-section-label">Global</div>
-          <NavRailLink to="/projects" exact label={strings.nav.projects} icon={<FolderKanban size={16} />} railCollapsed={railIconOnly} />
-          {/* "Organisation Overview" (Phase 19) — a core, always-visible
-              nav-rail link (unlike Phase 18's "Compliance Standards" tab
-              below, this one carries general-purpose org stats every org
-              has regardless of compliance, so it's shown unconditionally,
-              the same precedent as the always-shown Projects link above —
-              see docs/decisions.md's "Compliance module, human review
-              follow-ups" entry). `/org-overview` reuses `OrgListPage`'s own
-              single-org/multi-org auto-redirect convention as its entry
-              point, the same way `/orgs` already does for org admin. */}
-          <NavRailLink to="/org-overview" exact label={strings.nav.orgOverview(orgLabelCap)} icon={<BarChart3 size={16} />} railCollapsed={railIconOnly} />
-          {/* Module-contributed top-level nav links (Phase 18's "Compliance
-              Standards" is the first one) — each item owns its own
-              visibility and may render nothing at all; see this file's own
-              `globalNavItems` computation above. */}
-          {globalNavItems.map((item) => (
-            <Fragment key={item.key}>{item.render({ railCollapsed: railIconOnly })}</Fragment>
-          ))}
-          {hasFavourites && (
-            <NavRailLink to="/favourites" exact label={strings.nav.favourites} icon={<Star size={16} />} railCollapsed={railIconOnly} />
-          )}
-          <NavRailLink to="/my-reviews" label={strings.nav.myReviews} icon={<CalendarClock size={16} />} railCollapsed={railIconOnly} />
-          <NavRailLink to="/notifications" exact label={strings.notifications.title} icon={<Bell size={16} />} railCollapsed={railIconOnly} />
-          {/* The only path to org administration (U-P-02-adjacent IA gap
-              found in the 2026-08 UX audit): /orgs already auto-redirects
-              straight to a single org's admin page, or lists every org a
-              user belongs to otherwise — it just had no rail entry before
-              this, for anyone but a server admin drilling in through
-              /server/organisations. See docs/ux-style-guide.md, "Pattern:
-              wayfinding". */}
-          <NavRailLink to="/orgs" exact label={strings.nav.myOrganizations(orgLabelPlural)} icon={<Building2 size={16} />} railCollapsed={railIconOnly} />
-          {user.is_server_admin && (
-            <>
-              <div className="nav-section-label">Administration</div>
-              <NavRailLink to="/server/organisations" label={strings.orgAdmin.organizations(orgLabelPlural)} icon={<Building2 size={16} />} railCollapsed={railIconOnly} />
-              <NavRailLink to="/server/management" label={strings.nav.serverManagement} icon={<Wrench size={16} />} railCollapsed={railIconOnly} />
-            </>
-          )}
-          {/* Build identity — "a way to see the version and date of the
-              frontend and backend in the UI" (2026-08 UX audit follow-up).
-              Pinned to the bottom of the rail via `marginTop: auto` on the
-              flex-column `<nav>`; hidden in icon-only mode rather than
-              squeezed into it, same as every other rail label. The sha/date
-              detail lives in `title` (plain hover text, not the shared
-              `Tooltip`) since this is supplementary static text, not an
-              interactive control needing an accessible name. */}
-          {!railIconOnly && (
-            <div
-              className="text-muted"
-              style={{ marginTop: "auto", paddingTop: "0.75rem", fontSize: "0.7rem", lineHeight: 1.6 }}
-            >
-              <div title={strings.nav.frontendBuildDetail(GIT_SHA, BUILD_DATE)}>{strings.nav.frontendVersion(APP_VERSION)}</div>
-              <div title={backendVersion ? strings.nav.backendBuildDetail(backendVersion.git_sha, backendVersion.build_date) : undefined}>
-                {backendVersion ? strings.nav.backendVersion(backendVersion.version) : strings.nav.backendVersionLoading}
+          {/* The item list is the scroll container; it leaves the strip under the fixed collapse
+              toggle free so neither a link nor the scrollbar runs under it (see `.nav-rail-scroll`, theme.css). */}
+          <div className="nav-rail-scroll stack" style={{ gap: "0.15rem" }}>
+            {projectId && <ProjectNavSection projectId={projectId} items={projectNavItems} railCollapsed={railIconOnly} />}
+            {/* A module-contributed "standalone workspace" section
+                ("Standard" is the first one) — a sibling structural
+                pattern to "Project" above, not nested inside it. See this
+                file's own `activeStandaloneWorkspace` computation above. */}
+            {activeStandaloneWorkspace &&
+              activeStandaloneWorkspace.render({ entityId: activeStandaloneWorkspace.entityId, railCollapsed: railIconOnly })}
+            <div className="nav-section-label">Global</div>
+            <NavRailLink to="/projects" exact label={strings.nav.projects} icon={<FolderKanban size={16} />} railCollapsed={railIconOnly} />
+            {/* "Organisation Overview" — a core, always-visible
+                nav-rail link (unlike the module-contributed
+                nav links below, this one carries general-purpose org stats every org
+                has regardless of compliance, so it's shown unconditionally,
+                the same precedent as the always-shown Projects link above —
+                see docs/decisions.md's "Compliance module, human review
+                follow-ups" entry). `/org-overview` reuses `OrgListPage`'s own
+                single-org/multi-org auto-redirect convention as its entry
+                point, the same way `/orgs` already does for org admin. */}
+            <NavRailLink to="/org-overview" exact label={strings.nav.orgOverview(orgLabelCap)} icon={<BarChart3 size={16} />} railCollapsed={railIconOnly} />
+            {/* Module-contributed top-level nav links ("Compliance
+                Standards" is the first one) — each item owns its own
+                visibility and may render nothing at all; see this file's own
+                `globalNavItems` computation above. */}
+            {globalNavItems.map((item) => (
+              <Fragment key={item.key}>{item.render({ railCollapsed: railIconOnly })}</Fragment>
+            ))}
+            {hasFavourites && (
+              <NavRailLink to="/favourites" exact label={strings.nav.favourites} icon={<Star size={16} />} railCollapsed={railIconOnly} />
+            )}
+            <NavRailLink to="/my-reviews" label={strings.nav.myReviews} icon={<CalendarClock size={16} />} railCollapsed={railIconOnly} />
+            <NavRailLink to="/notifications" exact label={strings.notifications.title} icon={<Bell size={16} />} railCollapsed={railIconOnly} />
+            {/* The only path to org administration: /orgs already auto-redirects
+                straight to a single org's admin page, or lists every org a
+                user belongs to otherwise — it just had no rail entry before
+                this, for anyone but a server admin drilling in through
+                /server/organisations. See docs/ux-style-guide.md, "Pattern:
+                wayfinding". */}
+            <NavRailLink to="/orgs" exact label={strings.nav.myOrganizations(orgLabelPlural)} icon={<Building2 size={16} />} railCollapsed={railIconOnly} />
+            {user.is_server_admin && (
+              <>
+                <div className="nav-section-label">Administration</div>
+                <NavRailLink to="/server/organisations" label={strings.orgAdmin.organizations(orgLabelPlural)} icon={<Building2 size={16} />} railCollapsed={railIconOnly} />
+                <NavRailLink to="/server/management" label={strings.nav.serverManagement} icon={<Wrench size={16} />} railCollapsed={railIconOnly} />
+              </>
+            )}
+            {/* Build identity — "a way to see the version and date of the
+                frontend and backend in the UI".
+                Pinned to the bottom of the rail via `marginTop: auto` on the
+                flex-column `<nav>`; hidden in icon-only mode rather than
+                squeezed into it, same as every other rail label. The sha/date
+                detail lives in `title` (plain hover text, not the shared
+                `Tooltip`) since this is supplementary static text, not an
+                interactive control needing an accessible name. */}
+            {!railIconOnly && (
+              <div
+                className="text-muted"
+                style={{ marginTop: "auto", paddingTop: "0.75rem", fontSize: "0.7rem", lineHeight: 1.6 }}
+              >
+                <div title={strings.nav.frontendBuildDetail(GIT_SHA, BUILD_DATE)}>{strings.nav.frontendVersion(APP_VERSION)}</div>
+                <div title={backendVersion ? strings.nav.backendBuildDetail(backendVersion.git_sha, backendVersion.build_date) : undefined}>
+                  {backendVersion ? strings.nav.backendVersion(backendVersion.version) : strings.nav.backendVersionLoading}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </nav>
       )}
       {user && (
@@ -293,7 +318,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
             onClick={() => setRailCollapsed(!railCollapsed)}
             aria-label={railCollapsed ? strings.nav.expandNav : strings.nav.collapseNav}
           >
-            {railCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+            {railCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
           </button>
         </Tooltip>
       )}

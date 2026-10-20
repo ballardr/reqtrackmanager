@@ -1,5 +1,5 @@
 """Tests for per-report-type report content across the template, project and
-organisation tiers (Phase 10 of docs/plans/platform-enhancements-2026-10-plan.md):
+organisation tiers :
 the resolution chain, ancestor fallback, placeholders, validation, deletion,
 the data migration, and export/import round trips (including images).
 """

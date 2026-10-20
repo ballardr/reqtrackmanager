@@ -1,16 +1,15 @@
 import { expect, test } from "@playwright/test";
 
-import { installCleanupHook } from "../../e2e-workflows/helpers";
+import { installCleanupHook, selectOptionContaining } from "../../e2e-workflows/helpers";
 import { API_BASE_URL, setUpOrg } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
 
 /**
- * Job to be done: docs/plans/module-02-stakeholders-and-personas-plan.md
- * Phase 3's exit criteria, as delivered through the shared Links panel
- * (`frontend/src/components/ArtefactLinksPanel.tsx`, October 2026 platform
- * enhancements Phase 6) against a real backend: a Stakeholder or Persona links
+ * Job to be done:
+ * As delivered through the shared Links panel
+ * (`frontend/src/components/ArtefactLinksPanel.tsx`) against a real backend: a Stakeholder or Persona links
  * to a Pain Point, a Requirement and a Decision (other modules' records,
  * reached through the generic summary-provider hook), follows a link to the
  * target's own page, removes one behind a tier-1 confirm, and a Persona is
@@ -30,7 +29,7 @@ async function addLink(
   await dialog.getByLabel("Link to").selectOption({ label: record.type });
   const recordSelect = dialog.getByLabel("Record");
   await expect(recordSelect.locator("option", { hasText: record.label })).toHaveCount(1);
-  await recordSelect.selectOption({ label: record.label });
+  await selectOptionContaining(recordSelect, record.label);
   await dialog.getByLabel("Relationship").selectOption({ label: relationship });
   await dialog.getByRole("button", { name: "Add link" }).click();
   await expect(page.getByText("Link added.").last()).toBeVisible();
@@ -95,7 +94,7 @@ test.describe("Stakeholders & Personas: links", () => {
     await page.goBack();
 
     // --- Removal is behind a tier-1 confirm, with a toast.
-    await page.getByRole("region", { name: "Links", exact: true }).getByRole("button", { name: `Remove link: Experiences ${painPointTitle}` }).click();
+    await page.getByRole("region", { name: "Links", exact: true }).getByRole("button", { name: new RegExp(`^Remove link: Experiences (?:PP-\\d{3} )?${painPointTitle}$`) }).click();
     await page.getByRole("dialog", { name: "Remove this link?" }).getByRole("button", { name: "Remove link" }).click();
     await expect(page.getByText("Link removed.")).toBeVisible();
     await expect(page.getByRole("region", { name: "Links", exact: true }).getByRole("link", { name: painPointTitle })).toHaveCount(0);

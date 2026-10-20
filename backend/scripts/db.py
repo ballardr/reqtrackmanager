@@ -3,7 +3,7 @@ Module: scripts.db
 
 Thin developer-facing wrapper around Alembic's own CLI commands
 (`revision`, `upgrade`, `downgrade`, `current`, `history`, `heads`) — added
-in a compliance-module-plan.md Phase 11 follow-up, the moment a first-party
+in a follow-up, the moment a first-party
 module's migration first moved out of the flat, shared
 `backend/alembic/versions/` directory into its own `migrations_dir`
 (`app.modules.compliance.migrations/`, colocated with the rest of that

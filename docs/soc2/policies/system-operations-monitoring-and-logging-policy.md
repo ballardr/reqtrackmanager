@@ -23,6 +23,7 @@ Covers logging, monitoring, alerting, and backup operations for the ReqTrackMana
 1. Every action that mutates organizational or project structure is written to a structured audit trail (`audit_events`) recording who did it, when, and what changed — not reconstructed after the fact from application logs. This extends to account-level security state changes (password changes, 2FA enable/disable) — a hardening review found these had been missed, since the user-facing notification a password change also sends isn't itself an admin-visible audit record.
 2. Every authentication attempt (success and failure) is recorded as a `login_events` row, including the source IP.
 3. Sensitive field values (passwords, TOTP secrets, verification codes) are explicitly redacted from error responses and must never appear in application logs.
+   The text of a global search is treated the same way: a person may paste anything into the search box, so the query is sent in a POST body, is never written to application logs, audit events or traces (the search log line carries the scope, field keys, match mode, result count and duration only), and the frontend web server's access log records the request path and the referrer's path but never a query string, since the search page keeps its text in its address.
 4. Logs are aggregated centrally when the observability stack is enabled (see Implementation below), rather than relying on reading individual container logs.
 
 ### Monitoring
@@ -41,11 +42,12 @@ Covers logging, monitoring, alerting, and backup operations for the ReqTrackMana
 ## Implementation in ReqTrackManager
 
 - **Audit/login logging**: `backend/app/services/audit.py` (`log_event`), `backend/app/models/audit.py` (`AuditEvent`, `LoginEvent`).
+- **Search query text**: `backend/app/services/search.py` logs scope, field keys, match mode, counts and duration only (pinned by `backend/tests/test_search.py`); `frontend/nginx.conf`'s `path_only` log format uses `$uri` and the referrer's path, never `$request` or `$args` (also pinned by a test). A reverse proxy in front of the product logs its own request lines and is outside this control.
 - **Sensitive-field redaction**: `backend/app/main.py`'s `redact_sensitive_validation_errors` exception handler strips password/secret values out of validation error responses before they can be logged or returned.
 - **Health checks**: every container in `docker-compose.yml` defines a health check; `backend`/`frontend` startup ordering depends on upstream health.
 - **Metrics**: `GET /metrics` (Prometheus format), including request counts (`http_requests_total`) and database statement counts by operation (`db_statements_total`). Metric labels are bounded and carry no ids, table names or SQL, so the unauthenticated endpoint exposes no Restricted data.
 - **Disk monitoring**: the disk-usage monitor (I-M-11) emails `DEPLOYMENT_NOTIFICATION_EMAIL` when usage crosses `DISK_USAGE_WARNING_THRESHOLD_PERCENT`.
-- **Log aggregation / tracing**: optional Loki (logs), Tempo (traces), and Grafana Alloy (shipping/correlation) stack, enabled via `docker compose --profile observability up -d` — see [deployment.md](../deployment.md) §Observability. Distributed tracing is wired but the backend does not yet emit OpenTelemetry spans itself (see Known Gaps).
+- **Log aggregation / tracing**: optional Loki (logs), Tempo (traces), and Grafana Alloy (shipping/correlation) stack, enabled via `docker compose --profile observability up -d` — see [deployment.md](../../deployment.md) §Observability. Distributed tracing is wired but the backend does not yet emit OpenTelemetry spans itself (see Known Gaps).
 - **Backup tooling**: `scripts/backup.sh` (Postgres `pg_dump`, gzip'd, plus a tarball of local file storage when `STORAGE_BACKEND=local`) and `scripts/restore.sh`.
 
 ## Roles and Responsibilities
@@ -60,7 +62,7 @@ Covers logging, monitoring, alerting, and backup operations for the ReqTrackMana
 1. **Backups are not scheduled by the application** — `scripts/backup.sh` must be invoked by an operator-configured cron job/scheduler; nothing runs it automatically today.
 2. **No automated alerting rules exist on top of the raw metrics** — Prometheus is wired for scraping (Grafana ships unprovisioned: no data sources or dashboards), but alert rules and an escalation path are a Company configuration task.
 3. **No distributed tracing is emitted yet** — the Tempo/Alloy pipeline is deployed and ready to receive traces, but the backend does not instrument requests with OpenTelemetry spans.
-4. **Grafana's bundled configuration enables anonymous viewer access**, appropriate only for local development — a production deployment of the observability stack must put Grafana behind the same authentication/reverse-proxy layer as the rest of the system (documented in [deployment.md](../deployment.md), but worth restating here as a control requirement, not just a deployment tip).
+4. **Grafana's bundled configuration enables anonymous viewer access**, appropriate only for local development — a production deployment of the observability stack must put Grafana behind the same authentication/reverse-proxy layer as the rest of the system (documented in [deployment.md](../../deployment.md), but worth restating here as a control requirement, not just a deployment tip).
 
 ## Related Documents
 

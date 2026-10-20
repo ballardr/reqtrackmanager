@@ -43,8 +43,7 @@ def test_create_project_from_template_copies_configuration_and_requirements(clie
     assert requirements[0]["unique_code"] == "SW-PERF-001"
 
     # The template's own creator holds their manager role via a direct
-    # UserProjectRole grant (C-U-10, follow-up UX batch Phase C,
-    # 2026-08-31 — no default groups exist to copy any more) —
+    # UserProjectRole grant (C-U-10, 2026-08-31 — no default groups exist to copy any more) —
     # `clone_project` now copies direct role grants too, so that same
     # direct manager grant carries over onto the new project.
     me = client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()
@@ -77,8 +76,7 @@ def test_set_default_template_requires_template_flag(client, admin_token, org_id
 
 
 def test_cloning_a_template_preserves_a_directly_granted_non_manager_role(client, admin_token, org_id):
-    """The `clone_project` gap found in design review before this phase was
-    finalized (docs/decisions.md, follow-up UX batch Phase C): prior to this
+    """The `clone_project` gap found in design review (docs/decisions.md, 2026-08-31): prior to this
     fix, `clone_project` only ever copied `ProjectGroup`/`ProjectGroupMember`
     rows, never `UserProjectRole` rows — so a template's directly-granted
     stakeholders/members/admins would silently vanish for everyone except
@@ -108,13 +106,13 @@ def test_cloning_a_template_preserves_a_directly_granted_non_manager_role(client
 
 def test_cloning_a_template_with_zero_managers_still_produces_a_valid_manager(client, admin_token, org_id):
     """The second gap found in design review (docs/decisions.md): a
-    template whose only manager was a default group is, after this phase's
+    template whose only manager was a default group is, after the default-group
     migration, either fully materialized-and-deleted or demoted — either
     way, a template can end up with zero managers of its own (this can no
     longer happen through the live API alone, since `revoke_project_role`/
     `delete_project_group` both enforce C-U-08 themselves; the DB is
     manipulated directly here to reach that state, standing in for a
-    template a pre-Phase-C default-group migration or a since-emptied
+    template a default-group migration or a since-emptied
     custom group left this way). `clone_project`'s existing zero-manager
     fallback (`_ensure_project_has_a_manager`, previously only exercised
     via a default-group-based template) must still assign the cloning user

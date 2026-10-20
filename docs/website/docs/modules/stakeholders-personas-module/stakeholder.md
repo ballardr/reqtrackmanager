@@ -12,7 +12,8 @@ Because a Stakeholder record holds contact details about an identifiable person,
 
 | Field | What it holds |
 | --- | --- |
-| Name, type, description | Who they are. Type defaults to one of eleven, such as Customer, Regulator or Project sponsor, and is configurable like Persona types. |
+| Code | The record code, `STK-001`: numbered within the organisation for one the organisation owns and within the project for a project's own, and never reused. Where it is shown outside its own project, an organisation-owned Stakeholder reads `ACME-STK-001` (the organisation's code in front), so it is never mistaken for a project's `STK-001`. |
+| Name, type, description | Who they are. Type defaults to one of eleven, such as Customer, Regulator or Project sponsor, and is configurable like [Persona types](./persona.md#persona-types) (a project can also hide an organisation type it does not want). |
 | Role, organisation / group | Their job title and the organisation or team they belong to. |
 | Interests, responsibilities | What they care about and what they are responsible for. |
 | Goals and needs, priorities, constraints | What they want, in what order, and under which limits. |

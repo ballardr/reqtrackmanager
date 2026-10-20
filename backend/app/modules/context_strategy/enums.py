@@ -1,59 +1,53 @@
 """
 Module: modules.context_strategy.enums
 
-Context & Strategy-owned vocabulary (docs/plans/module-01-context-and-
-strategy-plan.md Phases 1–2). Kept in this package rather than
+Context & Strategy-owned vocabulary. Kept in this package rather than
 `app.models.enums`, mirroring `app.modules.decisions.enums`'s own
 reasoning — these are domain concepts this module owns, not core
 ReqTrackManager concepts.
 
-Phase 2 (Future State) adds `FutureStateScope`/`FutureStateStatus` as
-their own enums rather than reusing `StrategyScope`/`StrategyStatus`,
-**Decided by: Agent**, by direct analogy to how this module already keeps
-`DecisionStatus` and `StrategyStatus` separate despite both being
-lifecycle enums with an identical shape (see `StrategyStatus`'s own
-docstring, which the plan's Phase 0 Q1 follow-on explicitly cites when
-requiring Future State's lifecycle to "mirror Strategy's in full"). Two
+Future State has its own `FutureStateScope`/`FutureStateStatus` rather than
+reusing `StrategyScope`/`StrategyStatus`, **Decided by: Agent**, by direct
+analogy to how this module already keeps `DecisionStatus` and
+`StrategyStatus` separate despite both being lifecycle enums with an
+identical shape (see `StrategyStatus`'s own docstring, which cites the
+decision that Future State's lifecycle "mirrors Strategy's in full"). Two
 independent artefact types owning two textually-identical vocabularies
 avoids one artefact's future divergence (e.g. Strategy someday gaining a
-scope Future State never needs) silently reaching into the other's
-column values.
+scope Future State never needs) silently reaching into the other's column
+values.
 
-Phase 3 (Pain Points) adds `PainPointStatus` (a genuinely different,
-**branching** lifecycle shape — not a mirror of `StrategyStatus`'s linear
-chain, so there was no "reuse or not" question to answer the way Phase 2
-had for Future State) and `PainPointPriority`, kept as its own enum rather
-than a reuse of `StrategyPriority` (**Decided by: Agent**, by the same
-"two independent artefact types, two owned vocabularies" reasoning already
-applied to `FutureStateScope`/`FutureStateStatus` above — a future
-divergence in either artefact's own priority vocabulary should not require
-touching the other's).
+Pain Point has `PainPointStatus` (a genuinely different, **branching**
+lifecycle shape — not a mirror of `StrategyStatus`'s linear chain) and
+`PainPointPriority`, kept as its own enum rather than a reuse of
+`StrategyPriority` (**Decided by: Agent**, by the same "two independent
+artefact types, two owned vocabularies" reasoning — a future divergence in
+either artefact's own priority vocabulary should not require touching the
+other's).
 
-Phase 4 (Guiding Principles) adds `GuidingPrincipleScope` (same org/project
-discriminator shape as `StrategyScope`/`FutureStateScope`, its own enum for
-the same "two independent artefact types, two owned vocabularies" reason),
-`GuidingPrinciplePriority` (its own three-value enum, same reasoning as
-`PainPointPriority`), and `GuidingPrincipleStatus` — a **shorter** lifecycle
-than Strategy/Future State's seven-member one, per this phase's own scope
-text ("propose -> approve/activate -> retire, no 'Under Review'/'Superseded'
-split called out explicitly in §8"). See `GuidingPrincipleStatus`'s own
-docstring for the full reconciliation of that source text against this
-enum's actual six members (**Decided by: Agent**).
+Guiding Principle has `GuidingPrincipleScope` (same org/project discriminator
+shape as `StrategyScope`/`FutureStateScope`, its own enum for the same
+reason), `GuidingPrinciplePriority` (its own three-value enum, same reasoning
+as `PainPointPriority`), and `GuidingPrincipleStatus` — a **shorter**
+lifecycle than Strategy/Future State's seven-member one ("propose ->
+approve/activate -> retire, no 'Under Review'/'Superseded' split called out
+explicitly in §8"). See `GuidingPrincipleStatus`'s own docstring for the full
+reconciliation of that source text against the enum's actual six members
+(**Decided by: Agent**).
 
-Phase 5 (Open Questions) adds `OpenQuestionPriority` (its own three-value
-enum, same reasoning as `PainPointPriority`/`GuidingPrinciplePriority`) and
-`OpenQuestionStatus` — a **branching** lifecycle (source overview §9.3:
+Open Question has `OpenQuestionPriority` (its own three-value enum, same
+reasoning as `PainPointPriority`/`GuidingPrinciplePriority`) and
+`OpenQuestionStatus` — a **branching** lifecycle (§9.3:
 `Open -> Investigating -> Ready for Decision -> Resolved/Withdrawn`), built
 from the same `_PP_ALLOWED_TRANSITIONS`-style dict-of-frozensets mechanism
-Pain Point established in Phase 3, not Strategy/Future State/Guiding
-Principle's linear-chain-plus-terminal-branch shape. Unlike Pain Point,
-Open Question has **no `type` field and no version-history table**
-(Decided by: Agent — see `models.OpenQuestion`'s own docstring) and is
-**project-scoped only** (Decided by: Agent — see that same docstring for
-the scope reasoning, grounded in Decision's own project-only scope since
-an Open Question ultimately resolves into a Decision per source overview
-§9.5). See `OpenQuestionStatus`'s own docstring for the full lifecycle
-reasoning.
+Pain Point uses, not Strategy/Future State/Guiding Principle's
+linear-chain-plus-terminal-branch shape. Unlike Pain Point, Open Question has
+**no `type` field and no version-history table** (Decided by: Agent — see
+`models.OpenQuestion`'s own docstring) and is **project-scoped only**
+(Decided by: Agent — see that same docstring for the scope reasoning,
+grounded in Decision's own project-only scope since an Open Question
+ultimately resolves into a Decision per §9.5). See
+`OpenQuestionStatus`'s own docstring for the full lifecycle reasoning.
 """
 
 from __future__ import annotations
@@ -62,7 +56,7 @@ import enum
 
 
 class StrategyScope(str, enum.Enum):
-    """Which level a `Strategy` row belongs to (Phase 0 Q2) — exactly one of
+    """Which level a `Strategy` row belongs to — exactly one of
     `Strategy.organization_id`/`project_id` is set, matching this value.
     A single table with this discriminator, rather than two separate
     tables, so a future Portfolio/Programme scope (overview §5.2's own
@@ -75,7 +69,7 @@ class StrategyScope(str, enum.Enum):
 
 class StrategyPriority(str, enum.Enum):
     """A Strategy's relative priority — a small, fixed vocabulary (unlike
-    Pain Point's project-configurable `type`, Phase 0 Q3), since nothing in
+    Pain Point's project-configurable `type`), since nothing in
     this module's scope asks for priority itself to vary per
     organisation/project. No precedent for a "priority" field exists
     elsewhere in this codebase yet (checked before adding this enum), so
@@ -104,15 +98,14 @@ class StrategyTimeHorizon(str, enum.Enum):
 
 
 class StrategyStatus(str, enum.Enum):
-    """Lifecycle states for a `Strategy` (Phase 0 Q1's follow-on/Q4): `Draft
+    """Lifecycle states for a `Strategy`: `Draft
     -> Proposed -> Under Review -> Approved -> Active -> Superseded/
-    Retired` (module-01 plan's Phase 1 scope text and its own "six-state
-    lifecycle" description).
+    Retired`.
 
     **Reconciling "six-state lifecycle" with seven enum members below**
-    (Decided by: Agent, flagged for awareness — not a genuine fork the plan
-    left open, just an ambiguity in its own phrasing worth recording): the
-    plan's arrow chain has six *positions*, the last of which
+    (Decided by: Agent, flagged for awareness — not a genuine fork, just an
+    ambiguity in the requirement's phrasing worth recording): the
+    arrow chain has six *positions*, the last of which
     ("Superseded/Retired") reads as one slot that resolves to either of two
     distinct terminal values — a `status` column can only ever hold one
     concrete value at a time, so `SUPERSEDED` and `RETIRED` must be two
@@ -124,11 +117,11 @@ class StrategyStatus(str, enum.Enum):
     has no separate "in force" state beyond being approved).
 
     `REJECTED` intentionally does not exist here (unlike `DecisionStatus`)
-    — this module's Phase 1 scope text lists only the six positions above,
+    — the requirement lists only the six positions above,
     with no rejection-branch state named. A Strategy sent back for rework
     from `PROPOSED`/`UNDER_REVIEW` instead returns to `DRAFT` (see
     `service._ALLOWED_TRANSITIONS`) rather than landing in a new terminal
-    state the plan never asked for.
+    state nobody asked for.
 
     Transition enforcement (`service._ALLOWED_TRANSITIONS`) is this
     enum's sibling, not this docstring's — declared here for completeness
@@ -145,7 +138,7 @@ class StrategyStatus(str, enum.Enum):
 
 
 class PainPointPriority(str, enum.Enum):
-    """A Pain Point's relative priority/significance (source overview §6.3
+    """A Pain Point's relative priority/significance (§6.3
     "Priority / significance") — its own enum, not a reuse of
     `StrategyPriority` (see this module's own docstring for why). Same
     three-value shape as `StrategyPriority` since nothing in either
@@ -157,7 +150,7 @@ class PainPointPriority(str, enum.Enum):
 
 
 class PainPointStatus(str, enum.Enum):
-    """Lifecycle states for a `PainPoint` (source overview §6.4) —
+    """Lifecycle states for a `PainPoint` (§6.4) —
     deliberately a **branching**, not linear, lifecycle: `Submitted ->
     Triaged -> {Rejected | Duplicate | Accepted -> Addressed -> Closed}`.
     `TRIAGED` has three legal next states, not one (`service.
@@ -167,16 +160,15 @@ class PainPointStatus(str, enum.Enum):
     plus-terminal-branch shape (each state there has at most two legal
     next states).
 
-    No version-history table backs this status (Phase 3's own scope, per
-    `docs/plans/module-01-context-and-strategy-plan.md`'s Phase 0 sign-off
-    text: "No version-history table is required for Pain Point") — a
+    No version-history table backs this status ("No version-history table is
+    required for Pain Point") — a
     `PainPoint` row is mutated in place, with every transition recorded via
     `services.audit.log_event` (a plain audit trail), not a `PainPointVersion`
-    snapshot table. **Decided by: Agent** — the plan's own Phase 3 scope
-    text says no version-history table is required but doesn't explicitly
+    snapshot table. **Decided by: Agent** — the requirement
+    says no version-history table is required but doesn't explicitly
     rule one in either; a full temporal version table exists in this module
-    only where Phase 0 Q4 explicitly asked for one (Strategy, Future State,
-    and — per that same resolution — Guiding Principle), and Pain Point was
+    only where one was explicitly asked for (Strategy, Future State,
+    and Guiding Principle), and Pain Point was
     not named there, so this follows the absence of that instruction rather
     than adding an unrequested version table by analogy to its siblings.
     """
@@ -191,8 +183,7 @@ class PainPointStatus(str, enum.Enum):
 
 
 class FutureStateScope(str, enum.Enum):
-    """Which level a `FutureState` row belongs to (Phase 0 Q1's follow-on,
-    Decided by: Agent) — exactly one of `FutureState.organization_id`/
+    """Which level a `FutureState` row belongs to (Decided by: Agent) — exactly one of `FutureState.organization_id`/
     `project_id` is set, matching this value. Identical shape and
     reasoning to `StrategyScope` (single table with a discriminator, so a
     future Portfolio/Programme scope can be added without a redesign), but
@@ -206,7 +197,7 @@ class FutureStateScope(str, enum.Enum):
 
 class FutureStateStatus(str, enum.Enum):
     """Lifecycle states for a `FutureState` — mirrors `StrategyStatus` in
-    full, per Phase 0 Q1's follow-on ("Future State's lifecycle and
+    full ("Future State's lifecycle and
     permissions mirror Strategy's in full"): `Draft -> Proposed -> Under
     Review -> Approved -> Active -> Superseded/Retired`, seven enum members
     for the same reason `StrategyStatus` has seven (`SUPERSEDED` and
@@ -244,7 +235,7 @@ class GuidingPrinciplePriority(str, enum.Enum):
     """A Guiding Principle's relative priority — its own enum, not a reuse
     of `StrategyPriority`/`PainPointPriority` (see this module's own
     docstring for why). Same three-value shape as its siblings since
-    nothing in this artefact's own scope (source overview §8.3) asks for a
+    nothing in this artefact's own scope (§8.3) asks for a
     different granularity."""
 
     LOW = "low"
@@ -253,9 +244,9 @@ class GuidingPrinciplePriority(str, enum.Enum):
 
 
 class GuidingPrincipleStatus(str, enum.Enum):
-    """Lifecycle states for a `GuidingPrinciple` (source overview §8) —
+    """Lifecycle states for a `GuidingPrinciple` (§8) —
     **shorter** than `StrategyStatus`/`FutureStateStatus`'s seven-member
-    chain, per this phase's own scope text: "propose -> approve/activate ->
+    chain, per the scope text: "propose -> approve/activate ->
     retire, no 'Under Review'/'Superseded' split called out explicitly in
     §8."
 
@@ -271,7 +262,7 @@ class GuidingPrincipleStatus(str, enum.Enum):
       `PROPOSED -> APPROVED` (`service._GP_ALLOWED_TRANSITIONS`).
     - `SUPERSEDED` **is** kept, despite the scope text's own "no ...
       'Superseded' split called out explicitly" phrasing — re-examined
-      against source overview §8.4's own reasoning ("revision control here
+      against §8.4's own reasoning ("revision control here
       protects historical Decision rationale"): a Decision that cites a
       Guiding Principle as its rationale needs that Principle's history to
       remain resolvable even after a newer Principle replaces it in
@@ -281,8 +272,8 @@ class GuidingPrincipleStatus(str, enum.Enum):
       `SUPERSEDED` here would leave "this Principle was replaced by a
       newer one" inexpressible except by retiring it outright — a different
       and less precise historical claim. This is the one point in this
-      enum's design where this phase's own task brief explicitly asked for
-      a weighed judgment call rather than the literal scope-text reading;
+      enum's design where a weighed judgment call was
+      explicitly asked for rather than the literal scope-text reading;
       the weighed reading (keep `SUPERSEDED`) mirrors Strategy's *reasoning*
       per the brief's own instruction, without mirroring Strategy's literal
       seven-member conclusion.
@@ -308,7 +299,7 @@ class GuidingPrincipleStatus(str, enum.Enum):
 
 
 class OpenQuestionPriority(str, enum.Enum):
-    """An Open Question's relative priority (source overview §9.2) — its own
+    """An Open Question's relative priority (§9.2) — its own
     enum, not a reuse of `StrategyPriority`/`PainPointPriority`/
     `GuidingPrinciplePriority` (see this module's own docstring for why).
     Same three-value shape as its siblings since nothing in this artefact's
@@ -320,9 +311,9 @@ class OpenQuestionPriority(str, enum.Enum):
 
 
 class OpenQuestionStatus(str, enum.Enum):
-    """Lifecycle states for an `OpenQuestion` (source overview §9.3) —
+    """Lifecycle states for an `OpenQuestion` (§9.3) —
     deliberately a **branching**, not linear, lifecycle, the same mechanism
-    shape `PainPointStatus` already established in this module (Phase 3),
+    shape `PainPointStatus` already established in this module,
     not Strategy/Future State/Guiding Principle's linear-chain-plus-
     terminal-branch shape.
 
@@ -335,8 +326,7 @@ class OpenQuestionStatus(str, enum.Enum):
     (five members total, not four).
 
     **Where this lifecycle genuinely branches mid-chain, not just at the
-    end (Decided by: Agent, the specific judgment call this phase's own
-    brief flagged)**: `WITHDRAWN` is reachable directly from `INVESTIGATING`
+    end (Decided by: Agent, the specific judgment call flagged)**: `WITHDRAWN` is reachable directly from `INVESTIGATING`
     as well as from `READY_FOR_DECISION` — an Open Question can turn out to
     be moot, already answered elsewhere, or no longer relevant while still
     under active investigation, not only once it has reached the "ready for

@@ -1,9 +1,8 @@
 /**
  * Module: modules/stakeholders/types
  *
- * Frontend types for the Stakeholders & Personas module (docs/plans/
- * module-02-stakeholders-and-personas-plan.md), Phase 1.1 (Persona) and
- * Phase 1.2 (Stakeholder) — the wire shapes of `backend/app/modules/
+ * Frontend types for the Stakeholders & Personas module (Persona and
+ * Stakeholder) — the wire shapes of `backend/app/modules/
  * stakeholders/schemas.py` plus the label/tone maps every rendered enum value
  * must go through (UX style guide principle 12).
  *
@@ -15,6 +14,7 @@
  * (a user, an organisation group or a project group), returned resolved.
  */
 import type { BadgeTone, Principal } from "../../api/types";
+import type { ProjectScopedRow } from "../../api/projectScope";
 
 export type PersonaScope = "organization" | "project";
 export type PersonaStatus = "draft" | "active" | "retired";
@@ -53,11 +53,13 @@ export const PERSONA_WEIGHT_SOURCE_LABEL: Record<PersonaWeightSource, string> = 
  * `hidden_override` and `hidden_source` (whether the project hides it, its own
  * override, and who supplied the effective value) are only populated by the
  * project-scoped endpoints. */
-export interface Persona {
+export interface Persona extends ProjectScopedRow {
   id: string;
   scope: PersonaScope;
   organization_id: string | null;
   project_id: string | null;
+  /** Human-readable code (`PER-003`), numbered per owner; qualified by the owning project's or organisation's code where shown (`RecordCode`). */
+  unique_code: string;
   creator_id: string;
   is_archived: boolean;
   archived_at: string | null;
@@ -120,6 +122,8 @@ export interface PersonaFieldValues {
   constraints: string;
   weight: number | null;
   change_note: string;
+  /** Create only ("Save and activate"): the server also moves the new record from draft to active in the same transaction. */
+  activate?: boolean;
 }
 
 export interface PersonaComment {
@@ -152,7 +156,7 @@ export interface EffectivePersonaType {
 }
 
 
-// --- Stakeholder (Phase 1.2) --------------------------------------------------
+// --- Stakeholder --------------------------------------------------
 
 export type StakeholderScope = "organization" | "project";
 export type StakeholderStatus = "draft" | "active" | "retired";
@@ -240,11 +244,13 @@ export const HIDDEN_SOURCE_LABEL: Record<HiddenSource, string> = {
  * stakeholder returned by the project-scoped endpoints: whether it is hidden
  * from that project, the project's own override (null when it only inherits)
  * and the project that supplied the effective value. */
-export interface Stakeholder {
+export interface Stakeholder extends ProjectScopedRow {
   id: string;
   scope: StakeholderScope;
   organization_id: string | null;
   project_id: string | null;
+  /** Human-readable code (`PER-003`), numbered per owner; qualified by the owning project's or organisation's code where shown (`RecordCode`). */
+  unique_code: string;
   creator_id: string;
   is_archived: boolean;
   archived_at: string | null;
@@ -316,6 +322,8 @@ export interface StakeholderFieldValues {
   influence_level_id: string | null;
   interest_level_id: string | null;
   change_note: string;
+  /** Create only ("Save and activate"): the server also moves the new record from draft to active in the same transaction. */
+  activate?: boolean;
 }
 
 export interface StakeholderComment {
@@ -336,10 +344,14 @@ export interface RepresentedLink {
   id: string;
   name: string;
   scope: "organization" | "project";
+  /** The record's own code (`PER-001`); the panel shows it through `ScopedRecordCode`. Absent for a link with none. */
+  unique_code?: string;
+  /** The owning organisation of an organisation-scoped record, which qualifies its code. */
+  organization_id?: string | null;
 }
 
 
-// --- Stakeholder Need (Phase 2) -----------------------------------------------
+// --- Stakeholder Need -----------------------------------------------
 
 export type NeedStatus = "draft" | "active" | "retired";
 
@@ -356,9 +368,10 @@ export const NEED_STATUS_TONE: Record<NeedStatus, BadgeTone> = {
 };
 
 /** A Stakeholder Need merged with its current version. Always project-scoped. */
-export interface Need {
+export interface Need extends ProjectScopedRow {
   id: string;
   project_id: string;
+  unique_code: string;
   creator_id: string;
   is_archived: boolean;
   archived_at: string | null;
@@ -392,6 +405,8 @@ export interface NeedFieldValues {
   description: string;
   rationale: string;
   change_note: string;
+  /** Create only ("Save and activate"): the server also moves the new record from draft to active in the same transaction. */
+  activate?: boolean;
 }
 
 export interface NeedComment {
@@ -415,12 +430,15 @@ export interface NeedHolder {
   id: string;
   name: string;
   scope: "organization" | "project";
+  unique_code: string;
+  organization_id: string | null;
 }
 
 /** One "has need" link seen from a Stakeholder or Persona: the need. */
 export interface HeldNeed {
   link_id: string;
   id: string;
+  unique_code: string;
   name: string;
   status: NeedStatus;
 }
@@ -434,7 +452,7 @@ export interface NeedRequirement {
 }
 
 
-// --- Stakeholder groups (Phase 3c) --------------------------------------------
+// --- Stakeholder groups --------------------------------------------
 
 /** A group a stakeholder is directly in, as listed on the stakeholder. */
 export interface StakeholderGroupRef {
@@ -442,12 +460,17 @@ export interface StakeholderGroupRef {
   name: string;
   scope: StakeholderScope;
   parent_group_id: string | null;
+  /** The group's code (`SGP-001`); qualified by `organization_id`'s code for an organisation group. */
+  unique_code: string;
+  organization_id: string | null;
 }
 
 /** A node of the group tree; `member_count` counts direct members only. */
-export interface StakeholderGroup extends StakeholderGroupRef {
+export interface StakeholderGroup extends StakeholderGroupRef, ProjectScopedRow {
   organization_id: string | null;
   project_id: string | null;
+  /** Human-readable code (`SGP-003`), numbered per owner. */
+  unique_code: string;
   description: string;
   exclusive_children: boolean;
   sort_order: number;
@@ -483,10 +506,10 @@ export interface GroupFromTextResult {
   memberships_added: number;
 }
 
-// --- Engagements (Phase 4 backend, Phase 5 UI) --------------------------------
+// --- Engagements ----------------------------------------------------------------
 
 /** An Engagement as the project API returns it. `retention_due` is true once `retain_until` has been reached. */
-export interface Engagement {
+export interface Engagement extends ProjectScopedRow {
   id: string;
   project_id: string;
   creator_id: string;
@@ -526,6 +549,7 @@ export interface EngagementFieldValues {
 /** One row of a Stakeholder's engagement timeline (no notes: open the engagement for those). */
 export interface StakeholderEngagement {
   id: string;
+  unique_code: string;
   title: string;
   channel: EngagementChannel;
   engagement_date: string;
@@ -536,6 +560,8 @@ export interface EngagementParticipant {
   stakeholder_id: string;
   name: string;
   scope: "organization" | "project";
+  unique_code: string;
+  organization_id: string | null;
 }
 
 export interface EngagementPersona {
@@ -543,6 +569,8 @@ export interface EngagementPersona {
   persona_id: string;
   name: string;
   scope: "organization" | "project";
+  unique_code: string;
+  organization_id: string | null;
 }
 
 export interface EngagementAudience {
@@ -621,7 +649,7 @@ export interface AnonymousParticipant {
 }
 
 /** Research extras: something learned in an engagement. */
-export interface ResearchFinding {
+export interface ResearchFinding extends ProjectScopedRow {
   id: string;
   project_id: string;
   engagement_id: string;

@@ -1,4 +1,4 @@
-"""Per-report-type report content (Platform Enhancements Phase 10)
+"""Per-report-type report content
 
 Revision ID: 0071
 Revises: 0070

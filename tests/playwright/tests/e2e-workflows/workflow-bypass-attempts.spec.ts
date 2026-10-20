@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { apiHeaders, createDisposableProject, installCleanupHook, loginAs, logout, onCleanup, openRequirementByName, ORG_NAMES, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { apiHeaders, createDisposableProject, installCleanupHook, loginAs, logout, onCleanup, openRequirementByName, ORG_NAMES, PERSONAS, PROJECT_NAMES, recordActionNames } from "./helpers";
 
 const apiBaseUrl = "http://localhost:8000";
 
@@ -19,7 +19,7 @@ const apiBaseUrl = "http://localhost:8000";
  * belongs to, which is fine to do once against a disposable project but
  * not safe against Alpha-1 itself: 27 other spec files reference Alpha-1,
  * and the lock is irreversible (no "unapprove" endpoint). Found during
- * Phase 1 of docs/platform-review-2026-09-plan.md (turning on Playwright
+ * (turning on Playwright
  * parallelism) — previously safe only because this suite ran single-
  * worker/serial. Also grants stakeholderAlpha/memberAlphaBeta project
  * roles on this disposable project rather than relying on their existing
@@ -91,9 +91,7 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
     await test.step("the locked requirement offers no edit form in the UI", async () => {
       await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
       await page.goto(`/projects/${projectId}/requirements/${target.id}`);
-      // Not exact: the requirement detail page's h1 is "{unique_code} —
-      // {name}", not the bare name.
-      await expect(page.locator("h1")).toContainText("—");
+      await expect(page.locator(".record-header h1")).toBeVisible();
       await expect(page.getByText("Locked (approved)")).toBeVisible();
       await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
     });
@@ -115,7 +113,7 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
       await page.goto(`/projects/${projectId}`);
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByName(page, targetReqName);
-      await expect(page.getByRole("button", { name: "Archive" })).toHaveCount(0);
+      expect(await recordActionNames(page, "Requirement")).not.toContain("Archive");
     });
 
     await test.step("cross-org ID guessing: a single-org user cannot open another org's project by URL", async () => {

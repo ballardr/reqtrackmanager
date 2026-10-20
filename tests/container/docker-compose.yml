@@ -37,6 +37,10 @@
 services:
   db:
     image: postgres:16-alpine
+    # The schema is large enough (hundreds of relations) that the pytest session fixture's
+    # `DROP SCHEMA public CASCADE`, run by four xdist workers at once, exhausts the default
+    # 64 locks per transaction ("out of shared memory") and errors every test.
+    command: ["postgres", "-c", "max_locks_per_transaction=256"]
     environment:
       POSTGRES_DB: reqtrack_test
       POSTGRES_USER: reqtrack
@@ -157,6 +161,9 @@ services:
       SERVER_ADMIN_EMAIL: ${SERVER_ADMIN_EMAIL:-admin@example.com}
       SERVER_ADMIN_PASSWORD: ${SERVER_ADMIN_PASSWORD:-ChangeMe123!}
       SERVER_ADMIN_CREATE_ORG: "true"
+      # The Playwright suite is written against each module's own opt-in default, so a fresh
+      # test database must not be seeded with every module available.
+      MODULES_DEFAULT_AVAILABLE: "false"
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
       STORAGE_BACKEND: ${STORAGE_BACKEND:-s3}
       STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-reqtrackmanager}
@@ -169,6 +176,8 @@ services:
       PUBLIC_BACKEND_URL: ${PUBLIC_BACKEND_URL:-http://localhost:8000}
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
       MCP_SERVER_PUBLIC_URL: ${MCP_SERVER_PUBLIC_URL:-http://localhost:8100}
+      # The header Help link opens this stack's own `docs` service (below), not the public site.
+      HELP_URL: ${HELP_URL:-http://localhost:3001/reqtrackmanager/}
       # See keycloak service's comment above: the backend reaches Keycloak
       # over the Docker-internal network, but every org's oidc_issuer_url is
       # configured with Keycloak's browser-facing public URL
@@ -183,8 +192,9 @@ services:
     ports:
       - "8000:8000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
       interval: 10s
+      start_period: 120s
       timeout: 5s
       retries: 10
 
@@ -208,8 +218,9 @@ services:
     # volumes:
     #   - ./external-modules:/usr/share/nginx/external-modules:ro
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
       interval: 10s
+      start_period: 60s
       timeout: 5s
       retries: 10
 
@@ -231,13 +242,14 @@ services:
     ports:
       - "8100:8100"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8100/health"]
       interval: 10s
+      start_period: 60s
       timeout: 5s
       retries: 10
 
-  # Local preview of docs/website/ (Docusaurus) — see
-  # docs/plans/docs-website-plan.md. Port 3001 (not 3000, already taken by
+  # Local preview of docs/website/ (Docusaurus).
+  # Port 3001 (not 3000, already taken by
   # `frontend` above). No `depends_on`: unlike every other service in this
   # stack, the docs site is fully static and built entirely from files in
   # docs/website/ — it neither calls nor is called by db/backend/frontend/
@@ -254,8 +266,9 @@ services:
     ports:
       - "3001:3001"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3001/reqtrackmanager/"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/reqtrackmanager/"]
       interval: 10s
+      start_period: 60s
       timeout: 5s
       retries: 10
 

@@ -1,11 +1,10 @@
-"""Stakeholder Need data model (Module 2 Phase 2)
+"""Stakeholder Need data model
 
 Revision ID: 0061
 Revises: 0060
 Create Date: 2026-10-05
 
-Adds the project-scoped Stakeholder Need tables (docs/plans/module-02-
-stakeholders-and-personas-plan.md Phase 2): `stakeholder_needs`/
+Adds the project-scoped Stakeholder Need tables: `stakeholder_needs`/
 `stakeholder_need_versions` (identity + temporal content) and the module-local
 comment/attachment tables. "Has need" and "gives rise to" relationships are
 `artefact_links` rows, so need no table of their own.

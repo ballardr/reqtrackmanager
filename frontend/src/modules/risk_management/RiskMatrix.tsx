@@ -3,7 +3,7 @@
  *
  * The project's configured Likelihood × Consequence grid with the register's
  * risks plotted in their cells (a Risk Management UI without a visible matrix
- * loses most of its communicative value — plan Phase 5). A thin adapter over the
+ * loses most of its communicative value). A thin adapter over the
  * shared `ScoringMatrixChart`: it picks the scheme's two-axis model, so cell
  * colours follow the organisation's bands and per-cell ratings, and plots each
  * risk by its inherent levels, its residual levels, or both (a point per rating,

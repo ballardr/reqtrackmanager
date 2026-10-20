@@ -42,8 +42,7 @@ function action(overrides: Partial<ComplianceRequiredAction> & { id: string; req
  * `required-actions` sub-resource, so a story's `play` function can assert
  * a real create/reorder/delete -> reload -> re-render round trip, matching
  * `StandardVersionsSection.stories.tsx`'s own standard (the retired
- * `ComplianceAdminPanel.stories.tsx`'s successor, docs/compliance-module-
- * plan.md Phase 18).
+ * `ComplianceAdminPanel.stories.tsx`'s successor).
  *
  * Opening "View mappings" mounts `RequirementMappingsModal` as a child —
  * its endpoints are mocked here just enough to resolve emptily so that
@@ -383,7 +382,7 @@ export const ReadOnlyWhenVersionNotDraft: Story = {
     await expect(canvas.queryByRole("button", { name: "Edit Access control" })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Delete Access control" })).not.toBeInTheDocument();
     // Retired (not draft, not published) — no "Clarify" either; that's
-    // offered only on a published version (Phase 24).
+    // offered only on a published version.
     await expect(canvas.queryByRole("button", { name: "Clarify Access control" })).not.toBeInTheDocument();
     // "View mappings" stays available — mappings aren't a mutation of this
     // version's own (immutable) requirement content.
@@ -396,7 +395,7 @@ export const ReadOnlyWhenVersionNotDraft: Story = {
   },
 };
 
-// --- Phase 24: post-publish clarification -----------------------------------
+// --- post-publish clarification -----------------------------------
 
 export const ClarifyPublishedRequirement: Story = {
   args: { isDraft: false, isPublished: true },
@@ -414,7 +413,7 @@ export const ClarifyPublishedRequirement: Story = {
 
     // Save is disabled until a clarification note is provided.
     await expect(body.getByRole("button", { name: "Save clarification" })).toBeDisabled();
-    await userEvent.type(body.getByLabelText("Clarification note (required)"), "Fixed a typo in the description.");
+    await userEvent.type(body.getByLabelText("Clarification note"), "Fixed a typo in the description.");
     await expect(body.getByRole("button", { name: "Save clarification" })).toBeEnabled();
     await userEvent.click(body.getByRole("button", { name: "Save clarification" }));
 

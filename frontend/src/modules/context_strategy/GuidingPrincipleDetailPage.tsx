@@ -1,8 +1,7 @@
 /**
  * Module: modules/context_strategy/GuidingPrincipleDetailPage
  *
- * A single Guiding Principle's full detail (docs/plans/module-01-context-
- * and-strategy-plan.md Phase 7.4) — mirrors `StrategyDetailPage.tsx`'s exact
+ * A single Guiding Principle's full detail — mirrors `StrategyDetailPage.tsx`'s exact
  * shape (full field display, current lifecycle status, version history,
  * comments, attachments, relationships, every lifecycle action), adjusted
  * for two genuine differences in Guiding Principle's own backend design:
@@ -19,7 +18,7 @@
  *    `PUT` every other field uses (`schemas.GuidingPrincipleUpdate`,
  *    structurally closer to `FutureStateFieldValues.target_date` than to
  *    Pain Point's genuinely separate "assign owner" surface) — but this
- *    phase's own frontend still reuses `components/RecordDetailParts`'
+ * frontend still reuses `components/RecordDetailParts`'
  *    `RecordPrincipalField` (a user, an organisation group and, on a project
  *    principle, a project group), mirroring `PainPointDetailPage.tsx`'s
  *    identical choice, for the same reasons: assigning a person or team is a
@@ -30,9 +29,9 @@
  *    fields plus the newly chosen `owner`, the same full-replace pattern
  *    `PainPointDetailPage.tsx`'s own `assignOwner` already establishes —
  *    this exercises the exact "explicit owner-assign-then-clear" behaviour
- *    Phase 4's own backend test suite pins.
+ * the backend test suite pins.
  *
- * **Scope-aware** (Phase 0 Q2, same as `StrategyDetailPage.tsx`): reads
+ * **Scope-aware** (same as `StrategyDetailPage.tsx`): reads
  * whichever of `projectId`/`organizationId` its current route supplies.
  * Unlike `PainPointDetailPage.tsx` (project-scoped only), an org-scoped
  * Guiding Principle has no *project* to fetch for its own organisation id —
@@ -50,12 +49,14 @@
  * GUIDING_PRINCIPLE_LOCKED_STATUSES`).
  */
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { Pencil } from "lucide-react";
+import { useParams } from "react-router-dom";
 
 import type { FileAsset, OrgUser, PrincipalRef, Project } from "../../api/types";
 import { api } from "../../api/client";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
+import { RecordActivity } from "../../components/RecordActivity";
+import { recordActivityKey } from "../../components/recordActivityKey";
+import { RecordTags } from "../../components/RecordTags";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
@@ -72,6 +73,13 @@ import { GUIDING_PRINCIPLE_PRIORITY_LABEL, GUIDING_PRINCIPLE_STATUS_LABEL, GUIDI
 import type {
   GuidingPrinciple, GuidingPrincipleComment, GuidingPrincipleFieldValues, GuidingPrincipleVersion,
 } from "./types";
+import { RecordHeader } from "../../components/RecordHeader";
+import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
+import { useArchiveAction } from "../../components/useConfirmedAction";
+import { Badge } from "../../components/Badge";
+import { TextAreaField } from "../../components/FormFields";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { DetailCard } from "../../components/DetailCard";
 
 /** Every lifecycle action this page can offer, keyed by the action itself —
  * same generic confirm-dialog-copy pattern as `StrategyDetailPage.tsx`'s own
@@ -124,7 +132,8 @@ export function GuidingPrincipleDetailPage() {
   const [comments, setComments] = useState<GuidingPrincipleComment[] | null>(null);
   const [files, setFiles] = useState<FileAsset[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
-  const [ownerOrgId, setOwnerOrgId] = useState<string | undefined>(organizationId);
+  const [fetchedOwnerOrgId, setOwnerOrgId] = useState<string | undefined>(undefined);
+  const ownerOrgId = organizationId ?? fetchedOwnerOrgId;
 
   const [editing, setEditing] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -132,7 +141,6 @@ export function GuidingPrincipleDetailPage() {
   const [sendBackComment, setSendBackComment] = useState("");
   const [transitionAction, setTransitionAction] = useState<TransitionAction | null>(null);
   const [transitionComment, setTransitionComment] = useState("");
-  const [archiveConfirm, setArchiveConfirm] = useState(false);
 
   useEffect(() => {
     if (!scopeId || !guidingPrincipleId) return;
@@ -148,11 +156,7 @@ export function GuidingPrincipleDetailPage() {
   // project is fetched once to resolve one (mirrors `PainPointDetailPage.tsx`'s
   // identical lookup); an org-scoped Guiding Principle already has it.
   useEffect(() => {
-    if (organizationId) {
-      setOwnerOrgId(organizationId);
-      return;
-    }
-    if (!projectId) return;
+    if (organizationId || !projectId) return;
     api.get<Project>(`/api/v1/projects/${projectId}`).then((p) => setOwnerOrgId(p.organization_id));
   }, [projectId, organizationId]);
 
@@ -175,10 +179,7 @@ export function GuidingPrincipleDetailPage() {
     }
   }
 
-  useEffect(() => {
-    void reloadCommentsAndFiles();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scopeId, guidingPrincipleId]);
+  useLoadOnChange(reloadCommentsAndFiles, [scopeId, guidingPrincipleId]);
 
   async function runTransition(action: () => Promise<GuidingPrinciple>, successMessage: string) {
     try {
@@ -218,12 +219,28 @@ export function GuidingPrincipleDetailPage() {
     }
   }
 
+  const archive = useArchiveAction({
+    noun: "Guiding Principle",
+    isArchived: guidingPrinciple?.is_archived ?? false,
+    hidden: !guidingPrinciple,
+    archiveBody: "This Guiding Principle will no longer appear in the active list. Nothing is deleted, and it remains available for historical purposes.",
+    onToggle: async () => {
+      if (!scopeId || !guidingPrinciple) return;
+      await runTransition(
+        () => (guidingPrinciple.is_archived ? scopedApi.unarchive(scopeId, guidingPrinciple.id) : scopedApi.archive(scopeId, guidingPrinciple.id)),
+        guidingPrinciple.is_archived ? "Guiding Principle unarchived." : "Guiding Principle archived.",
+      );
+    },
+  });
+
+  const codeOwner = useRecordOwnerCode(guidingPrinciple ?? {});
   if (!scopeId || !guidingPrincipleId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (guidingPrinciple === null) return <Spinner />;
 
   return (
     <DetailLayout
+      activity={projectId ? <RecordActivity projectId={projectId} artefactType="guiding_principle" artefactId={guidingPrinciple.id} refreshToken={recordActivityKey(guidingPrinciple)} /> : undefined}
       aside={
         <ArtefactLinksPanel
           projectId={projectId}
@@ -246,34 +263,26 @@ export function GuidingPrincipleDetailPage() {
         />
       }
     >
-      <Link to={backLink}>{backLabel}</Link>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ margin: 0 }}>{guidingPrinciple.name}</h1>
-        <span className={`badge badge--${GUIDING_PRINCIPLE_STATUS_TONE[guidingPrinciple.status]}`}>
-          {GUIDING_PRINCIPLE_STATUS_LABEL[guidingPrinciple.status]}
-        </span>
-      </div>
-      <div className="stack">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-          <p className="text-muted" style={{ margin: 0 }}>
-            {GUIDING_PRINCIPLE_PRIORITY_LABEL[guidingPrinciple.priority]} priority · v{guidingPrinciple.version_number}
-          </p>
-          {!guidingPrinciple.is_locked && (
-            <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
-              <Pencil size={14} />
-            </button>
-          )}
-        </div>
-
-        <Field label="Principle statement" value={guidingPrinciple.principle_statement} />
-        {guidingPrinciple.rationale && <Field label="Rationale" value={guidingPrinciple.rationale} />}
-
-        <RecordPrincipalField
-          label="Owner" ariaLabel="Guiding Principle owner" principal={guidingPrinciple.owner} orgUsers={orgUsers}
-          organizationId={ownerOrgId} projectId={projectId} readOnly={false} onChange={assignOwner}
-        />
-
-        <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+      <RecordHeader
+        recordLabel="Guiding Principle"
+        title={guidingPrinciple.name}
+        code={guidingPrinciple.unique_code}
+        tags={projectId ? <RecordTags projectId={projectId} artefactType="guiding_principle" artefactId={guidingPrinciple.id} /> : undefined}
+        codeOwner={codeOwner}
+        back={{ to: backLink, label: backLabel }}
+        badges={
+          <>
+          <Badge tone={GUIDING_PRINCIPLE_STATUS_TONE[guidingPrinciple.status]}>
+            {GUIDING_PRINCIPLE_STATUS_LABEL[guidingPrinciple.status]}
+          </Badge>
+          </>
+        }
+        version={guidingPrinciple.version_number}
+        subtitle={`${GUIDING_PRINCIPLE_PRIORITY_LABEL[guidingPrinciple.priority]} priority`}
+        onEdit={guidingPrinciple.is_locked ? undefined : () => setEditing(true)}
+        actions={[archive.item]}
+        transitions={
+          <>
           {guidingPrinciple.status === "draft" && (
             <button
               className="btn btn-primary"
@@ -287,20 +296,32 @@ export function GuidingPrincipleDetailPage() {
               <button className="btn btn-primary" onClick={() => setTransitionAction("approve")}>Approve</button>
               <button className="btn" onClick={() => setSendingBack(true)}>Send back</button>
             </>
-          )}
-          {guidingPrinciple.status === "approved" && (
-            <button className="btn btn-primary" onClick={() => setTransitionAction("activate")}>Activate</button>
-          )}
-          {guidingPrinciple.status === "active" && (
-            <>
-              <button className="btn" onClick={() => setTransitionAction("supersede")}>Supersede</button>
-              <button className="btn btn-danger" onClick={() => setTransitionAction("retire")}>Retire</button>
-            </>
-          )}
-          <button className="btn" onClick={() => setArchiveConfirm(true)}>
-            {guidingPrinciple.is_archived ? "Unarchive" : "Archive"}
-          </button>
-        </div>
+              )}
+              {guidingPrinciple.status === "approved" && (
+                <button className="btn btn-primary" onClick={() => setTransitionAction("activate")}>Activate</button>
+              )}
+              {guidingPrinciple.status === "active" && (
+                <>
+                  <button className="btn" onClick={() => setTransitionAction("supersede")}>Supersede</button>
+                  <button className="btn btn-danger" onClick={() => setTransitionAction("retire")}>Retire</button>
+                </>
+              )}
+          </>
+        }
+      />
+      {archive.dialog}
+
+      <div className="stack">
+
+        <DetailCard>
+          <Field label="Principle statement" value={guidingPrinciple.principle_statement} />
+          {guidingPrinciple.rationale && <Field label="Rationale" value={guidingPrinciple.rationale} />}
+
+          <RecordPrincipalField
+            label="Owner" ariaLabel="Guiding Principle owner" principal={guidingPrinciple.owner} orgUsers={orgUsers}
+            organizationId={ownerOrgId} projectId={projectId} readOnly={false} onChange={assignOwner}
+          />
+        </DetailCard>
 
 
         <VersionHistoryTable
@@ -311,8 +332,7 @@ export function GuidingPrincipleDetailPage() {
           ]}
         />
 
-        <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-          <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Attachments</h3>
+        <DetailCard heading="Attachments">
           <FileAttachmentList
             files={files}
             disabled={guidingPrinciple.is_locked}
@@ -326,31 +346,29 @@ export function GuidingPrincipleDetailPage() {
               setFiles((prev) => prev.filter((f) => f.id !== fileId));
             }}
           />
-        </div>
+        </DetailCard>
 
-        <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-          <ArtefactCommentsSection
-            comments={comments ?? []}
-            currentUserId={user?.id}
-            onPost={async (body) => {
-              const comment = await scopedApi.addComment(scopeId, guidingPrinciple.id, body);
-              setComments((prev) => [...(prev ?? []), comment]);
-              return comment;
-            }}
-            onEdit={async (commentId, body) => {
-              const updated = await scopedApi.editComment(scopeId, guidingPrinciple.id, commentId, body);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? updated : c)));
-            }}
-            onUploadAttachment={async (commentId, file) => {
-              const asset = await scopedApi.uploadCommentAttachment(scopeId, guidingPrinciple.id, commentId, file);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: [...c.attachments, asset] } : c)));
-            }}
-            onRemoveAttachment={async (commentId, fileId) => {
-              await scopedApi.removeCommentAttachment(scopeId, guidingPrinciple.id, commentId, fileId);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
-            }}
-          />
-        </div>
+        <ArtefactCommentsSection
+          comments={comments ?? []}
+          currentUserId={user?.id}
+          onPost={async (body) => {
+            const comment = await scopedApi.addComment(scopeId, guidingPrinciple.id, body);
+            setComments((prev) => [...(prev ?? []), comment]);
+            return comment;
+          }}
+          onEdit={async (commentId, body) => {
+            const updated = await scopedApi.editComment(scopeId, guidingPrinciple.id, commentId, body);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? updated : c)));
+          }}
+          onUploadAttachment={async (commentId, file) => {
+            const asset = await scopedApi.uploadCommentAttachment(scopeId, guidingPrinciple.id, commentId, file);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: [...c.attachments, asset] } : c)));
+          }}
+          onRemoveAttachment={async (commentId, fileId) => {
+            await scopedApi.removeCommentAttachment(scopeId, guidingPrinciple.id, commentId, fileId);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
+          }}
+        />
       </div>
 
       {editing && (
@@ -369,13 +387,7 @@ export function GuidingPrincipleDetailPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>A comment explaining what needs rework is required.</span>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                Send-back comment
-                <textarea
-                  className="input" rows={2} aria-label="Send-back comment"
-                  value={sendBackComment} onChange={(e) => setSendBackComment(e.target.value)}
-                />
-              </label>
+              <TextAreaField helpNotNeeded label="Send-back comment" value={sendBackComment} onChange={setSendBackComment} rows={2} />
             </span>
           }
           confirmLabel="Send back"
@@ -396,13 +408,13 @@ export function GuidingPrincipleDetailPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>{TRANSITION_COPY[transitionAction].body}</span>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                Comment
-                <textarea
-                  className="input" rows={2} aria-label="Transition comment"
-                  value={transitionComment} onChange={(e) => setTransitionComment(e.target.value)}
-                />
-              </label>
+              <TextAreaField helpNotNeeded
+                label="Comment"
+                ariaLabel="Transition comment"
+                value={transitionComment}
+                onChange={setTransitionComment}
+                rows={2}
+              />
             </span>
           }
           confirmLabel={TRANSITION_COPY[transitionAction].confirmLabel}
@@ -420,25 +432,6 @@ export function GuidingPrincipleDetailPage() {
         />
       )}
 
-      {archiveConfirm && (
-        <ConfirmDialog
-          title={guidingPrinciple.is_archived ? "Unarchive this Guiding Principle?" : "Archive this Guiding Principle?"}
-          message={
-            guidingPrinciple.is_archived
-              ? "This Guiding Principle will count as active again."
-              : "This Guiding Principle will no longer appear in the active list. Nothing is deleted, and it remains available for historical purposes."
-          }
-          confirmLabel={guidingPrinciple.is_archived ? "Unarchive" : "Archive"}
-          onConfirm={async () => {
-            setArchiveConfirm(false);
-            await runTransition(
-              () => (guidingPrinciple.is_archived ? scopedApi.unarchive(scopeId, guidingPrinciple.id) : scopedApi.archive(scopeId, guidingPrinciple.id)),
-              guidingPrinciple.is_archived ? "Guiding Principle unarchived." : "Guiding Principle archived.",
-            );
-          }}
-          onCancel={() => setArchiveConfirm(false)}
-        />
-      )}
     </DetailLayout>
   );
 }

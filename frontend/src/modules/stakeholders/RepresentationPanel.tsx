@@ -1,7 +1,7 @@
 /**
  * Module: modules/stakeholders/RepresentationPanel
  *
- * The "represents Persona" links (Phase 0 resolution 12), shown from either
+ * The "represents Persona" links, shown from either
  * end on the detail pages: a Stakeholder's "Represents" list (editable: pick a
  * Persona to add, remove one) and a Persona's "Represented by" list
  * (read-only: the link is owned from the Stakeholder side). One component for
@@ -25,8 +25,10 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { RecordFieldGroup } from "../../components/RecordDetailParts";
 import { RemovableItemList } from "../../components/RemovableItemList";
+import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import type { RepresentedLink } from "./types";
+import { FormActions } from "../../components/FormActions";
 
 /** What makes a panel editable: the candidates to add and the two mutations. */
 export interface RepresentationEdit {
@@ -100,27 +102,23 @@ export function RepresentationPanel({
 
   const addForm = (close: () => void) => (
     <div className="stack">
-      <LabeledSelect label={edit!.pickerLabel} value={picked} onChange={setPicked} options={candidates} placeholder="Choose…" />
-      <div className="row" style={{ justifyContent: "flex-end" }}>
-        <button className="btn" onClick={close}>Cancel</button>
-        <button
-          className="btn btn-primary"
-          disabled={!picked}
-          onClick={async () => {
+      <LabeledSelect helpNotNeeded required label={edit!.pickerLabel} value={picked} onChange={setPicked} options={candidates} placeholder="Choose…" />
+      <FormActions
+        onCancel={close}
+        onSave={async () => {
             const id = picked;
             setPicked("");
             close();
             await mutate(() => edit!.onAdd(id), "Link added.", "Could not add the link.");
           }}
-        >
-          Add
-        </button>
-      </div>
+        saveLabel="Add"
+        saveDisabled={!picked}
+      />
     </div>
   );
 
   return (
-    <RecordFieldGroup
+    <RecordFieldGroup helpNotNeeded
       label={heading}
       gap="0.35rem"
       action={edit && <AddPopoverButton label={`Add to ${heading}`} disabled={candidates.length === 0}>{addForm}</AddPopoverButton>}
@@ -131,7 +129,16 @@ export function RepresentationPanel({
         <RemovableItemList
           items={links.map((l) => ({
             id: l.link_id,
-            content: <Link to={linkFor(l)}>{l.name}</Link>,
+            content: (
+              <>
+                {l.unique_code && (
+                  <span className="text-muted" style={{ fontSize: "0.85rem" }}>
+                    <ScopedRecordCode record={{ unique_code: l.unique_code, scope: l.scope, organization_id: l.organization_id }} />{" "}
+                  </span>
+                )}
+                <Link to={linkFor(l)}>{l.name}</Link>
+              </>
+            ),
             removeLabel: `Remove ${l.name}`,
           }))}
           onRemove={edit ? (id) => setRemoving(links.find((l) => l.link_id === id) ?? null) : undefined}

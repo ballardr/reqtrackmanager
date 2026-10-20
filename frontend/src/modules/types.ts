@@ -1,13 +1,14 @@
 import type { ComponentType, ReactNode } from "react";
 
+import type { ProjectScope } from "../api/projectScope";
 import type { ReportCatalogueEntry, ReportResult, ReportRunValues } from "../api/reports";
 import type { ReportFigureActionResolver } from "../components/ReportViewer";
 
 /**
  * One route a Tier A ("installed") module contributes — a plain React
  * Router route spliced into `App.tsx`'s `<Routes>` alongside the core
- * pages, compiled directly into this bundle (compliance-module-plan.md
- * Phase 3). `path` must match the `nav_path` the module's backend
+ * pages, compiled directly into this bundle.
+ * `path` must match the `nav_path` the module's backend
  * `ModuleFrontendManifest` declares, so the nav entry `Layout.tsx` renders
  * (from `GET /projects/{id}/enabled-modules`) actually links somewhere.
  */
@@ -18,15 +19,12 @@ export interface TierAModuleRoute {
 
 /**
  * One org-admin `ResourceMenu` group a Tier A module contributes to
- * `OrgAdminPage.tsx` (module system follow-up, 2026-09-07 — see
- * `docs/decisions.md`'s "Module system follow-up: dynamic org-admin panel
- * registration" entry). Phase 3's own routing/nav-discovery mechanism
+ * `OrgAdminPage.tsx` (see `docs/decisions.md`'s "Module system follow-up: dynamic org-admin panel
+ * registration" entry). The routing/nav-discovery mechanism
  * (`TierAModuleRoute` above) is project-scoped end to end and has no
- * org-level equivalent (see Phase 12's notes in
- * `docs/compliance-module-plan.md`) — this is that missing org-level half,
- * generalising what Phase 12/14 each mounted by hand into `OrgAdminPage.tsx`
- * (`ComplianceAdminPanel`/`OrgCompliancePanel`) into a declared-by-the-module
- * mechanism instead. Shaped after `ResourceMenuGroupDef`
+ * org-level equivalent — this is that missing org-level half,
+ * a declared-by-the-module mechanism rather than panels hand-mounted into
+ * `OrgAdminPage.tsx`. Shaped after `ResourceMenuGroupDef`
  * (`components/ResourceMenu.tsx`) — `key`/`label` mirror that type exactly
  * (the module doesn't compute `href` itself; `OrgAdminPage.tsx` derives it
  * from `key` the same way it does for every core group) — plus a
@@ -45,8 +43,7 @@ export interface OrgAdminSectionDef {
   render: (props: { orgId: string }) => ReactNode;
 }
 
-/** `OrgAdminSectionDef`'s project-scoped counterpart (Module 4 Phase 9,
- * 2026-09-22) — same shape, scoped by `projectId` instead of `orgId` for
+/** `OrgAdminSectionDef`'s project-scoped counterpart (2026-09-22) — same shape, scoped by `projectId` instead of `orgId` for
  * `ProjectAdminPage.tsx`'s own `ResourceMenu` groups. */
 export interface ProjectAdminSectionDef {
   /** This section's `ResourceMenu` group key and
@@ -60,7 +57,7 @@ export interface ProjectAdminSectionDef {
 
 /**
  * One top-level nav-rail link a Tier A module contributes to `Layout.tsx`'s
- * "Global" section (docs/compliance-module-plan.md Phase 18 — "Compliance
+ * "Global" section ("Compliance
  * Standards" as a first-class, cross-org, project-like nav entity). Unlike
  * `OrgAdminSectionDef`, this has no parent-owned data to hand the module
  * (`Layout.tsx` doesn't know which org/project is relevant to a global tab)
@@ -86,8 +83,7 @@ export interface GlobalNavItemDef {
 
 /**
  * One "standalone workspace" nav-rail section a Tier A module contributes —
- * a project-like drill-down entity that isn't a `Project` (docs/compliance-
- * module-plan.md Phase 18's own "Standard" section is the first of these:
+ * a project-like drill-down entity that isn't a `Project` (Compliance's "Standard" section is the first of these:
  * Overview/Details, Versions, History, rendered as a sibling structural
  * pattern to the "Project" section, not nested inside it, whenever a
  * Standard's own id is present in the URL). `Layout.tsx` tests `matchPath`
@@ -131,13 +127,31 @@ export interface ProjectOverviewTileDef {
    * tiles — used only as this contribution's React list `key`, never
    * rendered. */
   key: string;
-  render: (props: { projectId: string }) => ReactNode;
+  /** `projectScope` is the overview's list scope (`this` unless the viewer widened it to related projects):
+   * a tile that counts or summarises project data should cover the same projects as the built-in tiles. */
+  render: (props: { projectId: string; projectScope: ProjectScope }) => ReactNode;
+}
+
+/**
+ * A search scope a module offers beyond the built-in "This project" and "All projects" (see
+ * `TierAModuleDefinition.searchScopes`). Requests carry it as `<module key>:<key>:<ref id>`.
+ */
+export interface SearchScopeDefinition {
+  /** Identifies the scope within its module (`"standard"`); matches the backend `search_scopes` key. */
+  key: string;
+  /** What the Scope filter calls it ("This standard"). */
+  label: string;
+  /** Which scope is the default where several match the current page: the highest wins. The built-ins are
+   * All projects 0 and This project 100; a unit inside a project or organisation is usually narrower. Default 200. */
+  narrowness?: number;
+  /** The id of the unit the page at `pathname` is inside (a standard's id), or `null` when it is not inside one. */
+  match: (pathname: string) => string | null;
 }
 
 /**
  * One headline stat tile a Tier A module contributes to
  * `pages/OrgOverviewPage.tsx`'s own always-visible stats header
- * (compliance-module-plan.md Phase 25b — "the org's headline compliance
+ * ("the org's headline compliance
  * gauges... must surface directly in the overview's own always-visible
  * stats header, not require a click into the `ResourceMenu` group at
  * all"). Mirrors `ProjectOverviewTileDef` exactly (same "module hands the
@@ -158,8 +172,7 @@ export interface OrgOverviewTileDef {
 
 /**
  * One extra section a Tier A module contributes to
- * `pages/RequirementDetailPage.tsx`'s own "Links" card (compliance-module-
- * plan.md Phase 34 — the first consumer is Compliance's own linked-
+ * `pages/RequirementDetailPage.tsx`'s own "Links" card (the first consumer is Compliance's own linked-
  * compliance-requirements list plus a picker to add one). Mirrors
  * `ProjectOverviewTileDef`'s exact "module hands the parent a render
  * function, parent has no idea what's inside it" shape, gated the same
@@ -190,7 +203,7 @@ export interface RequirementDetailSectionDef {
 }
 
 /**
- * Props a module's custom report view receives (Module 1 Phase 13). The shared
+ * Props a module's custom report view receives. The shared
  * `ReportRunner` runs the report, owns loading/error/empty states, the
  * parameter form and downloads, and hands the view only the collected
  * `result` plus enough context to render it. Rendering a table of
@@ -233,7 +246,7 @@ export interface TierAModuleDefinition {
    * `OrgAdminPage.tsx` can tell whether this module is actually enabled for
    * the org it's rendering before showing any of its `orgAdminSections`. */
   key: string;
-  /** This module's project-scoped routes (Phase 3). Defaults to none — a
+  /** This module's project-scoped routes. Defaults to none — a
    * module contributing only org-admin sections (see below) and no
    * project-scoped UI of its own doesn't need to declare any. Only ever
    * mounted for a project where the backend currently reports this module
@@ -242,7 +255,7 @@ export interface TierAModuleDefinition {
    * always mounted for every installed module regardless of any one
    * project's/org's own enablement state. */
   routes?: TierAModuleRoute[];
-  /** This module's always-mounted, top-level routes (Phase 18) — reuses
+  /** This module's always-mounted, top-level routes — reuses
    * `TierAModuleRoute`'s exact `{path, element}` shape, but spliced into
    * `App.tsx`'s `<Routes>` unconditionally for every installed module, the
    * same way `/projects`/`/orgs` are, rather than gated on a specific
@@ -258,9 +271,9 @@ export interface TierAModuleDefinition {
    * boundary `globalNavItems`/`standaloneWorkspaces` above already
    * establish, and the reason a Tier A module's own page components (e.g.
    * `modules/compliance/StandardListPage.tsx`) live inside the module's own
-   * directory, never under `frontend/src/pages/` (see `docs/decisions.md`'s
-   * "Phase 18 complete" entry for the second, `App.tsx`-side instance of
-   * this same violation being caught and corrected here). Omitted (or
+   * directory, never under `frontend/src/pages/` (see `docs/decisions.md` for the
+   * `App.tsx`-side instance of this same violation being caught and
+   * corrected). Omitted (or
    * empty) for a module with no such route of its own. */
   globalRoutes?: TierAModuleRoute[];
   /** This module's org-admin `ResourceMenu` groups, if any — merged into
@@ -269,7 +282,7 @@ export interface TierAModuleDefinition {
    * org-level admin surface. */
   orgAdminSections?: OrgAdminSectionDef[];
   /** This module's `ResourceMenu` groups on `pages/ProjectAdminPage.tsx`
-   * (Module 4 Phase 9, 2026-09-22) — merged into that page's own fixed
+   * — merged into that page's own fixed
    * six groups and filtered to this project's actually-enabled modules,
    * the same "module hands the parent a render function, parent has no
    * idea what's inside it" shape `orgAdminSections` already establishes,
@@ -282,11 +295,11 @@ export interface TierAModuleDefinition {
    * `docs/decisions.md`. Omitted (or empty) for a module with no
    * project-level admin surface. */
   projectAdminSections?: ProjectAdminSectionDef[];
-  /** This module's top-level nav-rail links (Phase 18), rendered in
+  /** This module's top-level nav-rail links, rendered in
    * `Layout.tsx`'s "Global" section. Omitted (or empty) for a module with
    * no global tab of its own. */
   globalNavItems?: GlobalNavItemDef[];
-  /** This module's "standalone workspace" nav-rail sections (Phase 18),
+  /** This module's "standalone workspace" nav-rail sections,
    * rendered as a sibling to `Layout.tsx`'s "Project" section whenever the
    * current path matches one of them. Omitted (or empty) for a module with
    * no such entity of its own. */
@@ -297,7 +310,7 @@ export interface TierAModuleDefinition {
    * project-overview summary of its own. */
   projectOverviewTiles?: ProjectOverviewTileDef[];
   /** This module's `ResourceMenu` groups on `pages/OrgOverviewPage.tsx`
-   * (compliance-module-plan.md Phase 19 — the "Organisation Overview"
+   * (the "Organisation Overview"
    * page), below that page's own core stats header. Reuses
    * `OrgAdminSectionDef`'s exact `{key, label, render({orgId})}` shape —
    * the two pages need identical things from a module (a `ResourceMenu`
@@ -308,11 +321,11 @@ export interface TierAModuleDefinition {
    * empty) for a module with no org-overview surface of its own. */
   orgOverviewSections?: OrgAdminSectionDef[];
   /** This module's headline stat tiles on `pages/OrgOverviewPage.tsx`'s own
-   * stats header (compliance-module-plan.md Phase 25b). Omitted (or empty)
+   * stats header. Omitted (or empty)
    * for a module with no headline gauge of its own. */
   orgOverviewTiles?: OrgOverviewTileDef[];
   /** This module's extra sections on `pages/RequirementDetailPage.tsx`'s
-   * own Links card (compliance-module-plan.md Phase 34), gated on this
+   * own Links card, gated on this
    * project's own `enabled-modules` list the same way `projectOverviewTiles`
    * is. Omitted (or empty) for a module with no requirement-detail
    * contribution of its own. */
@@ -346,6 +359,11 @@ export interface TierAModuleDefinition {
    * the frontend counterpart of the backend's `artefact_summary_providers`).
    * Omitted for a module whose records nothing else links to. */
   artefactPaths?: Record<string, (projectId: string, id: string) => string>;
+  /** Where each of this module's organisation-owned artefact types that has an organisation-level page opens,
+   * keyed by artefact type (a shared Strategy opens at its organisation page, not through a project). The
+   * global search uses it for a result that belongs to the organisation and was not found through a project
+   * (`modules/artefactPaths.ts`'s `getSearchHitPath`). Omitted for a module with no such type. */
+  orgArtefactPaths?: Record<string, (organizationId: string, id: string) => string>;
   /** Display labels for the lifecycle status of each of this module's own artefact
    * types, keyed by artefact type then by the backend's status string — so the
    * shared Links panel can show a linked record's status without a raw enum
@@ -359,8 +377,13 @@ export interface TierAModuleDefinition {
    * record is inactive whatever its status, so `archived` need not be listed. Resolved by
    * `modules/artefactPaths.ts`'s `isArtefactInactive`; core never names a module's statuses. */
   artefactInactiveStatuses?: Record<string, string[]>;
+  /** Extra scopes this module adds to the global search's Scope filter (Compliance: one standard), the
+   * frontend half of the backend's `ModuleDefinition.search_scopes`. Core never names a module's scope:
+   * it asks every registered `match` which scopes apply to the page the viewer is on and offers those
+   * (`modules/searchScopes.ts`). Omitted for a module with no such unit. */
+  searchScopes?: SearchScopeDefinition[];
   /** Custom on-screen views for this module's reports, keyed by the backend
-   * `ReportDefinition.key` (Module 1 Phase 13). The Reports pages list every
+   * `ReportDefinition.key`. The Reports pages list every
    * report from the backend catalogue and render `ReportViewer` (a generic
    * table view) for any report with no entry here, so a module adds a view
    * only where a table genuinely fails the reader. Core resolves it through

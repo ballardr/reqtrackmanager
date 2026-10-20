@@ -19,11 +19,11 @@ const ORG_ID = "org-1";
 /**
  * §21's "make it easy... to determine what remains outstanding" — the
  * four cross-assignment listings (Non-Compliant, Pending Approval,
- * Outstanding Required Actions — added Phase 14 — and Reviews Due/Overdue)
+ * Outstanding Required Actions, and Reviews Due/Overdue)
  * gathered in one read-only view. Acting on a row happens via the
  * Standards tab (`ApplicabilityTree`/`ReviewsPanel`), not here.
  *
- * Phase 40's Standard/Standard version/Sub-section filters additionally
+ * The Standard/Standard version/Sub-section filters additionally
  * fetch `listStandardVersions`/`listRequirements` once a standard is
  * picked — `versions`/`requirementsByVersion` let a story supply that data
  * only when it needs the filters to actually resolve something (most
@@ -122,7 +122,7 @@ const REQUIREMENTS_VER_1: ComplianceRequirement[] = [
   { id: "req-2", standard_version_id: "ver-1", parent_requirement_id: "sec-5", reference: "A.5.16", name: "Identity management", sort_order: 1, ...REQUIREMENT_DEFAULTS },
 ];
 
-/** Phase 40 — selecting "ISO-27001" surfaces a "Standard version" and
+/** Selecting "ISO-27001" surfaces a "Standard version" and
  * "Sub-section" filter; both `req-1`/`req-2` (behind every row below) sit
  * under "Annex A.5," so filtering to "Clause 4" (which has no requirements
  * of its own here) narrows the three requirement-scoped sections to
@@ -142,7 +142,7 @@ export const FilteredByStandardAndSubSection: Story = {
   },
 };
 
-/** Phase 43: the "Export" trigger scopes its download to this panel's
+/** The "Export" trigger scopes its download to this panel's
  * current Standard/Standard version/Sub-section filters — no Project filter
  * to pass through, since this page is already scoped to one project. */
 export const ExportPassesActiveFiltersAsQueryParams: Story = {

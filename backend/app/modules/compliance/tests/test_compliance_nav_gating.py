@@ -1,4 +1,4 @@
-"""Tests for Phase 17e: the project-level Compliance nav entry/route is only
+"""Tests for the project-level Compliance nav entry/route is only
 advertised once its organisation has a real, assignable standard.
 
 `routers.projects.list_project_enabled_modules` (`GET /api/v1/projects/
@@ -15,7 +15,7 @@ silently absent), just gated on org data instead of manifest validation.
 A standalone file rather than an addition to `test_compliance_standards_
 api.py`: kept deliberately independent of that file's shared `_create_
 standard`/`_create_version` helpers so it has nothing to reconcile against
-Phase 17b's concurrent change to the standard-creation payload shape.
+a concurrent change to the standard-creation payload shape.
 """
 
 from __future__ import annotations
@@ -75,8 +75,8 @@ def test_compliance_nav_entry_absent_until_a_standard_version_is_published(clien
     assert publish_resp.status_code == 200, publish_resp.text
 
     # Publishing the version makes it assignable -> the manifest appears,
-    # with the project id already interpolated into its paths (Phase 13's
-    # own existing behaviour, unaffected by this gate).
+    # with the project id already interpolated into its paths (existing
+    # behaviour, unaffected by this gate).
     manifest = compliance_manifest()
     assert manifest is not None
     assert manifest["nav_path"] == f"/projects/{project['id']}/modules/compliance"

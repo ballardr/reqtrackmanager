@@ -23,6 +23,10 @@ sidebar_position: 12
 
 **Project Admin → Fields & actions → Link types** lists the organisation's link types (and any a parent project defined) with a **Hide** toggle each, and lets the project add link types of its own. The organisation can switch this off, which shows the list read-only. See [Links and traceability → Link types for one project](../core-features/links-and-traceability.md#link-types-for-one-project).
 
+## Tags
+
+**Project Admin → Tags** sets whether anyone who can tag a record may coin a new tag or only the listed ones, and lets you add, rename, colour, merge, reclassify and delete the project's tags, with a usage table per kind of record. A child project follows its parent's list until it adds a tag of its own. See [Tags](../core-features/tags.md#keeping-the-list-tidy-project-admin--tags).
+
 ## Report setup
 
 **Project Admin → Report Setup** sets the project's default report template and the introduction, chapters and appendices of each report type, each labelled with where its value is inherited from (a parent project or the organisation). See [Reports and export → Report content](../core-features/reports-and-export.md#report-content).

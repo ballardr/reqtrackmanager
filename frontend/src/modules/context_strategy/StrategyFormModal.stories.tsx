@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import { StrategyFormModal } from "./StrategyFormModal";
+import { requiredCaptions } from "../../testing/requiredMarkers";
 import type { Strategy } from "./types";
 
 /**
@@ -34,7 +35,7 @@ export const SubmitsNewStrategy: Story = {
     await userEvent.click(body.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ title: "Lead the regional market", objective: "Become the top provider in our region." })
+      expect.objectContaining({ title: "Lead the regional market", objective: "Become the top provider in our region." }), [], []
     ));
   },
 };
@@ -53,7 +54,7 @@ export const SaveDisabledUntilRequiredFieldsFilled: Story = {
 export const EditExisting: Story = {
   args: {
     initial: {
-      id: "strategy-1", scope: "project", organization_id: null, project_id: "project-1", creator_id: "user-1",
+      id: "strategy-1", scope: "project", organization_id: null, project_id: "project-1", unique_code: "STR-001", creator_id: "user-1",
       is_archived: false, archived_at: null, archived_by: null, title: "Lead the regional market",
       objective: "Become the top provider in our region.", current_state: "We are #3 in the region.",
       desired_future_state: "We are #1 in the region.", rationale: "Market analysis shows a clear opening.",
@@ -70,5 +71,28 @@ export const EditExisting: Story = {
   },
 };
 
+/** Worst case: a long save error and a long unbroken title. The error is shown, and the dialog neither scrolls
+ * sideways nor pushes Save out of reach. */
+export const LongErrorAndLongTitleKeepTheActionsReachable: Story = {
+  args: { error: "Could not save: " + "the server rejected this request for a reason that takes a while to explain. ".repeat(4) },
+  play: async () => {
+    const body = within(document.body);
+    await userEvent.type(body.getByLabelText("Strategy title"), "W".repeat(200));
+    await expect(body.getByText(/Could not save:/)).toBeVisible();
+    await expect(body.getByRole("button", { name: "Save" })).toBeVisible();
+    const dialog = body.getByRole("dialog");
+    await expect(dialog.scrollWidth).toBeLessThanOrEqual(dialog.clientWidth + 1);
+  },
+};
+
 export const LightTheme: Story = { ...CreateNew };
 export const DarkTheme: Story = { ...CreateNew, globals: { theme: "dark" } };
+
+/** The title and the objective block saving, and they are the marked fields. */
+export const TitleAndObjectiveAreMarkedRequired: Story = {
+  play: async () => {
+    const root = within(document.body).getByRole("dialog");
+    await expect(requiredCaptions(root)).toEqual(["Title", "Objective / strategic theme"]);
+    await expect(within(root).getByRole("button", { name: "Save" })).toBeDisabled();
+  },
+};

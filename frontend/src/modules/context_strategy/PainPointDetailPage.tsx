@@ -1,8 +1,7 @@
 /**
  * Module: modules/context_strategy/PainPointDetailPage
  *
- * A single Pain Point's full detail (docs/plans/module-01-context-and-
- * strategy-plan.md Phase 7.3) — mirrors `StrategyDetailPage.tsx`'s overall
+ * A single Pain Point's full detail — mirrors `StrategyDetailPage.tsx`'s overall
  * shape (full field display, lifecycle actions, attachments, comments,
  * relationships), with three structural differences driven directly by Pain
  * Point's own backend design:
@@ -14,7 +13,7 @@
  *    Duplicate — matching `PainPointStatus`'s own three-way branch
  *    (`service._PP_ALLOWED_TRANSITIONS[TRIAGED]`). Confirmation tiers follow
  *    `docs/ux-style-guide.md`'s confirmation-tier principle the same way
- *    Phase 7.1's notes describe: `triage` is a plain click (low-risk,
+ * Strategy's does: `triage` is a plain click (low-risk,
  *    single early-lifecycle step, mirrors Strategy's `propose`/`submit-for-
  *    review`); `reject`/`mark-duplicate` require a `ConfirmDialog` with a
  *    **mandatory** comment (matching backend enforcement —
@@ -25,7 +24,7 @@
  * 3. **Evidence upload is open to any project member; only removal is
  *    manager-gated (Decided by: Agent).** Checked `upload_project_pain_
  *    point_file`'s own docstring first: unlike Strategy/Future State's
- *    owner-gated file upload, source overview §6.5 explicitly lists "Add
+ * owner-gated file upload, §6.5 explicitly lists "Add
  *    evidence" among the broad-creation-model capabilities every project
  *    member gets. In practice this needs **no different frontend wiring**
  *    from Strategy's own `FileAttachmentList` usage — this codebase's
@@ -40,7 +39,7 @@
  *    difference in *who the backend accepts* (any member for upload, manager
  *    only for removal) is real — nothing on this page needs to encode it.
  *
- * Phase 11 adds `PainPointScoringPanel` (per-persona Severity/Frequency/
+ * The page also hosts `PainPointScoringPanel` (per-persona Severity/Frequency/
  * Confidence scoring and the chosen-when-viewing roll-up) and an
  * "Intentional" badge for deliberate limitations.
  *
@@ -53,12 +52,14 @@
  * the current content fields plus the newly chosen `owner`.
  */
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { Pencil } from "lucide-react";
+import { useParams } from "react-router-dom";
 
 import type { FileAsset, OrgUser, PrincipalRef, Project } from "../../api/types";
 import { api } from "../../api/client";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
+import { RecordActivity } from "../../components/RecordActivity";
+import { recordActivityKey } from "../../components/recordActivityKey";
+import { RecordTags } from "../../components/RecordTags";
 import { RecordPrincipalField } from "../../components/RecordDetailParts";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
@@ -72,6 +73,12 @@ import { PainPointFormModal } from "./PainPointFormModal";
 import { PainPointScoringPanel } from "./PainPointScoringPanel";
 import { PAIN_POINT_PRIORITY_LABEL, PAIN_POINT_STATUS_LABEL, PAIN_POINT_STATUS_TONE } from "./types";
 import type { EffectivePainPointType, PainPoint, PainPointComment, PainPointFieldValues } from "./types";
+import { RecordHeader } from "../../components/RecordHeader";
+import { useArchiveAction } from "../../components/useConfirmedAction";
+import { Badge } from "../../components/Badge";
+import { TextAreaField } from "../../components/FormFields";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { DetailCard } from "../../components/DetailCard";
 
 /** The three optional-comment, positive/neutral-progression actions —
  * mirrors `StrategyDetailPage.tsx`'s `TransitionAction`/`TRANSITION_COPY`
@@ -133,7 +140,6 @@ export function PainPointDetailPage() {
   const [optionalComment, setOptionalComment] = useState("");
   const [mandatoryAction, setMandatoryAction] = useState<MandatoryCommentAction | null>(null);
   const [mandatoryComment, setMandatoryComment] = useState("");
-  const [archiveConfirm, setArchiveConfirm] = useState(false);
 
   useEffect(() => {
     if (!projectId) return;
@@ -149,7 +155,6 @@ export function PainPointDetailPage() {
     projectPainPointApi.get(projectId, painPointId).then(setPainPoint).catch((err) => {
       setLoadError(toErrorMessage(err, "This Pain Point could not be found, or you don't have access to it."));
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, painPointId]);
 
   async function reloadCommentsAndFiles() {
@@ -166,10 +171,7 @@ export function PainPointDetailPage() {
     }
   }
 
-  useEffect(() => {
-    void reloadCommentsAndFiles();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, painPointId]);
+  useLoadOnChange(reloadCommentsAndFiles, [projectId, painPointId]);
 
   async function runTransition(action: () => Promise<PainPoint>, successMessage: string) {
     try {
@@ -209,12 +211,27 @@ export function PainPointDetailPage() {
     }
   }
 
+  const archive = useArchiveAction({
+    noun: "Pain Point",
+    isArchived: painPoint?.is_archived ?? false,
+    hidden: !painPoint,
+    archiveBody: "This Pain Point will no longer appear in the active list. Nothing is deleted, and it remains available for historical purposes.",
+    onToggle: async () => {
+      if (!projectId || !painPoint) return;
+      await runTransition(
+        () => (painPoint.is_archived ? projectPainPointApi.unarchive(projectId, painPoint.id) : projectPainPointApi.archive(projectId, painPoint.id)),
+        painPoint.is_archived ? "Pain Point unarchived." : "Pain Point archived.",
+      );
+    },
+  });
+
   if (!projectId || !painPointId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (painPoint === null) return <Spinner />;
 
   return (
     <DetailLayout
+      activity={projectId ? <RecordActivity projectId={projectId} artefactType="pain_point" artefactId={painPoint.id} refreshToken={recordActivityKey(painPoint)} /> : undefined}
       aside={
         <ArtefactLinksPanel
           projectId={projectId}
@@ -223,39 +240,29 @@ export function PainPointDetailPage() {
         />
       }
     >
-      <Link to={`/projects/${projectId}/modules/context_strategy/pain-points`}>← Pain Point</Link>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ margin: 0 }}>{painPoint.title}</h1>
-        <span className="row" style={{ gap: "0.5rem" }}>
-          {painPoint.is_intentional && <span className="badge badge--info">Intentional</span>}
-          <span className={`badge badge--${PAIN_POINT_STATUS_TONE[painPoint.status]}`}>
-            {PAIN_POINT_STATUS_LABEL[painPoint.status]}
-          </span>
-        </span>
-      </div>
-      <div className="stack">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-          <p className="text-muted" style={{ margin: 0 }}>
+      <RecordHeader
+        recordLabel="Pain Point"
+        title={painPoint.title}
+        code={painPoint.unique_code}
+        tags={projectId ? <RecordTags projectId={projectId} artefactType="pain_point" artefactId={painPoint.id} /> : undefined}
+        back={{ to: `/projects/${projectId}/modules/context_strategy/pain-points`, label: "← Pain Point" }}
+        badges={
+          <>
+            {painPoint.is_intentional && <Badge tone="info">Intentional</Badge>}
+            <Badge tone={PAIN_POINT_STATUS_TONE[painPoint.status]}>
+              {PAIN_POINT_STATUS_LABEL[painPoint.status]}
+            </Badge>
+          </>
+        }
+        subtitle={
+          <>
             {painPoint.pain_point_type_name} · {PAIN_POINT_PRIORITY_LABEL[painPoint.priority]} priority · identified {painPoint.date_identified}
-          </p>
-          {!painPoint.is_locked && (
-            <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
-              <Pencil size={14} />
-            </button>
-          )}
-        </div>
-
-        {painPoint.description && <Field label="Description" value={painPoint.description} />}
-        {painPoint.source && <Field label="Source" value={painPoint.source} />}
-        {painPoint.impact && <Field label="Impact" value={painPoint.impact} />}
-        {painPoint.evidence && <Field label="Evidence" value={painPoint.evidence} />}
-
-        <RecordPrincipalField
-          label="Owner" ariaLabel="Pain Point owner" principal={painPoint.owner} orgUsers={orgUsers}
-          organizationId={project?.organization_id} projectId={projectId} readOnly={false} onChange={assignOwner}
-        />
-
-        <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+          </>
+        }
+        onEdit={painPoint.is_locked ? undefined : () => setEditing(true)}
+        actions={[archive.item]}
+        transitions={
+          <>
           {painPoint.status === "submitted" && (
             <button
               className="btn btn-primary"
@@ -270,23 +277,36 @@ export function PainPointDetailPage() {
               <button className="btn btn-danger" onClick={() => setMandatoryAction("reject")}>Reject</button>
               <button className="btn" onClick={() => setMandatoryAction("mark_duplicate")}>Mark duplicate</button>
             </>
-          )}
-          {painPoint.status === "accepted" && (
-            <button className="btn btn-primary" onClick={() => setOptionalAction("address")}>Address</button>
-          )}
-          {painPoint.status === "addressed" && (
-            <button className="btn btn-primary" onClick={() => setOptionalAction("close")}>Close</button>
-          )}
-          <button className="btn" onClick={() => setArchiveConfirm(true)}>
-            {painPoint.is_archived ? "Unarchive" : "Archive"}
-          </button>
-        </div>
+              )}
+              {painPoint.status === "accepted" && (
+                <button className="btn btn-primary" onClick={() => setOptionalAction("address")}>Address</button>
+              )}
+              {painPoint.status === "addressed" && (
+                <button className="btn btn-primary" onClick={() => setOptionalAction("close")}>Close</button>
+              )}
+          </>
+        }
+      />
+      {archive.dialog}
+
+      <div className="stack">
+
+        <DetailCard>
+          {painPoint.description && <Field label="Description" value={painPoint.description} />}
+          {painPoint.source && <Field label="Source" value={painPoint.source} />}
+          {painPoint.impact && <Field label="Impact" value={painPoint.impact} />}
+          {painPoint.evidence && <Field label="Evidence" value={painPoint.evidence} />}
+
+          <RecordPrincipalField
+            label="Owner" ariaLabel="Pain Point owner" principal={painPoint.owner} orgUsers={orgUsers}
+            organizationId={project?.organization_id} projectId={projectId} readOnly={false} onChange={assignOwner}
+          />
+        </DetailCard>
 
         <PainPointScoringPanel projectId={projectId} painPointId={painPoint.id} locked={painPoint.is_locked} />
 
 
-        <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-          <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Evidence</h3>
+        <DetailCard heading="Evidence">
           <FileAttachmentList
             files={files}
             disabled={painPoint.is_locked}
@@ -300,31 +320,29 @@ export function PainPointDetailPage() {
               setFiles((prev) => prev.filter((f) => f.id !== fileId));
             }}
           />
-        </div>
+        </DetailCard>
 
-        <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-          <ArtefactCommentsSection
-            comments={comments ?? []}
-            currentUserId={user?.id}
-            onPost={async (body) => {
-              const comment = await projectPainPointApi.addComment(projectId, painPoint.id, body);
-              setComments((prev) => [...(prev ?? []), comment]);
-              return comment;
-            }}
-            onEdit={async (commentId, body) => {
-              const updated = await projectPainPointApi.editComment(projectId, painPoint.id, commentId, body);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? updated : c)));
-            }}
-            onUploadAttachment={async (commentId, file) => {
-              const asset = await projectPainPointApi.uploadCommentAttachment(projectId, painPoint.id, commentId, file);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: [...c.attachments, asset] } : c)));
-            }}
-            onRemoveAttachment={async (commentId, fileId) => {
-              await projectPainPointApi.removeCommentAttachment(projectId, painPoint.id, commentId, fileId);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
-            }}
-          />
-        </div>
+        <ArtefactCommentsSection
+          comments={comments ?? []}
+          currentUserId={user?.id}
+          onPost={async (body) => {
+            const comment = await projectPainPointApi.addComment(projectId, painPoint.id, body);
+            setComments((prev) => [...(prev ?? []), comment]);
+            return comment;
+          }}
+          onEdit={async (commentId, body) => {
+            const updated = await projectPainPointApi.editComment(projectId, painPoint.id, commentId, body);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? updated : c)));
+          }}
+          onUploadAttachment={async (commentId, file) => {
+            const asset = await projectPainPointApi.uploadCommentAttachment(projectId, painPoint.id, commentId, file);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: [...c.attachments, asset] } : c)));
+          }}
+          onRemoveAttachment={async (commentId, fileId) => {
+            await projectPainPointApi.removeCommentAttachment(projectId, painPoint.id, commentId, fileId);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
+          }}
+        />
       </div>
 
       {editing && (
@@ -343,13 +361,13 @@ export function PainPointDetailPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>{OPTIONAL_COMMENT_COPY[optionalAction].body}</span>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                Comment
-                <textarea
-                  className="input" rows={2} aria-label="Transition comment"
-                  value={optionalComment} onChange={(e) => setOptionalComment(e.target.value)}
-                />
-              </label>
+              <TextAreaField helpNotNeeded
+                label="Comment"
+                ariaLabel="Transition comment"
+                value={optionalComment}
+                onChange={setOptionalComment}
+                rows={2}
+              />
             </span>
           }
           confirmLabel={OPTIONAL_COMMENT_COPY[optionalAction].confirmLabel}
@@ -373,14 +391,11 @@ export function PainPointDetailPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>{MANDATORY_COMMENT_COPY[mandatoryAction].hint}</span>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {mandatoryAction === "reject" ? "Rejection comment" : "Duplicate comment"}
-                <textarea
-                  className="input" rows={2}
-                  aria-label={mandatoryAction === "reject" ? "Rejection comment" : "Duplicate comment"}
-                  value={mandatoryComment} onChange={(e) => setMandatoryComment(e.target.value)}
-                />
-              </label>
+              <TextAreaField helpNotNeeded
+                label={mandatoryAction === "reject" ? "Rejection comment" : "Duplicate comment"}
+                value={mandatoryComment}
+                onChange={setMandatoryComment}
+              />
             </span>
           }
           confirmLabel={MANDATORY_COMMENT_COPY[mandatoryAction].confirmLabel}
@@ -400,25 +415,6 @@ export function PainPointDetailPage() {
         />
       )}
 
-      {archiveConfirm && (
-        <ConfirmDialog
-          title={painPoint.is_archived ? "Unarchive this Pain Point?" : "Archive this Pain Point?"}
-          message={
-            painPoint.is_archived
-              ? "This Pain Point will count as active again."
-              : "This Pain Point will no longer appear in the active list. Nothing is deleted, and it remains available for historical purposes."
-          }
-          confirmLabel={painPoint.is_archived ? "Unarchive" : "Archive"}
-          onConfirm={async () => {
-            setArchiveConfirm(false);
-            await runTransition(
-              () => (painPoint.is_archived ? projectPainPointApi.unarchive(projectId, painPoint.id) : projectPainPointApi.archive(projectId, painPoint.id)),
-              painPoint.is_archived ? "Pain Point unarchived." : "Pain Point archived.",
-            );
-          }}
-          onCancel={() => setArchiveConfirm(false)}
-        />
-      )}
     </DetailLayout>
   );
 }

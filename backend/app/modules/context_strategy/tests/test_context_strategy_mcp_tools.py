@@ -1,5 +1,4 @@
-"""Tests for Context & Strategy's MCP tools (docs/plans/module-01-context-
-and-strategy-plan.md Phase 6 — Cross-artefact relationships, "MCP tools"
+"""Tests for Context & Strategy's MCP tools (Cross-artefact relationships, "MCP tools"
 section) — mirrors `backend/app/modules/decisions/tests/test_decisions_
 mcp_tools.py`'s own "against the REAL registry" integration approach:
 Context & Strategy is already a real, permanent `INSTALLED_MODULES` entry
@@ -94,7 +93,7 @@ def test_context_strategy_relationship_tools_resolve_to_the_right_paths():
 
 
 def test_context_strategy_gated_tools_are_present_and_mutating():
-    """The five approve/decide-tier tools this phase's `require_ai_
+    """The five approve/decide-tier tools the `require_ai_
     approvals_enabled` gate applies to (per `service.py`'s own "MCP tools
     and the `require_ai_approvals_enabled` gate" docstring section) —
     Guiding Principle's own gated pair is `activate`/`retire`, not

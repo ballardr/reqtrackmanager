@@ -1,7 +1,7 @@
 """
 Module: services.relationships
 
-Module 0 (Platform Foundations), Phase 1: generic CRUD/query helpers over
+Generic CRUD/query helpers over
 the polymorphic `ArtefactLink` table (`models.relationship`) — one query
 surface for "what does X link to" / "what links to X" across every
 registered artefact type, replacing the old requirement-only
@@ -29,10 +29,8 @@ is what stops them showing an ancestor's artefact to someone who cannot open it;
 only the link graph, generic link authoring and link-type usage ask for them.
 
 `source_type`/`target_type` are plain strings, not the closed
-`app.models.enums.ArtefactType` enum (Module 0 Phase 3 revised the
-original Phase 1 design, under which a module extended that enum directly
-— a fixed Python `enum.Enum` can't gain members at runtime, so that still
-meant a core file being hand-edited per module). `create_link` validates
+`app.models.enums.ArtefactType` enum (a fixed Python `enum.Enum` can't gain members at runtime, so extending
+that enum directly would mean a core file being hand-edited per module). `create_link` validates
 both against `app.modules.registry.get_all_registered_artefact_types` —
 the two built-in core values (`ArtefactType.REQUIREMENT`/
 `REQUIREMENT_ACTION`, themselves plain strings since `ArtefactType`

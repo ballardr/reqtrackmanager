@@ -1,8 +1,7 @@
 /**
  * Module: components/ResourcePickerModal
  *
- * Style guide "Pattern: resource picker dialog" (2026-08 UX audit roadmap
- * row 508, "Shared org resources have almost no way to consume them"): a
+ * Style guide "Pattern: resource picker dialog": a
  * two-pane `Modal` — a source list on the left, the selected source's
  * files on the right, pickable and attachable to whatever opened the
  * dialog.
@@ -31,6 +30,9 @@ import type { FileAsset } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import { Modal } from "./Modal";
 import { Spinner } from "./Spinner";
+import { FormActions } from "./FormActions";
+import { CheckboxField } from "./FormFields";
+import { useResetOnChange } from "../hooks/useResetOnChange";
 
 export interface ResourcePickerSource {
   id: string;
@@ -61,9 +63,12 @@ export function ResourcePickerModal({
 
   const activeSource = sources.find((s) => s.id === activeSourceId) ?? null;
 
-  useEffect(() => {
+  useResetOnChange([activeSourceId], () => {
     setFiles(null);
     setSelected(new Set());
+  });
+
+  useEffect(() => {
     if (!activeSource) return;
     let cancelled = false;
     activeSource.loadFiles().then((loaded) => {
@@ -115,7 +120,7 @@ export function ResourcePickerModal({
               onClick={() => setActiveSourceId(s.id)}
               aria-pressed={s.id === activeSourceId}
             >
-              <FolderOpen size={14} /> {s.label}
+              <FolderOpen /> {s.label}
             </button>
           ))}
         </div>
@@ -127,19 +132,18 @@ export function ResourcePickerModal({
           {files && files.length > 0 && (
             <div className="stack" style={{ maxHeight: "50vh", overflowY: "auto" }}>
               {files.map((f) => (
-                <label key={f.id} className="row">
-                  <input type="checkbox" checked={selected.has(f.id)} onChange={() => toggle(f.id)} />
-                  {f.filename}
-                </label>
+                <CheckboxField helpNotNeeded key={f.id} label={f.filename} checked={selected.has(f.id)} onChange={() => toggle(f.id)} />
               ))}
             </div>
           )}
-          {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-          <div className="row" style={{ justifyContent: "flex-end", marginTop: "auto" }}>
-            <button className="btn" onClick={onClose}>{strings.common.cancel}</button>
-            <button className="btn btn-primary" onClick={handleAttach} disabled={selected.size === 0 || attaching}>
-              {strings.resourcePicker.attachSelected(selected.size)}
-            </button>
+          <div className="stack" style={{ marginTop: "auto" }}>
+            <FormActions
+              error={error}
+              onCancel={onClose}
+              onSave={handleAttach}
+              saveLabel={strings.resourcePicker.attachSelected(selected.size)}
+              saveDisabled={selected.size === 0 || attaching}
+            />
           </div>
         </div>
       </div>

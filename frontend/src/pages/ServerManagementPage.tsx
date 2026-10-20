@@ -1,11 +1,12 @@
 import { Ban, Eye, ShieldCheck, Upload, UserCheck, UserX } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
 import type { BulkRevokeResult, ServerRole, ServerSettings, SignupConfig, SignupMode, SystemUser } from "../api/types";
 import { SERVER_ROLE_LABEL } from "../api/types";
 import { ActionMenu } from "../components/ActionMenu";
+import { AddUserMenu } from "../components/AddUserMenu";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
@@ -20,6 +21,12 @@ import { useOrgLabel, useOrgLabelPlural } from "../context/BrandingContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
 import { useRequestSequence } from "../hooks/useRequestSequence";
+import { AddUserModal, type AddUserMode } from "./AddUserModal";
+import { ServerModulesTab } from "./ServerModulesTab";
+import { ColorField, TextAreaField, TextField } from "../components/FormFields";
+import { LabeledSelect } from "../components/LabeledSelect";
+import { FormGrid, FormGridFull } from "../components/FormGrid";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 const strings = t();
 
@@ -35,8 +42,7 @@ type AccessReviewConfirmKind =
   | "grantModuleAdministrator"
   | "revokeModuleAdministrator";
 
-/** Sortable columns of the Access Review `DirectoryTable` (Phase E,
- * follow-up UX batch, 2026-08-31) — mirrors `list_org_users`'s own
+/** Sortable columns of the Access Review `DirectoryTable` — mirrors `list_org_users`'s own
  * `sort`/`order` contract; `created_at` is the one addition `/system/users`
  * needed beyond that (Org Users has no "Created" column). */
 type SystemUserSortKey = "display_name" | "email" | "last_login_at" | "created_at";
@@ -47,7 +53,7 @@ function AccessReviewTab() {
   const [view, setView] = useState<ReviewView>("orphaned");
   const [includeDeactivated, setIncludeDeactivated] = useState(false);
   const [search, setSearch] = useState("");
-  // Column-header sorting (Phase E) — this table is backend-paginated
+  // Column-header sorting — this table is backend-paginated
   // (`PAGE_SIZE`/`LoadMoreButton`), so sorting has to be honoured
   // server-side, same reasoning as Org Admin's Users table.
   const [sort, setSort] = useState<SortState<SystemUserSortKey> | null>(null);
@@ -61,7 +67,8 @@ function AccessReviewTab() {
   // "Confirmation and feedback rollout, precisely" list.
   const [confirmAction, setConfirmAction] = useState<{ kind: AccessReviewConfirmKind; userId: string } | null>(null);
   const [revokeAllPatsOpen, setRevokeAllPatsOpen] = useState(false);
-  // Platform review 2026-09, Phase 5: the full groups list and the server-
+  const [addUserMode, setAddUserMode] = useState<AddUserMode | null>(null);
+  // The full groups list and the server-
   // roles toggles both moved off the row (an unbounded joined string and an
   // always-visible dropdown respectively) into modals opened from the row's
   // `ActionMenu`. Tracked by id, not the `SystemUser` object itself, so the
@@ -103,7 +110,7 @@ function AccessReviewTab() {
 
   async function reload() {
     // Deliberately doesn't reset `users` to `null` first (unlike the old
-    // pre-Phase-E implementation): the search box now lives inside the
+    // implementation): the search box now lives inside the
     // same `.side-grid`/`FilterPanel` this list renders, so nulling `users`
     // on every keystroke would unmount the input mid-type (and drop focus)
     // rather than just refresh the rows — same reasoning Org Admin's Users
@@ -113,10 +120,7 @@ function AccessReviewTab() {
     await loadUsers(0, false);
   }
 
-  useEffect(() => {
-    reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, includeDeactivated, search, sort]);
+  useLoadOnChange(reload, [view, includeDeactivated, search, sort]);
 
   function applySort(key: SystemUserSortKey) {
     setSort(cycleSort(sort, key));
@@ -142,6 +146,15 @@ function AccessReviewTab() {
       if (successMessage) showToast(successMessage);
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "Something went wrong.");
+    }
+  }
+
+  /** After "Add user": toast, and for a created account list it (all users, filtered to its email) so the new row is in view. */
+  function userAdded(email: string, mode: AddUserMode) {
+    showToast(mode === "invite" ? strings.system.addUserInvited(email) : strings.system.addUserCreated(email));
+    if (mode === "password") {
+      setView("all");
+      setSearch(email);
     }
   }
 
@@ -256,10 +269,10 @@ function AccessReviewTab() {
     },
   };
 
-  // Rebuilt on the shared `DirectoryTable` (Phase 0) inside the standard
+  // Rebuilt on the shared `DirectoryTable` inside the standard
   // `.side-grid` + `FilterPanel` layout every other directory in this app
   // now uses — replacing the old bare `<table>` + inline filter-control row
-  // (2026-08-31, Phase E, follow-up UX batch — see docs/decisions.md).
+  // (docs/decisions.md).
   // `view`/`includeDeactivated` behave identically to before, just hosted
   // as a `FilterField`/`FilterCheckbox`; `search` and column-header sorting
   // are new (see `list_system_users`'s own docstring for the backend side).
@@ -268,8 +281,8 @@ function AccessReviewTab() {
     { key: "display_name", label: strings.system.name, sortable: true, render: (u) => u.display_name },
     {
       // Comma-joined names have no natural order — not sortable, per style
-      // guide "Pattern: sortable column header". Platform review 2026-09,
-      // Phase 5: joining every org name unconditionally became unreadable
+      // guide "Pattern: sortable column header".
+      // Joining every org name unconditionally became unreadable
       // for a user in many orgs — per the user's own ask, orgs stay inline
       // (typically far fewer than groups) but gain a "show all N" toggle
       // past 2, mirroring Org Admin's "View access" panel role-expansion
@@ -304,7 +317,7 @@ function AccessReviewTab() {
       },
     },
     {
-      // Platform review 2026-09, Phase 5: groups have no cap the way orgs
+      // Groups have no cap the way orgs
       // effectively do, so instead of an inline "show all" toggle (which
       // could still push the row very wide) the full list moved to a
       // modal off this row's `ActionMenu` ("View groups") — this column
@@ -326,10 +339,10 @@ function AccessReviewTab() {
     },
     {
       // Consolidated behind one `ActionMenu` (style guide "Pattern: action
-      // menu"). Platform review 2026-09, Phase 5: the menu itself now
+      // menu"). The menu itself now
       // renders for every row, not just org-less ones — "Assign server
       // roles" (moved here from the old always-visible "Server roles"
-      // `MultiSelectDropdown` column, module system Phase 0) and "View
+      // `MultiSelectDropdown` column) and "View
       // groups" apply regardless of org membership (I-M-08: a server admin
       // can hold an organisation of their own). Deactivate/reactivate and
       // ban/unban stay scoped to org-less accounts only — that gate was
@@ -374,7 +387,10 @@ function AccessReviewTab() {
   return (
     <div className="stack">
       <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.system.users}</h2>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
+          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.system.users}</h2>
+          <AddUserMenu onInvite={() => setAddUserMode("invite")} onNewUser={() => setAddUserMode("password")} />
+        </div>
         <p className="text-muted" style={{ margin: 0 }}>{strings.system.usersHint(orgLabel)}</p>
 
         {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
@@ -434,6 +450,7 @@ function AccessReviewTab() {
         {patResult && <div style={{ color: "var(--color-accent)" }}>{patResult}</div>}
       </div>
 
+      {addUserMode && <AddUserModal mode={addUserMode} onClose={() => setAddUserMode(null)} onCreated={userAdded} />}
       {confirmAction && (
         <ConfirmDialog
           title={confirmActionCopy[confirmAction.kind].title}
@@ -471,7 +488,7 @@ function AccessReviewTab() {
         // cell): this modal is already the "opened" state, so a second,
         // nested disclosure control (a dropdown-in-a-modal) would just add
         // an extra click with no benefit — see docs/decisions.md, Platform
-        // review 2026-09, Phase 5.
+        // review 2026-09.
         <Modal
           title={strings.system.assignServerRolesModalTitle(assignRolesUser.display_name)}
           onClose={() => setAssignRolesUserId(null)}
@@ -552,9 +569,7 @@ function PlatformBrandingTab() {
     }
   }
 
-  useEffect(() => {
-    reload();
-  }, []);
+  useLoadOnChange(reload, []);
 
   async function save() {
     setError(null);
@@ -632,49 +647,46 @@ function PlatformBrandingTab() {
       {settings.default_logo_file_id && (
         <img src={fileUrl(settings.default_logo_file_id)} alt="" style={{ height: 40 }} />
       )}
-      <label className="stack" style={{ gap: "0.25rem" }}>
-        {strings.serverSettings.headerTitle}
-        <input
-          className="input" placeholder={strings.appName}
-          value={headerTitle} onChange={(e) => {
+      <FormGrid minColumn="18rem">
+        <TextField helpNotNeeded
+          label={strings.serverSettings.headerTitle}
+          value={headerTitle}
+          onChange={(next) => {
             brandingDirtyRef.current = true;
-            setHeaderTitle(e.target.value);
+            setHeaderTitle(next);
           }}
+          placeholder={strings.appName}
+          hint={strings.serverSettings.headerTitleHint}
         />
-        <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.serverSettings.headerTitleHint}</span>
-      </label>
-      <label className="stack" style={{ gap: "0.25rem" }}>
-        {strings.serverSettings.orgLabelSingular}
-        <input
-          className="input" placeholder="organisation"
-          value={orgLabelSingular} onChange={(e) => {
+        <TextField helpNotNeeded
+          label={strings.serverSettings.orgLabelSingular}
+          value={orgLabelSingular}
+          onChange={(next) => {
             brandingDirtyRef.current = true;
-            setOrgLabelSingular(e.target.value);
+            setOrgLabelSingular(next);
           }}
+          placeholder="organisation"
+          hint={strings.serverSettings.orgLabelSingularHint}
         />
-        <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.serverSettings.orgLabelSingularHint}</span>
-      </label>
-      <label className="stack" style={{ gap: "0.25rem" }}>
-        {strings.serverSettings.orgLabelPlural}
-        <input
-          className="input" placeholder="Organisations"
-          value={orgLabelPlural} onChange={(e) => {
+        <TextField helpNotNeeded
+          label={strings.serverSettings.orgLabelPlural}
+          value={orgLabelPlural}
+          onChange={(next) => {
             brandingDirtyRef.current = true;
-            setOrgLabelPlural(e.target.value);
+            setOrgLabelPlural(next);
           }}
+          placeholder="Organisations"
+          hint={strings.serverSettings.orgLabelPluralHint}
         />
-        <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.serverSettings.orgLabelPluralHint}</span>
-      </label>
-      <label className="stack" style={{ gap: "0.25rem" }}>
-        {strings.serverSettings.accentColor}
-        <input
-          type="color" value={accentColor} onChange={(e) => {
-            brandingDirtyRef.current = true;
-            setAccentColor(e.target.value);
-          }}
-          style={{ width: 60, height: 36, padding: 2 }}
-        />
-      </label>
+      </FormGrid>
+      <ColorField helpNotNeeded
+        label={strings.serverSettings.accentColor}
+        value={accentColor}
+        onChange={(next) => {
+          brandingDirtyRef.current = true;
+          setAccentColor(next);
+        }}
+      />
       <div className="stack" style={{ gap: "0.25rem" }}>
         <label htmlFor="platform-login-background-input">{strings.serverSettings.loginBackground}</label>
         <FileUploadTrigger
@@ -697,35 +709,37 @@ function PlatformBrandingTab() {
       <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)" }} />
       <h3 style={{ margin: 0 }}>{strings.serverSettings.emailFooterTitle}</h3>
       <p className="text-muted" style={{ margin: 0 }}>{strings.serverSettings.emailFooterHint(currentOrgLabel)}</p>
-      <label className="stack" style={{ gap: "0.25rem" }}>
-        {strings.serverSettings.emailFooterCompanyName}
-        <input
-          className="input" placeholder={strings.appName}
-          value={emailFooterCompanyName} onChange={(e) => {
+      <FormGrid minColumn="18rem">
+        <TextField helpNotNeeded
+          label={strings.serverSettings.emailFooterCompanyName}
+          value={emailFooterCompanyName}
+          onChange={(next) => {
             brandingDirtyRef.current = true;
-            setEmailFooterCompanyName(e.target.value);
+            setEmailFooterCompanyName(next);
+          }}
+          placeholder={strings.appName}
+          hint={strings.serverSettings.emailFooterCompanyNameHint}
+        />
+        <TextField helpNotNeeded
+          label={strings.serverSettings.emailFooterWebsite}
+          value={emailFooterWebsite}
+          onChange={(next) => {
+            brandingDirtyRef.current = true;
+            setEmailFooterWebsite(next);
           }}
         />
-        <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.serverSettings.emailFooterCompanyNameHint}</span>
-      </label>
-      <label className="stack" style={{ gap: "0.25rem" }}>
-        {strings.serverSettings.emailFooterWebsite}
-        <input
-          className="input" value={emailFooterWebsite} onChange={(e) => {
+        <FormGridFull>
+          <TextAreaField helpNotNeeded
+          label={strings.serverSettings.emailFooterAddress}
+          value={emailFooterAddress}
+          onChange={(next) => {
             brandingDirtyRef.current = true;
-            setEmailFooterWebsite(e.target.value);
+            setEmailFooterAddress(next);
           }}
+          rows={3}
         />
-      </label>
-      <label className="stack" style={{ gap: "0.25rem" }}>
-        {strings.serverSettings.emailFooterAddress}
-        <textarea
-          className="input" rows={3} value={emailFooterAddress} onChange={(e) => {
-            brandingDirtyRef.current = true;
-            setEmailFooterAddress(e.target.value);
-          }}
-        />
-      </label>
+        </FormGridFull>
+      </FormGrid>
       {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
       <button className="btn btn-primary" onClick={save} style={{ alignSelf: "flex-start" }}>
         {strings.serverSettings.save}
@@ -758,13 +772,13 @@ function TestEmailTab() {
   return (
     <div className="card stack">
       <p className="text-muted" style={{ margin: 0 }}>{strings.system.testEmailHint}</p>
-      <div className="row">
-        <input
-          className="input"
-          type="email"
-          placeholder={strings.system.testEmailRecipientPlaceholder}
+      <div className="row" style={{ alignItems: "flex-end" }}>
+        <TextField helpNotNeeded
+          label={strings.system.testEmailRecipient}
+          hint={strings.system.testEmailRecipientHint}
           value={recipient}
-          onChange={(e) => setRecipient(e.target.value)}
+          onChange={setRecipient}
+          inputProps={{ type: "email" }}
         />
         <button className="btn btn-primary" onClick={send} disabled={sending}>
           {sending ? strings.system.testEmailSending : strings.system.testEmail}
@@ -790,9 +804,7 @@ function SignupModeTab() {
     setMode(c.signup_mode);
   }
 
-  useEffect(() => {
-    reload();
-  }, []);
+  useLoadOnChange(reload, []);
 
   async function save() {
     setError(null);
@@ -811,14 +823,13 @@ function SignupModeTab() {
   return (
     <div className="card stack">
       <p className="text-muted" style={{ margin: 0 }}>{strings.signupSettings.hint}</p>
-      <label className="stack" style={{ gap: "0.25rem" }}>
-        {strings.signupSettings.mode}
-        <select className="input" value={mode} onChange={(e) => setMode(e.target.value as SignupMode)}>
-          <option value="disabled">{strings.signupSettings.modeDisabled}</option>
-          <option value="always_on">{strings.signupSettings.modeAlwaysOn(orgLabel)}</option>
-          <option value="org_specified">{strings.signupSettings.modeOrgSpecified(orgLabel)}</option>
-        </select>
-      </label>
+      <LabeledSelect helpNotNeeded
+        label={strings.signupSettings.mode}
+        value={mode}
+        onChange={(next) => setMode(next as SignupMode)}
+        options={[{ value: "disabled", label: strings.signupSettings.modeDisabled }, { value: "always_on", label: strings.signupSettings.modeAlwaysOn(orgLabel) }, { value: "org_specified", label: strings.signupSettings.modeOrgSpecified(orgLabel) }]}
+        placeholder={null}
+      />
       {mode === "org_specified" && (
         <p className="text-muted" style={{ fontSize: "0.85rem" }}>{strings.signupSettings.modeOrgSpecifiedHint(orgLabelPlural)}</p>
       )}
@@ -845,9 +856,9 @@ function SignupModeTab() {
  * ResourceMenu call, since this page never exceeded 5 tabs on its own.
  * See `docs/ux-style-guide.md` Principle 1 and `docs/decisions.md`.
  */
-type ServerManagementGroupKey = "accessReview" | "branding" | "signup" | "email";
+type ServerManagementGroupKey = "accessReview" | "branding" | "signup" | "email" | "modules";
 
-const SERVER_MANAGEMENT_GROUP_KEYS: ServerManagementGroupKey[] = ["accessReview", "branding", "signup", "email"];
+const SERVER_MANAGEMENT_GROUP_KEYS: ServerManagementGroupKey[] = ["accessReview", "branding", "signup", "email", "modules"];
 
 /**
  * Server-admin console: access review (C-A-13), platform-wide branding
@@ -872,6 +883,7 @@ export function ServerManagementPage() {
     { key: "branding", label: strings.serverSettings.title, href: "/server/management/branding" },
     { key: "signup", label: strings.signupSettings.title, href: "/server/management/signup" },
     { key: "email", label: strings.system.emailTab, href: "/server/management/email" },
+    { key: "modules", label: strings.serverModules.title, href: "/server/management/modules" },
   ];
 
   return (
@@ -886,6 +898,7 @@ export function ServerManagementPage() {
         {activeGroup === "branding" && <PlatformBrandingTab />}
         {activeGroup === "signup" && <SignupModeTab />}
         {activeGroup === "email" && <TestEmailTab />}
+        {activeGroup === "modules" && <ServerModulesTab />}
       </ResourceMenu>
     </div>
   );

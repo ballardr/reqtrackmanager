@@ -14,7 +14,10 @@
  * `organization_id` to match the scope.
  */
 import { api } from "../../api/client";
+import { appendTagParams, type TagListFilters } from "../../api/tags";
+import { appendScopeParam, type ScopeListFilters } from "../../api/projectScope";
 import type { FileAsset, PrincipalRef } from "../../api/types";
+import type { HiddenDefinition } from "../../components/RestoreOrgDefaultsButton";
 import type {
   AnonymousParticipant,
   CadenceHint,
@@ -65,7 +68,7 @@ const projectBase = (projectId: string) => `/api/v1/projects/${projectId}/module
 const orgBase = (organizationId: string) => `/api/v1/orgs/${organizationId}/modules/stakeholders`;
 
 /** Every list endpoint's optional filters. */
-export interface RecordListFilters {
+export interface RecordListFilters extends TagListFilters, ScopeListFilters {
   include_archived?: boolean;
   /** Project Stakeholder list only: also list org Stakeholders hidden from the project. */
   include_hidden?: boolean;
@@ -128,6 +131,8 @@ function buildRecordApi<Rec, Version, Comment, Create, Update>(
       const params = new URLSearchParams();
       if (filters.include_archived) params.set("include_archived", "true");
       if (filters.include_hidden) params.set("include_hidden", "true");
+      appendTagParams(params, filters);
+      appendScopeParam(params, filters);
       const query = params.toString();
       return api.get<Rec[]>(`${url(id)}${query ? `?${query}` : ""}`);
     },
@@ -182,7 +187,10 @@ function buildProjectTypeCalls(segment: string) {
       projectId: string, typeRefId: string,
       values: { name?: string | null; display_order?: number | null; is_enabled?: boolean | null },
     ) => api.put<unknown>(url(projectId, typeRefId), values),
-    deleteType: (projectId: string, projectTypeId: string) => api.delete<void>(url(projectId, projectTypeId)),
+    deleteType: (projectId: string, typeRefId: string) => api.delete<void>(url(projectId, typeRefId)),
+    listHiddenTypes: (projectId: string) => api.get<HiddenDefinition[]>(`${url(projectId)}/hidden`),
+    restoreTypes: (projectId: string, orgTypeIds?: string[]) =>
+      api.post<unknown>(`${url(projectId)}/restore`, { org_type_ids: orgTypeIds ?? null }),
   };
 }
 
@@ -206,7 +214,10 @@ function buildStakeholderApi(base: (id: string) => string) {
     ),
     createFromUser: (
       id: string,
-      values: { user_id: string; stakeholder_type_id?: string | null; role?: string; organisation_group?: string; target_cadence?: TargetCadence | null },
+      values: {
+        user_id: string; stakeholder_type_id?: string | null; role?: string; organisation_group?: string;
+        target_cadence?: TargetCadence | null; activate?: boolean;
+      },
     ) => api.post<Stakeholder>(`${base(id)}/stakeholders/from-user`, values),
     /** Permanently deletes the stakeholder and everything held about them. */
     erase: (id: string, stakeholderId: string) => api.delete<void>(url(id, stakeholderId)),
@@ -256,7 +267,13 @@ function buildGroupApi(base: (id: string) => string) {
   const url = (id: string, groupId?: string) => `${base(id)}/stakeholder-groups${groupId ? `/${groupId}` : ""}`;
   return {
     /** Every group this scope can see, flat (the project's include the organisation's). */
-    list: (id: string) => api.get<StakeholderGroup[]>(url(id)),
+    list: (id: string, filters: TagListFilters & ScopeListFilters = {}) => {
+      const params = new URLSearchParams();
+      appendTagParams(params, filters);
+      appendScopeParam(params, filters);
+      const query = params.toString();
+      return api.get<StakeholderGroup[]>(`${url(id)}${query ? `?${query}` : ""}`);
+    },
     create: (id: string, values: StakeholderGroupFieldValues) => api.post<StakeholderGroup>(url(id), values),
     update: (id: string, groupId: string, values: Partial<StakeholderGroupFieldValues>) =>
       api.patch<StakeholderGroup>(url(id, groupId), values),
@@ -345,7 +362,7 @@ export type EngagementCreateValues = EngagementFieldValues & {
 export type EngagementUpdateValues = Partial<EngagementFieldValues> & { facilitators?: PrincipalRef[] };
 
 /** The list endpoint's optional filters; they combine. */
-export interface EngagementListFilters {
+export interface EngagementListFilters extends TagListFilters, ScopeListFilters {
   channel?: EngagementChannel;
   stakeholder_id?: string;
   persona_id?: string;
@@ -374,8 +391,11 @@ export const projectEngagementApi = {
   list: (projectId: string, filters: EngagementListFilters = {}) => {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(filters)) {
+      if (key === "tags" || key === "tag_mode" || key === "project_scope") continue;
       if (value !== undefined && value !== "") params.set(key, String(value));
     }
+    appendTagParams(params, filters);
+    appendScopeParam(params, filters);
     const query = params.toString();
     return api.get<Engagement[]>(`${projectBase(projectId)}/engagements${query ? `?${query}` : ""}`);
   },

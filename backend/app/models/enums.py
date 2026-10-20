@@ -3,12 +3,11 @@ Module: models.enums
 
 All fixed vocabularies used by the domain model. Ossa (v1)'s own small,
 fixed `OrgRole`/`ProjectRole` sets below remain in place unconditionally
-(Fine-Grained Access Control's own Design Principle 1: additive, never a
+(Fine-Grained Access Control is additive, never a
 replacement) — but the customisable permission system anticipated here as a
 Pelion (v2) concern now exists alongside them, reclassified from an
 optional module to a core platform capability 2026-09-23: see
-`PermissionLevel` below, `app.models.custom_role.CustomRoleDefinition`, and
-`docs/plans/core-fine-grained-access-control-plan.md`.
+`PermissionLevel` below, `app.models.custom_role.CustomRoleDefinition`, and.
 """
 
 import enum
@@ -24,7 +23,7 @@ class OrgRole(str, enum.Enum):
 
 class ServerRole(str, enum.Enum):
     """Server-tier (cross-tenant) permission roles, additive to
-    `User.is_server_admin` (compliance-module-plan.md Phase 0).
+    `User.is_server_admin`.
 
     SERVER_ADMIN mirrors the existing `User.is_server_admin` boolean's
     power level for composition purposes (e.g. `services.rbac.
@@ -36,7 +35,7 @@ class ServerRole(str, enum.Enum):
     MODULE_ADMINISTRATOR is ever actually granted via `UserServerRole`.
 
     MODULE_ADMINISTRATOR: narrower than SERVER_ADMIN — manages module
-    entitlements/enablement (the module system built out in later phases)
+    entitlements/enablement (the module system)
     without the full cross-tenant power `is_server_admin` implies. Grantable
     only by an existing SERVER_ADMIN (standard privilege-escalation-safe
     pattern: a narrower role can never grant itself or others a role).
@@ -50,7 +49,7 @@ class ModuleEntitlementPolicy(str, enum.Enum):
     """Deployment-wide default for whether an organisation is entitled to a
     module absent an explicit `organization_module_entitlements` override
     row (`ServerSettings.default_module_entitlement_policy`,
-    compliance-module-plan.md Phase 0/1).
+).
 
     OPEN: every module is entitled by default — the right default for a
         self-hosted/open-source deployment with no licensing tiers.
@@ -164,8 +163,8 @@ class RequirementStatus(str, enum.Enum):
 
 class ChangeRequestKind(str, enum.Enum):
     """What a change request proposes: a new requirement, a modification to
-    an existing one, (2026-08 UX audit roadmap item 514) adding an action to
-    a requirement once it's locked, or (Platform review 2026-09, Phase 8)
+    an existing one, adding an action to
+    a requirement once it's locked, or
     removing an action, or adding/removing a traceability link, once it's
     locked and the project (or an org-wide force) requires it. All of the
     action/link kinds mirror the same change-request-only-once-locked rule
@@ -222,20 +221,19 @@ class ReviewTargetType(str, enum.Enum):
 
 
 class ArtefactType(str, enum.Enum):
-    """The two built-in, app-owned values a polymorphic `ArtefactLink`
+    """The three built-in, app-owned values a polymorphic `ArtefactLink`
     (`models.relationship`) may hold on either its source or target end
-    (Module 0 — Platform Foundations, Phase 1).
+.
 
     A fixed Python `enum.Enum` can't gain members at runtime, so this is
     deliberately *not* where every module's own linkable artefact type is
-    declared (Module 0 Phase 3 revised the original Phase 1 design, which
-    had modules extend this enum directly, after finding that read too
-    much like a core file needing per-module edits). `ArtefactLink.source_
+    declared (having modules extend this enum directly would
+    need a core-file edit per module). `ArtefactLink.source_
     type`/`target_type` are plain validated strings, not this enum's own
     type — a module declares its own artefact-type values on its
     `ModuleDefinition.artefact_types` (`app.modules.registry`) instead;
     `get_all_registered_artefact_types` (same module) merges every
-    registered module's own values with this enum's two built-in ones into
+    registered module's own values with this enum's built-in ones into
     the set `services.relationships.create_link` validates against. See
     `models.relationship.ArtefactLink`'s own docstring for the table this
     backs.
@@ -243,6 +241,11 @@ class ArtefactType(str, enum.Enum):
 
     REQUIREMENT = "requirement"
     REQUIREMENT_ACTION = "requirement_action"
+    CHANGE_REQUEST = "change_request"
+
+
+CORE_ARTEFACT_TYPES: frozenset[str] = frozenset(t.value for t in ArtefactType)
+"""Every core artefact type value; the base set a module's `artefact_types` extend."""
 
 
 class LinkFlow(str, enum.Enum):
@@ -286,15 +289,14 @@ class PermissionLevel(str, enum.Enum):
     """The permission-level taxonomy crossed with every registered artefact type
     (`app.modules.registry.get_all_registered_artefact_types`) to derive
     the Fine-Grained Access Control permission-atom vocabulary
-    (`docs/plans/core-fine-grained-access-control-plan.md` Phase 0 Q1/Phase
-    1, `app.services.permissions.get_all_permissions`).
+    (`app.services.permissions.get_all_permissions`).
 
     VIEW is its own independent atom, held or not held separately from
     every write tier — a role can be granted `VIEW` alone, a pure read-only
     grant, without any of the three below. This is the explicit design
     choice that satisfies "read and write must be separate" without going
     fully granular *within* write (a different axis, left as a future
-    refinement — see that plan's own Q1 for the full reasoning).
+    refinement).
 
     PROPOSE_CREATE: create/propose a new artefact of this type (e.g.
         drafting a Requirement, submitting a Change Request) without the
@@ -302,13 +304,13 @@ class PermissionLevel(str, enum.Enum):
     MANAGE: edit/manage an existing artefact of this type, short of
         approving/baselining it.
     LINK: set and remove links on an existing artefact of this type
-        (`docs/plans/platform-enhancements-2026-10-plan.md` Phase 6d) and
+ and
         nothing else. Link authoring accepts `LINK` or `MANAGE`; `MANAGE` is
         deliberately not rewritten to imply it, so the vocabulary stays a flat
         set of independent atoms.
     APPROVE_BASELINE: approve, baseline, or otherwise finalise an artefact
         of this type — the tier Decision Management's own per-Decision-Type
-        approval scoping (Phase 5) is expressed against.
+        approval scoping is expressed against.
     """
 
     VIEW = "view"

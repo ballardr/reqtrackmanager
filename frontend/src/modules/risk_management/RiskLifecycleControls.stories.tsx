@@ -9,7 +9,7 @@ import { RiskLifecycleControls } from "./RiskLifecycleControls";
 const meta: Meta<typeof RiskLifecycleControls> = {
   title: "Modules/RiskManagement/RiskLifecycleControls",
   component: RiskLifecycleControls,
-  args: { risk: buildRisk(), onTransition: fn(async () => undefined), onArchiveToggle: fn(async () => undefined) },
+  args: { risk: buildRisk(), onTransition: fn(async () => undefined) },
   decorators: [withToast()],
 };
 export default meta;
@@ -59,20 +59,11 @@ export const ClosedRiskWithNoMovesDisablesChange: Story = {
   },
 };
 
-export const ArchiveAsksForConfirmation: Story = {
-  play: async ({ canvasElement, args }) => {
-    await userEvent.click(within(canvasElement).getByRole("button", { name: "Archive" }));
-    await userEvent.click(dialog("Archive this Risk?").getByRole("button", { name: "Archive" }));
-    await waitFor(() => expect(args.onArchiveToggle).toHaveBeenCalled());
-  },
-};
-
-export const ArchivedRiskOffersUnarchive: Story = {
+/** An archived risk cannot change status. */
+export const ArchivedRiskCannotChangeStatus: Story = {
   args: { risk: buildRisk({ is_archived: true }) },
   play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await expect(canvas.getByRole("button", { name: "Unarchive" })).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Change status" })).toBeDisabled();
+    await expect(within(canvasElement).getByRole("button", { name: "Change status" })).toBeDisabled();
   },
 };
 

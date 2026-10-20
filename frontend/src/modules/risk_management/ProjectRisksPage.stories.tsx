@@ -118,6 +118,35 @@ export const MatrixCellNarrowsTheRegister: Story = {
   },
 };
 
+/** Widened to a parent project, the matrix plots that project's risks too (levels are organisation-wide),
+ * so a product's risk can be read across the sub-projects that make it up. */
+export const MatrixPlotsRisksOfRelatedProjects: Story = {
+  decorators: [withAuth(buildUser({ id: "user-1", ui_preferences: { default_project_scope: "parents" } }))],
+  beforeEach: () => {
+    const foreign = buildRisk({
+      id: "risk-9", unique_code: "RSK-009", title: "Parent project risk",
+      from_project_id: "project-parent", from_project_name: "Platform", from_project_code: "PLAT",
+    });
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.endsWith("/scope-options")) return { has_parents: true, has_children: false, truncated: false };
+      if (path.includes("/scoring-schemes/risk")) return buildRiskScheme();
+      if (path.includes("/risk-types")) return RISK_TYPES;
+      if (path.split("?")[0].endsWith("/modules/risk_management/risks")) return path.includes("project_scope=parents") ? [...RISKS, foreign] : RISKS;
+      if (path.includes("/users")) return ORG_USERS;
+      if (path.endsWith("/groups")) return [];
+      if (path.endsWith(`/projects/${PROJECT_ID}`)) return { id: PROJECT_ID, organization_id: "org-1" };
+      throw new Error(`Unmocked GET: ${path}`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Risks" });
+    await expect(within(table).getByText("From Platform")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("tab", { name: "Matrix" }));
+    await expect(await canvas.findByRole("button", { name: /Likelihood Likely, Consequence Major: High, 2 items/ })).toBeInTheDocument();
+  },
+};
+
 export const NewRiskPostsTheForm: Story = {
   beforeEach: () => {
     mockApis();

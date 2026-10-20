@@ -1,5 +1,5 @@
 """Tests for groups as Compliance standard owners, review owners and required-action assignees
-(users and groups on parity, Phase 5 — docs/plans/users-and-groups-parity-plan.md).
+(users and groups on parity).
 
 Covers: each principal kind on the three fields (create, update, clear, list, a response reused as
 a request); validation (a foreign organisation's group or user, another project's group, a project

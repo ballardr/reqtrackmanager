@@ -27,7 +27,7 @@ const apiBaseUrl = "http://localhost:8000";
  * rather than mutating the shared Alpha org's sso-config/slug in place and
  * reusing the shared orphan persona. Both were previously safe only
  * because this suite ran single-worker/serial; under real concurrency
- * (Phase 1, docs/platform-review-2026-09-plan.md) either could collide
+ * either could collide
  * with another spec touching Alpha's SSO config or orphan's 2FA/session
  * state (e.g. two-factor-auth.spec.ts). Org-branded login only affects
  * which login method is offered, not which account is reached (see
@@ -106,7 +106,7 @@ test.describe("org-branded login: 2FA handoff to /login", () => {
       ({ secret } = await enrollResponse.json());
       expect(secret).toBeTruthy();
 
-      await page.getByPlaceholder("Confirm code").fill(generateTotpCode(secret));
+      await page.getByLabel("Confirm code").fill(generateTotpCode(secret));
       await page.getByRole("button", { name: "Confirm code" }).click();
       await expect(page.getByText("Enabled", { exact: true })).toBeVisible();
 
@@ -137,7 +137,7 @@ test.describe("org-branded login: 2FA handoff to /login", () => {
       await page.goto("/preferences");
       await selectPreferencesGroup(page, "Security");
       await ensureTwoFactorSectionExpanded(page);
-      await page.getByPlaceholder("Enter a current code to disable 2FA.").fill(generateTotpCode(secret));
+      await page.getByLabel("Authenticator code").fill(generateTotpCode(secret));
       await page.getByRole("button", { name: "Disable 2FA" }).click();
       await page.waitForURL(/\/login$/);
     });

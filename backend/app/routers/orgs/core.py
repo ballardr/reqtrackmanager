@@ -34,19 +34,17 @@ from app.models.requirement_action import RequirementAction
 from app.models.user import User
 from app.modules.registry import get_org_creation_choices, run_on_org_created_hooks
 
-# `_accessible_project_ids` (Phase 19's overview-stats endpoint reuses the
+# `_accessible_project_ids` (the overview-stats endpoint reuses the
 # exact same project-visibility computation `GET /projects` already uses,
 # rather than duplicating it here) — this codebase already has precedent
 # for importing an underscore-prefixed helper across a module boundary
 # (`routers/projects.py` itself imports `_direct_project_member_ids_base`/
-# `_descendant_org_group_ids` from `services/rbac.py`); `docs/compliance-
-# module-plan.md` Phase 19's own spec offers "move it to a shared service
+# `_descendant_org_group_ids` from `services/rbac.py`) own spec offers "move it to a shared service
 # (or import it)" as the two options and this repo has no existing
 # convention of one router importing from another, but moving ~150 lines of
 # heavily-documented, actively-relied-on RBAC logic out of `projects.py`
 # for one new read-only endpoint is a disproportionate risk for this
-# change — importing it is the lower-risk option the plan explicitly
-# sanctions.
+# change — importing it is the lower-risk option.
 from app.routers.projects.core import _accessible_project_ids
 from app.schemas.org import (
     MergeConflictOut,
@@ -461,8 +459,7 @@ def get_org_overview_stats(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR, OrgRole.MEMBER)),
     db: Session = Depends(get_db),
 ):
-    """The "Organisation Overview" page's stats header (compliance-module-
-    plan.md Phase 19): project count, requirement count, org member count,
+    """The "Organisation Overview" page's stats header: project count, requirement count, org member count,
     and total uploaded file size.
 
     Gated the same way `list_org_users` is (`ORG_ADMIN`/`PROJECT_CREATOR`/

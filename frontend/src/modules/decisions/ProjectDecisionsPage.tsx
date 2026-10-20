@@ -1,13 +1,13 @@
 /**
  * Module: modules/decisions/ProjectDecisionsPage
  *
- * The Decision Management module's project-scoped route component
- * (docs/plans/module-04-decision-management-plan.md Phase 5), mounted at
+ * The Decision Management module's project-scoped route component,
+ * mounted at
  * `/projects/:projectId/modules/decisions` (`module.ts`): a `DirectoryTable`
  * + `FilterPanel` list, a "New decision" `Modal`, and a row click opening
  * `DecisionQuickViewPanel` as a minimal read-only `SidePanel` peek — whose
  * own "View full details" link leads to `DecisionDetailPage.tsx`'s full
- * page for management and full context (Phase 9, 2026-09-22; see that
+ * page for management and full context (see that
  * page's own docstring and `docs/ux-style-guide.md`'s "Pattern: entity
  * detail panel" checklist for why the two-tier shape replaced the original
  * SidePanel-only `DecisionDetailPanel.tsx`). Fetches the owning project's
@@ -17,7 +17,7 @@
  * .tsx` describes.
  *
  * Decision Types moved off this page's own tab bar to Project Admin's
- * `projectAdminSections` contribution in the same phase (grouped with the
+ * `projectAdminSections` contribution (grouped with the
  * project's other definition-table settings — Action Types, Custom
  * Fields — rather than the module's day-to-day working page); this page
  * still fetches the project's decision types (`decisionTypes` state) for
@@ -28,6 +28,7 @@
  * edited in the shared Links panel on `DecisionDetailPage.tsx`, and a Decision's links appear on
  * the other record's own page the same way — nothing here is Decision-specific.
  */
+import { RecordCode } from "../../components/RecordCode";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
@@ -35,6 +36,7 @@ import type { OrgUser, Project } from "../../api/types";
 import { api } from "../../api/client";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ListPageLayout } from "../../components/ListPageLayout";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
@@ -44,11 +46,23 @@ import { DecisionFormModal } from "./DecisionFormModal";
 import { DecisionQuickViewPanel } from "./DecisionQuickViewPanel";
 import { DECISION_STATUS_LABEL, DECISION_STATUS_TONE } from "./types";
 import type { Decision, DecisionFieldValues, DecisionStatus, DecisionTemplate, DecisionTypeDefinition } from "./types";
+import { Badge } from "../../components/Badge";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
+import { useCommitTags } from "../../hooks/useCommitTags";
+import { rowProjectId } from "../../api/projectScope";
+import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
+import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
+import { useProjectScope } from "../../hooks/useProjectScope";
+import { useTagFilter } from "../../hooks/useTagFilter";
+import { TagFilterField } from "../../components/TagFilterField";
 
 export function ProjectDecisionsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "decision");
+  const commitTags = useCommitTags(projectId ?? "", "decision");
   const [project, setProject] = useState<Project | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [decisionTypes, setDecisionTypes] = useState<DecisionTypeDefinition[]>([]);
@@ -61,6 +75,8 @@ export function ProjectDecisionsPage() {
   const [decisionTypeFilter, setDecisionTypeFilter] = useState("");
   const [includeArchived, setIncludeArchived] = useState(false);
   const [ownedByMe, setOwnedByMe] = useState(false);
+  const tagFilter = useTagFilter();
+  const projectScope = useProjectScope(projectId);
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -75,6 +91,9 @@ export function ProjectDecisionsPage() {
         decision_type_id: decisionTypeFilter || undefined,
         include_archived: includeArchived,
         owner_mine: ownedByMe,
+        tags: tagFilter.tags,
+        tag_mode: tagFilter.mode,
+        project_scope: projectScope.scope,
       }));
       setLoadError(null);
     } catch (err) {
@@ -92,25 +111,22 @@ export function ProjectDecisionsPage() {
     decisionsApi.listDecisionTypes(projectId).then(setDecisionTypes);
   }, [projectId]);
 
-  useEffect(() => {
-    void reloadDecisions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, search, statusFilter, decisionTypeFilter, includeArchived, ownedByMe]);
+  useLoadOnChange(reloadDecisions, [projectId, search, statusFilter, decisionTypeFilter, includeArchived, ownedByMe, tagFilter.query, projectScope.scope]);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (decisions === null || project === null) return <Spinner />;
 
   const columns: DirectoryColumn<Decision>[] = [
-    { key: "unique_code", label: "Code", render: (d) => d.unique_code },
-    { key: "title", label: "Title", render: (d) => d.title },
+    { key: "unique_code", label: "Code", render: (d) => <RecordCode code={d.unique_code} ownerProjectCode={d.from_project_code} /> },
+    { key: "title", label: "Title", render: (d) => <>{d.title}<ProjectScopeLabel row={d} /></> },
     {
       key: "type", label: "Type",
       render: (d) => decisionTypes.find((t) => t.id === d.decision_type_id)?.name ?? "—",
     },
     {
       key: "status", label: "Status",
-      render: (d) => <span className={`badge badge--${DECISION_STATUS_TONE[d.status]}`}>{DECISION_STATUS_LABEL[d.status]}</span>,
+      render: (d) => <Badge tone={DECISION_STATUS_TONE[d.status]}>{DECISION_STATUS_LABEL[d.status]}</Badge>,
     },
     {
       key: "owner", label: "Owner",
@@ -120,11 +136,41 @@ export function ProjectDecisionsPage() {
 
   return (
     <div className="container stack">
-      <h1 style={{ margin: 0 }}>Decisions</h1>
-      <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
-        New decision
-      </button>
-      <div className="side-grid">
+      <ListPageLayout
+        title="Decisions"
+        actions={
+          <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
+            New decision
+          </button>
+        }
+        filter={
+          <FilterPanel
+            sectionKey="decisions.list" total={decisions.length}
+            search={search} onSearchChange={setSearch} searchPlaceholder="Search decisions…" searchAriaLabel="Search decisions"
+          >
+            <FilterField label="Status">
+              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as DecisionStatus | "")}>
+                <option value="">All statuses</option>
+                {Object.entries(DECISION_STATUS_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterField label="Decision type">
+              <select className="input" value={decisionTypeFilter} onChange={(e) => setDecisionTypeFilter(e.target.value)}>
+                <option value="">All types</option>
+                {decisionTypes.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterCheckbox label="Owned by me or my groups" checked={ownedByMe} onChange={setOwnedByMe} />
+            <ProjectScopeFilter scope={projectScope} />
+            {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
+          </FilterPanel>
+        }
+      >
         <DirectoryTable
           ariaLabel="Decisions"
           columns={columns}
@@ -133,30 +179,7 @@ export function ProjectDecisionsPage() {
           onRowClick={setSelected}
           emptyState={<p className="text-muted">No Decisions recorded for this project yet.</p>}
         />
-        <FilterPanel
-          sectionKey="decisions.list" total={decisions.length}
-          search={search} onSearchChange={setSearch} searchPlaceholder="Search decisions…" searchAriaLabel="Search decisions"
-        >
-          <FilterField label="Status">
-            <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as DecisionStatus | "")}>
-              <option value="">All statuses</option>
-              {Object.entries(DECISION_STATUS_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label="Decision type">
-            <select className="input" value={decisionTypeFilter} onChange={(e) => setDecisionTypeFilter(e.target.value)}>
-              <option value="">All types</option>
-              {decisionTypes.map((t) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterCheckbox label="Owned by me or my groups" checked={ownedByMe} onChange={setOwnedByMe} />
-          <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
-        </FilterPanel>
-      </div>
+      </ListPageLayout>
 
       {creating && (
         <DecisionFormModal
@@ -168,12 +191,14 @@ export function ProjectDecisionsPage() {
           currentUserId={user?.id}
           error={createError}
           onCancel={() => { setCreating(false); setCreateError(null); }}
-          onSave={async (values: DecisionFieldValues) => {
+          onSave={async (values: DecisionFieldValues, quickLinks, tags) => {
             setCreateError(null);
             try {
-              await decisionsApi.createDecision(projectId, values);
+              const created = await decisionsApi.createDecision(projectId, values);
               showToast("Decision created.");
               setCreating(false);
+              await commitQuickLinks(created.id, quickLinks);
+              await commitTags(created.id, tags);
               await reloadDecisions();
             } catch (err) {
               setCreateError(toErrorMessage(err, "Could not create decision."));
@@ -184,7 +209,7 @@ export function ProjectDecisionsPage() {
 
       {selected && (
         <DecisionQuickViewPanel
-          projectId={projectId}
+          projectId={rowProjectId(selected, projectId)}
           decision={selected}
           decisionTypes={decisionTypes}
           onClose={() => setSelected(null)}

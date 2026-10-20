@@ -7,8 +7,8 @@ import { API_BASE_URL, setUpOrg } from "./helpers";
 installCleanupHook();
 
 /**
- * Job to be done: docs/plans/module-02-stakeholders-and-personas-plan.md
- * Phase 3c's exit criteria — stakeholders can be classified into a tree of
+ * Job to be done:
+ * Stakeholders can be classified into a tree of
  * groups (several at once, nested, "one branch per stakeholder" where a group
  * behaves like a single column), managed from the organisation overview and
  * from a project, and the Stakeholder list can filter and group by them.
@@ -182,7 +182,8 @@ test.describe("Stakeholders & Personas: Stakeholder groups", () => {
 
     // --- Clicking a group badge in the Groups column filters to that group.
     await page.getByLabel("Group by").selectOption("");
-    await page.getByRole("button", { name: `Beta ${suffix}`, exact: true }).first().click();
+    // The badge carries the group's code after its name, so match the name as a prefix.
+    await page.getByRole("button", { name: new RegExp(`^Beta ${suffix}`) }).first().click();
     await expect(page.getByRole("button", { name: `Alex ${suffix}` })).toHaveCount(0);
     await expect(page.getByRole("button", { name: `Bea ${suffix}` })).toBeVisible();
   });

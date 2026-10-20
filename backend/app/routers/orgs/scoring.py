@@ -2,7 +2,7 @@
 Module: routers.orgs.scoring
 
 Organisation-level endpoints of the generic scoring-matrix mechanism
-(Module 1 Phase 10): read a scheme's effective configuration, edit its
+: read a scheme's effective configuration, edit its
 axis levels, and set the org default model, rating bands and per-cell rating overrides. Scheme keys
 come from the module registry; every route 404s unless the caller is an
 org member and the scheme's owning module is enabled for the org.

@@ -32,7 +32,7 @@ export const Active: Story = {
 export const LightTheme: Story = { globals: { theme: "light" } };
 export const DarkTheme: Story = { args: { active: true }, globals: { theme: "dark" } };
 
-// Platform review 2026-09, Phase 4: status colour (Pattern: status colour,
+// Status colour (Pattern: status colour,
 // docs/ux-style-guide.md). One story per BadgeTone so every tone stays
 // visually reviewable, and each keeps its own play-check that `tone`
 // doesn't disturb the click behaviour the plain-badge stories above cover.

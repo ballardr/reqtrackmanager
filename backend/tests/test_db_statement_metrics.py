@@ -1,5 +1,5 @@
 """Tests for the `db_statements_total` Prometheus counter (platform enhancements
-plan, Phase 3): each executed statement is counted by operation only, and the
+plan): each executed statement is counted by operation only, and the
 unauthenticated `/metrics` output never carries table names, ids or SQL."""
 
 import re

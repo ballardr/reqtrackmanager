@@ -17,13 +17,19 @@
  *
  * Attachment upload/remove and edit are each opt-in via their callback; edit
  * is offered only on the current user's own comments.
+ *
+ * It is one `DetailCard` ("Comments"), so a detail page places it directly; each comment inside is a
+ * flat row (`.comment-row`), not a card, because cards never nest.
  */
-import { Paperclip, Pencil, Trash2 } from "lucide-react";
+import { Paperclip, Pencil } from "lucide-react";
 import { useState } from "react";
 
 import { fileUrl } from "../api/client";
 import type { FileAsset } from "../api/types";
+import { DetailCard } from "./DetailCard";
 import { FileUploadTrigger } from "./FileUploadTrigger";
+import { ItemRow } from "./ItemRow";
+import { RemovableChip } from "./RemovableChip";
 
 /** The structural shape of a comment this thread can render. */
 export interface ArtefactComment {
@@ -91,13 +97,12 @@ export function ArtefactCommentsSection<T extends ArtefactComment>({
   }
 
   return (
-    <div className="stack">
-      <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Comments</h3>
+    <DetailCard heading="Comments">
       {comments.length === 0 && <p className="text-muted" style={{ margin: 0 }}>No comments yet.</p>}
       {comments.map((c) => {
         const isEditing = editingId === c.id;
         return (
-          <div key={c.id} className="card stack" style={{ gap: "0.35rem" }}>
+          <div key={c.id} className="comment-row stack" style={{ gap: "0.35rem" }}>
             <div className="row" style={{ justifyContent: "space-between" }}>
               <span style={{ fontWeight: 600 }}>{c.author_display_name}</span>
               <span className="text-muted" style={{ fontSize: "0.8rem" }}>
@@ -107,24 +112,11 @@ export function ArtefactCommentsSection<T extends ArtefactComment>({
             </div>
             {isEditing ? (
               <div className="stack" style={{ gap: "0.4rem" }}>
-                <textarea className="input" rows={2} value={editBody} onChange={(e) => setEditBody(e.target.value)} />
+                <textarea className="input" rows={2} value={editBody} onChange={(e) => setEditBody(e.target.value)} aria-label="Edit comment" />
                 {c.attachments.length > 0 && (
                   <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
                     {c.attachments.map((a) => (
-                      <span key={a.id} className="row badge" style={{ gap: "0.25rem" }}>
-                        {a.filename}
-                        {onRemoveAttachment && (
-                          <button
-                            className="btn"
-                            style={{ padding: "0.1rem", border: "none" }}
-                            title={`Remove ${a.filename}`}
-                            aria-label={`Remove ${a.filename}`}
-                            onClick={() => onRemoveAttachment(c.id, a.id)}
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        )}
-                      </span>
+                      <RemovableChip key={a.id} label={a.filename} removeLabel={`Remove ${a.filename}`} onRemove={onRemoveAttachment && (() => onRemoveAttachment(c.id, a.id))} />
                     ))}
                   </div>
                 )}
@@ -149,7 +141,7 @@ export function ArtefactCommentsSection<T extends ArtefactComment>({
                 )}
                 {onEdit && currentUserId === c.author_id && (
                   <button className="btn" title="Edit comment" aria-label="Edit comment" onClick={() => startEdit(c)}>
-                    <Pencil size={14} />
+                    <Pencil />
                   </button>
                 )}
               </>
@@ -158,7 +150,22 @@ export function ArtefactCommentsSection<T extends ArtefactComment>({
         );
       })}
       <div className="stack">
-        <div className="row">
+        <ItemRow
+          actions={
+            <>
+              {onUploadAttachment && (
+                <FileUploadTrigger
+                  title="Attach a file"
+                  aria-label="Attach a file"
+                  onSelect={(file) => setPendingFiles((files) => [...files, file])}
+                >
+                  <Paperclip size={14} />
+                </FileUploadTrigger>
+              )}
+              <button className="btn" disabled={posting || !newComment.trim()} onClick={submit}>Add comment</button>
+            </>
+          }
+        >
           <input
             className="input"
             placeholder="Add a comment…"
@@ -166,36 +173,15 @@ export function ArtefactCommentsSection<T extends ArtefactComment>({
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
           />
-          {onUploadAttachment && (
-            <FileUploadTrigger
-              title="Attach a file"
-              aria-label="Attach a file"
-              onSelect={(file) => setPendingFiles((files) => [...files, file])}
-            >
-              <Paperclip size={14} />
-            </FileUploadTrigger>
-          )}
-          <button className="btn" disabled={posting || !newComment.trim()} onClick={submit}>Add comment</button>
-        </div>
+        </ItemRow>
         {pendingFiles.length > 0 && (
           <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
             {pendingFiles.map((f, idx) => (
-              <span key={idx} className="row badge" style={{ gap: "0.25rem" }}>
-                {f.name}
-                <button
-                  className="btn"
-                  style={{ padding: "0.1rem", border: "none" }}
-                  title={`Remove ${f.name}`}
-                  aria-label={`Remove ${f.name}`}
-                  onClick={() => setPendingFiles((files) => files.filter((_, i) => i !== idx))}
-                >
-                  <Trash2 size={12} />
-                </button>
-              </span>
+              <RemovableChip key={idx} label={f.name} removeLabel={`Remove ${f.name}`} onRemove={() => setPendingFiles((files) => files.filter((_, i) => i !== idx))} />
             ))}
           </div>
         )}
       </div>
-    </div>
+    </DetailCard>
   );
 }

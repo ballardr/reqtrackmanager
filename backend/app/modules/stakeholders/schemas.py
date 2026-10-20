@@ -2,10 +2,10 @@
 Module: modules.stakeholders.schemas
 
 Pydantic request/response schemas for the Stakeholders & Personas module's
-org- and project-scoped routers (Phase 1.1: Persona, persona types, weight
-overrides, comments; Phase 1.2: Stakeholder, its representation links and the
-cadence hint; Phase 2: Stakeholder Need and its links; Phase 3c: Stakeholder
-Groups; Phase 4: Engagements and the research extras). Type-vocabulary and file schemas are shared by both artefacts.
+org- and project-scoped routers (Persona, persona types, weight
+overrides, comments; Stakeholder, its representation links and the
+cadence hint: Stakeholder Need and its links: Stakeholder
+Groups: Engagements and the research extras). Type-vocabulary and file schemas are shared by both artefacts.
 
 `PersonaUpdate`/`StakeholderUpdate` are partial: only fields present in the
 request body change, so a nullable field (weight, owner, champion, type,
@@ -35,6 +35,7 @@ from app.modules.stakeholders.enums import (
 )
 from app.schemas.file import FileAssetOut
 from app.schemas.principal import PrincipalOut, PrincipalRef
+from app.schemas.project_scope import ProjectScopedRow
 
 # A positive, finite importance weight (`inf` would poison a weighted roll-up).
 Weight = Annotated[float, Field(gt=0, allow_inf_nan=False)]
@@ -55,6 +56,11 @@ class PersonaCreate(BaseModel):
     weight: Weight | None = None
     owner: PrincipalRef | None = None
     champion: PrincipalRef | None = None
+    activate: bool = Field(
+        default=False,
+        description="Also move the new record from draft to active in the same transaction (\"Save and activate\"). "
+        "Needs no extra permission: activation has the same gate as creation.",
+    )
 
 
 class PersonaUpdate(BaseModel):
@@ -78,7 +84,7 @@ class PersonaUpdate(BaseModel):
     change_note: str = ""
 
 
-class PersonaOut(BaseModel):
+class PersonaOut(ProjectScopedRow):
     """A persona merged with its current version. `effective_weight` and
     `weight_override`/`weight_source` are populated only by the project router:
     the resolved weight for that project, the project's own override (if any),
@@ -91,6 +97,7 @@ class PersonaOut(BaseModel):
     scope: PersonaScope
     organization_id: UUID | None
     project_id: UUID | None
+    unique_code: str
     creator_id: UUID
     is_archived: bool
     archived_at: datetime | None
@@ -182,7 +189,7 @@ class PersonaCommentOut(BaseModel):
     attachments: list[FileAssetOut] = []
 
 
-# --- Stakeholder (Phase 1.2) --------------------------------------------------
+# --- Stakeholder --------------------------------------------------
 
 
 class StakeholderCreate(BaseModel):
@@ -204,10 +211,15 @@ class StakeholderCreate(BaseModel):
     interest_level_id: UUID | None = None
     owner: PrincipalRef | None = None
     user_id: UUID | None = None
+    activate: bool = Field(
+        default=False,
+        description="Also move the new record from draft to active in the same transaction (\"Save and activate\"). "
+        "Needs no extra permission: activation has the same gate as creation.",
+    )
 
 
 class StakeholderFromUserCreate(BaseModel):
-    """"Create stakeholder from org user" (resolution 13): name and contact
+    """"Create stakeholder from org user": name and contact
     info are prefilled from the user; the rest is optional."""
 
     user_id: UUID
@@ -215,6 +227,11 @@ class StakeholderFromUserCreate(BaseModel):
     role: str = Field(default="", max_length=300)
     organisation_group: str = Field(default="", max_length=300)
     target_cadence: TargetCadence | None = None
+    activate: bool = Field(
+        default=False,
+        description="Also move the new record from draft to active in the same transaction (\"Save and activate\"). "
+        "Needs no extra permission: activation has the same gate as creation.",
+    )
 
 
 class StakeholderUpdate(BaseModel):
@@ -248,9 +265,11 @@ class StakeholderGroupRefOut(BaseModel):
     name: str
     scope: StakeholderScope
     parent_group_id: UUID | None
+    unique_code: str = ""
+    organization_id: UUID | None = None
 
 
-class StakeholderOut(BaseModel):
+class StakeholderOut(ProjectScopedRow):
     """A stakeholder merged with its current version. `project_hidden` and
     `hidden_override` are populated only for an org stakeholder returned by the
     project router: whether it is hidden from that project, and the project's
@@ -261,6 +280,7 @@ class StakeholderOut(BaseModel):
     scope: StakeholderScope
     organization_id: UUID | None
     project_id: UUID | None
+    unique_code: str
     creator_id: UUID
     is_archived: bool
     archived_at: datetime | None
@@ -295,7 +315,7 @@ class StakeholderOut(BaseModel):
     hidden_override: bool | None = None
     hidden_source: str | None = None
     groups: list[StakeholderGroupRefOut] = Field(default_factory=list)
-    # Project router only: the date of the project's latest engagement the stakeholder took part in (Phase 4).
+    # Project router only: the date of the project's latest engagement the stakeholder took part in.
     last_engaged: date | None = None
 
 
@@ -343,7 +363,7 @@ class StakeholderCommentOut(BaseModel):
 
 
 class CadenceHintOut(BaseModel):
-    """The power/interest read-out for a pair of levels (resolution 21):
+    """The power/interest read-out for a pair of levels:
     `quadrant` is `None` unless both levels are set; `suggested_cadence` is a
     hint only and never applied automatically."""
 
@@ -359,6 +379,8 @@ class RepresentedPersonaOut(BaseModel):
     id: UUID
     name: str
     scope: Literal["organization", "project"]
+    unique_code: str = ""
+    organization_id: UUID | None = None
 
 
 class RepresentsCreate(BaseModel):
@@ -373,7 +395,7 @@ StakeholderCommentCreate = PersonaCommentCreate
 StakeholderCommentUpdate = PersonaCommentUpdate
 
 
-# --- Stakeholder Need (Phase 2) -----------------------------------------------
+# --- Stakeholder Need -----------------------------------------------
 
 
 class NeedCreate(BaseModel):
@@ -381,6 +403,11 @@ class NeedCreate(BaseModel):
     description: str = ""
     rationale: str = ""
     owner: PrincipalRef | None = None
+    activate: bool = Field(
+        default=False,
+        description="Also move the new record from draft to active in the same transaction (\"Save and activate\"). "
+        "Needs no extra permission: activation has the same gate as creation.",
+    )
 
 
 class NeedUpdate(BaseModel):
@@ -393,11 +420,12 @@ class NeedUpdate(BaseModel):
     change_note: str = ""
 
 
-class NeedOut(BaseModel):
+class NeedOut(ProjectScopedRow):
     """A need merged with its current version."""
 
     id: UUID
     project_id: UUID
+    unique_code: str
     creator_id: UUID
     is_archived: bool
     archived_at: datetime | None
@@ -450,6 +478,8 @@ class NeedHolderOut(BaseModel):
     id: UUID
     name: str
     scope: Literal["organization", "project"]
+    unique_code: str = ""
+    organization_id: UUID | None = None
 
 
 class NeedHolderCreate(BaseModel):
@@ -462,6 +492,7 @@ class HeldNeedOut(BaseModel):
 
     link_id: UUID
     id: UUID
+    unique_code: str
     name: str
     status: NeedStatus
 
@@ -484,7 +515,7 @@ NeedCommentCreate = PersonaCommentCreate
 NeedCommentUpdate = PersonaCommentUpdate
 
 
-# --- Relationships (Phase 3) -------------------------------------------------
+# --- Relationships -------------------------------------------------
 
 
 class RelationshipKindOut(BaseModel):
@@ -538,7 +569,7 @@ class IncomingRelationshipOut(BaseModel):
     scope: str
 
 
-# --- Stakeholder Groups (Phase 3c) --------------------------------------------
+# --- Stakeholder Groups --------------------------------------------
 
 
 class StakeholderGroupCreate(BaseModel):
@@ -557,13 +588,14 @@ class StakeholderGroupUpdate(BaseModel):
     exclusive_children: bool | None = None
 
 
-class StakeholderGroupOut(BaseModel):
+class StakeholderGroupOut(ProjectScopedRow):
     """A group with its direct member and child counts (members hidden from the viewing project are not counted)."""
 
     id: UUID
     scope: StakeholderScope
     organization_id: UUID | None
     project_id: UUID | None
+    unique_code: str
     parent_group_id: UUID | None
     name: str
     description: str
@@ -610,7 +642,7 @@ class GroupFromTextOut(BaseModel):
     memberships_added: int
 
 
-# --- Engagements (Phase 4) ------------------------------------------------------
+# --- Engagements ------------------------------------------------------
 
 
 class EngagementCreate(BaseModel):
@@ -647,7 +679,7 @@ class EngagementUpdate(BaseModel):
     retain_until: date | None = None
 
 
-class EngagementOut(BaseModel):
+class EngagementOut(ProjectScopedRow):
     """An engagement. `retention_due` is true once `retain_until` has been reached; the counts are of
     Stakeholder participants and (research extras) anonymous participants."""
 
@@ -676,6 +708,7 @@ class StakeholderEngagementOut(BaseModel):
     """One row of a Stakeholder's engagement timeline (no notes: open the engagement for those)."""
 
     id: UUID
+    unique_code: str = ""
     title: str
     channel: EngagementChannel
     engagement_date: date
@@ -688,6 +721,8 @@ class EngagementParticipantOut(BaseModel):
     stakeholder_id: UUID
     name: str
     scope: Literal["organization", "project"]
+    unique_code: str = ""
+    organization_id: UUID | None = None
 
 
 class EngagementParticipantCreate(BaseModel):
@@ -701,6 +736,8 @@ class EngagementPersonaOut(BaseModel):
     persona_id: UUID
     name: str
     scope: Literal["organization", "project"]
+    unique_code: str = ""
+    organization_id: UUID | None = None
 
 
 class EngagementPersonaCreate(BaseModel):
@@ -810,7 +847,7 @@ class FindingUpdate(BaseModel):
     description: str | None = None
 
 
-class FindingOut(BaseModel):
+class FindingOut(ProjectScopedRow):
     id: UUID
     project_id: UUID
     engagement_id: UUID

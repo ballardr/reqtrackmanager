@@ -87,7 +87,7 @@ export const ClickInsideDoesNotClose: Story = {
   },
 };
 
-/** 2026-08 UX audit / style guide Principle 8, same as `Modal`: opening
+/** Style guide Principle 8, same as `Modal`: opening
  * moves focus into the popover (here, its first field) rather than
  * leaving it on the trigger button behind it. */
 export const FocusMovesIntoPopoverOnOpen: Story = {

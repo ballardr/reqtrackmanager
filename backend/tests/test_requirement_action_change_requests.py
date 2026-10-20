@@ -1,5 +1,4 @@
-"""Tests for the ADD_ACTION change request kind (2026-08 UX audit roadmap
-item 514): once a requirement is locked (APPROVED/COMPLETED), adding or
+"""Tests for the ADD_ACTION change request kind: once a requirement is locked (APPROVED/COMPLETED), adding or
 linking an action must go through an approved change request, the same
 change-request-only-once-locked rule the requirement's own fields already
 follow — see `services.requirements.LOCKED_STATUSES` and

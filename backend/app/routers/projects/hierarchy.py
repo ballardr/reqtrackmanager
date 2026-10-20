@@ -35,8 +35,10 @@ from app.schemas.project import (
     ProjectMemberSourceAdd,
     ProjectMemberSourceOut,
 )
+from app.schemas.project_scope import ProjectScopeOptionsOut
 from app.services.audit import log_event
 from app.services.project_hierarchy import get_ancestor_chain
+from app.services.project_scope import scope_options
 from app.services.rbac import (
     get_effective_org_roles,
     get_effective_project_managers,
@@ -135,7 +137,7 @@ def get_project_children(
         roles = sorted(get_effective_project_roles(db, current_user.id, c.id), key=lambda r: r.value)
         out.append(
             ProjectListItemOut(
-                id=c.id, organization_id=c.organization_id, name=c.name, summary=c.summary,
+                id=c.id, organization_id=c.organization_id, name=c.name, code=c.code, summary=c.summary,
                 created_at=c.created_at, updated_at=c.updated_at,
                 is_archived=c.is_archived, is_template=c.is_template,
                 allow_member_change_requests=c.allow_member_change_requests,
@@ -153,6 +155,19 @@ def get_project_children(
             )
         )
     return out
+
+
+@router.get("/{project_id}/scope-options", response_model=ProjectScopeOptionsOut)
+def get_project_scope_options(
+    project_id: UUID, current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Which list-scope choices (`project_scope` on every list) this project offers the caller:
+    whether they can open a parent and/or a child project. Counts only projects the caller can
+    open, so it never reveals that a hidden one exists."""
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    return scope_options(db, project, current_user.id)
 
 
 @router.get("/{project_id}/member-sources", response_model=list[ProjectMemberSourceOut])
@@ -314,7 +329,7 @@ def get_effective_members(
     db: Session = Depends(get_db),
 ):
     """Every user with effective access to this project, with provenance —
-    direct (and, since the follow-up UX batch's Phase D, which of the five
+    direct (and, 2026-08-31, which of the five
     direct sources specifically — see `MemberSourceProvenanceOut`'s
     docstring), or inherited (and how) — for the project admin/access-review
     view (decision 10 in docs/decisions.md) and the unified Members table
@@ -356,7 +371,7 @@ def get_effective_members(
             project_name_cache[pid] = p.name if p is not None else ""
         return project_name_cache[pid] or None
 
-    # Module system Phase 2: this project's module-contributed role grants,
+    # This project's module-contributed role grants,
     # filtered to currently-*enabled* modules only (see `ModuleRoleGrantOut`'s
     # docstring for the "filter, don't delete" rationale) — computed once
     # for the whole response, then attached per member below.
@@ -468,8 +483,7 @@ def materialize_inherited_access_for_user(
     project_id: UUID, user_id: UUID, project: Project = Depends(require_project_manage),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
-    """Per-row counterpart to `materialize_inherited_access` (PR6 of the
-    members/groups directory rework plan) — `ProjectMembersTable`'s
+    """Per-row counterpart to `materialize_inherited_access` — `ProjectMembersTable`'s
     per-member "Convert inherited access to direct roles" action. Same
     rank logic, idempotency, and audit action as the bulk endpoint, just
     filtered to `user_id`'s own provenance entries rather than iterating
@@ -513,11 +527,11 @@ def materialize_inherited_access_for_group(
     project_id: UUID, org_group_id: UUID, project: Project = Depends(require_project_manage),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
-    """Group-scoped counterpart to `materialize_inherited_access` (PR6) —
+    """Group-scoped counterpart to `materialize_inherited_access` —
     converts an org group's *own* forward-/member-source-inherited role on
     this project (`get_group_inherited_project_roles`, walking ancestor/
     source projects' `OrgGroupProjectRole` grants for this exact group —
-    PR4's inheritance-cascade extension) into a direct `OrgGroupProjectRole`
+    the inheritance-cascade extension) into a direct `OrgGroupProjectRole`
     grant, parallel to how the per-user endpoint above converts a user's
     inherited role into a direct `UserProjectRole`.
 
@@ -530,14 +544,14 @@ def materialize_inherited_access_for_group(
     group_project_role`'s own entity-type choice for the same mechanism.
 
     No UI currently renders a group row in an "inherited" state to offer
-    this action from (see docs/decisions.md's PR6 entry): the unified
+    this action from (see docs/decisions.md): the unified
     Groups directory (`ProjectAdminPage.tsx`'s `groupsTabRows`) only has
-    `ProjectGroup` rows (direct by construction since PR7) and
+    `ProjectGroup` rows (direct by construction) and
     `ProjectMemberSource` virtual rows (a different mechanism, no
     "inherited" state of its own to convert) — no row kind represents an
     org group's own `OrgGroupProjectRole` provenance the way this endpoint
     needs. The endpoint exists and is tested directly via the API
-    regardless, since the underlying provenance kind is real (PR4 built the
+    regardless, since the underlying provenance kind is real (built the
     cascade) and a future UI surfacing a group's direct-grant provenance
     should be able to call straight into this without a backend change.
     """

@@ -2,64 +2,60 @@
  * Module: modules/context_strategy/types
  *
  * The Context & Strategy module's own TypeScript shapes and enum label/tone
- * maps for the Strategy artefact (docs/plans/module-01-context-and-strategy-
- * plan.md Phase 7.1) — mirrors `backend/app/modules/context_strategy/
+ * maps for the Strategy artefact — mirrors `backend/app/modules/context_strategy/
  * schemas.py`/`enums.py` field-for-field, the same "module's own enums/label
  * maps live in the module's own directory, not `frontend/src/api/types.ts`"
  * convention `modules/decisions/types.ts`'s own docstring documents (per
  * CLAUDE.md's enum-label-map rule: every enum/status value rendered
  * anywhere must go through one of these maps, never a raw backend string).
  *
- * Only Strategy's own shapes were here at first (Phase 7.1's scope) — Pain
- * Point/Guiding Principle/Open Question's shapes are added by their own
- * Phase 7.3-7.5 sub-phases, into this same file, mirroring how
- * `context_strategy/schemas.py`/`enums.py` themselves grow one artefact's
- * worth of symbols per backend phase rather than being split per artefact.
- * Phase 7.2 (2026-09-29) adds Future State's own shapes below, following
- * every one of Strategy's own conventions identically (backend `FutureState*`
- * is itself an exact structural mirror of `Strategy*` — see `schemas.py`'s
- * own docstring).
+ * One file holds every artefact's shapes, mirroring how
+ * `context_strategy/schemas.py`/`enums.py` themselves hold one artefact's
+ * worth of symbols per artefact rather than being split per artefact.
  *
- * Phase 7.3 (2026-09-29) adds Pain Point's own shapes below — structurally
- * different from Strategy/Future State in two ways: (1) Pain Point is
- * **project-scoped only** (no `scope`/`organization_id` discriminator, no
- * "org twin" shapes), and (2) it has a project-scoped, two-tier **type**
- * vocabulary (`PainPointTypeDefinition` org-scoped, `ProjectPainPointType`/
- * `EffectivePainPointType` project-scoped) that Strategy/Future State have
- * no equivalent of. See `PainPoint`'s own docstring below for the full
+ * Future State's shapes follow every one of Strategy's own conventions
+ * identically (backend `FutureState*` is itself an exact structural mirror of
+ * `Strategy*` — see `schemas.py`'s own docstring).
+ *
+ * Pain Point's shapes are structurally different from Strategy/Future State
+ * in two ways: (1) Pain Point is **project-scoped only** (no
+ * `scope`/`organization_id` discriminator, no "org twin" shapes), and (2) it
+ * has a project-scoped, two-tier **type** vocabulary
+ * (`PainPointTypeDefinition` org-scoped, `ProjectPainPointType`/
+ * `EffectivePainPointType` project-scoped) that Strategy/Future State have no
+ * equivalent of. See `PainPoint`'s own docstring below for the full
  * field-shape account and `api.ts`'s docstring on `projectPainPointApi`/
- * `orgPainPointTypeApi` for why this phase uses two plain exported objects
+ * `orgPainPointTypeApi` for why Pain Point uses two plain exported objects
  * rather than `buildStrategyApi`'s factory-instantiated-twice shape.
  *
- * Phase 7.4 (2026-09-29) adds Guiding Principle's own shapes below — back to
- * Strategy/Future State's own org-**or**-project scope shape (Phase 0 Q2),
- * but with a genuinely **shorter** lifecycle (`GuidingPrincipleStatus`: six
- * states, no `under_review` — see `GUIDING_PRINCIPLE_STATUS_LABEL`'s own
- * comment) and its own `owner` field. The backend versions `owner` as
- * a plain content field (`schemas.GuidingPrincipleUpdate`'s full-replace
- * payload includes it, closer to `FutureStateFieldValues.target_date`'s
- * shape than to Pain Point's genuinely separate update surface) — but this
- * phase's own frontend still gives it a dedicated `PrincipalPicker` on
- * `GuidingPrincipleDetailPage.tsx` rather than a form field (**Decided by:
- * Agent** — see that page's own docstring for the full reasoning), so
- * `owner` is deliberately **excluded** from `GuidingPrincipleFieldValues`
- * the same way `PainPointFieldValues` excludes it. Pain Point, Guiding
- * Principle and Open Question owners are principals (a user, an organisation
- * group or a project group) and come back resolved as a `Principal`.
+ * Guiding Principle's shapes are back to Strategy/Future State's own
+ * org-**or**-project scope shape, but with a genuinely **shorter** lifecycle
+ * (`GuidingPrincipleStatus`: six states, no `under_review` — see
+ * `GUIDING_PRINCIPLE_STATUS_LABEL`'s own comment) and its own `owner` field.
+ * The backend versions `owner` as a plain content field
+ * (`schemas.GuidingPrincipleUpdate`'s full-replace payload includes it,
+ * closer to `FutureStateFieldValues.target_date`'s shape than to Pain Point's
+ * genuinely separate update surface) — but the frontend still gives it a
+ * dedicated `PrincipalPicker` on `GuidingPrincipleDetailPage.tsx` rather than
+ * a form field (**Decided by: Agent** — see that page's own docstring for the
+ * full reasoning), so `owner` is deliberately **excluded** from
+ * `GuidingPrincipleFieldValues` the same way `PainPointFieldValues` excludes
+ * it. Pain Point, Guiding Principle and Open Question owners are principals
+ * (a user, an organisation group or a project group) and come back resolved
+ * as a `Principal`.
  *
- * Phase 7.5 (2026-09-29) adds Open Question's own shapes below — the fifth
- * and last artefact type. Structurally closest to Pain Point: **project-
- * scoped only** (source overview §9 — no org twin, no `scope`/
- * `organization_id` discriminator) and no version table (Phase 5's own
- * scope decision — `OpenQuestion` is a single mutable row). Two differences
- * from Pain Point's own shape: (1) its own **branching lifecycle has two
- * branch points**, not one (`OpenQuestionStatus`'s own comment below); (2)
- * no `title` field at all — `question` itself doubles as this artefact's
- * display title, the same precedent `GuidingPrinciple.name` already
- * established, rather than Strategy/Future State/Pain Point's
- * added-by-convention `title`.
+ * Open Question's shapes are structurally closest to Pain Point: **project-
+ * scoped only** (§9 — no org twin, no `scope`/
+ * `organization_id` discriminator) and no version table (`OpenQuestion` is a
+ * single mutable row). Two differences from Pain Point's own shape: (1) its
+ * own **branching lifecycle has two branch points**, not one
+ * (`OpenQuestionStatus`'s own comment below); (2) no `title` field at all —
+ * `question` itself doubles as this artefact's display title, the same
+ * precedent `GuidingPrinciple.name` already established, rather than
+ * Strategy/Future State/Pain Point's added-by-convention `title`.
  */
 import type { Principal } from "../../api/types";
+import type { ProjectScopedRow } from "../../api/projectScope";
 
 // --- Strategy lifecycle --------------------------------------------------
 
@@ -115,7 +111,7 @@ export const STRATEGY_STATUS_TONE: Record<StrategyStatus, import("../../api/type
   retired: "muted",
 };
 
-// --- Relationship kinds (Phase 6) -----------------------------------------
+// --- Relationship kinds -----------------------------------------
 
 export type StrategyLinkKind =
   | "drives_requirement"
@@ -132,11 +128,13 @@ export const STRATEGY_LINK_KIND_LABEL: Record<StrategyLinkKind, string> = {
 
 // --- Strategies ------------------------------------------------------------
 
-export interface Strategy {
+export interface Strategy extends ProjectScopedRow {
   id: string;
   scope: StrategyScope;
   organization_id: string | null;
   project_id: string | null;
+  /** Human-readable code (`PER-003`), numbered per owner; qualified by the owning project's or organisation's code where shown (`RecordCode`). */
+  unique_code: string;
   creator_id: string;
   is_archived: boolean;
   archived_at: string | null;
@@ -214,7 +212,7 @@ export interface StrategyComment {
   attachments: import("../../api/types").FileAsset[];
 }
 
-// --- Relationships (Phase 6) ------------------------------------------------
+// --- Relationships ------------------------------------------------
 
 /** One relationship touching a Strategy, from that Strategy's own viewpoint
  * — wire shape of the shared `ContextStrategyLinkOut` every one of this
@@ -239,7 +237,7 @@ export interface ContextStrategyLink {
   created_at: string;
 }
 
-// --- Future State (Phase 7.2) -----------------------------------------------
+// --- Future State -----------------------------------------------
 //
 // `FutureState*` mirrors `Strategy*` field-for-field except for its own
 // content fields (no `priority`/`time_horizon` — Future State's own field
@@ -254,8 +252,8 @@ export const FUTURE_STATE_SCOPE_LABEL: Record<FutureStateScope, string> = STRATE
 
 export type FutureStateStatus = StrategyStatus;
 
-// Same seven-state lifecycle as `StrategyStatus` (Phase 0 Q1's follow-on:
-// "Future State's lifecycle... mirror Strategy's in full") — the backend
+// Same seven-state lifecycle as `StrategyStatus` ("Future State's
+// lifecycle... mirror Strategy's in full") — the backend
 // keeps `FutureStateStatus` as its own Python enum (two independent
 // artefact types, two owned vocabularies, per `enums.py`'s own docstring),
 // but its *values* are textually identical, so the frontend label/tone maps
@@ -263,7 +261,7 @@ export type FutureStateStatus = StrategyStatus;
 export const FUTURE_STATE_STATUS_LABEL: Record<FutureStateStatus, string> = STRATEGY_STATUS_LABEL;
 export const FUTURE_STATE_STATUS_TONE: Record<FutureStateStatus, import("../../api/types").BadgeTone> = STRATEGY_STATUS_TONE;
 
-// --- Future State relationship kinds (Phase 6) ------------------------------
+// --- Future State relationship kinds ------------------------------
 
 export type FutureStateLinkKind = "related_to_pain_point" | "related_to_requirement" | "related_to_guiding_principle";
 
@@ -275,11 +273,13 @@ export const FUTURE_STATE_LINK_KIND_LABEL: Record<FutureStateLinkKind, string> =
 
 // --- Future States -----------------------------------------------------------
 
-export interface FutureState {
+export interface FutureState extends ProjectScopedRow {
   id: string;
   scope: FutureStateScope;
   organization_id: string | null;
   project_id: string | null;
+  /** Human-readable code (`PER-003`), numbered per owner; qualified by the owning project's or organisation's code where shown (`RecordCode`). */
+  unique_code: string;
   creator_id: string;
   is_archived: boolean;
   archived_at: string | null;
@@ -349,12 +349,12 @@ export interface FutureStateComment {
   attachments: import("../../api/types").FileAsset[];
 }
 
-// --- Pain Point (Phase 7.3) --------------------------------------------------
+// --- Pain Point --------------------------------------------------
 //
-// Project-scoped only (source overview §6 — unlike Strategy/Future State/
+// Project-scoped only (§6 — unlike Strategy/Future State/
 // Guiding Principle, there is no organisation-scoped Pain Point, so none of
 // these shapes carry a `scope`/`organization_id` discriminator). No
-// `PainPointVersion` (Phase 3's own scope decision — see `models.py`'s
+// `PainPointVersion` (see `models.py`'s
 // docstring), so `PainPoint` below is a single mutable row, not an
 // identity+version split the way `Strategy`/`FutureState` are.
 
@@ -390,7 +390,7 @@ export const PAIN_POINT_STATUS_TONE: Record<PainPointStatus, import("../../api/t
   closed: "accent",
 };
 
-// --- Pain Point relationship kinds (Phase 6) --------------------------------
+// --- Pain Point relationship kinds --------------------------------
 
 export type PainPointLinkKind =
   | "drives_strategy"
@@ -407,7 +407,7 @@ export const PAIN_POINT_LINK_KIND_LABEL: Record<PainPointLinkKind, string> = {
   duplicate_of: "Duplicate of another Pain Point",
 };
 
-// --- Pain Point type vocabulary (Phase 0 Q3's two-tier model) ---------------
+// --- Pain Point type vocabulary (two-tier model) ----------------------------
 
 /** A plain, org-scoped `PainPointTypeDefinition` row — the shared base tier
  * an org admin (`pain_point_type_admin` module role) manages. */
@@ -446,9 +446,10 @@ export interface ProjectPainPointType {
 
 // --- Pain Points -------------------------------------------------------------
 
-export interface PainPoint {
+export interface PainPoint extends ProjectScopedRow {
   id: string;
   project_id: string;
+  unique_code: string;
   pain_point_type_id: string;
   pain_point_type_name: string;
   creator_id: string;
@@ -493,9 +494,11 @@ export interface PainPointFieldValues {
   date_identified: string | null;
   /** Omitted on update = unchanged. */
   is_intentional?: boolean;
+  /** Scores at creation (create only; an existing record is scored in its scoring panel). */
+  scores?: PainPointScoreInput[];
 }
 
-// --- Pain Point scoring (Phase 11) --------------------------------------------
+// --- Pain Point scoring --------------------------------------------
 
 /** How per-persona scores combine into one (`pain_point_scores.RollupMethod`). */
 export type PainPointRollup = "weighted_average" | "worst_case" | "average";
@@ -565,6 +568,13 @@ export interface PainPointScores extends PainPointScoringSummary {
   available_targets: PainPointScoringTarget[];
 }
 
+/** `GET .../pain-point-scoring-targets`: what a create form needs before the Pain Point exists.
+ * `can_score` is false for a member who may create but not score. */
+export interface PainPointScoringTargets {
+  can_score: boolean;
+  available_targets: PainPointScoringTarget[];
+}
+
 /** `GET .../pain-point-scores`. */
 export interface PainPointScoringList {
   model_key: string;
@@ -594,9 +604,9 @@ export interface PainPointComment {
   attachments: import("../../api/types").FileAsset[];
 }
 
-// --- Guiding Principle (Phase 7.4) -------------------------------------------
+// --- Guiding Principle -------------------------------------------
 //
-// Org- **or** project-scoped (Phase 0 Q2's discriminator, same shape as
+// Org- **or** project-scoped (org/project discriminator, same shape as
 // Strategy/Future State), with its own three-value priority enum (its own
 // backend `enum.Enum`, per `enums.py`'s "two independent artefact types, two
 // owned vocabularies" reasoning — see `STRATEGY_PRIORITY_LABEL`'s own
@@ -638,7 +648,7 @@ export const GUIDING_PRINCIPLE_STATUS_TONE: Record<GuidingPrincipleStatus, impor
   retired: "muted",
 };
 
-// --- Guiding Principle relationship kinds (Phase 6) -------------------------
+// --- Guiding Principle relationship kinds -------------------------
 //
 // `GuidingPrincipleLinkKind.GUIDES_DECISION` (§8.5's "Decision -> guided by
 // -> Guiding Principle") is the reserved Decision-target relationship
@@ -654,11 +664,13 @@ export const GUIDING_PRINCIPLE_LINK_KIND_LABEL: Record<GuidingPrincipleLinkKind,
 
 // --- Guiding Principles ------------------------------------------------------
 
-export interface GuidingPrinciple {
+export interface GuidingPrinciple extends ProjectScopedRow {
   id: string;
   scope: GuidingPrincipleScope;
   organization_id: string | null;
   project_id: string | null;
+  /** Human-readable code (`PER-003`), numbered per owner; qualified by the owning project's or organisation's code where shown (`RecordCode`). */
+  unique_code: string;
   creator_id: string;
   is_archived: boolean;
   archived_at: string | null;
@@ -722,12 +734,12 @@ export interface GuidingPrincipleComment {
   attachments: import("../../api/types").FileAsset[];
 }
 
-// --- Open Question (Phase 7.5) ------------------------------------------------
+// --- Open Question ------------------------------------------------
 //
-// Project-scoped only (source overview §9 — like Pain Point, no
+// Project-scoped only (§9 — like Pain Point, no
 // organisation-scoped Open Question exists; see `enums.py`'s own "Decision
 // is itself project-scoped only" reasoning for why). No `OpenQuestionVersion`
-// (Phase 5's own scope decision, same reasoning as Pain Point's missing
+// (same reasoning as Pain Point's missing
 // version table) — `OpenQuestion` below is a single mutable row.
 
 export type OpenQuestionPriority = "low" | "medium" | "high";
@@ -764,11 +776,11 @@ export const OPEN_QUESTION_STATUS_TONE: Record<OpenQuestionStatus, import("../..
   withdrawn: "muted",
 };
 
-// --- Open Question relationship kinds (Phase 6) -----------------------------
+// --- Open Question relationship kinds -----------------------------
 //
 // Both untyped "related to" associations (§9.2's own plain field naming, no
 // causal verb, the same as Future State's own links). `RESOLVED_BY_DECISION`
-// (§9.5, the reserved Decision-target relationship, Phase 0 Q5) is
+// (§9.5, the reserved Decision-target relationship) is
 // deliberately absent here — a Decision resolves a Question through a generic link.
 
 export type OpenQuestionLinkKind = "related_to_strategy" | "related_to_requirement";
@@ -780,9 +792,10 @@ export const OPEN_QUESTION_LINK_KIND_LABEL: Record<OpenQuestionLinkKind, string>
 
 // --- Open Questions ------------------------------------------------------------
 
-export interface OpenQuestion {
+export interface OpenQuestion extends ProjectScopedRow {
   id: string;
   project_id: string;
+  unique_code: string;
   creator_id: string;
   is_archived: boolean;
   archived_at: string | null;

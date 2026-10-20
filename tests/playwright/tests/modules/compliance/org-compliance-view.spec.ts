@@ -4,32 +4,31 @@ import { expectTidyStatBlocks, loginAs, openProject, ORG_NAMES, PERSONAS, PROJEC
 import { createStandardWithVersion, selectFilterOption } from "./helpers";
 
 /**
- * Job to be done: Compliance Module Phase 14 (docs/compliance-module-plan.md)
- * — the org-level Organisation Compliance View + Dashboard (§22/§23),
+ * Job to be done: the org-level Organisation Compliance View + Dashboard (§22/§23),
  * mounted as three flat `ResourceMenu` groups ("Compliance dashboard" /
  * "Compliance by standard" / "Outstanding compliance items") on the core
- * "Organisation Overview" page (Phase 19, `/orgs/:orgId/overview`) — see
+ * "Organisation Overview" page (`/orgs/:orgId/overview`) — see
  * `frontend/src/modules/compliance/module.ts`'s `orgOverviewSections` for
  * how these moved off `OrgAdminPage.tsx` (where they originally lived, as
- * one combined "Compliance overview" group), and Phase 25b's own notes for
- * why that group's internal `Tabs` were later collapsed into three flat
+ * one combined "Compliance overview" group), and for
+ * why that group's internal `Tabs` were collapsed into three flat
  * top-level groups instead (one navigation layer too many). This spec also
- * covers Phase 25b's headline gauges (`ComplianceOrgOverviewTiles.tsx`),
+ * covers the headline gauges (`ComplianceOrgOverviewTiles.tsx`),
  * which surface directly in the page's own always-visible stats header —
  * no click into any group required.
  *
- * Covers the read/drill-down path: author and publish a standard (Phase 12
- * UI), assign it to a project and assess a requirement Non-Compliant
- * (Phase 13 UI), then confirm the headline gauges, the org-wide Dashboard
+ * Covers the read/drill-down path: author and publish a standard,
+ * assign it to a project and assess a requirement Non-Compliant,
+ * then confirm the headline gauges, the org-wide Dashboard
  * group, the "Compliance by standard" table (with its project filter), and
  * the "Outstanding" group all surface that project/requirement, and that
  * the standard table's drill-down link actually opens the underlying
  * project's own Compliance page.
  *
  * `orgAdminAlphaBeta` is reused rather than a dedicated persona, the same
- * way `project-compliance-view.spec.ts` (Phase 13) does — Alpha's org
+ * way `project-compliance-view.spec.ts` does — Alpha's org
  * admin composes with `compliance_manager` for both the org-level
- * authoring/assignment steps and the Phase 14 `_require_manage`-gated
+ * authoring/assignment steps and the `_require_manage`-gated
  * dashboard endpoints, and is Alpha-1's own `PROJECT_MANAGER`/
  * `compliance_officer` for the assessment step.
  *
@@ -40,7 +39,7 @@ import { createStandardWithVersion, selectFilterOption } from "./helpers";
  * present, never an exact total count, since other specs' own fixtures
  * may coexist in the same organisation.
  */
-test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", () => {
+test.describe("Compliance Module: org compliance view + dashboard", () => {
   test("a non-compliant assessment surfaces on the org-wide dashboard, standards table, and outstanding tab", async ({ page }) => {
     const suffix = Date.now();
     const reference = `E2E-ORG-${suffix}`;
@@ -50,8 +49,8 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
 
     // --- Author + publish a standard/version/requirement, via the
-    // top-level `/standards` page (compliance-module-plan.md Phase 18 —
-    // supersedes Phase 12's org-admin "Compliance" group entirely).
+    // top-level `/standards` page (replaces the
+    // old org-admin "Compliance" group entirely).
     await createStandardWithVersion(page, { orgName: ORG_NAMES.alpha, reference, name: standardName, versionLabel: "v1.0" });
 
     await page.getByRole("link", { name: "Versions", exact: true }).click();
@@ -74,7 +73,7 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
     await page.goto("/projects");
     await openProject(page, PROJECT_NAMES.alpha1);
     // exact: true — the project overview page's own compliance summary
-    // tiles (Phase 17d) render as cards whose accessible name contains
+    // tiles render as cards whose accessible name contains
     // "Compliance" too (e.g. a standard's name), which would otherwise
     // collide with this nav-rail link under substring matching once any
     // standard has ever been assigned to this project.
@@ -91,12 +90,12 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
     await page.getByText(new RegExp(reference)).click();
     await page.getByText(requirementName).click();
     await page.getByLabel("Compliance status", { exact: true }).selectOption({ label: "Non-compliant" });
-    await page.getByLabel("Justification (required)").fill("Failed the required E2E inspection.");
+    await page.getByLabel("Justification", { exact: true }).fill("Failed the required E2E inspection.");
     await page.getByRole("button", { name: "Update assessment" }).click();
     await expect(page.getByText("Current state: Assessed")).toBeVisible();
     await page.getByRole("button", { name: "Close" }).click();
 
-    // --- Phase 25b: headline gauges surface directly in the Organisation
+    // --- headline gauges surface directly in the Organisation
     //     Overview's own always-visible stats header, no group click needed.
     //     Labelled distinctly from the Dashboard group's own same-numbers
     //     StatCards below (both render at once — the Dashboard group is
@@ -108,7 +107,7 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
     await expect(page.getByText("Projects out of compliance")).toBeVisible();
 
     // --- Org-wide Dashboard: the non-compliant project count is a headline
-    //     tile (Phase 36) that drills through to "Compliance by standard"
+    // tile that drills through to "Compliance by standard"
     //     pre-filtered/pre-pivoted to exactly the projects it counted,
     //     rather than listing them inline on the tile itself.
     await selectOrgOverviewGroup(page, "Compliance dashboard");
@@ -125,7 +124,7 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
     // row's own link.
     await expect(page.getByRole("link", { name: new RegExp(reference) })).toBeVisible();
 
-    // --- Phase 15/25b: download the organisation-wide compliance report,
+    // --- download the organisation-wide compliance report,
     //     now behind the "Export" popover trigger (Principle 11).
     await selectOrgOverviewGroup(page, "Compliance dashboard");
     await page.getByRole("button", { name: "Export" }).click();
@@ -138,7 +137,7 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
     //     and drilling down opens the project's own Compliance page.
     await selectOrgOverviewGroup(page, "Compliance by standard");
 
-    // Phase 43: this panel's own Export trigger carries its active Standard
+    // This panel's own Export trigger carries its active Standard
     // filter as a query param too — "export what I'm looking at" applies
     // here the same way it does to the Outstanding group (covered in the
     // dedicated filter test below).
@@ -169,20 +168,19 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
   });
 
   /**
-   * Phase 39 (docs/compliance-module-plan.md) — "Compliance by standard"'s
+   * "Compliance by standard"'s
    * default (group-by-standard) expanded row now groups its projects by
    * `standard_version_id` first (39d), each version's projects indented a
    * level deeper (39c), rather than one flat list of projects each
    * carrying its own version suffix — each version with more than one
-   * sibling is its own collapsible sub-group (a live follow-up during this
-   * phase: with only one version, per the first test in this file, that
+   * sibling is its own collapsible sub-group (a live follow-up: with only one version, per the first test in this file, that
    * sub-group instead pre-expands with no toggle at all, since there's
    * nothing left to disambiguate). Covers a standard with two published
    * versions assigned to two different projects, confirming each version's
    * sub-group lists only its own project — not the other version's — and
    * that a project link inside the nested structure still navigates.
    */
-  test("a standard on two versions groups its expanded row as Standard -> Version -> Project (Phase 39d)", async ({ page }) => {
+  test("a standard on two versions groups its expanded row as Standard -> Version -> Project", async ({ page }) => {
     const suffix = Date.now();
     const reference = `E2E-ORG-NEST-${suffix}`;
     const standardName = `E2E Org Nesting Standard ${suffix}`;
@@ -269,7 +267,7 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
   });
 
   /**
-   * Phase 40 (docs/compliance-module-plan.md) — the "Outstanding compliance
+   * The "Outstanding compliance
    * items" group gets a real Standard/Standard version/Sub-section filter
    * set (on top of the pre-existing Category/Evidence status pair), and
    * moves its `FilterPanel` from a full-width top bar to the standard
@@ -334,7 +332,7 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
     await page.getByText(new RegExp(reference)).click();
     await page.getByText(childRequirementName).click();
     await page.getByLabel("Compliance status", { exact: true }).selectOption({ label: "Non-compliant" });
-    await page.getByLabel("Justification (required)").fill("Failed the required E2E filter-fixture inspection.");
+    await page.getByLabel("Justification", { exact: true }).fill("Failed the required E2E filter-fixture inspection.");
     await page.getByRole("button", { name: "Update assessment" }).click();
     await expect(page.getByText("Current state: Assessed")).toBeVisible();
     await page.getByRole("button", { name: "Close" }).click();
@@ -363,7 +361,7 @@ test.describe("Compliance Module: org compliance view + dashboard (Phase 14)", (
     await selectFilterOption(page, "Sub-section", sectionAName);
     await expect(page.getByText(childRequirementName)).toBeVisible();
 
-    // Phase 43: the Export trigger's report request carries this panel's
+    // The Export trigger's report request carries this panel's
     // active Standard/Sub-section filters as query params — "export what
     // I'm looking at," not an unfiltered organisation-wide dump. Exact
     // filtering correctness is pinned server-side

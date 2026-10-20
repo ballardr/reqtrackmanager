@@ -10,8 +10,8 @@ import { PASSWORD, PERSONAS } from "./helpers";
  * the org-admin hierarchy bypass, the combined add-member/add-group
  * autocomplete, the new per-row action menus) is unreachable with zero
  * org/project context in the first place, so this is really a general
- * app-shell robustness check, not something specific to PR6's own new UI
- * (PR6 of the members/groups directory rework plan's "Additional test"
+ * app-shell robustness check, not something specific to the own new UI
+ * (the members/groups directory rework "Additional test"
  * note, docs/decisions.md).
  *
  * Uses the orphan persona (seeded as an Alpha member, then removed via

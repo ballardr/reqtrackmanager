@@ -8,7 +8,7 @@ the two into the single `ModuleOrgBundleHooks`/`ModuleProjectBundleHooks`).
 - Org level: the Stakeholder type vocabulary and org-scoped stakeholders.
 - Project level: project-scoped stakeholders (with direct file attachments)
   and the project's Stakeholder type overrides/local types.
-- Stakeholder groups (Phase 3c), at both levels: each group is keyed by its
+- Stakeholder groups, at both levels: each group is keyed by its
   name path from the root (every element carries its scope, since a project
   group may sit under an org group), with its members by stakeholder name and
   scope. Importing merges into an existing group of the same path and warns
@@ -57,6 +57,7 @@ from app.modules.stakeholders.models import (
 )
 from app.modules.stakeholders.scoring import INFLUENCE_AXIS_KEY, INTEREST_AXIS_KEY, STAKEHOLDER_SCORING_SCHEME_KEY
 from app.modules.stakeholders.service import (
+    STAKEHOLDER_ARTEFACT_TYPE,
     STAKEHOLDER_TYPES,
     add_represents_link,
     create_stakeholder,
@@ -65,6 +66,7 @@ from app.modules.stakeholders.service import (
     list_represented_personas,
 )
 from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
+from app.services.tags import record_tag_names, restore_record_tags
 
 _TEXT_FIELDS = (
     "name", "description", "role", "organisation_group", "interests", "responsibilities", "goals_needs",
@@ -101,7 +103,8 @@ def _level_by_name(db: Session, organization_id: UUID, axis_key: str, name: str 
 
 def _stakeholder_json(db: Session, stakeholder: Stakeholder, organization_id: UUID, emails: dict[UUID, str]) -> dict[str, Any]:
     v = get_current_stakeholder_version(db, stakeholder.id)
-    data: dict[str, Any] = {f: getattr(v, f) for f in _TEXT_FIELDS}
+    # `unique_code` is informational: an import numbers the stakeholder afresh and matches by name.
+    data: dict[str, Any] = {"unique_code": stakeholder.unique_code, **{f: getattr(v, f) for f in _TEXT_FIELDS}}
     type_is_local = False
     if v.project_type_id is not None:
         row = db.get(ProjectStakeholderType, v.project_type_id)
@@ -114,6 +117,7 @@ def _stakeholder_json(db: Session, stakeholder: Stakeholder, organization_id: UU
         **principals_to_bundle(db, v, STAKEHOLDER_PRINCIPAL_FIELDS), "user_email": emails.get(v.user_id),
         "created_by_email": emails.get(stakeholder.creator_id), "is_archived": stakeholder.is_archived,
         "archived_at": _j(stakeholder.archived_at), "created_at": _j(stakeholder.created_at),
+        "tags": record_tag_names(db, STAKEHOLDER_ARTEFACT_TYPE, stakeholder.id),
         "represents": [
             {"persona_name": get_current_persona_version(db, p.id).name, "persona_scope": p.scope.value}
             for _, p in list_represented_personas(db, stakeholder, organization_id)
@@ -150,7 +154,7 @@ def _export_groups(
                 names[(get_current_stakeholder_version(db, sid).name, member.scope.value)] = None
         entries.append({
             "path": [{"name": n.name, "scope": n.scope.value} for n in chain],
-            "description": g.description, "exclusive_children": g.exclusive_children, "sort_order": g.sort_order,
+            "unique_code": g.unique_code, "description": g.description, "exclusive_children": g.exclusive_children, "sort_order": g.sort_order,
             "members": [{"name": n, "scope": sc} for n, sc in sorted(names)],
         })
     return sorted(entries, key=lambda e: (len(e["path"]), [p["name"].lower() for p in e["path"]]))
@@ -284,6 +288,10 @@ def _create_stakeholder_from_json(
     stakeholder.archived_at = _dt(data.get("archived_at"))
     stakeholder.archived_by = creator_id if stakeholder.is_archived else None
     db.flush()
+    restore_record_tags(
+        db, organization_id=organization_id, record_project_id=project_id, actor_id=creator_id,
+        artefact_type=STAKEHOLDER_ARTEFACT_TYPE, artefact_id=stakeholder.id, names=data.get("tags"),
+    )
     for rep in data.get("represents", []):
         persona_id = personas.get((rep["persona_name"], rep["persona_scope"]))
         persona = db.get(Persona, persona_id) if persona_id else None
@@ -386,7 +394,9 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
                 "org_stakeholder_name": get_current_stakeholder_version(db, target.id).name, "hidden": row.hidden,
             })
     return {
-        "project_stakeholder_types": types_json, "project_stakeholders": stakeholders_json,
+        "project_stakeholder_types": types_json,
+        "project_stakeholder_hidden_org_types": STAKEHOLDER_TYPES.hidden_names(db, project.id, project.organization_id),
+        "project_stakeholders": stakeholders_json,
         "project_stakeholder_visibility": visibility_json,
         "project_stakeholder_groups": _export_groups(db, project.organization_id, project.id, StakeholderScope.PROJECT),
     }, assets
@@ -469,6 +479,11 @@ def import_project_data(
             warnings.add("A stakeholder visibility override was skipped — its stakeholder was not found in the target organisation.")
             continue
         db.add(ProjectStakeholderVisibility(project_id=project.id, stakeholder_id=stakeholder_id, hidden=v["hidden"]))
+    # Hidden last: a stakeholder above may use a type the project hides, which needs its row created first.
+    for name in STAKEHOLDER_TYPES.hide_by_names(
+        db, project.id, organization_id, data.get("project_stakeholder_hidden_org_types", []),
+    ):
+        warnings.add(f"Hidden stakeholder type {name!r} skipped — the organisation has no such type.")
     db.flush()
 
     visible = {

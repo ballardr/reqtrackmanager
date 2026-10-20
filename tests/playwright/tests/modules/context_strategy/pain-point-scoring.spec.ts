@@ -54,7 +54,7 @@ async function setup(page: Page, request: APIRequestContext) {
 }
 
 /**
- * Job to be done: docs/plans/module-01-context-and-strategy-plan.md Phase 10
+ * Job to be done:
  * — the generic scoring-matrix core, as Context & Strategy's "Pain Point
  * Scoring" admin sections expose it: org admins edit levels, the default
  * model and rating bands; projects inherit them (nearest ancestor → org →
@@ -131,7 +131,7 @@ test.describe("Context & Strategy: Pain Point scoring configuration", () => {
   });
 
   /**
-   * Job to be done: docs/plans/module-03-risk-management-plan.md Phase 1a —
+   * Job to be done: —
    * an org admin pins individual cells of a two-axis model to a band (so a
    * non-monotonic matrix can be reproduced); projects inherit the set and
    * can override and reset it.

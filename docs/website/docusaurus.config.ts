@@ -16,8 +16,11 @@ const config: Config = {
   },
 
   // GitHub Pages project-site hosting: https://ballardr.github.io/reqtrackmanager/
-  url: 'https://ballardr.github.io',
-  baseUrl: '/reqtrackmanager/',
+  // The defaults are the public site. The internal-hosting image
+  // (`Dockerfile.prod`) overrides both via DOCS_URL / DOCS_BASE_URL at build
+  // time (baseUrl must start and end with `/`).
+  url: process.env.DOCS_URL ?? 'https://ballardr.github.io',
+  baseUrl: process.env.DOCS_BASE_URL ?? '/reqtrackmanager/',
 
   // GitHub pages deployment config.
   organizationName: 'ballardr',
@@ -29,7 +32,7 @@ const config: Config = {
 
   // Fail the build (and therefore CI) on any dangling internal link/anchor -
   // this is the mechanism that makes "every page exists and is linked"
-  // actually enforced rather than aspirational (docs/plans/docs-website-plan.md).
+  // actually enforced rather than aspirational (docs/plans/completed/docs-website-plan.md).
   onBrokenLinks: 'throw',
   onBrokenAnchors: 'throw',
 
@@ -167,7 +170,7 @@ const config: Config = {
     // src/css/custom.css) - blue reads more clearly as a *diagram*
     // palette and was requested specifically for that reason, so this
     // page's node color no longer tracks the app's brand color 1:1
-    // per the original "Diagrams" decision (docs/plans/docs-website-plan.md).
+    // per the original "Diagrams" decision (docs/plans/completed/docs-website-plan.md).
     //
     // @docusaurus/theme-mermaid only swaps the *named* base theme between
     // light/dark (see useMermaidConfig in its client code) - `options`

@@ -1,40 +1,38 @@
 """
 Module: modules.stakeholders.models
 
-Data model for the Stakeholders & Personas module (docs/plans/module-02-
-stakeholders-and-personas-plan.md), Phase 1.1 (Persona) and Phase 1.2
-(Stakeholder — see the second half of this file, which mirrors the Persona
-tables):
+Data model for the Stakeholders & Personas module: Persona and Stakeholder
+(see the second half of this file, which mirrors the Persona tables):
 
 - `Persona` / `PersonaVersion` — identity row plus temporal content
   snapshots, the same split `models.requirement.Requirement`/
   `RequirementVersion` and Context & Strategy's `GuidingPrinciple`/
-  `GuidingPrincipleVersion` use (Phase 0 resolution 6: full history). One
+  `GuidingPrincipleVersion` use (full history). One
   table with a `scope` discriminator and exactly one of `organization_id`/
-  `project_id` set (resolution 2: an org-level persona is one live, shared
+  `project_id` set (an org-level persona is one live, shared
   record). Status and `weight` are versioned content: a lifecycle change or
   a re-weighting is a content change like any other.
 - `PersonaTypeDefinition` / `ProjectPersonaType` — the two-tier type
-  vocabulary (resolution 3), the same shape as Context & Strategy's
+  vocabulary, the same shape as Context & Strategy's
   `PainPointTypeDefinition`/`ProjectPainPointType`: an org base list plus
   per-project rename/reorder/disable/add. `PersonaVersion` references either
   an org type (org-scoped persona) or a project type row (project-scoped
   persona); both are nullable because a type is optional.
-- `ProjectPersonaWeight` — a project's override of a persona's weight
-  (resolution 5), resolved through the project hierarchy by
+- `ProjectPersonaWeight` — a project's override of a persona's weight,
+  resolved through the project hierarchy by
   `service.resolve_persona_weight`.
 - `ProjectPersonaVisibility` / `ProjectStakeholderVisibility` — a project's
-  override of whether one org Persona / Stakeholder is visible to it (Phase
-  3b), resolved through the project hierarchy by `service.resolve_visibility`.
+  override of whether one org Persona / Stakeholder is visible to it,
+  resolved through the project hierarchy by `service.resolve_visibility`.
 - `PersonaComment` / `PersonaCommentFile` / `PersonaFile` — module-local
-  comment and attachment tables (resolution 8), since extending the core
+  comment and attachment tables, since extending the core
   `ReviewTargetType` enum would be a per-module edit to a core file.
-- `StakeholderNeed` and its version/comment/file tables (Phase 2) — a
+- `StakeholderNeed` and its version/comment/file tables — a
   project-scoped record of one stakeholder or persona need.
-- `StakeholderGroup` / `StakeholderGroupMember` (Phase 3c) —
+- `StakeholderGroup` / `StakeholderGroupMember` —
   a tree of groups classifying stakeholders, with many-to-many membership.
 - `Engagement` and its comment/file tables, `EngagementPrompt`,
-  `EngagementAnonymousParticipant` and `ResearchFinding` (Phase 4, end of this
+  `EngagementAnonymousParticipant` and `ResearchFinding` (end of this
   file) — the contact log and the research extras. An Engagement is a single
   row (no version table): it is a dated record of something that happened, and a
   second copy of its notes in a history table would only widen what hard
@@ -140,12 +138,16 @@ class Persona(UUIDPKMixin, TimestampMixin, Base):
         scope: Which of `organization_id`/`project_id` is populated.
         organization_id: Set (and `project_id` null) for an org persona.
         project_id: Set (and `organization_id` null) for a project persona.
+        unique_code: Human-readable code (e.g. `"PER-003"`), from `services.sequences.generate_unique_code`;
+            numbered per owner (the project, or the organisation for an organisation-scoped record) and never reused.
         creator_id: Who created the record.
         is_archived / archived_at / archived_by: Soft-delete.
     """
 
     __tablename__ = "personas"
     __table_args__ = (
+        UniqueConstraint("project_id", "unique_code", name="uq_personas_project_unique_code"),
+        UniqueConstraint("organization_id", "unique_code", name="uq_personas_organization_unique_code"),
         CheckConstraint(
             "(scope = 'organization' AND organization_id IS NOT NULL AND project_id IS NULL) OR "
             "(scope = 'project' AND project_id IS NOT NULL AND organization_id IS NULL)",
@@ -160,6 +162,7 @@ class Persona(UUIDPKMixin, TimestampMixin, Base):
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    unique_code: Mapped[str] = mapped_column(String(64))
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -189,7 +192,7 @@ class PersonaVersion(UUIDPKMixin, Base):
         goals, needs, behaviours, context_environment, skills_proficiency,
         frequency_of_use, constraints: The §10 persona descriptive fields,
             free text.
-        weight: Importance for per-persona scoring (Module 1 Phase 11);
+        weight: Importance for per-persona scoring;
             null or positive. Null means "no opinion" and every persona is
             then weighted equally.
         status: Lifecycle state.
@@ -198,7 +201,7 @@ class PersonaVersion(UUIDPKMixin, Base):
             for the record. No foreign key; `services.principals.validate_principal`
             checks it on write and `module.py`'s `principal_references` guard group deletion.
         champion_type / champion_id: The principal accountable for keeping the
-            persona accurate (Phase 0 resolution 13); same shape as the owner,
+            persona accurate; same shape as the owner,
             descriptive only, grants no permissions.
         change_note: Free-text reason for the change.
         created_by / created_at: Who made this snapshot, and when.
@@ -252,7 +255,7 @@ class PersonaVersion(UUIDPKMixin, Base):
 
 
 class ProjectPersonaWeight(UUIDPKMixin, TimestampMixin, Base):
-    """A project's override of one persona's weight (Phase 0 resolution 5).
+    """A project's override of one persona's weight.
     Override-only: a project with no row inherits from its nearest ancestor
     project's row, then `PersonaVersion.weight`, then equal weighting.
 
@@ -276,8 +279,8 @@ class ProjectPersonaWeight(UUIDPKMixin, TimestampMixin, Base):
 
 
 class ProjectPersonaVisibility(UUIDPKMixin, TimestampMixin, Base):
-    """A project's override of whether one org Persona is visible to it (Phase
-    3b). Override-only: no row means "inherit" — from the nearest ancestor
+    """A project's override of whether one org Persona is visible to it.
+    Override-only: no row means "inherit" — from the nearest ancestor
     project's row, else visible. `hidden=False` exists so a child can re-show
     what its parent hid; hiding never alters the shared Persona. Same shape as
     `ProjectStakeholderVisibility`.
@@ -345,7 +348,7 @@ class PersonaFile(UUIDPKMixin, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
-# --- Stakeholder (Phase 1.2) --------------------------------------------------
+# --- Stakeholder --------------------------------------------------
 
 
 class StakeholderTypeDefinition(UUIDPKMixin, TimestampMixin, Base):
@@ -392,8 +395,8 @@ class ProjectStakeholderType(UUIDPKMixin, TimestampMixin, Base):
 
 
 class ProjectStakeholderVisibility(UUIDPKMixin, TimestampMixin, Base):
-    """A project's override of whether one org Stakeholder is visible to it
-    (Phase 3b). Override-only: no row means "inherit" — from the nearest
+    """A project's override of whether one org Stakeholder is visible to it.
+Override-only: no row means "inherit" — from the nearest
     ancestor project's row, else visible. `hidden=False` exists so a child can
     re-show what its parent hid; hiding never alters the shared Stakeholder.
 
@@ -426,12 +429,16 @@ class Stakeholder(UUIDPKMixin, TimestampMixin, Base):
         scope: Which of `organization_id`/`project_id` is populated.
         organization_id: Set (and `project_id` null) for an org stakeholder.
         project_id: Set (and `organization_id` null) for a project stakeholder.
+        unique_code: Human-readable code (e.g. `"STK-003"`), from `services.sequences.generate_unique_code`;
+            numbered per owner (the project, or the organisation for an organisation-scoped record) and never reused.
         creator_id: Who created the record.
         is_archived / archived_at / archived_by: Soft-delete.
     """
 
     __tablename__ = "stakeholders"
     __table_args__ = (
+        UniqueConstraint("project_id", "unique_code", name="uq_stakeholders_project_unique_code"),
+        UniqueConstraint("organization_id", "unique_code", name="uq_stakeholders_organization_unique_code"),
         CheckConstraint(
             "(scope = 'organization' AND organization_id IS NOT NULL AND project_id IS NULL) OR "
             "(scope = 'project' AND project_id IS NOT NULL AND organization_id IS NULL)",
@@ -446,6 +453,7 @@ class Stakeholder(UUIDPKMixin, TimestampMixin, Base):
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    unique_code: Mapped[str] = mapped_column(String(64))
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -476,18 +484,18 @@ class StakeholderVersion(UUIDPKMixin, Base):
         interests, responsibilities, goals_needs, priorities, constraints,
         workflows_scenarios: The §10.3 descriptive fields, free text.
         contact_info: Contact/reference info — Confidential personal data.
-        target_cadence: Our goal for how often to engage (resolution 18);
+        target_cadence: Our goal for how often to engage;
             null when not set.
         availability_constraints: Their limit on engagement, free text.
         influence_level_id / interest_level_id: Levels of the
-            `stakeholder` scoring scheme's axes (resolution 16). A plain FK
+            `stakeholder` scoring scheme's axes. A plain FK
             to core `scoring_levels`; `SET NULL` on delete so a deleted level
             can't block on history (the scheme's usage hooks only manage
             *current* versions).
         status: Lifecycle state.
         owner_type / owner_id: The principal responsible for the record (see `PersonaVersion`).
         user_id: The platform user this stakeholder is, if any
-            (resolution 13); descriptive only, grants no permissions.
+            descriptive only, grants no permissions.
         change_note: Free-text reason for the change.
         created_by / created_at: Who made this snapshot, and when.
     """
@@ -588,27 +596,31 @@ class StakeholderFile(UUIDPKMixin, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
-# --- Stakeholder Need (Phase 2) -----------------------------------------------
+# --- Stakeholder Need -----------------------------------------------
 
 
 class StakeholderNeed(UUIDPKMixin, TimestampMixin, Base):
-    """A Stakeholder Need's stable identity. Always project-scoped (Phase 2,
-    Decided by: Agent): a need is the intermediate statement between a person
+    """A Stakeholder Need's stable identity. Always project-scoped
+    (Decided by: Agent): a need is the intermediate statement between a person
     and the project's own Requirements, so it has no organisation-level reading.
     The Stakeholders/Personas that have it, and the Requirements it gave rise
     to, are `ArtefactLink`s.
 
     Attributes:
         project_id: The owning project.
+        unique_code: Project-scoped identifier (e.g. `"NEED-003"`), from
+            `services.sequences.generate_unique_code`; never reused.
         creator_id: Who created the record.
         is_archived / archived_at / archived_by: Soft-delete.
     """
 
     __tablename__ = "stakeholder_needs"
+    __table_args__ = (UniqueConstraint("project_id", "unique_code", name="uq_stakeholder_needs_project_unique_code"),)
 
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
+    unique_code: Mapped[str] = mapped_column(String(64))
     creator_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -707,12 +719,12 @@ class StakeholderNeedFile(UUIDPKMixin, Base):
 
 
 # =============================================================================
-# Stakeholder Groups (Phase 3c)
+# Stakeholder Groups
 # =============================================================================
 
 
 class StakeholderGroup(UUIDPKMixin, TimestampMixin, Base):
-    """A node in a tree of stakeholder groups (Phase 0 addendum 3): a
+    """A node in a tree of stakeholder groups: a
     classification such as "Client > Acme", not a principal, so it has no
     version history or lifecycle. Scoped like `Stakeholder`: exactly one of
     `organization_id`/`project_id`. A root group is a sort/group-by dimension.
@@ -720,6 +732,8 @@ class StakeholderGroup(UUIDPKMixin, TimestampMixin, Base):
     Attributes:
         scope: Which of `organization_id`/`project_id` is populated.
         organization_id / project_id: The owner.
+        unique_code: Human-readable code (e.g. `"SGP-003"`), from `services.sequences.generate_unique_code`;
+            numbered per owner (the project, or the organisation for an organisation-scoped record) and never reused.
         parent_group_id: The parent group, or `None` for a root. A project
             group may sit under an org group; an org group only under an org
             group (`service.stakeholder_groups` enforces this, plus cycles and depth).
@@ -733,6 +747,8 @@ class StakeholderGroup(UUIDPKMixin, TimestampMixin, Base):
 
     __tablename__ = "stakeholder_groups"
     __table_args__ = (
+        UniqueConstraint("project_id", "unique_code", name="uq_stakeholder_groups_project_unique_code"),
+        UniqueConstraint("organization_id", "unique_code", name="uq_stakeholder_groups_organization_unique_code"),
         CheckConstraint(
             "(scope = 'organization' AND organization_id IS NOT NULL AND project_id IS NULL) OR "
             "(scope = 'project' AND project_id IS NOT NULL AND organization_id IS NULL)",
@@ -748,6 +764,7 @@ class StakeholderGroup(UUIDPKMixin, TimestampMixin, Base):
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    unique_code: Mapped[str] = mapped_column(String(64))
     # SET NULL is only a backstop: deleting a group promotes its children to its parent first.
     parent_group_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("stakeholder_groups.id", ondelete="SET NULL"), nullable=True, index=True
@@ -782,13 +799,13 @@ class StakeholderGroupMember(UUIDPKMixin, Base):
 
 
 # =============================================================================
-# Engagements (Phase 4)
+# Engagements
 # =============================================================================
 
 
 class Engagement(UUIDPKMixin, TimestampMixin, Base):
     """One contact with stakeholders or personas: an email, a call, a workshop, a
-    focus group. Always project-scoped (Phase 4, Decided by: Agent): a contact is
+    focus group. Always project-scoped (Decided by: Agent): a contact is
     something a project did, and scoping it keeps one project's contact history
     off a stakeholder shared with other projects. Participants, personas covered,
     the audience group and the Pain Points / Needs / Open Questions it raised or
@@ -899,7 +916,7 @@ class EngagementFile(UUIDPKMixin, Base):
 class EngagementPrompt(UUIDPKMixin, TimestampMixin, Base):
     """A session prompt of an Engagement (research extras): a question or topic
     asked, with the notes taken on the response. Named "session prompt" so it
-    does not collide with Module 1's Open Questions.
+    does not collide with Context & Strategy's Open Questions.
 
     Attributes:
         engagement_id: The engagement.
@@ -920,7 +937,7 @@ class EngagementPrompt(UUIDPKMixin, TimestampMixin, Base):
 
 class EngagementAnonymousParticipant(UUIDPKMixin, TimestampMixin, Base):
     """A participant who has no Stakeholder record (research extras): a label
-    plus the persona they were drawn from (Phase 0 addendum 2, resolution 19).
+    plus the persona they were drawn from.
     Kept to a label by design, for data minimisation.
 
     Attributes:

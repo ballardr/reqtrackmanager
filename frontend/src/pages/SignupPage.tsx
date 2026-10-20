@@ -7,6 +7,7 @@ import { useAuth } from "../context/AuthContext";
 import { useOrgLabelPlural } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
 import { resolveLandingPath } from "./LoginPage";
+import { TextField } from "../components/FormFields";
 
 const strings = t();
 
@@ -79,24 +80,24 @@ export function SignupPage() {
         ) : (
           config.signup_mode === "org_specified" && <p className="text-muted">{strings.signup.orgSpecifiedHint(orgLabelPlural)}</p>
         )}
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.signup.displayName}
-          <input
-            className="input" required autoFocus value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-          />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.signup.email}
-          <input className="input" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          {strings.signup.password}
-          <input
-            className="input" type="password" required minLength={8} value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </label>
+        <TextField helpNotNeeded required
+          label={strings.signup.displayName}
+          value={displayName}
+          onChange={setDisplayName}
+          inputProps={{ autoFocus: true }}
+        />
+        <TextField helpNotNeeded required
+          label={strings.signup.email}
+          value={email}
+          onChange={setEmail}
+          inputProps={{ type: "email" }}
+        />
+        <TextField helpNotNeeded required
+          label={strings.signup.password}
+          value={password}
+          onChange={setPassword}
+          inputProps={{ minLength: 8, type: "password" }}
+        />
         {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
         <button className="btn btn-primary" type="submit" disabled={submitting}>
           {submitting ? "…" : strings.signup.submit}

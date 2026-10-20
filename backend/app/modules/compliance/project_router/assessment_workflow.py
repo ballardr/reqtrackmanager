@@ -1,8 +1,8 @@
 """
 Module: modules.compliance.project_router.assessment_workflow
 
-A project compliance requirement's approval/sign-off workflow (Phase
-9, §12/§16/§27): submit-for-approval, approve, reject — the latter two
+A project compliance requirement's approval/sign-off workflow
+(§12/§16/§27): submit-for-approval, approve, reject — the latter two
 reachable through MCP only when both the project's and its
 organisation's `allow_ai_approvals` are enabled (see each function's
 own docstring) — plus its audit history and linked-evidence listing.

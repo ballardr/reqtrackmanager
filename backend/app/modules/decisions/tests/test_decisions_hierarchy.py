@@ -1,5 +1,5 @@
-"""Tests for Decision Types' hierarchical-project fallback (Phase 9,
-2026-09-22, **Decided by: User** — supersedes Phase 4's own **Decided by:
+"""Tests for Decision Types' hierarchical-project fallback (2026-09-22,
+**Decided by: User** — supersedes the earlier **Decided by:
 Agent** call that Decision Types would have no such fallback, unlike
 `ActionTypeDefinition`). Mirrors `tests/test_action_types.py`'s own
 hierarchy test suite exactly, through the real HTTP API
@@ -22,7 +22,7 @@ def test_child_project_falls_back_to_parent_decision_types_when_empty(client, ad
     parent = create_project(client, org_admin_token, org["id"], "Fallback Parent", can_be_parent=True)
     child = create_project(client, org_admin_token, org["id"], "Fallback Child", parent_project_id=parent["id"])
 
-    # A child project starts with none of its own (Phase 9's root-only
+    # A child project starts with none of its own (the root-only
     # seeding gate), so the *effective* list (what list_decision_types
     # always returns) falls back to the parent's 5 defaults.
     assert [t["name"] for t in _decision_types(client, org_admin_token, child["id"])] == [

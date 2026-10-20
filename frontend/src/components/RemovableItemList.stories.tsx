@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
 
+import { orphanedControlViolations } from "../testing/orphanedControls";
 import { RemovableItemList, type RemovableItem } from "./RemovableItemList";
 
 const items = (n: number): RemovableItem[] =>
@@ -47,3 +48,17 @@ export const LongListIsCapped: Story = {
 
 export const LightTheme: Story = { ...RemoveAsksTheCaller, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...RemoveAsksTheCaller, globals: { theme: "dark" } };
+
+/** A very long name keeps its "x" on the same chip. */
+export const LongNameKeepsTheRemoveButtonBeside: Story = {
+  args: {
+    items: [{ id: "long", content: <span>{"Dr Alexandra Featherstonehaugh-Montgomery of the Northern Safety Board ".repeat(2)}</span>, removeLabel: "Remove long" }],
+  },
+  decorators: [(Story) => <div style={{ width: 300 }}><Story /></div>],
+  play: async ({ canvasElement }) => {
+    const chip = canvasElement.querySelector<HTMLElement>(".removable-item")!;
+    const button = within(canvasElement).getByRole("button", { name: "Remove long" }).getBoundingClientRect();
+    await expect(button.right).toBeLessThanOrEqual(chip.getBoundingClientRect().right + 1);
+    await expect(orphanedControlViolations(canvasElement)).toEqual([]);
+  },
+};

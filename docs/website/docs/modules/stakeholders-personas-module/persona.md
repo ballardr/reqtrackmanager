@@ -15,6 +15,7 @@ A Persona is a representative user archetype — a "Field Inspector", a "Complia
 
 | Field | What it holds |
 | --- | --- |
+| Code | The record code, `PER-001`: numbered within the organisation for one the organisation owns and within the project for a project's own, and never reused. Where it is shown outside its own project, an organisation-owned Persona reads `ACME-PER-001` (the organisation's code in front), so it is never mistaken for a project's `PER-001`. |
 | Name, description | Who the Persona is, in a sentence or two. |
 | Type | Primary, Secondary or Negative (an anti-persona: someone the product must *not* be designed for) by default; see [Types](#persona-types). |
 | Role / job title | The role the Persona represents. |
@@ -64,11 +65,11 @@ The **Owner** and **Champion** of a Persona, the **Owner** of a [Stakeholder](./
 
 ## Lifecycle
 
-A Persona moves **Draft → Active → Retired**, and a Retired Persona can be reactivated. There is no approval step: the Persona Owner makes each change directly, with an optional comment. Every edit creates a new version, so the full history of a Persona is kept. **Archive** is separate from Retired: it hides a Persona from the default list without changing its status, and is reversible.
+A Persona moves **Draft → Active → Retired**, and a Retired Persona can be reactivated. There is no approval step: the Persona Owner makes each change directly, with an optional comment, and can create a Persona already Active with [**Save and activate**](./people-page.md#save-and-activate). Every edit creates a new version, so the full history of a Persona is kept. **Archive** is separate from Retired: it hides a Persona from the default list without changing its status, and is reversible.
 
 ## Persona types
 
-Persona types are a two-tier list. The organisation maintains a shared list (a Persona Type Admin manages it); each project can rename, reorder, disable or add to it for itself, without affecting other projects. A type that a Persona currently uses can't be deleted.
+Persona types are a two-tier list. The organisation maintains a shared list (a Persona Type Admin manages it); each project can rename, reorder, disable or add to it for itself, and hide an organisation type it does not want (the delete button on an organisation type hides it in this project; **Add organisation defaults** shows it again), without affecting other projects. Personas that already use a hidden type keep it. A type that a Persona currently uses can't be deleted.
 
 ## Where this fits
 

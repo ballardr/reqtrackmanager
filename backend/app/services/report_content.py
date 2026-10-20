@@ -2,8 +2,7 @@
 Module: services.report_content
 
 Per-report-type introduction, chapters and appendices across three tiers
-(report template, project, organisation), Phase 10 of
-docs/plans/platform-enhancements-2026-10-plan.md.
+(report template, project, organisation), .
 
 Responsibilities:
 - Report types: `report_type_options` lists the types an organisation can

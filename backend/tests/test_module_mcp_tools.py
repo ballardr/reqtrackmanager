@@ -1,5 +1,5 @@
-"""Tests for the module system's Phase 4 module-contributed MCP tools
-(docs/compliance-module-plan.md): `app.modules.registry.
+"""Tests for the module system's module-contributed MCP tools:
+`app.modules.registry.
 build_mcp_tool_manifest`'s mechanical verification of a module's own
 `McpToolDefinition` declarations (module-key name prefixing, path-prefix
 enforcement against the declaring module's own router, `mutates` derivation
@@ -205,35 +205,32 @@ def test_manifest_endpoint_returns_resolved_tools(client, admin_token, fake_modu
 def test_manifest_endpoint_requires_no_elevated_role(client, admin_token, org_id, fake_module):
     """A plain org member — no server-admin, no MODULE_ADMINISTRATOR — can
     still call this endpoint: it's gated by plain authentication only, not
-    an admin role, per this phase's own hardening pass."""
+    an admin role, per the hardening pass."""
     create_org_user(client, admin_token, org_id, "mcp-tools-member@example.com", password="Password123!", role="member")
     member_token = login(client, "mcp-tools-member@example.com", "Password123!")
     resp = client.get("/api/v1/system/modules/mcp-tools", headers=auth_headers(member_token))
     assert resp.status_code == 200
 
 
-# --- Against the REAL registry (Compliance, Phase 6) -------------------------
+# --- Against the REAL registry -------------------------
 #
 # Every test above proves `build_mcp_tool_manifest`'s mechanics against a
 # fixture module — this section proves the real thing: Compliance is now a
-# real, permanent `INSTALLED_MODULES` entry (Phase 5) with a real router and
-# three declared MCP tools (Phase 6), so this is the "prove itself against
-# something real once a real module exists" integration coverage the plan's
-# own "Reused Existing Patterns" section calls for, that a fixture-only
+# real, permanent `INSTALLED_MODULES` entry with a real router and
+# three declared MCP tools, so this is the "prove itself against
+# something real once a real module exists" integration coverage that a fixture-only
 # suite can't give on its own. Deliberately does NOT use the `fake_module`
 # fixture — no `INSTALLED_MODULES` mutation needed, since Compliance is
 # already there.
 
 
 def test_compliance_mcp_tools_resolve_against_the_real_registry():
-    """All ten of Compliance's original read-only tools (three from Phase 6,
-    two more from Phase 7, one more from Phase 8, one more from Phase 9, one
-    more from Phase 10, two more from Phase 11) resolve, are read-only
+    """All ten of Compliance's original read-only tools resolve, are read-only
     (`mutates=False`, all GET), and carry exactly the path
     parameters their router endpoints require — the concrete proof that
     `module.py`'s declared `path_template`s actually match real routes on
     `compliance.router.router`/`compliance.project_router.router`, not just
-    that the strings look right. The Phase 7 tools are the first real proof
+    that the strings look right. The project-router tools are the first real proof
     that `build_mcp_tool_manifest` validates a tool against *either* of a
     module's two router prefixes (`app.modules.registry.ModuleDefinition.
     get_project_router`), not just `get_router`'s.
@@ -287,7 +284,7 @@ def test_compliance_mcp_tools_resolve_against_the_real_registry():
     )
     assert {p["name"] for p in list_requirements.params} == {"organization_id", "standard_id", "version_id"}
 
-    # Phase 7's two tools: `project_id` only, no `organization_id` at all —
+    # The first two project-router tools: `project_id` only, no `organization_id` at all —
     # the whole reason they live on `get_project_router()` rather than
     # nested under the org-scoped router (see module.py's own docstring).
     get_status = by_name["compliance_get_project_status"]
@@ -302,25 +299,25 @@ def test_compliance_mcp_tools_resolve_against_the_real_registry():
     )
     assert {p["name"] for p in list_non_compliant.params} == {"project_id"}
 
-    # Phase 8's tool: also `project_id`-only, on the same project router.
+    # The evidence tool: also `project_id`-only, on the same project router.
     list_expiring_evidence = by_name["compliance_list_expiring_evidence"]
     assert list_expiring_evidence.mutates is False
     assert list_expiring_evidence.path_template == "/api/v1/projects/{project_id}/modules/compliance/expiring-evidence"
     assert {p["name"] for p in list_expiring_evidence.params} == {"project_id"}
 
-    # Phase 9's tool: also `project_id`-only.
+    # The approvals tool: also `project_id`-only.
     list_pending_approvals = by_name["compliance_list_pending_approvals"]
     assert list_pending_approvals.mutates is False
     assert list_pending_approvals.path_template == "/api/v1/projects/{project_id}/modules/compliance/pending-approvals"
     assert {p["name"] for p in list_pending_approvals.params} == {"project_id"}
 
-    # Phase 10's tool: also `project_id`-only.
+    # The reviews tool: also `project_id`-only.
     list_reviews_due = by_name["compliance_list_reviews_due"]
     assert list_reviews_due.mutates is False
     assert list_reviews_due.path_template == "/api/v1/projects/{project_id}/modules/compliance/reviews-due"
     assert {p["name"] for p in list_reviews_due.params} == {"project_id"}
 
-    # Phase 11's two tools: back on the org router (mapping/diff are
+    # The mapping/diff tools: back on the org router (mapping/diff are
     # standard/version-scoped concepts, not project-scoped).
     list_requirement_mappings = by_name["compliance_list_requirement_mappings"]
     assert list_requirement_mappings.mutates is False
@@ -347,7 +344,7 @@ def test_compliance_mcp_tools_resolve_against_the_real_registry():
     mutating_compliance_tools = {name for name, t in by_name.items() if name.startswith("compliance_") and t.mutates}
     # 68 write tools declared in module.py, minus 2 removed in the 2026-09-23
     # hardening pass (complete_project_review/complete_standard_review) and the two traceability-link tools
-    # removed in platform enhancements Phase 6c (generic artefact-link tools replace them) = 64.
+    # replaced by the generic artefact-link tools = 64.
     assert len(mutating_compliance_tools) == 64
 
     # Ordinary CRUD/lifecycle write tools resolve normally, mutates=True.

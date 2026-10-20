@@ -1,4 +1,4 @@
-"""Compliance evidence links onto the generic ArtefactLink table (Module 0 — Platform Foundations, Phase 3)
+"""Compliance evidence links onto the generic ArtefactLink table
 
 Revision ID: 0043
 Revises: 0042
@@ -13,8 +13,8 @@ exactly how core migration 0041 retired `requirement_links`/
 `requirement_action_links` — this module's own two evidence-link tables
 were, per their own original docstrings, "deliberately owned by this
 module, not core" only because no shared relationship infrastructure
-existed yet when Phase 8 built them; this migration is that gap closing,
-per `docs/plans/module-00-platform-foundations-plan.md`'s Phase 3.
+existed yet when they were built; this migration is that gap closing,
+
 
 **Column widening**: `artefact_links.source_type`/`target_type` were
 `VARCHAR(20)`, sized for the two core `ArtefactType` values only. This
@@ -47,7 +47,7 @@ and consistent.
 No application code changes ship in this migration file — `service.py`,
 `reports.py`, `export.py`, and `project_router.py` were repointed onto
 `app.services.relationships` in the same commit; see `docs/decisions.md`'s
-"Module 0 (Platform Foundations) Phase 3" entry for the full call-site
+Platform Foundations entry for the full call-site
 list.
 """
 

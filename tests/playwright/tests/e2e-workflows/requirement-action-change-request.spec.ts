@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES, searchChangeRequests } from "./helpers";
 
 /**
- * 2026-08 UX audit roadmap item 514: once a requirement is locked
+ * Once a requirement is locked
  * (APPROVED/COMPLETED), adding an action to it no longer bypasses the
  * change-request-only-once-locked rule its own fields already follow
  * (`services.requirements.LOCKED_STATUSES`) — "Create and link a new
@@ -43,7 +43,7 @@ test.describe("requirement action change requests", () => {
     await test.step("Create and link a new action now requires a reason and creates nothing directly", async () => {
       await page.getByRole("button", { name: "Create and link a new action" }).click();
       const dialog = page.getByRole("dialog", { name: "Create and link a new action" });
-      await dialog.getByPlaceholder("Title").fill(actionTitle);
+      await dialog.getByLabel("Title").fill(actionTitle);
       await dialog.getByLabel("Type", { exact: true }).selectOption({ label: "Review" });
       const createButton = dialog.getByRole("button", { name: "Create", exact: true });
       await expect(createButton).toBeDisabled();

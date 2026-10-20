@@ -11,56 +11,74 @@
  */
 import { useState } from "react";
 
+import type { CollectedLink } from "../../api/artefactLinks";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { Modal } from "../../components/Modal";
-import { TextAreaField, TextField } from "./RecordFormFields";
+import { QuickLinkField } from "../../components/QuickLinkField";
+import { TagField } from "../../components/TagField";
+import { TextAreaField, TextField } from "../../components/FormFields";
 import type { Need, NeedFieldValues } from "./types";
+import { FormActions } from "../../components/FormActions";
 
 export function NeedFormModal({
   initial,
+  projectId,
   error,
   onCancel,
   onSave,
 }: {
   initial?: Need;
+  /** The project the Need is created in; with it a create form offers the quick-link field. */
+  projectId?: string;
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: NeedFieldValues) => void;
+  onSave: (values: NeedFieldValues, quickLinks: CollectedLink[], tags: string[]) => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [rationale, setRationale] = useState(initial?.rationale ?? "");
   const [changeNote, setChangeNote] = useState("");
+  const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
 
   return (
     <Modal title={initial ? `Edit ${initial.name}` : "New Stakeholder Need"} onClose={onCancel} size="lg">
       <div className="stack">
         <FormGrid minColumn="18rem">
           <FormGridFull>
-            <TextField label="Name" ariaLabel="Need name" value={name} onChange={setName} hint="A short title, e.g. “Diagnose faults quickly”." />
+            <TextField helpNotNeeded required label="Name" ariaLabel="Need name" value={name} onChange={setName} hint="A short title, e.g. “Diagnose faults quickly”." />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField
+            <TextAreaField helpNotNeeded
               label="Need" rows={3} value={description} onChange={setDescription}
               hint="The need in the stakeholder's own words, before it becomes a requirement."
             />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField label="Rationale" rows={3} value={rationale} onChange={setRationale} hint="Why it matters, and where it came from." />
+            <TextAreaField helpNotNeeded label="Rationale" rows={3} value={rationale} onChange={setRationale} hint="Why it matters, and where it came from." />
           </FormGridFull>
-          {initial && <FormGridFull><TextField label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
+          {initial && <FormGridFull><TextField helpNotNeeded label="Change note" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
+          {!initial && projectId && (
+            <FormGridFull>
+              <div className="stack">
+                <QuickLinkField
+                projectId={projectId} artefactType="stakeholder_need" preferredType="stakeholder" value={quickLinks}
+                onChange={setQuickLinks}
+              />
+                <TagField projectId={projectId} artefactType="stakeholder_need" value={tags} onChange={setTags} />
+              </div>
+            </FormGridFull>
+          )}
         </FormGrid>
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button
-            className="btn btn-primary"
-            disabled={name.trim() === ""}
-            onClick={() => onSave({ name: name.trim(), description, rationale, change_note: changeNote })}
-          >
-            Save
-          </button>
-        </div>
+        <FormActions
+          error={error}
+          onCancel={onCancel}
+          onSave={() => onSave({ name: name.trim(), description, rationale, change_note: changeNote }, quickLinks, tags)}
+          onSaveAndActivate={
+            initial ? undefined : () => onSave({ name: name.trim(), description, rationale, change_note: changeNote, activate: true }, quickLinks, tags)
+          }
+          saveDisabled={name.trim() === ""}
+        />
       </div>
     </Modal>
   );

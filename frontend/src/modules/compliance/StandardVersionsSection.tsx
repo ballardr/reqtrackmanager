@@ -1,8 +1,7 @@
 /**
  * Module: modules/compliance/StandardVersionsSection
  *
- * The "Versions" section of a standard's workspace (docs/compliance-module-
- * plan.md Phase 18) — extracted out of `StandardsPanel.tsx`'s old
+ * The "Versions" section of a standard's workspace — extracted out of `StandardsPanel.tsx`'s old
  * `SidePanel` content (the version list + "New version" dialog) plus its
  * full-width drill-in to `VersionWorkspace` when one is opened. Used as the
  * content of `StandardWorkspacePage.tsx`'s "Versions" nav-rail section.
@@ -11,18 +10,18 @@
  * create/publish/retire, exactly as `StandardsPanel.tsx` did — this is a
  * pure extraction, not a behavioural change, so the version-management flow
  * (create, optionally cloned from an existing version; publish/retire) is
- * unchanged from Phase 12/4's original design.
+ * unchanged.
  *
- * Phase 23 moves "which version is open" from local component state to the
+ * "Which version is open" lives in the
  * URL (`/standards/:id/versions/:versionId`, `StandardWorkspacePage.tsx`'s
- * new trailing route param, passed down here as `initialVersionId`) — the
+ * trailing route param, passed down here as `initialVersionId`) — the
  * same "a real route, not client-only state" convention this module's own
  * section switching already established — so `StandardNavSection.tsx`'s
- * new expandable Versions group can deep-link straight to one version, and
+ * expandable Versions group can deep-link straight to one version, and
  * opening/leaving a version here updates the address bar to match rather
  * than leaving it on the plain `/versions` URL the whole time.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { Modal } from "../../components/Modal";
@@ -35,6 +34,13 @@ import {
   type ComplianceStandard,
   type ComplianceStandardVersion,
 } from "./types";
+import { DateField, TextAreaField, TextField } from "../../components/FormFields";
+import { FormActions } from "../../components/FormActions";
+import { LabeledSelect } from "../../components/LabeledSelect";
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { COMPLIANCE_HELP } from "./help";
 
 export function StandardVersionsSection({
   orgId,
@@ -63,11 +69,10 @@ export function StandardVersionsSection({
     }
   }
 
-  useEffect(() => {
+  useResetOnChange([orgId, standard.id], () => {
     setVersions(null);
-    void reloadVersions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, standard.id]);
+  });
+  useLoadOnChange(reloadVersions, [orgId, standard.id]);
 
   const activeVersion = initialVersionId ? versions?.find((v) => v.id === initialVersionId) ?? null : null;
 
@@ -152,48 +157,41 @@ function VersionFormModal({
   const [cloneFrom, setCloneFrom] = useState("");
 
   return (
-    <Modal title="New version" onClose={onCancel}>
+    <Modal title="New version" onClose={onCancel} size="lg">
       <div className="stack">
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Version label</span>
-          <input className="input" value={versionLabel} onChange={(e) => setVersionLabel(e.target.value)} placeholder="e.g. v2.0" aria-label="Version label" autoFocus />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Effective date</span>
-          <input className="input" type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Change note</span>
-          <textarea className="input" value={changeNote} onChange={(e) => setChangeNote(e.target.value)} rows={2} />
-        </label>
-        {versions.length > 0 && (
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            <span>Clone requirements from</span>
-            <select className="input" value={cloneFrom} onChange={(e) => setCloneFrom(e.target.value)} aria-label="Clone requirements from">
-              <option value="">Start empty</option>
-              {versions.map((v) => (
-                <option key={v.id} value={v.id}>{v.version_label}</option>
-              ))}
-            </select>
-          </label>
-        )}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button
-            className="btn btn-primary"
-            disabled={!versionLabel.trim()}
-            onClick={() =>
-              onSave({
-                version_label: versionLabel,
-                effective_date: effectiveDate || null,
-                change_note: changeNote,
-                clone_from_version_id: cloneFrom || null,
-              })
-            }
-          >
-            Save
-          </button>
-        </div>
+        <FormGrid minColumn="18rem">
+          <TextField helpNotNeeded required
+            label="Version label"
+            value={versionLabel}
+            onChange={setVersionLabel}
+            placeholder="e.g. v2.0"
+            inputProps={{ autoFocus: true }}
+          />
+          <DateField help={COMPLIANCE_HELP.complianceEffectiveDate} label="Effective date" value={effectiveDate} onChange={setEffectiveDate} />
+          <FormGridFull>
+            <TextAreaField helpNotNeeded label="Change note" value={changeNote} onChange={setChangeNote} rows={2} />
+          </FormGridFull>
+          {versions.length > 0 && (
+            <LabeledSelect help={COMPLIANCE_HELP.complianceCloneFrom}
+              label="Clone requirements from"
+              value={cloneFrom}
+              onChange={setCloneFrom}
+              options={versions.map((v) => ({ value: v.id, label: v.version_label }))}
+              placeholder="Start empty"
+            />
+          )}
+        </FormGrid>
+        <FormActions
+          onCancel={onCancel}
+          onSave={() =>
+            onSave({
+              version_label: versionLabel,
+              effective_date: effectiveDate || null,
+              change_note: changeNote,
+              clone_from_version_id: cloneFrom || null,
+            })}
+        saveDisabled={!versionLabel.trim()}
+        />
       </div>
     </Modal>
   );

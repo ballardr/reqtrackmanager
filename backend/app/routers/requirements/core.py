@@ -18,6 +18,7 @@ import csv
 import io
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
@@ -43,7 +44,7 @@ from app.models.enums import (
     StageStatus,
 )
 from app.models.project import Project, ProjectCategory, ProjectComponent, ProjectStage
-from app.models.requirement import Requirement, RequirementKeyword, RequirementVersion
+from app.models.requirement import Requirement, RequirementVersion
 from app.models.user import User
 from app.schemas.changes import ChangeEntryOut
 from app.schemas.principal import PrincipalOut, PrincipalRef
@@ -57,12 +58,14 @@ from app.schemas.requirement import (
     RequirementVersionOut,
 )
 from app.services import engagement, pubsub
+from app.services import tags as tag_service
 from app.services.audit import log_event
 from app.services.bundle_common import enforce_upload_size_limit
 from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
 from app.services.downloads import filename_safe
 from app.services.principals import group_ref_from_text, validate_principal
+from app.services.project_scope import ProjectScope
 from app.services.rbac import get_effective_project_roles, require_project_view
 from app.services.requirement_csv import (
     CUSTOM_FIELD_COLUMN_PREFIX,
@@ -155,10 +158,7 @@ def _prefetch_for_list(db: Session, requirement_ids: list[UUID], current_user_id
     if len(prefetch.versions) != len(set(requirement_ids)):
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Requirement has no current version.")
     prefetch.people = version_people(db, prefetch.versions.values())
-    for requirement_id, keyword in db.execute(select(RequirementKeyword.requirement_id, RequirementKeyword.keyword).where(
-        RequirementKeyword.requirement_id.in_(requirement_ids),
-    )).all():
-        prefetch.keywords.setdefault(requirement_id, []).append(keyword)
+    prefetch.keywords = tag_service.keywords_for_requirements(db, requirement_ids)
     prefetch.subscribed = set(db.scalars(select(Subscription.entity_id).where(
         Subscription.subscriber_type == PrincipalType.USER.value, Subscription.subscriber_id == current_user_id,
         Subscription.entity_type == "requirement",
@@ -287,6 +287,8 @@ def list_requirements(
     component_id: UUID | None = None,
     category_id: UUID | None = None,
     keyword: str | None = None,
+    tag: list[str] = Query([], description="Only requirements carrying these tags (case-insensitive)."),
+    tag_mode: Literal["any", "all"] = Query("any", description="Whether a requirement needs any or all of the `tag`s."),
     search: str | None = None,
     status_filter: RequirementStatus | None = Query(None, alias="status"),
     is_completed: bool | None = None,
@@ -298,6 +300,7 @@ def list_requirements(
     order: str = Query("asc", pattern="^(asc|desc)$"),
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
+    project_scope: ProjectScope = Depends(),
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
     """Lists requirements, sorted by component/category (C-G-04) with search (U-E-01)
@@ -316,71 +319,87 @@ def list_requirements(
     returned in the `X-Total-Count` response header so a client can tell
     whether more pages remain.
 
-    `sort` (2026-08 UX audit roadmap, "Column-header sorting on data
-    tables") optionally overrides the default component/category/manual-
+    `sort` optionally overrides the default component/category/manual-
     order sort below with a single-column sort by `unique_code`, `name`,
     `status`, or `created_at`; `order` picks `asc` (default) or `desc`.
     Omitting `sort` leaves the existing default ordering completely
     unchanged, so this is additive, not a breaking change to callers that
     don't ask for it.
 
-    `X-Total-Unfiltered-Count` (persistent "showing X of Y" result count,
-    2026-08 UX audit roadmap) is a second response header reporting the
+    `X-Total-Unfiltered-Count` is a second response header reporting the
     count within only the mandatory project + default archived-visibility
     scope, before component/category/search/status/completed/stage/comments/
     watched filters below narrow it further — unlike `X-Total-Count`, it does not
     change when the caller adds a filter or search term, so the frontend
     can show "12 matching · 57 total" instead of just a bare filtered count.
+
+    `project_scope` (`parents`/`children`/`both`) adds the requirements of the related projects
+    the caller can open (`services.project_scope`); rows from another project carry
+    `from_project_*`, the counts above cover every project listed, and project-local filters
+    (component, category, target stage) only match rows of the project they belong to.
     """
-    query = select(Requirement).where(Requirement.project_id == project_id)
-    if not include_archived:
-        query = query.where(Requirement.is_archived.is_(False))
+    unfiltered = 0
 
-    response.headers["X-Total-Unfiltered-Count"] = str(
-        db.scalar(select(func.count()).select_from(query.subquery()))
-    )
+    def rows_for(pid: UUID) -> list[RequirementOut]:
+        nonlocal unfiltered
+        query = select(Requirement).where(Requirement.project_id == pid)
+        if not include_archived:
+            query = query.where(Requirement.is_archived.is_(False))
 
-    if is_completed is not None:
-        query = query.where(Requirement.is_completed.is_(is_completed))
-    if component_id:
-        query = query.where(Requirement.component_id == component_id)
-    if category_id:
-        query = query.where(Requirement.category_id == category_id)
-    requirements = db.scalars(query).all()
-    prefetch = _prefetch_for_list(db, [r.id for r in requirements], current_user.id)
+        unfiltered += db.scalar(select(func.count()).select_from(query.subquery())) or 0
 
-    out = []
-    for req in requirements:
-        version = prefetch.versions[req.id]
-        kws = prefetch.keywords.get(req.id, [])
-        if keyword and keyword.lower() not in kws:
-            continue
-        if search:
-            needle = search.lower()
-            if needle not in version.name.lower() and needle not in req.unique_code.lower():
+        if is_completed is not None:
+            query = query.where(Requirement.is_completed.is_(is_completed))
+        if component_id:
+            query = query.where(Requirement.component_id == component_id)
+        if category_id:
+            query = query.where(Requirement.category_id == category_id)
+        if any(t.strip() for t in tag):
+            query = query.where(Requirement.id.in_(
+                tag_service.tagged_ids(
+                    db, project=db.get(Project, pid), artefact_type="requirement", names=tag, match_all=tag_mode == "all",
+                )
+            ))
+        requirements = db.scalars(query).all()
+        prefetch = _prefetch_for_list(db, [r.id for r in requirements], current_user.id)
+
+        rows = []
+        for req in requirements:
+            version = prefetch.versions[req.id]
+            kws = prefetch.keywords.get(req.id, [])
+            if keyword and keyword.casefold() not in {k.casefold() for k in kws}:
                 continue
-        if status_filter and version.status != status_filter:
-            continue
-        if target_stage_id and version.target_stage_id != target_stage_id:
-            continue
-        item = _to_out(db, req, version, current_user.id, prefetch)
-        if has_comments and item.comment_count == 0:
-            continue
-        if only_watched and not item.is_subscribed:
-            continue
-        out.append(item)
+            if search:
+                needle = search.lower()
+                if needle not in version.name.lower() and needle not in req.unique_code.lower():
+                    continue
+            if status_filter and version.status != status_filter:
+                continue
+            if target_stage_id and version.target_stage_id != target_stage_id:
+                continue
+            item = _to_out(db, req, version, current_user.id, prefetch)
+            if has_comments and item.comment_count == 0:
+                continue
+            if only_watched and not item.is_subscribed:
+                continue
+            rows.append(item)
+
+        if not sort:
+            comp_order = {c.id: c.sort_order for c in db.scalars(
+                select(ProjectComponent).where(ProjectComponent.project_id == pid)).all()}
+            cat_order = {c.id: c.sort_order for c in db.scalars(
+                select(ProjectCategory).where(ProjectCategory.project_id == pid)).all()}
+            rows.sort(key=lambda r: (comp_order.get(r.component_id, 0), cat_order.get(r.category_id, 0), r.sort_order))
+        return rows
+
+    out = project_scope.collect(db, db.get(Project, project_id), current_user.id, "requirement", rows_for)
+    response.headers["X-Total-Unfiltered-Count"] = str(unfiltered)
 
     if sort:
         def _sort_value(item: RequirementOut):
             value = getattr(item, sort)
             return value.lower() if isinstance(value, str) else value
         out.sort(key=_sort_value, reverse=(order == "desc"))
-    else:
-        comp_order = {c.id: c.sort_order for c in db.scalars(
-            select(ProjectComponent).where(ProjectComponent.project_id == project_id)).all()}
-        cat_order = {c.id: c.sort_order for c in db.scalars(
-            select(ProjectCategory).where(ProjectCategory.project_id == project_id)).all()}
-        out.sort(key=lambda r: (comp_order.get(r.component_id, 0), cat_order.get(r.category_id, 0), r.sort_order))
 
     response.headers["X-Total-Count"] = str(len(out))
     if limit is not None:
@@ -710,7 +729,8 @@ def update_requirement(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Category does not belong to the selected component.")
         requirement.component_id = payload.component_id
         requirement.category_id = payload.category_id
-    set_keywords(db, requirement, payload.keywords)
+    if payload.keywords is not None:
+        set_keywords(db, requirement, payload.keywords, current_user.id)
     log_event(db, entity_type="requirement", entity_id=requirement.id, action="updated",
               actor_id=current_user.id, project_id=project_id, detail={"change_note": payload.change_note})
     requirements_updated_total.inc()
@@ -749,8 +769,7 @@ def restore_requirement(
     """Restores an archived requirement to the active list, undoing
     `delete_requirement` — same permission gate (managers/administrators),
     same audit-log shape, mirroring `routers.projects::unarchive_project`
-    (see that endpoint's docstring/precedent, per the 2026-08 UX audit's
-    roadmap item on one-way archive). Unlike `delete_requirement`, calling
+. Unlike `delete_requirement`, calling
     this on a requirement that isn't archived is a harmless no-op rather
     than an error, matching `unarchive_project`'s own idempotent shape.
     """
@@ -812,8 +831,10 @@ def requirement_activity(
     requirement = db.get(Requirement, requirement_id)
     if requirement is None or requirement.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
-    entries = get_project_changes(db, project_id, since=None, until=None, include_comments=False)
-    return [e for e in entries if e.entity_type == "requirement" and e.entity_id == str(requirement_id)]
+    return get_project_changes(
+        db, project_id, since=None, until=None, include_comments=False,
+        entity_type="requirement", entity_id=requirement_id,
+    )
 
 
 @router.post("/{requirement_id}/move", response_model=RequirementOut)
@@ -846,6 +867,10 @@ def move_requirement(
     if 0 <= swap_idx < len(siblings):
         a, b = siblings[idx], siblings[swap_idx]
         versions[a.id].sort_order, versions[b.id].sort_order = versions[b.id].sort_order, versions[a.id].sort_order
+        log_event(
+            db, entity_type="requirement", entity_id=requirement.id, action="moved", actor_id=current_user.id,
+            project_id=project_id, detail={"direction": payload.direction},
+        )
         db.commit()
     version = get_current_version(db, requirement.id)
     return _to_out(db, requirement, version, current_user.id)

@@ -1,7 +1,7 @@
 """
 Module: modules.compliance.router.standard_access
 
-Standard-scoped RBAC (Phase 22): a standard's own member list, and
+Standard-scoped RBAC: a standard's own member list, and
 direct/group `standards_manager`/`standards_contributor` role grant and
 revoke (with the "last Standards Manager" floor check, covered by a
 direct/group grant or the org's fallback group). Kept in its own
@@ -45,9 +45,8 @@ def list_standard_members(
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     """Lists this standard's own direct `standards_manager`/`standards_
-    contributor` role grants (Phase 22) — the standard's dedicated working
-    group — plus its group-based grants (`GroupModuleRole`, module system
-    Phase 30) and whether this standard's manager floor is *also* covered
+    contributor` role grants — the standard's dedicated working
+    group — plus its group-based grants (`GroupModuleRole`) and whether this standard's manager floor is *also* covered
     by the org's designated fallback compliance-managers group currently
     having at least one member. View-gated, same as every other read on a
     standard. Deliberately excludes the org-wide `compliance_manager`/
@@ -110,7 +109,7 @@ def assign_standard_member_role(
     current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
 ):
     """Grants a direct `standards_manager`/`standards_contributor` role on
-    this standard (Phase 22) — manager-tier-only, mirroring `assign_org_
+    this standard — manager-tier-only, mirroring `assign_org_
     module_role`'s own `ORG_ADMIN`-only gate one tier down (a standards
     manager already implicitly holds this via `require_module_role`'s own
     composition, so it's consistent that a standards manager is also who
@@ -157,10 +156,10 @@ def revoke_standard_member_role(
     organization_id: UUID, standard_id: UUID, user_id: UUID, role_key: str,
     current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
 ):
-    """Revokes a direct standard-scoped role grant (Phase 22) — blocks
+    """Revokes a direct standard-scoped role grant — blocks
     removing this standard's *last remaining* `standards_manager` grant
     (§3's manager floor) unless another explicit manager grant covers it
-    (direct or group, module system Phase 30) or the org's fallback
+    (direct or group) or the org's fallback
     compliance-managers group currently has at least one member, mirroring
     `revoke_project_role`'s own "last manager" guard (`routers/projects.py`)
     one tier down, including its same "the floor must be satisfied by a
@@ -215,8 +214,7 @@ def assign_standard_group_role(
     current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
 ):
     """Grants a `standards_manager`/`standards_contributor` role on this
-    standard to every (transitive) member of an org group (`GroupModuleRole`,
-    module system Phase 30) — the group-grant counterpart to `assign_
+    standard to every (transitive) member of an org group (`GroupModuleRole`) — the group-grant counterpart to `assign_
     standard_member_role`, same manager-tier-only gate. Mirrors `routers/
     projects.py::assign_group_project_role`'s own cross-tenant re-check
     (`org_group_id` must belong to this standard's own organisation) and
@@ -252,8 +250,7 @@ def revoke_standard_group_role(
     organization_id: UUID, standard_id: UUID, org_group_id: UUID, role_key: str,
     current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
 ):
-    """Revokes a `GroupModuleRole` grant on this standard (module system
-    Phase 30) — same "last standards_manager" floor guard as `revoke_
+    """Revokes a `GroupModuleRole` grant on this standard — same "last standards_manager" floor guard as `revoke_
     standard_member_role`, extended one direction further: removing this
     group's own `standards_manager` grant additionally checks whether some
     *other* group grant still covers the floor (`standard_manager_floor_

@@ -30,7 +30,7 @@ const SQUAD: Principal = { type: "project_group", id: "pgroup-1", label: "Releas
 
 function guidingPrinciple(overrides: Partial<GuidingPrinciple> = {}): GuidingPrinciple {
   return {
-    id: GUIDING_PRINCIPLE_ID, scope: "project", organization_id: null, project_id: PROJECT_ID, creator_id: "user-1",
+    id: GUIDING_PRINCIPLE_ID, scope: "project", organization_id: null, project_id: PROJECT_ID, unique_code: "GP-001", creator_id: "user-1",
     is_archived: false, archived_at: null, archived_by: null, name: "Field data is captured once",
     principle_statement: "Every field observation is recorded exactly once, at the point of inspection.",
     rationale: "Re-keying paper forms introduces errors and delay.", priority: "high", status: "proposed",
@@ -182,9 +182,11 @@ export const OwnerCanBeAssigned: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => canvas.getByText("Unassigned"));
-    await userEvent.type(canvas.getByLabelText("Guiding Principle owner"), "Jamie");
-    await waitFor(() => canvas.getByText(/Jamie Lee/));
-    await userEvent.click(canvas.getByText(/Jamie Lee/));
+    await userEvent.click(canvas.getByRole("button", { name: "Assign: Guiding Principle owner" }));
+    const picker = within(within(document.body).getByRole("dialog", { name: "Assign: Guiding Principle owner" }));
+    await userEvent.type(picker.getByLabelText("Guiding Principle owner"), "Jamie");
+    await waitFor(() => picker.getByText(/Jamie Lee/));
+    await userEvent.click(picker.getByText(/Jamie Lee/));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/guiding-principles/${GUIDING_PRINCIPLE_ID}`,
       expect.objectContaining({ owner: { type: "user", id: "user-2" } })
@@ -200,9 +202,11 @@ export const OwnerCanBeAnOrgGroup: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByLabelText("Guiding Principle owner"));
-    await userEvent.type(canvas.getByLabelText("Guiding Principle owner"), "platform");
-    await userEvent.click(await canvas.findByText("Platform Architecture"));
+    await waitFor(() => canvas.getByRole("button", { name: "Assign: Guiding Principle owner" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Assign: Guiding Principle owner" }));
+    const picker = within(within(document.body).getByRole("dialog", { name: "Assign: Guiding Principle owner" }));
+    await userEvent.type(picker.getByLabelText("Guiding Principle owner"), "platform");
+    await userEvent.click(await picker.findByText("Platform Architecture"));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/guiding-principles/${GUIDING_PRINCIPLE_ID}`,
       expect.objectContaining({ owner: { type: "org_group", id: "group-1" } })
@@ -219,9 +223,11 @@ export const OwnerCanBeAProjectGroup: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByLabelText("Guiding Principle owner"));
-    await userEvent.type(canvas.getByLabelText("Guiding Principle owner"), "release");
-    await userEvent.click(await canvas.findByText("Release board"));
+    await waitFor(() => canvas.getByRole("button", { name: "Assign: Guiding Principle owner" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Assign: Guiding Principle owner" }));
+    const picker = within(within(document.body).getByRole("dialog", { name: "Assign: Guiding Principle owner" }));
+    await userEvent.type(picker.getByLabelText("Guiding Principle owner"), "release");
+    await userEvent.click(await picker.findByText("Release board"));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/guiding-principles/${GUIDING_PRINCIPLE_ID}`,
       expect.objectContaining({ owner: { type: "project_group", id: "pgroup-1" } })
@@ -256,7 +262,7 @@ export const VersionHistoryShowsOwners: Story = {
     ]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("heading", { name: "Version history" })).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Versions" })).toBeInTheDocument());
     await expect(canvas.getByText("Initial creation.")).toBeInTheDocument();
     await expect(canvas.getAllByText("Org group · 3 members").length).toBeGreaterThan(0);
   },

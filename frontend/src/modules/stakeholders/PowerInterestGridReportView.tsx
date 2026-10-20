@@ -2,7 +2,7 @@
  * Module: modules/stakeholders/PowerInterestGridReportView
  *
  * The on-screen view of report S1 (Power/interest grid), registered as
- * `TierAModuleDefinition.reportViews.s1` (Module 2 Phase 6). The point of S1 is
+ * `TierAModuleDefinition.reportViews.s1`. The point of S1 is
  * *where* each Stakeholder sits, which four stacked tables hide, so this draws
  * the classic 2×2 grid (Influence up, Interest across) with each Stakeholder
  * linking to its page in the quadrant it falls in, then the Stakeholders with no
@@ -20,13 +20,15 @@ import type { ReportViewProps } from "../types";
 import { StakeholderReportGroupControls } from "./StakeholderReportGroupControls";
 import type { GridItem, PowerInterestGridData } from "./reportTypes";
 import { GRID_QUADRANT_LABEL, type GridQuadrant } from "./types";
+import { Badge } from "../../components/Badge";
+import type { BadgeTone } from "../../api/types";
 
 /** Rows of the grid from the top: high influence first. Within a row, interest rises left to right. */
 const GRID_LAYOUT: GridQuadrant[][] = [
   ["keep_satisfied", "manage_closely"],
   ["monitor", "keep_informed"],
 ];
-const QUADRANT_TONE: Record<GridQuadrant, string> = {
+const QUADRANT_TONE: Record<GridQuadrant, BadgeTone> = {
   manage_closely: "danger",
   keep_satisfied: "warning",
   keep_informed: "info",
@@ -38,7 +40,7 @@ function Quadrant({ quadrant, items }: { quadrant: GridQuadrant; items: GridItem
     <section className="card stack" style={{ gap: "0.5rem", minHeight: "8rem" }} aria-label={GRID_QUADRANT_LABEL[quadrant]}>
       <div className="row" style={{ alignItems: "center", gap: "0.5rem" }}>
         <h3 style={{ margin: 0 }}>{GRID_QUADRANT_LABEL[quadrant]}</h3>
-        <span className={`badge badge--${QUADRANT_TONE[quadrant]}`}>{items.length}</span>
+        <Badge tone={QUADRANT_TONE[quadrant]}>{items.length}</Badge>
       </div>
       {items.length === 0 ? (
         <p className="text-muted" style={{ margin: 0 }}>
@@ -53,6 +55,9 @@ function Quadrant({ quadrant, items }: { quadrant: GridQuadrant; items: GridItem
             <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
               {shown.map((item) => (
                 <li key={`${item.project_id}-${item.id}`}>
+                  <span className="text-muted" style={{ fontSize: "0.85rem" }}>
+                    {item.code}
+                  </span>{" "}
                   <Link to={`/projects/${item.project_id}/modules/stakeholders/stakeholders/${item.id}`}>{item.name}</Link>{" "}
                   <span className="text-muted" style={{ fontSize: "0.85rem" }}>
                     {item.influence} influence, {item.interest} interest

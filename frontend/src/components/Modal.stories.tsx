@@ -49,7 +49,7 @@ export const ClickInsideDoesNotClose: Story = {
   },
 };
 
-/** 2026-08 UX audit / style guide Principle 8: opening the dialog moves
+/** Style guide Principle 8: opening the dialog moves
  * focus into it (here, its own Close button, since this story's children
  * have no focusable content of their own) rather than leaving focus
  * wherever it was on the page behind the backdrop. */

@@ -2,8 +2,8 @@
 Module: modules.stakeholders.relationships
 
 The remaining overview §10.5 relationships a Stakeholder or Persona has with
-other artefacts (Phase 3), as one declarative table of `RelationshipKind`s over
-Module 0's polymorphic `ArtefactLink`. "Represents Persona" and "Has need"
+other artefacts, as one declarative table of `RelationshipKind`s over
+the platform's polymorphic `ArtefactLink`. "Represents Persona" and "Has need"
 shipped earlier with their own endpoints; this covers the rest.
 
 Responsibilities:
@@ -17,10 +17,10 @@ Responsibilities:
 
 Design decisions:
 - A kind whose target types no installed module provides (Design/System
-  Element, until Module 6 exists) is *declared but unavailable*: it is listed
+  Element, until the engineering-design module exists) is *declared but unavailable*: it is listed
   with `available=False` and creating it is a 409. When the owning module later
   registers an `artefact_summary_provider` for that type it goes live with no
-  change here — the reservation costs nothing, as the plan intended.
+  change here — the reservation costs nothing.
 - Links live in `ArtefactLink` with one org `RequirementLinkTypeDefinition` per
   kind, created on first use (the helper "Represents"/"Has need" use), so
   nothing is seeded and a renamed or deleted default is harmless.
@@ -119,7 +119,7 @@ RELATIONSHIP_KINDS: tuple[RelationshipKind, ...] = (
     RelationshipKind("consulted_on_decision", "Consulted on", "Consulted", _STAKEHOLDER_ONLY, (DECISION_TARGET,)),
     RelationshipKind("approves", "Approves", "Is approved by", _STAKEHOLDER_ONLY, (REQUIREMENT_TARGET, DECISION_TARGET)),
     RelationshipKind("reviews", "Reviews", "Is reviewed by", _STAKEHOLDER_ONLY, (REQUIREMENT_TARGET, DECISION_TARGET)),
-    # Reserved: no installed module provides these targets yet (Module 6).
+    # Reserved: no installed module provides these targets yet.
     RelationshipKind("uses_design_element", "Uses", "Is used by", _BOTH, (DESIGN_TARGET, SYSTEM_ELEMENT_TARGET)),
 )
 
@@ -291,7 +291,7 @@ LINK_TYPE_SEEDS: tuple[LinkTypeSeed, ...] = (
         GIVES_RISE_TO_FORWARD, GIVES_RISE_TO_REVERSE,
         allowed_source_types=(NEED_ARTEFACT_TYPE,), allowed_target_types=(REQUIREMENT_TARGET,),
     ),
-    # Engagements (Phase 4): who took part, which personas were covered, which group it was aimed at, and what
+    # Engagements: who took part, which personas were covered, which group it was aimed at, and what
     # an engagement or finding raised or answered.
     LinkTypeSeed(
         PARTICIPANT_FORWARD, PARTICIPANT_REVERSE,

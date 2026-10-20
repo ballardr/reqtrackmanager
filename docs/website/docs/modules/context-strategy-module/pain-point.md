@@ -8,7 +8,7 @@ A **Pain Point** records a problem, deficiency, or improvement opportunity motiv
 
 | A project's Pain Points |
 | --- |
-| Falcon-3's Pain Points with their scores, filterable by status — including Addressed, Rejected, Duplicate, Blocker and Intentional examples |
+| Falcon-3's Pain Points with their scores, filterable by status — including Addressed, Rejected, Duplicate, Blocker and Intentional examples (clear **Open only** to see the closed ones). The Blocker and Intentional badges follow the title |
 | ![Pain Points list for the Falcon-3 project showing seven Pain Points with status and score columns, a Blocker badge, and an Intentional badge](../../../static/img/screenshots/pain-point-list.png) |
 
 | An Addressed Pain Point with its persona scores |
@@ -16,10 +16,13 @@ A **Pain Point** records a problem, deficiency, or improvement opportunity motiv
 | Falcon-3's "field inspectors re-key paper reports" Pain Point — description, source, impact, evidence, and the Scoring section (relationships, including the Duplicate-of link from another Pain Point, sit below it) |
 | ![Detail view of an Addressed Pain Point for the Falcon-3 project, showing its description, source, impact, evidence, and a Scoring section with a model selector and a persona score](../../../static/img/screenshots/pain-point-detail.png) |
 
+The list opens on **open** Pain Points only (Submitted, Triaged and Accepted): **Open only** is ticked, and clearing it adds the Rejected, Duplicate, Addressed and Closed ones. A link that names a status, such as the Accepted figure in a report, opens the list with that status and **Open only** off.
+
 ## Fields
 
 | Field | Holds |
 | --- | --- |
+| `unique_code` | The record code, `PP-001`: numbered per project and never reused. |
 | `pain_point_type_id` | An effective type for this project — see [Pain Point type vocabulary](#pain-point-type-vocabulary) below. |
 | `title` | Short display title. |
 | `description` | Description of the problem. |
@@ -86,7 +89,7 @@ flowchart TD
 ```
 
 - **Organisation-scoped base types** (`PainPointTypeDefinition`) — the shared vocabulary every project in the organisation starts from, managed by the **Pain Point Type Admin** role. Every organisation is seeded with three defaults when the module is enabled: **Market**, **User**, and **Operator**.
-- **Project-scoped overrides/local types** (`ProjectPainPointType`) — a project can override an org type's name or enabled-state just for itself, or define a fully project-local type with no org type behind it at all. Managed by the **Pain Point Manager** role, from that project's own admin page.
+- **Project-scoped overrides/local types** (`ProjectPainPointType`) — a project can override an org type's name or enabled-state just for itself, hide it (the delete button on an organisation type hides it in this project; **Add organisation defaults** shows it again), or define a fully project-local type with no org type behind it at all. Pain Points that already use a hidden type keep it. Managed by the **Pain Point Manager** role, from that project's own admin page.
 - A project's *effective* type list is its own rows layered over the organisation's base types — an org type a project hasn't touched appears as-is; one it has overridden shows the project's own name/enabled-state instead.
 
 | Managing an organisation's Pain Point types |

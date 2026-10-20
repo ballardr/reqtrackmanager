@@ -1,4 +1,4 @@
-"""Pain Point, Guiding Principle and Open Question owners become principals (users and groups on parity, Phase 4)
+"""Pain Point, Guiding Principle and Open Question owners become principals
 
 Revision ID: 0078
 Revises: 0077
@@ -6,7 +6,7 @@ Create Date: 2026-10-12
 
 `pain_points.owner_id`, `guiding_principle_versions.owner_id` and
 `open_questions.owner_id` may now name a user, an organisation group or a
-project group (docs/plans/users-and-groups-parity-plan.md). Each gets an
+project group. Each gets an
 `owner_type` column (existing rows backfill to `user`), the foreign key to
 `users` is dropped (the id now points at one of three tables; the service
 validates it), and a check constraint keeps the pair consistent. Every

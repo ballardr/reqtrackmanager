@@ -2,7 +2,7 @@
 Module: modules.registry
 
 Builds and serves the merged module registry for the modular feature
-system (compliance-module-plan.md Phase 1): the single source of truth for
+system: the single source of truth for
 "which modules exist" that `app.main` mounts routers from and
 `app.services.rbac`'s `require_org_module_enabled`/
 `require_project_module_enabled` dependencies, and the org/system admin
@@ -28,7 +28,7 @@ flag is off, this module does not even call the discovery functions for
 sources 2/3 — not merely filter their results — so no third-party package
 metadata or filesystem path is scanned at all.
 
-Design note on later phases: Phase 5+ first-party modules mount their own
+Design note: first-party modules mount their own
 `get_router()` behind `require_module_enabled`-family dependencies
 *internally*, inside their own router module — there is no second gate
 applied here at the `app.main` mount-loop level. This keeps the mount loop
@@ -45,13 +45,16 @@ modules.
 
 from __future__ import annotations
 
+import contextvars
+import functools
 import importlib.metadata
 import importlib.util
 import logging
 import os
 import re
 import uuid
-from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -86,15 +89,85 @@ _BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
 
 ENTRY_POINT_GROUP = "reqtrackmanager.modules"
 
+# Module availability is resolved in tiers (entitlement, organisation, project), each a small query. A
+# read-only caller that resolves it for many projects (the global search asks about every module of every
+# project it may search) opts in to `memoize_module_state()`, so each tier is read once per organisation or
+# project instead of once per question. Outside that block nothing is cached, so a request that changes a
+# setting and re-reads it sees the change.
+_module_state_memo: contextvars.ContextVar[dict | None] = contextvars.ContextVar("module_state_memo", default=None)
+
+
+def scoped_memo(fn: Callable) -> Callable:
+    """Memoises `fn(db, *args)` while `memoize_module_state()` is active (keyed by its arguments after `db`).
+
+    Use only on a pure read of module or project state. Without an active block it calls straight through.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(db, *args, **kwargs):
+        memo = _module_state_memo.get()
+        if memo is None:
+            return fn(db, *args, **kwargs)
+        key = (fn.__name__, args, tuple(sorted(kwargs.items())))
+        if key not in memo:
+            memo[key] = fn(db, *args, **kwargs)
+        return memo[key]
+
+    return wrapper
+
+
+@contextmanager
+def memoize_module_state() -> Iterator[None]:
+    """Caches module-availability lookups for the duration of the block. Use only around read-only code:
+    nothing inside may change module, entitlement or project settings and then rely on re-reading them."""
+    token = _module_state_memo.set({})
+    try:
+        yield
+    finally:
+        _module_state_memo.reset(token)
+
+
+def prefetch_project_module_state(db: Session, project_ids: Collection[uuid.UUID]) -> None:
+    """Loads, in three queries, the per-project lookups `is_module_enabled_for_project` and
+    `is_module_subcomponent_enabled` make for each of `project_ids` (the owning organisation and the project's
+    own module and sub-component overrides). A no-op outside `memoize_module_state()`.
+
+    Args:
+        db: Active session (read only).
+        project_ids: The projects about to be resolved.
+    """
+    memo = _module_state_memo.get()
+    ids = set(project_ids)
+    if memo is None or not ids:
+        return
+    from app.models.module import ProjectModuleEnablement, ProjectModuleSubComponentEnablement
+    from app.models.project import Project
+
+    for project_id, organization_id in db.execute(select(Project.id, Project.organization_id).where(Project.id.in_(ids))).all():
+        memo[("_project_organization_id", (project_id,), ())] = organization_id
+    module_rows = {
+        (row.project_id, row.module_key): row
+        for row in db.scalars(select(ProjectModuleEnablement).where(ProjectModuleEnablement.project_id.in_(ids)))
+    }
+    sub_rows = {
+        (row.project_id, row.module_key, row.subcomponent_key): row
+        for row in db.scalars(select(ProjectModuleSubComponentEnablement).where(ProjectModuleSubComponentEnablement.project_id.in_(ids)))
+    }
+    for definition in get_module_registry().values():
+        for project_id in ids:
+            memo[("_project_module_override", (project_id, definition.key), ())] = module_rows.get((project_id, definition.key))
+            for sub in definition.sub_components:
+                memo[("_project_subcomponent_override", (project_id, definition.key, sub.key), ())] = sub_rows.get(
+                    (project_id, definition.key, sub.key)
+                )
+
 
 @dataclass(frozen=True)
 class ModuleRoleDefinition:
-    """Declares one module-contributed RBAC role (compliance-module-plan.md
-    Phase 2) — a module's own analogue of a fixed `OrgRole`/`ProjectRole`
-    enum member, without extending either enum (the design-history
-    correction Phase 2 exists to satisfy: "modules should be able to
-    register their own RBAC entitlements", not have their roles hardcoded
-    onto the core enums).
+    """Declares one module-contributed RBAC role — a module's own analogue of a fixed `OrgRole`/`ProjectRole`
+    enum member, without extending either enum (modules register their own RBAC
+    entitlements rather than having their roles hardcoded onto the core
+    enums).
 
     Every `ModuleDefinition.roles` entry is one of these. At process
     startup, `sync_module_role_definitions` mirrors the live set of these
@@ -128,11 +201,10 @@ class ModuleRoleDefinition:
             roles`).
 
             A module may also declare **any other string** as `scope` —
-            a module-owned entity scope (compliance-module-plan.md Phase
-            22's own example: `"standard"`, one role per `ComplianceStandard`
+            a module-owned entity scope (e.g. `"standard"`, one role per `ComplianceStandard`
             row) — for a role tied to one specific row of a first-class
             entity the module itself owns, narrower than "the whole org."
-            This is the generalisation Phase 22 added specifically so a
+            This generalisation exists specifically so a
             *future* module's own first-class entity gets the identical
             capability for free, rather than compliance's `"standard"`
             scope being hardcoded into this dataclass or into `require_
@@ -168,8 +240,7 @@ class ModuleRoleDefinition:
             dependency's "module disabled or entity absent -> 404, not
             403/500" posture). `None` for `"org"`/`"project"` roles, which
             resolve their organisation from the path directly instead.
-        permissions: Fine-Grained Access Control (`docs/plans/core-fine-
-            grained-access-control-plan.md` Phase 0 Q4/Phase 1) — the set of
+        permissions: Fine-Grained Access Control — the set of
             permission-atom strings (`app.services.permissions.encode_
             permission`-encoded, e.g. `"decision:approve_baseline:"`, or a
             bare administrative key like `"grant_roles"`) a holder of this
@@ -177,9 +248,8 @@ class ModuleRoleDefinition:
             services.rbac.get_effective_permissions`'s union alongside
             direct/group `CustomRoleDefinition` grants. Additive and
             defaulted empty — a module that never sets this keeps working
-            exactly as before; this is the one part of that plan any actual
-            module is expected to touch (see that plan's own "Documentation
-            obligations" section).
+            exactly as before; this is the one part of the custom-role system any actual
+            module is expected to touch (see docs/modules.md).
     """
 
     role_key: str
@@ -194,7 +264,7 @@ class ModuleRoleDefinition:
 @dataclass(frozen=True)
 class EntityScopeDefinition:
     """Declares one module-owned entity scope as centrally discoverable
-    (Fine-Grained Access Control (core) plan Phase 5), so code outside
+    so code outside
     `require_module_role` can resolve an arbitrary `(scope_kind, entity_id)`
     pair too.
 
@@ -240,7 +310,7 @@ class EntityScopeDefinition:
 @dataclass(frozen=True)
 class ModuleSubComponentDefinition:
     """Declares one independently toggleable sub-component of a module
-    (Module 0 — Platform Foundations — Phase 4, added 2026-09-28 at the
+    (Platform Foundations, added 2026-09-28 at the
     user's explicit request: "can a project admin turn off just Strategy
     while keeping Pain Points on" rather than only the whole module at
     once). Same shape/spirit as the sibling `ModuleRoleDefinition`/
@@ -256,7 +326,7 @@ class ModuleSubComponentDefinition:
     effective enabled state — project override, then org default, then
     this dataclass's own `default_enabled` — see those functions'
     docstrings for the full two-tier resolution formula and
-    `docs/plans/module-00-platform-foundations-plan.md`'s Phase 4 section
+ section
     for the full design record.
 
     Attributes:
@@ -283,18 +353,16 @@ class ModuleSubComponentDefinition:
 class ModuleNavEntry:
     """One additional nav-rail entry a Tier A ("installed") module
     contributes, beyond the single `nav_label`/`nav_path` pair every
-    `ModuleFrontendManifest` already carries (Module 0 — Platform
-    Foundations / Module 1 — Context & Strategy, Phase 7.1, 2026-09-29).
+    `ModuleFrontendManifest` already carries (Platform
+    Foundations / Context & Strategy).
 
     **Why this exists:** every module registered before Context & Strategy
     (Compliance, Decision Management) only ever needed one project-scoped
     nav-rail entry, so `ModuleFrontendManifest.nav_label`/`nav_path` was
-    sufficient on its own. Context & Strategy's own Phase 0 Q7 (`docs/
-    plans/module-01-context-and-strategy-plan.md`) requires **five**
+    sufficient on its own. Context & Strategy requires **five**
     separate top-level nav-rail entries — one per artefact type (Strategy,
     Future State, Pain Point, Guiding Principle, Open Question) — not one
-    grouped entry with tabs, per the user's own explicit override of this
-    plan's original recommendation. Per this repo's own "Modular Feature
+    grouped entry with tabs, by explicit user decision. Per this repo's own "Modular Feature
     System Boundary" rule, a core mechanism a module needs *multiple*
     values from must become a generic, registry-driven extension point
     rather than a module-specific hack hardcoded into `Layout.tsx` — this
@@ -307,7 +375,7 @@ class ModuleNavEntry:
     entries` field alongside the existing singular pair — so Compliance's
     and Decision Management's own `module.py` files, which declare
     `nav_label=`/`nav_path=` directly, need **zero** changes to keep working
-    (per this phase's own explicit backward-compatibility requirement). A
+    (an explicit backward-compatibility requirement). A
     module needing more than one entry (Context & Strategy) treats its
     *first* entry as the manifest's own primary `nav_label`/`nav_path`, and
     declares the remaining four via `additional_nav_entries`. `all_nav_
@@ -320,7 +388,7 @@ class ModuleNavEntry:
     and Tier C ("federated") loads exactly one Module Federation remote at
     one `remote_entry_url`/`exposed_module` pair — supporting multiple nav
     entries for either would mean re-architecting the iframe/federation
-    loading mechanism itself, which is out of this phase's scope and has no
+    loading mechanism itself, which is out of scope and has no
     real module asking for it yet. A Tier A module's own routing already
     supports multiple routes natively (`TierAModuleDefinition.routes` on the
     frontend, an array from day one), so only the nav-rail-rendering side
@@ -338,19 +406,28 @@ class ModuleNavEntry:
             Defaults to `"puzzle"` (a generic module icon) so every entry
             declared before this field existed keeps rendering something
             sensible rather than failing validation.
+        sub_component: Key of the `ModuleDefinition.sub_components` entry this
+            entry leads to, or `None` when the entry belongs to the module as
+            a whole. The nav rail hides an entry whose sub-component is
+            disabled for the project (the same state that makes its API
+            routes 404), so a link never leads to a page that cannot load.
+        sub_components_any: For one page that serves several sub-components (a combined list): the entry is
+            hidden only while *every* key listed here is disabled, and shown while at least one is enabled.
+            Combined with `sub_component` it needs both conditions; normally only one of the two is set.
     """
 
     nav_label: str
     nav_path: str
     nav_icon: str = "puzzle"
+    sub_component: str | None = None
+    sub_components_any: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class ModuleFrontendManifest:
-    """Declares a module's frontend integration (compliance-module-plan.md
-    Phase 3's two-tier frontend module system, extended with a third tier —
-    "Tier C" — in a same-system follow-up, 2026-09-07: Module Federation for
-    a genuinely third-party, not-compiled-in, no-rebuild-required module.
+    """Declares a module's frontend integration (the two-tier
+    frontend module system, extended with a third tier — "Tier C" —
+    Module Federation for a genuinely third-party, not-compiled-in, no-rebuild-required module.
     See `docs/decisions.md`'s "Module system follow-up: Tier C (Module
     Federation)" entries and `docs/modules.md`'s "Tier C" section for the
     full account and worked examples.
@@ -407,7 +484,7 @@ class ModuleFrontendManifest:
             `get_frontend_manifest` rejects it (logs a warning and returns
             `None` instead of this manifest) — mechanically enforced at the
             point of use, not trusted from the module's own declaration,
-            mirroring Phase 4's path-prefix enforcement for MCP tools.
+            mirroring the path-prefix enforcement for MCP tools.
             `None` for every other tier.
         remote_entry_url: Required (and only meaningful) when `tier ==
             "federated"` — the URL of the remote's Module Federation entry
@@ -434,11 +511,11 @@ class ModuleFrontendManifest:
             `None` for every other tier.
         additional_nav_entries: Zero or more further `ModuleNavEntry` rows,
             beyond this manifest's own primary `nav_label`/`nav_path` pair
-            (Module 1 — Context & Strategy — Phase 7.1, 2026-09-29) — see
+            (Context & Strategy) — see
             `ModuleNavEntry`'s own docstring for the full rationale and the
             "why add a field instead of replacing the pair" design note.
-            Empty by default, so every module declared before this phase
-            (Compliance, Decision Management) is unaffected. **Tier `
+            Empty by default, so a module that declares only the primary
+            pair (Compliance, Decision Management) is unaffected. **Tier `
             "installed"` only** — non-empty on any other tier raises in
             `__post_init__` below. Use `all_nav_entries()` to read the full,
             order-preserving list (primary entry first) without needing to
@@ -448,6 +525,9 @@ class ModuleFrontendManifest:
             dataclass's docstring); this manifest doesn't reuse `ModuleNavEntry`
             for its primary pair, so it needs its own copy of the field.
             Defaults to `"puzzle"` for the same backward-compatibility reason.
+        nav_sub_component: `ModuleNavEntry.sub_component` for this manifest's
+            own primary entry.
+        nav_sub_components_any: `ModuleNavEntry.sub_components_any` for this manifest's own primary entry.
     """
 
     tier: Literal["installed", "remote", "federated"]
@@ -458,6 +538,8 @@ class ModuleFrontendManifest:
     exposed_module: str | None = None
     additional_nav_entries: tuple[ModuleNavEntry, ...] = ()
     nav_icon: str = "puzzle"
+    nav_sub_component: str | None = None
+    nav_sub_components_any: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.tier == "remote":
@@ -498,21 +580,22 @@ class ModuleFrontendManifest:
     def all_nav_entries(self) -> tuple[ModuleNavEntry, ...]:
         """This manifest's full, order-preserving list of nav-rail entries —
         its own primary `nav_label`/`nav_path` pair, followed by every
-        `additional_nav_entries` row (empty for every module declared before
-        Context & Strategy's own Phase 7.1). The one place that combines the
+        `additional_nav_entries` row (empty for a module with a single nav entry). The one place that combines the
         two so a consumer never needs to special-case "the first entry comes
         from different fields than the rest."
         """
         return (
-            ModuleNavEntry(nav_label=self.nav_label, nav_path=self.nav_path, nav_icon=self.nav_icon),
+            ModuleNavEntry(
+                nav_label=self.nav_label, nav_path=self.nav_path, nav_icon=self.nav_icon,
+                sub_component=self.nav_sub_component, sub_components_any=self.nav_sub_components_any,
+            ),
             *self.additional_nav_entries,
         )
 
 
 @dataclass(frozen=True)
 class McpToolDefinition:
-    """Declares one module-contributed `mcp-server/` tool (compliance-
-    module-plan.md Phase 4) — see docs/modules.md's "Module-contributed MCP
+    """Declares one module-contributed `mcp-server/` tool — see docs/modules.md's "Module-contributed MCP
     tools" section for the full worked example and rationale, and
     `build_mcp_tool_manifest` (below) for how every security-relevant part
     of this declaration is mechanically re-derived or verified rather than
@@ -540,7 +623,7 @@ class McpToolDefinition:
             of what's declared here. Every tool must name an explicit
             `{organization_id}` or `{project_id}` path placeholder — there
             is no implicit "current org" and no cross-org aggregation
-            (docs/modules.md's Phase 4 section).
+            (see docs/modules.md).
         params: One dict per tool parameter: `{"name": str, "type": str,
             "required": bool, "in": "path" | "query" | "body",
             "description": str}` (`"description"` may be omitted, defaulting
@@ -563,7 +646,7 @@ class McpToolDefinition:
 @dataclass(frozen=True)
 class ResolvedMcpTool:
     """One module-contributed MCP tool that has survived `build_mcp_tool_
-    manifest`'s mechanical verification (compliance-module-plan.md Phase 4)
+    manifest`'s mechanical verification
     — this, not `McpToolDefinition`, is what `GET /api/v1/system/modules/
     mcp-tools` actually returns, and the only shape `mcp-server` ever sees.
 
@@ -586,8 +669,8 @@ class ResolvedMcpTool:
 @dataclass(frozen=True)
 class OrgCreationChoiceOption:
     """Declares one optional, module-contributed seeding choice offered on
-    the organisation-creation form/endpoint (Module 4 — Decision Management
-    — Phase 1, for its ADR template packs) — the org-creation flow's own
+    the organisation-creation form/endpoint (Decision Management,
+for its ADR template packs) — the org-creation flow's own
     analogue of `ModuleRoleDefinition`: a generic declaration so
     `routers.orgs.create_organization` and its accompanying `GET` listing
     endpoint never need to hardcode a specific module's choice list, the
@@ -637,7 +720,7 @@ class OrgCreationChoiceOption:
 @dataclass(frozen=True)
 class ModuleScheduledJob:
     """Declares one date-driven background sweep a module needs run
-    periodically (compliance-module-plan.md Phase 10) — e.g. Compliance's
+    periodically — e.g. Compliance's
     evidence-expiry/review-due/required-action-due/target-date sweeps
     (§18, §28). `app.services.scheduler.start_scheduler` registers every
     registered module's declared jobs generically, alongside its own two
@@ -679,8 +762,8 @@ class ModuleOrgBundleHooks:
     organisation export/import bundle — the same "core code shouldn't need
     much modification per module" goal `get_router`/`resolve_file_owner_
     project_id`/`scheduled_jobs` already serve, applied to bundle export/
-    import (added when Compliance's own Phase 15 content was pulled out of
-    `org_export.py` directly importing `app.modules.compliance`, mirroring
+    import (added so `org_export.py` doesn't have to import
+    `app.modules.compliance` directly, mirroring
     the same module-self-containment principle `resolve_file_owner_
     project_id` already established one concern earlier).
 
@@ -747,7 +830,7 @@ class ModuleProjectBundleHooks:
     """Declares a module's contribution to `app.services.project_export`'s
     project export/import bundle — `ModuleOrgBundleHooks`'s project-scoped
     counterpart (a project's own compliance *assessment* content is
-    project-scoped per Compliance's own Phase 15 notes, unlike the standard
+    project-scoped, unlike the standard
     *definitions* `ModuleOrgBundleHooks` carries).
 
     Attributes:
@@ -777,8 +860,8 @@ class ModuleProjectBundleHooks:
 #: APPROVAL_ACTION_ROUTE_EXTRA)`) — `build_mcp_tool_manifest` reads this
 #: directly off the resolved route object and excludes any tool resolving
 #: to such a route from the manifest entirely, regardless of what the
-#: declaring module's own `McpToolDefinition` claims. See docs/modules.md's
-#: Phase 4 section: "mark any endpoint that approves/decides something with
+#: declaring module's own `McpToolDefinition` claims. See docs/modules.md:
+#: "mark any endpoint that approves/decides something with
 #: your route's own approval-action metadata — don't rely on the manifest
 #: builder's exclusion as your only defence."
 APPROVAL_ACTION_EXTRA_KEY = "x-approval-action"
@@ -789,8 +872,7 @@ _VALID_MCP_TOOL_PARAM_LOCATIONS = {"path", "query", "body"}
 
 def build_mcp_tool_manifest() -> list[ResolvedMcpTool]:
     """Builds the full, mechanically-verified manifest of every module-
-    contributed MCP tool across the live registry (compliance-module-plan.md
-    Phase 4) — the exact list `GET /api/v1/system/modules/mcp-tools`
+    contributed MCP tool across the live registry — the exact list `GET /api/v1/system/modules/mcp-tools`
     returns, and the only thing `mcp-server` ever sees of a module's
     `mcp_tools` declarations.
 
@@ -803,7 +885,7 @@ def build_mcp_tool_manifest() -> list[ResolvedMcpTool]:
       alone, so a module can't claim another module's (or core's) tool name.
     - `path_template` must fall inside one of the declaring module's own
       router mount prefixes (`get_router()`'s, or `get_project_router()`'s
-      when the module declares one too — compliance-module-plan.md Phase 7
+      when the module declares one too —
       is the first module with both) and must name a real route on
       *that same router* with a matching `method` — a module with no
       router at all can declare no legal tools; a `path_template` outside
@@ -945,7 +1027,7 @@ def build_mcp_tool_manifest() -> list[ResolvedMcpTool]:
     return resolved
 
 
-# --- Scoring schemes (Module 1 Phase 10 — generic scoring-matrix core) -----
+# --- Scoring schemes (generic scoring-matrix core) -----
 
 # The fixed design-system palette a rating band may be coloured with — the
 # same tone vocabulary as the frontend's `.badge--*` modifiers, not a
@@ -1165,7 +1247,7 @@ class ScoringTarget:
 class ArtefactSummary:
     """A minimal, module-neutral description of one artefact, returned by an
     `ArtefactSummaryProvider` so one module can link to, validate and label
-    another module's records without importing them (Module 2 Phase 3).
+    another module's records without importing them.
 
     Attributes:
         id: The artefact's id.
@@ -1178,8 +1260,8 @@ class ArtefactSummary:
         is_archived: Whether the artefact is archived.
         organization_id: The owning organisation for an org-owned record,
             else `None`.
-        facets: The classifications the record carries for the scoped finder
-            (Phase 6c), `{level key: (option id, option label)}`, e.g.
+        facets: The classifications the record carries for the scoped finder,
+`{level key: (option id, option label)}`, e.g.
             `{"status": ("draft", "Draft")}`. Read by facet-derived `BrowseLevel`s
             and by the default narrowing; excluded from equality and hashing.
     """
@@ -1196,7 +1278,7 @@ class ArtefactSummary:
 @dataclass(frozen=True)
 class BrowseLevel:
     """One step of the scoped finder an artefact type offers when choosing a link
-    target (Platform Enhancements Phase 6c): "Standard" -> "Version" -> "Requirement",
+    target "Standard" -> "Version" -> "Requirement",
     "Component" -> "Category", or just "Status".
 
     A type's levels are ordered and each is optional: the user may stop after any
@@ -1243,8 +1325,13 @@ class ArtefactSummaryProvider:
             "which of these are visible here" without knowing them. When
             omitted, callers fall back to `get` per id and keep records
             whose `project_id` equals the project.
-        browse_levels: The ordered `BrowseLevel`s of the type's scoped finder
-            (Phase 6c). Every registered type declares at least one; a backend
+        list_for_organization: Optional `(db, organization_id) -> list[ArtefactSummary]` of
+            the records the *organisation itself* owns (no project), for a type that
+            exists at organisation scope. It lets core resolve an organisation-qualified
+            code (`ACME-PER-001`) to a record without knowing the module's tables; a type
+            with no organisation-scoped records leaves it unset.
+        browse_levels: The ordered `BrowseLevel`s of the type's scoped finder.
+Every registered type declares at least one; a backend
             coverage test fails otherwise, so a new type cannot ship search-only.
         filter: Optional `(db, project_id, selected, query, limit) -> summaries`
             narrowing the records offered by the options chosen at the levels
@@ -1259,6 +1346,150 @@ class ArtefactSummaryProvider:
     get_many_in_project: Callable[[Session, uuid.UUID, Sequence[uuid.UUID]], list[ArtefactSummary]] | None = None
     browse_levels: tuple[BrowseLevel, ...] = ()
     filter: Callable[[Session, uuid.UUID, Mapping[str, str], str, int], list[ArtefactSummary]] | None = None
+    list_for_organization: Callable[[Session, uuid.UUID], list[ArtefactSummary]] | None = None
+
+
+@dataclass(frozen=True)
+class SearchField:
+    """One column of a record type that the global search may match.
+
+    Searchable fields are opt-in: a column not declared here is never matched, so a
+    Restricted-classified or consent-sensitive column is excluded by omission.
+
+    Attributes:
+        key: Stable identifier shared by types that carry the same field (`"description"`),
+            so the field picker lists it once. `"id"`, `"title"` and `"tags"` are reserved
+            for the record's code, title and tags, which the search builds itself.
+        label: User-facing name (`"Description"`, `"Mitigation"`).
+        column: A SQL text expression over `ArtefactSearchProvider.from_clause`.
+    """
+
+    key: str
+    label: str
+    column: Any
+
+
+@dataclass(frozen=True)
+class SearchColumns:
+    """The SQL expressions a provider exposes for every record, read by the search service.
+
+    Attributes:
+        id / project_id / code / title / status / is_archived / updated_at: The record's
+            identity, owning project (`NULL` for an organisation-owned record), human-readable
+            code, display title, status value, archived flag and last-change time (UTC).
+        organization_id: The owning organisation, for a type that can be organisation-owned.
+        owner_id: The id of the record to open instead, for a type without a page of its own
+            (see `ArtefactSearchProvider.open_owner_type`).
+    """
+
+    id: Any
+    project_id: Any
+    code: Any
+    title: Any
+    status: Any
+    is_archived: Any
+    updated_at: Any
+    organization_id: Any | None = None
+    owner_id: Any | None = None
+
+
+@dataclass(frozen=True)
+class SearchComments:
+    """Where a record type keeps its comments, so the global search can match them.
+
+    Comments are matched only when a person asks for them (the reserved field key `comments`), never by
+    default and never as a stored default: one `EXISTS` over a table per record type is much dearer than
+    matching the record's own columns. A comment carries the same read gate as its record.
+
+    Attributes:
+        model: The comment table's ORM model (or table).
+        record_id: The comment column that holds the commented record's id.
+        body: The comment's text column.
+        where: Extra conditions picking this type's comments from a shared table (`target_type`).
+        created_at: Column that orders the comments, so the first match is the earliest.
+    """
+
+    model: Any
+    record_id: Any
+    body: Any
+    created_at: Any
+    where: tuple[Any, ...] = ()
+
+
+@dataclass(frozen=True)
+class ArtefactSearchProvider:
+    """How a module makes one of its `artefact_types` findable by the global search.
+
+    The provider describes the SQL (what to select from, which columns mean what, which
+    are searchable); the search service owns scoping, authorisation, matching, ranking and
+    paging, so a new type needs no search logic of its own.
+
+    Attributes:
+        from_clause: The table or join the records are read from (a version table joined
+            in for a versioned type, restricted to the current version by `where`).
+        columns: The expressions for each record's identity and display data.
+        fields: The extra searchable fields beyond the code, title and tags.
+        where: Conditions that always apply (`valid_to IS NULL` for a versioned type).
+        status_labels: `{status value: display label}`, so a result is never labelled with
+            a raw enum string.
+        organization_owned: Whether records may be owned by the organisation (`project_id`
+            `NULL`); such a record is found only through a project that is allowed to see it
+            (the owning module's `get_many_in_project` rule, e.g. per-project hiding).
+        open_owner_type: For a type with no page of its own (an engagement finding), the
+            artefact type whose page opens instead; `columns.owner_id` then names that record.
+        organization_subcomponent: For a type whose organisation-owned records have their own
+            organisation-level surface rather than a project's (an organisation Strategy, listed and
+            opened from the organisation overview): the sub-component of the owning module whose
+            organisation-level state gates it. Such a record is searched in the "all projects" scope
+            for every member of an organisation where that sub-component is on, exactly as the
+            organisation's own list is read, and opens at its organisation page.
+        comments: Where the type's comments live (`SearchComments`), making the opt-in `comments`
+            field available; `None` for a type with no comments.
+    """
+
+    from_clause: Any
+    columns: SearchColumns
+    fields: tuple[SearchField, ...] = ()
+    where: tuple[Any, ...] = ()
+    status_labels: Mapping[str, str] = field(default_factory=dict)
+    organization_owned: bool = False
+    open_owner_type: str | None = None
+    organization_subcomponent: str | None = None
+    comments: SearchComments | None = None
+
+
+@dataclass(frozen=True)
+class ScopeResolution:
+    """What a module-defined search scope covers.
+
+    Attributes:
+        project_ids: The projects the unit spans; the search still keeps only those the
+            caller can read.
+        restrictions: Per artefact type, an extra SQL condition on that type's query. A type
+            absent from this mapping is not searched in the scope.
+    """
+
+    project_ids: tuple[uuid.UUID, ...]
+    restrictions: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class SearchScope:
+    """A search scope a module offers beyond the built-in "This project" and "All projects"
+    (Compliance's "This standard").
+
+    Attributes:
+        label: The scope's display name.
+        narrowness: Which scope is the default where several match the current page: the
+            highest wins. Built-ins are All projects 0 and This project 100.
+        resolve: `(db, user_id, ref_id) -> ScopeResolution | None`. `None` means "not found
+            or not allowed", answered identically either way so a ref in another organisation
+            or one the caller cannot read reveals nothing.
+    """
+
+    label: str
+    resolve: Callable[[Session, uuid.UUID, uuid.UUID], ScopeResolution | None]
+    narrowness: int = 200
 
 
 @dataclass(frozen=True)
@@ -1351,7 +1582,7 @@ class RegisteredScoringScheme:
     scheme: ScoringSchemeDefinition
 
 
-# --- Reports (Module 1 Phase 12b — core report framework) ---------------------------------------
+# --- Reports (core report framework) ---------------------------------------
 
 REPORT_PARAM_TYPES: frozenset[str] = frozenset({"string", "integer", "boolean", "date", "uuid"})
 REPORT_ORG_SCOPES: frozenset[str] = frozenset({"readable_projects", "all_org_projects"})
@@ -1432,6 +1663,11 @@ class ReportDefinition:
         params: Typed query parameters (see `ReportParamDefinition`).
         collector: `(db, ReportContext) -> ReportResult`. Must treat
             `ctx.projects` as the whole in-scope set and never widen it.
+        record_types: The registered artefact types whose records the report
+            names in its rows. Every such cell shows the record's code through
+            `ReportContext.code` / `ReportContext.org_code` and the row's tags
+            through `ReportContext.tag_text`, never a hand-formatted code; the
+            declaration lets a test prove each type is registered and coded.
     """
 
     key: str
@@ -1444,6 +1680,7 @@ class ReportDefinition:
     org_role_key: str | None = None
     org_scope: Literal["readable_projects", "all_org_projects"] = "readable_projects"
     params: tuple[ReportParamDefinition, ...] = field(default=())
+    record_types: tuple[str, ...] = field(default=())
 
 
 @dataclass(frozen=True)
@@ -1505,29 +1742,28 @@ class ModuleDefinition:
             entered the trust boundary on that run.
         default_enabled: Whether an organisation that is entitled to this
             module, but has no explicit `OrganizationModuleEnablement` row,
-            gets it enabled by default. Compliance (Phase 5) is
+            gets it enabled by default. Compliance is
             `default_enabled=True` per its own requirements' "enabled by
             default"; a more optional/experimental module would ship
             `default_enabled=False`.
         implemented: Whether this module actually does anything yet.
             `False` for a definition registered as a placeholder/in-
-            progress (nothing in this plan requires that today, but the
-            field exists so a future phase can register a module ahead of
+            progress (nothing requires that today, but the
+            field exists so a module can be registered ahead of
             its full implementation landing without misrepresenting it as
             live) — admin UIs display this rather than hiding an
             unimplemented entry, matching the "don't hide, grey out"
-            principle this plan already applies to non-entitled modules.
+            principle already applied to non-entitled modules.
         get_router: Zero-argument callable returning the module's
             `APIRouter`, or `None` if it contributes no HTTP endpoints at
             all. Called (not stored eagerly) so a module can defer its own
             import-time work, and so a module with genuinely no router
-            (e.g. one that only contributes MCP tools, Phase 4) can return
+            (e.g. one that only contributes MCP tools) can return
             `None` without needing a dummy empty router.
         get_project_router: Like `get_router`, but for a second, optional
-            router mounted at a genuinely different path root (compliance-
-            module-plan.md Phase 7). Phases 0-6 only ever needed one router
-            per module, always org-scoped (`/api/v1/orgs/{organization_id}/
-            modules/<key>/...`). Phase 7 is the first module surface that
+            router mounted at a genuinely different path root. A module's `get_router` is
+            always org-scoped (`/api/v1/orgs/{organization_id}/
+            modules/<key>/...`); a module surface that
             also needs project-scoped endpoints living at their own,
             unprefixed-by-org path root (`/api/v1/projects/{project_id}/
             modules/<key>/...`) — required so that an MCP tool proxying to
@@ -1535,8 +1771,7 @@ class ModuleDefinition:
             parameter (mirroring hand-written tools like `get_project
             (project_id)`), which is impossible if the underlying route
             also carries an `{organization_id}` placeholder. `None` for a
-            module with no project-scoped router of its own (every module
-            before Phase 7). `build_mcp_tool_manifest` validates a tool's
+            module with no project-scoped router of its own. `build_mcp_tool_manifest` validates a tool's
             `path_template` against **either** of a module's two router
             prefixes, not just `get_router`'s — see that function's own
             docstring. `app.main`'s mount loop mounts both, the same way,
@@ -1544,10 +1779,10 @@ class ModuleDefinition:
             module's own docstring).
         get_global_router: Like `get_router`, but for a third, optional
             router mounted at a path root carrying **neither** an
-            `organization_id` nor a `project_id` placeholder at all
-            (compliance-module-plan.md Phase 18). `get_router`/`get_
+            `organization_id` nor a `project_id` placeholder at all.
+`get_router`/`get_
             project_router` both assume the module's endpoint is reachable
-            through *some* resource id already present in the URL; Phase 18
+            through *some* resource id already present in the URL
             needed two endpoints with no such id to key off in the first
             place — `GET /api/v1/compliance/nav-visibility` (aggregates
             across every org the caller belongs to, so no single
@@ -1556,7 +1791,7 @@ class ModuleDefinition:
             mirroring how a project's own id already resolves to its org
             without an `organization_id` segment — see `app.routers.
             projects.get_project`). `None` for a module with no such
-            router of its own (every module before Phase 18). Mounted by
+            router of its own. Mounted by
             `app.main`'s mount loop exactly like the other two, with no
             second gate applied at the mount-loop level; a route in this
             router must therefore perform whatever org/project resolution
@@ -1573,22 +1808,20 @@ class ModuleDefinition:
             `path_template` against **any** of a module's three router
             prefixes, not just `get_router`'s/`get_project_router`'s — see
             that function's own docstring.
-        roles: Module-contributed RBAC role declarations (module system
-            Phase 2) — each a `ModuleRoleDefinition`. Synced into the
+        roles: Module-contributed RBAC role declarations — each a `ModuleRoleDefinition`. Synced into the
             `module_role_definitions` table at startup by
             `sync_module_role_definitions` and surfaced to callers of
             `list_enabled_module_roles`. Empty tuple for a module that
             contributes no roles of its own.
         frontend_manifest: Module-contributed frontend integration manifest
-            (module system Phase 3) — a `ModuleFrontendManifest`, or `None`
+ — a `ModuleFrontendManifest`, or `None`
             for a module with no frontend surface of its own (e.g. one that
             only contributes a backend router or MCP tools). Read through
             `get_frontend_manifest`, not this field directly, at any call
             site that renders it to a browser — that function additionally
             enforces the Tier B origin-allowlist check documented on
             `ModuleFrontendManifest.frame_url`.
-        mcp_tools: Module-contributed MCP tool declarations (module system
-            Phase 4) — each an `McpToolDefinition`. `build_mcp_tool_
+        mcp_tools: Module-contributed MCP tool declarations — each an `McpToolDefinition`. `build_mcp_tool_
             manifest` is what actually turns these into the real,
             mechanically-verified manifest `mcp-server` consumes; see that
             function's own docstring, and docs/modules.md §6 for a worked
@@ -1602,9 +1835,8 @@ class ModuleDefinition:
             single shared SQLAlchemy declarative registry — includes that
             module's tables without a hand-written `import app.modules.
             <key>.models` line in `alembic/env.py`/`tests/conftest.py` per
-            module (module system Phase 5's own "one model-import line per
-            first-party module" touch point, now automated instead of
-            hand-maintained). Only ever *imports* a module's already-
+            module (replacing a "one model-import line per
+            first-party module" touch point that used to be hand-maintained). Only ever *imports* a module's already-
             registered models — it grants no new trust: a module still has
             to be in the registry at all (first-party `INSTALLED_MODULES`,
             always reviewed in-repo code; or, if the deployment operator has
@@ -1622,15 +1854,11 @@ class ModuleDefinition:
             module with no migration of its own. `configure_alembic_
             version_locations` (below) adds every registered module's
             declared directory, plus the core `alembic/versions` directory,
-            to Alembic's own multi-directory `version_locations` — added in
-            a compliance-module-plan.md Phase 11 follow-up, after Phase 1's
-            original design placed every first-party migration in
-            `backend/alembic/versions/` regardless of which module it
-            belonged to, and direct feedback observed that colocating a
-            module's migration alongside the rest of that module's own code
-            (models/service/router/tests) would read more coherently as
-            more first-party modules accumulate. **This does not reopen or
-            weaken the trust boundary Phase 1 established** — it is a pure
+            to Alembic's own multi-directory `version_locations`, so a module's migration sits
+            alongside the rest of that module's own code
+            (models/service/router/tests) rather than all in
+            `backend/alembic/versions/`. **This does not reopen or
+            weaken the trust boundary** — it is a pure
             *file-location* change, not a change to *what gets reviewed or
             how*: Alembic still builds exactly one linear revision graph,
             tracked by exactly one `alembic_version` row in the target
@@ -1689,8 +1917,7 @@ class ModuleDefinition:
             a module whose own code the deployment operator has *already*
             separately decided to trust (`allow_external_modules`), not
             extended to every module merely because it's convenient.
-        resolve_file_owner_project_id: Optional hook (compliance-module-
-            plan.md Phase 8) letting a module authorize downloads of files
+        resolve_file_owner_project_id: Optional hook letting a module authorize downloads of files
             it owns through the single generic `GET /api/v1/files/{id}`
             endpoint (`app.routers.files.download_file`), without that
             core, module-agnostic router needing to import anything from
@@ -1707,13 +1934,12 @@ class ModuleDefinition:
             project's id if this module's own file-link table (e.g.
             Compliance's `ComplianceEvidenceFile`) references `file_id`,
             else `None`. `None` for a module with no file attachments of
-            its own (every module before Phase 8).
-        scheduled_jobs: Module-contributed APScheduler jobs (compliance-
-            module-plan.md Phase 10) — each a `ModuleScheduledJob`.
+            its own.
+        scheduled_jobs: Module-contributed APScheduler jobs — each a `ModuleScheduledJob`.
             Registered generically by `app.services.scheduler.
             start_scheduler`, job-id-prefixed with this module's own `key`.
             Empty tuple for a module with no scheduled processing of its
-            own (every module before Phase 10).
+            own.
         org_bundle_hooks: Optional `ModuleOrgBundleHooks` — this module's
             contribution to `app.services.org_export`'s organisation bundle
             export/import, read via `get_all_module_org_bundle_hooks`.
@@ -1747,7 +1973,7 @@ class ModuleDefinition:
             or double-seed regardless of a module's own default-enabled
             policy; see `seed_compliance_action_types`'s own docstring.
         org_creation_choices: Module-contributed `OrgCreationChoiceOption`s
-            (Module 4 — Decision Management — Phase 1) offered on the
+            (Decision Management) offered on the
             org-creation form, distinct from `on_org_created` above: that
             hook always seeds unconditionally, while these are choices a
             human (or caller) opts into — e.g. Decision Management's three
@@ -1780,8 +2006,7 @@ class ModuleDefinition:
             already-enabled entry should still show. `None` (the default)
             means "always visible once enabled," preserving every module's
             prior behaviour without needing to declare this hook at all.
-        on_project_created: Optional hook (docs/compliance-module-plan.md
-            Phase 20) called once, synchronously, right after a brand-new
+        on_project_created: Optional hook called once, synchronously, right after a brand-new
             `Project` row is flushed — `app.routers.projects.create_project`
             calls `run_on_project_created_hooks` (below) instead of
             importing any specific module, mirroring `on_org_created`'s own
@@ -1800,27 +2025,24 @@ class ModuleDefinition:
             transaction participation (add rows, don't commit — the caller
             commits once for the whole project-creation transaction, same
             convention `on_org_created` already follows). `None` for a
-            module with nothing to react to at project-creation time (every
-            module before Compliance's Phase 20).
-        validate_org_group_member_removal: Compliance-module-plan.md Phase
-            22's own generic hook — `app.routers.orgs.remove_org_group_
+            module with nothing to react to at project-creation time.
+        validate_org_group_member_removal: Generic hook — `app.routers.orgs.remove_org_group_
             member` calls every registered module's copy of this (via
             `run_org_group_member_removal_hooks`, below) before actually
             removing a *user* member (never a nested-group member) from an
             `OrgGroup`, so a module that treats a specific group as some
             kind of fallback/floor-satisfying membership (compliance's own
-            "default compliance-managers group," Phase 22 §3) can block a
+            "default compliance-managers group," §3) can block a
             removal that would leave one of its own floors unsatisfiable —
             the exact same "can't leave zero" reasoning `routers/projects.
             py`'s project-manager-floor guards already apply, generalised
             so *this* core endpoint never needs to import a specific
             module's own models to enforce a module-owned invariant (the
-            Modular Feature System Boundary this plan's own `CLAUDE.md`
-            section names by number). Takes `(db, org_group_id,
+            Modular Feature System Boundary `CLAUDE.md` describes). Takes `(db, org_group_id,
             member_user_id)`; returns a human-readable block message (the
             endpoint 400s with it) or `None` to allow the removal. `None`
             for a module with no group-based floor concept of its own
-            (every module before Compliance's Phase 22).
+.
         validate_org_group_deletion: The whole-group counterpart of
             `validate_org_group_member_removal` (2026-10-05, when org
             groups became deletable). `routers.orgs.groups.delete_org_group`
@@ -1839,8 +2061,7 @@ class ModuleDefinition:
             types. Added 2026-10-05: deleting an org whose module artefacts
             were linked failed with a 500.
         artefact_types: Module-contributed values for the shared
-            `ArtefactType` vocabulary (Module 0 — Platform Foundations,
-            Phase 3) that `app.models.relationship.ArtefactLink.source_
+            `ArtefactType` vocabulary that `app.models.relationship.ArtefactLink.source_
             type`/`target_type` (a plain validated string column, not a
             closed Python `enum.Enum`, precisely so it can hold values no
             core file has to know about ahead of time) may hold. A module
@@ -1853,8 +2074,7 @@ class ModuleDefinition:
             against. Empty tuple for a module that introduces no linkable
             artefact type of its own (every module before Compliance's own
             evidence-linkage migration).
-        subtype_providers: Fine-Grained Access Control (`docs/plans/core-
-            fine-grained-access-control-plan.md` Phase 0 Q3/Phase 1) — maps
+        subtype_providers: Fine-Grained Access Control — maps
             one of this module's own `artefact_types` values to a callable
             `(db, organization_id) -> list[str]` returning that
             organisation's currently valid sub-type values for it (e.g.
@@ -1872,8 +2092,7 @@ class ModuleDefinition:
             simply leaves this empty (every module so far, other than
             Decision Management) — `subtype=None` (the wildcard, matching
             every sub-type) remains the only option for its artefact types.
-        entity_scopes: Fine-Grained Access Control (core) plan Phase 5 —
-            maps a `ModuleRoleDefinition.scope` value this module already
+        entity_scopes: Maps a `ModuleRoleDefinition.scope` value this module already
             uses for a module-owned entity scope (e.g. compliance's
             `"standard"`) to an `EntityScopeDefinition` centrally
             registering how to resolve/enumerate it, so `CustomRoleDefinition.
@@ -1881,8 +2100,7 @@ class ModuleDefinition:
             can reach it too, not just `require_module_role`. Additive and
             defaulted empty — a module with no entity-scoped role of its own
             (every module before Compliance) simply leaves this empty.
-        sub_components: Module 0 (Platform Foundations) Phase 4 —
-            independently toggleable sub-components of this module (e.g.
+        sub_components: Independently toggleable sub-components of this module (e.g.
             Context & Strategy's `"strategy"`/`"future_state"`/
             `"pain_point"`/`"guiding_principle"`/`"open_question"`), each a
             `ModuleSubComponentDefinition`. Resolved by `is_module_
@@ -1892,14 +2110,14 @@ class ModuleDefinition:
             Empty tuple (the default) for a module with no sub-component-
             level toggling of its own — every module before Context &
             Strategy's own `"strategy"` entry needs no change.
-        scoring_schemes: Module 1 (Context & Strategy) Phase 10 — scoring
+        scoring_schemes: Scoring
             schemes (axes with ordered, weighted levels; named models;
             default rating bands) this module registers into core's generic
             scoring-matrix mechanism (`app.services.scoring`). Merged by
             `get_all_registered_scoring_schemes` (below). Empty for a module
             that scores nothing.
-        scoring_target_providers: Module 2 (Stakeholders & Personas)
-            Phase 1.1 — maps one of this module's own `artefact_types` to a
+        scoring_target_providers: Stakeholders & Personas
+            Maps one of this module's own `artefact_types` to a
             callable `(db, project_id) -> list[ScoringTarget]` listing the
             records of that type a project can be scored against, with
             weights. Lets one module (Context & Strategy) score against
@@ -1907,7 +2125,7 @@ class ModuleDefinition:
             `get_scoring_targets` (below), which returns `[]` when the
             owning module is disabled for the project. Empty for a module
             offering no scoring targets.
-        artefact_summary_providers: Module 2 Phase 3 — maps one of this
+        artefact_summary_providers: Maps one of this
             module's own `artefact_types` to an `ArtefactSummaryProvider`
             (`get` + `list_for_project`), so another module can validate,
             label and offer a picker for this module's records as relationship
@@ -1920,14 +2138,25 @@ class ModuleDefinition:
             read via `get_artefact_type_label`. Lets core UI and API responses
             name a record's kind without a closed per-module map in a core
             file; a type left out gets a title-cased fallback.
-        reports: Module 1 Phase 12b — the reports this module contributes, each
+        search_providers: Maps one of this module's own `artefact_types` to an
+            `ArtefactSearchProvider`, making its records findable by the global search
+            (code, title, tags and the fields the provider declares). Read via
+            `get_search_providers`. Registration is required of every artefact type: one
+            that is not searchable says why in `not_searchable`.
+        not_searchable: `{artefact type: reason}` for a type deliberately left out of the
+            global search. A backend test fails for a type that has neither.
+        search_scopes: `{scope key: SearchScope}` the module adds to the search page's
+            Scope filter (Compliance: one standard). Addressed in a request as
+            `<module_key>:<scope_key>:<ref_id>`; a scope of a module that is off for the
+            caller's project is neither offered nor accepted.
+        reports: The reports this module contributes, each
             a `ReportDefinition`. The module mounts the routers built by
             `app.services.report_framework.build_report_routers` and may
             expose the MCP tools from `report_mcp_tools`; the core catalogue
             endpoints list them via `get_module_reports`. Definitions that fail
             `validate_report_definitions` are excluded and logged. Empty for a
             module with no reports.
-        link_type_seeds: Platform Enhancements Phase 5b — link types (`LinkTypeSeed`)
+        link_type_seeds: Link types (`LinkTypeSeed`)
             this module wants to exist, each with phrases, flow and an optional
             source/target artefact-type restriction. Created lazily and only when
             absent, so an organisation's edits are never overwritten; seeds sharing
@@ -2005,6 +2234,9 @@ class ModuleDefinition:
     notification_types: tuple[NotificationTypeDefinition, ...] = field(default=())
     on_artefact_changed: Callable[[Session, ArtefactChange], None] | None = None
     principal_references: tuple[PrincipalReference, ...] = field(default=())
+    search_providers: dict[str, ArtefactSearchProvider] = field(default_factory=dict)
+    not_searchable: dict[str, str] = field(default_factory=dict)
+    search_scopes: dict[str, SearchScope] = field(default_factory=dict)
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -2141,7 +2373,7 @@ def build_registry(*, force: bool = False) -> dict[str, ModuleDefinition]:
     `Settings.extra_modules_path` is set) path-based modules; when the flag
     is `False`, neither discovery function is called at all — a single
     `INFO` log line records that discovery was skipped, which is itself
-    part of the operational record this plan requires (see this module's
+    part of the required operational record (see this module's
     docstring).
 
     Any externally-discovered module whose `key` collides with an
@@ -2212,10 +2444,10 @@ def get_module(module_key: str) -> ModuleDefinition | None:
     return get_module_registry().get(module_key)
 
 
+@scoped_memo
 def is_module_entitled(db: Session, organization_id: uuid.UUID, module_key: str) -> bool:
     """Resolves whether `organization_id` is entitled to use `module_key`
-    (the server-tier licensing/plan lever, compliance-module-plan.md
-    Phase 1).
+    (the server-tier licensing/plan lever).
 
     An explicit `OrganizationModuleEntitlement` row, if one exists, is
     authoritative. Otherwise, falls back to the deployment-wide
@@ -2258,12 +2490,13 @@ def is_module_entitled(db: Session, organization_id: uuid.UUID, module_key: str)
     return server_settings.default_module_entitlement_policy == ModuleEntitlementPolicy.OPEN
 
 
+@scoped_memo
 def is_module_enabled(db: Session, organization_id: uuid.UUID, module_key: str) -> bool:
     """Resolves the *effective* enabled state of `module_key` for
     `organization_id` — entitlement AND enablement
-    (compliance-module-plan.md Phase 1's exact formula: "Effective enabled
+    (exact formula: "Effective enabled
     = entitled(org,key) AND (org_row.enabled if present else
-    registry.default_enabled)").
+    server_default.org_enabled if present else registry.default_enabled)").
 
     Returns `False` immediately (without a database lookup for enablement)
     when the module isn't registered at all, or when the organisation
@@ -2298,16 +2531,31 @@ def is_module_enabled(db: Session, organization_id: uuid.UUID, module_key: str) 
     )
     if override is not None:
         return override.enabled
+    server_default = _server_module_default(db, module_key)
+    if server_default is not None:
+        return server_default.org_enabled
     return definition.default_enabled
 
 
+@scoped_memo
+def _server_module_default(db: Session, module_key: str):
+    """Returns the `ServerModuleDefault` row for `module_key`, or `None` when
+    the server has no explicit default for it (the registry's own
+    `default_enabled` then applies)."""
+    from app.models.module import ServerModuleDefault
+
+    return db.scalar(select(ServerModuleDefault).where(ServerModuleDefault.module_key == module_key))
+
+
+@scoped_memo
 def resolve_default_project_enabled(db: Session, organization_id: uuid.UUID, module_key: str) -> bool:
     """Resolves the organisation-tier "default for a project absent its
-    own override" value for `module_key` (Module 0 — Platform Foundations
-    — Phase 5 correction, `OrganizationModuleEnablement.
+    own override" value for `module_key` (Platform Foundations,
+`OrganizationModuleEnablement.
     default_project_enabled`) — an explicit row's own value if one exists,
-    else the registry's own `default_enabled`, same fallback shape
-    `is_module_enabled` already uses for the sibling `enabled` column.
+    else the server-wide `ServerModuleDefault.project_default_enabled`, else the
+    registry's own `default_enabled` — the same fallback chain
+    `is_module_enabled` uses for the sibling `enabled` column.
 
     This is deliberately **not** gated on `enabled` itself here — that hard
     floor is checked separately by `is_module_enabled`/
@@ -2342,16 +2590,45 @@ def resolve_default_project_enabled(db: Session, organization_id: uuid.UUID, mod
     )
     if row is not None:
         return row.default_project_enabled
+    server_default = _server_module_default(db, module_key)
+    if server_default is not None:
+        return server_default.project_default_enabled
     return definition.default_enabled
 
 
+@scoped_memo
+def _project_module_override(db: Session, project_id: uuid.UUID, module_key: str):
+    """The project's own `ProjectModuleEnablement` row for `module_key`, or `None`."""
+    from app.models.module import ProjectModuleEnablement
+
+    return db.scalar(
+        select(ProjectModuleEnablement).where(
+            ProjectModuleEnablement.project_id == project_id,
+            ProjectModuleEnablement.module_key == module_key,
+        )
+    )
+
+
+@scoped_memo
+def _project_subcomponent_override(db: Session, project_id: uuid.UUID, module_key: str, subcomponent_key: str):
+    """The project's own `ProjectModuleSubComponentEnablement` row for one sub-component, or `None`."""
+    from app.models.module import ProjectModuleSubComponentEnablement
+
+    return db.scalar(
+        select(ProjectModuleSubComponentEnablement).where(
+            ProjectModuleSubComponentEnablement.project_id == project_id,
+            ProjectModuleSubComponentEnablement.module_key == module_key,
+            ProjectModuleSubComponentEnablement.subcomponent_key == subcomponent_key,
+        )
+    )
+
+
+@scoped_memo
 def is_module_enabled_for_project(db: Session, project_id: uuid.UUID, module_key: str) -> bool:
     """Resolves the *effective* enabled state of `module_key` for one
-    specific project (Module 0 — Platform Foundations — Phase 5, added
-    immediately after Phase 4's own sub-component layer; corrected
+    specific project (Platform Foundations; corrected
     2026-09-29 to add the `default_project_enabled` tier below — see
-    `docs/decisions.md`'s dated entry and `docs/plans/module-00-platform-
-    foundations-plan.md`'s Phase 5 correction note for the full reasoning).
+    `docs/decisions.md`'s dated entry and correction note for the full reasoning).
 
     Four tiers, the formula collapsing to:
 
@@ -2432,14 +2709,7 @@ def is_module_enabled_for_project(db: Session, project_id: uuid.UUID, module_key
     if not is_module_enabled(db, organization_id, module_key):
         return False
 
-    from app.models.module import ProjectModuleEnablement
-
-    project_override = db.scalar(
-        select(ProjectModuleEnablement).where(
-            ProjectModuleEnablement.project_id == project_id,
-            ProjectModuleEnablement.module_key == module_key,
-        )
-    )
+    project_override = _project_module_override(db, project_id, module_key)
     if project_override is not None:
         # Floor already confirmed True above — a project's own choice is
         # symmetric from here: it may widen past the organisation's own
@@ -2461,6 +2731,7 @@ def _find_subcomponent_definition(module_key: str, subcomponent_key: str) -> Mod
     return next((s for s in definition.sub_components if s.key == subcomponent_key), None)
 
 
+@scoped_memo
 def resolve_org_subcomponent_state(
     db: Session, organization_id: uuid.UUID, module_key: str, subcomponent_key: str,
 ) -> tuple[bool, bool] | None:
@@ -2498,12 +2769,12 @@ def resolve_org_subcomponent_state(
     return subcomponent.default_enabled, subcomponent.default_enabled
 
 
+@scoped_memo
 def is_module_subcomponent_enabled(
     db: Session, project_id: uuid.UUID, module_key: str, subcomponent_key: str,
 ) -> bool:
     """Resolves the *effective* enabled state of one project-scoped
-    sub-component of `module_key` (Module 0 — Platform Foundations —
-    Phase 4) — the generic mechanism behind "keep Pain Points on, turn off
+    sub-component of `module_key` — the generic mechanism behind "keep Pain Points on, turn off
     Strategy" for a project admin, without a per-module hand-edit.
 
     Mirrors `is_module_enabled_for_project` one level down. Resolution
@@ -2555,15 +2826,7 @@ def is_module_subcomponent_enabled(
     if not org_enabled:
         return False
 
-    from app.models.module import ProjectModuleSubComponentEnablement
-
-    project_override = db.scalar(
-        select(ProjectModuleSubComponentEnablement).where(
-            ProjectModuleSubComponentEnablement.project_id == project_id,
-            ProjectModuleSubComponentEnablement.module_key == module_key,
-            ProjectModuleSubComponentEnablement.subcomponent_key == subcomponent_key,
-        )
-    )
+    project_override = _project_subcomponent_override(db, project_id, module_key, subcomponent_key)
     if project_override is not None:
         return project_override.enabled
     return org_default_project_enabled
@@ -2747,7 +3010,7 @@ def import_all_module_models() -> None:
     separate, more restricted step: a first-party module's own migration
     still lands in the single, reviewed, linear Alembic revision chain
     exactly as before — see `configure_alembic_version_locations` below for
-    where its *file* now lives, a Phase 11 follow-up that changed nothing
+    where its *file* lives, which changes nothing
     about how many chains exist or how reviewed a revision is, only which
     directory it's physically written in; an externally-discovered module's
     own schema changes are applied by `apply_external_module_migrations`
@@ -2773,8 +3036,7 @@ def configure_alembic_version_locations(cfg: Config) -> None:
     """Points an Alembic `Config` at every registered module's own
     `migrations_dir` (if any), in addition to the core `alembic/versions`
     directory this project has always used — the mechanism `migrations_dir`
-    (on `ModuleDefinition`, above) describes, added in a compliance-module-
-    plan.md Phase 11 follow-up so a first-party module's own migration file
+    (on `ModuleDefinition`, above) describes, added in a follow-up so a first-party module's own migration file
     can live alongside the rest of that module's code instead of always
     landing in one flat, ever-growing core directory shared by every module.
 
@@ -2885,8 +3147,7 @@ def apply_external_module_migrations(engine: Engine) -> None:
     make running that module's own SQL as safe as a first-party, PR-reviewed
     migration — the actual code being run is still whatever that module
     declares, and the operator's decision to set `allow_external_modules`
-    is still what "was deliberately installed" (Phase 1's own trust
-    boundary) hinges on. `run_migrations(connection)` must be idempotent —
+    is still what "was deliberately installed" (the trust boundary) hinges on. `run_migrations(connection)` must be idempotent —
     it is re-invoked on every process start, not tracked against a
     per-module revision history.
 
@@ -2949,8 +3210,7 @@ def apply_external_module_migrations(engine: Engine) -> None:
 
 def sync_module_role_definitions(db: Session) -> None:
     """Mirrors every currently-registered module's `ModuleRoleDefinition`
-    entries into the `module_role_definitions` table (module system
-    Phase 2), upserting on `(module_key, role_key)`.
+    entries into the `module_role_definitions` table, upserting on `(module_key, role_key)`.
 
     Called once at process startup, right after `run_bootstrap` in
     `app.main`'s `lifespan` — the same "self-heal at every process start"
@@ -2964,8 +3224,8 @@ def sync_module_role_definitions(db: Session) -> None:
     role no longer present in the live registry** — this table is a
     deliberately append-only mirror, not a strict reflection of
     `get_module_registry()`'s current contents. The reasoning is the same
-    "don't silently drop historical display data" philosophy this plan
-    applies elsewhere (see Phase 8's evidence-revalidation history, which
+    "don't silently drop historical display data" philosophy
+    applied elsewhere (e.g. evidence-revalidation history, which
     "must not overwrite the historical record"): a `UserModuleRole` grant
     made while a module was registered must stay resolvable to a real
     display name/description even if that module is later removed from
@@ -3019,12 +3279,11 @@ def get_frontend_manifest(module_key: str) -> ModuleFrontendManifest | None:
     `frame_url` doesn't resolve to an origin in `Settings.module_frame_
     allowed_origins`, or (Tier C only) it's declared by a first-party
     `INSTALLED_MODULES` entry, which has no legitimate reason to use Tier C
-    at all (module system Phase 3, extended with Tier C in a same-system
-    follow-up — see `ModuleFrontendManifest`'s own docstring).
+    at all (see `ModuleFrontendManifest`'s own docstring).
 
     These checks are deliberately mechanical, at the point of use, rather
     than trusted from the module's own declaration — the same "verify,
-    don't trust a self-declared field" principle Phase 4 already applies to
+    don't trust a self-declared field" principle already applied to
     MCP tools' `path_template`/`is_approval_action`. A misconfigured or
     malicious `frame_url` outside the operator's own allowlist is logged
     and treated as "this module has no usable frontend integration," not
@@ -3088,8 +3347,8 @@ def get_frontend_manifest(module_key: str) -> ModuleFrontendManifest | None:
 
 
 def resolve_module_file_project_id(db: Session, file_id: uuid.UUID) -> uuid.UUID | None:
-    """Tries every registered module's `resolve_file_owner_project_id` hook
-    (compliance-module-plan.md Phase 8), in registry iteration order,
+    """Tries every registered module's `resolve_file_owner_project_id` hook,
+in registry iteration order,
     returning the first non-`None` project id found — the mechanism
     `app.routers.files.download_file` calls to authorize a module-owned
     file attachment (e.g. Compliance evidence) without that core,
@@ -3155,14 +3414,13 @@ def run_on_org_created_hooks(
     "core code shouldn't need to know a specific module exists" reasoning.
 
     Also calls every registered module's `on_org_created_with_choices` hook
-    (Module 4 — Decision Management — Phase 1), passing the resolved set of
+    (Decision Management), passing the resolved set of
     selected `OrgCreationChoiceOption` keys — `selected_choice_keys` if the
     caller passed one explicitly (even an empty set, an explicit "seed none
     of these"), otherwise `default_org_creation_choice_keys()`.
 
     Also seeds the organisation's default levels for every registered
-    scoring scheme (`services.scoring.seed_missing_scoring_levels`, Module
-    1 Phase 10) — generic core behaviour, not a per-module hook.
+    scoring scheme (`services.scoring.seed_missing_scoring_levels`) — generic core behaviour, not a per-module hook.
 
     A module with neither hook (the default `None` for both) is simply
     skipped. Does not commit — each hook only adds rows, the same
@@ -3194,8 +3452,8 @@ def run_on_org_created_hooks(
 
 
 def run_on_project_created_hooks(db: Session, project: Project, actor_id: uuid.UUID) -> None:
-    """Calls every registered module's `on_project_created` hook
-    (docs/compliance-module-plan.md Phase 20), in registry iteration order,
+    """Calls every registered module's `on_project_created` hook,
+in registry iteration order,
     right after a brand-new `Project` row is flushed — `app.routers.
     projects.create_project` calls this instead of importing a specific
     module (e.g. Compliance's `reconcile_new_project_for_all_standards`) to
@@ -3224,7 +3482,7 @@ def run_on_project_created_hooks(db: Session, project: Project, actor_id: uuid.U
 
 def run_org_group_member_removal_hooks(db: Session, org_group_id: uuid.UUID, member_user_id: uuid.UUID) -> str | None:
     """Calls every registered module's `validate_org_group_member_removal`
-    hook (docs/compliance-module-plan.md Phase 22), in registry iteration
+    hook, in registry iteration
     order, stopping at the first one that returns a block message —
     `app.routers.orgs.remove_org_group_member` calls this instead of
     importing a specific module (e.g. Compliance's own fallback-group floor
@@ -3309,10 +3567,10 @@ def get_module_artefact_ids_in_organization(db: Session, organization_id: uuid.U
 
 
 def get_all_registered_artefact_types() -> set[str]:
-    """Every valid `ArtefactType` value — the two built-in core values
-    (`ArtefactType.REQUIREMENT`/`REQUIREMENT_ACTION`) plus every registered
-    module's own declared `artefact_types` (Module 0 — Platform
-    Foundations, Phase 3). `services.relationships.create_link` validates
+    """Every valid `ArtefactType` value — the built-in core values
+    (`CORE_ARTEFACT_TYPES`) plus every registered
+    module's own declared `artefact_types` (Platform
+    Foundations). `services.relationships.create_link` validates
     `source_type`/`target_type` against this set, since `ArtefactLink`'s
     own columns are plain strings rather than a closed Python enum (a
     fixed `enum.Enum` can't gain members at runtime the way this registry
@@ -3322,9 +3580,9 @@ def get_all_registered_artefact_types() -> set[str]:
     Returns:
         The full set of currently-valid artefact-type string values.
     """
-    from app.models.enums import ArtefactType
+    from app.models.enums import CORE_ARTEFACT_TYPES
 
-    types = {ArtefactType.REQUIREMENT.value, ArtefactType.REQUIREMENT_ACTION.value}
+    types = set(CORE_ARTEFACT_TYPES)
     for definition in get_module_registry().values():
         types.update(definition.artefact_types)
     return types
@@ -3332,7 +3590,7 @@ def get_all_registered_artefact_types() -> set[str]:
 
 def get_all_registered_scoring_schemes() -> dict[str, RegisteredScoringScheme]:
     """Merges every registered module's `scoring_schemes` into one
-    `{scheme_key: RegisteredScoringScheme}` mapping (Module 1 Phase 10).
+    `{scheme_key: RegisteredScoringScheme}` mapping.
 
     A scheme key claimed by two modules keeps the first registration (in
     registry order) and logs the rejection, the same "earlier wins" rule
@@ -3452,7 +3710,7 @@ _logged_report_problems: set[str] = set()
 
 
 def get_module_reports(module_key: str) -> tuple[ReportDefinition, ...]:
-    """The validated `reports` of one registered module (Module 1 Phase 12b).
+    """The validated `reports` of one registered module.
 
     Invalid declarations are excluded and logged once per process. Returns an
     empty tuple for an unknown module.
@@ -3481,13 +3739,13 @@ def get_module_reports(module_key: str) -> tuple[ReportDefinition, ...]:
 
 def get_all_reports() -> list[tuple[str, ReportDefinition]]:
     """Every valid report across the registry as `(module_key, definition)`,
-    in registry order then declaration order (Module 1 Phase 12b)."""
+    in registry order then declaration order."""
     return [(key, report) for key in get_module_registry() for report in get_module_reports(key)]
 
 
 def get_scoring_targets(db: Session, project_id: uuid.UUID, target_type: str) -> list[ScoringTarget]:
     """Lists the records of artefact type `target_type` that `project_id`
-    can be scored against (Module 2 Phase 1.1), via the owning module's
+    can be scored against, via the owning module's
     `scoring_target_providers` entry.
 
     Returns `[]` — never raises — when no module provides `target_type` or
@@ -3531,7 +3789,7 @@ def has_artefact_summary_provider(artefact_type: str) -> bool:
 
 def get_artefact_summary(db: Session, artefact_type: str, artefact_id: uuid.UUID) -> ArtefactSummary | None:
     """A module-neutral summary of one artefact via its owning module's
-    `artefact_summary_providers` entry (Module 2 Phase 3).
+    `artefact_summary_providers` entry.
 
     Returns `None` — never raises — when no module provides `artefact_type`,
     the record does not exist, or the owning module is disabled for the
@@ -3568,7 +3826,75 @@ def list_artefact_summaries(db: Session, project_id: uuid.UUID, artefact_type: s
     return provider.list_for_project(db, project_id)
 
 
-_CORE_ARTEFACT_TYPE_LABELS = {"requirement": "Requirement", "requirement_action": "Action"}
+def list_organization_artefact_summaries(
+    db: Session, organization_id: uuid.UUID, artefact_type: str
+) -> list[ArtefactSummary]:
+    """The records of `artefact_type` that `organization_id` itself owns (not any of
+    its projects), via the owning module's `list_for_organization`; `[]` when the type
+    has no organisation-scoped records or its module (or the type's sub-component of
+    the same name) is disabled for the organisation. Used to resolve an
+    organisation-qualified record code."""
+    found = _summary_provider_for(artefact_type)
+    if found is None or found[1].list_for_organization is None:
+        return []
+    definition, provider = found
+    if not is_module_enabled(db, organization_id, definition.key):
+        return []
+    if any(sub.key == artefact_type for sub in definition.sub_components) and not is_org_module_subcomponent_enabled(
+        db, organization_id, definition.key, artefact_type
+    ):
+        return []
+    return provider.list_for_organization(db, organization_id)
+
+
+def get_search_providers() -> dict[str, ArtefactSearchProvider]:
+    """Every registered artefact type's `ArtefactSearchProvider`: the core types' (requirements,
+    actions, change requests) plus each module's `search_providers`. A type claimed twice keeps
+    the first registration."""
+    from app.services.search_core import CORE_SEARCH_PROVIDERS
+
+    merged: dict[str, ArtefactSearchProvider] = dict(CORE_SEARCH_PROVIDERS)
+    for definition in get_module_registry().values():
+        for artefact_type, provider in definition.search_providers.items():
+            merged.setdefault(artefact_type, provider)
+    return merged
+
+
+def get_not_searchable_types() -> dict[str, str]:
+    """`{artefact type: reason}` for every type a module declared not searchable."""
+    reasons: dict[str, str] = {}
+    for definition in get_module_registry().values():
+        reasons.update(definition.not_searchable)
+    return reasons
+
+
+def get_search_scopes() -> dict[str, tuple[ModuleDefinition, SearchScope]]:
+    """Every module-contributed search scope, keyed `<module_key>:<scope_key>`."""
+    return {
+        f"{definition.key}:{scope_key}": (definition, scope)
+        for definition in get_module_registry().values()
+        for scope_key, scope in definition.search_scopes.items()
+    }
+
+
+def artefact_type_module(artefact_type: str) -> ModuleDefinition | None:
+    """The module that declares `artefact_type` in its `artefact_types`; `None` for a core type."""
+    for definition in get_module_registry().values():
+        if artefact_type in definition.artefact_types:
+            return definition
+    return None
+
+
+def artefact_type_enabled_for_project(db: Session, artefact_type: str, project_id: uuid.UUID) -> bool:
+    """Whether `artefact_type`'s owning module (and the sub-component keyed by the type itself,
+    where the module declares one) is enabled for the project. A core type is always enabled."""
+    definition = artefact_type_module(artefact_type)
+    return definition is None or _artefact_type_enabled_for_project(db, definition, artefact_type, project_id)
+
+
+_CORE_ARTEFACT_TYPE_LABELS = {
+    "requirement": "Requirement", "requirement_action": "Action", "change_request": "Change request",
+}
 
 
 def get_artefact_type_label(artefact_type: str) -> str:
@@ -3724,9 +4050,7 @@ def get_artefact_summaries_in_project(
 
 def get_subtype_providers() -> dict[str, Callable[[Session, uuid.UUID], list[str]]]:
     """Merges every registered module's own `ModuleDefinition.subtype_
-    providers` into one `{artefact_type: provider}` mapping (Fine-Grained
-    Access Control, `docs/plans/core-fine-grained-access-control-plan.md`
-    Phase 1) — the sub-type-vocabulary analogue of `get_all_registered_
+    providers` into one `{artefact_type: provider}` mapping — the sub-type-vocabulary analogue of `get_all_registered_
     artefact_types` above, one layer down.
 
     At most one provider is kept per artefact type: if two registered
@@ -3755,8 +4079,8 @@ def get_subtypes(db: Session, organization_id: uuid.UUID, artefact_type: str) ->
     `artefact_type`, via that artefact type's registered provider (see
     `get_subtype_providers`), or `[]` if no module has registered one for
     it. Used to validate a `CustomRolePermission`'s own `subtype` value at
-    write time (Phase 1) and to populate the Role Management UI's sub-type
-    picker (Phase 3), mirroring how `create_link` validates `source_type`/
+    write time and to populate the Role Management UI's sub-type
+    picker, mirroring how `create_link` validates `source_type`/
     `target_type` against `get_all_registered_artefact_types` — the
     difference here is that this vocabulary is per-organisation data,
     not a fixed, merged-once set, so it is re-resolved on every call rather
@@ -3779,8 +4103,7 @@ def get_subtypes(db: Session, organization_id: uuid.UUID, artefact_type: str) ->
 
 def get_all_registered_entity_scopes() -> dict[str, EntityScopeDefinition]:
     """Merges every registered module's own `ModuleDefinition.entity_scopes`
-    into one `{scope_kind: EntityScopeDefinition}` mapping (Fine-Grained
-    Access Control (core) plan Phase 5) — the centrally-discoverable
+    into one `{scope_kind: EntityScopeDefinition}` mapping — the centrally-discoverable
     counterpart to `ModuleRoleDefinition.scope`/`resolve_entity_organization_id`,
     which `require_module_role` already resolves without needing this
     registry (it has the specific role object in hand). `CustomRoleDefinition.
@@ -3817,8 +4140,7 @@ def get_all_registered_entity_scopes() -> dict[str, EntityScopeDefinition]:
 
 
 def get_all_module_scheduled_jobs() -> list[tuple[str, ModuleScheduledJob]]:
-    """Every registered module's declared `scheduled_jobs` (compliance-
-    module-plan.md Phase 10), each paired with its declaring module's own
+    """Every registered module's declared `scheduled_jobs`, each paired with its declaring module's own
     `key` — what `app.services.scheduler.start_scheduler` iterates to
     register module-contributed APScheduler jobs generically, alongside its
     own two core jobs. A module with no `scheduled_jobs` of its own (the
@@ -3874,8 +4196,7 @@ def list_enabled_module_roles(
 ) -> list[tuple[str, ModuleRoleDefinition]]:
     """Lists `(module_key, ModuleRoleDefinition)` pairs for every role of
     the given `scope`, declared by a module that is currently *effectively
-    enabled* (`is_module_enabled`) for `organization_id` (module system
-    Phase 2).
+    enabled* (`is_module_enabled`) for `organization_id`.
 
     This is what backs the "available module roles" read endpoints
     (`GET /orgs/{id}/module-roles`, `GET /projects/{id}/module-roles`) and

@@ -16,20 +16,19 @@
  * stale client check can never let a bad payload through undetected: any
  * 400 still surfaces as a toast either way.
  *
- * Evidence section (Phase 33): alongside linking already-existing evidence,
+ * Evidence section: alongside linking already-existing evidence,
  * "Upload new evidence" reuses `EvidencePanel.tsx`'s own exported
  * `EvidenceFormModal` to create a new `Evidence` record the same way that
  * panel does, immediately auto-links it to this assessment (no separate
  * manual "link existing" step), then reuses `FileAttachmentList`/
  * `ResourcePickerModal` — again exactly as `EvidencePanel.tsx` already does
- * — so the actual file attaches in the same flow. Since Phase 41,
- * `EvidenceFormModal`'s create form itself stages files before save, so
+ * — so the actual file attaches in the same flow. `EvidenceFormModal`'s create form itself stages files before save, so
  * `createAndLinkEvidence` uploads those in the same step and only falls
  * back to the follow-up "Attach files" modal when none were staged —
  * a user who already attached a file at creation time isn't asked again.
  */
 import { FolderOpen } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { api } from "../../api/client";
 import type { FileAsset, OrgUser, PrincipalRef } from "../../api/types";
@@ -59,6 +58,11 @@ import {
   type ProjectComplianceRequirement,
   userDisplayName,
 } from "./types";
+import { TextAreaField } from "../../components/FormFields";
+import { LabeledSelect } from "../../components/LabeledSelect";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { COMPLIANCE_HELP } from "./help";
 
 const APPLICABILITY_OPTIONS: ComplianceApplicability[] = ["applicable", "not_applicable"];
 const STATUS_OPTIONS: ComplianceStatus[] = [
@@ -130,18 +134,20 @@ export function RequirementAssessmentPanel({
     setAllEvidence(all.filter((e) => !e.is_archived));
   }
 
-  useEffect(() => {
+  useResetOnChange([pcr.id], () => {
     setApplicability(pcr.explicit_applicability ?? "applicable");
     setApplicabilityJustification(pcr.justification);
     setStatus(pcr.compliance_status);
     setStatusJustification(pcr.justification);
     setNotes(pcr.notes);
     setDecisionNote("");
-    reloadRequiredActions().catch((err) => showToast(toErrorMessage(err, "Could not load required actions."), "error"));
-    reloadEvidence().catch((err) => showToast(toErrorMessage(err, "Could not load evidence."), "error"));
     setHistory(null);
     setShowHistory(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  });
+
+  useLoadOnChange(() => {
+    reloadRequiredActions().catch((err) => showToast(toErrorMessage(err, "Could not load required actions."), "error"));
+    reloadEvidence().catch((err) => showToast(toErrorMessage(err, "Could not load evidence."), "error"));
   }, [pcr.id]);
 
   async function loadHistory() {
@@ -312,19 +318,22 @@ export function RequirementAssessmentPanel({
             <span>Effective:</span>
             <ApplicabilityBadge pcr={pcr} />
           </div>
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            <span>Set applicability</span>
-            <select className="input" value={applicability} onChange={(e) => setApplicability(e.target.value as ComplianceApplicability)} aria-label="Applicability">
-              {APPLICABILITY_OPTIONS.map((opt) => (
-                <option key={opt} value={opt}>{COMPLIANCE_APPLICABILITY_LABEL[opt]}</option>
-              ))}
-            </select>
-          </label>
+          <LabeledSelect help={COMPLIANCE_HELP.complianceApplicability}
+            label="Set applicability"
+            ariaLabel="Applicability"
+            value={applicability}
+            onChange={(next) => setApplicability(next as ComplianceApplicability)}
+            options={APPLICABILITY_OPTIONS.map((opt) => ({ value: opt, label: COMPLIANCE_APPLICABILITY_LABEL[opt] }))}
+            placeholder={null}
+          />
           {applicability === "not_applicable" && (
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              <span>Justification (required)</span>
-              <textarea className="input" rows={2} value={applicabilityJustification} onChange={(e) => setApplicabilityJustification(e.target.value)} />
-            </label>
+            <TextAreaField helpNotNeeded
+              required
+              label="Justification"
+              value={applicabilityJustification}
+              onChange={setApplicabilityJustification}
+              rows={2}
+            />
           )}
           <button
             className="btn btn-primary" style={{ alignSelf: "flex-start" }}
@@ -338,24 +347,23 @@ export function RequirementAssessmentPanel({
         {pcr.effective_applicability === "applicable" && (
           <section className="stack">
             <h3 style={{ margin: 0 }}>Assessment</h3>
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              <span>Compliance status</span>
-              <select className="input" value={status} onChange={(e) => setStatus(e.target.value as ComplianceStatus)} aria-label="Compliance status">
-                {STATUS_OPTIONS.map((opt) => (
-                  <option key={opt} value={opt}>{COMPLIANCE_STATUS_LABEL[opt]}</option>
-                ))}
-              </select>
-            </label>
+            <LabeledSelect help={COMPLIANCE_HELP.complianceStatus}
+              label="Compliance status"
+              value={status}
+              onChange={(next) => setStatus(next as ComplianceStatus)}
+              options={STATUS_OPTIONS.map((opt) => ({ value: opt, label: COMPLIANCE_STATUS_LABEL[opt] }))}
+              placeholder={null}
+            />
             {status === "non_compliant" && (
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                <span>Justification (required)</span>
-                <textarea className="input" rows={2} value={statusJustification} onChange={(e) => setStatusJustification(e.target.value)} />
-              </label>
+              <TextAreaField helpNotNeeded
+                required
+                label="Justification"
+                value={statusJustification}
+                onChange={setStatusJustification}
+                rows={2}
+              />
             )}
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              <span>Notes</span>
-              <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-            </label>
+            <TextAreaField helpNotNeeded label="Notes" value={notes} onChange={setNotes} rows={2} />
             <button
               className="btn btn-primary" style={{ alignSelf: "flex-start" }}
               disabled={status === "non_compliant" && !statusJustification.trim()}
@@ -388,7 +396,7 @@ export function RequirementAssessmentPanel({
                         {def?.name ?? "Required action"}
                         {def?.is_mandatory && <span className="text-muted"> (mandatory)</span>}
                       </span>
-                      <label className="row" style={{ gap: "0.3rem" }}>
+                      <label className="checkbox-label" style={{ gap: "0.3rem" }}>
                         <input type="checkbox" checked={assessment.is_completed} onChange={() => toggleActionComplete(assessment)} />
                         Completed
                       </label>
@@ -478,10 +486,13 @@ export function RequirementAssessmentPanel({
           )}
           {pcr.approval_state === "pending_approval" && (
             <div className="stack">
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                <span>Decision note (optional for approval, required to reject)</span>
-                <textarea className="input" rows={2} value={decisionNote} onChange={(e) => setDecisionNote(e.target.value)} />
-              </label>
+              <TextAreaField helpNotNeeded
+                label="Decision note"
+                hint="Required to reject."
+                value={decisionNote}
+                onChange={setDecisionNote}
+                rows={2}
+              />
               <div className="row">
                 <button className="btn btn-primary" onClick={approve}>Approve</button>
                 <button className="btn btn-danger" onClick={() => setRejecting(true)}>Reject</button>
@@ -540,7 +551,7 @@ export function RequirementAssessmentPanel({
               }}
             />
             <button className="btn" style={{ alignSelf: "flex-start" }} onClick={() => setShowNewEvidenceResourcePicker(true)}>
-              <FolderOpen size={14} /> Link from shared resources
+              <FolderOpen /> Link from shared resources
             </button>
             <div className="row" style={{ justifyContent: "flex-end" }}>
               <button className="btn btn-primary" onClick={() => setNewEvidence(null)}>Done</button>
@@ -571,10 +582,7 @@ export function RequirementAssessmentPanel({
       {rejecting && (
         <Modal title="Reject this assessment?" onClose={() => setRejecting(false)}>
           <div className="stack">
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              <span>Decision note (required)</span>
-              <textarea className="input" rows={3} value={decisionNote} onChange={(e) => setDecisionNote(e.target.value)} />
-            </label>
+            <TextAreaField helpNotNeeded required label="Decision note" value={decisionNote} onChange={setDecisionNote} rows={3} />
             <div className="row" style={{ justifyContent: "flex-end" }}>
               <button className="btn" onClick={() => setRejecting(false)}>Cancel</button>
               <button className="btn btn-danger" disabled={!decisionNote.trim()} onClick={reject}>Reject</button>

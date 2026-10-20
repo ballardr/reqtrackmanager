@@ -26,8 +26,7 @@ test.describe("project history / changes-over-time view", () => {
       await expect(page.getByText("E2E: project-history spec comment marker.")).toHaveCount(0);
     });
 
-    // Converted onto the shared `ActivityPanel` component (2026-08 UX audit
-    // roadmap row 515) — each row now links to the requirement/change
+    // Converted onto the shared `ActivityPanel` component — each row now links to the requirement/change
     // request it's about (`getLink`/`activityEntryLink`), the same way the
     // project overview's own activity card, and this page's own previous
     // hand-rolled markup, already did; this pins that the shared component

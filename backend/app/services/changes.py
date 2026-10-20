@@ -27,6 +27,7 @@ from app.schemas.changes import ChangeEntryOut
 def get_project_changes(
     db: Session, project_id: UUID, *,
     since: datetime | None, until: datetime | None, include_comments: bool = False, entity_type: str | None = None,
+    entity_id: UUID | None = None,
 ) -> list[ChangeEntryOut]:
     """Returns a unified, time-ordered list of changes for a project.
 
@@ -44,6 +45,9 @@ def get_project_changes(
             version history) mint their `entity_type` in Python, not from a
             literal column, so filtering post-merge is both simpler and
             uniform across all sources.
+        entity_id: Optional filter to one record (used with `entity_type`
+            "requirement" or "change_request"); pushed into the queries so a
+            single record's activity does not load the whole project's.
 
     Returns:
         Entries sorted newest-first.
@@ -75,6 +79,8 @@ def get_project_changes(
     }
 
     audit_query = select(AuditEvent).where(AuditEvent.project_id == project_id)
+    if entity_id is not None:
+        audit_query = audit_query.where(AuditEvent.entity_id == str(entity_id))
     if since is not None:
         audit_query = audit_query.where(AuditEvent.created_at >= since)
     if until is not None:
@@ -94,6 +100,8 @@ def get_project_changes(
         .join(Requirement, Requirement.id == RequirementVersion.requirement_id)
         .where(Requirement.project_id == project_id)
     )
+    if entity_id is not None:
+        req_version_query = req_version_query.where(RequirementVersion.requirement_id == entity_id)
     if since is not None:
         req_version_query = req_version_query.where(RequirementVersion.created_at >= since)
     if until is not None:
@@ -109,21 +117,23 @@ def get_project_changes(
         )
 
     cr_version_query = (
-        select(ChangeRequestVersion, ChangeRequest.status)
+        select(ChangeRequestVersion, ChangeRequest.status, ChangeRequest.unique_code)
         .join(ChangeRequest, ChangeRequest.id == ChangeRequestVersion.change_request_id)
         .where(ChangeRequest.project_id == project_id)
     )
+    if entity_id is not None:
+        cr_version_query = cr_version_query.where(ChangeRequestVersion.change_request_id == entity_id)
     if since is not None:
         cr_version_query = cr_version_query.where(ChangeRequestVersion.created_at >= since)
     if until is not None:
         cr_version_query = cr_version_query.where(ChangeRequestVersion.created_at <= until)
-    for version, cr_status in db.execute(cr_version_query).all():
+    for version, cr_status, unique_code in db.execute(cr_version_query).all():
         action = "created" if version.version_number == 1 else "updated"
         entries.append(
             ChangeEntryOut(
                 timestamp=version.created_at, entity_type="change_request",
                 entity_id=str(version.change_request_id), action=action, actor_id=version.created_by,
-                detail={"proposed_name": version.proposed_name, "status": cr_status.value},
+                detail={"unique_code": unique_code, "proposed_name": version.proposed_name, "status": cr_status.value},
             )
         )
 
@@ -233,6 +243,18 @@ def get_project_changes(
                 detail["proposed_name"] = current_titles[cid][0] or fallback_names.get(cid)
                 e.detail = detail
 
+    attach_actor_names(db, entries)
+    entries.sort(key=lambda e: e.timestamp, reverse=True)
+    return entries
+
+
+def attach_actor_names(db: Session, entries: list[ChangeEntryOut]) -> None:
+    """Fills `actor_display_name` on every entry that has an actor ("Unknown user" for a deleted one).
+
+    Args:
+        db: An active database session.
+        entries: The entries to annotate in place.
+    """
     actor_ids = {e.actor_id for e in entries if e.actor_id is not None}
     display_names = {
         u.id: u.display_name for u in db.scalars(select(User).where(User.id.in_(actor_ids))).all()
@@ -240,6 +262,3 @@ def get_project_changes(
     for e in entries:
         if e.actor_id is not None:
             e.actor_display_name = display_names.get(e.actor_id, "Unknown user")
-
-    entries.sort(key=lambda e: e.timestamp, reverse=True)
-    return entries

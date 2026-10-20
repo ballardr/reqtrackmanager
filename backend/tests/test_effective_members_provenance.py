@@ -1,11 +1,11 @@
-"""Tests for the follow-up UX batch's Phase D (2026-08-31, docs/decisions.md):
+"""Tests for 2026-08-31 (2026-08-31, docs/decisions.md):
 splitting `GET /{project_id}/effective-members`'s collapsed `kind: "direct"`
 provenance bucket into five finer-grained kinds (`direct_role`,
 `direct_group`, `direct_org_group`, `direct_project_ref`, `direct_org_wide`
 — see `services.rbac._direct_effective_project_roles_by_kind`'s docstring),
 and the endpoint's new application-level `search`/`limit`/`offset` support.
 
-The kind split is the highest-risk change in this phase: the new frontend
+The kind split is the highest-risk change: the new frontend
 Members table only offers `DELETE /{project_id}/roles/{user_id}/{role}` as a
 way to toggle a role off when its *only* source is `direct_role` — every
 other kind must never be presented as freely revocable that way, since that
@@ -30,8 +30,7 @@ def _kinds_for_role(sources: list[dict], role: str) -> set[str]:
 
 
 def _create_group_with_role(client, admin_token, project_id, name: str, role: str) -> dict:
-    """Creates a bare project group, then grants it `role` — PR7 of the
-    members/groups directory rework plan (docs/decisions.md) dropped
+    """Creates a bare project group, then grants it `role` — the members/groups directory rework (docs/decisions.md) dropped
     `ProjectGroupCreate.role`: a group starts with zero roles, and a role is
     a separate grant via `POST .../groups/{group_id}/roles`."""
     group = client.post(

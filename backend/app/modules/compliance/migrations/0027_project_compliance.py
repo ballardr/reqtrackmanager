@@ -1,13 +1,13 @@
-"""Project compliance assessment (compliance module Phase 7)
+"""Project compliance assessment
 
 Revision ID: 0027
 Revises: 0026
 Create Date: 2026-09-05
 
 Adds the three tables backing the Compliance Module's project-specific
-assessment layer (docs/Compliance_Module_Requirements.md §7-§11, §16, §20,
-§25, §26; docs/compliance-module-plan.md Phase 7) — built on top of Phase
-5/6's organisation-level standard definitions, never modifying them:
+assessment layer (§7-§11, §16, §20,
+§25, §26) — built on top of the
+organisation-level standard definitions, never modifying them:
 
 - `project_compliances` (`app.modules.compliance.models.ProjectCompliance`)
   — a project's assignment to one specific, always-published
@@ -15,7 +15,7 @@ assessment layer (docs/Compliance_Module_Requirements.md §7-§11, §16, §20,
 - `project_compliance_requirements` (`ProjectComplianceRequirement`) — one
   project's per-requirement assessment (applicability, compliance status,
   justification, notes, assessment/applicability actor+timestamp pairs,
-  and a `approval_state` column reserved for Phase 9) (§8-§10, §16, §20).
+  and an `approval_state` column used by the approval workflow) (§8-§10, §16, §20).
 - `compliance_required_action_assessments`
   (`ComplianceRequiredActionAssessment`) — one project's per-required-action
   assessment (assignee, due date, completion overlay) (§6, §25).

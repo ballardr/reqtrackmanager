@@ -2,7 +2,7 @@
  * Module: testing/reportFixtures
  *
  * Storybook-only builders for the core report framework's catalogue entries
- * and results (Module 1 Phase 13). They describe a synthetic, module-neutral
+ * and results. They describe a synthetic, module-neutral
  * report so the generic components (viewer, parameter form, runner,
  * catalogue) are proven independent of Context & Strategy.
  */

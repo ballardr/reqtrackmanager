@@ -1,6 +1,5 @@
-"""Tests for the Stakeholders & Personas module's Phase 1.1 backend API
-(docs/plans/module-02-stakeholders-and-personas-plan.md — Persona), through
-the real HTTP endpoints.
+"""Tests for the Stakeholders & Personas module's backend API
+(Persona), through the real HTTP endpoints.
 
 Covers: org- and project-scoped CRUD and the scope rules, partial update
 (including clearing nullable fields), version history, the Draft/Active/

@@ -7,7 +7,7 @@ router's routes would otherwise inline — the manage gate, the API shape,
 create/update/lifecycle, and the "has need" / "gives rise to" link operations.
 Comments and files go through the shared `services.module_attachments` kit.
 
-RBAC (Phase 0 resolution 6): viewing is gated by sub-component enablement
+RBAC: viewing is gated by sub-component enablement
 alone; create/edit/archive/retire/link need the project `stakeholder_need_owner`
 role or a Fine-Grained Access Control `(stakeholder_need, manage)` grant. A Need
 has no organisation scope, so there is no org-level role.
@@ -98,7 +98,8 @@ def need_to_out(
 ) -> NeedOut:
     """Merges a need with its current version (`labels` is a pre-resolved batch for list endpoints)."""
     return NeedOut(
-        id=need.id, project_id=need.project_id, creator_id=need.creator_id, is_archived=need.is_archived,
+        id=need.id, project_id=need.project_id, unique_code=need.unique_code, creator_id=need.creator_id,
+        is_archived=need.is_archived,
         archived_at=need.archived_at, archived_by=need.archived_by, name=version.name,
         description=version.description, rationale=version.rationale, status=version.status,
         version_number=version.version_number, created_at=need.created_at, updated_at=need.updated_at,
@@ -148,13 +149,18 @@ def require_need_manage(db: Session, current_user: User, project: Project) -> No
 
 def create_need_from_payload(db: Session, payload: NeedCreate, creator: User, project: Project) -> NeedOut:
     """Validates a create payload, creates the need, audit-logs, commits and
-    returns the API shape."""
+    returns the API shape.
+
+    With `payload.activate` the need is also moved to `ACTIVE` before the single commit (both audit events,
+    same actor, all or nothing). Activation has the same gate as creation, checked by the caller."""
     validate_principals(db, project.organization_id, project.id, owner=payload.owner)
-    content = payload.model_dump(exclude=set(NEED_PRINCIPAL_FIELDS))
+    content = payload.model_dump(exclude={"activate", *NEED_PRINCIPAL_FIELDS})
     content.update(columns_for_create(payload, NEED_PRINCIPAL_FIELDS))
-    need = create_need(db, project_id=project.id, creator=creator, **content)
+    need = create_need(db, project=project, creator=creator, **content)
     log_event(db, entity_type=NEED_ARTEFACT_TYPE, entity_id=need.id, action="created", actor_id=creator.id,
               project_id=project.id, detail={"name": payload.name})
+    if payload.activate:
+        transition_need(db, need, get_current_need_version(db, need.id), NeedStatus.ACTIVE, creator, action="activated")
     db.commit()
     db.refresh(need)
     return need_to_out(db, need, get_current_need_version(db, need.id))
@@ -199,13 +205,16 @@ def transition_need_endpoint(
 
 def holder_to_out(db: Session, link, kind: str, record: Stakeholder | Persona) -> NeedHolderOut:
     """API shape of a "has need" link seen from the need."""
-    return NeedHolderOut(link_id=link.id, kind=kind, id=record.id, name=holder_name(db, kind, record), scope=record.scope.value)
+    return NeedHolderOut(
+        link_id=link.id, kind=kind, id=record.id, name=holder_name(db, kind, record), scope=record.scope.value,
+        unique_code=record.unique_code, organization_id=record.organization_id,
+    )
 
 
 def held_need_to_out(db: Session, link, need: StakeholderNeed) -> HeldNeedOut:
     """API shape of a "has need" link seen from a Stakeholder/Persona."""
     version = get_current_need_version(db, need.id)
-    return HeldNeedOut(link_id=link.id, id=need.id, name=version.name, status=version.status)
+    return HeldNeedOut(link_id=link.id, id=need.id, unique_code=need.unique_code, name=version.name, status=version.status)
 
 
 def requirement_to_out(db: Session, link, requirement: Requirement) -> NeedRequirementOut:

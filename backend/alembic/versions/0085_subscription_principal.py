@@ -1,4 +1,4 @@
-"""Subscriptions name a principal, so a group can watch a record (users and groups on parity, Phase 6d)
+"""Subscriptions name a principal, so a group can watch a record
 
 Revision ID: 0085
 Revises: 0084

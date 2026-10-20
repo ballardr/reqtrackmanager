@@ -10,13 +10,13 @@ Responsibilities:
   stakeholders it may touch, hiding the org/project difference from the bodies.
 - Group CRUD/move, direct membership, a stakeholder's group set, and the
   "create from organisation / group text" action, each audit-logged with ids
-  only (item 23) and translating `groups.GroupRuleError` to its HTTP status.
+  only and translating `groups.GroupRuleError` to its HTTP status.
 - `filter_and_sort_stakeholders`: the list endpoints' `group_id` /
   `direct_only` / `group_by` handling.
 
-RBAC: callers have already passed `require_group_manage` for writes (item 31: groups
+RBAC: callers have already passed `require_group_manage` for writes (groups
 share the Stakeholder manage gate, plus their own `(stakeholder_group, manage)` grant). A project
-context never reads or lists a stakeholder hidden from that project (Phase 3b).
+context never reads or lists a stakeholder hidden from that project.
 """
 
 from __future__ import annotations
@@ -164,7 +164,7 @@ def groups_out(db: Session, ctx: GroupContext, groups: list[StakeholderGroup]) -
             children[g.parent_group_id] = children.get(g.parent_group_id, 0) + 1
     return [
         StakeholderGroupOut(
-            id=g.id, scope=g.scope, organization_id=g.organization_id, project_id=g.project_id,
+            id=g.id, scope=g.scope, organization_id=g.organization_id, project_id=g.project_id, unique_code=g.unique_code,
             parent_group_id=g.parent_group_id, name=g.name, description=g.description,
             exclusive_children=g.exclusive_children, sort_order=g.sort_order,
             member_count=members.get(g.id, 0), child_count=children.get(g.id, 0),

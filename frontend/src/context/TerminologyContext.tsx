@@ -1,12 +1,15 @@
 import { useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { api } from "../api/client";
-import type { Project } from "../api/types";
+import type { Organization, Project } from "../api/types";
 import { DEFAULT_TERMS, pluralize, resolveTerminologyDeep, type TerminologyKey } from "../i18n/terminology";
 import { t, type Strings } from "../i18n/strings";
 import { ProjectContext, type ProjectContextValue } from "./ProjectContextValue";
 
 export type { TerminologyKey };
+
+/** What terms resolve against outside a project: no overrides. */
+const NO_PROJECT_CONTEXT: ProjectContextValue = { terminology: {} };
 
 /**
  * Provides the current project's terminology overrides (C-C-03) to
@@ -17,16 +20,26 @@ export type { TerminologyKey };
  * see `BrandingContext`.
  */
 export function TerminologyProvider({ projectId, children }: { projectId: string | null; children: ReactNode }) {
-  const [value, setValue] = useState<ProjectContextValue>({ terminology: {} });
+  const [loaded, setValue] = useState<ProjectContextValue>(NO_PROJECT_CONTEXT);
+  const value = projectId ? loaded : NO_PROJECT_CONTEXT;
 
   useEffect(() => {
-    if (!projectId) {
-      setValue({ terminology: {} });
-      return;
-    }
+    if (!projectId) return;
+    let cancelled = false;
     api.get<Project>(`/api/v1/projects/${projectId}`).then((project) => {
-      setValue({ terminology: project.terminology ?? {} });
+      if (cancelled) return;
+      setValue({
+        terminology: project.terminology ?? {}, projectCode: project.code, enforceCodeEverywhere: false,
+        organizationId: project.organization_id,
+      });
+      // The enforce flag and the organisation's code live on the organisation; codes show without them meanwhile.
+      api.get<Organization>(`/api/v1/orgs/${project.organization_id}`).then((org) => {
+        if (!cancelled) {
+          setValue((v) => ({ ...v, enforceCodeEverywhere: org.enforce_code_everywhere, organizationCode: org.code }));
+        }
+      }).catch(() => undefined);
     });
+    return () => { cancelled = true; };
   }, [projectId]);
 
   return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>;

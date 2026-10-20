@@ -8,7 +8,7 @@ import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD } from "./hel
 const API_BASE_URL = "http://localhost:8000";
 
 /**
- * Job to be done: docs/plans/platform-enhancements-2026-10-plan.md Phase 9 —
+ * Job to be done: —
  * a user downloads any report as an editable Word (DOCX) file: the
  * requirement report from the "More formats" menu beside "Generate PDF", and a
  * catalogue report (Decision register) from the runner's Export menu.

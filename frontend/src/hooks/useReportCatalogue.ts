@@ -2,7 +2,7 @@
  * Module: hooks/useReportCatalogue
  *
  * Loads the reports a caller can run for one project or organisation from the
- * core report framework's catalogue endpoint (Module 1 Phase 13). The
+ * core report framework's catalogue endpoint. The
  * catalogue is the single source of which reports exist: it already reflects
  * module and sub-component enablement and, for an organisation, the caller's
  * report role, so callers show or hide their Reports surface from `entries`

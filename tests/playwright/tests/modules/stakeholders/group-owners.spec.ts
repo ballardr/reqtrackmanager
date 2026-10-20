@@ -7,8 +7,7 @@ import { API_BASE_URL, setUpOrg } from "./helpers";
 installCleanupHook();
 
 /**
- * Job to be done: users and groups on parity, Phase 3 (docs/plans/
- * users-and-groups-parity-plan.md) — a Persona's owner can be an organisation
+ * Job to be done: users and groups on parity — a Persona's owner can be an organisation
  * group and its champion a project group, a Stakeholder and a Need can be owned
  * by a group, an organisation-level record cannot name a project group, and
  * deleting a group that still owns them lets the admin clear or reassign.
@@ -38,9 +37,11 @@ test.describe("Stakeholders & Personas: groups as owners", () => {
     // --- Assign the org group as owner and the project group as champion from the Persona page.
     await page.goto(`/projects/${project.id}/modules/stakeholders/personas/${persona.id}`);
     await expect(page.getByRole("heading", { name: `Inspector ${suffix}` })).toBeVisible();
+    await page.getByRole("button", { name: /^(Assign|Change): Persona owner$/ }).click();
     await page.getByRole("combobox", { name: "Persona owner" }).fill("Research Team");
     await page.getByRole("option", { name: new RegExp(teamName) }).click();
     await expect(page.getByText("Owner updated.")).toBeVisible();
+    await page.getByRole("button", { name: /^(Assign|Change): Persona champion$/ }).click();
     await page.getByRole("combobox", { name: "Persona champion" }).fill("Field Squad");
     await page.getByRole("option", { name: new RegExp(squadName) }).click();
     await expect(page.getByText("Champion updated.")).toBeVisible();
@@ -64,6 +65,7 @@ test.describe("Stakeholders & Personas: groups as owners", () => {
       await page.request.post(`${API_BASE_URL}/api/v1/orgs/${org.id}/modules/stakeholders/personas`, { headers: adminHeaders, data: { name: `Shared ${suffix}` } })
     ).json();
     await page.goto(`/orgs/${org.id}/modules/stakeholders/personas/${orgPersona.id}`);
+    await page.getByRole("button", { name: /^(Assign|Change): Persona owner$/ }).click();
     await page.getByRole("combobox", { name: "Persona owner" }).fill("Field Squad");
     await expect(page.getByRole("option", { name: new RegExp(squadName) })).toHaveCount(0);
 

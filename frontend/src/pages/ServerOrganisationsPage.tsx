@@ -9,11 +9,16 @@ import { ActionMenu } from "../components/ActionMenu";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterField, FilterPanel } from "../components/FilterPanel";
+import { ListPageLayout } from "../components/ListPageLayout";
 import { Modal } from "../components/Modal";
 import { Spinner } from "../components/Spinner";
 import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
 import { useToast } from "../context/ToastContext";
+import { FormActions } from "../components/FormActions";
+import { FormGrid } from "../components/FormGrid";
+import { FileField, TextField, CheckboxField } from "../components/FormFields";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 /**
  * Server-admin console listing every organisation on the deployment
@@ -46,7 +51,7 @@ export function ServerOrganisationsPage() {
   const [showNewForm, setShowNewForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [importFile, setImportFile] = useState<File | null>(null);
-  // Module 4 (Decision Management) Phase 1 — every registered module's
+  // Every registered module's
   // optional org-creation seeding choices (e.g. Decision Management's ADR
   // template packs), fetched once and rendered generically; this page has
   // no hardcoded knowledge of what any of them are. `null` selected keys
@@ -67,9 +72,7 @@ export function ServerOrganisationsPage() {
     setOrgs(await api.get<Organization[]>("/api/v1/orgs"));
   }
 
-  useEffect(() => {
-    reload();
-  }, []);
+  useLoadOnChange(reload, []);
 
   useEffect(() => {
     // Fetched once, independent of the modal opening — the checkboxes only
@@ -175,165 +178,160 @@ export function ServerOrganisationsPage() {
 
   return (
     <div className="stack">
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <h1 style={{ margin: 0 }}>{strings.orgAdmin.organizations(orgLabelPlural)}</h1>
-        <button className="btn btn-primary" onClick={() => setShowNewForm(true)}>
-          <Plus size={16} /> New {orgLabel}
-        </button>
-      </div>
-
-      {/* Style guide "Pattern: modal dialog for entity create/rename" —
-          a brand-new entity opens in a Modal, not a permanently-visible
-          inline block that reflows the list underneath it. */}
-      {showNewForm && (
-        <Modal title={`New ${orgLabel}`} onClose={() => setShowNewForm(false)}>
-          <div className="stack">
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              {importFile ? `${orgLabelCap} name (optional — defaults to the bundle's own name)` : `${orgLabelCap} name`}
-              <input
-                className="input"
-                autoFocus
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-              />
-            </label>
-            <label className="stack" style={{ gap: "0.25rem" }}>
-              Or import from an exported {orgLabel} bundle (.zip)
-              <input
-                className="input" type="file" accept=".zip,application/zip"
-                onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
-              />
-            </label>
-            {/* Module 4 (Decision Management) Phase 1 — every registered
-                module's optional org-creation seeding choices, grouped by
-                `group_label`; this page has no hardcoded knowledge of what
-                any of them are. Hidden for the import path (above), which
-                carries its own already-existing settings instead. */}
-            {!importFile && creationChoices && creationChoices.length > 0 && (
-              <div className="stack" style={{ gap: "0.5rem" }}>
-                {[...new Set(creationChoices.map((c) => c.group_label))].map((groupLabel) => (
-                  <div key={groupLabel} className="stack" style={{ gap: "0.25rem" }}>
-                    <strong>{groupLabel}</strong>
-                    {creationChoices
-                      .filter((c) => c.group_label === groupLabel)
-                      .map((choice) => (
-                        <label key={choice.key} className="row" title={choice.description}>
-                          <input
-                            type="checkbox"
+      <ListPageLayout
+        title={strings.orgAdmin.organizations(orgLabelPlural)}
+        actions={
+          <button className="btn btn-primary" onClick={() => setShowNewForm(true)}>
+            <Plus /> New {orgLabel}
+          </button>
+        }
+        filter={
+          <FilterPanel sectionKey="serverOrganisationsFilters">
+            <FilterField label="Status">
+              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}>
+                <option value="active">{strings.serverOrgs.active}</option>
+                <option value="disabled">{strings.serverOrgs.disabled}</option>
+                <option value="all">{strings.serverOrgs.filterAll}</option>
+              </select>
+            </FilterField>
+          </FilterPanel>
+        }
+      >
+        {/* Style guide "Pattern: modal dialog for entity create/rename" —
+            a brand-new entity opens in a Modal, not a permanently-visible
+            inline block that reflows the list underneath it. */}
+        {showNewForm && (
+          <Modal title={`New ${orgLabel}`} onClose={() => setShowNewForm(false)} size="lg">
+            <div className="stack">
+              <FormGrid minColumn="18rem">
+                <TextField helpNotNeeded required={!importFile}
+                  label={`${orgLabelCap} name`}
+                  hint={importFile ? "Defaults to the bundle's own name when left blank." : undefined}
+                  value={newName}
+                  onChange={setNewName}
+                  inputProps={{ autoFocus: true }}
+                />
+                <FileField helpNotNeeded
+                  label={`Or import from an exported ${orgLabel} bundle (.zip)`} accept=".zip,application/zip"
+                  onChange={setImportFile}
+                />
+              </FormGrid>
+              {/* Every registered
+                  module's optional org-creation seeding choices, grouped by
+                  `group_label`; this page has no hardcoded knowledge of what
+                  any of them are. Hidden for the import path (above), which
+                  carries its own already-existing settings instead. */}
+              {!importFile && creationChoices && creationChoices.length > 0 && (
+                <div className="stack" style={{ gap: "0.5rem" }}>
+                  {[...new Set(creationChoices.map((c) => c.group_label))].map((groupLabel) => (
+                    <div key={groupLabel} className="stack" style={{ gap: "0.25rem" }}>
+                      <strong>{groupLabel}</strong>
+                      {creationChoices
+                        .filter((c) => c.group_label === groupLabel)
+                        .map((choice) => (
+                          <CheckboxField helpNotNeeded
+                            key={choice.key}
+                            label={choice.label}
+                            title={choice.description}
                             checked={selectedChoiceKeys?.has(choice.key) ?? false}
                             onChange={() => toggleChoiceKey(choice.key)}
                           />
-                          {choice.label}
-                        </label>
-                      ))}
-                  </div>
-                ))}
-              </div>
-            )}
-            {createError && <div style={{ color: "var(--color-danger)" }}>{createError}</div>}
-            <div className="row" style={{ justifyContent: "flex-end" }}>
-              <button className="btn" onClick={() => setShowNewForm(false)}>
-                {strings.common.cancel}
-              </button>
-              <button className="btn btn-primary" onClick={createOrg} disabled={!importFile && !newName}>
-                {strings.common.create}
-              </button>
+                        ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <FormActions
+                error={createError}
+                onCancel={() => setShowNewForm(false)}
+                onSave={createOrg}
+                saveLabel={strings.common.create}
+                saveDisabled={!importFile && !newName}
+              />
+            </div>
+          </Modal>
+        )}
+        {importWarnings && importWarnings.length > 0 && (
+          <div className="card stack" style={{ borderColor: "var(--color-warning, #b58900)" }}>
+            <strong>Imported with warnings</strong>
+            <ul style={{ margin: 0 }}>
+              {importWarnings.map((w, i) => <li key={i}>{w}</li>)}
+            </ul>
+          </div>
+        )}
+
+        {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
+          <div className="stack">
+            <input
+              className="input"
+              style={{ maxWidth: 280 }}
+              placeholder={strings.serverOrgs.search(orgLabelPlural)}
+              aria-label={strings.serverOrgs.search(orgLabelPlural)}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+
+            <div className="card" style={{ overflowX: "auto" }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredOrgs.map((o) => (
+                    <tr key={o.id}>
+                      <td>{o.name}</td>
+                      <td>
+                        {o.is_active ? (
+                          <FilterBadge active={statusFilter === "active"} onClick={() => setStatusFilter("active")}>
+                            {strings.serverOrgs.active}
+                          </FilterBadge>
+                        ) : (
+                          <FilterBadge
+                            active={statusFilter === "disabled"}
+                            onClick={() => setStatusFilter("disabled")}
+                            style={{ color: "var(--color-danger)", borderColor: "var(--color-danger)" }}
+                          >
+                            {strings.serverOrgs.disabled}
+                          </FilterBadge>
+                        )}
+                      </td>
+                      <td className="text-muted">{new Date(o.created_at).toLocaleDateString()}</td>
+                      <td>
+                        <div className="row" style={{ justifyContent: "flex-end" }}>
+                          {/* Style guide "Pattern: action menu" — three
+                              standalone row buttons (Edit/Disable-Enable/
+                              Delete) consolidated into one `ActionMenu`, per
+                              the addendum applying the same two-or-more-
+                              actions threshold inside a table row. Each item
+                              still opens the exact same dialog/navigation as
+                              before — the menu is just the entry point, not a
+                              replacement for either `ConfirmDialog` tier. */}
+                          <ActionMenu
+                            triggerLabel={strings.serverOrgs.actionsFor(o.name)}
+                            items={[
+                              { label: strings.common.edit, icon: <Pencil size={14} />, onSelect: () => navigate(`/orgs/${o.id}/admin`) },
+                              o.is_active
+                                ? { label: strings.serverOrgs.disable, icon: <Power size={14} />, onSelect: () => disableOrg(o) }
+                                : { label: strings.serverOrgs.enable, icon: <Power size={14} />, onSelect: () => enableOrg(o) },
+                              { label: strings.serverOrgs.delete, icon: <Trash2 size={14} />, onSelect: () => startDelete(o) },
+                            ]}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {orgs.length === 0 && <p className="text-muted">No {orgLabelPlural.toLowerCase()} yet.</p>}
+              {orgs.length > 0 && filteredOrgs.length === 0 && <p className="text-muted">{strings.serverOrgs.empty(orgLabelPlural)}</p>}
             </div>
           </div>
-        </Modal>
-      )}
-      {importWarnings && importWarnings.length > 0 && (
-        <div className="card stack" style={{ borderColor: "var(--color-warning, #b58900)" }}>
-          <strong>Imported with warnings</strong>
-          <ul style={{ margin: 0 }}>
-            {importWarnings.map((w, i) => <li key={i}>{w}</li>)}
-          </ul>
-        </div>
-      )}
-
-      {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
-
-      <div className="side-grid">
-        <div className="stack">
-          <input
-            className="input"
-            style={{ maxWidth: 280 }}
-            placeholder={strings.serverOrgs.search(orgLabelPlural)}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-
-          <div className="card" style={{ overflowX: "auto" }}>
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Status</th>
-                  <th>Created</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {filteredOrgs.map((o) => (
-                  <tr key={o.id}>
-                    <td>{o.name}</td>
-                    <td>
-                      {o.is_active ? (
-                        <FilterBadge active={statusFilter === "active"} onClick={() => setStatusFilter("active")}>
-                          {strings.serverOrgs.active}
-                        </FilterBadge>
-                      ) : (
-                        <FilterBadge
-                          active={statusFilter === "disabled"}
-                          onClick={() => setStatusFilter("disabled")}
-                          style={{ color: "var(--color-danger)", borderColor: "var(--color-danger)" }}
-                        >
-                          {strings.serverOrgs.disabled}
-                        </FilterBadge>
-                      )}
-                    </td>
-                    <td className="text-muted">{new Date(o.created_at).toLocaleDateString()}</td>
-                    <td>
-                      <div className="row" style={{ justifyContent: "flex-end" }}>
-                        {/* Style guide "Pattern: action menu" — three
-                            standalone row buttons (Edit/Disable-Enable/
-                            Delete) consolidated into one `ActionMenu`, per
-                            the addendum applying the same two-or-more-
-                            actions threshold inside a table row. Each item
-                            still opens the exact same dialog/navigation as
-                            before — the menu is just the entry point, not a
-                            replacement for either `ConfirmDialog` tier. */}
-                        <ActionMenu
-                          triggerLabel={strings.serverOrgs.actionsFor(o.name)}
-                          items={[
-                            { label: strings.common.edit, icon: <Pencil size={14} />, onSelect: () => navigate(`/orgs/${o.id}/admin`) },
-                            o.is_active
-                              ? { label: strings.serverOrgs.disable, icon: <Power size={14} />, onSelect: () => disableOrg(o) }
-                              : { label: strings.serverOrgs.enable, icon: <Power size={14} />, onSelect: () => enableOrg(o) },
-                            { label: strings.serverOrgs.delete, icon: <Trash2 size={14} />, onSelect: () => startDelete(o) },
-                          ]}
-                        />
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {orgs.length === 0 && <p className="text-muted">No {orgLabelPlural.toLowerCase()} yet.</p>}
-            {orgs.length > 0 && filteredOrgs.length === 0 && <p className="text-muted">{strings.serverOrgs.empty(orgLabelPlural)}</p>}
-          </div>
-        </div>
-
-        <FilterPanel sectionKey="serverOrganisationsFilters">
-          <FilterField label="Status">
-            <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}>
-              <option value="active">{strings.serverOrgs.active}</option>
-              <option value="disabled">{strings.serverOrgs.disabled}</option>
-              <option value="all">{strings.serverOrgs.filterAll}</option>
-            </select>
-          </FilterField>
-        </FilterPanel>
-      </div>
+      </ListPageLayout>
 
       {deletingOrgId &&
         (() => {

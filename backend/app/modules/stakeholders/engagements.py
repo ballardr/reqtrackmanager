@@ -1,9 +1,7 @@
 """
 Module: modules.stakeholders.engagements
 
-Business logic for Engagements, the contact log, and the research extras
-(Phase 4; docs/plans/module-02-stakeholders-and-personas-plan.md, Phase 0
-addenda 14, 15, 20, 29).
+Business logic for Engagements, the contact log, and the research extras.
 
 Responsibilities:
 - Engagement create/update (a single row, no version history) and the retention
@@ -11,19 +9,19 @@ Responsibilities:
 - Participants: Stakeholders, personas covered and an audience group, all
   `ArtefactLink`s from the engagement. A group is expanded to its members by the
   caller and recorded as a snapshot, so an engagement keeps saying who it
-  involved after membership changes (addendum 29).
+  involved after membership changes.
 - Outcome links: an engagement or finding "raised" Pain Points, Needs and Open
   Questions, or "answered" Open Questions.
 - Research extras: session prompts, anonymous participants, findings.
 - `last_engaged_by_stakeholder`, the derived "last engaged" S4 staleness reads.
 - `erase_engagement`, the hard delete of an engagement, its participant data and
-  its files (Phase 0 resolution 15).
+  its files.
 
 Design decisions:
 - Link types are created per organisation on first use (`service.get_or_create_link_type`),
   like the other Stakeholder relationships, and declared in `LINK_TYPE_SEEDS`.
 - Everything here raises `ValueError` for a rule violation; callers translate it to HTTP.
-- "Last engaged" counts only engagements dated today or earlier, and only this
+- "Last engaged" counts only engagements dated today (the caller's day, see `services.client_date`) or earlier, and only this
   project's, so a shared org Stakeholder never leaks another project's contact history.
 """
 
@@ -32,7 +30,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import date
 from typing import Any
 
 from sqlalchemy import func, select
@@ -64,9 +62,11 @@ from app.modules.stakeholders.service import (
 )
 from app.schemas.principal import PrincipalRef
 from app.services.audit import log_event
+from app.services.client_date import effective_today
 from app.services.files import delete_file
 from app.services.relationships import create_link, delete_link, get_all_links, get_link_between
 from app.services.sequences import generate_unique_code
+from app.services.tags import forget_record_tags
 
 ENGAGEMENT_ARTEFACT_TYPE = "engagement"
 FINDING_ARTEFACT_TYPE = "research_finding"
@@ -215,7 +215,7 @@ def create_finding(
 
 def retention_due(engagement: Engagement, today: date | None = None) -> bool:
     """Whether the engagement has reached its retain-until date and is due for review or disposal."""
-    return engagement.retain_until is not None and engagement.retain_until <= (today or datetime.now(UTC).date())
+    return engagement.retain_until is not None and engagement.retain_until <= (today or effective_today())
 
 
 def list_project_engagements(db: Session, project_id: uuid.UUID) -> list[Engagement]:
@@ -325,7 +325,7 @@ def list_audience_links(db: Session, engagement: Engagement, organization_id: uu
 
 def participant_counts(db: Session, project: Project, engagement_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, int]:
     """Stakeholder participants per engagement, in one query (engagements with none are absent). A
-    Stakeholder hidden from the project (Phase 3b) is not counted, so the count never discloses them."""
+    Stakeholder hidden from the project is not counted, so the count never discloses them."""
     type_id = link_type_id_if_exists(db, project.organization_id, PARTICIPANT_FORWARD)
     if type_id is None or not engagement_ids:
         return {}
@@ -368,7 +368,7 @@ def last_engaged_by_stakeholder(
         db: An active session.
         project: The viewing project; other projects' engagements are never counted.
         stakeholder_ids: Restrict to these Stakeholders (all participants when `None`).
-        today: Engagements dated after this are not yet "engaged" (defaults to today, UTC).
+        today: Engagements dated after this are not yet "engaged" (defaults to the caller's day).
     """
     type_id = link_type_id_if_exists(db, project.organization_id, PARTICIPANT_FORWARD)
     if type_id is None or (stakeholder_ids is not None and not stakeholder_ids):
@@ -379,7 +379,7 @@ def last_engaged_by_stakeholder(
         .where(
             ArtefactLink.source_type == ENGAGEMENT_ARTEFACT_TYPE, ArtefactLink.target_type == STAKEHOLDER_ARTEFACT_TYPE,
             ArtefactLink.link_type_id == type_id, ArtefactLink.source_project_id.is_(None),
-            Engagement.project_id == project.id, Engagement.engagement_date <= (today or datetime.now(UTC).date()),
+            Engagement.project_id == project.id, Engagement.engagement_date <= (today or effective_today()),
         )
         .group_by(ArtefactLink.target_id)
     )
@@ -481,7 +481,7 @@ def list_findings(db: Session, engagement_id: uuid.UUID) -> list[ResearchFinding
 
 
 def erase_engagement(db: Session, engagement: Engagement, actor: User) -> None:
-    """Hard-deletes an engagement and everything that holds data about it (Phase 0 resolution 15):
+    """Hard-deletes an engagement and everything that holds data about it:
     its notes, comments, prompts, anonymous participants, findings, every file in storage (direct and
     comment attachments) and every `ArtefactLink` touching it or its findings. Writes one audit event
     carrying only the id and the acting user, never the title or any content. The caller commits.
@@ -497,6 +497,7 @@ def erase_engagement(db: Session, engagement: Engagement, actor: User) -> None:
             delete_link(db, link)
     for link in get_all_links(db, ENGAGEMENT_ARTEFACT_TYPE, engagement.id, include_cross_project=True):
         delete_link(db, link)
+    forget_record_tags(db, ENGAGEMENT_ARTEFACT_TYPE, engagement.id)
     # The attachment rows cascade from the engagement; the bytes must be removed explicitly, so delete the assets.
     for asset in db.scalars(select(FileAsset).where(FileAsset.id.in_(file_ids))).all() if file_ids else []:
         delete_file(db, asset)

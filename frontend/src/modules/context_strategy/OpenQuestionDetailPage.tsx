@@ -1,8 +1,7 @@
 /**
  * Module: modules/context_strategy/OpenQuestionDetailPage
  *
- * A single Open Question's full detail (docs/plans/module-01-context-and-
- * strategy-plan.md Phase 7.5) — mirrors `PainPointDetailPage.tsx`'s overall
+ * A single Open Question's full detail — mirrors `PainPointDetailPage.tsx`'s overall
  * shape (full field display, branching lifecycle actions, attachments,
  * comments, relationships, owner assignment via a dedicated `PrincipalPicker`)
  * closely, since both artefacts share the same "project-scoped only,
@@ -26,8 +25,8 @@
  *    outcome convention `reject_pain_point`/`mark_pain_point_duplicate`
  *    already established, applied here to the module's second branching
  *    lifecycle).
- * 2. **Two roles, not one, gate the lifecycle actions** (source overview
- *    §9.4's three-tier permission split — see `enums.py`'s own docstring):
+ * 2. **Two roles, not one, gate the lifecycle actions** (§9.4's
+ * three-tier permission split — see `enums.py`'s own docstring):
  *    `open_question_owner` gates `investigate`/`mark-ready-for-decision`/
  *    `withdraw`/edit/archive; a *separate* `open_question_resolver` gates
  *    `resolve` alone. This page renders every action button unconditionally
@@ -57,12 +56,14 @@
  * directly with the current content fields plus the newly chosen `owner`.
  */
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { Pencil } from "lucide-react";
+import { useParams } from "react-router-dom";
 
 import type { FileAsset, OrgUser, PrincipalRef, Project } from "../../api/types";
 import { api } from "../../api/client";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
+import { RecordActivity } from "../../components/RecordActivity";
+import { recordActivityKey } from "../../components/recordActivityKey";
+import { RecordTags } from "../../components/RecordTags";
 import { RecordPrincipalField } from "../../components/RecordDetailParts";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
@@ -75,6 +76,12 @@ import { projectOpenQuestionApi } from "./api";
 import { OpenQuestionFormModal } from "./OpenQuestionFormModal";
 import { OPEN_QUESTION_PRIORITY_LABEL, OPEN_QUESTION_STATUS_LABEL, OPEN_QUESTION_STATUS_TONE } from "./types";
 import type { OpenQuestion, OpenQuestionComment, OpenQuestionFieldValues } from "./types";
+import { RecordHeader } from "../../components/RecordHeader";
+import { useArchiveAction } from "../../components/useConfirmedAction";
+import { Badge } from "../../components/Badge";
+import { TextAreaField } from "../../components/FormFields";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { DetailCard } from "../../components/DetailCard";
 
 /** The two optional-comment, positive/neutral-progression actions — mirrors
  * `PainPointDetailPage.tsx`'s `OptionalCommentAction`/`OPTIONAL_COMMENT_COPY`
@@ -112,7 +119,6 @@ export function OpenQuestionDetailPage() {
   const [optionalComment, setOptionalComment] = useState("");
   const [withdrawConfirm, setWithdrawConfirm] = useState(false);
   const [withdrawComment, setWithdrawComment] = useState("");
-  const [archiveConfirm, setArchiveConfirm] = useState(false);
 
   useEffect(() => {
     if (!projectId) return;
@@ -127,7 +133,6 @@ export function OpenQuestionDetailPage() {
     projectOpenQuestionApi.get(projectId, openQuestionId).then(setOpenQuestion).catch((err) => {
       setLoadError(toErrorMessage(err, "This Open Question could not be found, or you don't have access to it."));
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, openQuestionId]);
 
   async function reloadCommentsAndFiles() {
@@ -144,10 +149,7 @@ export function OpenQuestionDetailPage() {
     }
   }
 
-  useEffect(() => {
-    void reloadCommentsAndFiles();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, openQuestionId]);
+  useLoadOnChange(reloadCommentsAndFiles, [projectId, openQuestionId]);
 
   async function runTransition(action: () => Promise<OpenQuestion>, successMessage: string) {
     try {
@@ -186,12 +188,27 @@ export function OpenQuestionDetailPage() {
     }
   }
 
+  const archive = useArchiveAction({
+    noun: "Open Question",
+    isArchived: openQuestion?.is_archived ?? false,
+    hidden: !openQuestion,
+    archiveBody: "This Open Question will no longer appear in the active list. Nothing is deleted, and it remains available for historical purposes.",
+    onToggle: async () => {
+      if (!projectId || !openQuestion) return;
+      await runTransition(
+        () => (openQuestion.is_archived ? projectOpenQuestionApi.unarchive(projectId, openQuestion.id) : projectOpenQuestionApi.archive(projectId, openQuestion.id)),
+        openQuestion.is_archived ? "Open Question unarchived." : "Open Question archived.",
+      );
+    },
+  });
+
   if (!projectId || !openQuestionId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (openQuestion === null) return <Spinner />;
 
   return (
     <DetailLayout
+      activity={projectId ? <RecordActivity projectId={projectId} artefactType="open_question" artefactId={openQuestion.id} refreshToken={recordActivityKey(openQuestion)} /> : undefined}
       aside={
         <ArtefactLinksPanel
           projectId={projectId}
@@ -200,35 +217,29 @@ export function OpenQuestionDetailPage() {
         />
       }
     >
-      <Link to={`/projects/${projectId}/modules/context_strategy/open-questions`}>← Open Question</Link>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ margin: 0 }}>{openQuestion.question}</h1>
-        <span className={`badge badge--${OPEN_QUESTION_STATUS_TONE[openQuestion.status]}`}>
-          {OPEN_QUESTION_STATUS_LABEL[openQuestion.status]}
-        </span>
-      </div>
-      <div className="stack">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-          <p className="text-muted" style={{ margin: 0 }}>
+      <RecordHeader
+        recordLabel="Open Question"
+        title={openQuestion.question}
+        code={openQuestion.unique_code}
+        tags={projectId ? <RecordTags projectId={projectId} artefactType="open_question" artefactId={openQuestion.id} /> : undefined}
+        back={{ to: `/projects/${projectId}/modules/context_strategy/open-questions`, label: "← Open Question" }}
+        badges={
+          <>
+          <Badge tone={OPEN_QUESTION_STATUS_TONE[openQuestion.status]}>
+            {OPEN_QUESTION_STATUS_LABEL[openQuestion.status]}
+          </Badge>
+          </>
+        }
+        subtitle={
+          <>
             {OPEN_QUESTION_PRIORITY_LABEL[openQuestion.priority]} priority
             {openQuestion.due_date ? ` · due ${openQuestion.due_date}` : ""}
-          </p>
-          {!openQuestion.is_locked && (
-            <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
-              <Pencil size={14} />
-            </button>
-          )}
-        </div>
-
-        {openQuestion.context && <Field label="Context" value={openQuestion.context} />}
-        {openQuestion.evidence && <Field label="Evidence" value={openQuestion.evidence} />}
-
-        <RecordPrincipalField
-          label="Owner" ariaLabel="Open Question owner" principal={openQuestion.owner} orgUsers={orgUsers}
-          organizationId={project?.organization_id} projectId={projectId} readOnly={false} onChange={assignOwner}
-        />
-
-        <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+          </>
+        }
+        onEdit={openQuestion.is_locked ? undefined : () => setEditing(true)}
+        actions={[archive.item]}
+        transitions={
+          <>
           {openQuestion.status === "open" && (
             <button
               className="btn btn-primary"
@@ -242,21 +253,32 @@ export function OpenQuestionDetailPage() {
               <button className="btn btn-primary" onClick={() => setOptionalAction("mark_ready_for_decision")}>Mark ready for decision</button>
               <button className="btn btn-danger" onClick={() => setWithdrawConfirm(true)}>Withdraw</button>
             </>
-          )}
-          {openQuestion.status === "ready_for_decision" && (
-            <>
-              <button className="btn btn-primary" onClick={() => setOptionalAction("resolve")}>Resolve</button>
-              <button className="btn btn-danger" onClick={() => setWithdrawConfirm(true)}>Withdraw</button>
-            </>
-          )}
-          <button className="btn" onClick={() => setArchiveConfirm(true)}>
-            {openQuestion.is_archived ? "Unarchive" : "Archive"}
-          </button>
-        </div>
+              )}
+              {openQuestion.status === "ready_for_decision" && (
+                <>
+                  <button className="btn btn-primary" onClick={() => setOptionalAction("resolve")}>Resolve</button>
+                  <button className="btn btn-danger" onClick={() => setWithdrawConfirm(true)}>Withdraw</button>
+                </>
+              )}
+          </>
+        }
+      />
+      {archive.dialog}
+
+      <div className="stack">
+
+        <DetailCard>
+          {openQuestion.context && <Field label="Context" value={openQuestion.context} />}
+          {openQuestion.evidence && <Field label="Evidence" value={openQuestion.evidence} />}
+
+          <RecordPrincipalField
+            label="Owner" ariaLabel="Open Question owner" principal={openQuestion.owner} orgUsers={orgUsers}
+            organizationId={project?.organization_id} projectId={projectId} readOnly={false} onChange={assignOwner}
+          />
+        </DetailCard>
 
 
-        <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-          <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Evidence</h3>
+        <DetailCard heading="Evidence">
           <FileAttachmentList
             files={files}
             disabled={openQuestion.is_locked}
@@ -270,31 +292,29 @@ export function OpenQuestionDetailPage() {
               setFiles((prev) => prev.filter((f) => f.id !== fileId));
             }}
           />
-        </div>
+        </DetailCard>
 
-        <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-          <ArtefactCommentsSection
-            comments={comments ?? []}
-            currentUserId={user?.id}
-            onPost={async (body) => {
-              const comment = await projectOpenQuestionApi.addComment(projectId, openQuestion.id, body);
-              setComments((prev) => [...(prev ?? []), comment]);
-              return comment;
-            }}
-            onEdit={async (commentId, body) => {
-              const updated = await projectOpenQuestionApi.editComment(projectId, openQuestion.id, commentId, body);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? updated : c)));
-            }}
-            onUploadAttachment={async (commentId, file) => {
-              const asset = await projectOpenQuestionApi.uploadCommentAttachment(projectId, openQuestion.id, commentId, file);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: [...c.attachments, asset] } : c)));
-            }}
-            onRemoveAttachment={async (commentId, fileId) => {
-              await projectOpenQuestionApi.removeCommentAttachment(projectId, openQuestion.id, commentId, fileId);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
-            }}
-          />
-        </div>
+        <ArtefactCommentsSection
+          comments={comments ?? []}
+          currentUserId={user?.id}
+          onPost={async (body) => {
+            const comment = await projectOpenQuestionApi.addComment(projectId, openQuestion.id, body);
+            setComments((prev) => [...(prev ?? []), comment]);
+            return comment;
+          }}
+          onEdit={async (commentId, body) => {
+            const updated = await projectOpenQuestionApi.editComment(projectId, openQuestion.id, commentId, body);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? updated : c)));
+          }}
+          onUploadAttachment={async (commentId, file) => {
+            const asset = await projectOpenQuestionApi.uploadCommentAttachment(projectId, openQuestion.id, commentId, file);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: [...c.attachments, asset] } : c)));
+          }}
+          onRemoveAttachment={async (commentId, fileId) => {
+            await projectOpenQuestionApi.removeCommentAttachment(projectId, openQuestion.id, commentId, fileId);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
+          }}
+        />
       </div>
 
       {editing && (
@@ -312,13 +332,13 @@ export function OpenQuestionDetailPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>{OPTIONAL_COMMENT_COPY[optionalAction].body}</span>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                Comment
-                <textarea
-                  className="input" rows={2} aria-label="Transition comment"
-                  value={optionalComment} onChange={(e) => setOptionalComment(e.target.value)}
-                />
-              </label>
+              <TextAreaField helpNotNeeded
+                label="Comment"
+                ariaLabel="Transition comment"
+                value={optionalComment}
+                onChange={setOptionalComment}
+                rows={2}
+              />
             </span>
           }
           confirmLabel={OPTIONAL_COMMENT_COPY[optionalAction].confirmLabel}
@@ -349,13 +369,12 @@ export function OpenQuestionDetailPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>A comment explaining why is required.</span>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                Withdrawal comment
-                <textarea
-                  className="input" rows={2} aria-label="Withdrawal comment"
-                  value={withdrawComment} onChange={(e) => setWithdrawComment(e.target.value)}
-                />
-              </label>
+              <TextAreaField helpNotNeeded
+                label="Withdrawal comment"
+                value={withdrawComment}
+                onChange={setWithdrawComment}
+                rows={2}
+              />
             </span>
           }
           confirmLabel="Withdraw"
@@ -370,25 +389,6 @@ export function OpenQuestionDetailPage() {
         />
       )}
 
-      {archiveConfirm && (
-        <ConfirmDialog
-          title={openQuestion.is_archived ? "Unarchive this Open Question?" : "Archive this Open Question?"}
-          message={
-            openQuestion.is_archived
-              ? "This Open Question will count as active again."
-              : "This Open Question will no longer appear in the active list. Nothing is deleted, and it remains available for historical purposes."
-          }
-          confirmLabel={openQuestion.is_archived ? "Unarchive" : "Archive"}
-          onConfirm={async () => {
-            setArchiveConfirm(false);
-            await runTransition(
-              () => (openQuestion.is_archived ? projectOpenQuestionApi.unarchive(projectId, openQuestion.id) : projectOpenQuestionApi.archive(projectId, openQuestion.id)),
-              openQuestion.is_archived ? "Open Question unarchived." : "Open Question archived.",
-            );
-          }}
-          onCancel={() => setArchiveConfirm(false)}
-        />
-      )}
     </DetailLayout>
   );
 }

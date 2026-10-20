@@ -3,12 +3,12 @@ import { expect, test } from "@playwright/test";
 import { loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
- * Job to be done: Platform review 2026-09, Phase 8. Once a requirement is
+ * Job to be done: Once a requirement is
  * approved (locked):
  *
  * 1. Unlinking an action always requires a change request instead of the
  *    direct endpoint — unconditional, every project (closes an asymmetry
- *    `unlink_action` had with the already-gated add side, item 514).
+ * `unlink_action` had with the already-gated add side).
  * 2. Adding/removing a traceability link *also* requires a change request,
  *    but only once a project opts in via `require_change_request_for_
  *    approved_links` (or an org-wide force applies) — links otherwise stay
@@ -24,7 +24,7 @@ import { loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES } 
  * removing are one-way, so a fixed seeded fixture would be fully consumed
  * after the first run and break every repeat run against the same database.
  */
-test.describe("action/link change-request locking (platform review 2026-09, Phase 8)", () => {
+test.describe("action/link change-request locking", () => {
   test("unlinking an action, and adding/removing a link, all route through a change request once locked", async ({ page }) => {
     const ts = Date.now();
     const reqAName = `E2E Link Lock Source ${ts}`;
@@ -77,7 +77,7 @@ test.describe("action/link change-request locking (platform review 2026-09, Phas
 
       await page.getByRole("button", { name: "Create and link a new action" }).click();
       const actionPanel = page.getByRole("dialog", { name: "Create and link a new action" });
-      await actionPanel.getByPlaceholder("Title").fill(actionTitle);
+      await actionPanel.getByLabel("Title").fill(actionTitle);
       await actionPanel.getByLabel("Type", { exact: true }).selectOption({ label: "Review" });
       await actionPanel.getByRole("button", { name: "Create", exact: true }).click();
       await expect(actionPanel).not.toBeVisible();
@@ -188,7 +188,7 @@ test.describe("action/link change-request locking (platform review 2026-09, Phas
       await page.getByRole("button", { name: "Submit", exact: true }).click();
       await expect(page.getByText("Submitted", { exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Approve", exact: true }).click();
-      // An add-link request approves through the merge dialog (Platform Enhancements Phase 6b), link ticked by default.
+      // An add-link request approves through the merge dialog link ticked by default.
       await page.getByRole("dialog", { name: "Approve change request" }).getByRole("button", { name: "Approve and merge 1 link" }).click();
       await expect(page.getByText("Approved", { exact: true })).toBeVisible();
 

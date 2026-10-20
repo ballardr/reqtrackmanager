@@ -1,19 +1,18 @@
 /**
  * Module: modules/context_strategy/FutureStateDetailPage
  *
- * A single Future State's full detail (docs/plans/module-01-context-and-
- * strategy-plan.md Phase 7.2) — full field display (including `target_date`),
+ * A single Future State's full detail — full field display (including `target_date`),
  * current lifecycle status, version history, comments, attachments, and
  * relationships, plus every lifecycle action. Mirrors
  * `StrategyDetailPage.tsx`'s exact structure field-for-field, since Future
  * State's backend is itself "an exact structural mirror" of Strategy's
- * (Phase 2's own scope text) — same seven-state lifecycle, same lock rule
+ * — same seven-state lifecycle, same lock rule
  * (past `UNDER_REVIEW`), same owner/approver RBAC shape, same comments/
  * attachments/relationships sections.
  *
  * **Scope-aware, Decided by: Agent**, for the exact same reason
- * `StrategyDetailPage.tsx` is: a Future State is org- **or** project-scoped
- * (Phase 0 Q1's follow-on), so this one component serves both
+ * `StrategyDetailPage.tsx` is: a Future State is org- **or** project-scoped,
+ * so this one component serves both
  * `ProjectFutureStatesPage.tsx`'s row-click navigation and
  * `OrgFutureStatesPanel.tsx`'s own (`module.ts`'s `globalRoutes`, org-scoped,
  * not gated by any one project's own enabled-modules list).
@@ -26,11 +25,13 @@
  * once `futureState.is_locked`.
  */
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { Pencil } from "lucide-react";
+import { useParams } from "react-router-dom";
 
 import type { FileAsset } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
+import { RecordActivity } from "../../components/RecordActivity";
+import { recordActivityKey } from "../../components/recordActivityKey";
+import { RecordTags } from "../../components/RecordTags";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailLayout } from "../../components/DetailLayout";
@@ -43,6 +44,13 @@ import { orgFutureStateApi, projectFutureStateApi } from "./api";
 import { FutureStateFormModal } from "./FutureStateFormModal";
 import { FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE } from "./types";
 import type { FutureState, FutureStateComment, FutureStateFieldValues, FutureStateVersion } from "./types";
+import { RecordHeader } from "../../components/RecordHeader";
+import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
+import { useArchiveAction } from "../../components/useConfirmedAction";
+import { Badge } from "../../components/Badge";
+import { TextAreaField } from "../../components/FormFields";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { DetailCard } from "../../components/DetailCard";
 
 /** Every lifecycle action this page can offer, keyed by the action itself —
  * used to build the confirm-dialog copy generically instead of repeating it
@@ -100,7 +108,6 @@ export function FutureStateDetailPage() {
   const [sendBackComment, setSendBackComment] = useState("");
   const [transitionAction, setTransitionAction] = useState<TransitionAction | null>(null);
   const [transitionComment, setTransitionComment] = useState("");
-  const [archiveConfirm, setArchiveConfirm] = useState(false);
 
   useEffect(() => {
     if (!scopeId || !futureStateId) return;
@@ -125,10 +132,7 @@ export function FutureStateDetailPage() {
     }
   }
 
-  useEffect(() => {
-    void reloadCommentsAndFiles();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scopeId, futureStateId]);
+  useLoadOnChange(reloadCommentsAndFiles, [scopeId, futureStateId]);
 
   async function runTransition(action: () => Promise<FutureState>, successMessage: string) {
     try {
@@ -153,12 +157,28 @@ export function FutureStateDetailPage() {
     }
   }
 
+  const archive = useArchiveAction({
+    noun: "Future State",
+    isArchived: futureState?.is_archived ?? false,
+    hidden: !futureState,
+    archiveBody: "This Future State will no longer appear in the active list. Nothing is deleted, and it remains available for historical purposes.",
+    onToggle: async () => {
+      if (!scopeId || !futureState) return;
+      await runTransition(
+        () => (futureState.is_archived ? scopedApi.unarchive(scopeId, futureState.id) : scopedApi.archive(scopeId, futureState.id)),
+        futureState.is_archived ? "Future State unarchived." : "Future State archived.",
+      );
+    },
+  });
+
+  const codeOwner = useRecordOwnerCode(futureState ?? {});
   if (!scopeId || !futureStateId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (futureState === null) return <Spinner />;
 
   return (
     <DetailLayout
+      activity={projectId ? <RecordActivity projectId={projectId} artefactType="future_state" artefactId={futureState.id} refreshToken={recordActivityKey(futureState)} /> : undefined}
       aside={
         <ArtefactLinksPanel
           projectId={projectId}
@@ -181,33 +201,26 @@ export function FutureStateDetailPage() {
         />
       }
     >
-      <Link to={backLink}>{backLabel}</Link>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ margin: 0 }}>{futureState.title}</h1>
-        <span className={`badge badge--${FUTURE_STATE_STATUS_TONE[futureState.status]}`}>
-          {FUTURE_STATE_STATUS_LABEL[futureState.status]}
-        </span>
-      </div>
-      <div className="stack">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-          <p className="text-muted" style={{ margin: 0 }}>
-            {futureState.target_date ? `Target date ${futureState.target_date} · ` : ""}v{futureState.version_number}
-          </p>
-          {!futureState.is_locked && (
-            <button className="btn btn-icon" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
-              <Pencil size={14} />
-            </button>
-          )}
-        </div>
-
-        {futureState.current_state && <Field label="Current state" value={futureState.current_state} />}
-        <Field label="Desired state" value={futureState.desired_state} />
-        {futureState.outcomes && <Field label="Outcomes" value={futureState.outcomes} />}
-        {futureState.success_measures && <Field label="Success measures" value={futureState.success_measures} />}
-        {futureState.constraints && <Field label="Constraints" value={futureState.constraints} />}
-        {futureState.assumptions && <Field label="Assumptions" value={futureState.assumptions} />}
-
-        <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+      <RecordHeader
+        recordLabel="Future State"
+        title={futureState.title}
+        code={futureState.unique_code}
+        tags={projectId ? <RecordTags projectId={projectId} artefactType="future_state" artefactId={futureState.id} /> : undefined}
+        codeOwner={codeOwner}
+        back={{ to: backLink, label: backLabel }}
+        badges={
+          <>
+          <Badge tone={FUTURE_STATE_STATUS_TONE[futureState.status]}>
+            {FUTURE_STATE_STATUS_LABEL[futureState.status]}
+          </Badge>
+          </>
+        }
+        version={futureState.version_number}
+        subtitle={futureState.target_date ? `Target date ${futureState.target_date}` : undefined}
+        onEdit={futureState.is_locked ? undefined : () => setEditing(true)}
+        actions={[archive.item]}
+        transitions={
+          <>
           {futureState.status === "draft" && (
             <button className="btn btn-primary" onClick={() => runTransition(() => scopedApi.propose(scopeId, futureState.id), "Future State proposed.")}>
               Propose
@@ -223,31 +236,41 @@ export function FutureStateDetailPage() {
               </button>
               <button className="btn" onClick={() => setSendingBack(true)}>Send back</button>
             </>
-          )}
-          {futureState.status === "under_review" && (
-            <>
-              <button className="btn btn-primary" onClick={() => setTransitionAction("approve")}>Approve</button>
-              <button className="btn" onClick={() => setSendingBack(true)}>Send back</button>
-            </>
-          )}
-          {futureState.status === "approved" && (
-            <button className="btn btn-primary" onClick={() => setTransitionAction("activate")}>Activate</button>
-          )}
-          {futureState.status === "active" && (
-            <>
-              <button className="btn" onClick={() => setTransitionAction("supersede")}>Supersede</button>
-              <button className="btn btn-danger" onClick={() => setTransitionAction("retire")}>Retire</button>
-            </>
-          )}
-          <button className="btn" onClick={() => setArchiveConfirm(true)}>
-            {futureState.is_archived ? "Unarchive" : "Archive"}
-          </button>
-        </div>
+              )}
+              {futureState.status === "under_review" && (
+                <>
+                  <button className="btn btn-primary" onClick={() => setTransitionAction("approve")}>Approve</button>
+                  <button className="btn" onClick={() => setSendingBack(true)}>Send back</button>
+                </>
+              )}
+              {futureState.status === "approved" && (
+                <button className="btn btn-primary" onClick={() => setTransitionAction("activate")}>Activate</button>
+              )}
+              {futureState.status === "active" && (
+                <>
+                  <button className="btn" onClick={() => setTransitionAction("supersede")}>Supersede</button>
+                  <button className="btn btn-danger" onClick={() => setTransitionAction("retire")}>Retire</button>
+                </>
+              )}
+          </>
+        }
+      />
+      {archive.dialog}
+
+      <div className="stack">
+
+        <DetailCard>
+          {futureState.current_state && <Field label="Current state" value={futureState.current_state} />}
+          <Field label="Desired state" value={futureState.desired_state} />
+          {futureState.outcomes && <Field label="Outcomes" value={futureState.outcomes} />}
+          {futureState.success_measures && <Field label="Success measures" value={futureState.success_measures} />}
+          {futureState.constraints && <Field label="Constraints" value={futureState.constraints} />}
+          {futureState.assumptions && <Field label="Assumptions" value={futureState.assumptions} />}
+        </DetailCard>
 
 
         {versions && versions.length > 1 && (
-          <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-            <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Version history</h3>
+          <DetailCard heading="Versions">
             <table className="table">
               <thead>
                 <tr><th>Version</th><th>Status</th><th>Changed</th><th>Change note</th></tr>
@@ -263,11 +286,10 @@ export function FutureStateDetailPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </DetailCard>
         )}
 
-        <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-          <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Attachments</h3>
+        <DetailCard heading="Attachments">
           <FileAttachmentList
             files={files}
             disabled={futureState.is_locked}
@@ -281,31 +303,29 @@ export function FutureStateDetailPage() {
               setFiles((prev) => prev.filter((f) => f.id !== fileId));
             }}
           />
-        </div>
+        </DetailCard>
 
-        <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-          <ArtefactCommentsSection
-            comments={comments ?? []}
-            currentUserId={user?.id}
-            onPost={async (body) => {
-              const comment = await scopedApi.addComment(scopeId, futureState.id, body);
-              setComments((prev) => [...(prev ?? []), comment]);
-              return comment;
-            }}
-            onEdit={async (commentId, body) => {
-              const updated = await scopedApi.editComment(scopeId, futureState.id, commentId, body);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? updated : c)));
-            }}
-            onUploadAttachment={async (commentId, file) => {
-              const asset = await scopedApi.uploadCommentAttachment(scopeId, futureState.id, commentId, file);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: [...c.attachments, asset] } : c)));
-            }}
-            onRemoveAttachment={async (commentId, fileId) => {
-              await scopedApi.removeCommentAttachment(scopeId, futureState.id, commentId, fileId);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
-            }}
-          />
-        </div>
+        <ArtefactCommentsSection
+          comments={comments ?? []}
+          currentUserId={user?.id}
+          onPost={async (body) => {
+            const comment = await scopedApi.addComment(scopeId, futureState.id, body);
+            setComments((prev) => [...(prev ?? []), comment]);
+            return comment;
+          }}
+          onEdit={async (commentId, body) => {
+            const updated = await scopedApi.editComment(scopeId, futureState.id, commentId, body);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? updated : c)));
+          }}
+          onUploadAttachment={async (commentId, file) => {
+            const asset = await scopedApi.uploadCommentAttachment(scopeId, futureState.id, commentId, file);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: [...c.attachments, asset] } : c)));
+          }}
+          onRemoveAttachment={async (commentId, fileId) => {
+            await scopedApi.removeCommentAttachment(scopeId, futureState.id, commentId, fileId);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
+          }}
+        />
       </div>
 
       {editing && (
@@ -324,13 +344,7 @@ export function FutureStateDetailPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>A comment explaining what needs rework is required.</span>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                Send-back comment
-                <textarea
-                  className="input" rows={2} aria-label="Send-back comment"
-                  value={sendBackComment} onChange={(e) => setSendBackComment(e.target.value)}
-                />
-              </label>
+              <TextAreaField helpNotNeeded label="Send-back comment" value={sendBackComment} onChange={setSendBackComment} rows={2} />
             </span>
           }
           confirmLabel="Send back"
@@ -351,13 +365,13 @@ export function FutureStateDetailPage() {
           message={
             <span className="stack" style={{ gap: "0.5rem" }}>
               <span>{TRANSITION_COPY[transitionAction].body}</span>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                Comment
-                <textarea
-                  className="input" rows={2} aria-label="Transition comment"
-                  value={transitionComment} onChange={(e) => setTransitionComment(e.target.value)}
-                />
-              </label>
+              <TextAreaField helpNotNeeded
+                label="Comment"
+                ariaLabel="Transition comment"
+                value={transitionComment}
+                onChange={setTransitionComment}
+                rows={2}
+              />
             </span>
           }
           confirmLabel={TRANSITION_COPY[transitionAction].confirmLabel}
@@ -372,25 +386,6 @@ export function FutureStateDetailPage() {
         />
       )}
 
-      {archiveConfirm && (
-        <ConfirmDialog
-          title={futureState.is_archived ? "Unarchive this Future State?" : "Archive this Future State?"}
-          message={
-            futureState.is_archived
-              ? "This Future State will count as active again."
-              : "This Future State will no longer appear in the active list. Nothing is deleted, and it remains available for historical purposes."
-          }
-          confirmLabel={futureState.is_archived ? "Unarchive" : "Archive"}
-          onConfirm={async () => {
-            setArchiveConfirm(false);
-            await runTransition(
-              () => (futureState.is_archived ? scopedApi.unarchive(scopeId, futureState.id) : scopedApi.archive(scopeId, futureState.id)),
-              futureState.is_archived ? "Future State unarchived." : "Future State archived."
-            );
-          }}
-          onCancel={() => setArchiveConfirm(false)}
-        />
-      )}
     </DetailLayout>
   );
 }

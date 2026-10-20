@@ -3,10 +3,10 @@
 See [future-modules-2026-09-index.md](future-modules-2026-09-index.md) for
 cross-cutting architecture referenced throughout, and note this module
 consumes the relationship-model infrastructure
-[Module 0](module-00-platform-foundations-plan.md) builds — it does not
+[Module 0](completed/module-00-platform-foundations-plan.md) builds — it does not
 re-derive it, and does not need Module 1 for that purpose.
 
-**Source:** [future-modules-2026-09-overview.md](future-modules-2026-09-overview.md)
+**Source:** [future-modules-2026-09-overview.md](completed/future-modules-2026-09-overview.md)
 §10 "Module 2 — Stakeholders & Personas".
 
 **Status:** Phases 0, 1.1, 1.2, 2, 3 and 3b complete (all 2026-10-05; Phase 0 had user
@@ -951,7 +951,7 @@ to be planned in *before* Phases 4–6 so the module can ship with what Phases
   and removes the matching "coming later" entries.
 
 **Goal:** add Stakeholders & Personas' user-facing surface to
-`docs/website/` (the published docs site, `docs/plans/docs-website-plan.md`),
+`docs/website/` (the published docs site, `docs/plans/completed/docs-website-plan.md`),
 following the site's existing structure, tone, and Mermaid-diagram
 conventions (per this repo's Documentation Requirements: prefer diagrams,
 validate they render before finalising).
@@ -980,7 +980,7 @@ Decision Management's own Phase 6.
 - Document persona weight and its project override, the reserved Design /
   System Element relationship, and the personal-data erasure behaviour.
 - **Screenshots.** — **Decided by: User** (2026-09-22). Follow
-  `docs/plans/docs-website-plan.md`'s "Screenshots" standard (1440×900,
+  `docs/plans/completed/docs-website-plan.md`'s "Screenshots" standard (1440×900,
   captured against the seeded demo dataset, stored under
   `docs/website/static/img/screenshots/`, real alt text plus a one-line
   caption, no surrounding "what this shows/why it matters" prose). Screens —

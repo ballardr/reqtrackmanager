@@ -7,7 +7,7 @@ import { API_BASE_URL, createRisk, riskLevels, setUpOrg, statusBadge } from "./h
 installCleanupHook();
 
 /**
- * Job to be done: docs/plans/module-03-risk-management-plan.md Phase 5's exit
+ * Job to be done: exit
  * criteria — Playwright e2e coverage of the Risk Management UI
  * (`frontend/src/modules/risk_management/`) against a real backend: record and
  * rate a risk and move it through its lifecycle with a version history; tell a
@@ -69,7 +69,7 @@ test.describe("Risk Management", () => {
     await edit.getByLabel("Change note").fill("Added cause");
     await edit.getByRole("button", { name: "Save" }).click();
     await expect(page.getByText("Single-source supplier with no contractual date.")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Version history" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Versions" })).toBeVisible();
     await expect(page.getByRole("cell", { name: "Added cause" })).toBeVisible();
   });
 

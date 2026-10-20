@@ -1,5 +1,4 @@
-"""Tests for Fine-Grained Access Control (core) plan Phase 5
-(`docs/plans/core-fine-grained-access-control-plan.md`): the generic
+"""Tests for Fine-Grained Access Control entity scopes: the generic
 module-owned entity-scope registry (`EntityScopeDefinition`,
 `get_all_registered_entity_scopes`), `CustomRoleDefinition.scope`'s
 widened validation, `UserCustomRoleGrant`/`GroupCustomRoleGrant.
@@ -12,13 +11,12 @@ isolated from any real module), a module-role entity-scoped grant's
 `permissions` composing only when `entity_scope`/`entity_id` are given (and
 never leaking into a plain org/project check — the same exclusion
 `_module_role_pairs_for_scope` already had), the identical shape for a
-custom-role entity-scoped grant (including the leak this phase's own
-implementation had to guard against explicitly, since `scope_entity_id` and
+custom-role entity-scoped grant (including a leak the implementation has to guard against explicitly, since `scope_entity_id` and
 `project_id` are both `NULL` for different reasons), tenant isolation across
 the grant endpoints, and `require_permission`'s own `entity_scope` handling.
 Compliance's real `"standard"` scope (registered in `app.modules.compliance.
 module`) is used for the HTTP-level API tests, since it's the first real
-consumer this phase's own scope registers; the lower-level resolution-engine
+consumer of this scope; the lower-level resolution-engine
 tests use an isolated fixture module instead, mirroring `test_effective_
 permissions.py`'s own `fake_module` fixture one tier up.
 """
@@ -53,7 +51,7 @@ FAKE_MODULE_KEY = "fake_entity_scope_test_module"
 FAKE_ROLE_KEY = "fake_entity_scope_test_role"
 # `CustomRoleDefinition.scope`/`ModuleRoleDefinitionRow.scope` are both
 # `String(20)` (a pre-existing, system-wide constraint on scope strings,
-# unrelated to this phase) — kept within that bound like every real
+# unrelated to entity scopes) — kept within that bound like every real
 # registered scope (e.g. compliance's `"standard"`).
 FAKE_SCOPE_KEY = "fake_test_scope"
 
@@ -167,8 +165,8 @@ def test_module_role_entity_scope_permission_composes_only_with_entity_scope_giv
         )
         assert permission in held_entity
 
-        # Omitting entity_scope/entity_id — every pre-Phase-5 call site's
-        # shape — must not see this grant at all (Design Principle 1).
+        # Omitting entity_scope/entity_id — every pre-existing call site's
+        # shape — must not see this grant at all (additive-only).
         held_plain_org = get_effective_permissions(db, uuid_lib.UUID(grantee_id), organization_id=uuid_lib.UUID(org["id"]))
         assert permission not in held_plain_org
 
@@ -214,7 +212,7 @@ def test_custom_role_entity_scope_grant_composes_only_with_entity_scope_given(cl
         )
         assert permission in held_entity
 
-        # This is the regression this phase's own implementation had to
+        # This is the regression the implementation has to
         # guard against explicitly: `scope_entity_id` and `project_id` are
         # both NULL on this row for different reasons, so a plain org-scope
         # resolution must not misidentify it as an org-scoped grant.
@@ -381,8 +379,8 @@ def test_require_permission_unregistered_entity_scope_is_a_construction_error(cl
 
 def test_require_permission_server_admin_bypasses_entity_scope_check(client, admin_token, fake_entity_scope_module):
     """The entity must actually resolve to a real organisation even for a
-    server admin (Phase 8 fix moved scope resolution — including the
-    entity-id lookup — ahead of the `is_server_admin` bypass, matching
+    server admin (scope resolution — including the
+    entity-id lookup — runs ahead of the `is_server_admin` bypass, matching
     `require_module_role`'s own entity branch, which already 404s on an
     unresolvable entity before any admin-override check); the bypass itself
     is unaffected once the entity resolves."""
@@ -404,7 +402,7 @@ def test_require_permission_server_admin_bypasses_entity_scope_check(client, adm
 
 # --- HTTP API: `GET /orgs/{id}/entity-scopes` + custom-role scope/grant ---
 # validation, using compliance's real `"standard"` scope as the first real
-# consumer this phase's own registry has.
+# consumer the registry has.
 
 
 def test_list_org_entity_scopes_includes_standard(client, admin_token):

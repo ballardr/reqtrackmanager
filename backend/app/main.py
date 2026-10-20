@@ -46,12 +46,16 @@ from app.routers import (
     requirements,
     reviews,
     scim,
+    search,
     system,
+    tags,
     ws,
 )
 from app.services import pubsub
 from app.services.bootstrap import run_bootstrap
+from app.services.client_date import reset_client_date, set_client_date
 from app.services.disk_monitor import run_disk_monitor_loop
+from app.services.module_defaults import seed_fresh_install_defaults
 from app.services.notifications import run_digest_loop
 from app.services.process_coordination import run_leadership_loop, startup_lock
 from app.services.scheduler import start_scheduler, stop_scheduler
@@ -76,15 +80,18 @@ async def lifespan(_: FastAPI):
         run_migrations()
         db = SessionLocal()
         try:
+            # Before the bootstrap: a database with no server settings yet is a fresh install,
+            # and gets every module available (`seed_fresh_install_defaults`).
+            seed_fresh_install_defaults(db)
             run_bootstrap(db)
-            # Module system Phase 2: keeps `module_role_definitions` caught up
+            # Keeps `module_role_definitions` caught up
             # with whatever the live registry currently declares, the same
             # "self-heal at every process start" pattern `run_bootstrap` itself
             # follows. See `sync_module_role_definitions`'s own docstring for
             # why this never deletes a row for a module/role no longer
             # registered.
             sync_module_role_definitions(db)
-            # Module 1 Phase 10: seeds every org's missing scoring-axis levels
+            # Seeds every org's missing scoring-axis levels
             # from the registry, so a module installed after orgs exist still
             # gets its levels (see `sync_scoring_levels`).
             sync_scoring_levels(db)
@@ -120,9 +127,8 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="ReqTrackManager API",
     description="Formal engineering requirements management system API (Ossa v1).",
-    # Was hardcoded to a permanently-stale "1.0.0" (2026-08 UX audit
-    # roadmap, "Fix the hardcoded FastAPI(version=...) OpenAPI metadata
-    # constant") — now reads the same build-time version `app.version`
+    # Was hardcoded to a permanently-stale "1.0.0"
+    # — now reads the same build-time version `app.version`
     # already exposes live at `GET /api/v1/system/version`, so
     # `/openapi.json`/`/docs` metadata tracks real releases instead of
     # being frozen at the value set when the app was first scaffolded.
@@ -137,8 +143,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
     # X-Total-Count (U-P-06 pagination) and X-Total-Unfiltered-Count
-    # (2026-08 UX audit roadmap: persistent "showing X of Y" result count,
-    # `ResultCount`) are custom response headers, so they need to be
+    # are custom response headers, so they need to be
     # explicitly exposed — browsers hide non-safelisted response headers
     # from JS by default even with allow_headers="*" (that setting only
     # governs allowed *request* headers). Missing this for the new header
@@ -199,7 +204,7 @@ async def security_headers_middleware(request: Request, call_next):
     (docs/deployment.md) rather than shipped unverified here.
 
     `frame-src` is the exception, added for the modular feature system's
-    Tier B remote modules (compliance-module-plan.md Phase 3): unlike
+    Tier B remote modules: unlike
     `frame-ancestors` (who may frame *this app* — always `'none'`), `frame-
     src` governs what *this app* may embed in its own `<ModuleFrame>`
     iframe, so it is built from `Settings.module_frame_allowed_origins`
@@ -216,6 +221,20 @@ async def security_headers_middleware(request: Request, call_next):
     frame_src = " ".join(frame_src_origins) if frame_src_origins else "'none'"
     response.headers["Content-Security-Policy"] = f"frame-ancestors 'none'; frame-src {frame_src}"
     return response
+
+
+@app.middleware("http")
+async def client_date_middleware(request: Request, call_next):
+    """Records the caller's calendar day (`X-Client-Date`) for rules about whether a date has happened yet.
+
+    See `services.client_date`: the value is validated for plausibility and only affects derived,
+    display-level dates, so an absent or bad header just means the UTC day is used.
+    """
+    token = set_client_date(request.headers.get("x-client-date"))
+    try:
+        return await call_next(request)
+    finally:
+        reset_client_date(token)
 
 
 @app.middleware("http")
@@ -253,11 +272,14 @@ app.include_router(requirements.router)
 app.include_router(change_requests.router)
 app.include_router(reports.router)
 app.include_router(report_catalogue.router)
+app.include_router(search.router)
 app.include_router(files.router)
 app.include_router(custom_fields.router)
 app.include_router(action_types.router)
 app.include_router(actions.router)
 app.include_router(artefact_links.router)
+app.include_router(tags.router)
+app.include_router(tags.org_router)
 app.include_router(project_link_types.router)
 app.include_router(notifications.router)
 app.include_router(reviews.router)
@@ -270,7 +292,7 @@ if settings.websocket_enabled:
     # via WEBSOCKET_ENABLED=false rather than it always being mounted.
     app.include_router(ws.router)
 
-# --- Module system (compliance-module-plan.md Phase 1) ---------------------
+# --- Module system ---------------------
 # Mounts every registered module's own router(s), if it has any. Building the
 # registry here (via `get_module_registry`, which internally caches) is
 # also what produces this run's "every loaded module logged at startup"
@@ -278,8 +300,7 @@ if settings.websocket_enabled:
 # separate lifespan-hook logging is needed for that. A module contributes up
 # to three routers — `get_router()` (org-scoped, `/api/v1/orgs/
 # {organization_id}/modules/<key>/...`), an optional `get_project_router()`
-# (project-scoped, `/api/v1/projects/{project_id}/modules/<key>/...`, since
-# Phase 7), and, since Phase 18, an optional `get_global_router()` (no
+# (project-scoped, `/api/v1/projects/{project_id}/modules/<key>/...`), and an optional `get_global_router()` (no
 # org/project id in its path root at all — `/api/v1/<key>/...`, for an
 # endpoint like compliance's `nav-visibility` that aggregates across every
 # org the caller belongs to, or one that resolves its own org from some

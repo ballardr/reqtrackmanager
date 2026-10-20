@@ -7,8 +7,7 @@
  * `modules/compliance/EvidencePanel.tsx`'s `EvidenceFormModal` and
  * `StandardFormModal.tsx` both already use.
  *
- * Create mode only: a Decision Template picker (Phase 0 addendum items
- * 1/2/6/7) pre-fills the seven free-text fields with that template's
+ * Create mode only: a Decision Template picker pre-fills the seven free-text fields with that template's
  * guidance prompts, editable immediately afterward — a creation-time
  * convenience only (`Decision` holds no FK back to the template used), so
  * edit mode has no template picker at all, and re-picking a template simply
@@ -20,10 +19,17 @@ import { useState } from "react";
 
 import type { OrgUser, PrincipalRef } from "../../api/types";
 import { principalRef, savedPrincipalDisplay, userPrincipal } from "../../api/types";
+import type { CollectedLink } from "../../api/artefactLinks";
+import { FormActions } from "../../components/FormActions";
+import { DateField, TextAreaField, TextField } from "../../components/FormFields";
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { Modal } from "../../components/Modal";
+import { QuickLinkField } from "../../components/QuickLinkField";
+import { TagField } from "../../components/TagField";
 import { PrincipalFormField } from "../../components/PrincipalFormField";
 import type { Decision, DecisionFieldValues, DecisionTemplate, DecisionTypeDefinition } from "./types";
+import { DECISIONS_HELP } from "./help";
 
 type PromptKey =
   | "context_prompt" | "options_considered_prompt" | "chosen_option_prompt" | "rationale_prompt"
@@ -64,9 +70,11 @@ export function DecisionFormModal({
   currentUserId?: string;
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: DecisionFieldValues) => void;
+  onSave: (values: DecisionFieldValues, quickLinks: CollectedLink[], tags: string[]) => void;
 }) {
   const [templateId, setTemplateId] = useState("");
+  const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
   const [title, setTitle] = useState(initial?.title ?? "");
   const [statement, setStatement] = useState(initial?.decision_statement ?? "");
   const [decisionTypeId, setDecisionTypeId] = useState(initial?.decision_type_id ?? decisionTypes[0]?.id ?? "");
@@ -98,7 +106,7 @@ export function DecisionFormModal({
       decision_maker: decisionMaker,
       owner,
       ...(Object.fromEntries(PROMPT_TO_FIELD.map((f) => [f.fieldKey, fields[f.fieldKey] || null])) as Record<string, string | null>),
-    } as DecisionFieldValues);
+    } as DecisionFieldValues, quickLinks, tags);
   }
 
   const valid = title.trim() !== "" && statement.trim() !== "" && decisionTypeId !== "" && owner !== null;
@@ -106,72 +114,74 @@ export function DecisionFormModal({
   return (
     <Modal title={initial ? `Edit ${initial.unique_code}` : "New decision"} onClose={onCancel} size="lg">
       <div className="stack">
-        {!initial && templates && templates.length > 0 && (
-          <LabeledSelect
-            label="Start from a template (optional)"
-            value={templateId}
-            onChange={applyTemplate}
-            options={templates.map((t) => ({ value: t.id, label: t.name }))}
-            placeholder="No template"
+        <FormGrid minColumn="18rem">
+          {!initial && templates && templates.length > 0 && (
+            <FormGridFull>
+              <LabeledSelect help={DECISIONS_HELP.decisionTemplate}
+                label="Start from a template"
+                value={templateId}
+                onChange={applyTemplate}
+                options={templates.map((t) => ({ value: t.id, label: t.name }))}
+                placeholder="No template"
+              />
+            </FormGridFull>
+          )}
+          <FormGridFull>
+            <TextField helpNotNeeded required label="Decision title" value={title} onChange={setTitle} />
+          </FormGridFull>
+          <FormGridFull>
+            <TextAreaField helpNotNeeded required label="Decision statement" value={statement} onChange={setStatement} />
+          </FormGridFull>
+          <LabeledSelect helpNotNeeded required
+            label="Decision type"
+            value={decisionTypeId}
+            onChange={setDecisionTypeId}
+            options={decisionTypes.map((t) => ({ value: t.id, label: t.name }))}
           />
-        )}
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Decision title</span>
-          <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Decision title" />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Decision statement</span>
-          <textarea className="input" rows={2} value={statement} onChange={(e) => setStatement(e.target.value)} aria-label="Decision statement" />
-        </label>
-        <LabeledSelect
-          label="Decision type"
-          value={decisionTypeId}
-          onChange={setDecisionTypeId}
-          options={decisionTypes.map((t) => ({ value: t.id, label: t.name }))}
-        />
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Decision date (optional)</span>
-          <input className="input" type="date" value={decisionDate} onChange={(e) => setDecisionDate(e.target.value)} />
-        </label>
-        <PrincipalFormField
-          label="Decision maker (optional)"
-          orgUsers={orgUsers}
-          organizationId={organizationId}
-          projectId={projectId}
-          value={decisionMaker}
-          display={savedPrincipalDisplay(decisionMaker, initial?.decision_maker)}
-          onChange={setDecisionMaker}
-          ariaLabel="Decision maker"
-          placeholder="Search users and groups…"
-        />
-        <PrincipalFormField
-          label="Owner"
-          orgUsers={orgUsers}
-          organizationId={organizationId}
-          projectId={projectId}
-          value={owner}
-          display={savedPrincipalDisplay(owner, initial?.owner)}
-          onChange={setOwner}
-          ariaLabel="Owner"
-          placeholder="Select an owner…"
-          clearLabel="Clear"
-        />
-        {PROMPT_TO_FIELD.map((f) => (
-          <label key={f.fieldKey} className="stack" style={{ gap: "0.25rem" }}>
-            <span>{f.label}</span>
-            <textarea
-              className="input"
-              rows={2}
-              value={fields[f.fieldKey]}
-              onChange={(e) => setFields((prev) => ({ ...prev, [f.fieldKey]: e.target.value }))}
-            />
-          </label>
-        ))}
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" disabled={!valid} onClick={save}>Save</button>
-        </div>
+          <DateField helpNotNeeded label="Decision date" value={decisionDate} onChange={setDecisionDate} />
+          <PrincipalFormField helpNotNeeded
+            label="Decision maker"
+            orgUsers={orgUsers}
+            organizationId={organizationId}
+            projectId={projectId}
+            value={decisionMaker}
+            display={savedPrincipalDisplay(decisionMaker, initial?.decision_maker)}
+            onChange={setDecisionMaker}
+            ariaLabel="Decision maker"
+            placeholder="Search users and groups…"
+          />
+          <PrincipalFormField helpNotNeeded required
+            label="Owner"
+            orgUsers={orgUsers}
+            organizationId={organizationId}
+            projectId={projectId}
+            value={owner}
+            display={savedPrincipalDisplay(owner, initial?.owner)}
+            onChange={setOwner}
+            ariaLabel="Owner"
+            placeholder="Select an owner…"
+            clearLabel="Clear"
+          />
+          {PROMPT_TO_FIELD.map((f) => (
+            <FormGridFull key={f.fieldKey}>
+              <TextAreaField helpNotNeeded
+                label={f.label} value={fields[f.fieldKey]}
+                onChange={(value) => setFields((prev) => ({ ...prev, [f.fieldKey]: value }))}
+              />
+            </FormGridFull>
+          ))}
+          {!initial && (
+            <FormGridFull>
+              <div className="stack">
+                <QuickLinkField
+                projectId={projectId} artefactType="decision" preferredType="requirement" value={quickLinks} onChange={setQuickLinks}
+              />
+                <TagField projectId={projectId} artefactType="decision" value={tags} onChange={setTags} />
+              </div>
+            </FormGridFull>
+          )}
+        </FormGrid>
+        <FormActions error={error} onCancel={onCancel} onSave={save} saveDisabled={!valid} />
       </div>
     </Modal>
   );

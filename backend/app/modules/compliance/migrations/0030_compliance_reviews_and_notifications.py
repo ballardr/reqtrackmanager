@@ -1,12 +1,11 @@
-"""Compliance scheduled reviews + notification reminder bookkeeping (compliance module Phase 10)
+"""Compliance scheduled reviews + notification reminder bookkeeping
 
 Revision ID: 0030
 Revises: 0029
 Create Date: 2026-09-06
 
 Adds the two tables backing the Compliance Module's scheduled reviews
-(docs/Compliance_Module_Requirements.md §17, §18, §28; docs/compliance-
-module-plan.md Phase 10):
+(§17, §18, §28):
 
 - `compliance_reviews` (`app.modules.compliance.models.ComplianceReview`) —
   either a standard-level or a project-level scheduled review; exactly one
@@ -16,7 +15,7 @@ module-plan.md Phase 10):
   associated with the review"), mirroring `compliance_evidence_requirement_
   links`'s own shape.
 
-Also adds the reminder-already-sent bookkeeping columns Phase 10's
+Also adds the reminder-already-sent bookkeeping columns the
 notification sweeps need, on three existing tables (`compliance_evidence`,
 `compliance_required_action_assessments`, `project_compliances`) — see each
 column's own comment in `models.py` for why each pair exists.

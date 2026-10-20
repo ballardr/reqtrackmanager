@@ -6,8 +6,7 @@ import { buildUser, withAuth, withRouter } from "../../testing/storybook-helpers
 import { ComplianceGlobalNavLink } from "./ComplianceGlobalNavLink";
 
 /**
- * The "Compliance Standards" top-level nav-rail link (docs/compliance-
- * module-plan.md Phase 18) — registered via `module.ts`'s `globalNavItems`,
+ * The "Compliance Standards" top-level nav-rail link — registered via `module.ts`'s `globalNavItems`,
  * never rendered by `Layout.tsx` directly. Owns its own visibility via
  * `useComplianceNavVisibility()` (`GET /api/v1/compliance/nav-visibility`):
  * niche, unlike Projects, so it renders nothing at all until that call
@@ -16,7 +15,7 @@ import { ComplianceGlobalNavLink } from "./ComplianceGlobalNavLink";
  * No router decorator at the `meta` level (unlike most story files) —
  * `Layout.stories.tsx`'s own precedent for exactly this reason: two stories
  * below need genuinely different initial paths to exercise the active/
- * inactive nav-rail state (Phase 25a), so each story supplies its own
+ * inactive nav-rail state, so each story supplies its own
  * `withRouter` rather than one shared default a story would have to
  * override (nesting two `MemoryRouter`s is a React Router error, not a
  * silent no-op).
@@ -61,7 +60,7 @@ export const HiddenWhenNotVisible: Story = {
   },
 };
 
-/** Phase 25a — this link used to stay highlighted on every `/standards/...`
+/** This link used to stay highlighted on every `/standards/...`
  * sub-route (missing `exact`, `Layout.tsx`'s active-state check falls back
  * to `startsWith`), double-highlighting alongside the separate "Standard"
  * nav-rail section that's supposed to take over navigation once inside one

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { chooseRecordAction, loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Archiving a requirement used to fire immediately with no confirmation at
@@ -27,7 +27,7 @@ test.describe("requirement archive: confirmation dialog", () => {
     await openRequirementByName(page, name);
 
     await test.step("cancelling the dialog leaves the requirement in place", async () => {
-      await page.getByRole("button", { name: "Archive", exact: true }).click();
+      await chooseRecordAction(page, "Requirement", "Archive");
       const dialog = page.getByRole("dialog", { name: "Archive this requirement?" });
       await expect(dialog).toBeVisible();
       await dialog.getByRole("button", { name: "Cancel" }).click();
@@ -36,7 +36,7 @@ test.describe("requirement archive: confirmation dialog", () => {
     });
 
     await test.step("confirming archives it and returns to the requirements list", async () => {
-      await page.getByRole("button", { name: "Archive", exact: true }).click();
+      await chooseRecordAction(page, "Requirement", "Archive");
       const dialog = page.getByRole("dialog", { name: "Archive this requirement?" });
       await expect(dialog.getByText("It moves out of the active list, but its history and links are kept.")).toBeVisible();
       await dialog.getByRole("button", { name: "Archive", exact: true }).click();

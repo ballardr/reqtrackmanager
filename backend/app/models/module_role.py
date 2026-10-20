@@ -2,19 +2,18 @@
 Module: models.module_role
 
 Module-contributed RBAC tables for the modular feature system
-(compliance-module-plan.md Phase 2): a database mirror of the registry's
+: a database mirror of the registry's
 declared module roles (`ModuleRoleDefinitionRow`), and the grant table
 recording which user holds which module-contributed role, at which scope
-(`UserModuleRole`). Sibling to `app.models.server_role` (Phase 0's
-server-tier grant table) and `app.models.module` (Phase 1's two-tier
-gating tables) — same shape family, one phase later in the same plan.
+(`UserModuleRole`). Sibling to `app.models.server_role` (the
+server-tier grant table) and `app.models.module` (the two-tier
+gating tables) — same shape family.
 
 `UserModuleRole` is direct-grant-only: no project-hierarchy inheritance
 concept, unlike `UserProjectRole` (which resolves through
 `parent_project_id` via `app.services.rbac`'s effective-role resolution).
-Originally this also excluded group-membership grants entirely (module
-system Phase 2's own V1 scope boundary) — **reversed by Phase 30, Decided
-by: User**: the human-review round that shipped Phase 22's Standards
+Group-membership grants were excluded originally — **reversed, Decided
+by: User**: the human-review round that shipped the Standards
 Manager/Contributor picker found the exclusion undesirable, not merely
 unbuilt, and asked for the real mechanism. `GroupModuleRole` (below) is
 that mechanism, mirroring `app.models.project.OrgGroupProjectRole`'s own
@@ -94,8 +93,7 @@ class ModuleRoleDefinitionRow(UUIDPKMixin, TimestampMixin, Base):
 
 
 class UserModuleRole(UUIDPKMixin, TimestampMixin, Base):
-    """Grants a user a module-contributed role, direct-grant-only (module
-    system Phase 2 — see this module's own docstring for why there is
+    """Grants a user a module-contributed role, direct-grant-only (see this module's own docstring for why there is
     deliberately no group/hierarchy inheritance here, unlike
     `UserOrgRole`/`UserProjectRole`).
 
@@ -108,7 +106,7 @@ class UserModuleRole(UUIDPKMixin, TimestampMixin, Base):
     project-scoped grant (`ModuleRoleDefinition.scope == "project"`) and
     left `NULL` for an org-scoped one.
 
-    `scope_entity_id` (module system Phase 22) is the generalised sibling
+    `scope_entity_id` is the generalised sibling
     of `project_id` for a module-owned entity scope (any `ModuleRoleDefinition.
     scope` value other than `"org"`/`"project"` — e.g. compliance's own
     `"standard"` scope, one role per `ComplianceStandard` row): set to that
@@ -178,7 +176,7 @@ class UserModuleRole(UUIDPKMixin, TimestampMixin, Base):
 class GroupModuleRole(UUIDPKMixin, TimestampMixin, Base):
     """Grants a module-contributed role to every (transitive) member of an
     organisation group — the group-level counterpart to `UserModuleRole`,
-    added by module system Phase 30 to reverse that table's own originally-
+    added to reverse that table's originally-
     documented "direct grants only" boundary (see this module's own
     docstring for why).
 

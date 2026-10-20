@@ -2,7 +2,7 @@
  * Module: modules/context_strategy/OrgStrategiesPanel
  *
  * The org-scoped equivalent of `ProjectStrategiesPage.tsx` — an
- * organisation's own org-scoped Strategy records (Phase 0 Q2's org/project
+ * organisation's own org-scoped Strategy records (the org/project
  * scope discriminator), rendered as an `OrgOverviewPage.tsx` `ResourceMenu`
  * group (`module.ts`'s `orgOverviewSections`).
  *
@@ -26,21 +26,24 @@
  * Org Management's administration-focused framing (roles, modules, org
  * settings) — a Strategy Owner reviewing/approving Strategy is checking on
  * organisational state, not configuring the org. Revisit if a later
- * sub-phase's own artefact type (e.g. Guiding Principle, also org/project
+ * artefact type (e.g. Guiding Principle, also org/project
  * scoped) suggests a different, more consistent placement across all of
  * Context & Strategy's org-scoped surfaces.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { orgStrategyApi } from "./api";
 import { StrategyFormModal } from "./StrategyFormModal";
 import { STRATEGY_PRIORITY_LABEL, STRATEGY_STATUS_LABEL, STRATEGY_STATUS_TONE } from "./types";
 import type { Strategy, StrategyFieldValues, StrategyPriority, StrategyStatus } from "./types";
+import { Badge } from "../../components/Badge";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
 export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
   const navigate = useNavigate();
@@ -65,10 +68,7 @@ export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
     }
   }
 
-  useEffect(() => {
-    void reloadStrategies();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, includeArchived]);
+  useLoadOnChange(reloadStrategies, [orgId, includeArchived]);
 
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (strategies === null) return <Spinner />;
@@ -76,16 +76,17 @@ export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
   const filtered = strategies.filter((s) => {
     if (statusFilter && s.status !== statusFilter) return false;
     if (priorityFilter && s.priority !== priorityFilter) return false;
-    if (search && !s.title.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !`{s.unique_code} {s.title}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
   const columns: DirectoryColumn<Strategy>[] = [
     { key: "title", label: "Title", render: (s) => s.title },
+    { key: "code", label: "Code", render: (s) => <span className="text-muted"><ScopedRecordCode record={s} /></span> },
     { key: "priority", label: "Priority", render: (s) => STRATEGY_PRIORITY_LABEL[s.priority] },
     {
       key: "status", label: "Status",
-      render: (s) => <span className={`badge badge--${STRATEGY_STATUS_TONE[s.status]}`}>{STRATEGY_STATUS_LABEL[s.status]}</span>,
+      render: (s) => <Badge tone={STRATEGY_STATUS_TONE[s.status]}>{STRATEGY_STATUS_LABEL[s.status]}</Badge>,
     },
     { key: "version", label: "Version", render: (s) => `v${s.version_number}` },
   ];

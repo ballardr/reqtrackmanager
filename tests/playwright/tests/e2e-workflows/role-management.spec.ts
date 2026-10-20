@@ -3,11 +3,9 @@ import { expect, test } from "@playwright/test";
 import { ensureExpanded, loginAs, ORG_NAMES, PERSONAS, selectOrgAdminGroup } from "./helpers";
 
 /**
- * Job to be done: Fine-Grained Access Control (core, `docs/plans/
- * core-fine-grained-access-control-plan.md` Phase 3) — the "Role
+ * Job to be done: Fine-Grained Access Control (core) — the "Role
  * Management" org-settings page. Covers the create -> grant ->
- * visible-in-UI -> revoke flow this phase's own testing requirement names
- * explicitly; full backend enforcement of the resulting permission is
+ * visible-in-UI -> revoke flow; full backend enforcement of the resulting permission is
  * already covered by `backend/tests/test_custom_roles_api.py` and
  * `test_effective_permissions.py`, so this spec focuses on the UI wiring:
  * the permission-atom picker populates from the real `GET .../permissions`
@@ -62,8 +60,7 @@ test.describe("Fine-Grained Access Control: Role Management", () => {
 
     // --- Grant to a user, via the Users table's existing Roles dropdown -
     // (the same generic-rendering pattern already used for module roles,
-    // not a parallel, separately-built assignment UI — Phase 3's own
-    // scope requirement).
+    // not a parallel, separately-built assignment UI).
     await selectOrgAdminGroup(page, "Users");
     await ensureExpanded(page, "Organisation users");
 
@@ -113,15 +110,15 @@ test.describe("Fine-Grained Access Control: Role Management", () => {
   test("org admin creates a standard-scoped (entity-scoped) custom role and grants/revokes it via the entity picker", async ({
     page,
   }) => {
-    // Fine-Grained Access Control (core) Phase 6 — the first real
-    // workflow to exercise Phase 5's generic entity-scope picker
+    // Fine-Grained Access Control (core): the first real
+    // workflow to exercise the generic entity-scope picker
     // end-to-end: Compliance's own "FGAC Demo Standard" (seeded by
     // `backend/scripts/seed_e2e_dataset.py`) is this suite's first real
     // registered entity-scope entity. Unlike the plain org-scoped flow
     // above (a checkbox in the Users table whose checked state can be
     // reasserted after reload), this entity-scoped assignment card
     // deliberately has no "who currently holds this" listing to read back
-    // (this plan's own MCP/docs-site addenda treat a grant roster as a
+    // (a grant roster is a
     // privilege-reconnaissance disclosure not safe to expose) — so this
     // test's own proof of wiring is the grant/revoke success toasts and
     // the "select a Standard first" placeholder gating the picker until an
@@ -139,7 +136,7 @@ test.describe("Fine-Grained Access Control: Role Management", () => {
     const createDialog = page.getByRole("dialog", { name: "New custom role" });
     await createDialog.getByLabel("Name").fill(roleName);
     await createDialog.getByLabel("Description").fill("Created by role-management.spec.ts (entity-scoped)");
-    // Populated from the real `GET /orgs/{id}/entity-scopes` (Phase 5) —
+    // Populated from the real `GET /orgs/{id}/entity-scopes` —
     // never hardcoded by the frontend — so selecting "Standard" here at
     // all proves that endpoint returned Compliance's own registration.
     await createDialog.getByLabel("Scope").selectOption({ label: "Standard" });
@@ -162,8 +159,8 @@ test.describe("Fine-Grained Access Control: Role Management", () => {
 
     const grantBox = roleCard.getByRole("combobox", { name: `Grant ${roleName} — search a user or group` });
     // Before an entity is chosen, the grant/revoke pickers are disabled
-    // with a "select a Standard first" placeholder (Phase 3's project-
-    // picker fallback, generalised to any entity scope by Phase 5).
+    // with a "select a Standard first" placeholder (the project-
+    // picker fallback, generalised to any entity scope).
     await expect(grantBox).toHaveAttribute("placeholder", "Select a Standard first");
 
     // `exact: true` — a loose match would also catch the grant/revoke
@@ -189,7 +186,7 @@ test.describe("Fine-Grained Access Control: Role Management", () => {
 
   test("a caller without ORG_ADMIN cannot see the role-definition half but the group is still reachable", async ({ page }) => {
     // memberAlphaBeta holds only `member` in Alpha (no ORG_ADMIN) — proves
-    // Phase 0 Q8's access-split decision: `GET .../advanced-settings`
+    // The access-split decision: `GET .../advanced-settings`
     // 403s for them (the same signal every other ORG_ADMIN-only section on
     // this page already gates on), so "New custom role" and the
     // definitions table are absent, while the group itself still loads

@@ -1,8 +1,7 @@
 /**
  * Module: modules/context_strategy/StrategyFormModal
  *
- * Create/edit dialog for a Strategy's content fields (docs/plans/module-01-
- * context-and-strategy-plan.md Phase 7.1) — mirrors `modules/decisions/
+ * Create/edit dialog for a Strategy's content fields — mirrors `modules/decisions/
  * DecisionFormModal.tsx`'s "shared by create and edit, distinguished by
  * whether `initial` is passed" convention, and `docs/ux-style-guide.md`'s
  * "create-as-a-layer" principle: creation happens in a `Modal` layered over
@@ -14,7 +13,13 @@
  */
 import { useState } from "react";
 
+import type { CollectedLink } from "../../api/artefactLinks";
 import { Modal } from "../../components/Modal";
+import { QuickLinkField } from "../../components/QuickLinkField";
+import { TagField } from "../../components/TagField";
+import { FormActions } from "../../components/FormActions";
+import { TextAreaField, TextField } from "../../components/FormFields";
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { STRATEGY_PRIORITY_LABEL, STRATEGY_TIME_HORIZON_LABEL } from "./types";
 import type { Strategy, StrategyFieldValues, StrategyPriority, StrategyTimeHorizon } from "./types";
@@ -32,6 +37,7 @@ const TEXT_FIELDS: { key: keyof StrategyFieldValues; label: string; rows: number
 export function StrategyFormModal({
   initial,
   scopeLabel,
+  projectId,
   error,
   onCancel,
   onSave,
@@ -41,9 +47,11 @@ export function StrategyFormModal({
    * so it's clear which scope a new Strategy is being created in, since
    * this same modal serves both the org-scoped and project-scoped pages. */
   scopeLabel: string;
+  /** The project a new record is created in; with it a create form offers the quick-link field. Omit for the organisation scope. */
+  projectId?: string;
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: StrategyFieldValues) => void;
+  onSave: (values: StrategyFieldValues, quickLinks: CollectedLink[], tags: string[]) => void;
 }) {
   const [title, setTitle] = useState(initial?.title ?? "");
   const [priority, setPriority] = useState<StrategyPriority>(initial?.priority ?? "medium");
@@ -53,6 +61,9 @@ export function StrategyFormModal({
     Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, (initial?.[f.key as keyof Strategy] as string | undefined) ?? ""]))
   );
 
+  const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
+
   function save() {
     onSave({
       title,
@@ -60,7 +71,7 @@ export function StrategyFormModal({
       time_horizon: timeHorizon,
       change_note: changeNote,
       ...(Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, fields[f.key] ?? ""])) as Record<string, string>),
-    } as StrategyFieldValues);
+    } as StrategyFieldValues, quickLinks, tags);
   }
 
   const valid = title.trim() !== "" && (fields.objective ?? "").trim() !== "";
@@ -68,45 +79,45 @@ export function StrategyFormModal({
   return (
     <Modal title={initial ? `Edit ${initial.title}` : `New Strategy (${scopeLabel})`} onClose={onCancel} size="lg">
       <div className="stack">
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Title</span>
-          <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Strategy title" />
-        </label>
-        {TEXT_FIELDS.map((f) => (
-          <label key={f.key} className="stack" style={{ gap: "0.25rem" }}>
-            <span>{f.label}</span>
-            <textarea
-              className="input"
-              rows={f.rows}
-              value={fields[f.key] ?? ""}
-              onChange={(e) => setFields((prev) => ({ ...prev, [f.key]: e.target.value }))}
-              aria-label={f.label}
-            />
-          </label>
-        ))}
-        <LabeledSelect
-          label="Priority"
-          value={priority}
-          onChange={(v) => setPriority(v as StrategyPriority)}
-          options={Object.entries(STRATEGY_PRIORITY_LABEL).map(([value, label]) => ({ value, label }))}
-        />
-        <LabeledSelect
-          label="Time horizon"
-          value={timeHorizon}
-          onChange={(v) => setTimeHorizon(v as StrategyTimeHorizon)}
-          options={Object.entries(STRATEGY_TIME_HORIZON_LABEL).map(([value, label]) => ({ value, label }))}
-        />
-        {initial && (
-          <label className="stack" style={{ gap: "0.25rem" }}>
-            <span>Change note (optional)</span>
-            <input className="input" value={changeNote} onChange={(e) => setChangeNote(e.target.value)} aria-label="Change note" />
-          </label>
-        )}
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-primary" disabled={!valid} onClick={save}>Save</button>
-        </div>
+        <FormGrid minColumn="18rem">
+          <FormGridFull>
+            <TextField helpNotNeeded required label="Title" ariaLabel="Strategy title" value={title} onChange={setTitle} />
+          </FormGridFull>
+          {TEXT_FIELDS.map((f) => (
+            <FormGridFull key={f.key}>
+              <TextAreaField helpNotNeeded required={f.key === "objective"}
+                label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
+                onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
+              />
+            </FormGridFull>
+          ))}
+          <LabeledSelect helpNotNeeded
+            label="Priority"
+            value={priority}
+            onChange={(v) => setPriority(v as StrategyPriority)}
+            options={Object.entries(STRATEGY_PRIORITY_LABEL).map(([value, label]) => ({ value, label }))}
+          />
+          <LabeledSelect helpNotNeeded
+            label="Time horizon"
+            value={timeHorizon}
+            onChange={(v) => setTimeHorizon(v as StrategyTimeHorizon)}
+            options={Object.entries(STRATEGY_TIME_HORIZON_LABEL).map(([value, label]) => ({ value, label }))}
+          />
+          {initial && (
+            <FormGridFull>
+              <TextField helpNotNeeded label="Change note" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />
+            </FormGridFull>
+          )}
+          {!initial && projectId && (
+            <FormGridFull>
+              <div className="stack">
+                <QuickLinkField projectId={projectId} artefactType="strategy" value={quickLinks} onChange={setQuickLinks} />
+                <TagField projectId={projectId} artefactType="strategy" value={tags} onChange={setTags} />
+              </div>
+            </FormGridFull>
+          )}
+        </FormGrid>
+        <FormActions error={error} onCancel={onCancel} onSave={save} saveDisabled={!valid} />
       </div>
     </Modal>
   );

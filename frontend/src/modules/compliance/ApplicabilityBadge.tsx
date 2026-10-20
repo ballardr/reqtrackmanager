@@ -16,30 +16,29 @@
  * hover.
  */
 import { COMPLIANCE_APPLICABILITY_LABEL, type ProjectComplianceRequirement } from "./types";
+import { Badge } from "../../components/Badge";
 
 export function ApplicabilityBadge({ pcr }: { pcr: ProjectComplianceRequirement }) {
   const label = COMPLIANCE_APPLICABILITY_LABEL[pcr.effective_applicability];
   if (pcr.applicability_source === "inherited") {
     return (
-      <span
-        className="badge"
+      <Badge
+        tone="muted"
         title="Inherited: no explicit decision on this requirement — a parent requirement is Not Applicable."
-        style={{ fontStyle: "italic", color: "var(--color-text-muted)" }}
-      >
+        style={{ fontStyle: "italic" }}>
         {label} (inherited)
-      </span>
+      </Badge>
     );
   }
   if (pcr.applicability_source === "overridden") {
     return (
-      <span
-        className="badge"
+      <Badge
+        tone="warning"
         title="Overridden: explicitly marked Applicable despite a parent requirement being Not Applicable."
-        style={{ borderColor: "var(--color-warning)", color: "var(--color-warning)", fontWeight: 600 }}
-      >
+        style={{ fontWeight: 600 }}>
         {label} (overridden)
-      </span>
+      </Badge>
     );
   }
-  return <span className="badge">{label}</span>;
+  return <Badge>{label}</Badge>;
 }

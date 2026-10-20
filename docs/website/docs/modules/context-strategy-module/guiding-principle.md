@@ -19,6 +19,7 @@ Exactly one of `organization_id`/`project_id` is set — `scope` is `organizatio
 
 | Field | Holds |
 | --- | --- |
+| `unique_code` | The record code, `GP-001`: numbered within the organisation for one the organisation owns and within the project for a project's own, and never reused. Where it is shown outside its own project, an organisation-owned Guiding Principle reads `ACME-GP-001` (the organisation's code in front). |
 | `name` | Short display name. |
 | `principle_statement` | The principle itself. |
 | `rationale` | Why this principle exists. |

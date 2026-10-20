@@ -7,8 +7,7 @@ import { API_BASE_URL, setUpOrg } from "../stakeholders/helpers";
 installCleanupHook();
 
 /**
- * Job to be done: users and groups on parity, Phase 5 (docs/plans/
- * users-and-groups-parity-plan.md) — a Compliance standard can be owned by an
+ * Job to be done: users and groups on parity — a Compliance standard can be owned by an
  * organisation group (never a project group), a required action can be assigned
  * to a project group, a scheduled review can be owned by one, and deleting an
  * organisation group that still owns a standard makes the admin choose a

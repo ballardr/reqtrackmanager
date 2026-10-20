@@ -16,6 +16,7 @@ from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, In
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.code_rules import ABSOLUTE_MAX_CODE_LENGTH, DEFAULT_POLICY, default_code_for_name
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
 from app.models.encrypted_type import EncryptedString
@@ -142,7 +143,7 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             semantics to `accent_color_hex`/`header_title` above, resolved
             by `services/email_branding.py::resolve_email_branding`.
         force_require_change_request_for_approved_links: Platform review
-            2026-09, Phase 8. When set, every project in this organisation
+            2026-09. When set, every project in this organisation
             behaves as though its own
             `Project.require_change_request_for_approved_links` were true
             — adding/removing a traceability link on an already-approved
@@ -160,8 +161,7 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             like most other org policy toggles) since a project manager who
             isn't an org admin still needs to know whether this force is
             active in order to render their own project's settings
-            correctly — see docs/decisions.md's "Platform review 2026-09,
-            Phase 8" entry.
+            correctly — see docs/decisions.md.
         project_customisation_locks: Keys (from `services.link_types.
             PROJECT_CUSTOMISATION_LOCK_KEYS`, initially just `"link_types"`)
             of the vocabularies projects may *not* customise in this
@@ -170,11 +170,32 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             keys rather than a boolean per vocabulary so a later vocabulary
             needs no new column; locking hides project-level rows, never
             deletes them.
+        code: Short upper-case code (letters and digits, no hyphen) that qualifies
+            organisation-scoped record codes (`ACME-PER-001`). Never equal to a
+            project code in this organisation. Defaults to the name's initials.
+        project_code_policy: How this organisation's project codes are formed:
+            `kind`, `min_length`, `max_length` and `assignment` (`code_rules.CodePolicy`).
+            A structured column so a later format option needs no migration. Applies
+            to codes created from now on; existing codes are never rewritten.
+        enforce_code_everywhere: When set, a record code is shown with its project
+            code even inside its own project, overriding each user's preference.
+        tag_mode: `"free"` or `"restricted"`: whether organisation-owned records may take a tag
+            nobody listed in the organisation's tag vocabulary.
     """
 
     __tablename__ = "organizations"
 
     name: Mapped[str] = mapped_column(String(255))
+    code: Mapped[str] = mapped_column(
+        String(ABSOLUTE_MAX_CODE_LENGTH), default=lambda ctx: default_code_for_name(ctx.get_current_parameters()["name"])
+    )
+    project_code_policy: Mapped[dict] = mapped_column(
+        JSONB, default=lambda: DEFAULT_POLICY.as_dict(), server_default=text(
+            "'{\"kind\": \"alphanumeric\", \"min_length\": 2, \"max_length\": 6, \"assignment\": \"auto\"}'::jsonb"
+        ),
+    )
+    enforce_code_everywhere: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    tag_mode: Mapped[str] = mapped_column(String(12), default="free", server_default=text("'free'"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     require_2fa: Mapped[bool] = mapped_column(Boolean, default=False)
     allow_self_signup: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -263,9 +284,9 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
     row (`services/branding.py::get_server_settings`) if no row exists yet.
 
     True singleton semantics are enforced at the DB level via
-    `singleton_guard` (added in migration 0020, follow-up UX batch Phase D
-    — found incidentally while verifying that phase, not something it
-    otherwise touches): earlier revisions relied purely on application-level
+    `singleton_guard` (added in migration 0020, 2026-08-31
+    — found incidentally during verification, not part of the
+    work then in progress): earlier revisions relied purely on application-level
     "read then insert if absent" logic with no DB constraint backing it,
     which is a classic TOCTOU race — two concurrent requests can both
     observe "no row yet" and both insert, leaving two real rows with
@@ -329,7 +350,7 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
             target of a `UNIQUE` constraint.
         default_module_entitlement_policy: Deployment-wide default module
             entitlement (`ModuleEntitlementPolicy`; see its docstring in
-            `models/enums.py`), used by Phase 1's entitlement resolution
+            `models/enums.py`), used by the entitlement resolution
             when an organisation has no explicit override row.
     """
 
@@ -354,11 +375,11 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
     email_footer_address: Mapped[str | None] = mapped_column(Text, nullable=True)
     org_label_singular: Mapped[str | None] = mapped_column(String(50), nullable=True)
     org_label_plural: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    # Module system (compliance-module-plan.md Phase 0/1): the deployment-
+    # Module system: the deployment-
     # wide default an organisation's module entitlement falls back to when
     # no `organization_module_entitlements` override row exists for it —
     # same "override falls back to platform default" shape as
-    # accent_color_hex/header_title above, just resolved by Phase 1's
+    # accent_color_hex/header_title above, just resolved by the
     # entitlement service rather than `services/branding.py`. OPEN suits a
     # self-hosted/open-source deployment with no licensing tiers; CLOSED
     # suits a future commercial/SaaS posture of the same codebase.
@@ -424,8 +445,9 @@ class PendingInvite(UUIDPKMixin, TimestampMixin, Base):
     Attributes:
         email: Lowercased invitee address; matched against a signing-up or
             SSO-logging-in user's own (lowercased/verified) email.
-        organization_id: The organisation being granted (always, as
-            `member` — see `services/invites.py`).
+        organization_id: The organisation being granted (as `member` — see
+            `services/invites.py`), or `None` for a server administrator's invite to an
+            account that joins no organisation yet (never set together with `project_id`).
         project_id: The project being granted, if any — `None` for an
             org-only invite.
         project_role: The role to grant in `project_id`; `None` iff
@@ -442,8 +464,8 @@ class PendingInvite(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "pending_invites"
 
     email: Mapped[str] = mapped_column(String(255), index=True)
-    organization_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE")
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True
     )
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
@@ -522,10 +544,7 @@ class OrgGroup(UUIDPKMixin, TimestampMixin, Base):
     # at SSO login, synced down (revoked) again once the claim no longer
     # matches — `services.oidc_provisioning.sync_org_roles_from_claims`.
     # Replaces the previous flat, ungrouped `Organization.sso_group_mappings`
-    # (2026-08 UX audit roadmap item 522: role-granting via an SSO group
-    # claim is a property of the group being synced into, not a disconnected
-    # list keyed by a string that may or may not correspond to a real
-    # `OrgGroup`). Meaningless without `idp_synced_group_name` also set —
+    #. Meaningless without `idp_synced_group_name` also set —
     # enforced at the router layer, not a DB constraint, matching this
     # model's existing convention of validating IdP-sync fields there.
     granted_org_role: Mapped[OrgRole | None] = mapped_column(str_enum(OrgRole), nullable=True)

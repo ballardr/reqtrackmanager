@@ -1,19 +1,17 @@
-"""Future State data model (Module 1 Phase 2)
+"""Future State data model
 
 Revision ID: 0051
 Revises: 0050
 Create Date: 2026-09-28
 
-Adds the five tables backing Context & Strategy's Phase 2 data model
-(docs/plans/module-01-context-and-strategy-plan.md Phase 2 — Future
-State), an exact structural mirror of migration 0048's `strategies`/
+Adds the five tables backing Context & Strategy's Future State data model,
+an exact structural mirror of migration 0048's `strategies`/
 `strategy_versions`/`strategy_comments`/`strategy_comment_files`/
-`strategy_files` set for the standalone Future State artefact (Phase 0
-Q1: separate from Strategy, not fields on it):
+`strategy_files` set for the standalone Future State artefact (separate from Strategy, not fields on it):
 
 - `future_states` (identity row: `scope` discriminator, exactly one of
   `organization_id`/`project_id` set, enforced by a CHECK constraint).
-- `future_state_versions` (temporal content snapshot — source overview §7's
+- `future_state_versions` (temporal content snapshot — §7's
   field set: `current_state`, `desired_state`, `target_date` (a plain
   DATE, not a timestamp), `outcomes`, `success_measures`, `constraints`,
   `assumptions`, plus a `title` for display, the same judgment call

@@ -1,7 +1,7 @@
 """
 Module: modules.context_strategy.schemas
 
-Pydantic request/response models for Context & Strategy's Phase 1 backend
+Pydantic request/response models for Context & Strategy's backend
 API — sits alongside `models.py` (the ORM shapes these expose over HTTP),
 `service.py` (versioning/lifecycle logic), and the two routers (`router.py`
 org-scoped, `project_router.py` project-scoped).
@@ -15,12 +15,12 @@ shape for this codebase's module schemas:
 - `StrategyCommentOut` mirrors `DecisionCommentOut`'s shape (no reaction
   fields — `StrategyComment` has no reaction mechanism, same reasoning).
 
-Phase 2 (Future State) adds the same shapes (`FutureStateCreate`/`Update`/
+Future State has the same shapes (`FutureStateCreate`/`Update`/
 `Out`/`VersionOut`/`TransitionRequest`/`CommentCreate`/`CommentUpdate`/
 `CommentOut`) for the standalone Future State artefact, following every
 one of the conventions above identically.
 
-Phase 3 (Pain Points) adds `PainPointTypeOut` (a plain `PainPointTypeDefinition`
+Pain Points have `PainPointTypeOut` (a plain `PainPointTypeDefinition`
 row, org-scoped type CRUD), `EffectivePainPointTypeOut` (one row of a
 project's merged effective type list — mirrors `service.
 EffectivePainPointType` field-for-field, a Pydantic sibling of that plain
@@ -31,18 +31,18 @@ returned by its own create/override endpoints), and `PainPointCreate`/
 `CommentOut` for the artefact itself — no `PainPointVersionOut` (no version
 table; see `models.py`'s own docstring).
 
-Phase 4 (Guiding Principles) adds `GuidingPrincipleCreate`/`Update`/`Out`/
+Guiding Principles have `GuidingPrincipleCreate`/`Update`/`Out`/
 `VersionOut`/`TransitionRequest`/`CommentCreate`/`CommentUpdate`/`CommentOut`
 for the standalone Guiding Principle artefact, following every one of the
 conventions above identically (`GuidingPrincipleOut` always built explicitly
 by the router, merging identity + current version; `is_locked` computed).
 
-Phase 5 (Open Questions) adds `OpenQuestionCreate`/`Update`/`Out`/
+Open Questions have `OpenQuestionCreate`/`Update`/`Out`/
 `TransitionRequest`/`CommentCreate`/`CommentUpdate`/`CommentOut` — back to
 Pain Point's shape (no `OpenQuestionVersionOut`; no version table, see
 `models.py`'s own docstring).
 
-Phase 6 (Cross-artefact relationships) adds one shared `ContextStrategyLinkOut`
+Cross-artefact relationships use one shared `ContextStrategyLinkOut`
 (returned by every source artefact's `GET .../relationships` and `POST
 .../relationships` endpoints alike — one shape covers all five source types,
 unlike Decision Management's single `DecisionLinkOut`, since this module has
@@ -95,6 +95,7 @@ from app.modules.context_strategy.service import (
 )
 from app.schemas.file import FileAssetOut
 from app.schemas.principal import PrincipalOut, PrincipalRef
+from app.schemas.project_scope import ProjectScopedRow
 
 # --- Strategies --------------------------------------------------------------
 
@@ -131,7 +132,7 @@ class StrategyUpdate(BaseModel):
     change_note: str = ""
 
 
-class StrategyOut(BaseModel):
+class StrategyOut(ProjectScopedRow):
     """Always built explicitly by the router (`_strategy_to_out`) — merges
     the `Strategy` identity row with its current `StrategyVersion`'s
     content; `is_locked` is computed, not a column (see this module's own
@@ -141,6 +142,7 @@ class StrategyOut(BaseModel):
     scope: StrategyScope
     organization_id: UUID | None
     project_id: UUID | None
+    unique_code: str
     creator_id: UUID
     is_archived: bool
     archived_at: datetime | None
@@ -227,7 +229,7 @@ class StrategyCommentOut(BaseModel):
     attachments: list[FileAssetOut] = []
 
 
-# --- Future State (Phase 2) -------------------------------------------------
+# --- Future State -------------------------------------------------
 
 
 class FutureStateCreate(BaseModel):
@@ -257,7 +259,7 @@ class FutureStateUpdate(BaseModel):
     change_note: str = ""
 
 
-class FutureStateOut(BaseModel):
+class FutureStateOut(ProjectScopedRow):
     """Always built explicitly by the router (`future_state_to_out`) — exact
     mirror of `StrategyOut`."""
 
@@ -265,6 +267,7 @@ class FutureStateOut(BaseModel):
     scope: FutureStateScope
     organization_id: UUID | None
     project_id: UUID | None
+    unique_code: str
     creator_id: UUID
     is_archived: bool
     archived_at: datetime | None
@@ -339,7 +342,7 @@ class FutureStateCommentOut(BaseModel):
     attachments: list[FileAssetOut] = []
 
 
-# --- Pain Points (Phase 3) ---------------------------------------------------
+# --- Pain Points ---------------------------------------------------
 
 
 class PainPointTypeCreate(BaseModel):
@@ -412,6 +415,16 @@ class ProjectPainPointTypeOut(BaseModel):
     is_enabled: bool
 
 
+class PainPointScoreEntryIn(BaseModel):
+    """One requested score row. `target_id` null = all personas; a level id
+    null = not scored on that axis."""
+
+    target_id: UUID | None = None
+    severity_level_id: UUID | None = None
+    frequency_level_id: UUID | None = None
+    confidence_level_id: UUID | None = None
+
+
 class PainPointCreate(BaseModel):
     """`pain_point_type_id` is an `EffectivePainPointTypeOut.id` (see that
     schema's own docstring for what it may resolve to)."""
@@ -425,6 +438,10 @@ class PainPointCreate(BaseModel):
     priority: PainPointPriority = PainPointPriority.MEDIUM
     date_identified: date | None = None
     is_intentional: bool = False
+    # Severity / frequency / confidence at creation, the same rows `PainPointScoresUpdate` takes.
+    # Scoring is a triage-tier action, so a non-empty list needs the manager role even though
+    # creating a Pain Point does not.
+    scores: list[PainPointScoreEntryIn] = Field(default_factory=list, max_length=500)
 
 
 class PainPointUpdate(BaseModel):
@@ -448,9 +465,10 @@ class PainPointUpdate(BaseModel):
     is_intentional: bool | None = None  # None = leave unchanged
 
 
-class PainPointOut(BaseModel):
+class PainPointOut(ProjectScopedRow):
     id: UUID
     project_id: UUID
+    unique_code: str
     pain_point_type_id: UUID
     pain_point_type_name: str
     creator_id: UUID
@@ -505,17 +523,7 @@ class PainPointCommentOut(BaseModel):
     attachments: list[FileAssetOut] = []
 
 
-# --- Pain Point scoring (Phase 11) -------------------------------------------
-
-
-class PainPointScoreEntryIn(BaseModel):
-    """One requested score row. `target_id` null = all personas; a level id
-    null = not scored on that axis."""
-
-    target_id: UUID | None = None
-    severity_level_id: UUID | None = None
-    frequency_level_id: UUID | None = None
-    confidence_level_id: UUID | None = None
+# --- Pain Point scoring -------------------------------------------
 
 
 class PainPointScoresUpdate(BaseModel):
@@ -573,6 +581,15 @@ class ScoringTargetOut(BaseModel):
     is_active: bool
 
 
+class PainPointScoringTargetsOut(BaseModel):
+    """`GET .../pain-point-scoring-targets`: what a create form needs to offer scoring before a
+    Pain Point exists. `can_score` is false for a member who may create but not score, so the form
+    leaves the section out rather than showing a control that would be refused."""
+
+    can_score: bool
+    available_targets: list[ScoringTargetOut]
+
+
 class PainPointScoringListOut(BaseModel):
     """`GET .../pain-point-scores`: every (non-archived) Pain Point's roll-up
     under one model and method."""
@@ -589,7 +606,7 @@ class PainPointScoringListOut(BaseModel):
 class PainPointScoresOut(PainPointScoringSummaryOut):
     """One Pain Point's roll-up plus what the score grid needs: the
     model/method used and the personas available to score against
-    (empty if Module 2's personas are off — then only "all personas"
+    (empty if the Stakeholders module's personas are off — then only "all personas"
     scoring is possible)."""
 
     model_config = {"protected_namespaces": ()}
@@ -600,7 +617,7 @@ class PainPointScoresOut(PainPointScoringSummaryOut):
     available_targets: list[ScoringTargetOut]
 
 
-# --- Guiding Principles (Phase 4) --------------------------------------------
+# --- Guiding Principles --------------------------------------------
 
 
 class GuidingPrincipleCreate(BaseModel):
@@ -625,7 +642,7 @@ class GuidingPrincipleUpdate(BaseModel):
     change_note: str = ""
 
 
-class GuidingPrincipleOut(BaseModel):
+class GuidingPrincipleOut(ProjectScopedRow):
     """Always built explicitly by the router (`guiding_principle_to_out`) —
     exact mirror of `StrategyOut`/`FutureStateOut`."""
 
@@ -633,6 +650,7 @@ class GuidingPrincipleOut(BaseModel):
     scope: GuidingPrincipleScope
     organization_id: UUID | None
     project_id: UUID | None
+    unique_code: str
     creator_id: UUID
     is_archived: bool
     archived_at: datetime | None
@@ -701,7 +719,7 @@ class GuidingPrincipleCommentOut(BaseModel):
     attachments: list[FileAssetOut] = []
 
 
-# --- Open Questions (Phase 5) -------------------------------------------------
+# --- Open Questions -------------------------------------------------
 
 
 class OpenQuestionCreate(BaseModel):
@@ -728,9 +746,10 @@ class OpenQuestionUpdate(BaseModel):
     due_date: date | None = None
 
 
-class OpenQuestionOut(BaseModel):
+class OpenQuestionOut(ProjectScopedRow):
     id: UUID
     project_id: UUID
+    unique_code: str
     creator_id: UUID
     is_archived: bool
     archived_at: datetime | None
@@ -779,7 +798,7 @@ class OpenQuestionCommentOut(BaseModel):
     edited_at: datetime | None = None
 
 
-# --- Phase 6: cross-artefact relationships -----------------------------------
+# --- cross-artefact relationships -----------------------------------
 
 
 class ContextStrategyLinkOut(BaseModel):
@@ -795,7 +814,7 @@ class ContextStrategyLinkOut(BaseModel):
     for an `other_type` this module doesn't know how to resolve (in
     practice, only ever `"decision"` today — a Decision-target relationship
     is reserved, not yet created by any endpoint, but a future link of that
-    shape reaching this schema, e.g. once Module 4's own Phase 7 starts
+    shape reaching this schema, e.g. once a Decision-resolution workflow starts
     writing rows this module can also read via `GET .../relationships`,
     still renders without erroring)."""
 

@@ -10,7 +10,7 @@ installCleanupHook();
  * of each report type separately, at three levels (organisation defaults, a
  * report template, a project), and a project with nothing of its own inherits
  * its parent project's, then the organisation's — with the editor saying where
- * each blank field comes from (Phase 10 of the platform enhancements plan).
+ * each blank field comes from.
  *
  * Runs in a disposable organisation (nothing here edits shared seed data), with
  * a parent and a child project.
@@ -143,7 +143,7 @@ test("report content is written per report type and inherited from parent projec
     await ensureExpanded(page, "Report templates");
     await page.getByRole("button", { name: "New template" }).click();
     const dialog = page.getByRole("dialog", { name: "New template" });
-    await dialog.getByPlaceholder("Name", { exact: true }).fill(`E2E Content Template ${suffix}`);
+    await dialog.getByLabel("Name", { exact: true }).fill(`E2E Content Template ${suffix}`);
     await dialog.getByLabel("Report type").selectOption("requirements");
     await dialog.locator("textarea").first().fill("Template intro");
     await dialog.getByRole("button", { name: "Create", exact: true }).click();

@@ -2,7 +2,7 @@
  * Module: modules/context_strategy/PainPointPrioritisationReportView
  *
  * The on-screen view of report R1 (Pain Point prioritisation), registered as
- * `TierAModuleDefinition.reportViews.r1` (Module 1 Phase 13). A table of
+ * `TierAModuleDefinition.reportViews.r1`. A table of
  * ranked rows fails the reader here: the point of R1 is *where* Pain Points
  * sit on the Severity × Frequency matrix and which are Blockers, so this view
  * draws the shared `ScoringMatrixChart` per scoring model and a ranked list
@@ -26,6 +26,7 @@ import { ScoringModelSwitcher } from "../../components/ScoringModelSwitcher";
 import type { ReportViewProps } from "../types";
 import type { PainPointPrioritisationData, ReportLevel, ReportRankedPainPoint, ReportScoredGroup } from "./reportTypes";
 import { PAIN_POINT_ROLLUP_LABEL, PAIN_POINT_STATUS_LABEL, PAIN_POINT_STATUS_TONE, type PainPointRollup } from "./types";
+import { Badge } from "../../components/Badge";
 
 const SCHEME_KEY = "pain_point";
 /** Sections drawn by this view itself (the ranking table and the matrix). */
@@ -79,6 +80,7 @@ function GroupView({ group, showProject }: { group: ReportScoredGroup; showProje
             <thead>
               <tr>
                 <th scope="col">Rank</th>
+                <th scope="col">Code</th>
                 <th scope="col">Pain point</th>
                 {showProject && <th scope="col">Project</th>}
                 <th scope="col">Type</th>
@@ -91,28 +93,29 @@ function GroupView({ group, showProject }: { group: ReportScoredGroup; showProje
               {ranked.map((item) => (
                 <tr key={item.id}>
                   <td>{item.rank}</td>
+                  <td className="text-muted">{item.code}</td>
                   <td>
                     <Link to={`/projects/${item.project_id}/modules/context_strategy/pain-points/${item.id}`}>{item.title}</Link>
                   </td>
                   {showProject && <td>{item.project_name}</td>}
                   <td>{item.type_name}</td>
                   <td>
-                    <span className={`badge badge--${PAIN_POINT_STATUS_TONE[item.status]}`}>{PAIN_POINT_STATUS_LABEL[item.status]}</span>
+                    <Badge tone={PAIN_POINT_STATUS_TONE[item.status]}>{PAIN_POINT_STATUS_LABEL[item.status]}</Badge>
                   </td>
                   <td>
-                    <span className={`badge badge--${item.band_tone ?? "muted"}`}>
+                    <Badge tone={item.band_tone ?? "muted"}>
                       {item.band ? `${item.band} · ` : ""}
                       {Math.round((item.score ?? 0) * 100)}
-                    </span>
+                    </Badge>
                   </td>
                   <td>
                     <span className="row" style={{ gap: "0.35rem", flexWrap: "wrap" }}>
                       {item.is_blocker && (
-                        <span className="badge badge--danger" title={item.blocker_personas.length ? `Unusable for: ${item.blocker_personas.join(", ")}` : "Unusable, no workaround"}>
+                        <Badge tone="danger" title={item.blocker_personas.length ? `Unusable for: ${item.blocker_personas.join(", ")}` : "Unusable, no workaround"}>
                           Blocker
-                        </span>
+                        </Badge>
                       )}
-                      {item.churn_risk && <span className="badge badge--warning">Churn risk</span>}
+                      {item.churn_risk && <Badge tone="warning">Churn risk</Badge>}
                     </span>
                   </td>
                 </tr>

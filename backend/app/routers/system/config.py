@@ -64,6 +64,29 @@ def get_version(current_user: User = Depends(get_current_user)) -> VersionOut:
     return VersionOut(version=APP_VERSION, git_sha=GIT_SHA, build_date=BUILD_DATE)
 
 
+class ClientConfigOut(BaseModel):
+    """Deployment settings the frontend shell needs after login.
+
+    Attributes:
+        help_enabled: Whether to show the header Help link.
+        help_url: Where the Help link opens; always set, only meaningful when
+            `help_enabled`.
+    """
+
+    help_enabled: bool
+    help_url: str
+
+
+@router.get("/client-config", response_model=ClientConfigOut)
+def get_client_config(current_user: User = Depends(get_current_user)) -> ClientConfigOut:
+    """Returns the deployment's frontend-facing settings (`HELP_ENABLED`, `HELP_URL`).
+
+    Any authenticated user may call it; the values are operator-set and not
+    sensitive, and the Help link only renders inside the logged-in shell.
+    """
+    return ClientConfigOut(help_enabled=settings.help_enabled, help_url=settings.help_url)
+
+
 class StorageHealthOut(BaseModel):
     """A live write probe of the file storage backend.
 

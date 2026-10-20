@@ -8,8 +8,7 @@ installCleanupHook();
 const API_BASE_URL = "http://localhost:8000";
 
 /**
- * Job to be done: docs/plans/module-01-context-and-strategy-plan.md Phase
- * 7.4's own exit criteria — Playwright e2e coverage for Guiding Principle's
+ * Job to be done: Playwright e2e coverage for Guiding Principle's
  * full lifecycle. Exercises the Context & Strategy frontend's fourth
  * artefact type (`frontend/src/modules/context_strategy/`) against a real
  * backend.
@@ -24,8 +23,8 @@ const API_BASE_URL = "http://localhost:8000";
  *   CLAUDE.md's "tests must not depend on state left behind by another test"
  *   rule.
  * - **`backend/scripts/seed_e2e_dataset.py` deliberately left untouched
- *   (Decided by: Agent)** — matching Phase 7.1/7.2/7.3's own identical
- *   precedent and reasoning exactly (see those specs' own docstrings): a
+ * (Decided by: Agent)** — matching the other lifecycle specs' identical
+ * precedent and reasoning exactly (see their docstrings): a
  *   disposable org created via the API already satisfies this repo's own
  *   "prefer dynamically-named fixtures over mutating shared named seed
  *   data" rule more directly than adding unused fixed fixture data would.
@@ -33,7 +32,7 @@ const API_BASE_URL = "http://localhost:8000";
  *   lifecycle is identical server-side — same schemas, same transition
  *   endpoints, `orgGuidingPrincipleApi`/`projectGuidingPrincipleApi` share
  *   one factory, `modules/context_strategy/api.ts` — so it is not
- *   independently at risk here; this matches Phase 7.1/7.2's own "project-
+ * independently at risk here; this matches the other specs' "project-
  *   scoped at minimum" bar).
  * - Unlike Strategy's/Future State's seven-state lifecycle, Guiding
  *   Principle has **no "Under review" step** — `Propose` is followed

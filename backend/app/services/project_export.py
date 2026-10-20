@@ -10,8 +10,8 @@ new project — same organisation or a different one.
 
 Every cross-reference inside the bundle uses a portable key instead of a
 raw database id, since ids from the source database are meaningless in the
-target one: requirements by `unique_code`, change requests by a synthetic
-per-export `ref`, components/categories by prefix, stages/custom field
+target one: requirements by `unique_code`, change requests by `ref` (their
+`unique_code`; an import numbers its change requests afresh), components/categories by prefix, stages/custom field
 definitions by name, and every user reference by email (resolved on import
 via `services.bundle_common.UserResolver`).
 
@@ -100,7 +100,6 @@ from app.models.requirement import (
     Baseline,
     BaselineItem,
     Requirement,
-    RequirementKeyword,
     RequirementReview,
     RequirementVersion,
 )
@@ -115,6 +114,8 @@ from app.services.bundle_common import (
     enforce_zip_uncompressed_size_limit,
     import_bundled_file,
 )
+from app.services.change_request_summary import CHANGE_REQUEST_ARTEFACT_TYPE, CHANGE_REQUEST_CODE_PREFIX
+from app.services.codes import generate_project_code
 from app.services.definitions import get_default_project_status_id, seed_action_types
 from app.services.files import read_file
 from app.services.link_type_scope import resolve_link_type_scope
@@ -123,6 +124,8 @@ from app.services.rbac import get_effective_project_managers
 from app.services.relationships import create_link as create_artefact_link
 from app.services.report_content import bundle_entries, content_entries, replace_scope_content
 from app.services.report_content_bundle import ContentImageImporter, collect_content_images
+from app.services.sequences import generate_unique_code
+from app.services.tags import export_vocabulary, import_vocabulary, keywords_for_requirements, set_keywords
 
 PROJECT_BUNDLE_KIND = "project-export"
 PROJECT_BUNDLE_FORMAT_VERSION = 1
@@ -188,7 +191,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
     # itself, or every value silently fails the `k in cf_name_by_id` check.
     cf_name_by_id = {str(d.id): d.name for d in definitions}
     req_code_by_id = {r.id: r.unique_code for r in requirements}
-    cr_ref_by_id = {cr.id: f"CR-{i + 1}" for i, cr in enumerate(change_requests)}
+    cr_ref_by_id = {cr.id: cr.unique_code for cr in change_requests}
 
     versions = list(
         db.scalars(select(RequirementVersion).where(RequirementVersion.requirement_id.in_(req_ids)))
@@ -200,12 +203,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
     for vs in versions_by_req.values():
         vs.sort(key=lambda v: v.version_number)
 
-    keywords_by_req: dict[UUID, list[str]] = {}
-    if req_ids:
-        for req_id, keyword in db.execute(
-            select(RequirementKeyword.requirement_id, RequirementKeyword.keyword).where(RequirementKeyword.requirement_id.in_(req_ids))
-        ).all():
-            keywords_by_req.setdefault(req_id, []).append(keyword)
+    keywords_by_req = keywords_for_requirements(db, req_ids)
 
     # Requirement-to-requirement traceability links only (not untyped
     # action links, which also live in `artefact_links` but aren't part of
@@ -512,6 +510,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         "review_reminder_lead_days_default": project.review_reminder_lead_days_default,
         "report_content": [e.model_dump() for e in content], "report_images": report_images,
         "default_report_template_name": default_report_template_name,
+        "tags": export_vocabulary(db, project),
         "stages": [{"name": s.name, "sort_order": s.sort_order} for s in stages],
         "components": [
             {
@@ -626,7 +625,8 @@ def new_project_from_bundle_data(
     not portable structural configuration, matching `clone_project`'s same
     choice for template-based creation (see its module docstring)."""
     return Project(
-        organization_id=organization_id, name=name, summary=summary if summary is not None else data.get("summary", ""),
+        organization_id=organization_id, name=name, code=generate_project_code(db, organization_id, name),
+        summary=summary if summary is not None else data.get("summary", ""),
         allow_member_change_requests=data.get("allow_member_change_requests", True),
         require_change_request_for_approved_links=data.get("require_change_request_for_approved_links", False),
         exempt_from_org_link_lock=data.get("exempt_from_org_link_lock", False),
@@ -696,6 +696,8 @@ def apply_project_data(
             db.flush()
         project.default_report_template_id = template.id
 
+    import_vocabulary(db, project, data.get("tags"), current_user.id)
+
     stage_id_by_name: dict[str, UUID] = {}
     for i, s in enumerate(data.get("stages", []) or [{"name": "Scoping", "sort_order": 0}]):
         stage = ProjectStage(
@@ -754,16 +756,16 @@ def apply_project_data(
     # project manager regardless (see the `get_effective_project_managers` fallback
     # below), matching the same guarantee `create_project` gives its caller.
     for g in data.get("groups", []):
-        # A bundle exported before Phase C (follow-up UX batch, 2026-08-31)
+        # A bundle exported before default project groups were removed
         # may still carry an `"is_default"` key from the old format —
         # ignored on import, same as any other retired field: `is_default`
         # no longer exists on `ProjectGroup` at all, and re-creating a
         # group from a bundle is always an ordinary, fully-manageable group
         # regardless of what it originally was.
         #
-        # `"roles"` (PR7, docs/decisions.md) replaced the old single
+        # `"roles"` (docs/decisions.md) replaced the old single
         # required `"role"` key with a list — a group may now hold zero,
-        # one, or several roles. A bundle exported before PR7 still carries
+        # one, or several roles. A bundle exported before the group-roles change still carries
         # the old singular `"role"` key instead; read either shape so an
         # older export can still be imported without losing its group's
         # role, without needing to re-export it first.
@@ -837,8 +839,8 @@ def apply_project_data(
             db.add(version)
             db.flush()
             version_id_by_code_and_number[(r["unique_code"], v["version_number"])] = version.id
-        for kw in r.get("keywords", []):
-            db.add(RequirementKeyword(requirement_id=requirement.id, keyword=kw))
+        if r.get("keywords"):
+            set_keywords(db, requirement, r["keywords"], current_user.id, enforce_mode=False)
         for att in r.get("attachments", []):
             asset = import_file_ref(att, "linked_by_email")
             if asset:
@@ -907,7 +909,9 @@ def apply_project_data(
     for cr in data.get("change_requests", []):
         requirement_id = requirement_id_by_code.get(cr["requirement_unique_code"]) if cr.get("requirement_unique_code") else None
         change_request = ChangeRequest(
-            project_id=project.id, requirement_id=requirement_id, kind=ChangeRequestKind(cr["kind"]),
+            project_id=project.id,
+            unique_code=generate_unique_code(db, project, CHANGE_REQUEST_ARTEFACT_TYPE, CHANGE_REQUEST_CODE_PREFIX),
+            requirement_id=requirement_id, kind=ChangeRequestKind(cr["kind"]),
             status=ChangeRequestStatus(cr["status"]),
             creator_id=users.resolve(cr.get("creator_email"), required=True, context=f"Change request {cr['ref']} creator"),
             submitted_at=_dt(cr.get("submitted_at")), decided_at=_dt(cr.get("decided_at")),

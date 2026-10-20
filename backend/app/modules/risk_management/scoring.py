@@ -1,8 +1,8 @@
 """
 Module: modules.risk_management.scoring
 
-Risk Management's registration into core's generic scoring-matrix mechanism
-(plan Phase 0 resolution 1): the `risk` scheme with Likelihood, Consequence
+Risk Management's registration into core's generic scoring-matrix mechanism:
+the `risk` scheme with Likelihood, Consequence
 and Detectability axes and two models, Likelihood × Consequence (the default)
 and Likelihood × Consequence × Detectability (FMEA-style).
 

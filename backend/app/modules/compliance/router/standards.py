@@ -1,11 +1,11 @@
 """
 Module: modules.compliance.router.standards
 
-A compliance standard's own CRUD/lifecycle (Phase 6): create, list,
+A compliance standard's own CRUD/lifecycle: create, list,
 get, update, archive/unarchive, plus its audit history and export/
-import as a portable JSON document (Phase 21), its Overview
-project-summary stat tiles (Phase 23), and its applicability-default/
-per-project-exclusion configuration (Phase 20). Standard membership/
+import as a portable JSON document, its Overview
+project-summary stat tiles, and its applicability-default/
+per-project-exclusion configuration. Standard membership/
 role grants are a deliberately separate bucket (`standard_access.py`)
 even though they also key off `standard_id` — see that module's own
 docstring for why.
@@ -71,7 +71,7 @@ def create_standard(
     organisation group) defaults to the creating user when omitted.
 
     The creator is also granted a direct `standards_manager` role on this
-    standard (Phase 22) — mirrors `create_project`'s own already-established
+    standard — mirrors `create_project`'s own already-established
     "on creation, the creator is granted a direct PROJECT_MANAGER" precedent
     (`routers/projects.py:403`) exactly, applied one level down, so a
     standard's manager floor (§3: "a standard must always have at least one
@@ -164,8 +164,7 @@ def get_standard_history(
     organization_id: UUID, standard_id: UUID,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    """This standard's own audit history (compliance-module-plan.md Phase
-    18's "Standard" nav-rail workspace, "History" section) — every
+    """This standard's own audit history ("Standard" nav-rail workspace, "History" section) — every
     `compliance_standard`-entity audit event logged against this row
     (created/updated/archived/unarchived, see this router's own create/
     update/archive/unarchive handlers above), oldest first. Mirrors
@@ -186,7 +185,7 @@ def get_standard_project_summary(
     organization_id: UUID, standard_id: UUID, include_archived: bool = Query(False),
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    """This standard's own slice of §20's per-assignment status (Phase 23's
+    """This standard's own slice of §20's per-assignment status (the
     Overview "projects this standard applies to" / "compliant" stat tiles)
     — the exact same per-project computation `list_all_project_compliance`
     already runs across every standard in the org (`build_status_out`),
@@ -279,7 +278,7 @@ def export_standard(
     organization_id: UUID, standard_id: UUID,
     current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
 ):
-    """Exports a single compliance standard (Phase 21, §29) as a portable,
+    """Exports a single compliance standard (§29) as a portable,
     self-contained JSON document — every version's full requirement/
     required-action tree, plus the vocabulary/mapping subset it actually
     references — for backup or transfer into a different organisation/
@@ -301,7 +300,7 @@ async def import_standard(
     current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
 ):
     """Imports a single compliance standard from a `GET .../standards/{id}/
-    export` document (Phase 21, §29) into this organisation, always as a
+    export` document (§29) into this organisation, always as a
     brand-new `ComplianceStandard` with every version forced to `DRAFT`
     regardless of its exported status (§4/§31) — see `export.py::import_
     standard_data`'s own docstring for the full reference-collision and
@@ -364,8 +363,7 @@ def update_standard_applicability_default(
     organization_id: UUID, standard_id: UUID, payload: ComplianceStandardApplicabilityDefaultUpdate,
     current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
 ):
-    """Switches a standard's default project-assignment mode (Phase 20,
-    §3) — Compliance-Manager-only (or org admin/server admin, via
+    """Switches a standard's default project-assignment mode (§3) — Compliance-Manager-only (or org admin/server admin, via
     `require_module_role`'s existing composition), never a Project
     Manager, who may only act on their own project's own assignment row.
 
@@ -376,8 +374,8 @@ def update_standard_applicability_default(
     real row is what carries the per-requirement assessment/audit trail
     every other part of this module depends on (§8, §16). Switching back to
     `OPT_IN` reconciles nothing and never retroactively archives rows a
-    prior reconciliation created (see `models.py`'s own Phase 20 design-
-    decisions section) — idempotent either way (setting the same mode
+    prior reconciliation created (see `models.py`'s applicability defaults
+    design decisions) — idempotent either way (setting the same mode
     twice is a harmless no-op, though re-setting `APPLIES_TO_ALL_PROJECTS`
     still re-runs reconciliation, picking up e.g. a project that was
     created between the two calls without going through the `on_project_

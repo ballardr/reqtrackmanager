@@ -1,5 +1,5 @@
-"""Tests for the Risk Management module's Phase 4 reviews and reassessment
-scheduling (docs/plans/module-03-risk-management-plan.md), through the real HTTP
+"""Tests for the Risk Management module's reviews and reassessment
+scheduling, through the real HTTP
 endpoints and the module's own sweep and hook entry points.
 
 Covers: recording a review (who may, snapshot of the ratings, the next review
@@ -265,7 +265,9 @@ def test_the_sweep_notifies_the_owner_once_per_review_date_and_rearms_on_resched
     assert [r["entity_id"] for r in due_rows] == [due["id"]]
     assert [r["entity_id"] for r in overdue_rows] == [overdue["id"]]
     assert due_rows[0]["entity_type"] == "risk" and str(project["id"]) == due_rows[0]["project_id"]
-    assert due["unique_code"] in due_rows[0]["title"] and later["id"] not in {r["entity_id"] for r in _notifications(client, owner_token)}
+    # A notification is read out of any project's context, so the risk is named by its qualified code.
+    assert due_rows[0]["title"].startswith(f"{project['code']}-{due['unique_code']}:")
+    assert later["id"] not in {r["entity_id"] for r in _notifications(client, owner_token)}
 
     # A reviewed-and-rescheduled risk that falls due again is notified again.
     assert _review(client, token, project["id"], overdue["id"], next_review=_tomorrow_plus(2)).status_code == 201

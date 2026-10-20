@@ -108,7 +108,7 @@ export const ArrowKeysNavigateAndActivate: Story = {
  * panels — stay in the document across a group switch, since they're not
  * part of any one group's own content. Regression coverage for the org/
  * project admin pages having no visible indication of which org/project
- * was being edited (2026-08 UX audit follow-up). */
+ * was being edited. */
 export const ShowsTitleAndSubtitle: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -121,7 +121,7 @@ export const ShowsTitleAndSubtitle: Story = {
   },
 };
 
-/** Phase 37 — `titleAdornment` renders inline with the `<h1>` (e.g. an
+/** `titleAdornment` renders inline with the `<h1>` (e.g. an
  * `EntitySwitcher` chevron) for a consumer whose title is rendered by
  * `ResourceMenu` itself rather than a bespoke `<h1>` of its own. Omitted by
  * every other story above, confirming it changes nothing when absent. */
@@ -156,7 +156,7 @@ export const RendersTitleAdornment: Story = {
 export const LightTheme: Story = { ...ClickSwitchesGroup, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...ClickSwitchesGroup, globals: { theme: "dark" } };
 
-/** Phase 27c — `groups.length <= 1` skips the menu strip (`<nav>`/`<ul>` of
+/** `groups.length <= 1` skips the menu strip (`<nav>`/`<ul>` of
  * group links) entirely and renders `children` directly, rather than
  * showing a single link that's always already active. Covers both the
  * one-group case (a caller with only its own always-present group, e.g.

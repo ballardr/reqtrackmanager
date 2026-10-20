@@ -46,8 +46,8 @@ def test_every_type_is_summarised_with_label_status_and_owner(client, admin_toke
         "open_question": _create_open_question(client, token, pid, question="Which battery vendor?"),
     }
     expected_labels = {
-        "strategy": "Lead the market", "future_state": "Automated inspections", "pain_point": "Report delays",
-        "guiding_principle": "Safety first", "open_question": "Which battery vendor?",
+        "strategy": "STR-001 Lead the market", "future_state": "FUT-001 Automated inspections", "pain_point": "PP-001 Report delays",
+        "guiding_principle": "GP-001 Safety first", "open_question": "OQ-001 Which battery vendor?",
     }
 
     for artefact_type in _TYPES:
@@ -92,7 +92,7 @@ def test_picker_listing_excludes_archived_and_is_sorted(client, admin_token):
         labels = [s.label for s in list_artefact_summaries(db, uuid.UUID(project["id"]), "pain_point")]
     finally:
         db.close()
-    assert labels == ["A first", "b second"]
+    assert labels == ["PP-001 b second", "PP-002 A first"]  # the code leads the label, so the list runs in code order
 
 
 def test_link_graph_shows_a_linked_pain_point(client, admin_token):
@@ -115,4 +115,4 @@ def test_link_graph_shows_a_linked_pain_point(client, admin_token):
     ).json()
 
     node = next(n for n in graph["nodes"] if n["type"] == "pain_point")
-    assert node["label"] == "Report delays" and node["type_label"] == "Pain point"
+    assert node["label"] == "PP-001 Report delays" and node["type_label"] == "Pain point"

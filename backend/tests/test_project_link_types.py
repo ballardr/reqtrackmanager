@@ -1,5 +1,4 @@
-"""Tests for project-level link types (docs/plans/platform-enhancements-2026-10-plan.md
-Phase 5c): a project's own link types inherited by descendants, hiding organisation
+"""Tests for project-level link types: a project's own link types inherited by descendants, hiding organisation
 types, project-scope artefact-type rules (nearest wins), the organisation lock, the
 tenant-isolation rules around a type that is no longer simply "the organisation's",
 and deleting a type other projects use (keep by copy).

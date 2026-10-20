@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from app.models.enums import RequirementLevel, RequirementReviewOutcome, RequirementStatus
 from app.schemas.file import FileAssetOut
 from app.schemas.principal import PrincipalOut, PrincipalRef
+from app.schemas.project_scope import ProjectScopedRow
 
 
 class RequirementCreate(BaseModel):
@@ -64,7 +65,9 @@ class RequirementUpdate(BaseModel):
     # unset, only omitted-from-this-particular-edit or retargeted.
     target_stage_id: UUID | None = None
     level: RequirementLevel = RequirementLevel.REQUIREMENT
-    keywords: list[str] = []
+    # Omitted leaves the requirement's tags as they are (a stale copy sent back would remove tags added since);
+    # a list replaces them (`services.tags`).
+    keywords: list[str] | None = None
     custom_fields: dict[str, Any] = {}
     change_note: str = ""
     review_date: date | None = None  # C-R-06 (blocked by is_locked() once approved, same as every other field here)
@@ -72,7 +75,7 @@ class RequirementUpdate(BaseModel):
     reviewer: PrincipalRef | None = None
 
 
-class RequirementOut(BaseModel):
+class RequirementOut(ProjectScopedRow):
     id: UUID
     project_id: UUID
     unique_code: str
@@ -208,6 +211,8 @@ class RequirementDueForReviewOut(BaseModel):
     # already has the project in context (it's in the URL), so showing its
     # own name back to the caller would be redundant there.
     project_name: str | None = None
+    # Qualifies `unique_code` in that cross-project listing (`services.codes`).
+    project_code: str | None = None
     unique_code: str
     name: str
     review_date: date

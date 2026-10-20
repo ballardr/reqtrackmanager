@@ -3,14 +3,14 @@ import { expect, test } from "@playwright/test";
 import { loginAs, ORG_NAMES, PERSONAS, selectProjectAdminGroup } from "./helpers";
 
 /**
- * Job to be done: Phase D (follow-up UX batch, 2026-08-31, docs/decisions.md)
- * — the unified "Members" section (`ProjectMembersTable`, built on top of
+ * Job to be done: (docs/decisions.md)
+ * the unified "Members" section (`ProjectMembersTable`, built on top of
  * `GET /effective-members`'s provenance) that replaced the old
  * `MemberRoleTable` (direct users + groups editable table) and the separate
  * effective-members audit table. Covers: adding a direct member with a
  * role, toggling a `direct_role`-kind role off, the C-U-08 last-manager
  * guard, a group-sourced role showing checked-and-disabled with an
- * explanatory title (the core Phase D fix — `DELETE /roles` would silently
+ * explanatory title (the core fix — `DELETE /roles` would silently
  * no-op against it), and filtering by role. Pending-invite display/resend
  * and the "Show invited" toggle are covered by
  * `external-project-invite.spec.ts`, which already sets up an org that
@@ -54,7 +54,7 @@ test.describe("project admin: Members section", () => {
       expect(panelBox!.width).toBeGreaterThanOrEqual(tableBox!.width - 1);
     });
 
-    await test.step("add a direct member with a role via the Members page's own add control (PR3, members/groups directory rework: 'Add member' now opens the control in a Modal instead of it sitting permanently above the table, per docs/ux-style-guide.md Principle 3; rebuilt onto the shared `AddMembersModal` staged multi-add — see that component's own module docstring)", async () => {
+    await test.step("add a direct member with a role via the Members page's own add control (members/groups directory rework: 'Add member' now opens the control in a Modal instead of it sitting permanently above the table, per docs/ux-style-guide.md Principle 3; rebuilt onto the shared `AddMembersModal` staged multi-add — see that component's own module docstring)", async () => {
       await page.getByRole("button", { name: "Add member" }).click();
       const modal = page.getByRole("dialog", { name: "Add member" });
       await modal.getByPlaceholder("Type a name to add, or an email to invite…").fill(PERSONAS.memberAlphaBeta.name);
@@ -97,7 +97,7 @@ test.describe("project admin: Members section", () => {
       await expect(page.getByRole("cell", { name: PERSONAS.memberAlphaBeta.name, exact: true })).toHaveCount(0);
     });
 
-    await test.step("C-U-08 last-manager guard: the fresh project's creator holds their only manager grant directly (no default group exists any more, follow-up UX batch Phase C, 2026-08-31), so that role checkbox is disabled", async () => {
+    await test.step("C-U-08 last-manager guard: the fresh project's creator holds their only manager grant directly (no default group exists any more, 2026-08-31), so that role checkbox is disabled", async () => {
       const rolesButton = page.getByRole("button", { name: `${PERSONAS.orgAdminAlphaBeta.name}'s roles` });
       await rolesButton.click();
       const rolesGroup = page.getByRole("group", { name: `${PERSONAS.orgAdminAlphaBeta.name}'s roles` });
@@ -115,7 +115,7 @@ test.describe("project admin: Members section", () => {
       const memberUserId = orgUsers.find((u) => u.email === PERSONAS.memberAlphaBeta.email)!.user_id;
 
       const groupName = `E2E Members Group Source ${suffix}`;
-      // PR7 of the members/groups directory rework plan: `ProjectGroupCreate`
+      // the members/groups directory rework: `ProjectGroupCreate`
       // no longer accepts a role — create bare, then grant it separately.
       const group = await (
         await page.request.post(`http://localhost:8000/api/v1/projects/${project.id}/groups`, {

@@ -1,10 +1,9 @@
-"""Tests for Context & Strategy's Phase 4 backend API
-(docs/plans/module-01-context-and-strategy-plan.md Phase 4 — Guiding
-Principles) — the real HTTP endpoints (`router.py`/`project_router.py`),
+"""Tests for Context & Strategy's Guiding Principle backend API
+— the real HTTP endpoints (`router.py`/`project_router.py`),
 through the `client` fixture, mirroring `test_context_strategy_future_
 state_api.py`'s own "go through the real API" convention. Kept as its own
 sibling file rather than folded into an existing one (Decided by: Agent,
-following Phase 2/3's own precedent exactly) — one file per artefact type.
+following the other artefact test files' precedent) — one file per artefact type.
 
 Covers, for both the org-scoped and project-scoped routers: Guiding
 Principle CRUD, the content lock once past `PROPOSED` (409), the full

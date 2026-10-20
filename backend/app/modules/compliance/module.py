@@ -2,231 +2,124 @@
 Module: modules.compliance.module
 
 Registers the Compliance Module into the modular feature system's registry
-(docs/compliance-module-plan.md Phase 5) via `MODULE_DEFINITION` — the same
-module-level attribute name `app.modules.registry._discover_path_modules`
-looks for on a third-party module directory, kept consistent here even
-though this is a first-party module appended directly to `INSTALLED_MODULES`
-(`app.modules.registry`), not path-discovered.
+via `MODULE_DEFINITION` — the same module-level attribute name
+`app.modules.registry._discover_path_modules` looks for on a third-party
+module directory, kept consistent here even though this is a first-party
+module appended directly to `INSTALLED_MODULES` (`app.modules.registry`),
+not path-discovered.
 
-`compliance_manager` (org-scoped) and `compliance_officer` (project-scoped)
-are declared here as module-contributed roles (module system Phase 2) —
-per §3/§26's explicit requirement that Compliance's own roles be separate
-from `OrgRole`/`ProjectRole`, not new enum members on either.
+Roles: `compliance_manager` (org-scoped) and `compliance_officer`
+(project-scoped) are module-contributed roles, per §3/§26's requirement that
+Compliance's own roles be separate from `OrgRole`/`ProjectRole`, not new enum
+members on either. `standards_manager`/`standards_contributor` (§3) use a
+module-owned `scope="standard"` — the first user of `ModuleRoleDefinition`'s
+generalised entity-scope mechanism (`overridden_by`,
+`resolve_entity_organization_id`), so a future module's own first-class
+entity gets the same per-row-role capability without teaching core
+`app.services.rbac` a second hardcoded scope literal (see that dataclass's
+docstring and `docs/modules.md`'s "Module-contributed RBAC" section).
 
-**2026-09-22 reversal — MCP surface is now write-enabled** (explicit user
-instruction, see docs/decisions.md's "Compliance MCP write tools +
-generalized AI approval gate" entry): every phase paragraph below that
-says a mutating endpoint was "deliberately" left off the MCP tool surface
-described a policy this module no longer follows. This module's `mcp_tools`
-now declares a write tool for essentially every mutating endpoint across
-`router.py`/`project_router.py` (org settings, standards/versions/
+Routers (each imported lazily, below):
+- `get_router()`: `app.modules.compliance.router`, org-scoped, mounted at
+  `/api/v1/orgs/{organization_id}/modules/compliance` — standards
+  management, mapping and version impact, reviews, applicability defaults.
+- `get_project_router()`: `project_router.py`, mounted at
+  `/api/v1/projects/{project_id}/modules/compliance` — project assignment and
+  assessment, evidence, approval, project reviews. MCP tools whose
+  `path_template` falls under this prefix take `project_id` only, never
+  `organization_id`, mirroring hand-written tools like `get_project`; see
+  `app.modules.registry`'s docstring on `get_project_router`.
+- `get_global_router()`: `global_router.py`, mounted at the bare
+  `/api/v1/compliance` prefix with no `organization_id`/`project_id` segment,
+  for the cross-org "Compliance Standards" nav entity (`nav-visibility`,
+  `standards/{standard_id}`); read-only, UI-navigation-shaped.
+
+MCP surface — write-enabled (explicit user instruction, see
+docs/decisions.md's "Compliance MCP write tools + generalized AI approval
+gate" entry): `mcp_tools` declares a tool for essentially every endpoint
+across `router.py`/`project_router.py` (org settings, standards/versions/
 requirements/required-actions/action-types/mapping-relationship-types
 CRUD+move, requirement mappings, project-compliance assignment+migration,
 requirement applicability/assessment, required-action-assessment
-complete/uncomplete, evidence CRUD+links+revalidation, reviews CRUD
-+complete+evidence-links), gated as normal by the
-global `MCP_WRITES_ENABLED` switch and the calling account's own RBAC role
-— nothing new needed for those. Three categories stay off the tool surface
-even now, for reasons that are *not* superseded by this reversal:
+complete/uncomplete, evidence CRUD+links+revalidation, reviews
+CRUD+complete+evidence-links, publish/retire, applicability defaults and
+exclusions), gated as normal by the global `MCP_WRITES_ENABLED` switch and
+the calling account's own RBAC role. Three categories stay off or behind a
+gate:
 
-1. `approve_requirement`/`reject_requirement` (`project_router.py`) — no
-   longer excluded outright; they are declared, but reached through MCP
-   only when the project's and its organisation's `allow_ai_approvals` are
-   both explicitly enabled (`app.services.rbac.require_ai_approvals_
-   enabled`, called inline the same way core's `requirements.approve_
-   requirement`/`change_requests.decide_change_request` already do). See
-   those two functions' own docstrings.
-2. `assign_standard_member_role`/`revoke_standard_member_role`/`assign_
-   standard_group_role`/`revoke_standard_group_role` (`router.py`) stay
-   undeclared — these grant/revoke a standard-scoped RBAC role
-   (`standards_manager`/`standards_contributor`), not compliance business
-   data; the user's own instruction was to enable MCP writes "except
-   modules that are RBAC or Governance in nature," and a role grant is
-   RBAC in nature regardless of which module it lives in. No core RBAC
-   role-grant endpoint is MCP-reachable anywhere in this codebase either.
+1. `approve_requirement`/`reject_requirement` (`project_router.py`) are
+   declared, but reached through MCP only when the project's and its
+   organisation's `allow_ai_approvals` are both enabled
+   (`app.services.rbac.require_ai_approvals_enabled`, called inline the same
+   way core's `requirements.approve_requirement`/
+   `change_requests.decide_change_request` do). `submit-for-approval` only
+   queues a decision, so it is a normal write tool.
+2. `assign_standard_member_role`/`revoke_standard_member_role`/
+   `assign_standard_group_role`/`revoke_standard_group_role` (`router.py`)
+   stay undeclared: they grant/revoke a standard-scoped RBAC role, not
+   compliance business data, and the user's instruction was to enable MCP
+   writes "except modules that are RBAC or Governance in nature." No core
+   RBAC role-grant endpoint is MCP-reachable anywhere in this codebase
+   either.
 3. `import_standard` (`router.py`) and `upload_evidence_attachment`
-   (`project_router.py`) stay undeclared for a mechanical reason, not a
-   policy one: both take a `multipart/form-data` file upload, and the
-   module-tool proxy mechanism (`mcp-server/server.py`'s
-   `_DeclarativeModuleTool.run`) only ever sends a JSON body built from
-   `path`/`query`/`body`-located params — there is no way to declare a file
-   upload through this mechanism at all, the same constraint that already
-   keeps every other file-upload endpoint in this codebase off the MCP
-   tool surface.
+   (`project_router.py`) stay undeclared for a mechanical reason: both take a
+   `multipart/form-data` upload, and the module-tool proxy
+   (`mcp-server/server.py`'s `_DeclarativeModuleTool.run`) only ever sends a
+   JSON body built from `path`/`query`/`body` params, the same constraint
+   that keeps every other file-upload endpoint off the MCP tool surface.
 
-Phase 6 (Standards Management API, docs/compliance-module-plan.md) adds this
-module's first HTTP endpoints — `get_router()` now returns a real
-`APIRouter` (`app.modules.compliance.router`) mounted at
-`/api/v1/orgs/{organization_id}/modules/compliance` — and its first three
-MCP tools, all read-only: `compliance_list_standards`, `compliance_
-get_standard_version`, `compliance_list_requirements`. Publish/retire had
-no mutating tool at the time (Phase 6's spec deliberately kept the MCP
-surface read-only so far, mirroring `docs/mcp-server.md`'s then-cautious
-default) — superseded by the 2026-09-22 reversal above; both are now
-declared (`compliance_publish_standard_version`/`compliance_retire_
-standard_version`).
-
-Phase 7 (Project Compliance Assignment & Assessment) adds this module's
-first *project*-scoped router — `get_project_router()`, a new
-`ModuleDefinition` field (`app.modules.registry`) mounted at `/api/v1/
-projects/{project_id}/modules/compliance` — alongside two more read-only
-MCP tools whose path_templates fall under that router's own prefix instead
-of `get_router()`'s: `compliance_get_project_status(project_id)` and
-`compliance_list_non_compliant_requirements(project_id)`. Neither tool
-takes `organization_id` — deliberately, mirroring hand-written tools like
-`get_project(project_id)` — which is exactly why these two live on a
-second router rather than being nested under the org-scoped one; see
-`app.modules.registry`'s own docstring on `get_project_router` and
-`project_router.py`'s module docstring for the full reasoning.
-
-Phase 8 (Evidence, §13-§15) adds this module's evidence endpoints to the
-same project router, one more read-only MCP tool
-(`compliance_list_expiring_evidence(project_id)`), and this module's
-`resolve_file_owner_project_id` hook (`app.modules.registry`) — resolving
-a `ComplianceEvidenceFile`-attached file to its owning project, so the
-core, module-agnostic `GET /api/v1/files/{id}` download endpoint
-(`app.routers.files.download_file`) can authorize a Compliance evidence
-attachment without importing anything from this module directly.
-
-Phase 9 (Approval/Sign-off, §12, §16, §27) adds one more read-only MCP tool,
-`compliance_list_pending_approvals(project_id)`, mirroring `compliance_
-list_non_compliant_requirements`'s exact shape. The three real workflow
-actions this phase adds — `submit-for-approval`, `approve`, `reject` —
-were originally never declared at all. As of the 2026-09-22 reversal
-above, `compliance_submit_requirement_for_approval` is a normal write tool
-(it only queues a decision, it does not decide anything), and `compliance_
-approve_requirement`/`compliance_reject_requirement` are declared but
-resolve to routes gated by `require_ai_approvals_enabled` when called
-through MCP — see `project_router.py`'s `approve_requirement`/`reject_
-requirement` docstrings and point 1 of the reversal note above.
-
-Phase 10 (Scheduled Reviews + Notifications, §17, §18, §28) adds one more
-read-only MCP tool, `compliance_list_reviews_due(project_id)`, and this
-module's first `scheduled_jobs` — four APScheduler jobs (`app.modules.
-registry.ModuleScheduledJob`), one per date-driven sweep `scheduler.py`
-defines. The review CRUD/complete endpoints this phase adds (`router.py`/
-`project_router.py`) originally had no mutating tool (Phase 10's own plan
-spec asked only for the read-only "reviews due" listing) — superseded by
-the 2026-09-22 reversal above; all are now declared (`compliance_create_
-standard_review`, `compliance_create_project_review`, etc.).
-
-Phase 11 (Cross-Standard Mapping + Version Impact, §19, §27) adds two more
-read-only MCP tools: `compliance_list_requirement_mappings` (one
-requirement's cross-standard/cross-version mapping links) and `compliance_
-get_standard_version_diff` (the added/removed/modified/replaced/re-mapped
-diff between two versions of a standard) — both on the org router, both
-pure reads with no side effects. §27's own new mutating action, the
-project-scoped version-migration endpoint (`project_router.py::migrate_
-project_compliance_version`), originally had no declared tool at all, on
-this module's then-principle of adding mutating MCP tools only narrowly
-and deliberately. Superseded by the 2026-09-22 reversal above: it is now
-declared as `compliance_migrate_project_compliance_version`, including its
+`compliance_migrate_project_compliance_version` includes its
 `confirmed_replacement_requirement_ids` opt-in (carrying an assessment
 forward across a `replaced` mapping, gated by both an org-level
 `ComplianceMappingRelationshipTypeDefinition.implies_equivalence` flag and
-this per-call confirmation — see `models.py`'s own Phase 11 notes) as a
-plain array-of-uuid body param, same as any other write tool — no special
-confirmation step beyond what the endpoint itself already requires.
+this per-call confirmation — see `models.py`'s cross-standard mapping design
+decisions) as a plain array-of-uuid body param, with no special confirmation
+step beyond what the endpoint itself requires.
 
-Phase 11 follow-up (same day): this module's six Alembic revisions
-(0026-0031) moved from the flat `backend/alembic/versions/` directory into
-`migrations/` alongside the rest of this module's own code, via the new
-`ModuleDefinition.migrations_dir` mechanism (`app.modules.registry.
-configure_alembic_version_locations`) — see that field's own docstring for
-why this doesn't reopen or weaken Phase 1's original trust-boundary design
-(still one linear, reviewed Alembic chain; only the file location changed).
+Registry hooks and fields this module uses:
+- `resolve_file_owner_project_id`: resolves a `ComplianceEvidenceFile`-attached
+  file to its owning project, so the core, module-agnostic `GET /api/v1/files/{id}`
+  download endpoint (`app.routers.files.download_file`) can authorize an
+  evidence attachment without importing anything from this module.
+- `scheduled_jobs`: four APScheduler jobs (`ModuleScheduledJob`), one per
+  date-driven sweep `scheduler.py` defines.
+- `on_org_created` (`_seed_org_defaults`): seeds the organisation's default
+  action types, called through `app.modules.registry.run_on_org_created_hooks`
+  so `app.routers.orgs.create_organization`/`app.services.bootstrap.run_bootstrap`
+  never import this module directly.
+- `project_nav_visible` (`_project_nav_visible`): lets
+  `app.routers.projects.list_project_enabled_modules` ask whether the nav
+  entry has anything assignable yet (`service.has_assignable_standard`)
+  without importing this module's models.
+- `on_project_created` (`_reconcile_new_project`): reconciles a brand-new
+  project against every `applies_to_all_projects` standard in its
+  organisation (`service.py::reconcile_new_project_for_all_standards`), the
+  same treatment a pre-existing project gets when a standard is switched into
+  that mode.
+- `entity_scopes`: registers the `"standard"` scope centrally.
+- `migrations_dir`: this module's Alembic revisions live in `migrations/`
+  alongside the rest of its code (`app.modules.registry.
+  configure_alembic_version_locations`); still one linear, reviewed Alembic
+  chain.
+- `frontend_manifest`: a Tier A (`"installed"`) `ModuleFrontendManifest`
+  whose `nav_path` uses the `"{project_id}"` placeholder
+  (`app.routers.projects.list_project_enabled_modules` interpolates the real
+  value before returning it); `frontend/src/modules/registry.ts` registers the
+  matching React Router path (`/projects/:projectId/modules/compliance`).
 
-Phase 13 (Frontend: Project Compliance View) adds this module's
-`frontend_manifest` — a Tier A (`"installed"`) `ModuleFrontendManifest`
-(module system Phase 3) whose `nav_path` uses the `"{project_id}"`
-placeholder `ModuleFrontendManifest`'s own docstring names as an example
-but which, until this phase, no real module had ever actually populated:
-`app.routers.projects.list_project_enabled_modules` needed a small, generic
-fix (interpolating the real path parameter into that placeholder before
-returning it) to make the placeholder do anything — see that function's own
-docstring for the fix. `frontend/src/modules/registry.ts` registers the
-matching React Router path (`/projects/:projectId/modules/compliance`),
-proving Phase 3's real installed-module routing/nav-discovery mechanism for
-the first time (Phase 12's `ComplianceAdminPanel` — org-scoped — had no
-routing mechanism to plug into and was mounted directly by `OrgAdminPage.tsx`
-instead; see that phase's own notes).
-
-Phase 18 ("Compliance Standards" as a first-class, cross-org, project-like
-nav entity) adds this module's third router, `get_global_router()` — a new
-`ModuleDefinition` field (`app.modules.registry`) mounted at the bare
-`/api/v1/compliance` prefix, no `organization_id`/`project_id` segment at
-all, since both of this router's endpoints (`nav-visibility`, `standards/
-{standard_id}`) genuinely have no single such id to key off — see
-`global_router.py`'s own module docstring and `app.modules.registry.
-ModuleDefinition.get_global_router`'s docstring for the full reasoning. No
-new MCP tools or roles were added for this phase — both endpoints are
-read-only, UI-navigation-shaped surfaces, not new data or actions.
-
-Module boundary cleanup (2026-09-08, see `docs/decisions.md`'s "Module
-system follow-up: on_org_created / project_nav_visible hooks" entry — found
-and fixed as pre-existing debt flagged during Phase 18's own review, not
-part of Phase 18 itself) adds two more hooks, both replacing a direct
-`from app.modules.compliance...` import a core file used to carry: `on_org_
-created` (`_seed_org_defaults`, below) — `app.routers.orgs.
-create_organization`/`app.services.bootstrap.run_bootstrap` used to import
-`seed_compliance_action_types` directly; both now call the generic `app.
-modules.registry.run_on_org_created_hooks` instead — and `project_nav_
-visible` (`_project_nav_visible`, below) — `app.routers.projects.
-list_project_enabled_modules` used to import this module's own models/enums
-inline to decide whether its nav entry has anything assignable yet; that
-query moved into `app.modules.compliance.service.has_assignable_standard`,
-called through the new hook instead.
-
-Phase 20 (Standard Applicability Defaults, Exceptions, and Project-Manager
-Assignment; §3, §7, §11, §26) adds this module's fourth registry hook,
-`on_project_created` (`_reconcile_new_project`, below) — the natural
-`Project`-lifecycle sibling to `on_org_created`, reconciling a brand-new
-project against every `applies_to_all_projects` standard in its
-organisation (`service.py::reconcile_new_project_for_all_standards`), the
-same treatment a pre-existing project already got when a standard was
-switched into that mode. The two new mutating surfaces this phase adds — the project-scoped
-self-service assignment endpoint and the org-scoped applicability-default/
-exclusion-list endpoints — originally had no MCP tool, per Phase 4/9's
-then-established precedent; superseded by the 2026-09-22 reversal above,
-both are now declared (`compliance_assign_standard_to_project`,
-`compliance_update_standard_applicability_default`, `compliance_create_
-standard_exclusion`, `compliance_remove_standard_exclusion`). No
-new module roles (this phase widens *who may call an existing kind of
-endpoint* — `ProjectRole.PROJECT_MANAGER`, already this module's existing
-`_require_officer` composition — rather than introducing a new named role).
-
-Phase 22 (Standard-Level RBAC, §3) adds two more module-contributed roles,
-`standards_manager`/`standards_contributor`, both declared with a new,
-module-owned `scope="standard"` — the first user of `app.modules.registry.
-ModuleRoleDefinition`'s generalised entity-scope mechanism (`overridden_by`,
-`resolve_entity_organization_id`), added by this same phase specifically so
-a *future* module's own first-class entity gets the identical per-row-role
-capability without teaching core `app.services.rbac` a second hardcoded
-scope literal — see that dataclass's own docstring and `docs/modules.md`'s
-"Module-contributed RBAC" section for the full mechanism. No new MCP tools
-for `assign_standard_member_role`/`revoke_standard_member_role`/`assign_
-standard_group_role`/`revoke_standard_group_role` then or now — unlike
-every other mutating endpoint this phase's docstring paragraph mentioned,
-this one is *not* superseded by the 2026-09-22 reversal above: it is an
-RBAC role grant/revoke, which point 2 of that note keeps off the MCP
-surface on principle, the same way Modules 8/11/12 stay read-only-only or
-untouched for being RBAC/Governance in nature.
-
-Fine-Grained Access Control (core) plan Phase 6 populates `permissions` on
-all four roles above (`app.modules.registry.ModuleRoleDefinition`'s optional
-field, added at that plan's own Phase 1 and left empty here until now) and
-migrates two endpoints to accept `app.services.rbac.require_permission` as
-an alternative to their existing `require_module_role` gate: `create_
-evidence`/`update_evidence` (`project_router/evidence.py`, the org/project
-composition axis) and `update_requirement` (`router/version_requirements.
-py`, the entity-scoped `"standard"` axis this same plan's Phase 5 added the
-generic registry for — `standards_manager`/`standards_contributor` are this
-mechanism's first real consumer). Every existing `require_module_role` gate
-stays exactly as it was; the new path is additive only — an organisation
-that never touches a custom role sees zero behavioural change. See `service.
-py`'s own module-level comment for the permission-atom constants these
-roles declare and why the two entity-scoped ones reuse the `project_
-compliance_requirement` artefact type rather than a dedicated one.
+Fine-grained permissions: the four roles above declare `permissions`
+(`ModuleRoleDefinition`'s optional field), and two endpoints accept
+`app.services.rbac.require_permission` as an alternative to their
+`require_module_role` gate: `create_evidence`/`update_evidence`
+(`project_router/evidence.py`, the org/project composition axis) and
+`update_requirement` (`router/version_requirements.py`, the entity-scoped
+`"standard"` axis; `standards_manager`/`standards_contributor` are its first
+real consumer). Every existing `require_module_role` gate stays as it was;
+the new path is additive only — an organisation that never touches a custom
+role sees zero behavioural change. See `service.py`'s module-level comment
+for the permission-atom constants these roles declare and why the two
+entity-scoped ones reuse the `project_compliance_requirement` artefact type
+rather than a dedicated one.
 
 External dependencies: `app.modules.registry`'s own dataclasses;
 `app.modules.compliance.router`/`.project_router`/`.global_router`/
@@ -234,9 +127,8 @@ External dependencies: `app.modules.registry`'s own dataclasses;
 `get_project_router()`/`get_global_router()`/`resolve_file_owner_project_id`/
 `_seed_org_defaults`/`_project_nav_visible`/`_reconcile_new_project`/the
 `scheduled_jobs` callables, to avoid any import-cycle risk with this
-module's own registration -- mirroring how Phase 5's own notes already
-document resolving the `MODULE_DEFINITION`/registry import cycle via
-`app/modules/__init__.py`).
+module's own registration — the `MODULE_DEFINITION`/registry import cycle is
+resolved via `app/modules/__init__.py`).
 """
 
 from __future__ import annotations
@@ -249,6 +141,7 @@ from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
 from app.modules.compliance.models import ComplianceRequiredActionAssessment, ComplianceReview, ComplianceStandard
+from app.modules.compliance.search import SEARCH_PROVIDERS, SEARCH_SCOPES
 from app.modules.compliance.service import (
     COMPLIANCE_ACTION_ASSESSMENT_MANAGE_PERMISSION,
     COMPLIANCE_ACTION_ASSESSMENT_VIEW_PERMISSION,
@@ -299,12 +192,12 @@ _ORG_MERGE_RESOLUTION_CHOICES = {"compliance_standard": frozenset({"skip", "impo
 # REQUIREMENT`/`ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT` exactly — defined
 # locally (not imported from models.py) for the same zero-import-cycle
 # reason `_ORG_MERGE_RESOLUTION_CHOICES` above documents. This module's own
-# contribution to the shared `ArtefactType` vocabulary (Module 0 — Platform
-# Foundations, Phase 3): `app.models.relationship.ArtefactLink` rows with
+# contribution to the shared `ArtefactType` vocabulary (Platform
+# Foundations): `app.models.relationship.ArtefactLink` rows with
 # `source_type="compliance_evidence"` point at either target type below,
 # replacing the old dedicated evidence-link join tables. `compliance_requirement`
 # (a standard's clause, organisation-owned) is the target of a core requirement's
-# traceability links (Platform Enhancements Phase 6c), replacing the old dedicated
+# traceability links, replacing the old dedicated
 # `ComplianceRequirementTraceabilityLink` table.
 _ARTEFACT_TYPES = (
     "compliance_requirement",
@@ -344,9 +237,8 @@ def _principal_param(field: str, what: str, *, required: bool = False, org_only:
 
 
 def get_router() -> APIRouter | None:
-    """Returns this module's org-scoped `APIRouter` (Phase 6 — Standards
-    Management API; Phase 7 adds standard-to-project assignment endpoints
-    to this same router). Imported inside the function body, not at module
+    """Returns this module's org-scoped `APIRouter` (standards
+    management and standard-to-project assignment). Imported inside the function body, not at module
     top-level, to avoid any import-cycle risk with this module's own
     registration (see this module's own docstring)."""
     from app.modules.compliance.router import router as compliance_router
@@ -355,8 +247,8 @@ def get_router() -> APIRouter | None:
 
 
 def get_project_router() -> APIRouter | None:
-    """Returns this module's project-scoped `APIRouter` (Phase 7 — Project
-    Compliance Assignment & Assessment). Imported inside the function
+    """Returns this module's project-scoped `APIRouter` (project
+    compliance assignment and assessment). Imported inside the function
     body for the same import-cycle reason as `get_router()`."""
     from app.modules.compliance.project_router import router as compliance_project_router
 
@@ -364,7 +256,7 @@ def get_project_router() -> APIRouter | None:
 
 
 def get_global_router() -> APIRouter | None:
-    """Returns this module's third router (Phase 18 — "Compliance
+    """Returns this module's third router ("Compliance
     Standards" as a first-class, cross-org, project-like nav entity),
     mounted with no `organization_id`/`project_id` in its own path root at
     all (`nav-visibility`, `standards/{standard_id}`) — see `app.modules.
@@ -379,7 +271,7 @@ def get_global_router() -> APIRouter | None:
 
 def resolve_file_owner_project_id(db: Session, file_id: UUID) -> UUID | None:
     """This module's `ModuleDefinition.resolve_file_owner_project_id` hook
-    (Phase 8) — imported lazily for the same import-cycle reason as
+ — imported lazily for the same import-cycle reason as
     `get_router()`/`get_project_router()`."""
     from app.modules.compliance.service import resolve_evidence_file_project_id
 
@@ -411,7 +303,7 @@ def _project_nav_visible(db: Session, project: Project) -> bool:
 
 def _resolve_standard_organization_id(db: Session, standard_id: UUID) -> UUID | None:
     """This module's `ModuleRoleDefinition.resolve_entity_organization_id`
-    hook for the `"standard"` scope (Phase 22) — imported lazily for the
+    hook for the `"standard"` scope — imported lazily for the
     same import-cycle reason as `get_router()`."""
     from app.modules.compliance.service import resolve_standard_organization_id
 
@@ -420,15 +312,14 @@ def _resolve_standard_organization_id(db: Session, standard_id: UUID) -> UUID | 
 
 def _list_standards_for_entity_scope(db: Session, organization_id: UUID) -> list[tuple[UUID, str]]:
     """This module's `EntityScopeDefinition.list_entities` hook for the
-    `"standard"` scope (Fine-Grained Access Control (core) plan Phase 5) —
-    imported lazily for the same import-cycle reason as `get_router()`."""
+    `"standard"` scope — imported lazily for the same import-cycle reason as `get_router()`."""
     from app.modules.compliance.service import list_standards_for_entity_scope
 
     return list_standards_for_entity_scope(db, organization_id)
 
 
 def _reconcile_new_project(db: Session, project: Project, actor_id: UUID) -> None:
-    """This module's `ModuleDefinition.on_project_created` hook (Phase 20)
+    """This module's `ModuleDefinition.on_project_created` hook
     — reconciles a brand-new project against every `applies_to_all_
     projects` standard in its organisation, the same treatment a pre-
     existing project already got when the standard was switched into that
@@ -441,7 +332,7 @@ def _reconcile_new_project(db: Session, project: Project, actor_id: UUID) -> Non
 
 def _validate_org_group_member_removal(db: Session, org_group_id: UUID, member_user_id: UUID) -> str | None:
     """This module's `ModuleDefinition.validate_org_group_member_removal`
-    hook (Phase 22) — blocks removing a user from this organisation's
+    hook — blocks removing a user from this organisation's
     designated fallback compliance-managers group when they're its last
     remaining member and at least one standard in that organisation
     currently relies on the fallback for its own `standards_manager` floor
@@ -597,6 +488,8 @@ MODULE_DEFINITION = ModuleDefinition(
     validate_org_group_deletion=_validate_org_group_deletion,
     artefact_types=_ARTEFACT_TYPES,
     artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
+    search_providers=SEARCH_PROVIDERS,
+    search_scopes=SEARCH_SCOPES,
     artefact_type_labels=ARTEFACT_TYPE_LABELS,
     artefact_ids_in_organization=_artefact_ids_in_organization,
     principal_references=_PRINCIPAL_REFERENCES,
@@ -643,9 +536,9 @@ MODULE_DEFINITION = ModuleDefinition(
                 "actions; assigns standards to projects; views compliance across projects (§3)."
             ),
             scope="org",
-            # Fine-Grained Access Control Phase 6 — the broadest of this
+            # The broadest of this
             # module's roles, so it gets every level on every registered
-            # artefact type (mirroring Phase 2's own `PROJECT_MANAGER`
+            # artefact type (mirroring the `PROJECT_MANAGER`
             # mapping's "every artefact-type permission at every level"
             # precedent), rather than a hand-picked subset: §3 already
             # describes this role as full org-wide compliance management,
@@ -671,7 +564,7 @@ MODULE_DEFINITION = ModuleDefinition(
                 "authorised approval/sign-off for the projects they are assigned to (§11/§26)."
             ),
             scope="project",
-            # Fine-Grained Access Control Phase 6 — mapped from this role's
+            # Mapped from this role's
             # own documented responsibilities: evidence (create/edit,
             # `project_router/evidence.py`'s now-migrated `create_evidence`/
             # `update_evidence`), assessment/applicability
@@ -679,7 +572,7 @@ MODULE_DEFINITION = ModuleDefinition(
             # approval/sign-off" (`APPROVE_BASELINE` on the same artefact
             # type) — the last of these isn't yet checked by any migrated
             # endpoint (`approve_requirement`/`reject_requirement` stay on
-            # `require_module_role` this phase; only evidence create/update
+            # `require_module_role`; only evidence create/update
             # and the standard-content-edit proof below migrate), included
             # here anyway since the role's own description already grants
             # it today and this field is meant to describe what the role
@@ -696,7 +589,7 @@ MODULE_DEFINITION = ModuleDefinition(
                 COMPLIANCE_ACTION_ASSESSMENT_MANAGE_PERMISSION,
             ),
         ),
-        # Phase 22 (docs/compliance-module-plan.md): standard-scoped
+        # Standard-scoped
         # working-group roles, distinct from org-wide `compliance_manager`
         # (every standard) and project-scoped `compliance_officer`
         # (assessment, not the standard's own content). Both declare
@@ -716,8 +609,7 @@ MODULE_DEFINITION = ModuleDefinition(
             scope="standard",
             overridden_by=(("org", "compliance_manager"),),
             resolve_entity_organization_id=_resolve_standard_organization_id,
-            # Fine-Grained Access Control Phase 6 (entity-scoped composition,
-            # Phase 5's own extension) — `MANAGE` for draft content editing,
+            # Entity-scoped composition — `MANAGE` for draft content editing,
             # `APPROVE_BASELINE` for publish/retire (a version baseline,
             # the same tier Decision Management's own approval scoping uses
             # for a comparable "finalise this artefact" action). No atom

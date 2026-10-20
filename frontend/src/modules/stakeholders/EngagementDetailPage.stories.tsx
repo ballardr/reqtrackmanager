@@ -12,6 +12,7 @@ import type {
   AnonymousParticipant, Engagement, EngagementAudience, EngagementOutcome, EngagementParticipant, EngagementPersona,
   EngagementPrompt,
 } from "./types";
+import { chooseRecordAction } from "../../testing/recordActions";
 
 const PROJECT_ID = "project-1";
 const ENGAGEMENT_ID = "engagement-1";
@@ -31,8 +32,8 @@ const ORG_GROUPS: OrgGroup[] = [
 const PROJECT_GROUPS: ProjectGroup[] = [];
 const TEAM: Principal = { type: "org_group", id: "group-1", label: "Platform Architecture", member_count: 3, exists: true };
 
-const PARTICIPANTS: EngagementParticipant[] = [{ link_id: "pa1", stakeholder_id: "stakeholder-1", name: "Pat Regulator", scope: "project" }];
-const PERSONAS: EngagementPersona[] = [{ link_id: "pe1", persona_id: "persona-1", name: "Field Technician", scope: "project" }];
+const PARTICIPANTS: EngagementParticipant[] = [{ link_id: "pa1", stakeholder_id: "stakeholder-1", name: "Pat Regulator", scope: "project", unique_code: "STK-001", organization_id: null }];
+const PERSONAS: EngagementPersona[] = [{ link_id: "pe1", persona_id: "persona-1", name: "Field Technician", scope: "project", unique_code: "PER-001", organization_id: null }];
 const AUDIENCES: EngagementAudience[] = [{ link_id: "au1", group_id: "g-client", name: "Client", scope: "organization" }];
 const OUTCOMES: EngagementOutcome[] = [{ link_id: "o1", kind: "raised", target_type: "pain_point", target_id: "pp-1", label: "Reports arrive late" }];
 const PROMPTS: EngagementPrompt[] = [
@@ -242,8 +243,8 @@ export const DeletePermanentlyNeedsTheTypedTitle: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("button", { name: "Delete permanently" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Delete permanently" }));
+    await waitFor(() => canvas.getByRole("button", { name: "Engagement actions" }));
+    await chooseRecordAction(canvas, "Engagement", "Delete permanently");
     const dialog = within(within(document.body).getByRole("dialog", { name: "Permanently delete Quarterly review with the regulator?" }));
     await expect(dialog.getByText(/its comments, and its attachments and files/)).toBeInTheDocument();
     const confirm = dialog.getByRole("button", { name: "Delete permanently" });

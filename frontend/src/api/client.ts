@@ -4,6 +4,8 @@
  * backend), and normalises error handling.
  */
 
+import { localToday } from "../utils/localDate";
+
 const BASE_URL =
   window.__ENV__?.VITE_API_BASE_URL ??
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
@@ -57,7 +59,7 @@ export const AUTH_UNAUTHORIZED_EVENT = "reqtrack:unauthorized";
  * cheap requests; see docs/decisions.md, "bcrypt login cost under
  * concurrent load"). */
 async function rawRequest(path: string, options: RequestInit = {}, timeoutMs?: number): Promise<Response> {
-  const headers: Record<string, string> = { ...(options.headers as Record<string, string>) };
+  const headers: Record<string, string> = { ...(options.headers as Record<string, string>), "X-Client-Date": localToday() };
   if (options.body && !(options.body instanceof FormData)) {
     headers["Content-Type"] = "application/json";
   }
@@ -69,7 +71,7 @@ async function rawRequest(path: string, options: RequestInit = {}, timeoutMs?: n
   const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
   let response: Response;
   try {
-    response = await fetch(`${BASE_URL}${path}`, { ...options, headers, signal: controller?.signal });
+    response = await fetch(`${BASE_URL}${path}`, { ...options, headers, signal: controller?.signal ?? options.signal });
   } catch (err) {
     if (controller?.signal.aborted) {
       throw new ApiError(0, "The server is taking longer than expected to respond. Please try again.");
@@ -121,8 +123,7 @@ async function request<T>(path: string, options: RequestInit = {}, timeoutMs?: n
 }
 
 /** A page of results from a `limit`/`offset`-paginated list endpoint (U-P-06).
- * `totalUnfiltered` (2026-08 UX audit roadmap: persistent "showing X of Y"
- * result count) is optional — only the requirements/change-requests/projects
+ * `totalUnfiltered` is optional — only the requirements/change-requests/projects
  * list endpoints send the `X-Total-Unfiltered-Count` header it comes from;
  * every other paginated endpoint (and every existing test/story mock built
  * before this field existed) simply omits it, and callers that care fall
@@ -148,8 +149,9 @@ async function requestPage<T>(path: string): Promise<Page<T>> {
 export const api = {
   get: <T>(path: string) => request<T>(path),
   getPage: <T>(path: string) => requestPage<T>(path),
-  post: <T>(path: string, body?: unknown, timeoutMs?: number) =>
-    request<T>(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined }, timeoutMs),
+  /** `signal` lets the caller cancel the request (a superseded search); `timeoutMs` takes precedence when both are given. */
+  post: <T>(path: string, body?: unknown, timeoutMs?: number, signal?: AbortSignal) =>
+    request<T>(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined, signal }, timeoutMs),
   put: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "PUT", body: body !== undefined ? JSON.stringify(body) : undefined }),
   patch: <T>(path: string, body?: unknown) =>
@@ -163,7 +165,7 @@ export const api = {
     return request<T>(path, { method: "POST", body: formData });
   },
   postForBlob: async (path: string, body?: unknown): Promise<Blob> => {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const headers: Record<string, string> = { "Content-Type": "application/json", "X-Client-Date": localToday() };
     if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
     const response = await fetch(`${BASE_URL}${path}`, {
       method: "POST",
@@ -174,7 +176,7 @@ export const api = {
     return response.blob();
   },
   getForBlob: async (path: string): Promise<Blob> => {
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = { "X-Client-Date": localToday() };
     if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
     const response = await fetch(`${BASE_URL}${path}`, { headers });
     if (!response.ok) throw new ApiError(response.status, response.statusText);

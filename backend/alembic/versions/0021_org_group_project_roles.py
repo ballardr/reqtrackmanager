@@ -12,8 +12,7 @@ existing nesting mechanism (`ProjectGroupMember.org_group_id`, C-U-12) —
 nesting stays the way to bundle several groups/users under one named role;
 this is a separate, genuinely new grant path for a single org group to hold
 a role on a project directly. See docs/decisions.md's identify/verify/
-remediate entry for this change (PR4 of the members/groups directory rework
-plan) for the full security review.
+remediate entry for this change for the full security review.
 
 The new table starts empty — a pure additive change, no backfill needed for
 any existing data.

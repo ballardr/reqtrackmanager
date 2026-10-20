@@ -1,7 +1,7 @@
 /**
  * Module: modules/stakeholders/createStakeholder
  *
- * Creates a Stakeholder and then puts it into the chosen groups (Phase 3c): the
+ * Creates a Stakeholder and then puts it into the chosen groups: the
  * create endpoint takes the record's own fields only, and group membership is a
  * separate call. If that second call fails the stakeholder already exists, so
  * the failure is reported as its own message rather than rethrown, which would

@@ -2,12 +2,12 @@
 Module: models.requirement
 
 Defines requirements and their supporting structures: versioned content
-(temporal history, C-A-02), keywords (C-M-01), and per-stage approval
+(temporal history, C-A-02), keywords (C-M-01, stored as tags: `models.tag`), and per-stage approval
 baselines (C-G-10).
 
 Traceability links (C-G-09) used to live here as `RequirementLink`, and
 action membership as `RequirementActionLink` (`models.requirement_action`).
-Module 0 (Platform Foundations), Phase 1 folded both into the generic
+Both were folded into the generic
 polymorphic `ArtefactLink` (`models.relationship`) — a requirement-to-
 requirement traceability link is now an `ArtefactLink` row with
 `source_type`/`target_type` both `ArtefactType.REQUIREMENT` and a non-null
@@ -191,18 +191,6 @@ class RequirementVersion(UUIDPKMixin, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
     requirement: Mapped[Requirement] = relationship(back_populates="versions")
-
-
-class RequirementKeyword(UUIDPKMixin, Base):
-    """A search keyword/tag attached to a requirement (C-M-01)."""
-
-    __tablename__ = "requirement_keywords"
-    __table_args__ = (UniqueConstraint("requirement_id", "keyword"),)
-
-    requirement_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="CASCADE")
-    )
-    keyword: Mapped[str] = mapped_column(String(100), index=True)
 
 
 class Baseline(UUIDPKMixin, TimestampMixin, Base):

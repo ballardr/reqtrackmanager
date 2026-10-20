@@ -1,7 +1,7 @@
 """
 Module: modules.compliance.router.settings
 
-This organisation's compliance settings (Phase 22): currently just the
+This organisation's compliance settings: currently just the
 fallback org group used as a standard's default Standards Manager when
 it has no member/group role grant of its own.
 """
@@ -23,14 +23,14 @@ from app.services.audit import log_event
 router = APIRouter(tags=["compliance-org-settings"])
 
 
-# --- Phase 22: org-level compliance settings (default fallback group) ------
+# --- org-level compliance settings (default fallback group) ------
 
 
 @router.get("/settings", response_model=ComplianceOrgSettingsOut)
 def get_compliance_org_settings(
     organization_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    """This organisation's own Compliance-module settings (Phase 22) — just
+    """This organisation's own Compliance-module settings — just
     the designated fallback compliance-managers group so far. View-gated:
     any org member with the module enabled may see which group (if any) is
     designated, the same "the option itself isn't sensitive" reasoning
@@ -49,7 +49,7 @@ def update_compliance_org_settings(
     current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
 ):
     """Sets (or clears) this organisation's designated fallback compliance-
-    managers group (Phase 22) — org-wide `compliance_manager`-or-higher
+    managers group — org-wide `compliance_manager`-or-higher
     only, since this is an org-level setting, not scoped to any one
     standard. 400s if `default_standards_manager_group_id` doesn't name a
     real `OrgGroup` belonging to this same organisation."""

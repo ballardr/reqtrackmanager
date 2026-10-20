@@ -1,4 +1,6 @@
+import { useMutation } from "../hooks/useMutation";
 import { ArrowDown, ArrowUp, GitPullRequest, MessageSquare, Plus, TriangleAlert } from "lucide-react";
+import { RecordCode } from "../components/RecordCode";
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
@@ -8,35 +10,38 @@ import type {
   Component,
   CustomFieldDefinition,
   FileAsset,
-  LinkTypeDefinition,
   OrgUser,
   Project,
   ProjectStage,
   Requirement,
   RequirementImportResult,
-  RequirementLevel,
-  RequirementLink,
   RequirementStatus,
 } from "../api/types";
-import { loadOfferedLinkTypes } from "../api/linkTypes";
+import type { CollectedLink } from "../api/artefactLinks";
 import {
   ENTITY_ACCENT_COLOR,
   REQUIREMENT_LEVEL_LABEL,
   REQUIREMENT_STATUS_LABEL,
   REQUIREMENT_STATUS_TONE,
-  linkTypesFor,
   principalRef,
 } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { AutoGrowTextarea } from "../components/AutoGrowTextarea";
 import { CsvImportWizard, type CsvImportWizardHandle } from "../components/CsvImportWizard";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
+import { RequirementFields } from "../components/RequirementFields";
+import { EMPTY_REQUIREMENT_FIELDS, requirementPeopleAndReviewPayload, type RequirementFieldValues } from "../components/requirementFieldValues";
 import { FileAttachmentList } from "../components/FileAttachmentList";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
+import { ListPageLayout } from "../components/ListPageLayout";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Popover } from "../components/Popover";
 import { Modal } from "../components/Modal";
+import { QuickLinkField } from "../components/QuickLinkField";
+import { TagField } from "../components/TagField";
+import { BulkTagDialog } from "../components/BulkTagDialog";
+import { projectTagAdminApi } from "../api/tags";
+import { TagFilterField } from "../components/TagFilterField";
 import { SplitButtonTrigger } from "../components/SplitButtonTrigger";
 import { SortableHeader } from "../components/SortableHeader";
 import { cycleSort, type SortState } from "../components/sortState";
@@ -48,6 +53,19 @@ import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
 import { useLatest } from "../hooks/useLatest";
 import { useRequestSequence } from "../hooks/useRequestSequence";
+import { Badge } from "../components/Badge";
+import { TextField } from "../components/FormFields";
+import { LabeledSelect } from "../components/LabeledSelect";
+import { FormGrid, FormGridFull } from "../components/FormGrid";
+import { useCommitQuickLinks } from "../hooks/useCommitQuickLinks";
+import { useCommitTags } from "../hooks/useCommitTags";
+import { useTagFilter } from "../hooks/useTagFilter";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { useProjectScope } from "../hooks/useProjectScope";
+import { ProjectScopeFilter } from "../components/ProjectScopeFilter";
+import { ProjectScopeLabel } from "../components/ProjectScopeLabel";
+import { rowProjectId } from "../api/projectScope";
+import { useResetOnChange } from "../hooks/useResetOnChange";
 
 const PAGE_SIZE = 30;
 
@@ -63,19 +81,23 @@ const STATUS_OPTIONS: RequirementStatus[] = ["draft", "reviewed", "approved", "a
  * incremental "load more" pagination (U-P-06) for large requirement sets.
  */
 export function RequirementsPage() {
+  const run = useMutation();
   const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "requirement");
+  const commitTags = useCommitTags(projectId ?? "", "requirement");
+  const tagFilter = useTagFilter();
+  const projectScope = useProjectScope(projectId);
   const myRoles = useMyProjectRoles(projectId);
   const [isOrgAdminOfProject, setIsOrgAdminOfProject] = useState(false);
   const canManageProject =
     myRoles.includes("project_manager") || myRoles.includes("project_administrator") || isOrgAdminOfProject;
   const [requirements, setRequirements] = useState<Requirement[] | null>(null);
   const [total, setTotal] = useState(0);
-  // Unfiltered mandatory-scope count (`X-Total-Unfiltered-Count`, 2026-08
-  // UX audit roadmap: persistent "showing X of Y" result count) — powers
+  // Unfiltered mandatory-scope count — powers
   // `ResultCount` in `FilterPanel`'s header alongside `total` above, which
   // is the filtered/searched count.
   const [totalUnfiltered, setTotalUnfiltered] = useState(0);
@@ -116,14 +138,14 @@ export function RequirementsPage() {
   const [categoryFilter, setCategoryFilter] = useState("");
   const [hasCommentsOnly, setHasCommentsOnly] = useState(false);
   const [onlyWatched, setOnlyWatched] = useState(false);
-  // 2026-08 UX audit roadmap ("unarchive endpoint + Restore button"): an
+  // Unarchive endpoint + Restore button: an
   // archived requirement's detail page (`RequirementDetailPage.tsx`) is now
   // where the Restore button lives, but until this filter existed there was
   // no way to *reach* an archived requirement from this list at all — the
   // default query already excludes them, mirroring `ProjectActionsPage.tsx`'s
   // own `include_archived` checkbox.
   const [includeArchived, setIncludeArchived] = useState(false);
-  // Column-header sorting (2026-08 UX audit roadmap): this list is
+  // Column-header sorting: this list is
   // backend-paginated (`PAGE_SIZE`/`LoadMoreButton` above), so sorting has
   // to be a `sort`/`order` query param the backend honours rather than a
   // client-side sort of just the currently-loaded page — sorting only the
@@ -132,13 +154,10 @@ export function RequirementsPage() {
   const [sort, setSort] = useState<SortState<RequirementSortKey> | null>(null);
   const [showNewForm, setShowNewForm] = useState(false);
   const csvWizardRef = useRef<CsvImportWizardHandle>(null);
-  const [newName, setNewName] = useState("");
-  const [newReasoning, setNewReasoning] = useState("");
-  const [newDescription, setNewDescription] = useState("");
+  const [newFields, setNewFields] = useState<RequirementFieldValues>(EMPTY_REQUIREMENT_FIELDS);
+  const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [newComponentId, setNewComponentId] = useState("");
   const [newCategoryId, setNewCategoryId] = useState("");
-  const [newTargetStageId, setNewTargetStageId] = useState("");
-  const [newLevel, setNewLevel] = useState<RequirementLevel>("requirement");
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>([]);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [viewMode, setViewMode] = useViewMode("requirements");
@@ -146,25 +165,19 @@ export function RequirementsPage() {
   const [importing, setImporting] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
 
-  // --- Create-modal step 2: attach files / add links to the just-created
-  // requirement (UX review — previously only possible after closing the
-  // modal and opening the detail page). Mirrors RequirementDetailPage's own
-  // files/links state and handlers, scoped to `createdRequirement`. -------
+  // --- Create-modal step 2: attach files to the just-created requirement
+  // (UX review — previously only possible after closing the modal and
+  // opening the detail page). Mirrors RequirementDetailPage's own files
+  // state and handlers, scoped to `createdRequirement`. Links are chosen
+  // in step 1 with the shared quick-link field and created with the record. ---
   const [createdRequirement, setCreatedRequirement] = useState<Requirement | null>(null);
   const [createdFiles, setCreatedFiles] = useState<FileAsset[]>([]);
-  const [createdLinks, setCreatedLinks] = useState<RequirementLink[]>([]);
-  const [linkTypes, setLinkTypes] = useState<LinkTypeDefinition[]>([]);
-  const [allProjectRequirements, setAllProjectRequirements] = useState<Requirement[]>([]);
-  const [newLinkTargetId, setNewLinkTargetId] = useState("");
-  const [newLinkTypeId, setNewLinkTypeId] = useState("");
-  const [linkError, setLinkError] = useState<string | null>(null);
-  const [addLinkPopoverOpen, setAddLinkPopoverOpen] = useState(false);
-  const addLinkTriggerRef = useRef<HTMLButtonElement>(null);
+  const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
+  const [newTags, setNewTags] = useState<string[]>([]);
 
   // --- Bulk operations (list view only) ---------------------------------
   // Style guide "Pattern: bulk operations on a list" — the first pilot of
-  // this shape in the app (2026-08 UX audit roadmap: bulk operations on
-  // list pages). Selection is a plain `id` Set rather than tied to array
+  // this shape in the app. Selection is a plain `id` Set rather than tied to array
   // indices, so it survives `loadRequirements`'s append-on-"load more"
   // without extra bookkeeping, and "select all" only ever means "all
   // currently loaded rows" (U-P-06's incremental pagination makes a true
@@ -173,6 +186,7 @@ export function RequirementsPage() {
   const [bulkRunning, setBulkRunning] = useState(false);
   const [bulkArchiveDialogOpen, setBulkArchiveDialogOpen] = useState(false);
   const [bulkMovePopoverOpen, setBulkMovePopoverOpen] = useState(false);
+  const [bulkTagDialogOpen, setBulkTagDialogOpen] = useState(false);
   const [bulkMoveStageId, setBulkMoveStageId] = useState("");
   const [bulkMoveDialogOpen, setBulkMoveDialogOpen] = useState(false);
   const bulkMoveTriggerRef = useRef<HTMLButtonElement>(null);
@@ -188,6 +202,9 @@ export function RequirementsPage() {
     if (hasCommentsOnly) params.set("has_comments", "true");
     if (onlyWatched) params.set("only_watched", "true");
     if (includeArchived) params.set("include_archived", "true");
+    for (const tag of tagFilter.tags) params.append("tag", tag);
+    if (tagFilter.active) params.set("tag_mode", tagFilter.mode);
+    if (projectScope.widened) params.set("project_scope", projectScope.scope);
     if (sort) {
       params.set("sort", sort.key);
       params.set("order", sort.direction);
@@ -246,7 +263,7 @@ export function RequirementsPage() {
     // Target is mandatory (it can never be left unset) — the select always
     // has a real stage pre-filled, never a blank "—" option, same as the
     // backend's own create-time default (routers/requirements.py).
-    if (!newTargetStageId && stgs[0]) setNewTargetStageId(stgs[0].id);
+    if (!newFields.targetStageId && stgs[0]) setNewFields((f) => (f.targetStageId ? f : { ...f, targetStageId: stgs[0].id }));
     const selectedComponentId = newComponentId || comps[0]?.id || "";
     if (!newComponentId && comps[0]) setNewComponentId(comps[0].id);
     // Must belong to the selected component (the tree) — picking any
@@ -258,27 +275,26 @@ export function RequirementsPage() {
     setMetaLoaded(true);
   }
 
-  useEffect(() => {
-    reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
+  useLoadOnChange(reload, [
     projectId, search, statusFilter, completedFilter, targetStageFilter, categoryFilter,
-    hasCommentsOnly, onlyWatched, includeArchived, sort,
+    hasCommentsOnly, onlyWatched, includeArchived, sort, tagFilter.query, projectScope.scope,
   ]);
 
   // Deep-linked from the Project Overview page's "New requirement" button
   // (?new=1) — opened once, then the param is stripped so a later reload
   // of this page doesn't keep reopening the form.
+  const newFormRequested = searchParams.get("new") === "1";
+  useResetOnChange([newFormRequested], () => {
+    if (newFormRequested) setShowNewForm(true);
+  }, { runOnMount: true });
+
   useEffect(() => {
-    if (searchParams.get("new") === "1") {
-      setShowNewForm(true);
-      setSearchParams((params) => {
-        params.delete("new");
-        return params;
-      }, { replace: true });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+    if (!newFormRequested) return;
+    setSearchParams((params) => {
+      params.delete("new");
+      return params;
+    }, { replace: true });
+  }, [newFormRequested, setSearchParams]);
 
   // Deep-linked from the Project Overview dashboard's glance tiles/pie-chart
   // segments/stage-progress bars (UX review: clicking a widget should land
@@ -310,6 +326,7 @@ export function RequirementsPage() {
         const proj = await api.get<Project>(`/api/v1/projects/${projectId}`);
         setProject(proj);
         const users = await api.get<OrgUser[]>(`/api/v1/orgs/${proj.organization_id}/users`);
+        setOrgUsers(users);
         setIsOrgAdminOfProject(users.some((u) => u.user_id === user.id && u.roles.includes("org_admin")));
       } catch {
         // No org role at all (rare) — canManageProject still resolves correctly
@@ -350,11 +367,11 @@ export function RequirementsPage() {
   }
 
   /**
-   * `andAttach`: when true (the "Create & attach files/links" action, UX
+   * `andAttach`: when true (the "Create & attach files" action, UX
    * review — attaching should be possible during creation, not only
    * afterwards from the detail page), the modal advances to a second step
    * against the just-created requirement's real id instead of closing —
-   * the backend's file/link endpoints require an existing id, so this
+   * the backend's file endpoints require an existing id, so this
    * reuses them rather than building a pre-create staging flow. The plain
    * "Create" action keeps closing the modal immediately, unchanged — most
    * creates don't need an attachment, and every existing workflow (the
@@ -362,40 +379,35 @@ export function RequirementsPage() {
    * behaviour, so the extra step is opt-in rather than forced on every create.
    */
   async function createRequirement(andAttach: boolean) {
-    if (!projectId || !newComponentId || !newCategoryId || !newTargetStageId) return;
+    if (!projectId || !newComponentId || !newCategoryId || !newFields.targetStageId) return;
     try {
       const created = await api.post<Requirement>(`/api/v1/projects/${projectId}/requirements`, {
-        name: newName,
-        reasoning: newReasoning,
-        description: newDescription,
+        name: newFields.name,
+        reasoning: newFields.reasoning,
+        clarification: newFields.clarification,
+        description: newFields.description,
         component_id: newComponentId,
         category_id: newCategoryId,
-        target_stage_id: newTargetStageId,
-        level: newLevel,
+        target_stage_id: newFields.targetStageId,
+        level: newFields.level,
+        ...requirementPeopleAndReviewPayload(newFields),
         keywords: [],
         custom_fields: customFieldValues,
       });
-      setNewName("");
-      setNewReasoning("");
-      setNewDescription("");
-      setNewLevel("requirement");
+      setNewFields((f) => ({ ...EMPTY_REQUIREMENT_FIELDS, targetStageId: f.targetStageId }));
       setCustomFieldValues({});
       reload();
       showToast(strings.requirements.created);
+      await commitQuickLinks(created.id, quickLinks);
+      setQuickLinks([]);
+      await commitTags(created.id, newTags);
+      setNewTags([]);
       if (!andAttach) {
         setShowNewForm(false);
         return;
       }
       setCreatedRequirement(created);
       setCreatedFiles([]);
-      setCreatedLinks([]);
-      const [reqs, defs] = await Promise.all([
-        api.get<Requirement[]>(`/api/v1/projects/${projectId}/requirements`),
-        loadOfferedLinkTypes(projectId),
-      ]);
-      setAllProjectRequirements(reqs);
-      // Only types that may join two requirements (a restricted or dedicated type would be refused).
-      setLinkTypes(linkTypesFor(defs, "requirement", "requirement"));
     } catch (err) {
       showToast(toErrorMessage(err, strings.common.error), "error");
     }
@@ -403,31 +415,14 @@ export function RequirementsPage() {
 
   async function uploadCreatedRequirementFile(file: File) {
     if (!projectId || !createdRequirement) return;
-    await api.postFile(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/files`, file);
+    if (!(await run(() => api.postFile(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/files`, file), "upload", "file"))) return;
     setCreatedFiles(await api.get<FileAsset[]>(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/files`));
   }
 
   async function removeCreatedRequirementFile(fileId: string) {
     if (!projectId || !createdRequirement) return;
-    await api.delete(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/files/${fileId}`);
+    if (!(await run(() => api.delete(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/files/${fileId}`), "remove", "file"))) return;
     setCreatedFiles(await api.get<FileAsset[]>(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/files`));
-  }
-
-  async function addLinkToCreatedRequirement() {
-    if (!projectId || !createdRequirement || !newLinkTargetId || !newLinkTypeId) return;
-    setLinkError(null);
-    try {
-      await api.post(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/links`, {
-        target_requirement_id: newLinkTargetId,
-        link_type_id: newLinkTypeId,
-      });
-      setNewLinkTargetId("");
-      setNewLinkTypeId("");
-      setAddLinkPopoverOpen(false);
-      setCreatedLinks(await api.get<RequirementLink[]>(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/links`));
-    } catch (err) {
-      setLinkError(err instanceof Error ? err.message : strings.common.error);
-    }
   }
 
   function finishCreateRequirement() {
@@ -467,8 +462,9 @@ export function RequirementsPage() {
   // other indeterminate-checkbox implementation.
   useEffect(() => {
     if (!selectAllRef.current || !requirements) return;
-    const selectedLoaded = requirements.filter((r) => selectedIds.has(r.id)).length;
-    selectAllRef.current.indeterminate = selectedLoaded > 0 && selectedLoaded < requirements.length;
+    const own = requirements.filter((r) => !r.from_project_id);
+    const selectedLoaded = own.filter((r) => selectedIds.has(r.id)).length;
+    selectAllRef.current.indeterminate = selectedLoaded > 0 && selectedLoaded < own.length;
   }, [requirements, selectedIds]);
 
   function toggleRowSelected(id: string) {
@@ -482,9 +478,11 @@ export function RequirementsPage() {
 
   function toggleSelectAllLoaded() {
     if (!requirements) return;
+    // Rows from a related project are read-only here: bulk actions only ever touch this project's own.
+    const own = requirements.filter((r) => !r.from_project_id);
     setSelectedIds((current) => {
-      const allSelected = requirements.every((r) => current.has(r.id));
-      return allSelected ? new Set() : new Set(requirements.map((r) => r.id));
+      const allSelected = own.every((r) => current.has(r.id));
+      return allSelected ? new Set() : new Set(own.map((r) => r.id));
     });
   }
 
@@ -543,7 +541,6 @@ export function RequirementsPage() {
         owner: principalRef(r.owner),
         target_stage_id: targetStageId,
         level: r.level,
-        keywords: r.keywords,
         custom_fields: r.custom_fields,
         change_note: "Bulk move to stage.",
         review_date: r.review_date,
@@ -591,624 +588,533 @@ export function RequirementsPage() {
 
   return (
     <div className="stack">
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <h1 style={{ margin: 0 }}>{strings.requirements.title}</h1>
-        <SplitButtonTrigger
-          icon={<Plus size={16} />}
-          label={strings.requirements.newRequirement}
-          onDefaultAction={() => setShowNewForm(true)}
-          menuTitle={strings.requirements.newRequirement}
-          moreOptionsLabel={strings.common.moreOptions}
-          alternatives={[
-            { label: strings.requirements.importFromCsv, onSelect: () => csvWizardRef.current?.openFilePicker() },
-          ]}
+      <ListPageLayout
+        title={strings.requirements.title}
+        actions={
+          <SplitButtonTrigger
+            icon={<Plus size={16} />}
+            label={strings.requirements.newRequirement}
+            onDefaultAction={() => setShowNewForm(true)}
+            menuTitle={strings.requirements.newRequirement}
+            moreOptionsLabel={strings.common.moreOptions}
+            alternatives={[
+              { label: strings.requirements.importFromCsv, onSelect: () => csvWizardRef.current?.openFilePicker() },
+            ]}
+          />
+        }
+        filter={
+          <FilterPanel
+            sectionKey="requirementsFilters"
+            matching={total}
+            total={totalUnfiltered}
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder={strings.requirements.search}
+          >
+            <FilterField label="Status">
+              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as RequirementStatus | "")}>
+                <option value="">All statuses</option>
+                {STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {REQUIREMENT_STATUS_LABEL[s]}
+                  </option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterField label="Target version">
+              <select className="input" value={targetStageFilter} onChange={(e) => setTargetStageFilter(e.target.value)}>
+                <option value="">All versions</option>
+                {stages.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterField label={strings.requirements.category}>
+              <select className="input" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+                <option value="">{strings.requirements.allCategories}</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </FilterField>
+            {/* C-G-11: completion is now an independent overlay marker, not a
+                status value — a separate checkbox alongside the Status
+                <select> above rather than one of its options. */}
+            <ProjectScopeFilter scope={projectScope} />
+            {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <FilterCheckbox label={strings.requirements.completedFilter} checked={completedFilter} onChange={setCompletedFilter} />
+            <FilterCheckbox label="Has comments" checked={hasCommentsOnly} onChange={setHasCommentsOnly} />
+            <FilterCheckbox label="Only watched" checked={onlyWatched} onChange={setOnlyWatched} />
+            <FilterCheckbox label={strings.requirements.includeArchived} checked={includeArchived} onChange={setIncludeArchived} />
+          </FilterPanel>
+        }
+      >
+        <CsvImportWizard
+          ref={csvWizardRef}
+          showImportTrigger={false}
+          projectId={projectId ?? ""} projectName={project?.name ?? ""}
+          components={components} categories={categories} stages={stages} customFields={customFieldDefs}
+          importing={importing} onImport={importCsv}
         />
-      </div>
 
-      <CsvImportWizard
-        ref={csvWizardRef}
-        showImportTrigger={false}
-        projectId={projectId ?? ""} projectName={project?.name ?? ""}
-        components={components} categories={categories} stages={stages} customFields={customFieldDefs}
-        importing={importing} onImport={importCsv}
-      />
-
-      {importResult && (
-        <div className="card stack" style={{ gap: "0.4rem" }}>
-          <div className="row" style={{ justifyContent: "space-between" }}>
-            <strong>
-              Import complete: {importResult.created} created, {importResult.errors.length} error(s)
-            </strong>
-            <button className="btn" onClick={() => setImportResult(null)}>
-              Dismiss
-            </button>
+        {importResult && (
+          <div className="card stack" style={{ gap: "0.4rem" }}>
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <strong>
+                Import complete: {importResult.created} created, {importResult.errors.length} error(s)
+              </strong>
+              <button className="btn" onClick={() => setImportResult(null)}>
+                Dismiss
+              </button>
+            </div>
+            {importResult.errors.length > 0 && (
+              <ul style={{ margin: 0 }}>
+                {importResult.errors.map((e, i) => (
+                  <li key={i} className="text-muted">
+                    Row {e.row}: {e.message}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
-          {importResult.errors.length > 0 && (
-            <ul style={{ margin: 0 }}>
-              {importResult.errors.map((e, i) => (
-                <li key={i} className="text-muted">
-                  Row {e.row}: {e.message}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+        )}
 
-      {showNewForm && metaLoaded && (
-        // Style guide "Pattern: modal dialog for entity create/rename" —
-        // a brand-new entity opens in a Modal, not a layer that still
-        // occupies the side panel's "detail about the current view" slot.
-        <Modal
-          title={createdRequirement
-            ? `${createdRequirement.unique_code} — ${strings.requirements.attachFilesAndLinks}`
-            : strings.requirements.newRequirement}
-          onClose={finishCreateRequirement}
-          size="lg"
-        >
-          {createdRequirement ? (
-            <>
-              <div className="stack">
-                <h3 style={{ margin: 0, fontSize: "1rem" }}>{strings.requirements.attachments}</h3>
-                <FileAttachmentList
-                  files={createdFiles}
-                  onUpload={uploadCreatedRequirementFile}
-                  onRemove={removeCreatedRequirementFile}
-                />
-              </div>
-              <div className="stack">
-                <div className="row" style={{ justifyContent: "space-between" }}>
-                  <h3 style={{ margin: 0, fontSize: "1rem" }}>{strings.requirements.links}</h3>
-                  {(() => {
-                    const eligibleLinkTargets = allProjectRequirements.filter(
-                      (r) => r.id !== createdRequirement.id && !createdLinks.some((l) => l.other_requirement_id === r.id)
-                    );
-                    const noEligibleTargets = eligibleLinkTargets.length === 0;
-                    return (
-                      <>
+        {showNewForm && metaLoaded && (
+          // Style guide "Pattern: modal dialog for entity create/rename" —
+          // a brand-new entity opens in a Modal, not a layer that still
+          // occupies the side panel's "detail about the current view" slot.
+          <Modal
+            title={createdRequirement
+              ? `${createdRequirement.unique_code} — ${strings.requirements.attachFilesAndLinks}`
+              : strings.requirements.newRequirement}
+            onClose={finishCreateRequirement}
+            size="lg"
+          >
+            {createdRequirement ? (
+              <>
+                <div className="stack">
+                  <h3 style={{ margin: 0, fontSize: "1rem" }}>{strings.requirements.attachments}</h3>
+                  <FileAttachmentList
+                    files={createdFiles}
+                    onUpload={uploadCreatedRequirementFile}
+                    onRemove={removeCreatedRequirementFile}
+                  />
+                </div>
+                <div className="row" style={{ justifyContent: "flex-end" }}>
+                  <button className="btn btn-primary" onClick={finishCreateRequirement}>
+                    {strings.requirements.finish}
+                  </button>
+                </div>
+              </>
+            ) : components.length === 0 || categories.length === 0 ? (
+              <>
+                <p style={{ margin: 0 }}>{strings.requirements.noComponentsOrCategories}</p>
+                {canManageProject ? (
+                  <div className="stack">
+                    {components.length === 0 && (
+                      <div className="row" style={{ alignItems: "flex-end" }}>
+                        <TextField helpNotNeeded label={strings.admin.name} value={newInlineComponentName} onChange={setNewInlineComponentName} />
+                        <TextField help={strings.help.requirementPrefix}
+                          label={strings.admin.prefix}
+                          value={newInlineComponentPrefix}
+                          onChange={(next) => setNewInlineComponentPrefix(next.toUpperCase())}
+                          inputProps={{ style: { maxWidth: 100 } }}
+                        />
                         <button
-                          ref={addLinkTriggerRef}
                           className="btn btn-primary"
-                          disabled={noEligibleTargets}
-                          title={noEligibleTargets ? strings.requirements.noEligibleLinkTargets : undefined}
+                          onClick={createInlineComponent}
+                          disabled={!newInlineComponentName || !newInlineComponentPrefix}
+                        >
+                          <Plus /> {strings.admin.newComponent}
+                        </button>
+                      </div>
+                    )}
+                    {categories.length === 0 && components.length > 0 && (
+                      <div className="row" style={{ alignItems: "flex-end" }}>
+                        {components.length > 1 && (
+                          <LabeledSelect helpNotNeeded
+                            label={strings.requirements.component}
+                            value={newComponentId}
+                            onChange={setNewComponentId}
+                            options={components.map((c) => ({ value: c.id, label: c.name }))}
+                            placeholder={null}
+                          />
+                        )}
+                        <TextField helpNotNeeded label={strings.admin.name} value={newInlineCategoryName} onChange={setNewInlineCategoryName} />
+                        <TextField help={strings.help.requirementPrefix}
+                          label={strings.admin.prefix}
+                          value={newInlineCategoryPrefix}
+                          onChange={(next) => setNewInlineCategoryPrefix(next.toUpperCase())}
+                          inputProps={{ style: { maxWidth: 100 } }}
+                        />
+                        <button
+                          className="btn btn-primary"
+                          onClick={createInlineCategory}
+                          disabled={!newInlineCategoryName || !newInlineCategoryPrefix}
+                        >
+                          <Plus /> {strings.admin.newCategory}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <Link to={`/projects/${projectId}/admin`} className="btn btn-primary" style={{ alignSelf: "flex-start" }}>
+                    {strings.requirements.configureComponentsFirst}
+                  </Link>
+                )}
+              </>
+            ) : (
+              <>
+                <FormGrid minColumn="18rem">
+                  <RequirementFields
+                    values={newFields}
+                    onChange={setNewFields}
+                    stages={stages}
+                    orgUsers={orgUsers}
+                    organizationId={project?.organization_id}
+                    projectId={projectId}
+                    ownerPlaceholder={strings.requirements.ownerDefaultsToYou}
+                    afterDescription={
+                      <>
+                        <LabeledSelect helpNotNeeded required
+                          label={strings.requirements.component}
+                          value={newComponentId}
+                          onChange={(componentId) => {
+                            setNewComponentId(componentId);
+                            // Category is nested under one component (the tree) — a
+                            // category belonging to the previously-selected component
+                            // is never valid once the component changes.
+                            const firstOwnCategory = categories.find((c) => c.component_id === componentId);
+                            setNewCategoryId(firstOwnCategory?.id ?? "");
+                          }}
+                          options={components.map((c) => ({ value: c.id, label: `${c.name} (${c.prefix})` }))}
+                          placeholder={null}
+                        />
+                        <LabeledSelect helpNotNeeded required
+                          label={strings.requirements.category}
+                          value={newCategoryId}
+                          onChange={setNewCategoryId}
+                          options={categories
+                            .filter((c) => c.component_id === newComponentId)
+                            .map((c) => ({ value: c.id, label: `${c.name} (${c.prefix})` }))}
+                          placeholder={categories.some((c) => c.component_id === newComponentId) ? null : strings.requirements.noCategoriesForComponent}
+                        />
+                      </>
+                    }
+                  />
+                  <FormGridFull>
+                    <CustomFieldsForm
+                      definitions={customFieldDefs}
+                      values={customFieldValues}
+                      onChange={(fieldId, value) => setCustomFieldValues((v) => ({ ...v, [fieldId]: value }))}
+                    />
+                  </FormGridFull>
+                  <FormGridFull>
+                    <QuickLinkField projectId={projectId ?? ""} artefactType="requirement" value={quickLinks} onChange={setQuickLinks} />
+                  </FormGridFull>
+                  <FormGridFull>
+                    <TagField projectId={projectId ?? ""} artefactType="requirement" value={newTags} onChange={setNewTags} />
+                  </FormGridFull>
+                </FormGrid>
+                <div className="row" style={{ justifyContent: "flex-end" }}>
+                  <button
+                    className="btn"
+                    onClick={() => createRequirement(true)}
+                    disabled={!newFields.name || !newComponentId || !newCategoryId || !newFields.targetStageId}
+                  >
+                    {strings.requirements.createAndAttach}
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => createRequirement(false)}
+                    disabled={!newFields.name || !newComponentId || !newCategoryId || !newFields.targetStageId}
+                  >
+                    {strings.common.create}
+                  </button>
+                </div>
+              </>
+            )}
+          </Modal>
+        )}
+          <div className="stack">
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <ViewToggle mode={viewMode} onChange={setViewMode} />
+            </div>
+
+            {/* Bulk operations toolbar (style guide "Pattern: bulk operations
+                on a list") — table/list view only, per this pilot's scope;
+                tile view has no checkbox column to select from. Sits directly
+                above the table rather than replacing the search/view-toggle
+                row above, so it's visible without scrolling away from the
+                list it acts on. Gated on `canManageProject` the same way the
+                checkbox column itself is (see below) — both bulk actions
+                require the same manager/administrator role the single-row
+                Archive button already requires on `RequirementDetailPage.tsx`. */}
+            {viewMode === "list" && canManageProject && selectedIds.size > 0 && (
+              <div className="card row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
+                <div className="row" style={{ gap: "0.75rem", alignItems: "center" }}>
+                  <strong>{strings.requirements.bulkSelectedCount(selectedIds.size)}</strong>
+                  <button className="btn" onClick={() => setSelectedIds(new Set())} disabled={bulkRunning}>
+                    {strings.requirements.bulkClearSelection}
+                  </button>
+                </div>
+                <div className="row" style={{ gap: "0.5rem" }}>
+                  <button className="btn" onClick={() => setBulkTagDialogOpen(true)} disabled={bulkRunning}>
+                    {strings.requirements.bulkTagSelected}
+                  </button>
+                  <button className="btn btn-danger" onClick={() => setBulkArchiveDialogOpen(true)} disabled={bulkRunning}>
+                    {strings.requirements.bulkArchiveSelected}
+                  </button>
+                  <button
+                    ref={bulkMoveTriggerRef}
+                    className="btn"
+                    onClick={() => {
+                      setBulkMoveStageId((current) => current || stages[0]?.id || "");
+                      setBulkMovePopoverOpen((v) => !v);
+                    }}
+                    disabled={bulkRunning || stages.length === 0}
+                  >
+                    {strings.requirements.bulkMoveToStage}
+                  </button>
+                  {bulkMovePopoverOpen && (
+                    <Popover anchorRef={bulkMoveTriggerRef} title={strings.requirements.bulkMoveToStage} onClose={() => setBulkMovePopoverOpen(false)}>
+                      <div className="stack" style={{ gap: "0.5rem", minWidth: 200 }}>
+                        <select
+                          className="input"
+                          aria-label={strings.requirements.targetVersion}
+                          value={bulkMoveStageId}
+                          onChange={(e) => setBulkMoveStageId(e.target.value)}
+                        >
+                          {stages.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          className="btn btn-primary"
+                          disabled={!bulkMoveStageId}
                           onClick={() => {
-                            setLinkError(null);
-                            setAddLinkPopoverOpen((o) => !o);
+                            setBulkMovePopoverOpen(false);
+                            setBulkMoveDialogOpen(true);
                           }}
                         >
-                          <Plus size={14} /> {strings.requirements.addLink}
+                          {strings.requirements.bulkMoveApply}
                         </button>
-                        {addLinkPopoverOpen && (
-                          <Popover anchorRef={addLinkTriggerRef} title={strings.requirements.addLink} onClose={() => setAddLinkPopoverOpen(false)}>
-                            <label className="stack" style={{ gap: "0.25rem" }}>
-                              {strings.requirements.targetRequirement}
-                              <select
-                                className="input" aria-label={strings.requirements.targetRequirement}
-                                value={newLinkTargetId} onChange={(e) => setNewLinkTargetId(e.target.value)}
-                              >
-                                <option value="">{strings.requirements.selectARequirementToLink}</option>
-                                {eligibleLinkTargets.map((r) => (
-                                  <option key={r.id} value={r.id}>
-                                    {r.unique_code} — {r.name}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <label className="stack" style={{ gap: "0.25rem" }}>
-                              {strings.requirements.linkType}
-                              <select
-                                className="input" aria-label={strings.requirements.linkType}
-                                value={newLinkTypeId} onChange={(e) => setNewLinkTypeId(e.target.value)}
-                              >
-                                <option value="">{strings.requirements.linkType}</option>
-                                {linkTypes.map((lt) => (
-                                  <option key={lt.id} value={lt.id}>
-                                    {lt.forward_name}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            {linkError && <div style={{ color: "var(--color-danger)" }}>{linkError}</div>}
-                            <div className="row" style={{ justifyContent: "flex-end" }}>
-                              <button className="btn" onClick={() => setAddLinkPopoverOpen(false)}>
-                                {strings.common.cancel}
-                              </button>
-                              <button className="btn btn-primary" onClick={addLinkToCreatedRequirement} disabled={!newLinkTargetId || !newLinkTypeId}>
-                                {strings.requirements.addLink}
-                              </button>
-                            </div>
-                          </Popover>
-                        )}
-                      </>
-                    );
-                  })()}
+                      </div>
+                    </Popover>
+                  )}
                 </div>
-                {createdLinks.length === 0 && <p className="text-muted" style={{ margin: 0 }}>{strings.requirements.noLinks}</p>}
-                {createdLinks.map((l) => (
-                  <div key={l.id} className="row" style={{ justifyContent: "space-between" }}>
-                    <span>{l.display_name}: {l.other_requirement_unique_code} — {l.other_requirement_name}</span>
+              </div>
+            )}
+
+            {bulkArchiveDialogOpen && (
+              <ConfirmDialog
+                title={strings.requirements.bulkArchiveTitle(selectedIds.size)}
+                message={strings.requirements.bulkArchiveConfirm}
+                confirmLabel={strings.requirements.bulkArchiveSelected}
+                onConfirm={bulkArchive}
+                onCancel={() => setBulkArchiveDialogOpen(false)}
+              />
+            )}
+
+            {bulkTagDialogOpen && projectId && (
+              <BulkTagDialog
+                api={projectTagAdminApi(projectId)}
+                artefactType="requirement"
+                ids={[...selectedIds]}
+                title={strings.requirements.bulkTagTitle(selectedIds.size)}
+                onClose={() => setBulkTagDialogOpen(false)}
+                onApplied={async (result) => {
+                  setBulkTagDialogOpen(false);
+                  showToast(strings.tags.admin.reclassifyDone(result.matched));
+                  await reload();
+                }}
+              />
+            )}
+
+            {bulkMoveDialogOpen && (
+              <ConfirmDialog
+                title={strings.requirements.bulkMoveTitle(selectedIds.size, stageName(bulkMoveStageId))}
+                message={strings.requirements.bulkMoveConfirm}
+                confirmLabel={strings.requirements.bulkMoveApply}
+                onConfirm={bulkMoveToStage}
+                onCancel={() => setBulkMoveDialogOpen(false)}
+              />
+            )}
+
+            {!requirements && <Spinner />}
+            {requirements && requirements.length === 0 && <p className="text-muted">{strings.requirements.empty}</p>}
+            {requirements && requirements.length > 0 && viewMode === "tiles" && (
+              <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
+                {requirements.map((r) => (
+                  <div
+                    key={r.id}
+                    className="card stack entity-accent-card"
+                    style={{ gap: "0.5rem", ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.requirement }}
+                  >
+                    <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <span className="text-muted" style={{ fontSize: "0.8rem" }}>
+                        <RecordCode code={r.unique_code} ownerProjectCode={r.from_project_code} />
+                      </span>
+                      {!r.from_project_id && (
+                        <div className="row" style={{ gap: "0.25rem" }}>
+                          <button className="btn" onClick={() => move(r.id, "up")} title={strings.common.up} aria-label={strings.common.up}>
+                            <ArrowUp />
+                          </button>
+                          <button className="btn" onClick={() => move(r.id, "down")} title={strings.common.down} aria-label={strings.common.down}>
+                            <ArrowDown />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <Link to={`/projects/${rowProjectId(r, projectId ?? "")}/requirements/${r.id}`} style={{ fontWeight: 600 }}>
+                      {r.name}
+                    </Link>
+                    <ProjectScopeLabel row={r} />
+                    {r.reasoning && (
+                      <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+                        {r.reasoning.length > 140 ? `${r.reasoning.slice(0, 140)}…` : r.reasoning}
+                      </p>
+                    )}
+                    <div className="row" style={{ justifyContent: "space-between" }}>
+                      <div className="row" style={{ gap: "0.4rem" }}>
+                        <FilterBadge
+                          active={statusFilter === r.status}
+                          tone={REQUIREMENT_STATUS_TONE[r.status]}
+                          onClick={() => toggleStatusFilter(r.status)}
+                        >
+                          {REQUIREMENT_STATUS_LABEL[r.status]}
+                        </FilterBadge>
+                        {/* C-G-11: rendered as its own badge, distinct from
+                            the status badge above (which stays "Approved"
+                            for a completed requirement) — completion is now
+                            an independent overlay, not a merged status. */}
+                        {r.is_completed && <Badge>{strings.requirements.completedBadge}</Badge>}
+                        {r.is_locked && <Badge>{strings.requirements.locked}</Badge>}
+                        {r.is_archived && <Badge>{strings.requirements.archivedBadge}</Badge>}
+                      </div>
+                      <div className="row" style={{ gap: "0.5rem" }}>{badges(r)}</div>
+                    </div>
+                    <div className="text-muted" style={{ fontSize: "0.85rem" }}>
+                      {r.from_project_id ? "—" : `${componentName(r.component_id)} · ${categoryName(r.category_id)}`}
+                    </div>
+                    <div className="text-muted" style={{ fontSize: "0.8rem" }}>
+                      Target: {r.from_project_id ? "—" : stageName(r.target_stage_id)} · Level: {REQUIREMENT_LEVEL_LABEL[r.level]}
+                    </div>
                   </div>
                 ))}
               </div>
-              <div className="row" style={{ justifyContent: "flex-end" }}>
-                <button className="btn btn-primary" onClick={finishCreateRequirement}>
-                  {strings.requirements.finish}
-                </button>
-              </div>
-            </>
-          ) : components.length === 0 || categories.length === 0 ? (
-            <>
-              <p style={{ margin: 0 }}>{strings.requirements.noComponentsOrCategories}</p>
-              {canManageProject ? (
-                <div className="stack">
-                  {components.length === 0 && (
-                    <div className="row">
-                      <input
-                        className="input"
-                        placeholder={strings.admin.name}
-                        value={newInlineComponentName}
-                        onChange={(e) => setNewInlineComponentName(e.target.value)}
-                      />
-                      <input
-                        className="input"
-                        style={{ maxWidth: 100 }}
-                        placeholder={strings.admin.prefix}
-                        value={newInlineComponentPrefix}
-                        onChange={(e) => setNewInlineComponentPrefix(e.target.value.toUpperCase())}
-                      />
-                      <button
-                        className="btn btn-primary"
-                        onClick={createInlineComponent}
-                        disabled={!newInlineComponentName || !newInlineComponentPrefix}
-                      >
-                        <Plus size={14} /> {strings.admin.newComponent}
-                      </button>
-                    </div>
-                  )}
-                  {categories.length === 0 && components.length > 0 && (
-                    <div className="row">
-                      {components.length > 1 && (
-                        <select className="input" style={{ maxWidth: 200 }} value={newComponentId} onChange={(e) => setNewComponentId(e.target.value)}>
-                          {components.map((c) => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
-                          ))}
-                        </select>
-                      )}
-                      <input
-                        className="input"
-                        placeholder={strings.admin.name}
-                        value={newInlineCategoryName}
-                        onChange={(e) => setNewInlineCategoryName(e.target.value)}
-                      />
-                      <input
-                        className="input"
-                        style={{ maxWidth: 100 }}
-                        placeholder={strings.admin.prefix}
-                        value={newInlineCategoryPrefix}
-                        onChange={(e) => setNewInlineCategoryPrefix(e.target.value.toUpperCase())}
-                      />
-                      <button
-                        className="btn btn-primary"
-                        onClick={createInlineCategory}
-                        disabled={!newInlineCategoryName || !newInlineCategoryPrefix}
-                      >
-                        <Plus size={14} /> {strings.admin.newCategory}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <Link to={`/projects/${projectId}/admin`} className="btn btn-primary" style={{ alignSelf: "flex-start" }}>
-                  {strings.requirements.configureComponentsFirst}
-                </Link>
-              )}
-            </>
-          ) : (
-            <>
-              {/* Style guide Principle 13 ("every form field gets a visible
-                  label, not just placeholder text") — these three were
-                  previously the only fields on this form relying on
-                  placeholder text alone, which disappears the moment the
-                  field has real content. Reasoning/Description also swap
-                  their fixed `rows={2}` textareas for `AutoGrowTextarea`
-                  (roadmap item 525) so a longer answer grows to show itself
-                  instead of scrolling inside a two-line box. */}
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.requirements.name}
-                <input className="input" placeholder={strings.requirements.name} value={newName} onChange={(e) => setNewName(e.target.value)} />
-              </label>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.requirements.reasoning}
-                <AutoGrowTextarea
-                  placeholder={strings.requirements.reasoning}
-                  value={newReasoning}
-                  onChange={setNewReasoning}
-                />
-              </label>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.requirements.description}
-                <AutoGrowTextarea
-                  placeholder={strings.requirements.description}
-                  value={newDescription}
-                  onChange={setNewDescription}
-                />
-              </label>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.requirements.component}
-                <select
-                  className="input"
-                  value={newComponentId}
-                  onChange={(e) => {
-                    const componentId = e.target.value;
-                    setNewComponentId(componentId);
-                    // Category is nested under one component (the tree) — a
-                    // category belonging to the previously-selected component
-                    // is never valid once the component changes.
-                    const firstOwnCategory = categories.find((c) => c.component_id === componentId);
-                    setNewCategoryId(firstOwnCategory?.id ?? "");
-                  }}
-                >
-                  {components.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} ({c.prefix})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.requirements.category}
-                <select className="input" value={newCategoryId} onChange={(e) => setNewCategoryId(e.target.value)}>
-                  {categories.filter((c) => c.component_id === newComponentId).length === 0 && (
-                    <option value="">{strings.requirements.noCategoriesForComponent}</option>
-                  )}
-                  {categories.filter((c) => c.component_id === newComponentId).map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} ({c.prefix})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.requirements.targetVersion}
-                <select className="input" value={newTargetStageId} onChange={(e) => setNewTargetStageId(e.target.value)}>
-                  {stages.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="stack" style={{ gap: "0.25rem" }}>
-                {strings.requirements.level}
-                <select className="input" value={newLevel} onChange={(e) => setNewLevel(e.target.value as RequirementLevel)}>
-                  <option value="requirement">{REQUIREMENT_LEVEL_LABEL.requirement}</option>
-                  <option value="recommended">{REQUIREMENT_LEVEL_LABEL.recommended}</option>
-                  <option value="optional">{REQUIREMENT_LEVEL_LABEL.optional}</option>
-                </select>
-              </label>
-              <CustomFieldsForm
-                definitions={customFieldDefs}
-                values={customFieldValues}
-                onChange={(fieldId, value) => setCustomFieldValues((v) => ({ ...v, [fieldId]: value }))}
-              />
-              <div className="row" style={{ justifyContent: "flex-end" }}>
-                <button
-                  className="btn"
-                  onClick={() => createRequirement(true)}
-                  disabled={!newName || !newComponentId || !newCategoryId || !newTargetStageId}
-                >
-                  {strings.requirements.createAndAttach}
-                </button>
-                <button
-                  className="btn btn-primary"
-                  onClick={() => createRequirement(false)}
-                  disabled={!newName || !newComponentId || !newCategoryId || !newTargetStageId}
-                >
-                  {strings.common.create}
-                </button>
-              </div>
-            </>
-          )}
-        </Modal>
-      )}
-
-      <div className="side-grid">
-        <div className="stack">
-          <div className="row" style={{ justifyContent: "flex-end" }}>
-            <ViewToggle mode={viewMode} onChange={setViewMode} />
-          </div>
-
-          {/* Bulk operations toolbar (style guide "Pattern: bulk operations
-              on a list") — table/list view only, per this pilot's scope;
-              tile view has no checkbox column to select from. Sits directly
-              above the table rather than replacing the search/view-toggle
-              row above, so it's visible without scrolling away from the
-              list it acts on. Gated on `canManageProject` the same way the
-              checkbox column itself is (see below) — both bulk actions
-              require the same manager/administrator role the single-row
-              Archive button already requires on `RequirementDetailPage.tsx`. */}
-          {viewMode === "list" && canManageProject && selectedIds.size > 0 && (
-            <div className="card row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
-              <div className="row" style={{ gap: "0.75rem", alignItems: "center" }}>
-                <strong>{strings.requirements.bulkSelectedCount(selectedIds.size)}</strong>
-                <button className="btn" onClick={() => setSelectedIds(new Set())} disabled={bulkRunning}>
-                  {strings.requirements.bulkClearSelection}
-                </button>
-              </div>
-              <div className="row" style={{ gap: "0.5rem" }}>
-                <button className="btn btn-danger" onClick={() => setBulkArchiveDialogOpen(true)} disabled={bulkRunning}>
-                  {strings.requirements.bulkArchiveSelected}
-                </button>
-                <button
-                  ref={bulkMoveTriggerRef}
-                  className="btn"
-                  onClick={() => {
-                    setBulkMoveStageId((current) => current || stages[0]?.id || "");
-                    setBulkMovePopoverOpen((v) => !v);
-                  }}
-                  disabled={bulkRunning || stages.length === 0}
-                >
-                  {strings.requirements.bulkMoveToStage}
-                </button>
-                {bulkMovePopoverOpen && (
-                  <Popover anchorRef={bulkMoveTriggerRef} title={strings.requirements.bulkMoveToStage} onClose={() => setBulkMovePopoverOpen(false)}>
-                    <div className="stack" style={{ gap: "0.5rem", minWidth: 200 }}>
-                      <select
-                        className="input"
-                        aria-label={strings.requirements.targetVersion}
-                        value={bulkMoveStageId}
-                        onChange={(e) => setBulkMoveStageId(e.target.value)}
-                      >
-                        {stages.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        className="btn btn-primary"
-                        disabled={!bulkMoveStageId}
-                        onClick={() => {
-                          setBulkMovePopoverOpen(false);
-                          setBulkMoveDialogOpen(true);
-                        }}
-                      >
-                        {strings.requirements.bulkMoveApply}
-                      </button>
-                    </div>
-                  </Popover>
-                )}
-              </div>
-            </div>
-          )}
-
-          {bulkArchiveDialogOpen && (
-            <ConfirmDialog
-              title={strings.requirements.bulkArchiveTitle(selectedIds.size)}
-              message={strings.requirements.bulkArchiveConfirm}
-              confirmLabel={strings.requirements.bulkArchiveSelected}
-              onConfirm={bulkArchive}
-              onCancel={() => setBulkArchiveDialogOpen(false)}
-            />
-          )}
-
-          {bulkMoveDialogOpen && (
-            <ConfirmDialog
-              title={strings.requirements.bulkMoveTitle(selectedIds.size, stageName(bulkMoveStageId))}
-              message={strings.requirements.bulkMoveConfirm}
-              confirmLabel={strings.requirements.bulkMoveApply}
-              onConfirm={bulkMoveToStage}
-              onCancel={() => setBulkMoveDialogOpen(false)}
-            />
-          )}
-
-          {!requirements && <Spinner />}
-          {requirements && requirements.length === 0 && <p className="text-muted">{strings.requirements.empty}</p>}
-          {requirements && requirements.length > 0 && viewMode === "tiles" && (
-            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
-              {requirements.map((r) => (
-                <div
-                  key={r.id}
-                  className="card stack entity-accent-card"
-                  style={{ gap: "0.5rem", ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.requirement }}
-                >
-                  <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <span className="text-muted" style={{ fontSize: "0.8rem" }}>
-                      {r.unique_code}
-                    </span>
-                    <div className="row" style={{ gap: "0.25rem" }}>
-                      <button className="btn" onClick={() => move(r.id, "up")} title={strings.common.up} aria-label={strings.common.up}>
-                        <ArrowUp size={14} />
-                      </button>
-                      <button className="btn" onClick={() => move(r.id, "down")} title={strings.common.down} aria-label={strings.common.down}>
-                        <ArrowDown size={14} />
-                      </button>
-                    </div>
-                  </div>
-                  <Link to={`/projects/${projectId}/requirements/${r.id}`} style={{ fontWeight: 600 }}>
-                    {r.name}
-                  </Link>
-                  {r.reasoning && (
-                    <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-                      {r.reasoning.length > 140 ? `${r.reasoning.slice(0, 140)}…` : r.reasoning}
-                    </p>
-                  )}
-                  <div className="row" style={{ justifyContent: "space-between" }}>
-                    <div className="row" style={{ gap: "0.4rem" }}>
-                      <FilterBadge
-                        active={statusFilter === r.status}
-                        tone={REQUIREMENT_STATUS_TONE[r.status]}
-                        onClick={() => toggleStatusFilter(r.status)}
-                      >
-                        {REQUIREMENT_STATUS_LABEL[r.status]}
-                      </FilterBadge>
-                      {/* C-G-11: rendered as its own badge, distinct from
-                          the status badge above (which stays "Approved"
-                          for a completed requirement) — completion is now
-                          an independent overlay, not a merged status. */}
-                      {r.is_completed && <span className="badge">{strings.requirements.completedBadge}</span>}
-                      {r.is_locked && <span className="badge">{strings.requirements.locked}</span>}
-                      {r.is_archived && <span className="badge">{strings.requirements.archivedBadge}</span>}
-                    </div>
-                    <div className="row" style={{ gap: "0.5rem" }}>{badges(r)}</div>
-                  </div>
-                  <div className="text-muted" style={{ fontSize: "0.85rem" }}>
-                    {componentName(r.component_id)} · {categoryName(r.category_id)}
-                  </div>
-                  <div className="text-muted" style={{ fontSize: "0.8rem" }}>
-                    Target: {stageName(r.target_stage_id)} · Level: {REQUIREMENT_LEVEL_LABEL[r.level]}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          {requirements && requirements.length > 0 && viewMode === "list" && (
-            <div className="card" style={{ overflowX: "auto" }}>
-              <table>
-                <thead>
-                  <tr>
-                    {canManageProject && (
-                      <th style={{ width: "3%" }}>
-                        <input
-                          ref={selectAllRef}
-                          type="checkbox"
-                          checked={requirements.length > 0 && requirements.every((r) => selectedIds.has(r.id))}
-                          onChange={toggleSelectAllLoaded}
-                          aria-label={strings.requirements.bulkSelectAll}
-                        />
-                      </th>
-                    )}
-                    <SortableHeader
-                      style={{ width: "9%" }} label="ID" sortKey="unique_code" sort={sort}
-                      onSort={(key) => setSort((s) => cycleSort(s, key))}
-                    />
-                    <SortableHeader
-                      style={{ width: "38%" }} label="Name" sortKey="name" sort={sort}
-                      onSort={(key) => setSort((s) => cycleSort(s, key))}
-                    />
-                    <SortableHeader
-                      label={strings.changeRequests.status} sortKey="status" sort={sort}
-                      onSort={(key) => setSort((s) => cycleSort(s, key))}
-                    />
-                    <th>Target · level</th>
-                    <th>Component · category</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {requirements.map((r) => (
-                    <tr
-                      key={r.id}
-                      className="entity-accent-row"
-                      style={{ ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.requirement }}
-                    >
+            )}
+            {requirements && requirements.length > 0 && viewMode === "list" && (
+              <div className="card" style={{ overflowX: "auto" }}>
+                <table>
+                  <thead>
+                    <tr>
                       {canManageProject && (
-                        <td>
+                        <th style={{ width: "3%" }}>
                           <input
+                            ref={selectAllRef}
                             type="checkbox"
-                            checked={selectedIds.has(r.id)}
-                            onChange={() => toggleRowSelected(r.id)}
-                            aria-label={strings.requirements.bulkSelectRow(`${r.unique_code} ${r.name}`)}
+                            checked={requirements.some((r) => !r.from_project_id) && requirements.every((r) => r.from_project_id || selectedIds.has(r.id))}
+                            onChange={toggleSelectAllLoaded}
+                            aria-label={strings.requirements.bulkSelectAll}
                           />
-                        </td>
+                        </th>
                       )}
-                      <td className="text-muted">{r.unique_code}</td>
-                      <td>
-                        <Link to={`/projects/${projectId}/requirements/${r.id}`}>{r.name}</Link>
-                      </td>
-                      <td>
-                        <div className="row" style={{ gap: "0.4rem" }}>
-                          <FilterBadge
-                            active={statusFilter === r.status}
-                            tone={REQUIREMENT_STATUS_TONE[r.status]}
-                            onClick={() => toggleStatusFilter(r.status)}
-                          >
-                            {REQUIREMENT_STATUS_LABEL[r.status]}
-                          </FilterBadge>
-                          {r.is_completed && <span className="badge">{strings.requirements.completedBadge}</span>}
-                          {r.is_locked && <span className="badge">{strings.requirements.locked}</span>}
-                          {r.is_archived && <span className="badge">{strings.requirements.archivedBadge}</span>}
-                          {badges(r)}
-                        </div>
-                      </td>
-                      <td className="text-muted">
-                        {stageName(r.target_stage_id)} · {REQUIREMENT_LEVEL_LABEL[r.level]}
-                      </td>
-                      <td className="text-muted">
-                        {componentName(r.component_id)} · {categoryName(r.category_id)}
-                      </td>
-                      <td>
-                        <div className="row" style={{ gap: "0.25rem" }}>
-                          <button className="btn" onClick={() => move(r.id, "up")} title={strings.common.up} aria-label={strings.common.up}>
-                            <ArrowUp size={14} />
-                          </button>
-                          <button className="btn" onClick={() => move(r.id, "down")} title={strings.common.down} aria-label={strings.common.down}>
-                            <ArrowDown size={14} />
-                          </button>
-                        </div>
-                      </td>
+                      <SortableHeader
+                        style={{ width: "9%" }} label="ID" sortKey="unique_code" sort={sort}
+                        onSort={(key) => setSort((s) => cycleSort(s, key))}
+                      />
+                      <SortableHeader
+                        style={{ width: "38%" }} label="Name" sortKey="name" sort={sort}
+                        onSort={(key) => setSort((s) => cycleSort(s, key))}
+                      />
+                      <SortableHeader
+                        label={strings.changeRequests.status} sortKey="status" sort={sort}
+                        onSort={(key) => setSort((s) => cycleSort(s, key))}
+                      />
+                      <th>Target · level</th>
+                      <th>Component · category</th>
+                      <th />
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {requirements && (
-            <LoadMoreButton
-              loaded={requirements.length}
-              total={total}
-              onClick={() => loadRequirements(requirements.length, true)}
-            />
-          )}
-        </div>
-
-        <FilterPanel
-          sectionKey="requirementsFilters"
-          matching={total}
-          total={totalUnfiltered}
-          search={search}
-          onSearchChange={setSearch}
-          searchPlaceholder={strings.requirements.search}
-        >
-          <FilterField label="Status">
-            <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as RequirementStatus | "")}>
-              <option value="">All statuses</option>
-              {STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>
-                  {REQUIREMENT_STATUS_LABEL[s]}
-                </option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label="Target version">
-            <select className="input" value={targetStageFilter} onChange={(e) => setTargetStageFilter(e.target.value)}>
-              <option value="">All versions</option>
-              {stages.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label={strings.requirements.category}>
-            <select className="input" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-              <option value="">{strings.requirements.allCategories}</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </FilterField>
-          {/* C-G-11: completion is now an independent overlay marker, not a
-              status value — a separate checkbox alongside the Status
-              <select> above rather than one of its options. */}
-          <FilterCheckbox label={strings.requirements.completedFilter} checked={completedFilter} onChange={setCompletedFilter} />
-          <FilterCheckbox label="Has comments" checked={hasCommentsOnly} onChange={setHasCommentsOnly} />
-          <FilterCheckbox label="Only watched" checked={onlyWatched} onChange={setOnlyWatched} />
-          <FilterCheckbox label={strings.requirements.includeArchived} checked={includeArchived} onChange={setIncludeArchived} />
-        </FilterPanel>
-      </div>
+                  </thead>
+                  <tbody>
+                    {requirements.map((r) => (
+                      <tr
+                        key={r.id}
+                        className="entity-accent-row"
+                        style={{ ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.requirement }}
+                      >
+                        {canManageProject && (
+                          <td>
+                            {!r.from_project_id && (
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.has(r.id)}
+                                onChange={() => toggleRowSelected(r.id)}
+                                aria-label={strings.requirements.bulkSelectRow(`${r.unique_code} ${r.name}`)}
+                              />
+                            )}
+                          </td>
+                        )}
+                        <td className="text-muted"><RecordCode code={r.unique_code} ownerProjectCode={r.from_project_code} /></td>
+                        <td>
+                          <Link to={`/projects/${rowProjectId(r, projectId ?? "")}/requirements/${r.id}`}>{r.name}</Link>
+                          <ProjectScopeLabel row={r} />
+                        </td>
+                        <td>
+                          <div className="row" style={{ gap: "0.4rem" }}>
+                            <FilterBadge
+                              active={statusFilter === r.status}
+                              tone={REQUIREMENT_STATUS_TONE[r.status]}
+                              onClick={() => toggleStatusFilter(r.status)}
+                            >
+                              {REQUIREMENT_STATUS_LABEL[r.status]}
+                            </FilterBadge>
+                            {r.is_completed && <Badge>{strings.requirements.completedBadge}</Badge>}
+                            {r.is_locked && <Badge>{strings.requirements.locked}</Badge>}
+                            {r.is_archived && <Badge>{strings.requirements.archivedBadge}</Badge>}
+                            {badges(r)}
+                          </div>
+                        </td>
+                        <td className="text-muted">
+                          {r.from_project_id ? "—" : stageName(r.target_stage_id)} · {REQUIREMENT_LEVEL_LABEL[r.level]}
+                        </td>
+                        <td className="text-muted">
+                          {r.from_project_id ? "—" : `${componentName(r.component_id)} · ${categoryName(r.category_id)}`}
+                        </td>
+                        <td>
+                          {!r.from_project_id && (
+                            <div className="row" style={{ gap: "0.25rem" }}>
+                              <button className="btn" onClick={() => move(r.id, "up")} title={strings.common.up} aria-label={strings.common.up}>
+                                <ArrowUp />
+                              </button>
+                              <button className="btn" onClick={() => move(r.id, "down")} title={strings.common.down} aria-label={strings.common.down}>
+                                <ArrowDown />
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {requirements && (
+              <LoadMoreButton
+                loaded={requirements.length}
+                total={total}
+                onClick={() => loadRequirements(requirements.length, true)}
+              />
+            )}
+          </div>
+      </ListPageLayout>
     </div>
   );
 }

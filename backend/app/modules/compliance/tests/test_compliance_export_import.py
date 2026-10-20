@@ -1,14 +1,12 @@
-"""Tests for Phase 15's export/import bundle integration
-(docs/compliance-module-plan.md Phase 15; docs/Compliance_Module_
-Requirements.md §29): a project's compliance assessment (assignments,
+"""Tests for export/import bundle integration
+(§29): a project's compliance assessment (assignments,
 per-requirement applicability/status/approval, required-action
 assessments, evidence with revalidation history, and project-level
 reviews) survives `GET /projects/{id}/export` + `POST /projects/import`
-intact (`app.services.project_export`'s own Phase 15 notes), and an
+intact (`app.services.project_export`), and an
 organisation's compliance standards/versions/requirements/required
 actions/vocabularies/cross-standard mappings survive `GET /orgs/{id}/export`
-+ `POST /orgs/import` intact (`app.services.org_export`'s own Phase 15
-notes).
++ `POST /orgs/import` intact (`app.services.org_export`).
 
 Reuses `test_project_compliance_api.py`'s/`test_compliance_standards_api.
 py`'s existing small API helpers for setup, the same way this module's
@@ -271,7 +269,7 @@ def test_org_export_import_round_trips_standards_and_mappings(client, admin_toke
     )
     assert action_resp.status_code == 201, action_resp.text
     _publish_version(client, admin_token, org_id, standard_a["id"], version_a["id"])
-    # Phase 24: a version's `summary` and a requirement's clarification
+    # A version's `summary` and a requirement's clarification
     # fields must round-trip through the whole-org bundle too, not just the
     # standalone standard export (`test_compliance_standard_export_import.py`).
     summary_resp = client.patch(

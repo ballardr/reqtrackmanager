@@ -1,4 +1,4 @@
-"""Engagements get project-scoped human codes, ENG-001 (Module 2 Phase 5 follow-up)
+"""Engagements get project-scoped human codes, ENG-001
 
 Revision ID: 0091
 Revises: 0090

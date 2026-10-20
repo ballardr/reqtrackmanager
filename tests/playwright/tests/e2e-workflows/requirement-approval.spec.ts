@@ -5,8 +5,7 @@ import { loginAs, logout, openProject, openRequirementByName, PERSONAS, PROJECT_
 /**
  * Before this feature, a requirement only ever reached "approved" as a side
  * effect of a change request being approved — there was no standalone
- * approve action anywhere (2026-08 UX audit roadmap, "No requirement
- * approval action; change requests can target draft requirements"). This
+ * approve action anywhere. This
  * proves the new direct path: a project manager sees and can use "Approve"
  * on a draft requirement; a stakeholder (who can otherwise edit the same
  * requirement directly) does not see it, matching C-U-03's clarification

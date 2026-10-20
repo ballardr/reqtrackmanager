@@ -227,9 +227,8 @@ def test_export_denies_users_without_project_access(client, admin_token, org_id)
 
 
 def test_fixed_value_columns_apply_uniformly_across_every_row(client, admin_token, org_id):
-    """Pins the backend half of roadmap item 507 ("per-field 'map from
-    column' vs. 'fixed value for every row' toggle on CSV import" — see
-    docs/ux-audit-2026-08.md "CSV bulk import: no per-field fixed values").
+    """Pins the backend half of the per-field 'map from
+    column' vs. 'fixed value for every row' toggle on CSV import.
 
     The "fixed value" feature is implemented entirely in
     `CsvImportWizard.tsx` on the frontend: this endpoint has no notion of a

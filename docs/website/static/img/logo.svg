@@ -4,7 +4,7 @@
   (a dark rounded-square background with the mark scaled/inset inside it -
   built for a browser tab, which needs its own background since it can sit
   on any toolbar color) instead of the plain repo-root logo.svg Phase 1 of
-  docs/plans/docs-website-plan.md actually called for. Reused here on a
+  docs/plans/completed/docs-website-plan.md actually called for. Reused here on a
   navbar that already has its own dark background
   (the ifm-navbar-background-color token, matching the app's color-header-bg), the
   favicon variant's own square background just added a second nested box

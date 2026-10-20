@@ -40,12 +40,12 @@ const onUnassign = fn();
 const TEAM: Principal = { type: "org_group", id: "g1", label: "Platform team", member_count: 3, exists: true };
 const JAMIE: Principal = { type: "user", id: "user-2", label: "Jamie Lee", member_count: null, exists: true };
 
-export const PrincipalFieldEditableShowsAPicker: Story = {
+export const PrincipalFieldEditableShowsACompactPicker: Story = {
   render: () => (
     <RecordPrincipalField label="Owner" ariaLabel="Record owner" principal={null} orgUsers={ORG_USERS} readOnly={false} onChange={fn()} />
   ),
   play: async ({ canvasElement }) => {
-    await expect(within(canvasElement).getByLabelText("Record owner")).toBeInTheDocument();
+    await expect(within(canvasElement).getByRole("button", { name: "Assign: Record owner" })).toBeInTheDocument();
   },
 };
 
@@ -53,7 +53,7 @@ export const PrincipalFieldReadOnlyShowsAUserName: Story = {
   render: () => <RecordPrincipalField label="Owner" ariaLabel="Record owner" principal={JAMIE} orgUsers={ORG_USERS} readOnly onChange={fn()} />,
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).getByText("Jamie Lee")).toBeInTheDocument();
-    await expect(within(canvasElement).queryByLabelText("Record owner")).not.toBeInTheDocument();
+    await expect(within(canvasElement).queryByRole("button", { name: /Assign/ })).not.toBeInTheDocument();
   },
 };
 
@@ -103,7 +103,7 @@ export const VersionHistoryNewestFirstWithKindColumns: Story = {
 export const VersionHistoryHiddenForASingleVersion: Story = {
   render: () => <VersionHistoryTable versions={VERSIONS.slice(0, 1)} columns={[]} />,
   play: async ({ canvasElement }) => {
-    await expect(within(canvasElement).queryByRole("heading", { name: "Version history" })).not.toBeInTheDocument();
+    await expect(within(canvasElement).queryByRole("heading", { name: "Versions" })).not.toBeInTheDocument();
   },
 };
 

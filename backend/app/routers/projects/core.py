@@ -14,12 +14,13 @@ package) as a pure code-organization refactor — see
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
@@ -29,20 +30,17 @@ from app.models.enums import (
     OrgRole,
     ProjectRole,
     ProjectRoleInheritanceMode,
-    ProjectVisibility,
     ReviewTargetType,
     StageStatus,
 )
 from app.models.file import CommentFile, FileAsset, RequirementActionFile, RequirementFile
-from app.models.organization import Organization, UserOrgRole
+from app.models.organization import Organization
 from app.models.project import (
     FavoriteProject,
-    OrgGroupProjectRole,
     Project,
     ProjectGroup,
     ProjectGroupMember,
     ProjectGroupRole,
-    ProjectMemberSource,
     ProjectStage,
     UserProjectRole,
 )
@@ -68,17 +66,19 @@ from app.schemas.project import (
 )
 from app.services.audit import log_event
 from app.services.changes import get_project_changes
+from app.services.codes import assign_project_code, change_project_code
 from app.services.definitions import get_default_project_status_id, seed_action_types
 from app.services.downloads import filename_safe
+from app.services.project_access import accessible_project_ids as _accessible_project_ids
 from app.services.project_export import build_project_bundle, import_project_bundle
 from app.services.project_hierarchy import build_project_tree, would_create_project_cycle
+from app.services.project_scope import ProjectScope
 from app.services.rbac import (
     can_manage_project_settings,
     check_pat_scope,
     get_effective_org_roles,
     get_effective_project_managers,
     get_effective_project_roles,
-    get_user_org_group_ids,
     is_org_admin,
     lock_project_for_update,
     memoize_user_lookups,
@@ -90,164 +90,6 @@ from app.services.rbac import (
 from app.services.templates import clone_project
 
 router = APIRouter(tags=["projects-core"])
-
-_ACCESSIBLE_EXPANSION_ITERATION_CAP = 50
-
-
-def _accessible_project_ids(db: Session, user_id: UUID) -> set[UUID]:
-    """Every project id the user has *some* effective role on — direct,
-    group, org-wide visibility, plus (hierarchical projects) any project
-    reachable *only* through forward or member-source inheritance from one
-    of those.
-
-    Without the inheritance expansion below, a user with access to a child
-    purely via `role_inheritance_mode` (no direct/group/org-wide role of
-    their own on the child) would never see it in `list_projects`/the tree/
-    ancestors/children endpoints at all — the whole point of the feature
-    would be invisible to exactly the users it's for. The expansion walks
-    structural neighbours of already-accessible projects iteratively, since
-    a multi-hop chain can make a project only reachable after an earlier
-    hop's own expansion — three kinds of neighbour: children (source 5),
-    projects whose member-source list names an accessible project as a
-    source (source 6, same-organisation only since the mechanism was
-    generalized beyond strict parent/child), and projects with a group
-    whose members are defined as an accessible project's roster (source 7,
-    same-organisation only) — but verifies each candidate's *actual*
-    effective role (`get_effective_project_roles`) before including it,
-    rather than trusting structural adjacency alone: a `MIRROR_ROLE`-
-    filtered child, for instance, is only actually reachable by users
-    holding the filtered role on the parent, not every accessible-parent
-    user.
-    """
-    project_ids_via_role = set(
-        db.scalars(select(UserProjectRole.project_id).where(UserProjectRole.user_id == user_id)).all()
-    )
-    # PR7 (members/groups directory rework plan, docs/decisions.md): a group
-    # can now hold zero roles, so plain membership alone no longer implies
-    # any access — the `join(ProjectGroupRole, ...)` below requires the
-    # group to actually hold at least one role, matching `get_effective_
-    # project_roles`'s own authoritative check (`rbac._direct_effective_
-    # project_roles_by_kind`'s `direct_group` branch already requires this).
-    # Found and fixed together with the identical pre-existing gap in
-    # `rbac._direct_project_member_ids_base` — see that function's own
-    # docstring for the regression this closes.
-    project_ids_via_group = set(
-        db.scalars(
-            select(ProjectGroup.project_id)
-            .join(ProjectGroupMember, ProjectGroupMember.project_group_id == ProjectGroup.id)
-            .join(ProjectGroupRole, ProjectGroupRole.project_group_id == ProjectGroup.id)
-            .where(ProjectGroupMember.user_id == user_id)
-        ).all()
-    )
-    user_org_ids = set(db.scalars(select(UserOrgRole.organization_id).where(UserOrgRole.user_id == user_id)).all())
-    project_ids_via_org_wide = (
-        set(
-            db.scalars(
-                select(Project.id).where(
-                    Project.visibility == ProjectVisibility.ORG_WIDE, Project.organization_id.in_(user_org_ids)
-                )
-            ).all()
-        )
-        if user_org_ids
-        else set()
-    )
-    # Pre-existing gap fixed here, found while regression-testing PR4 (see
-    # docs/decisions.md): the two sets above only ever covered a user's
-    # *direct* membership (a UserProjectRole, or being a plain user_id
-    # member of a ProjectGroup) — never a role reached only via an org group
-    # the user belongs to, whether nested inside a ProjectGroup
-    # (`ProjectGroupMember.org_group_id`, pre-existing) or granted a role
-    # directly (`OrgGroupProjectRole`, PR4's new mechanism). Both are
-    # already correctly resolved by `get_effective_project_roles`/`require_
-    # project_view`, so `GET /{project_id}` has always worked for such a
-    # user — but `_accessible_project_ids` is the separate function behind
-    # `list_projects`/`/ancestors`/`/children`, so that same user's project
-    # simply never appeared in their own project list or search. Uses the
-    # same `get_user_org_group_ids` (direct + transitively-nested) already
-    # used elsewhere for this exact resolution, once per organisation the
-    # user belongs to.
-    all_user_org_group_ids: set[UUID] = set()
-    for member_org_id in user_org_ids:
-        direct_group_ids, inherited_group_ids = get_user_org_group_ids(db, user_id, member_org_id)
-        all_user_org_group_ids |= direct_group_ids | inherited_group_ids
-    project_ids_via_nested_org_group = (
-        set(
-            db.scalars(
-                select(ProjectGroup.project_id)
-                .join(ProjectGroupMember, ProjectGroupMember.project_group_id == ProjectGroup.id)
-                .where(ProjectGroupMember.org_group_id.in_(all_user_org_group_ids))
-            ).all()
-        )
-        if all_user_org_group_ids
-        else set()
-    )
-    project_ids_via_direct_group_role = (
-        set(
-            db.scalars(
-                select(OrgGroupProjectRole.project_id).where(
-                    OrgGroupProjectRole.org_group_id.in_(all_user_org_group_ids)
-                )
-            ).all()
-        )
-        if all_user_org_group_ids
-        else set()
-    )
-    accessible_ids = (
-        project_ids_via_role
-        | project_ids_via_group
-        | project_ids_via_org_wide
-        | project_ids_via_nested_org_group
-        | project_ids_via_direct_group_role
-    )
-
-    frontier = set(accessible_ids)
-    iterations = 0
-    while frontier and iterations < _ACCESSIBLE_EXPANSION_ITERATION_CAP:
-        iterations += 1
-        candidate_children = set(
-            db.scalars(
-                select(Project.id).where(
-                    Project.parent_project_id.in_(frontier),
-                    Project.role_inheritance_mode != ProjectRoleInheritanceMode.NONE,
-                )
-            ).all()
-        )
-        OwnerProject = aliased(Project)
-        candidate_via_member_source = set(
-            db.scalars(
-                select(ProjectMemberSource.project_id)
-                .join(Project, Project.id == ProjectMemberSource.source_project_id)
-                .join(OwnerProject, OwnerProject.id == ProjectMemberSource.project_id)
-                .where(
-                    ProjectMemberSource.source_project_id.in_(frontier),
-                    Project.organization_id == OwnerProject.organization_id,
-                )
-            ).all()
-        )
-        GroupOwnerProject = aliased(Project)
-        candidate_via_project_ref_group = set(
-            db.scalars(
-                select(ProjectGroup.project_id)
-                .join(ProjectGroupMember, ProjectGroupMember.project_group_id == ProjectGroup.id)
-                .join(GroupOwnerProject, GroupOwnerProject.id == ProjectGroup.project_id)
-                .join(Project, Project.id == ProjectGroupMember.source_project_id)
-                .where(
-                    ProjectGroupMember.source_project_id.in_(frontier),
-                    Project.organization_id == GroupOwnerProject.organization_id,
-                )
-            ).all()
-        )
-        new_frontier: set[UUID] = set()
-        for candidate_id in (
-            candidate_children | candidate_via_member_source | candidate_via_project_ref_group
-        ) - accessible_ids:
-            if get_effective_project_roles(db, user_id, candidate_id):
-                accessible_ids.add(candidate_id)
-                new_frontier.add(candidate_id)
-        frontier = new_frontier
-
-    return accessible_ids
-
 
 def _project_out_with_redacted_parent(db: Session, current_user: User, project: Project) -> ProjectOut:
     """Builds a `ProjectOut` with `parent_project_id`/`parent_project_name`
@@ -297,8 +139,7 @@ def _ensure_project_has_a_manager(db: Session, project: Project, fallback_user_i
     """C-U-08 fallback: guarantees `project` has at least one effective
     manager, granting `fallback_user_id` one if it doesn't.
 
-    Shared by both of `create_project`'s branches (follow-up UX batch Phase
-    C, 2026-08-31 — previously only the template-clone branch needed this
+    Shared by both of `create_project`'s branches (2026-08-31 — previously only the template-clone branch needed this
     at all, since the non-template branch always auto-created its own
     manager-role `ProjectGroup` and added the creator to it directly).
     Prefers adding `fallback_user_id` to an existing manager-role
@@ -365,7 +206,7 @@ def create_project(
     On creation, the creator is granted a direct `PROJECT_MANAGER`
     `UserProjectRole` (C-U-10) — unless a template project is used (C-E-05),
     per C-U-10's explicit "unless using a template project" clause:
-    groups/members (and, as of the follow-up UX batch's Phase C, direct role
+    groups/members (and, 2026-08-31, direct role
     grants too) are copied from the template instead, via `clone_project`.
     If that leaves the new project with no manager at all, the creator is
     still added as a fallback (the exact same
@@ -377,7 +218,7 @@ def create_project(
     creation-time C-U-08 never depends on inheritance being present or
     stable later.
 
-    Prior to the follow-up UX batch's Phase C (2026-08-31), the non-template
+    Prior to 2026-08-31 (2026-08-31), the non-template
     path instead auto-created four "standard" `ProjectGroup` rows
     (`is_default=True`) and added the creator to the manager-role one —
     see docs/decisions.md's entry on that migration for why this changed
@@ -428,6 +269,8 @@ def create_project(
         # user can still explicitly override it before submitting.
         template_project_id = org.default_template_project_id
 
+    project_code = assign_project_code(db, payload.organization_id, payload.name, payload.code)
+
     if template_project_id is not None:
         template = db.get(Project, template_project_id)
         if (
@@ -438,13 +281,13 @@ def create_project(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "template_project_id must be a template project in this organisation.")
         project = clone_project(
             db, template, name=payload.name, summary=payload.summary, creator=current_user,
-            parent_project_id=payload.parent_project_id,
+            parent_project_id=payload.parent_project_id, code=project_code,
         )
         db.flush()
         _ensure_project_has_a_manager(db, project, current_user.id)
     else:
         project = Project(
-            organization_id=payload.organization_id, name=payload.name, summary=payload.summary,
+            organization_id=payload.organization_id, name=payload.name, summary=payload.summary, code=project_code,
             status_id=get_default_project_status_id(db, payload.organization_id),
             parent_project_id=payload.parent_project_id,
         )
@@ -454,8 +297,7 @@ def create_project(
         db.add(ProjectStage(project_id=project.id, name="Scoping", status=StageStatus.SCOPING, sort_order=0, is_current=True))
 
         # C-U-10: the creator becomes the project's initial manager via a
-        # direct grant — no group is auto-created any more (follow-up UX
-        # batch Phase C, 2026-08-31; see docs/decisions.md). This project
+        # direct grant — no group is auto-created any more (docs/decisions.md). This project
         # has zero groups at this point, so `_ensure_project_has_a_manager`'s
         # "existing manager-role group" branch is unreachable here and it
         # always takes the direct-grant path — the exact same fallback the
@@ -498,7 +340,7 @@ def create_project(
         detail={"template_project_id": str(template_project_id)} if template_project_id else None,
     )
     # Generic module-contributed project-creation reaction (e.g.
-    # Compliance's Phase 20 reconciliation of `applies_to_all_projects`
+    # Compliance's reconciliation of `applies_to_all_projects`
     # standards) — this core router never imports a specific module; see
     # `ModuleDefinition.on_project_created`'s own docstring for why
     # project-creation time, not a module-enable hook, is where this has to
@@ -604,8 +446,7 @@ def list_projects(
     `limit`/`offset` (U-P-06) are optional pagination — see
     `list_requirements` for the same pattern and its rationale.
 
-    `X-Total-Unfiltered-Count` (persistent "showing X of Y" result count,
-    2026-08 UX audit roadmap) is a second response header reporting the
+    `X-Total-Unfiltered-Count` is a second response header reporting the
     count within only the mandatory accessible-projects + default
     archived-visibility scope, before `organization_id`/`search`/`role`/
     `stage_status`/`favorite_only` narrow it further — unlike
@@ -750,7 +591,7 @@ def list_projects(
             parent_visible = p.parent_project_id is not None and p.parent_project_id in parent_names
             out.append(
                 ProjectListItemOut(
-                    id=p.id, organization_id=p.organization_id, name=p.name, summary=p.summary,
+                    id=p.id, organization_id=p.organization_id, name=p.name, code=p.code, summary=p.summary,
                     created_at=p.created_at, updated_at=p.updated_at,
                     is_archived=p.is_archived, is_template=p.is_template,
                     allow_member_change_requests=p.allow_member_change_requests,
@@ -860,6 +701,7 @@ def list_project_files(
     response: Response,
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
+    project_scope: ProjectScope = Depends(),
     current_user: User = Depends(require_project_view),
     db: Session = Depends(get_db),
 ):
@@ -890,83 +732,96 @@ def list_project_files(
     `limit`/`offset` (U-P-06) — same optional pagination and
     `X-Total-Count` header convention as `list_requirements`/
     `list_projects`.
+
+    `project_scope` adds the files of the related projects the caller can open (each row
+    labelled `from_project_*`, see `services.project_scope`); a file never leaks across projects
+    otherwise: each project's rows are built by the same joins on that project's own id.
     """
-    entries: list[dict] = []
 
-    for asset, linked_at, req_id, req_code, req_name in db.execute(
-        select(FileAsset, RequirementFile.created_at, Requirement.id, Requirement.unique_code, RequirementVersion.name)
-        .join(RequirementFile, RequirementFile.file_id == FileAsset.id)
-        .join(Requirement, Requirement.id == RequirementFile.requirement_id)
-        .join(
-            RequirementVersion,
-            (RequirementVersion.requirement_id == Requirement.id) & (RequirementVersion.valid_to.is_(None)),
+    def rows_for(pid: UUID) -> list[ProjectFileOut]:
+        """This project's files, newest first."""
+        entries: list[dict] = []
+
+        for asset, linked_at, req_id, req_code, req_name in db.execute(
+            select(FileAsset, RequirementFile.created_at, Requirement.id, Requirement.unique_code, RequirementVersion.name)
+            .join(RequirementFile, RequirementFile.file_id == FileAsset.id)
+            .join(Requirement, Requirement.id == RequirementFile.requirement_id)
+            .join(
+                RequirementVersion,
+                (RequirementVersion.requirement_id == Requirement.id) & (RequirementVersion.valid_to.is_(None)),
+            )
+            .where(Requirement.project_id == pid)
+        ).all():
+            entries.append({
+                "file": asset, "linked_at": linked_at, "source": "requirement_attachment",
+                "requirement_id": req_id, "requirement_unique_code": req_code, "requirement_name": req_name,
+            })
+
+        # Joined directly on RequirementAction.project_id rather than via a
+        # linked requirement: an action may be linked to zero, one, or several
+        # requirements (via untyped `ArtefactLink` rows), so it has no single
+        # owning requirement to attribute the file to.
+        for asset, linked_at, action_id, action_code, action_title in db.execute(
+            select(FileAsset, RequirementActionFile.created_at, RequirementAction.id, RequirementAction.unique_code, RequirementAction.title)
+            .join(RequirementActionFile, RequirementActionFile.file_id == FileAsset.id)
+            .join(RequirementAction, RequirementAction.id == RequirementActionFile.action_id)
+            .where(RequirementAction.project_id == pid)
+        ).all():
+            entries.append({
+                "file": asset, "linked_at": linked_at, "source": "action_attachment",
+                "action_id": action_id, "action_unique_code": action_code, "action_title": action_title,
+            })
+
+        for asset, uploaded_at, comment_id, req_id, req_code, req_name in db.execute(
+            select(FileAsset, CommentFile.created_at, ReviewComment.id, Requirement.id, Requirement.unique_code, RequirementVersion.name)
+            .join(CommentFile, CommentFile.file_id == FileAsset.id)
+            .join(ReviewComment, ReviewComment.id == CommentFile.comment_id)
+            .join(
+                Requirement,
+                (Requirement.id == ReviewComment.target_id) & (ReviewComment.target_type == ReviewTargetType.REQUIREMENT),
+            )
+            .join(
+                RequirementVersion,
+                (RequirementVersion.requirement_id == Requirement.id) & (RequirementVersion.valid_to.is_(None)),
+            )
+            .where(Requirement.project_id == pid)
+        ).all():
+            entries.append({
+                "file": asset, "linked_at": uploaded_at, "source": "comment_attachment",
+                "requirement_id": req_id, "requirement_unique_code": req_code, "requirement_name": req_name,
+                "comment_id": comment_id,
+            })
+
+        entries.sort(key=lambda e: e["linked_at"], reverse=True)
+
+        uploader_ids = {e["file"].uploaded_by for e in entries}
+        uploader_names = (
+            dict(db.execute(select(User.id, User.display_name).where(User.id.in_(uploader_ids))).all())
+            if uploader_ids else {}
         )
-        .where(Requirement.project_id == project_id)
-    ).all():
-        entries.append({
-            "file": asset, "linked_at": linked_at, "source": "requirement_attachment",
-            "requirement_id": req_id, "requirement_unique_code": req_code, "requirement_name": req_name,
-        })
 
-    # Joined directly on RequirementAction.project_id rather than via a
-    # linked requirement: an action may be linked to zero, one, or several
-    # requirements (via untyped `ArtefactLink` rows), so it has no single
-    # owning requirement to attribute the file to.
-    for asset, linked_at, action_id, action_code, action_title in db.execute(
-        select(FileAsset, RequirementActionFile.created_at, RequirementAction.id, RequirementAction.unique_code, RequirementAction.title)
-        .join(RequirementActionFile, RequirementActionFile.file_id == FileAsset.id)
-        .join(RequirementAction, RequirementAction.id == RequirementActionFile.action_id)
-        .where(RequirementAction.project_id == project_id)
-    ).all():
-        entries.append({
-            "file": asset, "linked_at": linked_at, "source": "action_attachment",
-            "action_id": action_id, "action_unique_code": action_code, "action_title": action_title,
-        })
+        out = [
+            ProjectFileOut(
+                file=FileAssetOut.model_validate(e["file"]),
+                uploaded_by_display_name=uploader_names.get(e["file"].uploaded_by, ""),
+                source=e["source"],
+                requirement_id=e.get("requirement_id"),
+                requirement_unique_code=e.get("requirement_unique_code"),
+                requirement_name=e.get("requirement_name"),
+                action_id=e.get("action_id"),
+                action_unique_code=e.get("action_unique_code"),
+                action_title=e.get("action_title"),
+                comment_id=e.get("comment_id"),
+            )
+            for e in entries
+        ]
+        return out
 
-    for asset, uploaded_at, comment_id, req_id, req_code, req_name in db.execute(
-        select(FileAsset, CommentFile.created_at, ReviewComment.id, Requirement.id, Requirement.unique_code, RequirementVersion.name)
-        .join(CommentFile, CommentFile.file_id == FileAsset.id)
-        .join(ReviewComment, ReviewComment.id == CommentFile.comment_id)
-        .join(
-            Requirement,
-            (Requirement.id == ReviewComment.target_id) & (ReviewComment.target_type == ReviewTargetType.REQUIREMENT),
-        )
-        .join(
-            RequirementVersion,
-            (RequirementVersion.requirement_id == Requirement.id) & (RequirementVersion.valid_to.is_(None)),
-        )
-        .where(Requirement.project_id == project_id)
-    ).all():
-        entries.append({
-            "file": asset, "linked_at": uploaded_at, "source": "comment_attachment",
-            "requirement_id": req_id, "requirement_unique_code": req_code, "requirement_name": req_name,
-            "comment_id": comment_id,
-        })
-
-    entries.sort(key=lambda e: e["linked_at"], reverse=True)
-
-    uploader_ids = {e["file"].uploaded_by for e in entries}
-    uploader_names = (
-        dict(db.execute(select(User.id, User.display_name).where(User.id.in_(uploader_ids))).all())
-        if uploader_ids else {}
+    out = project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, "requirement", rows_for,
+        # A file may hang from several records, so a row is identified by its origin as well.
+        id_of=lambda row: (row.file.id, row.source, row.requirement_id, row.action_id, row.comment_id),
     )
-
-    out = [
-        ProjectFileOut(
-            file=FileAssetOut.model_validate(e["file"]),
-            uploaded_by_display_name=uploader_names.get(e["file"].uploaded_by, ""),
-            source=e["source"],
-            requirement_id=e.get("requirement_id"),
-            requirement_unique_code=e.get("requirement_unique_code"),
-            requirement_name=e.get("requirement_name"),
-            action_id=e.get("action_id"),
-            action_unique_code=e.get("action_unique_code"),
-            action_title=e.get("action_title"),
-            comment_id=e.get("comment_id"),
-        )
-        for e in entries
-    ]
-
     response.headers["X-Total-Count"] = str(len(out))
     if limit is not None:
         out = out[offset:offset + limit]
@@ -1023,6 +878,15 @@ def update_project(
     """
     if payload.name is not None:
         project.name = payload.name
+    if payload.code is not None:
+        new_code = change_project_code(db, project, payload.code)
+        if new_code != project.code:
+            log_event(
+                db, entity_type="project", entity_id=project.id, action="code_changed", actor_id=current_user.id,
+                organization_id=project.organization_id, project_id=project.id,
+                detail={"from": project.code, "to": new_code},
+            )
+            project.code = new_code
     if payload.summary is not None:
         project.summary = payload.summary
     if payload.allow_member_change_requests is not None:
@@ -1208,61 +1072,105 @@ def get_project_changes_endpoint(
     return entries
 
 
-@router.get("/{project_id}/metrics", response_model=ProjectMetricsOut)
-def get_project_metrics(
-    project_id: UUID, current_user: User = Depends(require_project_view), db: Session = Depends(get_db)
-):
-    """Project overview dashboard metrics (U-P-05)."""
+@dataclass
+class _ProjectCounts:
+    """One project's overview counts (`id` is the project, which is what `ProjectScope.collect` keys rows on)."""
+
+    id: UUID
+    requirements: int = 0
+    completed: int = 0
+    proposed: int = 0
+    approved: int = 0
+    rejected: int = 0
+    files: int = 0
+    by_status: dict[str, int] = field(default_factory=dict)
+
+
+def _project_counts(db: Session, pid: UUID) -> _ProjectCounts:
+    """The overview counts of one project: live requirements (and how many are completed, by status),
+    change requests by outcome, and distinct requirement attachments."""
+    counts = _ProjectCounts(id=pid)
     requirement_ids = db.scalars(
-        select(Requirement.id).where(Requirement.project_id == project_id, Requirement.is_archived.is_(False))
+        select(Requirement.id).where(Requirement.project_id == pid, Requirement.is_archived.is_(False))
     ).all()
-    requirement_count = len(requirement_ids)
-    completed = 0
+    counts.requirements = len(requirement_ids)
     if requirement_ids:
         # C-G-11: completion is `Requirement.is_completed`, an overlay
         # marker independent of `RequirementVersion.status` (no longer a
         # `RequirementStatus` value at all) — queried directly off the
         # identity row, not the version.
-        completed = len(
+        counts.completed = len(
             db.scalars(
                 select(Requirement.id).where(
                     Requirement.id.in_(requirement_ids), Requirement.is_completed.is_(True)
                 )
             ).all()
         )
-    percent = (completed / requirement_count * 100.0) if requirement_count else 0.0
-
-    proposed = len(
-        db.scalars(
-            select(ChangeRequest.id).where(
-                ChangeRequest.project_id == project_id,
-                ChangeRequest.status.in_([ChangeRequestStatus.SUBMITTED, ChangeRequestStatus.IN_REVIEW]),
-            )
-        ).all()
-    )
-    approved = len(
-        db.scalars(
-            select(ChangeRequest.id).where(
-                ChangeRequest.project_id == project_id, ChangeRequest.status == ChangeRequestStatus.APPROVED
-            )
-        ).all()
-    )
-    rejected = len(
-        db.scalars(
-            select(ChangeRequest.id).where(
-                ChangeRequest.project_id == project_id, ChangeRequest.status == ChangeRequestStatus.REJECTED
-            )
-        ).all()
-    )
-
-    requirements_by_status: dict[str, int] = {}
-    if requirement_ids:
         for status_value in db.scalars(
             select(RequirementVersion.status).where(
                 RequirementVersion.requirement_id.in_(requirement_ids), RequirementVersion.valid_to.is_(None)
             )
         ).all():
-            requirements_by_status[status_value.value] = requirements_by_status.get(status_value.value, 0) + 1
+            counts.by_status[status_value.value] = counts.by_status.get(status_value.value, 0) + 1
+        counts.files = len(
+            set(
+                db.scalars(
+                    select(RequirementFile.file_id).where(RequirementFile.requirement_id.in_(requirement_ids))
+                ).all()
+            )
+        )
+    counts.proposed = len(
+        db.scalars(
+            select(ChangeRequest.id).where(
+                ChangeRequest.project_id == pid,
+                ChangeRequest.status.in_([ChangeRequestStatus.SUBMITTED, ChangeRequestStatus.IN_REVIEW]),
+            )
+        ).all()
+    )
+    counts.approved = len(
+        db.scalars(
+            select(ChangeRequest.id).where(
+                ChangeRequest.project_id == pid, ChangeRequest.status == ChangeRequestStatus.APPROVED
+            )
+        ).all()
+    )
+    counts.rejected = len(
+        db.scalars(
+            select(ChangeRequest.id).where(
+                ChangeRequest.project_id == pid, ChangeRequest.status == ChangeRequestStatus.REJECTED
+            )
+        ).all()
+    )
+    return counts
+
+
+@router.get("/{project_id}/metrics", response_model=ProjectMetricsOut)
+def get_project_metrics(
+    project_id: UUID, project_scope: ProjectScope = Depends(),
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+):
+    """Project overview dashboard metrics (U-P-05).
+
+    `project_scope` sums the counts over the related projects the caller can open
+    (`services.project_scope`); `scope_project_count` says how many projects that was. The stage
+    progress stays this project's own: stages and baselines belong to one project.
+    """
+    per_project = project_scope.collect(
+        db, db.get(Project, project_id), current_user.id, "requirement", lambda pid: [_project_counts(db, pid)],
+    )
+    own = next(c for c in per_project if c.id == project_id)
+    requirement_count = sum(c.requirements for c in per_project)
+    completed = sum(c.completed for c in per_project)
+    percent = (completed / requirement_count * 100.0) if requirement_count else 0.0
+    proposed = sum(c.proposed for c in per_project)
+    approved = sum(c.approved for c in per_project)
+    rejected = sum(c.rejected for c in per_project)
+    file_count = sum(c.files for c in per_project)
+    requirements_by_status: dict[str, int] = {}
+    for c in per_project:
+        for key, value in c.by_status.items():
+            requirements_by_status[key] = requirements_by_status.get(key, 0) + value
+    own_requirement_count = own.requirements
 
     # Per-stage progress (dashboard "Stage Progress" chart): a stage that has
     # been baselined (C-G-10) shows completion across the requirements
@@ -1293,22 +1201,12 @@ def get_project_metrics(
                 )
             stage_percent = (stage_completed / stage_requirement_count * 100.0) if stage_requirement_count else 0.0
         else:
-            stage_requirement_count = requirement_count
+            stage_requirement_count = own_requirement_count
             stage_percent = 0.0
         stage_progress.append(
             StageProgressOut(
                 stage_id=stage.id, name=stage.name, status=stage.status,
                 requirement_count=stage_requirement_count, completed_percent=round(stage_percent, 1),
-            )
-        )
-
-    file_count = 0
-    if requirement_ids:
-        file_count = len(
-            set(
-                db.scalars(
-                    select(RequirementFile.file_id).where(RequirementFile.requirement_id.in_(requirement_ids))
-                ).all()
             )
         )
 
@@ -1321,4 +1219,5 @@ def get_project_metrics(
         file_count=file_count,
         requirements_by_status=requirements_by_status,
         stage_progress=stage_progress,
+        scope_project_count=len(per_project),
     )

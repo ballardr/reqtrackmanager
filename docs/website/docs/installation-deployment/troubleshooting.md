@@ -8,11 +8,21 @@ sidebar_position: 9
 
 **A `500` on every request, including login, with `/health` still reporting OK.** This was caused, once, by the test suite wiping the live database — a serious enough failure mode that it's worth knowing the shape of it even though it's now guarded against on both sides (`backend/tests/conftest.py` hard-fails if `DATABASE_URL` doesn't resolve to a `*_test` database, and the test suite runs against its own isolated stack, never by exec-ing into a running application container). If you ever see `relation "..." does not exist` errors on a live deployment, check whether something ran a migration or test tool against the wrong `DATABASE_URL`. Restarting the backend re-runs migrations and re-bootstraps the admin user, which restores functionality but **does not recover lost data** — restore from backup instead if this happens on a real deployment.
 
+**`docker compose ps` shows a container `unhealthy` but the app works in the browser.** The health probe, not the app, is failing. On some hosts `localhost` inside a container resolves to `::1` (IPv6) first, and the service (nginx, for example) listens on IPv4 only, so a probe to `localhost` is refused for ever. The shipped probes use `127.0.0.1` and avoid this; if you see it on a custom image or an older version, run:
+
+```bash
+docker inspect --format '{{json .State.Health}}' <container>   # last probe outputs and errors
+docker exec <container> getent hosts localhost                  # "::1 localhost" confirms the cause
+docker exec <container> wget -qO- http://127.0.0.1:3000/health  # frontend; works when the probe address was the problem
+```
+
+The probes also have a start period (60 seconds; backend 120) so a slow first boot, which runs migrations, is not counted as failures. A monitor that probes `/health` through a reverse proxy needs that path exposed; see [TLS and reverse proxy](./tls-and-reverse-proxy.md).
+
 ## Verifying a deployment
 
 After `docker compose up -d`, confirm:
 
-1. `curl http://localhost:8000/health` (or your production hostname) returns `{"status": "ok", "database": "ok"}`.
+1. `curl http://localhost:8000/health` (or your production hostname) returns HTTP 200 with `{"status": "ok", "database": "ok"}` (HTTP 503 if the database is unreachable).
 2. `curl http://localhost:8000/metrics` returns Prometheus-format metrics.
 3. The frontend loads and you can log in with the bootstrap admin credentials you configured.
 4. If using email notifications, trigger one (e.g. change your password) and confirm it arrives at your configured SMTP provider (or MailHog's UI in non-production environments).

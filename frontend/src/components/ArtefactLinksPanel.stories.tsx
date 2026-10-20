@@ -2,11 +2,13 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import type { ArtefactLinkFinderParams } from "../api/artefactLinks";
+import { ProjectContext } from "../context/ProjectContextValue";
 import {
   buildBrowseStep, buildCandidate, buildGraph, buildGraphNode, buildLinksApi, buildOption, buildRelatedProject,
   LINKS_ARTEFACT_ID, LINKS_PROJECT_ID,
 } from "../testing/artefactLinksFixtures";
 import { buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
+import { orphanedControlViolations } from "../testing/orphanedControls";
 import { ArtefactLinksPanel } from "./ArtefactLinksPanel";
 
 const DECISION = buildGraphNode();
@@ -20,7 +22,7 @@ const CHILD_REQ = buildGraphNode({
 
 /**
  * The Links panel every artefact detail page shows beside its content
- * (docs/plans/platform-enhancements-2026-10-plan.md Phase 6). All calls go through an
+ *. All calls go through an
  * injected fake API.
  */
 const meta: Meta<typeof ArtefactLinksPanel> = {
@@ -515,5 +517,83 @@ export const HasNoTraceWithoutLinks: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("No links yet.")).toBeInTheDocument());
     await expect(canvas.queryByRole("button", { name: "Trace" })).not.toBeInTheDocument();
+  },
+};
+
+/** A 200-character linked title wraps in its own box; the Remove button stays on the row, and the status and project chips follow the title. */
+export const LongLinkedTitleKeepsRemoveBesideIt: Story = {
+  decorators: [(Story) => <div style={{ width: 340 }}><Story /></div>],
+  args: {
+    api: buildLinksApi({
+      graph: fn(async () =>
+        buildGraph([
+          [buildGraphNode({
+            label: `DEC-009 ${"An exceptionally long decision title that keeps going ".repeat(4)}`, status: "draft",
+          })],
+        ])),
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const remove = await waitFor(() => canvas.getByRole("button", { name: /^Remove/ }));
+    await expect(remove.getBoundingClientRect().height).toBeLessThan(40);
+    await expect(orphanedControlViolations(canvasElement)).toEqual([]);
+  },
+};
+
+/** A record in another project shows that project's code in front of its own code; one in this project follows the viewer's preference. */
+export const OtherProjectRecordCodeIsQualified: Story = {
+  decorators: [
+    (Story) => (
+      <ProjectContext.Provider value={{ terminology: {}, projectCode: "ACME", enforceCodeEverywhere: false }}>
+        <Story />
+      </ProjectContext.Provider>
+    ),
+  ],
+  args: {
+    api: buildLinksApi({
+      graph: fn(async () =>
+        buildGraph([
+          [buildGraphNode({ label: "DEC-001 Use Postgres" })],
+          [{ ...CHILD_REQ, project_code: "SWM" }, { phrase: "Is refined by", cross_project: true }],
+        ])),
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "REQ-007 Handle disconnect" })).toBeInTheDocument());
+    await expect(canvas.getByText("SWM-REQ-007")).toBeInTheDocument();
+    await expect(canvas.getByText("ACME-DEC-001")).toBeInTheDocument();
+  },
+};
+
+/** A record the organisation owns (no project) shows the organisation's code in front of its own code. */
+export const OrganisationOwnedRecordCodeIsQualified: Story = {
+  decorators: [
+    (Story) => (
+      <ProjectContext.Provider value={{ terminology: {}, projectCode: "ACME", enforceCodeEverywhere: false }}>
+        <Story />
+      </ProjectContext.Provider>
+    ),
+  ],
+  args: {
+    api: buildLinksApi({
+      graph: fn(async () =>
+        buildGraph([
+          [buildGraphNode({ label: "DEC-001 Use Postgres" })],
+          [
+            buildGraphNode({
+              type: "persona", id: "persona-1", type_label: "Persona", label: "PER-004 Field technician", status: "active",
+              project_id: null, project_name: null, organization_code: "GLOBEX",
+            }),
+            { phrase: "Is informed by" },
+          ],
+        ])),
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("GLOBEX-PER-004")).toBeInTheDocument());
+    await expect(canvas.getByText("ACME-DEC-001")).toBeInTheDocument();
   },
 };

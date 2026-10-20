@@ -15,8 +15,7 @@ installCleanupHook();
  * the project access promised at invite time. See docs/decisions.md's
  * "Self-signup, invites, and SSO" entry.
  *
- * Also covers Phase 3 ("resend a pending invite", docs/decisions.md),
- * rebuilt in Phase D (follow-up UX batch, 2026-08-31): the invite shows up
+ * Also covers "resend a pending invite" (docs/decisions.md): the invite shows up
  * as a row in the unified `ProjectMembersTable` (`components/
  * ProjectMembersTable.tsx`, folded in from the retired
  * `PendingInvitesSection.tsx`) with a "Pending" status badge in its Role
@@ -119,15 +118,14 @@ test("project admin invites a brand-new external user by email, and they can sig
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 
   await page.goto(`/projects/${project.id}/admin`);
-  // No group is auto-created on project creation any more (follow-up UX
-  // batch Phase C, 2026-08-31) — invite via the Members section's own
+  // No group is auto-created on project creation any more (2026-08-31) — invite via the Members section's own
   // add control instead, which grants the by-email invite a *direct*
   // role (`assign_project_role_by_email`) the exact same way a project
   // group's own member picker used to.
   await selectProjectAdminGroup(page, "Members");
 
   await test.step("invite the new email via the Members section's own add control", async () => {
-    // PR3 (members/groups directory rework): the add control now opens in
+    // The add control now opens in
     // a Modal behind an "Add member" button, per docs/ux-style-guide.md
     // Principle 3, instead of sitting permanently above the table.
     await page.getByRole("button", { name: "Add member" }).click();
@@ -200,13 +198,12 @@ test("project admin sees a pending invite listed and can resend it, retriggering
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 
   await page.goto(`/projects/${project.id}/admin`);
-  // No group is auto-created on project creation any more (follow-up UX
-  // batch Phase C, 2026-08-31) — invite via the Members section's own
+  // No group is auto-created on project creation any more (2026-08-31) — invite via the Members section's own
   // add control instead, which is also where pending invites now live.
   await selectProjectAdminGroup(page, "Members");
 
   await test.step("invite the new email via the Members section's own add control", async () => {
-    // PR3 (members/groups directory rework): the add control now opens in
+    // The add control now opens in
     // a Modal behind an "Add member" button, per docs/ux-style-guide.md
     // Principle 3, instead of sitting permanently above the table.
     await page.getByRole("button", { name: "Add member" }).click();
@@ -241,10 +238,8 @@ test("project admin sees a pending invite listed and can resend it, retriggering
 
   await test.step("see the invite listed as Pending, and hideable via Show invited", async () => {
     await page.reload();
-    // Pending invites moved onto the new "Members" section (Phase 5,
-    // docs/decisions.md), folded directly into the unified
-    // `ProjectMembersTable` as a per-row status in Phase D (follow-up UX
-    // batch, 2026-08-31) — no separate "Pending invites" section any more.
+    // Pending invites moved onto the new "Members" section (docs/decisions.md), folded directly into the unified
+    // `ProjectMembersTable` as a per-row status — no separate "Pending invites" section any more.
     await selectProjectAdminGroup(page, "Members");
     const row = page.getByRole("row", { name: new RegExp(inviteeEmail) });
     await expect(row).toBeVisible();

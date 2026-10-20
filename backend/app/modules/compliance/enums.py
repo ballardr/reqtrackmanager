@@ -1,33 +1,29 @@
 """
 Module: modules.compliance.enums
 
-Compliance-module-owned vocabulary (docs/Compliance_Module_Requirements.md,
-docs/compliance-module-plan.md Phase 5). Kept in this package rather than
+Compliance-module-owned vocabulary ().
+Kept in this package rather than
 `app.models.enums` since these are domain concepts the Compliance module
-itself owns, not core ReqTrackManager concepts — consistent with Phase 5's
+itself owns, not core ReqTrackManager concepts — consistent with the
 models living under `app.modules.compliance.models` rather than
 `app.models`.
 
-`ComplianceStandardVersionStatus` is consumed starting Phase 5 itself
-(`ComplianceStandardVersion.status`). `ComplianceStatus` and
-`ComplianceApplicability` are consumed starting Phase 7
-(`ProjectComplianceRequirement.compliance_status`/`.explicit_applicability`).
-`ComplianceApprovalState` is also a Phase 7 column
-(`ProjectComplianceRequirement.approval_state`, defaulting `NOT_ASSESSED`),
-added a phase ahead of the workflow that actually transitions it (Phase 9)
-because §20's overall-status calculation — which Phase 7 itself must
-define — folds approval state in (see `service.py::summarize_project_
-compliance`); no endpoint moves a row off `NOT_ASSESSED` until Phase 9
-ships. `ComplianceApplicabilitySource` is Phase 7's own addition, computed
-(never stored) by `service.py::resolve_applicability`.
+`ComplianceStandardVersionStatus` is stored as `ComplianceStandardVersion.status`.
+`ComplianceStatus` and `ComplianceApplicability` are stored as
+`ProjectComplianceRequirement.compliance_status`/`.explicit_applicability`.
+`ComplianceApprovalState` is stored as `ProjectComplianceRequirement.approval_state`
+(defaulting `NOT_ASSESSED`); §20's overall-status calculation folds approval
+state in (see `service.py::summarize_project_compliance`).
+`ComplianceApplicabilitySource` is computed (never stored) by
+`service.py::resolve_applicability`.
 
-`ComplianceEvidenceValidityState` is Phase 8's own addition (§14), also
+`ComplianceEvidenceValidityState` is also (§14)
 computed rather than stored — see `service.py::compute_evidence_validity_
 state` — for the same "queryable derived state, not a stored one that can
 drift" reason `ComplianceApplicabilitySource` already established.
 
-`ComplianceReviewStatus`/`ComplianceReviewOutcome` are Phase 10's own
-addition (§17). Unlike `ComplianceApplicabilitySource`/
+`ComplianceReviewStatus`/`ComplianceReviewOutcome` cover scheduled
+reviews (§17). Unlike `ComplianceApplicabilitySource`/
 `ComplianceEvidenceValidityState`, `ComplianceReviewStatus` *is* a stored
 column (`ComplianceReview.status`) — a review's own lifecycle (scheduled ->
 completed) is a real event history, not something derivable from a date
@@ -36,13 +32,12 @@ is upcoming/due/overdue *is* computed, never stored, for the same
 "can't drift" reason as the other two — see `service.py::compute_review_
 schedule_state`.
 
-`ComplianceStandardApplicabilityDefault` is Phase 20's own addition (second
-human-review round; docs/compliance-module-plan.md Phase 20) — a stored
+`ComplianceStandardApplicabilityDefault` is a stored
 column (`ComplianceStandard.applicability_default`) recording whether a
 standard's default project-assignment mode is the ordinary, fully-manual
 per-project opt-in (every existing standard's unchanged behaviour) or an
 org-wide "applies to all projects by default, except..." mandate. See
-`models.py`'s own Phase 20 design-decisions section for the reconciliation
+`models.py`'s design-decisions section for the reconciliation
 mechanism this drives.
 """
 
@@ -71,8 +66,8 @@ class ComplianceStandardVersionStatus(str, enum.Enum):
 class ComplianceStatus(str, enum.Enum):
     """A project's assessed compliance state against one requirement (§10).
 
-    Not used by any Phase 5 model — this is the vocabulary
-    `ProjectComplianceRequirement.status` (Phase 7) will use. Deliberately
+    This is the vocabulary
+    `ProjectComplianceRequirement.status` uses. Deliberately
     *not* a field on `ComplianceRequirement` itself: per §31's "A Compliance
     Requirement must not contain the compliance state of a project,"
     compliance status is inherently project-specific.
@@ -90,8 +85,8 @@ class ComplianceStatus(str, enum.Enum):
 class ComplianceApplicability(str, enum.Enum):
     """Whether a compliance requirement applies to a given project (§9).
 
-    Not used by any Phase 5 model — belongs to `ProjectComplianceRequirement`
-    (Phase 7), which also carries the hierarchical-inheritance/explicit-
+    Belongs to `ProjectComplianceRequirement`,
+which also carries the hierarchical-inheritance/explicit-
     override machinery §9 requires. `NOT_APPLICABLE` is deliberately a first-
     class value here, not the absence of a row: per §31, "Not Applicable is
     an explicit applicability decision, not simply an absence of assessment."
@@ -105,8 +100,7 @@ class ComplianceApprovalState(str, enum.Enum):
     """Formal approval/sign-off state of a project's compliance assessment
     against one requirement (§12).
 
-    Not used by any Phase 5 model — belongs to the approval workflow (Phase
-    9), which also needs the full state-machine transition history (§16)
+    Belongs to the approval workflow, which also needs the full state-machine transition history (§16)
     this enum's values alone don't capture. `REQUIRES_REASSESSMENT` is the
     state an otherwise-`APPROVED` assessment moves to when material
     underlying information changes (evidence expiry, a standard version
@@ -159,7 +153,7 @@ class ComplianceEvidenceValidityState(str, enum.Enum):
     `NO_EXPIRY` is a distinct value from `VALID`, not folded into it: §14's
     own field list treats "has no expiry date at all" and "has an expiry
     date that hasn't been reached yet" as different facts about a piece of
-    evidence, and a caller (e.g. a future Phase 10 reminder sweep) should
+    evidence, and a caller (e.g. a reminder sweep) should
     be able to tell "nothing to ever warn about" apart from "currently
     fine, but will eventually need attention" without inspecting
     `expiry_date` itself.
@@ -210,10 +204,10 @@ class ComplianceReviewOutcome(str, enum.Enum):
 
 
 class ComplianceStandardApplicabilityDefault(str, enum.Enum):
-    """A `ComplianceStandard`'s default project-assignment mode (Phase 20).
+    """A `ComplianceStandard`'s default project-assignment mode.
 
     `OPT_IN` (the default for every standard, including every one that
-    existed before this phase) is today's fully-manual behaviour: a
+    existed before applicability defaults) is today's fully-manual behaviour: a
     project acquires this standard only via an explicit assignment
     (Project-Manager self-service or a Compliance Manager acting on a
     project's behalf), one project at a time. `APPLIES_TO_ALL_PROJECTS` is

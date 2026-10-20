@@ -2,7 +2,7 @@
  * Module: modules/compliance/StandardWorkspacePage
  *
  * The per-standard workspace at `/standards/:standardId[/versions|/history]`
- * (docs/compliance-module-plan.md Phase 18) — the drill-down a row on
+ * — the drill-down a row on
  * `StandardListPage.tsx` opens into. Structurally a sibling to a project's
  * own workspace (`Layout.tsx`'s "Standard" nav-rail section, rendered only
  * while a `standardId` is present in the URL — the same trigger pattern the
@@ -26,22 +26,22 @@
  * Types/Mapping Types, a fixed pair of org-wide screens, get a
  * `ResourceMenu` instead on `ComplianceSettingsPage.tsx`).
  *
- * Phase 20 (docs/compliance-module-plan.md) adds `StandardApplicabilityPanel`
- * to the Overview section — the "applies to all projects by default,
+ * `StandardApplicabilityPanel` is in
+ * the Overview section — the "applies to all projects by default,
  * except..." toggle and exclusion-list editor, Compliance-Manager-only.
  * The *default, primary* way a project acquires a standard (Project-
  * Manager self-service assignment) has no surface here at all — it lives
  * entirely on `ProjectCompliancePage.tsx`, since it's a project-scoped
  * action, not a standard-governance one.
  *
- * Phase 21 (standard-level import/export) adds an "Export" action beside
- * Edit/Archive — downloads this standard's own portable JSON document
+ * Standard-level import/export: an "Export" action sits, with Archive, in the record header menu beside
+ * Edit — downloads this standard's own portable JSON document
  * (`complianceApi.exportStandard` + `downloadBlob`, the same shape
  * `OrgComplianceDashboard.tsx`'s report downloads already use), for backup
  * or transfer into a different organisation/deployment via
  * `StandardListPage.tsx`'s "Import standard" entry point.
  *
- * Phase 23 replaces the Overview's plain description-only card with a
+ * The Overview has a
  * `.grid.grid-metrics` row of `MetricTile`s (versions/requirements/
  * projects/compliant counts — the same clickable-stat-tile convention
  * `ProjectOverviewPage.tsx`/`OrgOverviewPage.tsx` already established), and
@@ -59,11 +59,12 @@ import { useParams } from "react-router-dom";
 import { api } from "../../api/client";
 import { activityActionLabel } from "../../api/types";
 import type { OrgGroup, OrgUser } from "../../api/types";
-import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { EntitySwitcher, type EntitySwitcherOption } from "../../components/EntitySwitcher";
 import { MetricTile } from "../../components/MetricTile";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
+import { RecordHeader } from "../../components/RecordHeader";
 import { Spinner } from "../../components/Spinner";
+import { useConfirmedAction } from "../../components/useConfirmedAction";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { downloadBlob } from "../../utils/download";
 import * as complianceApi from "./api";
@@ -81,6 +82,10 @@ import type {
   ProjectComplianceStatus,
 } from "./types";
 import { userDisplayName } from "./types";
+import { Badge } from "../../components/Badge";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { DetailCard } from "../../components/DetailCard";
 
 type StandardWorkspaceSection = "overview" | "versions" | "members" | "history" | "projects";
 
@@ -97,7 +102,7 @@ function currentVersion(versions: ComplianceStandardVersion[]): ComplianceStanda
   return pool.reduce((latest, v) => (v.version_number > latest.version_number ? v : latest));
 }
 
-/** `EntitySwitcher` loader (Phase 28) — reuses `listStandardsAcrossMyOrgs`,
+/** `EntitySwitcher` loader — reuses `listStandardsAcrossMyOrgs`,
  * the same cross-org fan-out `StandardListPage.tsx` uses, rather than
  * duplicating it here. */
 async function loadStandardSwitcherOptions(): Promise<EntitySwitcherOption[]> {
@@ -116,7 +121,6 @@ export function StandardWorkspacePage() {
   const [orgGroups, setOrgGroups] = useState<OrgGroup[]>([]);
   const [editing, setEditing] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
-  const [confirmingArchive, setConfirmingArchive] = useState(false);
   const [history, setHistory] = useState<ComplianceAuditEvent[] | null>(null);
   const [exporting, setExporting] = useState(false);
   const [versions, setVersions] = useState<ComplianceStandardVersion[] | null>(null);
@@ -139,12 +143,11 @@ export function StandardWorkspacePage() {
     }
   }
 
-  useEffect(() => {
+  useResetOnChange([standardId], () => {
     setStandard(null);
     setNotFound(false);
-    void reloadStandard();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [standardId]);
+  });
+  useLoadOnChange(reloadStandard, [standardId]);
 
   useEffect(() => {
     if (!standard) return;
@@ -154,16 +157,19 @@ export function StandardWorkspacePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [standard?.organization_id]);
 
-  // Phase 23 Overview stats: version count, this standard's own slice of
+  // Overview stats: version count, this standard's own slice of
   // §20 project-compliance status (projects/compliant tiles), and the
   // current version's requirement count (fetched once the version list
   // resolves which version counts as "current" — a second, small request
   // rather than a new backend field, since `listRequirements` already
   // exists and is cheap for the tile's purposes).
-  useEffect(() => {
-    if (!standard) return;
+  useResetOnChange([standard?.organization_id, standard?.id], () => {
     setVersions(null);
     setRequirementCount(null);
+  });
+
+  useEffect(() => {
+    if (!standard) return;
     complianceApi.listStandardVersions(standard.organization_id, standard.id).then(setVersions);
     complianceApi.getStandardProjectSummary(standard.organization_id, standard.id).then(setProjectSummary);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -179,9 +185,10 @@ export function StandardWorkspacePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [standard?.organization_id, standard?.id, latestVersion?.id]);
 
+  useResetOnChange([section, standard?.organization_id, standard?.id], () => setHistory(null));
+
   useEffect(() => {
     if (section !== "history" || !standard) return;
-    setHistory(null);
     complianceApi
       .getStandardHistory(standard.organization_id, standard.id)
       .then(setHistory)
@@ -200,8 +207,6 @@ export function StandardWorkspacePage() {
       refreshComplianceNavVisibility();
     } catch (err) {
       showToast(toErrorMessage(err, "Could not update standard."), "error");
-    } finally {
-      setConfirmingArchive(false);
     }
   }
 
@@ -218,6 +223,18 @@ export function StandardWorkspacePage() {
     }
   }
 
+  const archiveAction = useConfirmedAction(
+    standard && {
+      label: standard.is_archived ? "Unarchive" : "Archive",
+      danger: !standard.is_archived,
+      title: standard.is_archived ? `Unarchive "${standard.name}"?` : `Archive "${standard.name}"?`,
+      message: standard.is_archived
+        ? "This standard will reappear in the default (non-archived) list."
+        : "This standard will be hidden from the default list. Nothing referencing it is deleted.",
+      onConfirm: handleArchiveToggle,
+    },
+  );
+
   if (notFound) {
     return <p className="text-muted">This compliance standard could not be found, or you don't have access to it.</p>;
   }
@@ -225,13 +242,18 @@ export function StandardWorkspacePage() {
 
   return (
     <div className="stack">
-      <div className="stack" style={{ gap: "0.15rem" }}>
-        <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
-          <h1 style={{ margin: 0 }}>{standard.reference} — {standard.name}</h1>
-          <EntitySwitcher label="Switch standard" currentId={standard.id} loadOptions={loadStandardSwitcherOptions} />
-        </div>
-        {standard.is_archived && <span className="badge">Archived</span>}
-      </div>
+      <RecordHeader
+        recordLabel="Standard"
+        title={`${standard.reference} — ${standard.name}`}
+        titleAddon={<EntitySwitcher label="Switch standard" currentId={standard.id} loadOptions={loadStandardSwitcherOptions} />}
+        badges={standard.is_archived ? <Badge>Archived</Badge> : undefined}
+        onEdit={() => setEditing(true)}
+        actions={[
+          { label: exporting ? "Exporting…" : "Export", onSelect: () => { if (!exporting) void handleExport(); } },
+          archiveAction.item,
+        ]}
+      />
+      {archiveAction.dialog}
 
       {section === "overview" && (
         <div className="stack">
@@ -249,23 +271,14 @@ export function StandardWorkspacePage() {
               to={`/standards/${standard.id}/projects?state=compliant`}
             />
           </div>
-          <div className="card stack">
+          <DetailCard>
             <p>{standard.description || <span className="text-muted">No description.</span>}</p>
             {standard.issuing_organisation && <p className="text-muted">Issued by {standard.issuing_organisation}</p>}
             <div className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
               <span className="text-muted">Owner:</span>
               <PrincipalBadge principal={standard.owner} />
             </div>
-            <div className="row">
-              <button className="btn" onClick={() => setEditing(true)}>Edit</button>
-              <button className="btn" onClick={handleExport} disabled={exporting}>
-                {exporting ? "Exporting…" : "Export"}
-              </button>
-              <button className="btn btn-danger" onClick={() => setConfirmingArchive(true)}>
-                {standard.is_archived ? "Unarchive" : "Archive"}
-              </button>
-            </div>
-          </div>
+          </DetailCard>
           <StandardApplicabilityPanel standard={standard} onStandardChanged={setStandard} />
         </div>
       )}
@@ -323,20 +336,6 @@ export function StandardWorkspacePage() {
               setEditError(toErrorMessage(err, "Could not update standard."));
             }
           }}
-        />
-      )}
-
-      {confirmingArchive && (
-        <ConfirmDialog
-          title={standard.is_archived ? `Unarchive "${standard.name}"?` : `Archive "${standard.name}"?`}
-          message={
-            standard.is_archived
-              ? "This standard will reappear in the default (non-archived) list."
-              : "This standard will be hidden from the default list. Nothing referencing it is deleted."
-          }
-          confirmLabel={standard.is_archived ? "Unarchive" : "Archive"}
-          onConfirm={handleArchiveToggle}
-          onCancel={() => setConfirmingArchive(false)}
         />
       )}
     </div>

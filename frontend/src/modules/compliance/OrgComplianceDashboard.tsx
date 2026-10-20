@@ -9,18 +9,18 @@
  * counts, linking to that project's Compliance page the same way
  * `OrgComplianceStandardsPanel`/`OrgComplianceOutstandingPanel` do.
  *
- * Built entirely from the Phase 14 org-wide endpoints already fetched for
+ * Built entirely from the org-wide endpoints already fetched for
  * this panel's sibling tabs — no widget-specific backend endpoint beyond
  * `recent-activity` (which has no other consumer) was needed; "Standards
  * with the most outstanding issues" is computed client-side by tallying
  * the non-compliant/pending-approval/outstanding-action rows per standard,
  * the same client-side-aggregation-over-a-flat-listing precedent
- * `OrgComplianceStandardsPanel`/Phase 12's `buildRequirementTree` both use.
+ * `OrgComplianceStandardsPanel`/`buildRequirementTree` both use.
  * The four headline numbers (active standards / projects subject to
  * compliance / overall compliance / non-compliant projects) are computed
  * via `orgComplianceSummary.ts::computeOrgComplianceHeadline`, shared with
  * `ComplianceOrgOverviewTiles.tsx`'s `OrgOverviewPage.tsx` header tiles
- * (Phase 25b) so both surfaces report the exact same numbers from the same
+ * so both surfaces report the exact same numbers from the same
  * rows rather than two independent copies of the same computation — and the
  * `statusRows` those numbers are computed from come from the shared
  * `useOrgComplianceStatus` hook rather than this component's own fetch, so
@@ -28,34 +28,30 @@
  * group is `OrgOverviewPage.tsx`'s default `orgOverviewSections` entry)
  * share one request instead of firing the identical one twice.
  *
- * The "Download PDF report"/"Download CSV report" actions (Phase 15, §29)
+ * The "Download PDF report"/"Download CSV report" actions (§29)
  * hit `GET .../orgs/{id}/modules/compliance/reports?format={pdf,csv}` directly via
  * `api.getForBlob` + `downloadBlob` — see `ProjectCompliancePage.tsx`'s own
- * identical Phase 15 note for why this reuses `pages/ReportsPage.tsx`'s
- * established fetch-a-blob-and-save-it idiom rather than a new one. Phase
- * 25b moved them from two permanently-visible adjacent buttons (Principle
- * 11's "two blocks competing for the same job," the exact shape the CSV
- * wizard's own Export/Download-template pair already had) behind one
- * "Export" `Popover` trigger, mirroring `CsvImportWizard.tsx`'s identical
- * fix; Phase 43 extracted that trigger into the shared `ReportExportButton`
- * once three more panels needed the identical shape — see that component's
- * own docstring — and moved `ProjectCompliancePage.tsx`'s own still-two-
- * button layout onto it in the same change.
+ * identical note for why this reuses `pages/ReportsPage.tsx`'s
+ * established fetch-a-blob-and-save-it idiom rather than a new one. They sit behind one
+ * "Export" `Popover` trigger (Principle 11's "two blocks competing for the
+ * same job," the exact shape the CSV wizard's own Export/Download-template
+ * pair had), mirroring `CsvImportWizard.tsx`'s identical fix, via the shared
+ * `ReportExportButton` — see that component's own docstring.
  *
  * The nine `StatCard`s below (four headline + five detail) render as one
- * single `.grid.grid-metrics` grid (Phase 25c) rather than three separately
+ * single `.grid.grid-metrics` grid rather than three separately
  * `flex-wrap`-ped rows of uneven size (4/5) — a consistent column count
  * across breakpoints regardless of how many cards happen to fit a given
  * row width.
  *
- * Phase 36: the top grid's `StatCard`s no longer embed a variable-length
+ * The top grid's `StatCard`s no longer embed a variable-length
  * `<ProjectList>` as `children` — a long list in one card was making that
  * whole grid row taller than its neighbours even though CSS Grid's default
  * `stretch` equalises heights within a row (see `docs/ux-style-guide.md`'s
- * Phase 36 addendum to the Phase 27b/25c rule). Every card that used to
+ * stat-block rule). Every card that used to
  * carry a project list is now a plain-number `MetricTile` (the established
  * "stat tile → click navigates to a filtered view" idiom, `docs/ux-style-
- * guide.md`'s Phase 23 note) linking through to the same data on a real
+ * guide.md`) linking through to the same data on a real
  * `ResourceMenu` group — "Compliance by standard" (pivoted by project via
  * `?groupBy=project`, optionally pre-filtered by `?state=`) for the
  * standards-status-derived counts, or "Outstanding compliance items"
@@ -65,13 +61,13 @@
  * opted out of the row's default `stretch`) and had their own list lengths
  * bounded, for the same height-variance reason.
  *
- * Phase 38: Phase 36's own removal of `alignItems: "flex-start"` from the
- * detail-card row didn't actually achieve `stretch` — `.row`
+ * Removing `alignItems: "flex-start"` from the
+ * detail-card row doesn't achieve `stretch` — `.row`
  * (`styles/theme.css`) sets `align-items: center` itself, so cards of
  * different content heights rendered vertically centred relative to one
  * another rather than top-aligned. That row now sets `alignItems:
  * "flex-start"` explicitly rather than relying on `.row`'s own default
- * (see `docs/ux-style-guide.md`'s Phase 38 addendum). "Recently changed
+ * (see `docs/ux-style-guide.md`). "Recently changed
  * compliance assessments" also moved out of that row into its own
  * full-width `.card` below it, per direct user feedback that it should
  * take up a full row rather than share one with the other two detail
@@ -100,6 +96,7 @@ import {
   type OutstandingRequiredAction,
 } from "./types";
 import { useOrgComplianceStatus } from "./useOrgComplianceStatus";
+import { Badge } from "../../components/Badge";
 
 interface DashboardData {
   nonCompliant: OrgNonCompliantRequirement[];
@@ -133,10 +130,10 @@ export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
       complianceApi.listOrgExpiringEvidence(orgId),
       complianceApi.listOrgReviewsDue(orgId, false),
       complianceApi.listOrgReviewsDue(orgId, true),
-      // Bounded to 5 (Phase 36), matching this card's sibling detail cards'
-      // own bounded length, rather than the 10 fetched pre-Phase-36 — a
+      // Bounded to 5, matching this card's sibling detail cards'
+      // own bounded length, rather than the 10 fetched originally — a
       // long list here was one of the two contributors to the second
-      // block's row-height variance (see this file's own Phase 36 note).
+      // block's row-height variance (see this file's docstring).
       complianceApi.listOrgRecentActivity(orgId, 5),
     ])
       .then(([nonCompliant, pending, outstandingActions, expiringEvidence, reviewsDue, reviewsIncludingUpcoming, recentActivity]) => {
@@ -158,7 +155,7 @@ export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
   const upcomingReviews = reviewsIncludingUpcoming
     .filter((r) => r.review.schedule_state === "upcoming")
     .sort((a, b) => a.review.next_due_date.localeCompare(b.review.next_due_date))
-    // Bounded to 5 (Phase 36) — see this file's own Phase 36 note.
+    // Bounded to 5 — see this file's docstring.
     .slice(0, 5);
 
   const issuesByStandard = new Map<string, number>();
@@ -242,7 +239,7 @@ export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
                   {" — "}
                   {row.review.frequency_label} — due {row.review.next_due_date}
                   {row.review.schedule_state && (
-                    <span className="badge" style={{ marginLeft: "0.5rem" }}>{COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL[row.review.schedule_state]}</span>
+                    <Badge className="badge-after">{COMPLIANCE_REVIEW_SCHEDULE_STATE_LABEL[row.review.schedule_state]}</Badge>
                   )}
                 </li>
               ))}

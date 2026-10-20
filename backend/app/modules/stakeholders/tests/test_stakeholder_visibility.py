@@ -1,5 +1,4 @@
-"""Tests for project stakeholder visibility (Module 2 Phase 3b,
-docs/plans/module-02-stakeholders-and-personas-plan.md): a project can hide an
+"""Tests for project stakeholder visibility: a project can hide an
 org Stakeholder from itself, reversibly, without touching the shared record.
 
 Covers: hide/show/reset and the list/detail effects, the effect on needs,

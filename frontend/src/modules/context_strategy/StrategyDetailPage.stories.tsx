@@ -12,7 +12,7 @@ const STRATEGY_ID = "strategy-1";
 
 function strategy(overrides: Partial<Strategy> = {}): Strategy {
   return {
-    id: STRATEGY_ID, scope: "project", organization_id: null, project_id: PROJECT_ID, creator_id: "user-1",
+    id: STRATEGY_ID, scope: "project", organization_id: null, project_id: PROJECT_ID, unique_code: "STR-001", creator_id: "user-1",
     is_archived: false, archived_at: null, archived_by: null, title: "Lead the regional market",
     objective: "Become the top provider in our region.", current_state: "We are #3 in the region.",
     desired_future_state: "We are #1 in the region.", rationale: "Market analysis shows a clear opening.",

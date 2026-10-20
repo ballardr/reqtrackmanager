@@ -105,10 +105,10 @@ export const SelectingASiblingClosesThePopover: Story = {
   },
 };
 
-/** Phase 35b: the trigger is borderless/transparent at rest — no separately
+/** The trigger is borderless/transparent at rest — no separately
  * bordered chip next to the entity name — the same "icon affordance, not a
  * bolted-on `.btn`" treatment already applied once to
- * `StandardNavSection.tsx`'s disclosure toggle (Phase 29d). `theme.css`'s
+ * `StandardNavSection.tsx`'s disclosure toggle. `theme.css`'s
  * `.entity-switcher-trigger:hover`/`:focus-visible` rules give it a
  * background on hover/focus (not asserted here via `getComputedStyle` —
  * `:hover`/`:focus-visible` pseudo-classes aren't reliably observable

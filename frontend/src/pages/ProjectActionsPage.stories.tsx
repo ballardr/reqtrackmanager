@@ -127,7 +127,7 @@ export const CreateAssignedToAGroup: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Review password reset flow")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: /New action/ }));
-    await userEvent.type(canvas.getByPlaceholderText("Title"), "Verify audit log retention");
+    await userEvent.type(canvas.getByLabelText("Title"), "Verify audit log retention");
     await userEvent.type(canvas.getByRole("combobox", { name: "Assignee" }), "test");
     await userEvent.click(await canvas.findByText("Test Group"));
     await userEvent.click(canvas.getByRole("button", { name: "Create" }));
@@ -149,7 +149,7 @@ export const CreateNewAction: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Review password reset flow")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: /New action/ }));
-    await userEvent.type(canvas.getByPlaceholderText("Title"), "Verify audit log retention");
+    await userEvent.type(canvas.getByLabelText("Title"), "Verify audit log retention");
     await userEvent.click(canvas.getByRole("button", { name: "Create" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
@@ -157,14 +157,14 @@ export const CreateNewAction: Story = {
         expect.objectContaining({ title: "Verify audit log retention", action_type_id: "at1" })
       )
     );
-    // Principle 7 — every mutation ends with feedback. The 2026-08 UX audit
-    // named this page specifically: it got real interaction-model work
+    // Principle 7 — every mutation ends with feedback. This page
+    // got real interaction-model work
     // without picking up Toast, so create still just silently re-rendered.
     await expect(within(document.body).getByText("Action created")).toBeInTheDocument();
   },
 };
 
-/** Column-header sorting (2026-08 UX audit roadmap) — this list has no
+/** Column-header sorting — this list has no
  * backend pagination, so sorting is a client-side `useMemo` over the
  * already-loaded rows. Clicking "Title" once sorts ascending. */
 export const SortedByTitleAscending: Story = {

@@ -6,8 +6,8 @@ import { HeldNeedsPanel } from "./HeldNeedsPanel";
 import type { HeldNeed } from "./types";
 
 const NEEDS: HeldNeed[] = [
-  { link_id: "l1", id: "need-1", name: "Diagnose faults quickly", status: "active" },
-  { link_id: "l2", id: "need-2", name: "Audit without a meeting", status: "draft" },
+  { link_id: "l1", id: "need-1", unique_code: "NEED-001", name: "Diagnose faults quickly", status: "active" },
+  { link_id: "l2", id: "need-2", unique_code: "NEED-002", name: "Audit without a meeting", status: "draft" },
 ];
 
 const meta: Meta<typeof HeldNeedsPanel> = {

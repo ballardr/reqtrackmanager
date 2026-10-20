@@ -7,8 +7,7 @@ import { installCleanupHook, loginAs, logout, openOrgGroupPanel, PASSWORD, selec
 installCleanupHook();
 
 /**
- * Job to be done: users and groups on parity, Phase 6 (docs/plans/
- * users-and-groups-parity-plan.md) — the core records name groups too. A
+ * Job to be done: users and groups on parity — the core records name groups too. A
  * Requirement's owner and reviewer, an Action's assignee and a record's watchers can
  * each be an organisation or project group; a member of the reviewer group sees the
  * review on their own due list; and deleting a group that still owns Requirements makes
@@ -64,7 +63,7 @@ test.describe("Core records: groups as owners, reviewers, assignees and watchers
     // --- An Action can be assigned to the squad from the Actions page.
     await page.goto(`/projects/${project.id}/actions`);
     await page.getByRole("button", { name: /New action/ }).click();
-    await page.getByPlaceholder("Title").fill(`Squad action ${suffix}`);
+    await page.getByLabel("Title").fill(`Squad action ${suffix}`);
     await page.getByRole("combobox", { name: "Assignee" }).fill("Core Squad");
     await page.getByRole("option", { name: new RegExp(squadName) }).click();
     await page.getByRole("button", { name: "Create", exact: true }).click();

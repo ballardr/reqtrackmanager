@@ -23,20 +23,20 @@
  * (not its component) is the right level of reuse, matching how
  * `ProjectTree` itself is not shared beyond project hierarchy either.
  *
- * Phase 23 (Standard workspace UX overhaul) adds a `ViewToggle` between
- * this tree (unchanged — still the authoring/reordering view, hierarchy
- * intact) and a new flat list view for scanning/searching a large
+ * A `ViewToggle` switches between
+ * this tree (the authoring/reordering view, hierarchy
+ * intact) and a flat list view for scanning/searching a large
  * standard, with a `FilterPanel` (search text, mandatory-only, action
  * type) that applies to the list view only — filtering the flat list
  * before the tree is built would silently hide a matching child whose
  * ancestor didn't match, so the tree itself stays deliberately unfiltered,
- * matching this phase's own "the tree is for authoring, the list is for
+ * matching the "the tree is for authoring, the list is for
  * scanning" framing. Clicking a list-view row opens a `SidePanel` detail
  * view (`RequirementDetailPanel` below) with `AutoGrowTextarea` fields for
  * description/reasoning, the same component `RequirementsPage.tsx`'s own
  * detail editing already uses, editable only while `isDraft`.
  *
- * Phase 24 adds a "Clarify" action (tree and list/detail view alike),
+ * A "Clarify" action (tree and list/detail view alike) is
  * shown once `isPublished` is true (mutually exclusive with `isDraft`'s own
  * edit/delete/move controls — a requirement is either freely editable, on
  * a draft version, or only clarifiable, on a published one; never both) —
@@ -49,7 +49,6 @@ import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Link2, MessageSquareText
 import { useEffect, useState } from "react";
 
 import { toErrorMessage, useToast } from "../../context/ToastContext";
-import { AutoGrowTextarea } from "../../components/AutoGrowTextarea";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
 import { Modal } from "../../components/Modal";
@@ -59,13 +58,22 @@ import { useViewMode, ViewToggle } from "../../components/ViewToggle";
 import * as complianceApi from "./api";
 import { RequirementMappingsModal } from "./RequirementMappingsModal";
 import type { ComplianceActionType, ComplianceRequiredAction, ComplianceRequirement, ComplianceRequirementNode } from "./types";
+import { Badge } from "../../components/Badge";
+import { CheckboxField, TextAreaField, TextField } from "../../components/FormFields";
+import { FormActions } from "../../components/FormActions";
+import { FormGrid, FormGridFull } from "../../components/FormGrid";
+import { LabeledSelect } from "../../components/LabeledSelect";
+import { RecordFieldGroup } from "../../components/RecordDetailParts";
+import { useResetOnChange } from "../../hooks/useResetOnChange";
+import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { COMPLIANCE_HELP } from "./help";
 
 interface Props {
   orgId: string;
   standardId: string;
   versionId: string;
   isDraft: boolean;
-  /** Phase 24 — whether the owning version is `published` (as opposed to
+  /** Whether the owning version is `published` (as opposed to
    * `draft` or `retired`), the one status the "Clarify" action is offered
    * on (mirrors `clarify_requirement`'s own backend 409 on any other
    * status). */
@@ -73,8 +81,8 @@ interface Props {
   actionTypes: ComplianceActionType[];
 }
 
-/** A small `.badge` marking a requirement clarified at least once (Phase
- * 24) — shown in the tree, list, and detail views alike. The note is
+/** A small `.badge` marking a requirement clarified at least once —
+ * shown in the tree, list, and detail views alike. The note is
  * surfaced via the native `title` tooltip on hover/click, mirroring how
  * this codebase already surfaces secondary detail without a second
  * control (e.g. this same file's own `title="View mappings"` buttons). */
@@ -82,12 +90,11 @@ function ClarificationBadge({ requirement }: { requirement: ComplianceRequiremen
   if (requirement.clarification_count === 0) return null;
   const times = requirement.clarification_count === 1 ? "1 time" : `${requirement.clarification_count} times`;
   return (
-    <span
-      className="badge"
-      title={`Clarified ${times}. Most recent note: ${requirement.last_clarification_note || "(no note)"}`}
-    >
-      <MessageSquareText size={12} /> Clarified
-    </span>
+    <Badge
+      icon={<MessageSquareText size={12} />}
+      title={`Clarified ${times}. Most recent note: ${requirement.last_clarification_note || "(no note)"}`}>
+      Clarified
+    </Badge>
   );
 }
 
@@ -119,13 +126,12 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
     }
   }
 
-  useEffect(() => {
+  useResetOnChange([orgId, standardId, versionId], () => {
     setRequirements(null);
     setExpandedIds(new Set());
     setActionsByRequirement({});
-    void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, standardId, versionId]);
+  });
+  useLoadOnChange(reload, [orgId, standardId, versionId]);
 
   async function toggleExpand(requirementId: string) {
     const next = new Set(expandedIds);
@@ -310,7 +316,7 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
               aria-label={isExpanded ? `Collapse ${node.name}` : `Expand ${node.name}`}
               onClick={() => toggleExpand(node.id)}
             >
-              {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              {isExpanded ? <ChevronDown /> : <ChevronRight />}
             </button>
             <div className="stack" style={{ gap: "0.1rem", flex: 1, marginLeft: "0.5rem" }}>
               <strong className="row" style={{ gap: "0.4rem" }}>
@@ -322,11 +328,11 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
             </div>
             <div className="row">
               <button className="btn" title="View mappings" aria-label={`View mappings for ${node.name}`} onClick={() => setMappingsRequirement(node)}>
-                <Link2 size={14} />
+                <Link2 />
               </button>
               {isPublished && (
                 <button className="btn" title="Clarify" aria-label={`Clarify ${node.name}`} onClick={() => setClarifyingRequirement(node)}>
-                  <MessageSquareText size={14} />
+                  <MessageSquareText />
                 </button>
               )}
               {isDraft && (
@@ -337,13 +343,13 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
                     aria-label={`Add child requirement under ${node.name}`}
                     onClick={() => setEditingRequirement({ parentId: node.id })}
                   >
-                    <Plus size={14} />
+                    <Plus />
                   </button>
                   <button className="btn" title="Edit" aria-label={`Edit ${node.name}`} onClick={() => setEditingRequirement({ parentId: node.parent_requirement_id, requirement: node })}>
-                    <Pencil size={14} />
+                    <Pencil />
                   </button>
                   <button className="btn" disabled={index === 0} title="Move up" aria-label={`Move ${node.name} up`} onClick={() => handleMoveRequirement(node.id, "up")}>
-                    <ArrowUp size={14} />
+                    <ArrowUp />
                   </button>
                   <button
                     className="btn"
@@ -352,10 +358,10 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
                     aria-label={`Move ${node.name} down`}
                     onClick={() => handleMoveRequirement(node.id, "down")}
                   >
-                    <ArrowDown size={14} />
+                    <ArrowDown />
                   </button>
                   <button className="btn btn-danger" title="Delete" aria-label={`Delete ${node.name}`} onClick={() => setDeletingRequirement(node)}>
-                    <Trash2 size={14} />
+                    <Trash2 />
                   </button>
                 </>
               )}
@@ -380,7 +386,7 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
                       {isDraft && (
                         <div className="row">
                           <button className="btn" title="Edit" aria-label={`Edit required action ${action.name}`} onClick={() => setEditingAction({ requirementId: node.id, action })}>
-                            <Pencil size={14} />
+                            <Pencil />
                           </button>
                           <button
                             className="btn"
@@ -389,7 +395,7 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
                             aria-label={`Move required action ${action.name} up`}
                             onClick={() => handleMoveAction(node.id, action.id, "up")}
                           >
-                            <ArrowUp size={14} />
+                            <ArrowUp />
                           </button>
                           <button
                             className="btn"
@@ -398,7 +404,7 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
                             aria-label={`Move required action ${action.name} down`}
                             onClick={() => handleMoveAction(node.id, action.id, "down")}
                           >
-                            <ArrowDown size={14} />
+                            <ArrowDown />
                           </button>
                           <button
                             className="btn btn-danger"
@@ -406,7 +412,7 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
                             aria-label={`Delete required action ${action.name}`}
                             onClick={() => setDeletingAction({ requirementId: node.id, action })}
                           >
-                            <Trash2 size={14} />
+                            <Trash2 />
                           </button>
                         </div>
                       )}
@@ -422,7 +428,7 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
                   title={actionTypes.length === 0 ? "Create an action type first" : undefined}
                   onClick={() => setEditingAction({ requirementId: node.id })}
                 >
-                  <Plus size={14} /> Add required action
+                  <Plus /> Add required action
                 </button>
               )}
             </div>
@@ -442,7 +448,7 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
       <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         {isDraft ? (
           <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setEditingRequirement({ parentId: null })}>
-            <Plus size={14} /> Add requirement
+            <Plus /> Add requirement
           </button>
         ) : (
           <span />
@@ -598,7 +604,7 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
 }
 
 /**
- * The list view's "open full detail" panel (Phase 23) — a `SidePanel`
+ * The list view's "open full detail" panel — a `SidePanel`
  * reusing `AutoGrowTextarea` for description/reasoning, the same field
  * component `RequirementsPage.tsx`'s own detail editing already uses.
  * Reference/name/description/reasoning are editable while `isDraft`
@@ -643,42 +649,35 @@ function RequirementDetailPanel({
           <ClarificationBadge requirement={requirement} />
           {isPublished && (
             <button className="btn" onClick={onClarify}>
-              <MessageSquareText size={14} /> Clarify
+              <MessageSquareText /> Clarify
             </button>
           )}
         </div>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Reference</span>
-          {isDraft ? (
-            <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. A.5.1" />
-          ) : (
-            <span>{requirement.reference || <span className="text-muted">None</span>}</span>
-          )}
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Name</span>
-          {isDraft ? (
-            <input className="input" value={name} onChange={(e) => setName(e.target.value)} aria-label="Requirement name" />
-          ) : (
-            <span>{requirement.name}</span>
-          )}
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Description</span>
-          {isDraft ? (
-            <AutoGrowTextarea value={description} onChange={setDescription} />
-          ) : (
-            <span>{requirement.description || <span className="text-muted">No description.</span>}</span>
-          )}
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Reasoning</span>
-          {isDraft ? (
-            <AutoGrowTextarea value={reasoning} onChange={setReasoning} />
-          ) : (
-            <span>{requirement.reasoning || <span className="text-muted">No reasoning recorded.</span>}</span>
-          )}
-        </label>
+        {isDraft ? (
+          <FormGrid minColumn="14rem">
+            <TextField help={COMPLIANCE_HELP.complianceRequirementReference} label="Reference" value={reference} onChange={setReference} placeholder="e.g. A.5.1" />
+            <TextField helpNotNeeded required label="Name" ariaLabel="Requirement name" value={name} onChange={setName} />
+            <FormGridFull>
+              <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} autoGrow />
+            </FormGridFull>
+            <FormGridFull>
+              <TextAreaField helpNotNeeded label="Reasoning" value={reasoning} onChange={setReasoning} autoGrow />
+            </FormGridFull>
+          </FormGrid>
+        ) : (
+          <>
+            <RecordFieldGroup help={COMPLIANCE_HELP.complianceRequirementReference} label="Reference">
+              <span>{requirement.reference || <span className="text-muted">None</span>}</span>
+            </RecordFieldGroup>
+            <RecordFieldGroup helpNotNeeded label="Name"><span>{requirement.name}</span></RecordFieldGroup>
+            <RecordFieldGroup helpNotNeeded label="Description">
+              <span>{requirement.description || <span className="text-muted">No description.</span>}</span>
+            </RecordFieldGroup>
+            <RecordFieldGroup helpNotNeeded label="Reasoning">
+              <span>{requirement.reasoning || <span className="text-muted">No reasoning recorded.</span>}</span>
+            </RecordFieldGroup>
+          </>
+        )}
 
         {isDraft && (
           <div className="row" style={{ justifyContent: "flex-end" }}>
@@ -733,34 +732,23 @@ function RequirementFormModal({
   const [reasoning, setReasoning] = useState(initial?.reasoning ?? "");
 
   return (
-    <Modal title={initial ? "Edit requirement" : "New requirement"} onClose={onCancel}>
+    <Modal title={initial ? "Edit requirement" : "New requirement"} onClose={onCancel} size="lg">
       <div className="stack">
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Reference</span>
-          <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. A.5.1" />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Name</span>
-          <input className="input" value={name} onChange={(e) => setName(e.target.value)} aria-label="Requirement name" />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Description</span>
-          <textarea className="input" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Reasoning</span>
-          <textarea className="input" value={reasoning} onChange={(e) => setReasoning(e.target.value)} rows={2} />
-        </label>
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button
-            className="btn btn-primary"
-            disabled={!name.trim()}
-            onClick={() => onSave({ reference, name, description, reasoning })}
-          >
-            Save
-          </button>
-        </div>
+        <FormGrid minColumn="18rem">
+          <TextField help={COMPLIANCE_HELP.complianceRequirementReference} label="Reference" value={reference} onChange={setReference} placeholder="e.g. A.5.1" />
+          <TextField helpNotNeeded required label="Name" ariaLabel="Requirement name" value={name} onChange={setName} />
+          <FormGridFull>
+            <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} rows={3} />
+          </FormGridFull>
+          <FormGridFull>
+            <TextAreaField helpNotNeeded label="Reasoning" value={reasoning} onChange={setReasoning} rows={2} />
+          </FormGridFull>
+        </FormGrid>
+        <FormActions
+          onCancel={onCancel}
+          onSave={() => onSave({ reference, name, description, reasoning })}
+          saveDisabled={!name.trim()}
+        />
       </div>
     </Modal>
   );
@@ -788,45 +776,34 @@ function RequiredActionFormModal({
   const [isMandatory, setIsMandatory] = useState(initial?.is_mandatory ?? true);
 
   return (
-    <Modal title={initial ? "Edit required action" : "New required action"} onClose={onCancel}>
+    <Modal title={initial ? "Edit required action" : "New required action"} onClose={onCancel} size="lg">
       <div className="stack">
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Action type</span>
-          <select className="input" value={actionTypeId} onChange={(e) => setActionTypeId(e.target.value)} aria-label="Action type">
-            {actionTypes.map((t) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
-          </select>
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Name</span>
-          <input className="input" value={name} onChange={(e) => setName(e.target.value)} aria-label="Required action name" />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Description</span>
-          <textarea className="input" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
-        </label>
-        <label className="row" style={{ gap: "0.4rem" }}>
-          <input type="checkbox" checked={isMandatory} onChange={(e) => setIsMandatory(e.target.checked)} />
-          Mandatory
-        </label>
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button
-            className="btn btn-primary"
-            disabled={!name.trim() || !actionTypeId}
-            onClick={() => onSave({ action_type_id: actionTypeId, name, description, is_mandatory: isMandatory })}
-          >
-            Save
-          </button>
-        </div>
+        <FormGrid minColumn="18rem">
+          <LabeledSelect helpNotNeeded required
+            label="Action type"
+            value={actionTypeId}
+            onChange={setActionTypeId}
+            options={actionTypes.map((t) => ({ value: t.id, label: t.name }))}
+            placeholder={null}
+          />
+          <TextField helpNotNeeded required label="Name" ariaLabel="Required action name" value={name} onChange={setName} />
+          <FormGridFull>
+            <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} rows={2} />
+          </FormGridFull>
+          <CheckboxField help={COMPLIANCE_HELP.complianceMandatory} label="Mandatory" checked={isMandatory} onChange={setIsMandatory} />
+        </FormGrid>
+        <FormActions
+          onCancel={onCancel}
+          onSave={() => onSave({ action_type_id: actionTypeId, name, description, is_mandatory: isMandatory })}
+          saveDisabled={!name.trim() || !actionTypeId}
+        />
       </div>
     </Modal>
   );
 }
 
 /**
- * Phase 24's "Clarify" action — a narrower, mandatory-note-gated sibling of
+ * The "Clarify" action — a narrower, mandatory-note-gated sibling of
  * `RequirementFormModal`, for a requirement on a **published** version.
  * Pre-fills the same reference/name/description/reasoning fields (a
  * clarification is a correction/elaboration to this requirement's own
@@ -852,46 +829,34 @@ function RequirementClarifyModal({
   const [clarificationNote, setClarificationNote] = useState("");
 
   return (
-    <Modal title={`Clarify "${requirement.name}"`} onClose={onCancel}>
+    <Modal title={`Clarify "${requirement.name}"`} onClose={onCancel} size="lg">
       <div className="stack">
         <p className="text-muted" style={{ margin: 0 }}>
           Use this for a non-substantive correction or elaboration only — a typo fix, added context, or formatting.
           Anything that changes what must be satisfied requires a new standard version instead.
         </p>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Reference</span>
-          <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. A.5.1" />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Name</span>
-          <input className="input" value={name} onChange={(e) => setName(e.target.value)} aria-label="Requirement name" />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Description</span>
-          <AutoGrowTextarea value={description} onChange={setDescription} />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Reasoning</span>
-          <AutoGrowTextarea value={reasoning} onChange={setReasoning} />
-        </label>
-        <label className="stack" style={{ gap: "0.25rem" }}>
-          <span>Clarification note (required)</span>
-          <AutoGrowTextarea
-            value={clarificationNote}
-            onChange={setClarificationNote}
-            placeholder="What changed, and why it's non-substantive."
-          />
-        </label>
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button
-            className="btn btn-primary"
-            disabled={!name.trim() || !clarificationNote.trim()}
-            onClick={() => onSave({ reference, name, description, reasoning, clarificationNote })}
-          >
-            Save clarification
-          </button>
-        </div>
+        <FormGrid minColumn="18rem">
+          <TextField help={COMPLIANCE_HELP.complianceRequirementReference} label="Reference" value={reference} onChange={setReference} placeholder="e.g. A.5.1" />
+          <TextField helpNotNeeded required label="Name" ariaLabel="Requirement name" value={name} onChange={setName} />
+          <FormGridFull>
+            <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} autoGrow />
+          </FormGridFull>
+          <FormGridFull>
+            <TextAreaField helpNotNeeded label="Reasoning" value={reasoning} onChange={setReasoning} autoGrow />
+          </FormGridFull>
+          <FormGridFull>
+            <TextAreaField helpNotNeeded required
+              label="Clarification note" value={clarificationNote} onChange={setClarificationNote} autoGrow
+              inputProps={{ placeholder: "What changed, and why it's non-substantive." }}
+            />
+          </FormGridFull>
+        </FormGrid>
+        <FormActions
+          onCancel={onCancel}
+          onSave={() => onSave({ reference, name, description, reasoning, clarificationNote })}
+          saveLabel="Save clarification"
+          saveDisabled={!name.trim() || !clarificationNote.trim()}
+        />
       </div>
     </Modal>
   );

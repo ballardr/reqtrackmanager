@@ -1,5 +1,4 @@
-"""Tests for the Context & Strategy reports R1–R9 (docs/plans/module-01-
-context-and-strategy-plan.md Phase 12), through the real HTTP endpoints.
+"""Tests for the Context & Strategy reports R1–R9, through the real HTTP endpoints.
 
 Covers, per report: content, gap detection and the sections the summary pack
 re-lists. Cross-cutting: model and roll-up switching (R1), intentional-item
@@ -11,6 +10,7 @@ module being a 404, and PDF/CSV output (including CSV formula neutralising).
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
@@ -19,6 +19,7 @@ from sqlalchemy import update
 from app.database import SessionLocal
 from app.modules.context_strategy.enums import GuidingPrincipleStatus, StrategyStatus
 from app.modules.context_strategy.models import GuidingPrincipleVersion, StrategyVersion
+from app.services.codes import label_title
 from tests.conftest import (
     auth_headers,
     create_component_and_category,
@@ -74,9 +75,13 @@ def _section(report, key) -> dict:
     return next(s for s in report["sections"] if s["key"] == key)
 
 
+_QUALIFIER = re.compile(r"^[A-Z0-9]+(?=-[A-Z]{2,5}-\d+\s)-")
+
+
 def _titles(section, column: str) -> list[str]:
+    """The column's cells with the record code (bare or project-qualified) in front of the title removed."""
     index = section["columns"].index(column)
-    return [row[index] for row in section["rows"]]
+    return [label_title(_QUALIFIER.sub("", row[index])) for row in section["rows"]]
 
 
 def _levels(client, token, project_id) -> dict[str, dict[str, str]]:
@@ -342,8 +347,9 @@ def test_r2_cascade_and_gaps(client, admin_token):
     report = _report(client, token, pid, "strategy-cascade")
 
     rows = _section(report, "cascade")["rows"]
-    labels = [(r[0], r[1].lstrip("— ")) for r in rows]
+    labels = [(r[0], r[2].lstrip("— ")) for r in rows]
     assert labels[0] == ("Organisation Strategy", "Org growth")
+    assert rows[0][1].endswith("-STR-001") and rows[0][1].startswith(org["code"] + "-")  # an organisation-owned record is always qualified
     assert ("Project Strategy", "Project growth") in labels and ("Future State", "Aligned FS") in labels
     assert any(level == "Requirement" and "Access control" in title for level, title in labels)
     assert _titles(_section(report, "no_parent"), "Title") == ["Orphan strategy"]
@@ -373,7 +379,7 @@ def test_r3_coverage_matrix_uncovered_and_ageing(client, admin_token):
     assert _titles(_section(report, "uncovered"), "Age (days)") == ["30"]
     linked = _section(report, "requirements")
     assert _titles(linked, "Pain point") == ["Covered"] and linked["rows"][0][3] == "Draft"
-    assert {r[0]: r[4] for r in _section(report, "ageing")["rows"]} == {"Covered": "30", "Uncovered": "30"}
+    assert {label_title(r[0]): r[4] for r in _section(report, "ageing")["rows"]} == {"Covered": "30", "Uncovered": "30"}
 
 
 # --- R4: Open Question register -------------------------------------------------------------
@@ -432,7 +438,7 @@ def test_r5_roadmap_order_overdue_and_missing_measures(client, admin_token):
     assert _titles(_section(report, "roadmap"), "Future State") == ["Missed", "Soon", "Later", "Undated"]
     assert _titles(_section(report, "overdue"), "Future State") == ["Missed"]
     assert _titles(_section(report, "no_measures"), "Future State") == ["Missed"]
-    assert _section(report, "roadmap")["rows"][0][4] == "-10"
+    assert _section(report, "roadmap")["rows"][0][5] == "-10"
 
 
 # --- R6: Guiding Principle usage ---------------------------------------------------------------
@@ -654,7 +660,8 @@ def test_pdf_and_csv_outputs_and_csv_formula_neutralised(client, admin_token):
     assert "attachment; filename=" in csv_resp.headers["content-disposition"]
     lines = csv_resp.text.splitlines()
     assert lines[0].startswith("Model,Rank,Pain point")
-    assert any("'=HYPERLINK" in line for line in lines) and not any(",=HYPERLINK" in line for line in lines)
+    # The record code leads the cell, so the formula text is no longer at the start of it and is not a formula.
+    assert any("PP-" in line and " =HYPERLINK" in line for line in lines) and not any(",=HYPERLINK" in line for line in lines)
 
     for slug in ("pain-point-prioritisation", "summary", "strategy-cascade", "upgrade-drivers"):
         pdf = _report(client, token, pid, slug, format="pdf")
@@ -766,3 +773,37 @@ def test_org_summary_breakdown_gives_each_project_its_own_figures(client, admin_
     # The organisation total is the sum of the projects, so the popup's numbers add up to the clicked figure.
     org_total = next(m for m in _org_report(client, token, org["id"], "open-question-register")["metrics"] if m["label"] == "Unowned")
     assert org_total["value"] == 3
+
+
+def test_report_codes_and_tags_follow_the_shared_rule(client, admin_token):
+    """A Pain Point or Open Question reads `PP-001` in its own project's report and `CODE-PP-001` for a child's or in
+    an organisation-wide run; enforcing the project code qualifies every one; the viewer's preference is ignored;
+    the Tags column carries the tags."""
+    org, _, admin = _setup(client, admin_token, "CS Codes Co")
+    parent = create_project(client, admin, org["id"], "CS Codes Parent", can_be_parent=True)
+    child = create_project(client, admin, org["id"], "CS Codes Child", parent_project_id=parent["id"])
+    levels = _levels(client, admin, parent["id"])
+    tagged = _scored_pain_point(client, admin, parent["id"], levels, "Parent item", "Major", "Constant", "High")
+    _scored_pain_point(client, admin, child["id"], _levels(client, admin, child["id"]), "Child item", "Major", "Constant", "High")
+    assert client.put(
+        f"/api/v1/projects/{parent['id']}/artefacts/pain_point/{tagged['id']}/tags", json={"tags": ["Billing"]},
+        headers=auth_headers(admin),
+    ).status_code == 200
+    client.post(_cs(parent["id"]) + "/open-questions", json={"question": "Parent q?"}, headers=auth_headers(admin))
+
+    def ranking(**params):
+        section = _section(_report(client, admin, parent["id"], "pain-point-prioritisation", include_children=True, **params), "ranking")
+        return {label_title(_QUALIFIER.sub("", row[2])): (row[2].split(" ")[0], row[-1]) for row in section["rows"]}
+
+    for preference in (False, True):  # the viewer's preference is not applied to a report
+        assert client.patch(
+            "/api/v1/auth/me/preferences", json={"ui_preferences": {"show_project_code": preference}}, headers=auth_headers(admin),
+        ).status_code == 200
+        assert ranking() == {"Parent item": ("PP-001", "Billing"), "Child item": (f"{child['code']}-PP-001", "")}
+
+    organisation = _org_report(client, admin, org["id"], "open-question-register")
+    assert [r[0] for r in _section(organisation, "open")["rows"]] == [f"{parent['code']}-OQ-001 Parent q?"]
+
+    body = {"kind": "alphanumeric", "min_length": 2, "max_length": 6, "assignment": "auto", "enforce_code_everywhere": True}
+    assert client.put(f"/api/v1/orgs/{org['id']}/code-policy", json=body, headers=auth_headers(admin)).status_code == 200
+    assert {code for code, _ in ranking().values()} == {f"{parent['code']}-PP-001", f"{child['code']}-PP-001"}

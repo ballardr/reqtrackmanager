@@ -4,8 +4,8 @@
  * A `<textarea>` that grows with its content instead of scrolling inside a
  * fixed number of rows, capped at a maximum visible height so a pasted
  * essay doesn't push the rest of the form off-screen. See
- * docs/ux-audit-2026-08.md's "New requirement form: three unlabelled
- * fields, no auto-grow" (roadmap item 525) and docs/ux-style-guide.md's
+ * "New requirement form: three unlabelled
+ * fields, no auto-grow" and docs/ux-style-guide.md's
  * "Missing components identified this pass" table — nothing in
  * `frontend/src/components/` did `scrollHeight`-based resize before this.
  *

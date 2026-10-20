@@ -15,12 +15,15 @@
  * Responsibilities: presentation only. It renders a fragment, so the caller
  * owns the row container (and any controls beside it, such as Remove).
  */
+import { useRecordCode } from "../hooks/useRecordCode";
 import { Link } from "react-router-dom";
 
 import type { LinkGraphEdge, LinkGraphNode } from "../api/artefactLinks";
 import { useStrings } from "../context/TerminologyContext";
 import { getArtefactPath, getArtefactStatusLabel } from "../modules/artefactPaths";
 import { splitArtefactCode } from "./artefactCode";
+import { badgeClassName } from "./badgeClassName";
+import { Badge } from "./Badge";
 
 /**
  * Renders the badges and link for one edge and the record at its far end.
@@ -46,17 +49,20 @@ export function LinkedRecordSummary({
   layout?: "inline" | "list";
 }) {
   const strings = useStrings();
+  const recordCode = useRecordCode();
   const phrase = edge.phrase ?? strings.artefactLinks.untyped;
   const path = getArtefactPath(node.type, node.project_id ?? currentProjectId, node.id);
   const statusLabel = getArtefactStatusLabel(node.type, node.status);
   const elsewhere = node.project_id !== null && node.project_id !== currentProjectId;
+  // A record the organisation owns is qualified by the organisation's code; one in another project by that project's.
+  const ownerCode = node.organization_code ?? (elsewhere ? node.project_code : undefined);
   if (layout === "list") {
     const { code, title } = splitArtefactCode(node.label);
     return (
       <>
         <span className="artefact-links__target">
           {path ? <Link to={path} aria-label={node.label}>{title}</Link> : title}
-          {code && <span className="artefact-links__code" title={node.label}>{code}</span>}
+          {code && <span className="artefact-links__code" title={node.label}>{recordCode.code(code, ownerCode)}</span>}
         </span>
         {statusLabel && <span className="artefact-links__meta">{statusLabel}</span>}
         {node.is_archived && <span className="artefact-links__meta">{strings.artefactLinks.archivedBadge}</span>}
@@ -66,29 +72,29 @@ export function LinkedRecordSummary({
           </Link>
         )}
         {!edge.nesting_permitted && (
-          <span className="badge badge--warning" title={strings.artefactLinks.notPermittedExplanation}>
+          <Badge tone="warning" title={strings.artefactLinks.notPermittedExplanation}>
             {strings.artefactLinks.notPermitted}
-          </span>
+          </Badge>
         )}
       </>
     );
   }
   return (
     <>
-      <span className="badge">{phrase}</span>
-      <span className="artefact-links__target">{path ? <Link to={path}>{node.label}</Link> : node.label}</span>
-      {statusLabel && <span className="badge badge--muted">{statusLabel}</span>}
-      {node.is_archived && <span className="badge badge--muted">{strings.artefactLinks.archivedBadge}</span>}
+      <Badge>{phrase}</Badge>
+      <span className="artefact-links__target">{path ? <Link to={path}>{recordCode.label(node.label, ownerCode)}</Link> : recordCode.label(node.label, ownerCode)}</span>
+      {statusLabel && <Badge tone="muted">{statusLabel}</Badge>}
+      {node.is_archived && <Badge tone="muted">{strings.artefactLinks.archivedBadge}</Badge>}
       {elsewhere && (
-        <Link className="badge badge--info" to={`/projects/${node.project_id}`}>
+        <Link className={badgeClassName("info")} to={`/projects/${node.project_id}`}>
           {strings.artefactLinks.otherProjectBadge(node.project_name ?? "")}
         </Link>
       )}
       {via.length > 0 && <span className="text-muted link-trace__via">{strings.artefactLinks.traceVia(via.join(", "))}</span>}
       {!edge.nesting_permitted && (
-        <span className="badge badge--warning" title={strings.artefactLinks.notPermittedExplanation}>
+        <Badge tone="warning" title={strings.artefactLinks.notPermittedExplanation}>
           {strings.artefactLinks.notPermitted}
-        </span>
+        </Badge>
       )}
     </>
   );

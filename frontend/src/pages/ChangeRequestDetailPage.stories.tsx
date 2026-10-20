@@ -6,6 +6,8 @@ import type {
   ChangeRequestTask, ChangeRequestVoteTally, ProjectRole, ProposedLinkPreview, Requirement, RequirementAction,
   RequirementLink,
 } from "../api/types";
+import { buildGraph, buildGraphNode } from "../testing/artefactLinksFixtures";
+import { activityPage } from "../testing/recordActivityFixtures";
 import {
   buildActionType,
   buildChangeRequest,
@@ -35,9 +37,9 @@ function mockChangeRequestDetailApis(
   extra: {
     linkedActionPreview?: RequirementAction;
     requirement?: Requirement;
-    // Platform review 2026-09, Phase 8 — REMOVE_LINK preview data.
+    // REMOVE_LINK preview data.
     links?: RequirementLink[];
-    // Phase 6b — what approving would merge (the dialog's preview).
+    // What approving would merge (the dialog's preview).
     mergePreview?: ProposedLinkPreview;
     // Review-stage tasks the request already has.
     tasks?: ChangeRequestTask[];
@@ -51,7 +53,8 @@ function mockChangeRequestDetailApis(
     if (path.endsWith(`/change-requests/${CR_ID}`)) return cr;
     if (path.endsWith("/comments")) return [];
     if (path.endsWith("/stages")) return [];
-    if (path.endsWith("/activity")) return [];
+    if (path.includes("/activity")) return activityPage([]);
+    if (path.includes("/link-graph")) return buildGraph([], { root: buildGraphNode({ type: "change_request", id: CR_ID, type_label: "Change request", label: "CR-001 Change", depth: 0 }) });
     if (path.endsWith("/tasks")) return extra.tasks ?? [];
     if (path.endsWith("/groups")) return [] as never;
     if (path.endsWith("/votes")) return emptyTally;
@@ -96,7 +99,7 @@ export const DraftShowsSubmitAndWithdraw: Story = {
   },
 };
 
-/** ADD_ACTION change requests (item 514) show the proposed action's own
+/** ADD_ACTION change requests show the proposed action's own
  * content instead of the modify/new-requirement field diff, and hide the
  * Target/Level badges (neither is meaningful for adding an action). */
 export const AddActionShowsProposedActionContent: Story = {
@@ -136,7 +139,7 @@ export const AddActionShowsLinkedActionPreview: Story = {
   },
 };
 
-/** REMOVE_ACTION (Platform review 2026-09, Phase 8 — closing the asymmetry
+/** REMOVE_ACTION (closing the asymmetry
  * `unlink_action` had with ADD_ACTION's already-gated add side) resolves
  * the same way ADD_ACTION's link-existing preview does, and also hides
  * Target/Level. */
@@ -157,9 +160,9 @@ export const RemoveActionShowsLinkedActionPreview: Story = {
   },
 };
 
-/** ADD_LINK (Platform review 2026-09, Phase 8 opt-in sibling of ADD_ACTION
- * for `RequirementLink`) is the one-link case of the proposed-links mechanism
- * (Phase 6b): the request page lists the link exactly as a modify or new
+/** ADD_LINK (an opt-in sibling of ADD_ACTION
+ * for `RequirementLink`) is the one-link case of the proposed-links mechanism:
+ * the request page lists the link exactly as a modify or new
  * request would, the relationship read from the requirement's side. */
 export const AddLinkShowsProposedLinkContent: Story = {
   beforeEach: () => {
@@ -492,7 +495,9 @@ export const VoteCommentsModal: Story = {
           reject_count: 0,
         } satisfies ChangeRequestVoteTally;
       }
-      if (path.endsWith("/comments") || path.endsWith("/stages") || path.endsWith("/activity") || path.endsWith("/tasks")) return [];
+      if (path.includes("/link-graph")) return buildGraph();
+      if (path.includes("/activity")) return activityPage([]);
+      if (path.endsWith("/comments") || path.endsWith("/stages") || path.endsWith("/tasks")) return [];
       if (path.endsWith(`/requirements/${cr.requirement_id}`)) return null;
       if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1" };
       if (path.includes("/users")) return [];

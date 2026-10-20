@@ -49,11 +49,13 @@ from app.modules.stakeholders.models import (
     ProjectPersonaWeight,
 )
 from app.modules.stakeholders.service import (
+    PERSONA_ARTEFACT_TYPE,
     PERSONA_TYPES,
     create_persona,
     get_current_persona_version,
 )
 from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
+from app.services.tags import record_tag_names, restore_record_tags
 
 _TEXT_FIELDS = (
     "name", "description", "role_title", "goals", "needs", "behaviours", "context_environment",
@@ -76,7 +78,8 @@ def _emails(db: Session, user_ids: set[UUID | None]) -> dict[UUID, str]:
 
 def _persona_json(db: Session, persona: Persona, ref: str, emails: dict[UUID, str]) -> dict[str, Any]:
     v = get_current_persona_version(db, persona.id)
-    data: dict[str, Any] = {"ref": ref, **{f: getattr(v, f) for f in _TEXT_FIELDS}}
+    # `unique_code` is informational: an import numbers the persona afresh and matches by `ref`/name.
+    data: dict[str, Any] = {"ref": ref, "unique_code": persona.unique_code, **{f: getattr(v, f) for f in _TEXT_FIELDS}}
     type_name = PERSONA_TYPES.display_name(db, org_type_id=v.org_type_id, project_type_id=v.project_type_id)
     type_is_local = False
     if v.project_type_id is not None:
@@ -86,6 +89,7 @@ def _persona_json(db: Session, persona: Persona, ref: str, emails: dict[UUID, st
         "type_name": type_name, "type_is_project_local": type_is_local, "status": v.status.value,
         **principals_to_bundle(db, v, PERSONA_PRINCIPAL_FIELDS), "created_by_email": emails.get(persona.creator_id),
         "is_archived": persona.is_archived, "archived_at": _j(persona.archived_at), "created_at": _j(persona.created_at),
+        "tags": record_tag_names(db, PERSONA_ARTEFACT_TYPE, persona.id),
     })
     return data
 
@@ -136,6 +140,11 @@ def _create_persona_from_json(
     persona.is_archived = bool(data.get("is_archived"))
     persona.archived_at = _dt(data.get("archived_at"))
     persona.archived_by = creator_id if persona.is_archived else None
+    db.flush()
+    restore_record_tags(
+        db, organization_id=organization_id, record_project_id=project_id, actor_id=creator_id,
+        artefact_type=PERSONA_ARTEFACT_TYPE, artefact_id=persona.id, names=data.get("tags"),
+    )
     return persona
 
 
@@ -226,7 +235,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         if target is not None and target.scope == PersonaScope.ORGANIZATION:
             visibility_json.append({"org_persona_name": get_current_persona_version(db, target.id).name, "hidden": v.hidden})
     return {
-        "project_persona_types": types_json, "project_personas": personas_json,
+        "project_persona_types": types_json, "project_persona_hidden_org_types": PERSONA_TYPES.hidden_names(db, project.id, project.organization_id),
+        "project_personas": personas_json,
         "project_persona_weights": weights_json, "project_persona_visibility": visibility_json,
     }, assets
 
@@ -308,6 +318,9 @@ def import_project_data(
             warnings.add("A persona visibility override was skipped — its persona was not found in the target organisation.")
             continue
         db.add(ProjectPersonaVisibility(project_id=project.id, persona_id=persona_id, hidden=v["hidden"]))
+    # Hidden last: a persona above may use a type the project hides, which needs its row created first.
+    for name in PERSONA_TYPES.hide_by_names(db, project.id, organization_id, data.get("project_persona_hidden_org_types", [])):
+        warnings.add(f"Hidden persona type {name!r} skipped — the organisation has no such type.")
     db.flush()
 
 

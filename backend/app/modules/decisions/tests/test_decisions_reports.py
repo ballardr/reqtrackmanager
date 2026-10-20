@@ -1,5 +1,4 @@
-"""Tests for the Decision Management reports D1–D4 (docs/plans/platform-
-enhancements-2026-10-plan.md Phase 8), through the real HTTP endpoints.
+"""Tests for the Decision Management reports D1–D4, through the real HTTP endpoints.
 
 Covers, per report: content, filters and the sections gap tables are built
 from. Cross-cutting: access (non-member and disabled module are 404), scope
@@ -385,3 +384,49 @@ def test_catalogue_lists_all_four_reports_for_a_project_and_none_organisation_wi
     assert not [e for e in org_entries if e["module_key"] == MODULE_KEY]
     resp = client.get(f"/api/v1/orgs/{org['id']}/modules/{MODULE_KEY}/reports/decision-register", headers=auth_headers(token))
     assert resp.status_code == 404
+
+
+def _enforce_project_codes(client, token, org_id, enforce: bool) -> None:
+    """Switches the organisation's "show the project code everywhere" setting."""
+    body = {"kind": "alphanumeric", "min_length": 2, "max_length": 6, "assignment": "auto", "enforce_code_everywhere": enforce}
+    resp = client.put(f"/api/v1/orgs/{org_id}/code-policy", json=body, headers=auth_headers(token))
+    assert resp.status_code == 200, resp.text
+
+
+def _set_show_project_code(client, token, value: bool) -> None:
+    resp = client.patch(
+        "/api/v1/auth/me/preferences", json={"ui_preferences": {"show_project_code": value}}, headers=auth_headers(token),
+    )
+    assert resp.status_code == 200, resp.text
+
+
+def test_report_codes_are_bare_in_the_reported_project_and_qualified_elsewhere(client, admin_token):
+    """A code reads `DEC-001` in its own project's report, `CODE-DEC-001` for a child project's Decision, and every
+    code is qualified when the organisation enforces the project code. The viewer's preference never matters."""
+    org, _, admin = _setup(client, admin_token, "Report Codes Co")
+    parent = create_project(client, admin, org["id"], "Parent", can_be_parent=True)
+    child = create_project(client, admin, org["id"], "Child", parent_project_id=parent["id"])
+    tagged = _decision(client, admin, parent["id"], "Parent call")
+    _decision(client, admin, child["id"], "Child call")
+    resp = client.put(
+        f"/api/v1/projects/{parent['id']}/artefacts/decision/{tagged['id']}/tags", json={"tags": ["Safety"]},
+        headers=auth_headers(admin),
+    )
+    assert resp.status_code == 200, resp.text
+
+    def register():
+        section = _section(_report(client, admin, parent["id"], "decision-register", include_children=True), "register")
+        return dict(zip(_col(section, "Title"), _col(section, "Code"), strict=True)), section
+
+    _set_show_project_code(client, admin, False)
+    codes, section = register()
+    assert codes == {"Parent call": "DEC-001", "Child call": f"{child['code']}-DEC-001"}
+    assert dict(zip(_col(section, "Title"), _col(section, "Tags"), strict=True)) == {"Parent call": "Safety", "Child call": ""}
+
+    _set_show_project_code(client, admin, True)  # the viewer's preference is not applied to a report
+    assert register()[0] == codes
+
+    _enforce_project_codes(client, admin, org["id"], True)
+    assert register()[0] == {"Parent call": f"{parent['code']}-DEC-001", "Child call": f"{child['code']}-DEC-001"}
+    for slug in ("approval-ageing", "decision-log", "rationale-coverage"):
+        _report(client, admin, parent["id"], slug)

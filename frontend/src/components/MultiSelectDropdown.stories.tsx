@@ -123,3 +123,29 @@ export const EmptySelectionShowsEmptyLabel: Story = {
 
 export const LightTheme: Story = { globals: { theme: "light" } };
 export const DarkTheme: Story = { globals: { theme: "dark" } };
+
+/** A long list can opt into a filter box that narrows the options by label as the person types, and the trigger can
+ * summarise a big selection by count instead of listing every label. */
+export const FilterableNarrowsTheOptions: Story = {
+  args: {
+    triggerLabel: "Search fields",
+    filterable: true,
+    summaryLimit: 1,
+    options: [
+      { value: "a", label: "Description", hint: "(all types)", checked: true, optionLabel: "Description", onToggle: fn() },
+      { value: "b", label: "Mitigation", checked: true, optionLabel: "Mitigation", onToggle: fn() },
+      { value: "c", label: "Rationale", checked: false, optionLabel: "Rationale", onToggle: fn() },
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("button", { name: "Search fields" })).toHaveTextContent("2 selected");
+    await userEvent.click(canvas.getByRole("button", { name: "Search fields" }));
+    const group = within(document.body).getByRole("group", { name: "Search fields" });
+    await userEvent.type(within(document.body).getByRole("searchbox", { name: "Filter Search fields" }), "rat");
+    await expect(within(group).getByRole("checkbox", { name: "Rationale" })).toBeInTheDocument();
+    await expect(within(group).queryByRole("checkbox", { name: "Description" })).not.toBeInTheDocument();
+    await userEvent.clear(within(document.body).getByRole("searchbox", { name: "Filter Search fields" }));
+    await expect(within(group).getByText("(all types)")).toBeInTheDocument();
+  },
+};

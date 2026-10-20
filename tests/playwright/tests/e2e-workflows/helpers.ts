@@ -48,7 +48,7 @@ export const PROJECT_NAMES = {
    * configuration. */
   gamma3: "Gamma-3 Hierarchy Parent",
   gamma4: "Gamma-4 Hierarchy Child",
-  /** Platform review 2026-09, Phase 8 — dedicated to link-and-action-
+  /** Dedicated to link-and-action-
    * change-request-locking.spec.ts (see LINK_LOCK_PROJECT_NAME in
    * backend/scripts/seed_e2e_dataset.py): `require_change_request_for_
    * approved_links` is on; otherwise given components/categories only —
@@ -57,7 +57,7 @@ export const PROJECT_NAMES = {
    * unlink/remove/approve would make non-idempotent). No other spec may
    * depend on this project's setting. */
   epsilon1: "Epsilon-1 Link Lock Demo",
-  /** Platform Enhancements Phase 6b — holds one submitted change request proposing three links, the last
+  /** Holds one submitted change request proposing three links, the last
    * unmergeable (see PROPOSED_LINKS_PROJECT_NAME in backend/scripts/seed_e2e_dataset.py). Read-only: no spec may
    * approve or reject that request; change-request-proposed-links.spec.ts builds its own organisation for that. */
   zeta1: "Zeta-1 Proposed Links Demo",
@@ -120,8 +120,8 @@ export async function ensureExpanded(page: Page, sectionTitle: string): Promise<
 
 /**
  * Opens one org group's `SidePanel` on Org Admin's Groups section
- * (`DirectoryTable`, Phase B, follow-up UX batch, 2026-08-31 — replaces the
- * pre-Phase-B always-expanded `CollapsibleSection` accordion this helper
+ * (`DirectoryTable`, 2026-08-31 — replaces the
+ * earlier always-expanded `CollapsibleSection` accordion this helper
  * used to open a card in instead). A `SidePanel` has no expand/collapse
  * state to race, so this isn't guarded the idempotent way `ensureExpanded`
  * is — clicking the row again while its own panel is already open is a
@@ -138,12 +138,10 @@ export async function openOrgGroupPanel(page: Page, groupName: string) {
 
 /**
  * Opens one project group's `SidePanel` on `ProjectAdminPage`'s Groups
- * section — a `DirectoryTable` row (Phase B, follow-up UX batch,
- * 2026-08-31; before that, Phase 5's own `<button>`-row list, docs/
- * decisions.md). Uses `DirectoryTable`'s `onRowClick` (a real `<button>`),
- * not `rowHref` — found during Phase B verification, not assumed: at the
+ * section — a `DirectoryTable` row (docs/decisions.md). Uses `DirectoryTable`'s `onRowClick` (a real `<button>`),
+ * not `rowHref` — found during verification, not assumed: at the
  * time, every standard project auto-seeded a default group literally named
- * "Members" (`DEFAULT_GROUPS`, `routers/projects.py` — removed in Phase C,
+ * "Members" (`DEFAULT_GROUPS`, `routers/projects.py` — since removed,
  * 2026-08-31, but the finding that motivated `onRowClick` stands
  * regardless), the exact same accessible name as this page's own
  * `ResourceMenu` "Members" nav link, so a `rowHref` `<Link>` row would
@@ -164,8 +162,8 @@ export async function openOrgGroupPanel(page: Page, groupName: string) {
  * this run could plausibly match a page-wide selector for the same
  * add-member input/role text.
  *
- * Uses an exact-name match, not a `^groupName` prefix regex: PR7 of the
- * follow-up UX batch (docs/decisions.md) added a per-row role
+ * Uses an exact-name match, not a `^groupName` prefix regex: the
+ * members/groups directory rework (docs/decisions.md) added a per-row role
  * `MultiSelectDropdown` to the Groups tab's own row (`ProjectAdminPage.tsx`),
  * whose trigger button's accessible name is `"<group name>'s roles"` — a
  * prefix match against the row-trigger button's exact `<group name>` text
@@ -183,10 +181,7 @@ export async function openProjectGroupPanel(page: Page, groupName: string) {
 
 /**
  * Selects a group in any page built on the shared `ResourceMenu`
- * (`ResourceMenu.tsx`, 2026-08 UX audit "Org Admin resource-menu
- * restructure", later extended to Server Admin/Preferences/Project Admin
- * — see `docs/decisions.md`'s "Admin-tier ResourceMenu consistency"
- * entry). Each group is a real route segment (e.g.
+ *. Each group is a real route segment (e.g.
  * `/orgs/:orgId/admin/:group?`), not client-only state — the link's own
  * `aria-current="page"` says whether it's already selected, so this is
  * idempotent the same way `ensureExpanded` is: clicking an already-active
@@ -279,7 +274,7 @@ export async function selectPreferencesGroup(page: Page, groupLabel: string): Pr
 }
 
 /** `selectResourceMenuGroup` for `OrgOverviewPage`
- * (`/orgs/:orgId/overview/:group?`, compliance-module-plan.md Phase 19) —
+ * (`/orgs/:orgId/overview/:group?`) —
  * a module-contributed group only, e.g. Compliance's relocated-from-
  * `OrgAdminPage` "Compliance overview" (previously reached via
  * `selectOrgAdminGroup`). */
@@ -292,6 +287,16 @@ export async function selectOrgOverviewGroup(page: Page, groupLabel: string): Pr
  * `docs/decisions.md`). */
 export async function selectProjectAdminGroup(page: Page, groupLabel: string): Promise<void> {
   await selectResourceMenuGroup(page, groupLabel);
+}
+
+/**
+ * Matches a record code as the UI may show it: bare (`DEC-001`) or with the project code in
+ * front (`ACME-DEC-001`). The display rule depends on the organisation's switch and the
+ * person's preference, so a spec must not depend on which form it gets. Use with
+ * `getByText(recordCodeText("DEC-001"))`.
+ */
+export function recordCodeText(code: string): RegExp {
+  return new RegExp(`^(?:[A-Z0-9]+-)?${code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
 }
 
 /**
@@ -325,7 +330,7 @@ export async function openRequirementByCode(page: Page, code: string): Promise<v
   // same fix role-display-collapsing.spec.ts got for the groups table.
   await page.getByPlaceholder("Search by name or ID").fill(code);
   await page
-    .getByText(code, { exact: true })
+    .getByText(recordCodeText(code))
     .locator("xpath=ancestor::*[self::tr or contains(concat(' ', normalize-space(@class), ' '), ' card ')][1]")
     .getByRole("link")
     .click();
@@ -340,12 +345,11 @@ export async function openRequirementByCode(page: Page, code: string): Promise<v
   // identically-worded row badge still mounted — a genuine two-element
   // strict-mode violation `expect().toBeVisible()` can't retry past, since
   // ambiguity isn't a "not ready yet" condition. The detail page's `<h1>`
-  // always renders as `"<code> — <name>"` (RequirementDetailPage.tsx) while
-  // the list page's own `<h1>` is just the (terminology-dependent) page
-  // title with no em dash, so waiting for the dash is a reliable,
-  // terminology-independent signal that the swap has actually happened.
+  // is in a `.record-header` (RecordHeader), which the requirements list page
+  // never renders, so waiting for it is a reliable, terminology-independent
+  // signal that the swap has actually happened.
   await page.waitForURL(/\/requirements\/[0-9a-f-]+(?:[/?#]|$)/);
-  await expect(page.locator("h1")).toContainText("—");
+  await expect(page.locator(".record-header h1")).toBeVisible();
 }
 
 /** Same idea as `ensureExpanded`, for PreferencesPage's "Two-factor
@@ -424,13 +428,13 @@ export async function clickAndAwaitSave(page: Page, control: Locator, urlPart: s
  * created row is not guaranteed to land on the first page (found
  * 2026-10-04 when Alpha-1 passed 30 active requirements and ~10 specs
  * started timing out). Must be called from the requirements list page.
- * Waits for the detail page's `<h1>` ("<code> — <name>") before returning.
+ * Waits for the detail page's record header before returning.
  */
 export async function openRequirementByName(page: Page, name: string): Promise<void> {
   await page.getByPlaceholder("Search by name or ID").fill(name);
   await page.getByText(name).click();
   await page.waitForURL(/\/requirements\/[0-9a-f-]+(?:[/?#]|$)/);
-  await expect(page.locator("h1")).toContainText("—");
+  await expect(page.locator(".record-header h1")).toBeVisible();
 }
 
 /**
@@ -649,4 +653,42 @@ export async function expectTidyStatBlocks(page: Page): Promise<void> {
   } finally {
     await page.setViewportSize(original);
   }
+}
+
+/**
+ * Opens a record's object-action menu in its header ("{recordLabel} actions") and picks `item`
+ * (Archive, Restore, Delete permanently, Subscribe...). Workflow transitions (Activate, Retire,
+ * Approve) are not in the menu; click those directly.
+ *
+ * Args:
+ *   page: The page showing the record detail.
+ *   recordLabel: The record's singular label as the page names it ("Persona", "Stakeholder Need").
+ *   item: Exact menu item label.
+ */
+export async function chooseRecordAction(page: Page, recordLabel: string, item: string): Promise<void> {
+  await page.getByRole("button", { name: `${recordLabel} actions` }).click();
+  await page.getByRole("menu", { name: `${recordLabel} actions` }).getByRole("menuitem", { name: item, exact: true }).click();
+}
+
+/**
+ * Item labels in a record's object-action menu, or `[]` when the page draws no menu (the
+ * user has no object actions there). Closes the menu again.
+ */
+export async function recordActionNames(page: Page, recordLabel: string): Promise<string[]> {
+  const trigger = page.getByRole("button", { name: `${recordLabel} actions` });
+  if ((await trigger.count()) === 0) return [];
+  await trigger.click();
+  const names = (await page.getByRole("menu", { name: `${recordLabel} actions` }).getByRole("menuitem").allTextContents())
+    .map((t) => t.trim());
+  await page.keyboard.press("Escape");
+  return names;
+}
+
+/**
+ * Picks the option whose label contains `text`. A record's option label leads with its record
+ * code (`PP-001 Slow reports`), which a spec cannot know, so it matches on the title alone.
+ */
+export async function selectOptionContaining(select: Locator, text: string): Promise<void> {
+  const label = await select.locator("option", { hasText: text }).first().innerText();
+  await select.selectOption({ label });
 }

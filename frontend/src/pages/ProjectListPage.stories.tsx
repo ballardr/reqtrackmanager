@@ -12,6 +12,7 @@ function org(overrides: Partial<Organization>): Organization {
     default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
     disabled_at: null, accent_color_hex: null, header_title: null,
     email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
+  code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto" }, enforce_code_everywhere: false,
   force_require_change_request_for_approved_links: false,
   allow_ai_approvals: false,
     ...overrides,
@@ -155,7 +156,7 @@ export const TreeViewRendersHierarchy: Story = {
   },
 };
 
-/** Favourites-only filter (2026-08 UX audit roadmap row 511) — a new
+/** Favourites-only filter — a new
  * `FilterCheckbox` in the existing `FilterPanel`, sending `favorite_only=true`
  * on the same `GET /projects` param `FavouritesPage.tsx` already used. */
 export const FavouritesOnlyFilterNarrowsTheList: Story = {
@@ -170,7 +171,7 @@ export const FavouritesOnlyFilterNarrowsTheList: Story = {
   },
 };
 
-/** `Pattern: role display` (2026-08 UX audit roadmap row 510) — a user
+/** `Pattern: role display` — a user
  * holding both `project_manager` and a lower tier for the same project (a
  * data shape the effective-role resolver can genuinely produce, via
  * different group memberships) shows only "Project manager," not every
@@ -232,6 +233,49 @@ export const CreateProjectFormOpens: Story = {
   },
 };
 
+/** A manual-assignment organisation asks for the code on the form, states the rule, and sends it upper-cased. */
+export const CreateProjectAsksForCodeUnderManualAssignment: Story = {
+  beforeEach: () => {
+    mockProjectListApis({
+      orgs: [org({ project_code_policy: { kind: "letters", min_length: 3, max_length: 4, assignment: "manual" } })],
+      projects: singleOrgProjects,
+    });
+    spyOn(api, "post").mockResolvedValue({ id: "new-project" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New project" });
+    await expect(within(dialog).getByText(/3 to 4 letters, no spaces or hyphens/)).toBeInTheDocument();
+    await userEvent.type(within(dialog).getByLabelText("Name"), "Rail Upgrade");
+    // The name alone is not enough: the code is required.
+    await expect(within(dialog).getByRole("button", { name: "Create" })).toBeDisabled();
+    await userEvent.type(within(dialog).getByLabelText("Code"), "rup");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/v1/projects", expect.objectContaining({ code: "RUP" })));
+  },
+};
+
+/** Under automatic assignment there is no code field, only a note, and no code is sent. */
+export const CreateProjectHasNoCodeFieldUnderAutomaticAssignment: Story = {
+  beforeEach: () => {
+    mockProjectListApis({ orgs: [org({})], projects: singleOrgProjects });
+    spyOn(api, "post").mockResolvedValue({ id: "new-project" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New project" });
+    await expect(within(dialog).queryByLabelText("Code")).not.toBeInTheDocument();
+    await expect(within(dialog).getByText(/assigned automatically from the name/)).toBeInTheDocument();
+    await userEvent.type(within(dialog).getByLabelText("Name"), "Rail Upgrade");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/v1/projects", expect.objectContaining({ code: null })));
+  },
+};
+
 /** Creating shows a success toast in addition to navigating to the new
  * project (Principle 7, sixth-pass audit) — the toast is mounted at the
  * app root, so it persists across the navigation the create triggers. */
@@ -273,9 +317,7 @@ export const CreateProjectModalCancel: Story = {
 
 /** Picking an import file replaces the (otherwise silently-disappearing)
  * template picker with an explanatory note, rather than the field simply
- * vanishing with no indication of why (2026-08 UX audit, "How things get
- * created" — a small usability fix noted alongside this item's own
- * container-swap scope). */
+ * vanishing with no indication of why. */
 export const CreateProjectImportFileHidesTemplateWithNote: Story = {
   beforeEach: () =>
     mockProjectListApis({

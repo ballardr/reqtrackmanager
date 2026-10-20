@@ -8,7 +8,7 @@
  * Interest show the org's level *names* (`scheme`); they are plain labels, the
  * grid position itself is only computed server-side.
  *
- * Groups (Phase 3c): `groups` adds a Groups column, a group filter (a group's
+ * Groups: `groups` adds a Groups column, a group filter (a group's
  * members include those in its descendants unless "Directly in the group only" is
  * ticked) and a "Group by" control. Grouping by a top-level group adds a column
  * named for it that shows each stakeholder's branch(es) under it and orders the
@@ -32,8 +32,12 @@ import type { OrgUser } from "../../api/types";
 import { toErrorMessage } from "../../context/ToastContext";
 import { FilterBadge } from "../../components/FilterBadge";
 import { FilterCheckbox } from "../../components/FilterPanel";
+import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { branchNames, descendantIds, groupPath } from "./groupTree";
-import { RecordListView } from "./RecordListView";
+import type { TagFilterState } from "../../hooks/useTagFilter";
+import type { ProjectScopeState } from "../../hooks/useProjectScope";
+import { PeopleKindIcon } from "./PeopleKindIcon";
+import { RecordListView, type RecordListPage } from "./RecordListView";
 import { StakeholderFormModal } from "./StakeholderFormModal";
 import { StakeholderGroupFilterFields } from "./StakeholderGroupFilterFields";
 import { StakeholderFromUserModal } from "./StakeholderFromUserModal";
@@ -61,6 +65,9 @@ export function StakeholderListView({
   onIncludeHiddenChange,
   onShowHidden,
   onOpen,
+  tagFilter,
+  projectScope,
+  page,
   onCreate,
   onCreateFromUser,
 }: {
@@ -89,10 +96,16 @@ export function StakeholderListView({
   /** Re-shows a hidden stakeholder in this project (the Visibility cell's "Show" action). */
   onShowHidden?: (stakeholder: Stakeholder) => void;
   onOpen: (stakeholder: Stakeholder) => void;
-  /** Resolves on success; a rejection keeps the modal open and shows its message. `groupIds` are the groups chosen on the form. */
-  onCreate: (values: StakeholderFieldValues, groupIds: string[]) => Promise<void>;
-  /** Same contract, for the "Add from org user" modal. */
-  onCreateFromUser: (values: { user_id: string; stakeholder_type_id: string | null; role: string }) => Promise<void>;
+  /** The project's tag filter (state kept by the page); omit where tags are not offered. */
+  tagFilter?: { projectId: string; filter: TagFilterState };
+  /** The project page's list scope (state kept by the page); omit where related projects are not offered. */
+  projectScope?: ProjectScopeState;
+  /** The page header (title, actions, tabs) this list owns when it is a whole page. */
+  page?: RecordListPage;
+  /** Resolves on success; a rejection keeps the modal open and shows its message. `groupIds` are the groups chosen on the form. Omit when stakeholders are created elsewhere. */
+  onCreate?: (values: StakeholderFieldValues, groupIds: string[]) => Promise<void>;
+  /** Same contract, for the "Add from org user" modal; omit to leave that button out. */
+  onCreateFromUser?: (values: { user_id: string; stakeholder_type_id: string | null; role: string; activate?: boolean }) => Promise<void>;
 }) {
   const [fromUserOpen, setFromUserOpen] = useState(false);
   const [fromUserError, setFromUserError] = useState<string | null>(null);
@@ -129,7 +142,8 @@ export function StakeholderListView({
         statusTone={STAKEHOLDER_STATUS_TONE}
         scopeLabels={STAKEHOLDER_SCOPE_LABEL}
         typeName={(s) => s.stakeholder_type_name}
-        searchText={(s) => `${s.name} ${s.role} ${s.organisation_group}`}
+        nameIcon={() => <PeopleKindIcon kind="stakeholder" />}
+        searchText={(s) => `${s.unique_code} ${s.name} ${s.role} ${s.organisation_group}`}
         columnsBeforeType={[{ key: "role", label: "Role", render: (s) => s.role || "—" }]}
         columnsAfterScope={[
           { key: "cadence", label: "Cadence", render: (s) => (s.target_cadence ? TARGET_CADENCE_LABEL[s.target_cadence] : "—") },
@@ -146,7 +160,12 @@ export function StakeholderListView({
                     <span className="row" style={{ gap: "0.25rem" }}>
                       {s.groups.map((g) => (
                         <FilterBadge key={g.id} active={groupFilter === g.id} onClick={() => setGroupFilter(groupFilter === g.id ? "" : g.id)}>
-                          <span title={groupPath(groups, g.id)}>{g.name}</span>
+                          <span title={groupPath(groups, g.id)}>
+                            {g.name}{" "}
+                            <span className="text-muted">
+                              <ScopedRecordCode record={g} />
+                            </span>
+                          </span>
                         </FilterBadge>
                       ))}
                     </span>
@@ -171,9 +190,11 @@ export function StakeholderListView({
           />
         }
         toolbar={
-          <button className="btn" onClick={() => setFromUserOpen(true)}>
-            Add from org user
-          </button>
+          onCreateFromUser && (
+            <button className="btn" onClick={() => setFromUserOpen(true)}>
+              Add from org user
+            </button>
+          )
         }
         includeArchived={includeArchived}
         onIncludeArchivedChange={onIncludeArchivedChange}
@@ -181,15 +202,18 @@ export function StakeholderListView({
         onIncludeHiddenChange={onIncludeHiddenChange}
         onShowHidden={onShowHidden}
         onOpen={onOpen}
-        onCreate={({ group_ids: groupIds = [], ...values }) => onCreate(values as StakeholderFieldValues, groupIds)}
-        renderCreateModal={(props) => (
+      tagFilter={tagFilter}
+      projectScope={projectScope}
+      page={page}
+        onCreate={onCreate && (({ group_ids: groupIds = [], ...values }) => onCreate(values as StakeholderFieldValues, groupIds))}
+        renderCreateModal={onCreate ? (props) => (
           <StakeholderFormModal
             {...props} typeOptions={typeOptions} scheme={scheme} loadHint={loadHint}
             groups={groups} groupTier={groupTier}
           />
-        )}
+        ) : undefined}
       />
-      {fromUserOpen && (
+      {fromUserOpen && onCreateFromUser && (
         <StakeholderFromUserModal
           scopeLabel={scopeLabel}
           orgUsers={orgUsers}

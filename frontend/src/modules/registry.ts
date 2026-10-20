@@ -4,7 +4,7 @@ import type { ReportViewDef, TierAModuleDefinition } from "./types";
  * Module: modules/registry
  *
  * The frontend half of the Tier A ("installed module") registration
- * convention (compliance-module-plan.md Phase 3) — the sibling of
+ * convention — the sibling of
  * `backend/app/modules/registry.py`'s `INSTALLED_MODULES`. A first-party
  * module (e.g. Compliance) ships its own `frontend/src/modules/<key>/
  * module.ts`, exporting a `moduleDefinition: TierAModuleDefinition` — the
@@ -32,11 +32,10 @@ import type { ReportViewDef, TierAModuleDefinition } from "./types";
  * npm-installed module would need its own, separate mechanism (symlinking
  * or an explicit registration point) not built here; no third-party Tier A
  * module exists yet, so building one now would be speculative (mirrors
- * Phase 3's own "both tiers built, no real third-party module ships"
- * scoping note).
+ * the "both tiers built, no real third-party module ships"
+ * scoping).
  *
- * Registered for real for the first time in Phase 13 (Project Compliance
- * View) — `route.path` uses React Router's own `:projectId` param syntax
+ * `route.path` uses React Router's own `:projectId` param syntax
  * and must match, once the router segment is substituted for a real id,
  * the `nav_path` the backend's `ModuleFrontendManifest` declares
  * (`backend/app/modules/compliance/module.py`), which uses a literal
@@ -47,8 +46,8 @@ import type { ReportViewDef, TierAModuleDefinition } from "./types";
  * module.ts` for Compliance's own registration, including its
  * `orgAdminSections` (the org-level counterpart of this mechanism —
  * `OrgAdminPage.tsx` reads `installedModules` directly for those, since
- * Phase 3's routing/nav-discovery mechanism here is project-scoped end to
- * end and has no org-level equivalent; see that phase's own notes).
+ * the routing/nav-discovery mechanism here is project-scoped end to
+ * end and has no org-level equivalent).
  */
 const moduleFiles = import.meta.glob<{ moduleDefinition: TierAModuleDefinition }>("./*/module.ts", {
   eager: true,

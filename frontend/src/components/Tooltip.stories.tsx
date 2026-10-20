@@ -23,14 +23,15 @@ export const HoverShowsLabel: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const trigger = canvas.getByRole("button");
-    // Rendered through a portal, so the bubble lives in document.body.
-    const bubble = within(document.body).getByRole("tooltip", { hidden: true });
-    await expect(bubble).toHaveStyle({ opacity: "0" });
+    // Rendered through a portal into document.body, and only while shown: a hidden copy of the
+    // label would otherwise sit in the page and duplicate its text.
+    await expect(within(document.body).queryByRole("tooltip", { hidden: true })).not.toBeInTheDocument();
     await userEvent.hover(trigger);
+    const bubble = await within(document.body).findByRole("tooltip", { hidden: true });
     await expect(bubble).toHaveTextContent("Collapse sidebar");
-    await expect(bubble).toHaveStyle({ opacity: "1" });
+    await waitFor(() => expect(bubble).toHaveStyle({ opacity: "1" }));
     await userEvent.unhover(trigger);
-    await expect(bubble).toHaveStyle({ opacity: "0" });
+    await waitFor(() => expect(within(document.body).queryByRole("tooltip", { hidden: true })).not.toBeInTheDocument());
   },
 };
 

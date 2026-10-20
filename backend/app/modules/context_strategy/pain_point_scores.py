@@ -1,7 +1,7 @@
 """
 Module: modules.context_strategy.pain_point_scores
 
-Per-persona Pain Point scoring (Module 1 Phase 11): persisting a Pain
+Per-persona Pain Point scoring: persisting a Pain
 Point's Severity/Frequency/Confidence ratings (`PainPointScore`) and rolling
 them up into one score and a Blocker flag under a model and roll-up method
 chosen when viewing.
@@ -12,16 +12,16 @@ Responsibilities:
 - `load_scoring_context` / `summarise` / `build_pain_point_scoring`: the
   roll-up maths, built on core's generic `services.scoring` (levels, bands,
   `compute_score`) and the generic `registry.get_scoring_targets` hook, so
-  this module never imports Module 2.
+  this module never imports Stakeholders & Personas.
 - The scheme's `count_level_usage`/`reassign_level_usage` hooks live in
   `scoring.py` (they need only the model); the maths live here.
 
-Design decisions (all Decided by: Agent unless stated; Phase 9 Q5 and
-Phase 11 scope are Decided by: User):
+Design decisions (all Decided by: Agent unless stated; the unscored-persona rule and the
+roll-up scope are Decided by: User):
 - Roll-up methods: weighted average (default), worst case, plain average.
   Only personas scored under the chosen model count; an unscored persona is
   excluded, never zero, so one scored persona of five shows that persona's
-  value (Phase 9 Q5, User). Weighted average is taken over the normalised
+  value (User). Weighted average is taken over the normalised
   score, which is equivalent to averaging raw scores because a model's
   maximum is a constant.
 - A persona with no weight among others that have one gets the mean of the
@@ -29,7 +29,7 @@ Phase 11 scope are Decided by: User):
   weight, all are equal.
 - A retired persona (`ScoringTarget.is_active` false) stays visible but is
   skipped by the roll-up and the Blocker flag. A target the provider no
-  longer lists (persona deleted/hidden, or Module 2 off) is `unavailable`:
+  longer lists (persona deleted/hidden, or the Stakeholders module off) is `unavailable`:
   it still counts, unweighted and unlabelled, and the summary reports
   `personas_degraded` so the UI/reports can say so.
 - The Blocker flag keys off the top Severity level on any counted score row,
@@ -78,7 +78,7 @@ SEVERITY_AXIS = "severity"
 
 
 class RollupMethod(str, Enum):
-    """How per-persona scores combine into one (Phase 9 Q5)."""
+    """How per-persona scores combine into one."""
 
     WEIGHTED_AVERAGE = "weighted_average"
     WORST_CASE = "worst_case"
@@ -123,7 +123,7 @@ class ScoringContext:
         default_model_key / default_model_source: The project's resolved
             default model and where it came from.
         targets: The project's persona scoring targets by id (empty when
-            Module 2 or its persona sub-component is off).
+            the Stakeholders & Personas module or its persona sub-component is off).
     """
 
     project: Project

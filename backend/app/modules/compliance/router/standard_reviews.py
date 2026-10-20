@@ -1,7 +1,7 @@
 """
 Module: modules.compliance.router.standard_reviews
 
-A compliance standard's own scheduled reviews (Phase 10, §17/§18):
+A compliance standard's own scheduled reviews (§17/§18):
 create/list/get/update/delete/complete.
 """
 

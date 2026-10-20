@@ -1,4 +1,4 @@
-"""Backfill default compliance action types (Phase 17c)
+"""Backfill default compliance action types
 
 Revision ID: 0032
 Revises: 0031

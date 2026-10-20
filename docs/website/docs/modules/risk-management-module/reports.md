@@ -34,6 +34,7 @@ Open the project's **Reports** page and choose a report from the **Report** pick
 
 Things worth knowing:
 
+- Rows that name a record lead with its code and end with its tags; see [Reports and export → How reports name records](../../core-features/reports-and-export.md#how-reports-name-records).
 - **Ratings are shown as labels** (High, Medium, …), not scores, because bands are yours to configure. They are derived when the report runs, so they follow the current matrix. A review's recorded rating is its own snapshot and is not what the report shows.
 - **Exposure** counts Risks from Identified to Transferred. Closed and Rejected Risks are history, and Avoided and Realised ones have left the exposure picture, so counting them would distort the residual column. Residual ratings are set by a person and are not recalculated when treatments change, so the report shows what was assessed, not a forecast.
 - **Treatment coverage** covers Assessed, Treatment planned, Treatment in progress and Mitigated Risks. Accepted and Transferred Risks are not listed: not treating them is the decision. A link with no verdict counts as **Proposed**.

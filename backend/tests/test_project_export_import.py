@@ -62,8 +62,7 @@ def _build_rich_project(client, admin_token, org_id):
         headers=auth_headers(admin_token),
     ).json()
     # A modify change request can only target an already-locked requirement
-    # (2026-08 UX audit roadmap, "No requirement approval action; change
-    # requests can target draft requirements") — approve it directly first,
+    # — approve it directly first,
     # ahead of the whole-project stage approval further down (which would
     # lock it too, but only after this change request needs to exist).
     approve_resp = client.post(

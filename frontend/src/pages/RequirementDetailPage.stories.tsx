@@ -3,10 +3,11 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { ArtefactLinkCandidate, ArtefactLinkTypeOption, LinkGraph } from "../api/artefactLinks";
-import type { ActionTypeDefinition, FileAsset, LinkTypeDefinition, ModuleNavEntry, OrgUser, ProjectRole, RequirementAction, RequirementVersionEntry } from "../api/types";
+import type { ActionTypeDefinition, ChangeEntry, FileAsset, LinkTypeDefinition, ModuleNavEntry, OrgUser, ProjectRole, RequirementAction, RequirementVersionEntry } from "../api/types";
 import {
   buildCandidate, buildGraph, buildGraphNode, buildOption,
 } from "../testing/artefactLinksFixtures";
+import { activityPage, buildActivityEntry } from "../testing/recordActivityFixtures";
 import {
   buildActionType,
   buildComment,
@@ -23,6 +24,7 @@ import {
   withTerminology,
   withToast,
 } from "../testing/storybook-helpers";
+import { chooseRecordAction, recordActionNames } from "../testing/recordActions";
 import { RequirementDetailPage } from "./RequirementDetailPage";
 
 const PROJECT_ID = "project-1";
@@ -52,12 +54,14 @@ function mockRequirementDetailApis(
     linkedActions?: RequirementAction[];
     projectActions?: RequirementAction[];
     history?: RequirementVersionEntry[];
+    // The record's activity timeline (the aside's Activity tab).
+    activity?: ChangeEntry[];
     orgResources?: FileAsset[];
     orgUsers?: OrgUser[];
     orgUserSearchMembers?: OrgUser[];
     // Modules enabled for the project (`GET /enabled-modules`); none by default.
     enabledModules?: ModuleNavEntry[];
-    // Platform review 2026-09, Phase 8 — the org's own
+    // The org's own
     // `force_require_change_request_for_approved_links`, fetched via a
     // bare `GET /orgs/{id}` (readable by any org member). Defaults false,
     // matching the org-wide-permissive default.
@@ -82,7 +86,7 @@ function mockRequirementDetailApis(
     if (path.endsWith(`/requirements/${REQUIREMENT_ID}/files`)) return [];
     if (path.includes("custom-fields")) return [];
     if (path.endsWith("/stages")) return [];
-    if (path.endsWith("/activity")) return [];
+    if (path.includes("/activity")) return activityPage(extra.activity ?? []);
     if (path.includes(`/artefacts/requirement/${REQUIREMENT_ID}/link-graph`)) return extra.linkGraph ?? buildGraph();
     if (path.includes(`/artefacts/requirement/${REQUIREMENT_ID}/link-types`)) return extra.linkOptions ?? [];
     if (path.includes(`/artefacts/requirement/${REQUIREMENT_ID}/link-browse`)) return null;
@@ -147,7 +151,7 @@ export const MemberSeesReadOnlyView: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText(/Users can reset a forgotten password/)).toBeInTheDocument());
     await expect(canvas.queryByLabelText("Name")).not.toBeInTheDocument();
-    await expect(canvas.queryByRole("button", { name: "Archive" })).not.toBeInTheDocument();
+    await expect(await recordActionNames(canvas, "Requirement")).not.toContain("Archive");
   },
 };
 
@@ -160,14 +164,13 @@ export const StakeholderCanEditNotArchive: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByLabelText("Name")).toBeInTheDocument());
-    await expect(canvas.queryByRole("button", { name: "Archive" })).not.toBeInTheDocument();
+    await expect(await recordActionNames(canvas, "Requirement")).not.toContain("Archive");
     await expect(canvas.queryByRole("button", { name: "Mark completed" })).not.toBeInTheDocument();
   },
 };
 
 /**
- * A still-draft requirement (2026-08 UX audit roadmap, "No requirement
- * approval action") — a project manager sees the new "Approve" action
+ * A still-draft requirement — a project manager sees the new "Approve" action
  * (`requires_approval` is true for draft/reviewed status), but not "Make
  * change request", since a change request can only target an already-locked
  * requirement; a stakeholder sees neither, since approval is PM-only.
@@ -209,15 +212,15 @@ export const ManagerCanArchiveAndComplete: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Archive" })).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Requirement actions" })).toBeInTheDocument());
+    await expect(await recordActionNames(canvas, "Requirement")).toContain("Archive");
     await expect(canvas.getByRole("button", { name: "Mark completed" })).toBeInTheDocument();
     await expect(canvas.getByRole("link", { name: "Make change request" })).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
   },
 };
 
-/** Archiving opens the shared `ConfirmDialog` (2026-08 UX audit fix — this
- * used to fire with no confirmation at all, then just `window.confirm`),
+/** Archiving opens the shared `ConfirmDialog`,
  * then shows a success toast (Principle 7) before navigating back to the
  * list. */
 export const ArchivingConfirmsAndShowsToast: Story = {
@@ -227,8 +230,8 @@ export const ArchivingConfirmsAndShowsToast: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Archive" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Archive" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Requirement actions" })).toBeInTheDocument());
+    await chooseRecordAction(canvas, "Requirement", "Archive");
 
     const dialog = within(document.body).getByRole("dialog", { name: "Archive this requirement?" });
     await userEvent.click(within(dialog).getByRole("button", { name: "Archive" }));
@@ -249,8 +252,8 @@ export const ArchivingCanBeCancelled: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Archive" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Archive" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Requirement actions" })).toBeInTheDocument());
+    await chooseRecordAction(canvas, "Requirement", "Archive");
 
     const dialog = within(document.body).getByRole("dialog", { name: "Archive this requirement?" });
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
@@ -264,20 +267,19 @@ export const ArchivingCanBeCancelled: Story = {
  * plus an "Archived" badge — clicking Restore calls the new `/unarchive`
  * endpoint directly with no `ConfirmDialog` (unlike Archive above — mirrors
  * `ProjectAdminPage.tsx`'s existing unarchive button, which also fires
- * immediately) and shows a success toast (2026-08 UX audit roadmap:
- * unarchive endpoint + Restore button — archive used to be one-way for
- * requirements, unlike projects). */
+ * immediately) and shows a success toast. */
 export const ArchivedRequirementShowsRestoreButton: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["project_manager"], { is_archived: true });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Restore" })).toBeInTheDocument());
-    await expect(canvas.queryByRole("button", { name: "Archive" })).not.toBeInTheDocument();
-    await expect(canvas.getByText("Archived", { selector: "div.badge" })).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Requirement actions" })).toBeInTheDocument());
+    await expect(await recordActionNames(canvas, "Requirement")).toEqual(expect.arrayContaining(["Restore"]));
+    await expect(await recordActionNames(canvas, "Requirement")).not.toContain("Archive");
+    await expect(canvas.getByText("Archived", { selector: ".badge" })).toBeInTheDocument();
 
-    await userEvent.click(canvas.getByRole("button", { name: "Restore" }));
+    await chooseRecordAction(canvas, "Requirement", "Restore");
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/requirements/${REQUIREMENT_ID}/unarchive`)
     );
@@ -323,7 +325,7 @@ export const LockedRequirementIsReadOnlyForManager: Story = {
     );
     await expect(canvas.queryByLabelText("Name")).not.toBeInTheDocument();
     // Archive is still available to a manager even while locked.
-    await expect(canvas.getByRole("button", { name: "Archive" })).toBeInTheDocument();
+    await expect(await recordActionNames(canvas, "Requirement")).toContain("Archive");
   },
 };
 
@@ -467,12 +469,12 @@ export const RemoveLinkConfirms: Story = {
   },
 };
 
-/** Platform review 2026-09, Phase 8 — once this project opts into
+/** Once this project opts into
  * `require_change_request_for_approved_links` (or an org-wide force
  * applies, minus exemption) *and* the requirement is locked, adding a link
  * requires a reason and submits an `ADD_LINK` change request instead of
  * calling the direct endpoint — the same change-request-only-once-locked
- * rule item 514 established for actions, extended here to links. */
+ * rule established for actions, extended here to links. */
 export const AddLinkRoutesThroughChangeRequestOnceLinksLocked: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["stakeholder"], { is_locked: true, status: "approved" }, {
@@ -588,7 +590,7 @@ export const LinkExistingAction: Story = {
 };
 
 /** Same lock rule as `CreateAndLinkActionRoutesThroughChangeRequestOnceLocked`,
- * above, for the link-existing side of the split (item 514). */
+ * above, for the link-existing side of the split. */
 export const LinkExistingActionRoutesThroughChangeRequestOnceLocked: Story = {
   beforeEach: () => {
     mockRequirementDetailApis(["project_manager"], { is_locked: true, status: "approved" }, {
@@ -633,11 +635,11 @@ export const CreateAndLinkAction: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("No actions linked yet.")).toBeInTheDocument());
-    await expect(canvas.queryByPlaceholderText("Title")).not.toBeInTheDocument();
+    await expect(canvas.queryByLabelText("Title")).not.toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Create and link a new action" }));
 
     const panel = within(document.body).getByRole("dialog", { name: "Create and link a new action" });
-    await userEvent.type(within(panel).getByPlaceholderText("Title"), "Verify audit log retention");
+    await userEvent.type(within(panel).getByLabelText("Title"), "Verify audit log retention");
     await userEvent.selectOptions(within(panel).getByLabelText("Type"), "at1");
     await userEvent.click(within(panel).getByRole("button", { name: "Create" }));
     await waitFor(() =>
@@ -651,7 +653,7 @@ export const CreateAndLinkAction: Story = {
   },
 };
 
-/** 2026-08 UX audit roadmap item 514: once the requirement is locked
+/** Once the requirement is locked
  * (APPROVED/COMPLETED), "Create and link a new action" no longer calls the
  * direct create-and-link endpoint — it requires a reason and submits an
  * `ADD_ACTION` change request instead, the same change-request-only-once-
@@ -667,7 +669,7 @@ export const CreateAndLinkActionRoutesThroughChangeRequestOnceLocked: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Create and link a new action" }));
 
     const panel = within(document.body).getByRole("dialog", { name: "Create and link a new action" });
-    await userEvent.type(within(panel).getByPlaceholderText("Title"), "Verify audit log retention");
+    await userEvent.type(within(panel).getByLabelText("Title"), "Verify audit log retention");
     await userEvent.selectOptions(within(panel).getByLabelText("Type"), "at1");
     const createButton = within(panel).getByRole("button", { name: "Create" });
     await expect(createButton).toBeDisabled();
@@ -717,7 +719,7 @@ export const UnlinkActionConfirms: Story = {
   },
 };
 
-/** Platform review 2026-09, Phase 8 — `unlink_action` previously had no
+/** `unlink_action` previously had no
  * lock check at all, an asymmetry with the already-gated add side (item
  * 514); once the requirement is locked, unlinking requires a reason and
  * submits a `REMOVE_ACTION` change request instead of calling `DELETE`
@@ -754,7 +756,7 @@ export const UnlinkActionRoutesThroughChangeRequestOnceLocked: Story = {
 };
 
 /**
- * C-C-03: this page was one of the 2026-08 UX audit's explicitly named
+ * C-C-03: this page was one of the explicitly named
  * terminology leak sites — "Make change request", the archive confirm
  * dialog, and every other `strings.requirements.*` string on the page used
  * to hardcode the English noun regardless of the project's own Terminology
@@ -770,19 +772,18 @@ export const TerminologyOverrideAppliesThroughoutPage: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Archive" })).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Spec actions" })).toBeInTheDocument());
     // The "Make a change request" link picks up the {changeRequest} token.
     await expect(canvas.getByRole("link", { name: "Make ECR" })).toBeInTheDocument();
 
     // The archive confirm dialog's title picks up the {requirement} token.
-    await userEvent.click(canvas.getByRole("button", { name: "Archive" }));
+    await chooseRecordAction(canvas, "Spec", "Archive");
     await expect(within(document.body).getByRole("dialog", { name: "Archive this Spec?" })).toBeInTheDocument();
   },
 };
 
-/** Version-history table renders each row's status through
- * `REQUIREMENT_STATUS_LABEL` (2026-08 UX audit roadmap, "Fix raw-enum
- * filter/table text"), matching the status badge above it on the same
+/** The versions table renders each row's status through
+ * `REQUIREMENT_STATUS_LABEL`, matching the status badge above it on the same
  * page — not the raw backend enum string. */
 export const VersionHistoryShowsLabelledStatus: Story = {
   // The meta's default `withAuth` has a no-op `setUiPreference`, so
@@ -803,23 +804,15 @@ export const VersionHistoryShowsLabelledStatus: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    // History and Activity share one card with a view toggle (2026-08 UX
-    // audit roadmap item 516), defaulting to Activity — switch to Version
-    // history before the table is on screen at all.
-    await userEvent.click(canvas.getByRole("button", { name: "Version history" }));
     await waitFor(() => expect(canvas.getByText("Initial submission")).toBeInTheDocument());
     await expect(canvas.getByRole("cell", { name: "Reviewed" })).toBeInTheDocument();
     await expect(canvas.queryByRole("cell", { name: "reviewed" })).not.toBeInTheDocument();
   },
 };
 
-/** History and Activity merged into one card with a view toggle (2026-08
- * UX audit roadmap item 516) — both renderings are kept, the toggle just
- * switches which one shows. Defaults to Activity (see the page's own
- * comment on `historyViewRaw` for why); uses `withStatefulAuth` rather than
- * the meta's default `withAuth`, since a no-op `setUiPreference` couldn't
- * actually change the pressed toggle button or which view renders. */
-export const HistoryActivityToggleSwitchesViews: Story = {
+/** The version ledger is a body section ("Versions"); what happened to the record is the aside's
+ * Activity tab. Uses `withStatefulAuth` so the tab choice (a per-viewer preference) takes effect. */
+export const VersionsInTheBodyActivityInTheAsideTab: Story = {
   decorators: [withStatefulAuth(buildUser({ id: "user-1", display_name: "Alex Morgan" }))],
   beforeEach: () => {
     mockRequirementDetailApis(["project_manager"], {}, {
@@ -831,49 +824,28 @@ export const HistoryActivityToggleSwitchesViews: Story = {
           created_at: "2026-01-01T00:00:00Z", valid_to: "2026-01-02T00:00:00Z",
         },
       ],
+      activity: [buildActivityEntry({ action: "approved", detail: { change_note: "Approved directly." } })],
     });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    // Defaults to Activity: the version table isn't on screen yet, and the
-    // Activity toggle button is the pressed one.
-    await waitFor(() => expect(canvas.getByRole("heading", { name: "Activity", level: 2 })).toBeInTheDocument());
-    await expect(canvas.queryByText("Initial submission")).not.toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Activity" })).toHaveAttribute("aria-pressed", "true");
-    await expect(canvas.getByRole("button", { name: "Version history" })).toHaveAttribute("aria-pressed", "false");
-
-    await userEvent.click(canvas.getByRole("button", { name: "Version history" }));
-    await expect(canvas.getByRole("heading", { name: "Version history", level: 2 })).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Versions", level: 2 })).toBeInTheDocument());
     await expect(canvas.getByText("Initial submission")).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Version history" })).toHaveAttribute("aria-pressed", "true");
-    await expect(canvas.getByRole("button", { name: "Activity" })).toHaveAttribute("aria-pressed", "false");
+    // Links is the default aside tab; the timeline is one click away and not shown yet.
+    await expect(canvas.getByRole("tab", { name: "Links" })).toHaveAttribute("aria-selected", "true");
+    await expect(canvas.queryByText(/Alex Morgan approved/)).not.toBeInTheDocument();
 
-    // Switching back shows the Activity feed again — neither rendering was
-    // dropped in favour of the other.
-    await userEvent.click(canvas.getByRole("button", { name: "Activity" }));
-    await expect(canvas.getByRole("heading", { name: "Activity", level: 2 })).toBeInTheDocument();
-    await expect(canvas.queryByText("Initial submission")).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("tab", { name: "Activity" }));
+    await waitFor(() => expect(canvas.getByText("Alex Morgan approved")).toBeInTheDocument());
+    await expect(canvas.getByRole("tab", { name: "Activity" })).toHaveAttribute("aria-selected", "true");
+
+    // Switching back keeps the Links panel as it was.
+    await userEvent.click(canvas.getByRole("tab", { name: "Links" }));
+    await expect(canvas.queryByText(/Alex Morgan approved/)).not.toBeInTheDocument();
   },
 };
 
-/** The merged card no longer sits in a two-column `.side-grid` with a
- * separate narrow Activity sidebar — confirms the single-card shell by
- * checking there's exactly one "Activity"/"Version history" heading on the
- * page, not the old duplicate ("Change log" card in the main column plus a
- * standalone "Activity" sidebar panel). */
-export const NoDuplicateHistoryOrActivityCard: Story = {
-  beforeEach: () => {
-    mockRequirementDetailApis(["project_manager"]);
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("heading", { name: "Activity", level: 2 })).toBeInTheDocument());
-    await expect(canvas.getAllByRole("heading", { name: "Activity", level: 2 })).toHaveLength(1);
-    await expect(canvas.queryByRole("heading", { name: "Change log" })).not.toBeInTheDocument();
-  },
-};
-
-/** `Pattern: resource picker dialog` (2026-08 UX audit roadmap row 508) —
+/** `Pattern: resource picker dialog` —
  * the Attachments card's new "Link from shared resources" button opens
  * `ResourcePickerModal` over the org's shared resources, and "Attach
  * selected" calls the previously frontend-uncalled `POST .../files/link`
@@ -932,7 +904,7 @@ const ORG_USERS_FOR_ASSIGNEE: OrgUser[] = [
   },
 ];
 
-/** Phase 32 (compliance-module-plan.md): "Create and link a new action"'s
+/** "Create and link a new action"'s
  * assignee field is `AssigneePicker` (a searchable `UserAutocomplete`), not
  * a plain unfiltered `<select>` — searching narrows the org's users and
  * picking one is included in the create-and-link payload. */
@@ -945,7 +917,7 @@ export const CreateActionAssigneeSearchAndAssign: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Create and link a new action" }));
     const dialog = within(document.body).getByRole("dialog", { name: "Create and link a new action" });
     const panel = within(dialog);
-    await userEvent.type(panel.getByPlaceholderText("Title"), "Confirm access review");
+    await userEvent.type(panel.getByLabelText("Title"), "Confirm access review");
     await userEvent.selectOptions(panel.getByLabelText("Type"), "Review");
     await userEvent.type(panel.getByRole("combobox", { name: "Assignee" }), "jamie");
     await waitFor(() => expect(panel.getByText("Jamie Lee")).toBeInTheDocument());

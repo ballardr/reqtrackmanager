@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
 
 import { buildPersona } from "./fixtures";
+import { requiredCaptions } from "../../testing/requiredMarkers";
 import { PersonaFormModal } from "./PersonaFormModal";
 
 const TYPE_OPTIONS = [
@@ -39,7 +40,7 @@ export const SavesEnteredValues: Story = {
     await userEvent.type(dialog().getByLabelText("Importance weight"), "3.5");
     await userEvent.click(dialog().getByRole("button", { name: "Save" }));
     await expect(args.onSave).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "Safety Officer", goals: "Zero incidents", persona_type_id: "type-secondary", weight: 3.5 }),
+      expect.objectContaining({ name: "Safety Officer", goals: "Zero incidents", persona_type_id: "type-secondary", weight: 3.5 }), [], []
     );
   },
 };
@@ -48,7 +49,7 @@ export const BlankWeightMeansNoWeight: Story = {
   play: async ({ args }) => {
     await userEvent.type(dialog().getByLabelText("Persona name"), "Safety Officer");
     await userEvent.click(dialog().getByRole("button", { name: "Save" }));
-    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ weight: null, persona_type_id: null }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ weight: null, persona_type_id: null }), [], []);
   },
 };
 
@@ -58,6 +59,29 @@ export const NonPositiveWeightBlocksSave: Story = {
     await userEvent.type(dialog().getByLabelText("Importance weight"), "0");
     await expect(dialog().getByRole("button", { name: "Save" })).toBeDisabled();
     await expect(dialog().getByLabelText("Importance weight")).toHaveAttribute("aria-invalid", "true");
+  },
+};
+
+export const SaveAndActivateSendsTheActivateFlag: Story = {
+  play: async ({ args }) => {
+    await userEvent.type(dialog().getByLabelText("Persona name"), "Safety Officer");
+    await userEvent.click(dialog().getByRole("button", { name: "Save and activate" }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ name: "Safety Officer", activate: true }), [], []);
+  },
+};
+
+export const PlainSaveDoesNotActivate: Story = {
+  play: async ({ args }) => {
+    await userEvent.type(dialog().getByLabelText("Persona name"), "Safety Officer");
+    await userEvent.click(dialog().getByRole("button", { name: "Save" }));
+    await expect(args.onSave).toHaveBeenCalledWith(expect.not.objectContaining({ activate: true }), [], []);
+  },
+};
+
+export const EditDoesNotOfferSaveAndActivate: Story = {
+  args: { initial: buildPersona() },
+  play: async () => {
+    await expect(dialog().queryByRole("button", { name: "Save and activate" })).not.toBeInTheDocument();
   },
 };
 
@@ -86,3 +110,25 @@ export const ShowsError: Story = {
 };
 
 export const DarkTheme: Story = { ...CreateNeedsAName, globals: { theme: "dark" } };
+
+/** The importance weight explains itself behind a `(?)` button, and opening the help leaves the form untouched. */
+export const ImportanceWeightHasHelp: Story = {
+  play: async () => {
+    await userEvent.type(dialog().getByLabelText("Importance weight"), "2");
+    await userEvent.click(dialog().getByRole("button", { name: "Help: Importance weight" }));
+    await expect(dialog().getByText(/How much this persona counts when scores are rolled up/)).toBeVisible();
+    await expect(dialog().getByLabelText("Importance weight")).toHaveValue(2);
+  },
+};
+
+/** Only the name blocks saving, so only the name is marked; the others are optional and say nothing. */
+export const OnlyTheNameIsMarkedRequired: Story = {
+  play: async () => {
+    const root = within(document.body).getByRole("dialog");
+    await expect(requiredCaptions(root)).toEqual(["Name"]);
+    await expect(within(root).getByText("* required")).toBeVisible();
+    await expect(within(root).queryByText(/optional/i)).not.toBeInTheDocument();
+    await expect(dialog().getByLabelText("Persona name")).toBeRequired();
+    await expect(dialog().getByLabelText("Importance weight")).not.toBeRequired();
+  },
+};

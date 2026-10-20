@@ -7,7 +7,7 @@ import { API_BASE_URL, setUpOrg } from "./stakeholders/helpers";
 installCleanupHook();
 
 /**
- * Job to be done: docs/plans/platform-enhancements-2026-10-plan.md Phase 7 — from a record's Links panel a
+ * Job to be done: — from a record's Links panel a
  * user opens a trace (tree and map) to see where it comes from and what depends on it, following
  * links as deep as they like.
  *
