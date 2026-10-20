@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, within } from "storybook/test";
+import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
 import type { ChangeEntry, ProjectMetrics } from "../api/types";
@@ -182,8 +182,15 @@ export const WidenedToTheParent: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.selectOptions(await canvas.findByRole("combobox", { name: "Show records from" }), "parents");
-    await expect(await canvas.findByText("Counts cover 2 projects; stage progress is this project's own.")).toBeInTheDocument();
+    const select = await canvas.findByRole("combobox", { name: "Show records from" });
+    // The select sits in the title row, level with the primary button, and nothing is added above the title.
+    const newButton = canvas.getByRole("link", { name: /New requirement|New Requirement/i });
+    await expect(select.getBoundingClientRect().top).toBeLessThan(newButton.getBoundingClientRect().bottom);
+    await userEvent.selectOptions(select, "parents");
+    await waitFor(() => expect(select).toHaveAccessibleDescription(/Counts cover 2 projects; stage progress is this project's own\./));
+    await expect(select).toHaveClass("project-scope-select-widened");
+    await userEvent.hover(select);
+    await expect(await within(document.body).findByRole("tooltip")).toHaveTextContent("Counts cover 2 projects");
     await expect(canvas.getByText("Requirements").previousSibling).toHaveTextContent("60");
   },
 };

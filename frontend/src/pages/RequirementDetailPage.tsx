@@ -62,6 +62,7 @@ import { FormActions } from "../components/FormActions";
 import { ActionFields } from "../components/ActionFields";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { DetailCard } from "../components/DetailCard";
 
 /**
  * Requirement detail view: direct editing while unlocked, a discussion
@@ -652,7 +653,7 @@ export function RequirementDetailPage() {
           second column to hold. */}
       <div className="stack">
       {requirement.is_locked || !canEdit ? (
-        <div className="card stack">
+        <DetailCard>
           {requirement.is_locked && (
             <Badge>
               {strings.requirements.locked} — {strings.requirements.lockedNotice}
@@ -692,9 +693,9 @@ export function RequirementDetailPage() {
             </Badge>
           </div>
           <CustomFieldsForm definitions={customFieldDefs} values={customFieldValues} disabled onChange={() => {}} />
-        </div>
+        </DetailCard>
       ) : (
-        <div className="card stack">
+        <DetailCard>
           <FormGrid minColumn="18rem">
             <RequirementFields
               values={form}
@@ -729,12 +730,11 @@ export function RequirementDetailPage() {
           <button className="btn btn-primary" onClick={save} disabled={!form.owner} style={{ alignSelf: "flex-start" }}>
             {strings.requirements.save}
           </button>
-        </div>
+        </DetailCard>
       )}
 
       {requirement.review_date && (
-        <div className="card stack">
-          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.reviewSection}</h2>
+        <DetailCard heading={strings.requirements.reviewSection}>
           <div className="row">
             <Badge>{strings.requirements.reviewDate}: {requirement.review_date}</Badge>
             <Badge>
@@ -760,13 +760,12 @@ export function RequirementDetailPage() {
           <button className="btn btn-primary" onClick={submitReview} style={{ alignSelf: "flex-start" }}>
             {strings.requirements.submitReview}
           </button>
-        </div>
+        </DetailCard>
       )}
 
       {/* The requirement's own version ledger stays in the body (a wide table never goes in the
           aside); what happened to it, links included, is the aside's Activity tab. */}
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.versions}</h2>
+      <DetailCard heading={strings.requirements.versions}>
         <div style={{ overflowX: "auto" }}>
           <table>
             <thead>
@@ -791,17 +790,17 @@ export function RequirementDetailPage() {
             </tbody>
           </table>
         </div>
-      </div>
+      </DetailCard>
 
-      <div className="card stack">
-        <div className="row" style={{ justifyContent: "space-between" }}>
-          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.attachments}</h2>
-          {!requirement.is_locked && organizationId && (
-            <button className="btn" onClick={() => setShowResourcePicker(true)}>
-              <FolderOpen /> {strings.resourcePicker.linkFromSharedResources}
-            </button>
-          )}
-        </div>
+      <DetailCard heading={strings.requirements.attachments} action={
+        <>
+            {!requirement.is_locked && organizationId && (
+              <button className="btn" onClick={() => setShowResourcePicker(true)}>
+                <FolderOpen /> {strings.resourcePicker.linkFromSharedResources}
+              </button>
+            )}
+        </>
+      }>
         <FileAttachmentList
           files={files}
           onUpload={uploadFile}
@@ -809,7 +808,7 @@ export function RequirementDetailPage() {
           disabled={requirement.is_locked}
           emptyHint={strings.requirements.attachmentsLockedNotice}
         />
-      </div>
+      </DetailCard>
       {showResourcePicker && organizationId && (
         <ResourcePickerModal
           title={strings.resourcePicker.linkFromSharedResources}
@@ -825,63 +824,63 @@ export function RequirementDetailPage() {
         />
       )}
 
-      <div className="card stack">
-        <div className="row" style={{ justifyContent: "space-between" }}>
-          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.actionsSection}</h2>
-          <div className="row">
-            <button
-              ref={linkExistingActionTriggerRef}
-              className="btn"
-              onClick={() => {
-                setActionError(null);
-                setLinkExistingActionPopoverOpen((o) => !o);
-              }}
-            >
-              <Plus /> {strings.requirements.linkExistingAction}
-            </button>
-            <button
-              className="btn btn-primary"
-              onClick={() => {
-                setActionError(null);
-                setShowCreateAction(true);
-              }}
-            >
-              <Plus /> {strings.requirements.createAndLinkAction}
-            </button>
-          </div>
-          {linkExistingActionPopoverOpen && (
-            <Popover
-              anchorRef={linkExistingActionTriggerRef}
-              title={strings.requirements.linkExistingAction}
-              onClose={() => setLinkExistingActionPopoverOpen(false)}
-            >
-              <LabeledSelect helpNotNeeded
-                label={strings.requirements.linkExistingAction}
-                value={existingActionToLink}
-                onChange={setExistingActionToLink}
-                options={projectActions
-                  .filter((a) => !linkedActions.some((la) => la.id === a.id))
-                  .map((a) => ({ value: a.id, label: `${recordCode.code(a.unique_code)} — ${a.title}` }))}
-                placeholder={strings.requirements.selectAnActionToLink}
-              />
-              {requirement.is_locked && (
-                <TextAreaField helpNotNeeded
-                  label={strings.changeRequests.reason}
-                  value={addActionReason}
-                  onChange={setAddActionReason}
-                  rows={2}
+      <DetailCard heading={strings.requirements.actionsSection} action={
+        <>
+            <div className="row">
+              <button
+                ref={linkExistingActionTriggerRef}
+                className="btn"
+                onClick={() => {
+                  setActionError(null);
+                  setLinkExistingActionPopoverOpen((o) => !o);
+                }}
+              >
+                <Plus /> {strings.requirements.linkExistingAction}
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  setActionError(null);
+                  setShowCreateAction(true);
+                }}
+              >
+                <Plus /> {strings.requirements.createAndLinkAction}
+              </button>
+            </div>
+            {linkExistingActionPopoverOpen && (
+              <Popover
+                anchorRef={linkExistingActionTriggerRef}
+                title={strings.requirements.linkExistingAction}
+                onClose={() => setLinkExistingActionPopoverOpen(false)}
+              >
+                <LabeledSelect helpNotNeeded
+                  label={strings.requirements.linkExistingAction}
+                  value={existingActionToLink}
+                  onChange={setExistingActionToLink}
+                  options={projectActions
+                    .filter((a) => !linkedActions.some((la) => la.id === a.id))
+                    .map((a) => ({ value: a.id, label: `${recordCode.code(a.unique_code)} — ${a.title}` }))}
+                  placeholder={strings.requirements.selectAnActionToLink}
                 />
-              )}
-              {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
-              <FormActions
-                onCancel={() => setLinkExistingActionPopoverOpen(false)}
-                onSave={linkExistingAction}
-                saveLabel={strings.requirements.linkExistingAction}
-                saveDisabled={!existingActionToLink || (requirement.is_locked && !addActionReason.trim())}
-              />
-            </Popover>
-          )}
-        </div>
+                {requirement.is_locked && (
+                  <TextAreaField helpNotNeeded
+                    label={strings.changeRequests.reason}
+                    value={addActionReason}
+                    onChange={setAddActionReason}
+                    rows={2}
+                  />
+                )}
+                {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
+                <FormActions
+                  onCancel={() => setLinkExistingActionPopoverOpen(false)}
+                  onSave={linkExistingAction}
+                  saveLabel={strings.requirements.linkExistingAction}
+                  saveDisabled={!existingActionToLink || (requirement.is_locked && !addActionReason.trim())}
+                />
+              </Popover>
+            )}
+        </>
+      }>
         {linkedActions.length === 0 && (
           <p className="text-muted" style={{ margin: 0 }}>{strings.requirements.noLinkedActions}</p>
         )}
@@ -981,10 +980,9 @@ export function RequirementDetailPage() {
             </button>
           </Modal>
         )}
-      </div>
+      </DetailCard>
 
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.discussion}</h2>
+      <DetailCard heading={strings.requirements.discussion}>
         <CommentThread
           comments={comments}
           onPost={postComment}
@@ -994,7 +992,7 @@ export function RequirementDetailPage() {
           onEdit={editComment}
           currentUserId={user?.id}
         />
-      </div>
+      </DetailCard>
       </div>
     </DetailLayout>
   );

@@ -85,6 +85,7 @@ import { userDisplayName } from "./types";
 import { Badge } from "../../components/Badge";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { DetailCard } from "../../components/DetailCard";
 
 type StandardWorkspaceSection = "overview" | "versions" | "members" | "history" | "projects";
 
@@ -270,14 +271,14 @@ export function StandardWorkspacePage() {
               to={`/standards/${standard.id}/projects?state=compliant`}
             />
           </div>
-          <div className="card stack">
+          <DetailCard>
             <p>{standard.description || <span className="text-muted">No description.</span>}</p>
             {standard.issuing_organisation && <p className="text-muted">Issued by {standard.issuing_organisation}</p>}
             <div className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
               <span className="text-muted">Owner:</span>
               <PrincipalBadge principal={standard.owner} />
             </div>
-          </div>
+          </DetailCard>
           <StandardApplicabilityPanel standard={standard} onStandardChanged={setStandard} />
         </div>
       )}

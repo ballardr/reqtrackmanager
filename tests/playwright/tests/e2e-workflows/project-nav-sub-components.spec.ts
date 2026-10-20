@@ -98,7 +98,7 @@ test.describe("project nav: sub-components, order and scrolling", () => {
     expect(names.indexOf("Requirements due for review")).toBeLessThan(names.indexOf("Strategy"));
   });
 
-  test("the rail scrolls below the collapse toggle, expanded and collapsed", async ({ page }) => {
+  test("the rail list scrolls on its own and keeps clear of the collapse toggle, expanded and collapsed", async ({ page }) => {
     const { project } = await setupProject(page);
     await page.setViewportSize({ width: 1280, height: 420 });
     await page.goto(`/projects/${project.id}`);
@@ -114,12 +114,17 @@ test.describe("project nav: sub-components, order and scrolling", () => {
           overflows: scroll.scrollHeight > scroll.clientHeight,
           railScrolls: getComputedStyle(rail).overflowY !== "visible" && rail.scrollHeight > rail.clientHeight,
           scrollTop: scroll.getBoundingClientRect().top,
-          toggleBottom: toggle.getBoundingClientRect().bottom,
+          railTop: rail.getBoundingClientRect().top,
+          scrollRight: scroll.getBoundingClientRect().right,
+          toggleLeft: toggle.getBoundingClientRect().left,
         };
       });
       expect(geometry.overflows, state).toBe(true);
       expect(geometry.railScrolls, state).toBe(false);
-      expect(geometry.scrollTop, state).toBeGreaterThanOrEqual(geometry.toggleBottom);
+      // The list starts at the top of the rail (level with the toggle) and leaves the strip under the
+      // toggle free, so neither a link nor the scrollbar runs under it.
+      expect(geometry.scrollTop, state).toBeLessThanOrEqual(geometry.railTop + 1);
+      expect(geometry.scrollRight, state).toBeLessThanOrEqual(geometry.toggleLeft + 1);
     }
   });
 });

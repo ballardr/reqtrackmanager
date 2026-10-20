@@ -11,6 +11,9 @@
  *   follows them across pages and devices. Default is open.
  * - Below 1280px the aside stacks under the content, always shown, with no toggle
  *   (a collapse there would only hide what the user scrolled to find).
+ * - The aside is one card. Its title is its tab strip (Links, Activity) or, for a page with no
+ *   activity, a single "Links" heading; a panel inside it draws no card or title of its own
+ *   (`detailAsideContext`), so the word "Links" appears once, wide or stacked.
  * - A page that passes `activity` as well gets two tabs in the aside, Links and Activity; the
  *   selected tab is a per-viewer preference (`detail_aside_tab`). The Links panel stays mounted
  *   while hidden (its state survives a tab switch); the Activity tab mounts when opened, so it
@@ -26,6 +29,7 @@ import type { ReactNode } from "react";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useUiPreference } from "../hooks/useUiPreference";
 import { useStrings } from "../context/TerminologyContext";
+import { DetailAsideProvider } from "./detailAsideContext";
 import { Tabs, tabPanelProps } from "./Tabs";
 
 type AsideTab = "links" | "activity";
@@ -85,7 +89,8 @@ export function DetailLayout({
           </button>
         )}
         {!hidden && (
-          <div className="detail-layout__aside-body stack">
+          <div className="card stack detail-layout__aside-body">
+            <DetailAsideProvider value>
             {activity ? (
               <>
                 <Tabs<AsideTab>
@@ -105,8 +110,12 @@ export function DetailLayout({
                 )}
               </>
             ) : (
-              aside
+              <>
+                <h2 className="detail-layout__aside-title">{label}</h2>
+                {aside}
+              </>
             )}
+            </DetailAsideProvider>
           </div>
         )}
       </aside>

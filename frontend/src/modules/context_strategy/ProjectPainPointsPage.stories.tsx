@@ -57,7 +57,7 @@ export default meta;
 type Story = StoryObj<typeof ProjectPainPointsPage>;
 
 export const ListsPainPoints: Story = {
-  beforeEach: () => mockPageApis([painPoint(), painPoint({ id: "pain-point-2", title: "Competitive pricing pressure", status: "rejected" })]),
+  beforeEach: () => mockPageApis([painPoint(), painPoint({ id: "pain-point-2", title: "Competitive pricing pressure", status: "triaged" })]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Report delays under poor connectivity")).toBeInTheDocument());
@@ -68,7 +68,7 @@ export const ListsPainPoints: Story = {
   },
 };
 
-/** Score and Blocker columns render the roll-up; the Score column sorts unscored last. */
+/** The Score column renders the roll-up, the Blocker and Intentional badges follow the title; the Score column sorts unscored last. */
 export const ShowsScoresAndBlockerAndSorts: Story = {
   beforeEach: () =>
     mockPageApis(
@@ -89,13 +89,17 @@ export const ShowsScoresAndBlockerAndSorts: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Critical · 18")).toBeInTheDocument());
-    await expect(canvas.getByText("Blocker")).toBeInTheDocument();
-    await expect(canvas.getByText("Intentional")).toBeInTheDocument();
+    // Blocker and Intentional follow the title (in the first column); the Score cell holds only the score.
+    const row = canvas.getByText("High scoring problem").closest("tr")!;
+    const cells = within(row).getAllByRole("cell");
+    await expect(within(cells[0]).getByText("Blocker")).toBeInTheDocument();
+    await expect(within(cells[0]).getByText("Intentional")).toBeInTheDocument();
+    await expect(within(cells[cells.length - 1]).queryByText("Blocker")).not.toBeInTheDocument();
     // Scoped to the table: the Scoring filter's "Not scored" option has the same text.
     await expect(within(canvas.getByRole("table", { name: "Pain Points" })).getByText("Not scored")).toBeInTheDocument();
 
-    const titles = () => canvas.getAllByRole("button", { name: /problem/ }).map((b) => b.textContent?.replace("Intentional", ""));
-    const scoreHeader = canvas.getByRole("button", { name: /Score/ });
+    const titles = () => canvas.getAllByRole("button", { name: /problem/ }).map((b) => b.textContent?.replace("Intentional", "").replace("Blocker", ""));
+    const scoreHeader = canvas.getByRole("button", { name: "Score" });
     await userEvent.click(scoreHeader); // ascending
     await waitFor(() => expect(titles()).toEqual(["Low scoring problem", "High scoring problem", "Unscored problem"]));
     await userEvent.click(scoreHeader); // descending: unscored still last
@@ -103,14 +107,26 @@ export const ShowsScoresAndBlockerAndSorts: Story = {
   },
 };
 
-/** The model switcher refetches the roll-up under the newly chosen model. */
-export const SwitchingModelRefetchesScores: Story = {
+/** The gear on the Score column holds the model switcher; it refetches the roll-up and does not sort. */
+export const ScoreSettingsGearRefetchesScores: Story = {
   beforeEach: () => mockPageApis([painPoint()]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByRole("combobox", { name: "Scoring model" }));
-    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Scoring model" }), "sxf");
+    // The selects are not on the page until the gear is opened.
+    await waitFor(() => canvas.getByRole("button", { name: /^Score settings: / }));
+    await expect(canvas.queryByRole("combobox", { name: "Scoring model" })).not.toBeInTheDocument();
+    const gear = canvas.getByRole("button", { name: /^Score settings: / });
+    await expect(gear).toHaveAttribute("aria-haspopup", "dialog");
+    await expect(gear).toHaveAccessibleName(/combined by Weighted average/);
+    await userEvent.click(gear);
+    const body = within(document.body);
+    await userEvent.selectOptions(await body.findByRole("combobox", { name: "Scoring model" }), "sxf");
     await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining("model_key=sxf")));
+    await expect(body.getByRole("combobox", { name: "Combine personas by" })).toBeInTheDocument();
+    // Pressing the gear never changes the sort.
+    await expect(canvas.getByRole("columnheader", { name: /Score/ })).toHaveAttribute("aria-sort", "none");
+    // A changed model is marked on the closed gear.
+    await expect(gear).toHaveClass("btn-marked");
   },
 };
 
@@ -122,6 +138,58 @@ export const HideIntentionalFilter: Story = {
     await userEvent.click(canvas.getByRole("checkbox", { name: "Hide intentional limitations" }));
     await waitFor(() => expect(canvas.queryByText(/Tier limit problem/)).not.toBeInTheDocument());
     await expect(canvas.getByText("Fixable problem")).toBeInTheDocument();
+  },
+};
+
+/** The list opens on open Pain Points only, with the filter shown ticked. */
+export const OpensOnOpenPainPointsByDefault: Story = {
+  beforeEach: () => mockPageApis([
+    painPoint({ id: "pp-open", title: "Still open problem" }),
+    painPoint({ id: "pp-done", title: "Already addressed problem", status: "addressed" }),
+  ]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Still open problem")).toBeInTheDocument());
+    await expect(canvas.queryByText("Already addressed problem")).not.toBeInTheDocument();
+    const openOnly = canvas.getByRole("checkbox", { name: "Open only" });
+    await expect(openOnly).toBeChecked();
+    await userEvent.click(openOnly);
+    await expect(await canvas.findByText("Already addressed problem")).toBeInTheDocument();
+  },
+};
+
+/** A link that names a status shows that slice, so the default never produces an empty list. */
+export const AStatusLinkStartsWithOpenOnlyOff: Story = {
+  parameters: { query: "?status=addressed" },
+  beforeEach: () => mockPageApis([
+    painPoint({ id: "pp-open", title: "Still open problem" }),
+    painPoint({ id: "pp-done", title: "Already addressed problem", status: "addressed" }),
+  ]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Already addressed problem")).toBeInTheDocument());
+    await expect(canvas.queryByText("Still open problem")).not.toBeInTheDocument();
+    await expect(canvas.getByRole("checkbox", { name: "Open only" })).not.toBeChecked();
+  },
+};
+
+/** `open=0` turns the default off. */
+export const OpenZeroShowsEverything: Story = {
+  parameters: { query: "?open=0" },
+  beforeEach: () => mockPageApis([painPoint({ id: "pp-done", title: "Already addressed problem", status: "addressed" })]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Already addressed problem")).toBeInTheDocument());
+    await expect(canvas.getByRole("checkbox", { name: "Open only" })).not.toBeChecked();
+  },
+};
+
+/** When only the default hides everything, the empty state says why. */
+export const EmptyBecauseOfOpenOnlySaysSo: Story = {
+  beforeEach: () => mockPageApis([painPoint({ id: "pp-done", title: "Already addressed problem", status: "addressed" })]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText(/^No open Pain Points\. Untick Open only/)).toBeInTheDocument());
   },
 };
 

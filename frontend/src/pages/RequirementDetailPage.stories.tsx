@@ -836,7 +836,7 @@ export const VersionsInTheBodyActivityInTheAsideTab: Story = {
     await expect(canvas.queryByText(/Alex Morgan approved/)).not.toBeInTheDocument();
 
     await userEvent.click(canvas.getByRole("tab", { name: "Activity" }));
-    await waitFor(() => expect(canvas.getByText(/Alex Morgan approved — Approved directly\./)).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByText("Alex Morgan approved")).toBeInTheDocument());
     await expect(canvas.getByRole("tab", { name: "Activity" })).toHaveAttribute("aria-selected", "true");
 
     // Switching back keeps the Links panel as it was.

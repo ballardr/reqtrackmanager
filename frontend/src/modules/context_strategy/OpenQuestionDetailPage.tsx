@@ -62,6 +62,7 @@ import type { FileAsset, OrgUser, PrincipalRef, Project } from "../../api/types"
 import { api } from "../../api/client";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { RecordActivity } from "../../components/RecordActivity";
+import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordTags } from "../../components/RecordTags";
 import { RecordPrincipalField } from "../../components/RecordDetailParts";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
@@ -80,6 +81,7 @@ import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 import { TextAreaField } from "../../components/FormFields";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { DetailCard } from "../../components/DetailCard";
 
 /** The two optional-comment, positive/neutral-progression actions — mirrors
  * `PainPointDetailPage.tsx`'s `OptionalCommentAction`/`OPTIONAL_COMMENT_COPY`
@@ -206,7 +208,7 @@ export function OpenQuestionDetailPage() {
 
   return (
     <DetailLayout
-      activity={projectId ? <RecordActivity projectId={projectId} artefactType="open_question" artefactId={openQuestion.id} /> : undefined}
+      activity={projectId ? <RecordActivity projectId={projectId} artefactType="open_question" artefactId={openQuestion.id} refreshToken={recordActivityKey(openQuestion)} /> : undefined}
       aside={
         <ArtefactLinksPanel
           projectId={projectId}
@@ -265,17 +267,18 @@ export function OpenQuestionDetailPage() {
 
       <div className="stack">
 
-        {openQuestion.context && <Field label="Context" value={openQuestion.context} />}
-        {openQuestion.evidence && <Field label="Evidence" value={openQuestion.evidence} />}
+        <DetailCard>
+          {openQuestion.context && <Field label="Context" value={openQuestion.context} />}
+          {openQuestion.evidence && <Field label="Evidence" value={openQuestion.evidence} />}
 
-        <RecordPrincipalField
-          label="Owner" ariaLabel="Open Question owner" principal={openQuestion.owner} orgUsers={orgUsers}
-          organizationId={project?.organization_id} projectId={projectId} readOnly={false} onChange={assignOwner}
-        />
+          <RecordPrincipalField
+            label="Owner" ariaLabel="Open Question owner" principal={openQuestion.owner} orgUsers={orgUsers}
+            organizationId={project?.organization_id} projectId={projectId} readOnly={false} onChange={assignOwner}
+          />
+        </DetailCard>
 
 
-        <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-          <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Evidence</h3>
+        <DetailCard heading="Evidence">
           <FileAttachmentList
             files={files}
             disabled={openQuestion.is_locked}
@@ -289,31 +292,29 @@ export function OpenQuestionDetailPage() {
               setFiles((prev) => prev.filter((f) => f.id !== fileId));
             }}
           />
-        </div>
+        </DetailCard>
 
-        <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-          <ArtefactCommentsSection
-            comments={comments ?? []}
-            currentUserId={user?.id}
-            onPost={async (body) => {
-              const comment = await projectOpenQuestionApi.addComment(projectId, openQuestion.id, body);
-              setComments((prev) => [...(prev ?? []), comment]);
-              return comment;
-            }}
-            onEdit={async (commentId, body) => {
-              const updated = await projectOpenQuestionApi.editComment(projectId, openQuestion.id, commentId, body);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? updated : c)));
-            }}
-            onUploadAttachment={async (commentId, file) => {
-              const asset = await projectOpenQuestionApi.uploadCommentAttachment(projectId, openQuestion.id, commentId, file);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: [...c.attachments, asset] } : c)));
-            }}
-            onRemoveAttachment={async (commentId, fileId) => {
-              await projectOpenQuestionApi.removeCommentAttachment(projectId, openQuestion.id, commentId, fileId);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
-            }}
-          />
-        </div>
+        <ArtefactCommentsSection
+          comments={comments ?? []}
+          currentUserId={user?.id}
+          onPost={async (body) => {
+            const comment = await projectOpenQuestionApi.addComment(projectId, openQuestion.id, body);
+            setComments((prev) => [...(prev ?? []), comment]);
+            return comment;
+          }}
+          onEdit={async (commentId, body) => {
+            const updated = await projectOpenQuestionApi.editComment(projectId, openQuestion.id, commentId, body);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? updated : c)));
+          }}
+          onUploadAttachment={async (commentId, file) => {
+            const asset = await projectOpenQuestionApi.uploadCommentAttachment(projectId, openQuestion.id, commentId, file);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: [...c.attachments, asset] } : c)));
+          }}
+          onRemoveAttachment={async (commentId, fileId) => {
+            await projectOpenQuestionApi.removeCommentAttachment(projectId, openQuestion.id, commentId, fileId);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
+          }}
+        />
       </div>
 
       {editing && (

@@ -512,7 +512,11 @@ def decide_change_request(
         decline_all(version)
         change_requests_rejected_total.inc()
 
-    decision_detail: dict = {"note": payload.note, "via": "mcp"} if channel == "mcp" else {"note": payload.note}
+    # The decision note is stored as `comment`, the key every other workflow step uses, so the
+    # activity timeline shows it through one rule.
+    decision_detail: dict = {"comment": payload.note} if payload.note else {}
+    if channel == "mcp":
+        decision_detail["via"] = "mcp"
     if link_result is not None:
         decision_detail["links"] = {
             "merged": link_result.merged, "declined": link_result.declined, "skipped": link_result.skipped,

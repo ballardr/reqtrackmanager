@@ -31,8 +31,9 @@ import { ItemRow } from "./ItemRow";
  * @param titleAddon Small control shown right after the title (an `EntitySwitcher`).
  * @param code Human-readable code (`REQ-001`), shown as a small muted suffix.
  * @param codeOwner The owning organisation's code for a record the organisation owns (`PER-001` becomes `ACME-PER-001`).
- * @param subtitle Secondary line under the title (type, owner, version).
+ * @param subtitle Secondary line under the title (type, owner, priority).
  * @param badges Status and scope pills, shown on the line under the title.
+ * @param version The record's version number, for a versioned record; shown as "Version n" after the badges, never as its own line.
  * @param tags The record's tags (`RecordTags`), shown under the badges.
  * @param back Link back to the list: `{ to, label }`, or `{ onClick, label }` inside a page that switches views itself.
  * @param headingLevel `h1` (default) for a page; `h2` for a record opened inside a page that already has an `h1`.
@@ -48,6 +49,7 @@ export function RecordHeader({
   codeOwner,
   subtitle,
   badges,
+  version,
   tags,
   back,
   headingLevel = "h1",
@@ -62,6 +64,7 @@ export function RecordHeader({
   codeOwner?: string | null;
   subtitle?: ReactNode;
   badges?: ReactNode;
+  version?: number;
   tags?: ReactNode;
   back?: { to: string; label: string } | { onClick: () => void; label: string };
   headingLevel?: "h1" | "h2";
@@ -101,7 +104,16 @@ export function RecordHeader({
           {titleAddon}
         </span>
       </ItemRow>
-      {badges && <div className="row">{badges}</div>}
+      {(badges || version !== undefined) && (
+        <div className="row">
+          {badges}
+          {version !== undefined && (
+            <span className="text-muted" style={{ fontSize: "0.85rem" }} title={`Version ${version} of this record`}>
+              Version {version}
+            </span>
+          )}
+        </div>
+      )}
       {tags && <div>{tags}</div>}
       {subtitle && <p className="text-muted" style={{ margin: 0 }}>{subtitle}</p>}
       {transitions && <div className="row">{transitions}</div>}

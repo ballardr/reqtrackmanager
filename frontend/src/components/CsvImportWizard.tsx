@@ -419,7 +419,7 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
                     </td>
                     <td>
                       {canFixValue && (
-                        <label className="row" style={{ gap: "0.35rem", alignItems: "center", marginBottom: "0.25rem" }}>
+                        <label className="checkbox-label" style={{ gap: "0.35rem", marginBottom: "0.25rem" }}>
                           <input
                             type="checkbox"
                             checked={fixedMode[field.key] ?? false}

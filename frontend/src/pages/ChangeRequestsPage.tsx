@@ -664,7 +664,7 @@ export function ChangeRequestsPage() {
                   </p>
                   {CHANGEABLE_REQUIREMENT_FIELDS.map((field) => (
                     <div key={field} className="stack" style={{ gap: "0.35rem" }}>
-                      <label className="row" style={{ gap: "0.5rem" }}>
+                      <label className="checkbox-label" style={{ gap: "0.5rem" }}>
                         <input type="checkbox" checked={changedFields.has(field)} onChange={() => toggleChangedField(field)} />
                         {CHANGEABLE_FIELD_LABEL[field]}
                       </label>

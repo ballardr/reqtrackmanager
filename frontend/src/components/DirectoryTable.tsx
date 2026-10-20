@@ -58,6 +58,10 @@ export interface DirectoryColumn<Row> {
    * "Pattern: sortable column header"'s "sortable columns are the obvious
    * ones only" rule. */
   sortable?: boolean;
+  /** A control that belongs to the column as a whole (a settings gear), drawn
+   * beside the header text. It is a sibling of the sort button, not inside it,
+   * so pressing it never changes the sort. */
+  headerAction?: ReactNode;
   render: (row: Row) => ReactNode;
 }
 
@@ -129,9 +133,11 @@ export function DirectoryTable<Row>({
             <tr>
               {columns.map((column) =>
                 column.sortable && onSort ? (
-                  <SortableHeader key={column.key} label={column.label} sortKey={column.key} sort={sort} onSort={onSort} />
+                  <SortableHeader key={column.key} label={column.label} sortKey={column.key} sort={sort} onSort={onSort} action={column.headerAction} />
                 ) : (
-                  <th key={column.key}>{column.label}</th>
+                  <th key={column.key}>
+                    {column.headerAction ? <span className="th-with-action">{column.label}{column.headerAction}</span> : column.label}
+                  </th>
                 )
               )}
             </tr>

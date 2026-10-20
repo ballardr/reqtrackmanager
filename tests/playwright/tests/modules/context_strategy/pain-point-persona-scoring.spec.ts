@@ -130,16 +130,20 @@ test.describe("Context & Strategy: per-persona Pain Point scoring", () => {
     await test.step("the list ranks by score and re-ranks when the model changes", async () => {
       await page.goto(base);
       const order = async () => (await page.getByRole("table", { name: "Pain Points" }).locator("tbody").getByRole("button").allTextContents())
-        .map((text) => text.replace("Intentional", "").trim());
+        .map((text) => text.replace("Intentional", "").replace("Blocker", "").trim());
 
+      // The scoring model and roll-up are settings of the Score column, behind its gear.
+      await page.getByRole("button", { name: /^Score settings: / }).click();
       await page.getByRole("combobox", { name: "Scoring model" }).selectOption({ label: "Severity × Frequency" });
-      const scoreHeader = page.getByRole("button", { name: /^Score/ });
+      const scoreHeader = page.getByRole("button", { name: "Score", exact: true });
       await scoreHeader.click(); // ascending
       await scoreHeader.click(); // descending
       await expect.poll(order).toEqual([titles.across, titles.everyone]);
       await expect(page.getByText("Blocker", { exact: true })).toBeVisible();
 
       // S×C: 2.125 of 5 for "across" against 3 of 5 for "everyone" flips the order.
+      // Clicking the Score header closed the settings popover; open it again.
+      await page.getByRole("button", { name: /^Score settings: / }).click();
       await page.getByRole("combobox", { name: "Scoring model" }).selectOption({ label: "Severity × Confidence" });
       await expect.poll(order).toEqual([titles.everyone, titles.across]);
     });

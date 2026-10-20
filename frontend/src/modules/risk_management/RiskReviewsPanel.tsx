@@ -32,6 +32,7 @@ import { Badge } from "../../components/Badge";
 import { FormActions } from "../../components/FormActions";
 import { DateField, TextAreaField } from "../../components/FormFields";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
+import { DetailCard } from "../../components/DetailCard";
 
 /**
  * @param risk The risk being reviewed.
@@ -97,11 +98,7 @@ export function RiskReviewsPanel({
   if (reviews === null) return <Spinner />;
 
   return (
-    <section className="stack" aria-label="Reviews" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Reviews</h3>
-        <button className="btn" onClick={() => setRecording(true)}>Record review</button>
-      </div>
+    <DetailCard heading="Reviews" action={<button className="btn" onClick={() => setRecording(true)}>Record review</button>}>
       <p className="text-muted" style={{ margin: 0 }}>
         {risk.review_date ? <>Next review: {risk.review_date}</> : "No review scheduled."}
         {risk.is_review_overdue && <> <Badge tone="danger">Overdue</Badge></>}
@@ -167,6 +164,6 @@ export function RiskReviewsPanel({
           </div>
         </Modal>
       )}
-    </section>
+    </DetailCard>
   );
 }

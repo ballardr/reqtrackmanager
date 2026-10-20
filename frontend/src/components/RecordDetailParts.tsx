@@ -11,6 +11,7 @@
 import type { ReactNode } from "react";
 
 import type { OrgUser, Principal, PrincipalRef } from "../api/types";
+import { DetailCard } from "./DetailCard";
 import { FieldCaption } from "./FieldHelp";
 import type { FieldHelpProps } from "./FieldHelp";
 import { PrincipalBadge } from "./PrincipalBadge";
@@ -101,8 +102,7 @@ export function VersionHistoryTable<V extends { id: string; version_number: numb
 }) {
   if (!versions || versions.length <= 1) return null;
   return (
-    <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-      <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Versions</h3>
+    <DetailCard heading="Versions">
       <table className="table">
         <thead>
           <tr>
@@ -122,6 +122,6 @@ export function VersionHistoryTable<V extends { id: string; version_number: numb
           ))}
         </tbody>
       </table>
-    </div>
+    </DetailCard>
   );
 }

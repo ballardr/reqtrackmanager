@@ -120,14 +120,12 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
   await test.step("post a comment and react to it", async () => {
     await page.getByPlaceholder("Add comment").fill("This looks ready for review.");
     await page.getByRole("button", { name: "Add comment", exact: true }).click();
-    // Scoped to the posted comment's own card: a page-wide exact "Server
+    // Scoped to the posted comment's own row: a page-wide exact "Server
     // Administrator" text match is now ambiguous against both the nav
     // rail's own "Server Administrator" link and the requirement's Change
     // log table, which gained a "Changed by" column showing the same name
-    // for the requirement's own creation entry. `.card` is nested (the
-    // Discussion section's own card wraps each individual comment's card),
-    // so `.last()` picks the innermost, most specific match.
-    const postedComment = page.locator(".card", { hasText: "This looks ready for review." }).last();
+    // for the requirement's own creation entry.
+    const postedComment = page.locator(".comment-row", { hasText: "This looks ready for review." });
     await expect(postedComment.getByText("Server Administrator", { exact: true })).toBeVisible();
     await expect(postedComment).toBeVisible();
 

@@ -3,7 +3,7 @@ import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { buildCandidate, buildOption } from "../../testing/artefactLinksFixtures";
-import { buildRecordTags } from "../../testing/tagsFixtures";
+import { buildRecordTags, openTagPicker } from "../../testing/tagsFixtures";
 import { buildScoringScheme } from "../../testing/storybook-helpers";
 
 import { PainPointFormModal } from "./PainPointFormModal";
@@ -155,7 +155,7 @@ export const ChoosesTagsOnCreate: Story = {
     const body = within(document.body);
     await userEvent.selectOptions(body.getByLabelText("Type"), "type-operator");
     await userEvent.type(body.getByLabelText("Pain Point title"), "Field reports require paper re-keying");
-    await userEvent.type(await body.findByRole("combobox", { name: "Tags" }), "sec");
+    await userEvent.type(await openTagPicker(body), "sec");
     await userEvent.click(await body.findByRole("option", { name: "Security" }));
     await userEvent.click(body.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(

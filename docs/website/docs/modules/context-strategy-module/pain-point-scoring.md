@@ -58,7 +58,7 @@ A Pain Point has either one all-personas set **or** per-persona sets, never both
 
 ## How personas combine
 
-The **Scoring model** and **Combine personas by** selectors sit above the score on the Pain Point, on the list, and in report R1. They only change what you *see*; nothing is stored, so you can compare rankings freely.
+The **Scoring model** and **Combine personas by** selectors sit above the score on the Pain Point and in report R1. On the list they are behind the small gear beside the **Score** column heading (its tooltip names the model and roll-up in use, and the gear is outlined when either is not the default); selecting the gear opens them, and the list re-ranks as you change them without sorting by Score. They only change what you *see*; nothing is stored, so you can compare rankings freely.
 
 | Combine personas by | Result |
 | --- | --- |

@@ -19,6 +19,7 @@ import { api } from "../../api/client";
 import type { OrgUser, Project, Requirement } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { RecordActivity } from "../../components/RecordActivity";
+import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordTags } from "../../components/RecordTags";
 import { DetailLayout } from "../../components/DetailLayout";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
@@ -36,6 +37,7 @@ import { RepresentationPanel } from "./RepresentationPanel";
 import type { Need, NeedFieldValues, NeedHolderKind, NeedVersion } from "./types";
 import { NEED_STATUS_LABEL, NEED_STATUS_TONE } from "./types";
 import { Badge } from "../../components/Badge";
+import { DetailCard } from "../../components/DetailCard";
 
 const TRANSITION_DONE: Record<LifecycleAction, string> = {
   activate: "Stakeholder Need activated.",
@@ -147,7 +149,7 @@ export function NeedDetailPage() {
 
   return (
     <DetailLayout
-      activity={projectId ? <RecordActivity projectId={projectId} artefactType="stakeholder_need" artefactId={need.id} /> : undefined}
+      activity={projectId ? <RecordActivity projectId={projectId} artefactType="stakeholder_need" artefactId={need.id} refreshToken={recordActivityKey(need)} /> : undefined}
       aside={
         <ArtefactLinksPanel
           projectId={projectId}
@@ -162,8 +164,13 @@ export function NeedDetailPage() {
         code={need.unique_code}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="stakeholder_need" artefactId={need.id} /> : undefined}
         back={{ to: `/projects/${projectId}/modules/stakeholders/needs`, label: "← Needs" }}
-        badges={<Badge tone={NEED_STATUS_TONE[need.status]}>{NEED_STATUS_LABEL[need.status]}</Badge>}
-        subtitle={`v${need.version_number}${need.is_archived ? " · Archived" : ""}`}
+        badges={
+          <>
+            <Badge tone={NEED_STATUS_TONE[need.status]}>{NEED_STATUS_LABEL[need.status]}</Badge>
+            {need.is_archived && <Badge tone="muted">Archived</Badge>}
+          </>
+        }
+        version={need.version_number}
         onEdit={() => setEditing(true)}
         actions={[archive.item]}
         transitions={
@@ -179,39 +186,41 @@ export function NeedDetailPage() {
       {archive.dialog}
 
       <div className="stack">
-        {need.description && <RecordField label="Need" value={need.description} />}
-        {need.rationale && <RecordField label="Rationale" value={need.rationale} />}
+        <DetailCard>
+          {need.description && <RecordField label="Need" value={need.description} />}
+          {need.rationale && <RecordField label="Rationale" value={need.rationale} />}
 
-        <RecordPrincipalField
-          label="Owner" ariaLabel="Need owner" principal={need.owner} orgUsers={orgUsers} organizationId={organizationId}
-          projectId={projectId}
-          readOnly={false}
-          onChange={(owner) =>
-            run(() => projectNeedApi.update(projectId, need.id, { owner }), "Owner updated.", "Could not update this Stakeholder Need's owner.")
-          }
-        />
+          <RecordPrincipalField
+            label="Owner" ariaLabel="Need owner" principal={need.owner} orgUsers={orgUsers} organizationId={organizationId}
+            projectId={projectId}
+            readOnly={false}
+            onChange={(owner) =>
+              run(() => projectNeedApi.update(projectId, need.id, { owner }), "Owner updated.", "Could not update this Stakeholder Need's owner.")
+            }
+          />
 
-        {holderPanel("stakeholder", "Stakeholders with this need", "No Stakeholder has this need yet.", "Stakeholder with this need", stakeholderOptions)}
-        {holderPanel("persona", "Personas with this need", "No Persona has this need yet.", "Persona with this need", personaOptions)}
+          {holderPanel("stakeholder", "Stakeholders with this need", "No Stakeholder has this need yet.", "Stakeholder with this need", stakeholderOptions)}
+          {holderPanel("persona", "Personas with this need", "No Persona has this need yet.", "Persona with this need", personaOptions)}
 
-        <RepresentationPanel
-          heading="Requirements it gave rise to"
-          emptyText="No Requirement has come from this need yet."
-          load={async () =>
-            (await projectNeedApi.listRequirements(projectId, need.id)).map((r) => ({
-              link_id: r.link_id, id: r.id, unique_code: r.unique_code, name: r.title, scope: "project" as const,
-            }))
-          }
-          linkFor={(requirement) => `/projects/${projectId}/requirements/${requirement.id}`}
-          edit={{
-            options: requirementOptions,
-            pickerLabel: "Requirement it gave rise to",
-            onAdd: async (requirementId) => {
-              await projectNeedApi.addRequirement(projectId, need.id, requirementId);
-            },
-            onRemove: (requirement) => projectNeedApi.removeRequirement(projectId, need.id, requirement.id),
-          }}
-        />
+          <RepresentationPanel
+            heading="Requirements it gave rise to"
+            emptyText="No Requirement has come from this need yet."
+            load={async () =>
+              (await projectNeedApi.listRequirements(projectId, need.id)).map((r) => ({
+                link_id: r.link_id, id: r.id, unique_code: r.unique_code, name: r.title, scope: "project" as const,
+              }))
+            }
+            linkFor={(requirement) => `/projects/${projectId}/requirements/${requirement.id}`}
+            edit={{
+              options: requirementOptions,
+              pickerLabel: "Requirement it gave rise to",
+              onAdd: async (requirementId) => {
+                await projectNeedApi.addRequirement(projectId, need.id, requirementId);
+              },
+              onRemove: (requirement) => projectNeedApi.removeRequirement(projectId, need.id, requirement.id),
+            }}
+          />
+        </DetailCard>
 
         <VersionHistoryTable versions={versions} columns={[
           { header: "Status", render: (v) => NEED_STATUS_LABEL[v.status] },

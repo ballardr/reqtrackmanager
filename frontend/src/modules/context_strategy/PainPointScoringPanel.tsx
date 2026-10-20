@@ -32,6 +32,7 @@ import {
 } from "./painPointScoreDraft";
 import { PAIN_POINT_ROLLUP_LABEL } from "./types";
 import type { PainPointRollup, PainPointScores } from "./types";
+import { DetailCard } from "../../components/DetailCard";
 
 const SCHEME_KEY = "pain_point";
 /**
@@ -120,8 +121,7 @@ export function PainPointScoringPanel({
   }
 
   return (
-    <section className="stack" aria-label="Scoring" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-      <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Scoring</h3>
+    <DetailCard heading="Scoring">
       <ScoringModelSwitcher
         models={scheme.models.map((m) => ({ value: m.key, label: m.label }))}
         model={model}
@@ -152,6 +152,6 @@ export function PainPointScoringPanel({
         <button className="btn btn-primary" disabled={locked || saving} onClick={save}>Save scores</button>
       </div>
       {locked && <p className="text-muted" style={{ margin: 0 }}>This Pain Point has reached a terminal outcome; its scores can no longer be edited.</p>}
-    </section>
+    </DetailCard>
   );
 }

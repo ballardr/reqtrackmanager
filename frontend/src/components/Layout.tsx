@@ -237,8 +237,8 @@ function LayoutShell({ children }: { children: ReactNode }) {
         <nav
           className={`nav-rail ${railIconOnly ? "nav-rail-icons" : ""}`}
         >
-          {/* The item list is the scroll container, below the fixed collapse toggle, so the
-              scrollbar never runs under it (see `.nav-rail-scroll`, theme.css). */}
+          {/* The item list is the scroll container; it leaves the strip under the fixed collapse
+              toggle free so neither a link nor the scrollbar runs under it (see `.nav-rail-scroll`, theme.css). */}
           <div className="nav-rail-scroll stack" style={{ gap: "0.15rem" }}>
             {projectId && <ProjectNavSection projectId={projectId} items={projectNavItems} railCollapsed={railIconOnly} />}
             {/* A module-contributed "standalone workspace" section

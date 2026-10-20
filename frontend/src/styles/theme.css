@@ -22,6 +22,8 @@
   --header-height: 56px;
   --nav-rail-width: 220px;
   --nav-rail-width-collapsed: 56px;
+  --nav-toggle-overhang: 14px;
+  --chip-height: 1.5rem;
 }
 
 :root[data-theme="light"] {
@@ -30,6 +32,7 @@
   --color-surface-alt: #eef0f3;
   --color-border: #c3c9d1;
   --color-text: #1a202c;
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231a202c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   --color-text-muted: #5a6472;
   --color-primary: #475569;
   --color-primary-hover: #334155;
@@ -63,6 +66,7 @@
   --color-surface-alt: #242b37;
   --color-border: #333c4a;
   --color-text: #e6e9ef;
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23e6e9ef' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   --color-text-muted: #9aa4b2;
   --color-primary: #94a3b8;
   --color-primary-hover: #a9b6c7;
@@ -314,14 +318,25 @@ textarea.input {
   padding: 0.5rem 0.6rem;
 }
 
-/* A native <select>'s own dropdown arrow (appearance: auto — this app
-   draws no custom chevron) renders inside its padding box, not in space
-   the browser reserves beyond it — the shared 0.6rem right padding above
-   left the arrow sitting almost flush against the border on every select
-   in the app. Extra right padding only, so the value text's own left
-   alignment is unaffected. */
-select.input {
+/* Every single-value <select> draws the same chevron, at the same place: the browser's own arrow
+   (appearance: auto) sits at a different distance from the edge in each browser and at different
+   widths, so two selects in one panel could disagree, and it never matched the chevron of the custom
+   dropdowns (`MultiSelectDropdown`, the tag filter). The chevron is the lucide `ChevronDown`, 14px, in
+   the theme's text colour (`--select-chevron`, set per theme), 0.6rem from the right edge, which is
+   where `MultiSelectDropdown` puts its own. Right padding keeps the value text clear of it. A
+   multi-line (`multiple`, `size`) select keeps its native look. */
+select.input:not([multiple]):not([size]) {
+  appearance: none;
   padding-right: 2rem;
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  background-size: 14px 14px;
+}
+
+select.input[multiple],
+select.input[size] {
+  padding-right: 0.6rem;
 }
 
 .badge {
@@ -890,6 +905,27 @@ a.figure-projects-link:hover {
   flex-wrap: wrap;
 }
 
+/* A checkbox, radio or switch with its text: the control never wraps away from the text. A long label
+   wraps inside its own text box, hanging beside the control, not under it (unlike `.row`, which wraps
+   its items). Use it for every `<label>` around a checkbox; `CheckboxField` already does. */
+.checkbox-label {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.checkbox-label > :first-child {
+  flex: none;
+}
+
+/* The box sits on the first line of text, not centred on a wrapped block. */
+.checkbox-label > input[type="checkbox"],
+.checkbox-label > input[type="radio"] {
+  margin: 0.25em 0 0;
+}
+
 /* `ItemRow` (components/ItemRow.tsx): text beside controls. The content wraps inside its own box;
    the actions never move to a new line. Unlike `.row` (toolbars, filter bars: wrapping is right),
    this never wraps, because its one job is keeping the actions beside the text. */
@@ -972,18 +1008,26 @@ a.figure-projects-link:hover {
   transition: width 0.15s ease;
 }
 
-/* The rail's item list is its scroll container, not the rail itself. It starts below the fixed
-   collapse toggle (.nav-rail-toggle-wrapper: 12px below the header, 28px tall, straddling the
-   rail's right edge), so the scrollbar can never run under the toggle at any rail width. The bar
-   is thin and drawn from theme tokens so it suits both themes. */
+/* The rail's item list is its scroll container, not the rail itself, and starts level with the top
+   of the rail (the first link is level with the collapse toggle, not below it). The toggle
+   (.nav-rail-toggle-wrapper: 12px below the header, 28px tall) straddles the rail's right edge, so
+   the inner half of it, --nav-toggle-overhang, lies over the rail. The container leaves that
+   strip free (margin-right) so neither a link nor the scrollbar can run under the toggle, in
+   every browser: a WebKit-only track inset would leave Firefox's thin bar under it. The bar is
+   thin and drawn from theme tokens so it suits both themes. */
 .nav-rail-scroll {
   flex: 1 1 auto;
   min-height: 0;
-  margin-top: 40px;
-  padding: 0.25rem 0.75rem 0.75rem;
+  margin-right: var(--nav-toggle-overhang);
+  padding: 1rem 0.5rem 0.75rem 0.75rem;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--color-border) transparent;
+}
+
+.nav-rail-icons .nav-rail-scroll {
+  padding-left: 0.4rem;
+  padding-right: 0.4rem;
 }
 
 .nav-rail-scroll::-webkit-scrollbar {
@@ -1120,6 +1164,23 @@ a.figure-projects-link:hover {
 }
 
 .artefact-links__title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+/* In the detail aside the title is the aside's own tab strip, so the buttons sit at the right edge. */
+.artefact-links__header--untitled,
+.artefact-links--compact .artefact-links__header--untitled {
+  justify-content: flex-end;
+}
+
+.comment-row {
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.detail-card__title,
+.detail-layout__aside-title {
   margin: 0;
   font-size: 1.1rem;
 }
@@ -1848,8 +1909,12 @@ td {
 /* Sortable column headers — the button fills the `<th>`'s
    own padding rather than adding its own, so a sortable header lines up
    exactly with a plain-text one next to it. */
-th:has(> .th-sort) {
+th:has(> .th-sort),
+th:has(> .th-with-action > .th-sort) {
   padding: 0;
+}
+.th-with-action > .th-sort {
+  width: auto;
 }
 .th-sort {
   display: inline-flex;
@@ -1936,7 +2001,9 @@ td:has(> .disclosure-toggle) {
     display: none;
   }
   .nav-rail-scroll {
-    margin-top: 0;
+    margin-right: 0;
+    padding-left: 0.4rem;
+    padding-right: 0.4rem;
   }
   .nav-rail:not(.nav-rail-icons) {
     width: var(--nav-rail-width-collapsed);
@@ -2353,6 +2420,9 @@ td:has(> .disclosure-toggle) {
   align-items: center;
   gap: 0.25rem;
   max-width: 100%;
+  /* One height for every chip and chip-shaped control in a row (style guide "Pattern: chips"); a label
+     that wraps grows past it. */
+  min-height: var(--chip-height);
   box-sizing: border-box;
   border-radius: 999px;
   padding: 0.15rem 0.6rem;
@@ -2366,6 +2436,33 @@ td:has(> .disclosure-toggle) {
 .tag-chip {
   border-left: 3px solid var(--tag-colour, var(--color-border));
   border-radius: 6px;
+}
+
+/* The `[+]` that opens the tag picker: a chip-sized, tag-shaped button at the end of the chip row. */
+.tag-add {
+  width: var(--chip-height);
+  padding: 0;
+  justify-content: center;
+  border-radius: 6px;
+  cursor: pointer;
+  color: inherit;
+}
+
+.tag-add:hover {
+  background: var(--color-surface);
+  border-color: var(--color-accent);
+}
+
+/* The scope select sized to its chosen option (it sits in a title row), outlined in the accent while
+   widened so the state shows without hovering for its explanation. */
+select.input.project-scope-select {
+  width: auto;
+  max-width: 100%;
+}
+
+.project-scope-select-widened {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 0;
 }
 
 .chip__label {
@@ -2382,6 +2479,42 @@ td:has(> .disclosure-toggle) {
   background: transparent;
   color: inherit;
   cursor: pointer;
+}
+
+/* The comment typed with a change, quoted under an activity sentence; collapsed to three lines until expanded. */
+.activity-note {
+  margin: 0;
+  padding: 0.15rem 0 0.15rem 0.6rem;
+  border-left: 3px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.activity-note-collapsed {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+/* A column header's own control (a settings gear) beside its text or sort button. */
+.th-with-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+th:has(> .th-with-action > .th-sort) > .th-with-action {
+  padding-right: 0.4rem;
+}
+
+/* A settings control whose current choice is not the default: an accent mark on the button, so a changed view shows while it is closed. */
+.btn-marked {
+  border-color: var(--color-accent);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
 }
 
 /* A pill that follows running text on the same line (a status after a title): a gap, not a margin hack at each use. */

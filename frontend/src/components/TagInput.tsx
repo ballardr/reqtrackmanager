@@ -1,8 +1,9 @@
 /**
  * Module: components/TagInput
  *
- * The tag picker: the chosen tags as removable chips followed by one text box. Typing filters
- * the vocabulary; Enter, a click, a comma or a semicolon adds the highlighted (or typed) tag.
+ * The tag picker: the chosen tags as removable chips followed by a `[+]` chip. The `[+]` opens a
+ * `Popover` holding one text box; typing filters the vocabulary and Enter, a click, a comma or a
+ * semicolon adds the highlighted (or typed) tag.
  *
  * Responsibilities:
  * - In a free project, offer "Add tag ..." for a name the vocabulary does not have.
@@ -11,15 +12,21 @@
  * - Validate a typed name with the same rules as the server (`tagNameProblem`).
  * - Report each change through `onChange`; nothing is saved here.
  *
- * Design decisions: names are compared case-insensitively, as the server does, so picking
+ * Design decisions: the text box lives in a popover, not in the row, so a form or a record header
+ * shows chips and one small control rather than a full-width field. The popover stays open after
+ * each add (cleared and refocused) so several tags go in one visit; Escape closes the suggestion
+ * list first, then the popover. Names are compared case-insensitively, as the server does, so picking
  * `safety` when `Safety` is listed uses the listed spelling. The chips keep their vocabulary
- * colour. Enter never submits a surrounding form while the list is open or text is typed.
+ * colour. Enter never submits a surrounding form (the popover is portalled outside it).
  */
-import { useId, useMemo, useState, type KeyboardEvent } from "react";
+import { Plus } from "lucide-react";
+import { useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 import { normaliseTagName, tagNameProblem, TAG_NAME_MAX_LENGTH, type TagChipData } from "../api/tags";
 import { useStrings } from "../context/TerminologyContext";
+import { Popover } from "./Popover";
 import { TagChip } from "./TagChip";
+import { Tooltip } from "./Tooltip";
 
 const key = (name: string) => normaliseTagName(name).toLowerCase();
 
@@ -47,6 +54,9 @@ export function TagInput({
   const [open, setOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(-1);
   const [problem, setProblem] = useState<string | null>(null);
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const addRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const colourOf = useMemo(() => new Map(suggestions.map((t) => [key(t.name), t.colour])), [suggestions]);
   const chosen = useMemo(() => new Set(value.map(key)), [value]);
@@ -80,6 +90,16 @@ export function TagInput({
       return;
     }
     if (!chosen.has(key(name))) onChange([...value, listed ? listed.name : name]);
+    setQuery("");
+    setProblem(null);
+    setHighlighted(-1);
+    setOpen(false);
+    // The popover stays open so several tags go in one visit.
+    inputRef.current?.focus();
+  }
+
+  function closePopover() {
+    setPopoverOpen(false);
     setQuery("");
     setProblem(null);
     setHighlighted(-1);
@@ -118,6 +138,7 @@ export function TagInput({
     }
   }
 
+  const addLabel = strings.tags.addTag;
   return (
     <div className="stack" style={{ gap: "0.25rem" }}>
       <div className="row" style={{ gap: "0.35rem", alignItems: "center" }}>
@@ -131,8 +152,26 @@ export function TagInput({
           />
         ))}
         {!disabled && (
-          <div style={{ position: "relative", flex: "1 1 10rem", minWidth: "8rem" }}>
+          <Tooltip label={addLabel}>
+            <button
+              ref={addRef}
+              type="button"
+              className="chip tag-add"
+              aria-label={addLabel}
+              aria-haspopup="dialog"
+              aria-expanded={popoverOpen}
+              onClick={() => (popoverOpen ? closePopover() : setPopoverOpen(true))}
+            >
+              <Plus size={12} aria-hidden="true" />
+            </button>
+          </Tooltip>
+        )}
+      </div>
+      {popoverOpen && !disabled && (
+        <Popover anchorRef={addRef} title={addLabel} onClose={closePopover} fit>
+          <div className="stack" style={{ gap: "0.4rem", minWidth: "14rem" }}>
             <input
+              ref={inputRef}
               className="input"
               role="combobox"
               aria-label={label ?? strings.tags.label}
@@ -144,6 +183,7 @@ export function TagInput({
               placeholder={restricted ? strings.tags.inputPlaceholderRestricted : strings.tags.inputPlaceholder}
               value={query}
               maxLength={TAG_NAME_MAX_LENGTH * 2}
+              autoFocus
               onChange={(e) => {
                 setQuery(e.target.value);
                 setOpen(true);
@@ -159,11 +199,8 @@ export function TagInput({
                 id={listboxId}
                 role="listbox"
                 aria-label={strings.tags.listLabel}
-                className="card stack"
-                style={{
-                  position: "absolute", top: "100%", left: 0, right: 0, zIndex: 10, marginTop: "0.25rem",
-                  padding: "0.25rem", gap: "0.15rem", maxHeight: 220, overflowY: "auto",
-                }}
+                className="stack"
+                style={{ gap: "0.15rem", maxHeight: 220, overflowY: "auto" }}
               >
                 {options.length === 0 && (
                   <span className="text-muted" style={{ padding: "0.35rem 0.5rem" }}>{strings.tags.noMatches}</span>
@@ -192,10 +229,13 @@ export function TagInput({
                 ))}
               </div>
             )}
+            {problem && <span role="alert" style={{ fontSize: "0.8rem", color: "var(--color-danger)" }}>{problem}</span>}
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <button type="button" className="btn btn-sm" onClick={closePopover}>{strings.tags.done}</button>
+            </div>
           </div>
-        )}
-      </div>
-      {problem && <span role="alert" style={{ fontSize: "0.8rem", color: "var(--color-danger)" }}>{problem}</span>}
+        </Popover>
+      )}
     </div>
   );
 }

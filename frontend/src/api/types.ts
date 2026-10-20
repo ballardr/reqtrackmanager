@@ -1668,7 +1668,9 @@ export interface ChangeEntry {
  * separately by the caller) — the one shared description used by the
  * project overview activity card, the project history page, and the
  * requirement/change-request side-panel activity list, so the three no
- * longer describe the same data three different, inconsistent ways. */
+ * longer describe the same data three different, inconsistent ways.
+ * The note or comment typed with the change is not part of the sentence;
+ * `activityEntryNotes` returns it for the caller to show beneath. */
 export function describeActivityEntry(entry: ChangeEntry): string {
   const who = entry.actor_display_name ?? "Someone";
   if (entry.entity_type === "artefact_link" && entry.detail && typeof entry.detail.other_label === "string") {
@@ -1681,14 +1683,36 @@ export function describeActivityEntry(entry: ChangeEntry): string {
     return `${who} ${entry.action === "tagged" ? "added" : "removed"} the tag "${entry.detail.tag}"`;
   }
   const action = activityActionLabel(entry.action);
-  const changeNote = entry.detail && typeof entry.detail.change_note === "string" ? entry.detail.change_note : "";
   // AI approval via MCP (docs/decisions.md): every approval/decision/
   // completion performed through the MCP server carries `detail.via ===
   // "mcp"` — surfaced here so it's visible on every one of this function's
   // callers (ActivityPanel, ProjectHistoryPage, requirement/CR Activity
   // tabs) without each needing its own change.
   const viaMcp = entry.detail?.via === "mcp" ? " (via MCP)" : "";
-  return `${who} ${action}${changeNote ? ` — ${changeNote}` : ""}${viaMcp}`;
+  return `${who} ${action}${viaMcp}`;
+}
+
+/**
+ * The text a person typed with a change, for an activity entry: the comment given at a workflow step
+ * (`detail.comment`, written by every module's transition and by a change request's decision) and the
+ * note given with an edit (`detail.change_note`). Returned in that order, each once, empty ones left out.
+ * Older change request decisions stored their comment as `detail.note`; it is read for those entries only.
+ * The text is user input: render it as text, never as HTML.
+ */
+export function activityEntryNotes(entry: ChangeEntry): string[] {
+  const detail = entry.detail;
+  if (!detail) return [];
+  const legacyDecisionNote = entry.entity_type === "change_request" && (entry.action === "approved" || entry.action === "rejected")
+    ? detail.note
+    : undefined;
+  const candidates = [detail.comment, legacyDecisionNote, detail.change_note];
+  const notes: string[] = [];
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string") continue;
+    const text = candidate.trim();
+    if (text !== "" && !notes.includes(text)) notes.push(text);
+  }
+  return notes;
 }
 
 /**

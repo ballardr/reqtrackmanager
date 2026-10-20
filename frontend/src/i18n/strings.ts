@@ -2022,6 +2022,7 @@ const en = {
       both: "This + parent and child {projects}",
     },
     widenedHint: "Includes records from related {projects} you can open. Counts cover all of them.",
+    selectHint: "Choose whether the counts cover related {projects} you can open.",
     fromProject: (name: string) => `From ${name}`,
     coversProjects: (count: number) => `Counts cover ${count} ${count === 1 ? "project" : "projects"}; stage progress is this project's own.`,
   },
@@ -2029,6 +2030,8 @@ const en = {
   tags: {
     label: "Tags",
     none: "No tags",
+    addTag: "Add tag",
+    done: "Done",
     inputPlaceholder: "Add a tag…",
     inputPlaceholderRestricted: "Choose a tag…",
     listLabel: "Matching tags",

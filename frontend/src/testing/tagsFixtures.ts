@@ -3,7 +3,7 @@
  * `RecordTagsApi` / `TagAdminApi` implementations whose methods are `fn()` spies, so a story can
  * assert what was called without any network.
  */
-import { fn } from "storybook/test";
+import { fn, userEvent, within } from "storybook/test";
 
 import type {
   RecordTags, RecordTagsApi, Tag, TagAdminApi, TagChipData, TagUsage, TagVocabulary,
@@ -89,4 +89,13 @@ export function buildAdminApi(
     reclassify: fn(async (body: { dry_run: boolean }) => ({ matched: 4, added: 4, removed: 4, dry_run: body.dry_run })),
     ...overrides,
   };
+}
+
+/**
+ * Opens the tag picker: presses the `[+]` ("Add tag") button inside `scope` and returns the text box
+ * in the popover, which is portalled to `document.body` (so its options are found there too).
+ */
+export async function openTagPicker(scope: ReturnType<typeof within>): Promise<HTMLElement> {
+  await userEvent.click(await scope.findByRole("button", { name: "Add tag" }));
+  return within(document.body).findByRole("combobox", { name: "Tags" });
 }

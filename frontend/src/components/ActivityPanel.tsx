@@ -1,7 +1,8 @@
 import { Link } from "react-router-dom";
 
-import { activityEntityLabel, describeActivityEntry, type ChangeEntry } from "../api/types";
+import { activityEntityLabel, activityEntryNotes, describeActivityEntry, type ChangeEntry } from "../api/types";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
+import { ActivityNote } from "./ActivityNote";
 import { Badge } from "./Badge";
 
 /** Activity timeline: audit events, version history and link events, newest first
@@ -72,6 +73,7 @@ export function ActivityPanel({
                 </>
               )}
             </div>
+            {activityEntryNotes(e).map((note) => <ActivityNote key={note} text={note} />)}
             <div className="text-muted" style={{ fontSize: "0.75rem" }}>{new Date(e.timestamp).toLocaleString()}</div>
           </div>
         );

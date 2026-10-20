@@ -52,7 +52,9 @@ test.describe("Aside tabs: Links and Activity", () => {
     await test.step("the Activity tab shows the record's own events, newest first", async () => {
       await tab(page, "Activity").click();
       const aside = page.getByRole("complementary");
-      await expect(aside.getByText(/updated — Added the reasoning/)).toBeVisible();
+      await expect(aside.getByText(/updated$/).first()).toBeVisible();
+      // The change note is a quoted line under the sentence, not part of it.
+      await expect(aside.locator("blockquote.activity-note", { hasText: "Added the reasoning" })).toBeVisible();
       await expect(aside.getByText(/created/)).toBeVisible();
       await expect(links(page)).toBeHidden();
     });
@@ -60,7 +62,7 @@ test.describe("Aside tabs: Links and Activity", () => {
     await test.step("the chosen tab is remembered across a reload", async () => {
       await page.reload();
       await expect(tab(page, "Activity")).toHaveAttribute("aria-selected", "true");
-      await expect(page.getByRole("complementary").getByText(/updated — Added the reasoning/)).toBeVisible();
+      await expect(page.getByRole("complementary").locator("blockquote.activity-note", { hasText: "Added the reasoning" })).toBeVisible();
     });
 
     await test.step("switching back restores the Links panel", async () => {

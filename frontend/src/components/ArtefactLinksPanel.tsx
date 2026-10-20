@@ -56,6 +56,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { ItemRow } from "./ItemRow";
 import { LinkedRecordSummary } from "./LinkedRecordSummary";
 import { LinkTraceModal } from "./LinkTraceModal";
+import { useInDetailAside } from "./detailAsideContext";
 import { TextAreaField } from "./FormFields";
 
 export type { LinksChangeRequestMode } from "./AddArtefactLinkModal";
@@ -128,6 +129,8 @@ export function ArtefactLinksPanel({
 }) {
   const strings = useStrings();
   const { showToast } = useToast();
+  // Inside a detail page's aside the card and the title belong to the aside (its tab strip), not to this panel.
+  const inAside = useInDetailAside();
   const [graph, setGraph] = useState<LinkGraph | null>(null);
   const [failed, setFailed] = useState(false);
   const [reload, setReload] = useState(0);
@@ -215,8 +218,8 @@ export function ArtefactLinksPanel({
 
   if (!projectId) {
     return (
-      <section className={compactView ? "stack artefact-links--compact" : "card stack"} aria-label={strings.artefactLinks.title}>
-        <h2 className="artefact-links__title">{strings.artefactLinks.title}</h2>
+      <section className={compactView ? "stack artefact-links--compact" : inAside ? "stack" : "card stack"} aria-label={strings.artefactLinks.title}>
+        {!inAside && <h2 className="artefact-links__title">{strings.artefactLinks.title}</h2>}
         <p className="text-muted" style={{ margin: 0 }}>{strings.artefactLinks.orgScopedNote}</p>
         {actions && <div className="row">{typeof actions === "function" ? actions({ reload: changed }) : actions}</div>}
       </section>
@@ -229,11 +232,11 @@ export function ArtefactLinksPanel({
     <AddPopoverButton label={strings.artefactLinks.viewOptions} icon={SlidersHorizontal} size={compactView ? "sm" : "md"}>
       {() => (
         <div className="stack" style={{ gap: "0.5rem" }}>
-          <label className="row" style={{ gap: "0.4rem", alignItems: "flex-start" }}>
+          <label className="checkbox-label">
             <input type="checkbox" aria-label={strings.artefactLinks.viewCompact} checked={compactView} onChange={(e) => setCompactView(e.target.checked)} />
             <span>{strings.artefactLinks.viewCompact}</span>
           </label>
-          <label className="row" style={{ gap: "0.4rem", alignItems: "flex-start" }}>
+          <label className="checkbox-label">
             <input type="checkbox" aria-label={strings.artefactLinks.viewRelationships} checked={showRelationships} onChange={(e) => chooseRelationships(e.target.checked)} />
             <span className="stack" style={{ gap: "0.15rem" }}>
               <span>{strings.artefactLinks.viewRelationships}</span>
@@ -245,9 +248,9 @@ export function ArtefactLinksPanel({
     </AddPopoverButton>
   );
   return (
-    <section className={compactView ? "stack artefact-links--compact" : "card stack"} aria-label={strings.artefactLinks.title}>
-      <div className="row artefact-links__header">
-        <h2 className="artefact-links__title">{strings.artefactLinks.title}</h2>
+    <section className={compactView ? "stack artefact-links--compact" : inAside ? "stack" : "card stack"} aria-label={strings.artefactLinks.title}>
+      <div className={`row artefact-links__header${inAside ? " artefact-links__header--untitled" : ""}`}>
+        {!inAside && <h2 className="artefact-links__title">{strings.artefactLinks.title}</h2>}
         {/* One structure and one order for both layouts (Add, Trace, then View options at the end), so the
             buttons do not move when the layout flips and the View options popover stays open. */}
         <div className="row artefact-links__buttons">

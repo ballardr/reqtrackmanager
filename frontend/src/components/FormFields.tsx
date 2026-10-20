@@ -131,8 +131,8 @@ export function CheckboxField({
   return (
     <div className="stack" style={{ gap: "0.25rem" }}>
       {heading && <FieldCaption label={heading} help={help} required={required} />}
-      <span className="row" style={{ gap: "0.4rem", alignItems: "center", minHeight: heading ? "2.25rem" : undefined }}>
-        <label className="row" style={{ gap: "0.4rem" }}>
+      <span className="row" style={{ gap: "0.4rem", alignItems: "flex-start", flexWrap: "nowrap", minHeight: heading ? "2.25rem" : undefined }}>
+        <label className="checkbox-label">
           <input
             type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} aria-label={ariaLabel} required={required}
             disabled={disabled} title={title}
@@ -226,7 +226,7 @@ export function ToggleField({
 }) {
   return (
     <span className="row" style={{ gap: "0.6rem", alignItems: "center" }}>
-      <label className="row" style={{ gap: "0.6rem" }}>
+      <label className="checkbox-label" style={{ gap: "0.6rem" }}>
         <ToggleSwitch checked={checked} onChange={onChange} label={label} disabled={disabled} />
         <span className="stack" style={{ gap: 0 }}>
           {label}

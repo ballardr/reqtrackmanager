@@ -38,6 +38,7 @@ import { api } from "../../api/client";
 import type { OrgUser, Project } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { RecordActivity } from "../../components/RecordActivity";
+import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordTags } from "../../components/RecordTags";
 import { DetailLayout } from "../../components/DetailLayout";
 import { OverridePill } from "../../components/OverridePill";
@@ -61,6 +62,7 @@ import type { Persona, PersonaFieldValues, PersonaVersion } from "./types";
 import { PERSONA_SCOPE_LABEL, PERSONA_STATUS_LABEL, PERSONA_STATUS_TONE, PERSONA_WEIGHT_SOURCE_LABEL } from "./types";
 import { Badge } from "../../components/Badge";
 import { STAKEHOLDERS_HELP } from "./help";
+import { DetailCard } from "../../components/DetailCard";
 
 const TRANSITION_DONE: Record<LifecycleAction, string> = {
   activate: "Persona activated.",
@@ -201,7 +203,7 @@ export function PersonaDetailPage() {
 
   return (
     <DetailLayout
-      activity={projectId ? <RecordActivity projectId={projectId} artefactType="persona" artefactId={persona.id} /> : undefined}
+      activity={projectId ? <RecordActivity projectId={projectId} artefactType="persona" artefactId={persona.id} refreshToken={recordActivityKey(persona)} /> : undefined}
       aside={
         <ArtefactLinksPanel
           projectId={projectId}
@@ -221,12 +223,11 @@ export function PersonaDetailPage() {
           <>
             <Badge>{PERSONA_SCOPE_LABEL[persona.scope]}</Badge>
             <Badge tone={PERSONA_STATUS_TONE[persona.status]}>{PERSONA_STATUS_LABEL[persona.status]}</Badge>
+            {persona.is_archived && <Badge tone="muted">Archived</Badge>}
           </>
         }
-        subtitle={
-          `${[persona.persona_type_name, persona.role_title].filter(Boolean).join(" · ") || "No type or role set"} · v${persona.version_number}` +
-          (persona.is_archived ? " · Archived" : "")
-        }
+        version={persona.version_number}
+        subtitle={[persona.persona_type_name, persona.role_title].filter(Boolean).join(" · ") || "No type or role set"}
         onEdit={readOnlyInProject ? undefined : () => setEditing(true)}
         actions={[archive.item]}
         transitions={
@@ -259,93 +260,95 @@ export function PersonaDetailPage() {
           />
         )}
 
-        {persona.description && <RecordField label="Description" value={persona.description} />}
-        {persona.goals && <RecordField label="Goals" value={persona.goals} />}
-        {persona.needs && <RecordField label="Needs" value={persona.needs} />}
-        {persona.behaviours && <RecordField label="Behaviours" value={persona.behaviours} />}
-        {persona.context_environment && <RecordField label="Context / environment" value={persona.context_environment} />}
-        {persona.skills_proficiency && <RecordField label="Skills / proficiency" value={persona.skills_proficiency} />}
-        {persona.frequency_of_use && <RecordField label="Frequency of use" value={persona.frequency_of_use} />}
-        {persona.constraints && <RecordField label="Constraints" value={persona.constraints} />}
+        <DetailCard>
+          {persona.description && <RecordField label="Description" value={persona.description} />}
+          {persona.goals && <RecordField label="Goals" value={persona.goals} />}
+          {persona.needs && <RecordField label="Needs" value={persona.needs} />}
+          {persona.behaviours && <RecordField label="Behaviours" value={persona.behaviours} />}
+          {persona.context_environment && <RecordField label="Context / environment" value={persona.context_environment} />}
+          {persona.skills_proficiency && <RecordField label="Skills / proficiency" value={persona.skills_proficiency} />}
+          {persona.frequency_of_use && <RecordField label="Frequency of use" value={persona.frequency_of_use} />}
+          {persona.constraints && <RecordField label="Constraints" value={persona.constraints} />}
 
-        <RecordFieldGroup help={STAKEHOLDERS_HELP.personaImportanceWeight} label="Importance weight" gap="0.35rem">
-          {projectId ? (
-            <>
-              <div className="row" style={{ gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
-                <span data-testid="effective-weight">
-                  {persona.effective_weight === null ? "Not weighted" : persona.effective_weight}
+          <RecordFieldGroup help={STAKEHOLDERS_HELP.personaImportanceWeight} label="Importance weight" gap="0.35rem">
+            {projectId ? (
+              <>
+                <div className="row" style={{ gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
+                  <span data-testid="effective-weight">
+                    {persona.effective_weight === null ? "Not weighted" : persona.effective_weight}
+                  </span>
+                  <OverridePill
+                    custom={overridden}
+                    defaultLabel={PERSONA_WEIGHT_SOURCE_LABEL[weightSource]}
+                    resetLabel="Use inherited value"
+                    onReset={() =>
+                      run(() => projectPersonaApi.clearWeightOverride(projectId, persona.id), "Weight override removed.", "Could not remove the weight override.")
+                    }
+                  />
+                </div>
+                <div className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+                  <input
+                    className="input"
+                    type="number"
+                    min="0"
+                    step="any"
+                    style={{ maxWidth: "10rem" }}
+                    value={weightInput}
+                    onChange={(e) => setWeightInput(e.target.value)}
+                    aria-label="Project weight override"
+                    placeholder="Override for this project"
+                  />
+                  <button
+                    className="btn"
+                    disabled={!weightInputValid}
+                    onClick={async () => {
+                      await run(() => projectPersonaApi.setWeightOverride(projectId, persona.id, weightInputNumber), "Weight override saved.", "Could not save the weight override.");
+                      setWeightInput("");
+                    }}
+                  >
+                    Set override
+                  </button>
+                </div>
+                <span className="text-muted" style={{ fontSize: "0.8rem" }}>
+                  The persona's own weight is {persona.weight === null ? "not set" : persona.weight}. An override applies to this project and any child project without its own.
                 </span>
-                <OverridePill
-                  custom={overridden}
-                  defaultLabel={PERSONA_WEIGHT_SOURCE_LABEL[weightSource]}
-                  resetLabel="Use inherited value"
-                  onReset={() =>
-                    run(() => projectPersonaApi.clearWeightOverride(projectId, persona.id), "Weight override removed.", "Could not remove the weight override.")
-                  }
-                />
-              </div>
-              <div className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
-                <input
-                  className="input"
-                  type="number"
-                  min="0"
-                  step="any"
-                  style={{ maxWidth: "10rem" }}
-                  value={weightInput}
-                  onChange={(e) => setWeightInput(e.target.value)}
-                  aria-label="Project weight override"
-                  placeholder="Override for this project"
-                />
-                <button
-                  className="btn"
-                  disabled={!weightInputValid}
-                  onClick={async () => {
-                    await run(() => projectPersonaApi.setWeightOverride(projectId, persona.id, weightInputNumber), "Weight override saved.", "Could not save the weight override.");
-                    setWeightInput("");
-                  }}
-                >
-                  Set override
-                </button>
-              </div>
-              <span className="text-muted" style={{ fontSize: "0.8rem" }}>
-                The persona's own weight is {persona.weight === null ? "not set" : persona.weight}. An override applies to this project and any child project without its own.
-              </span>
-            </>
-          ) : (
-            <span>{persona.weight === null ? "Not weighted" : persona.weight}</span>
-          )}
-        </RecordFieldGroup>
+              </>
+            ) : (
+              <span>{persona.weight === null ? "Not weighted" : persona.weight}</span>
+            )}
+          </RecordFieldGroup>
 
-        <RecordPrincipalField
-          label="Owner" ariaLabel="Persona owner" principal={persona.owner} orgUsers={orgUsers}
-          organizationId={ownerOrgId} projectId={persona.scope === "project" ? projectId : undefined} readOnly={readOnlyInProject}
-          onChange={(owner) =>
-            run(() => scopedApi.update(scopeId, persona.id, { owner }), "Owner updated.", "Could not update this Persona's owner.")
-          }
-        />
-        <RecordPrincipalField
-          label="Champion (keeps this persona accurate)" ariaLabel="Persona champion" principal={persona.champion}
-          orgUsers={orgUsers} organizationId={ownerOrgId} projectId={persona.scope === "project" ? projectId : undefined}
-          readOnly={readOnlyInProject}
-          onChange={(champion) =>
-            run(() => scopedApi.update(scopeId, persona.id, { champion }), "Champion updated.", "Could not update this Persona's champion.")
-          }
-        />
+          <RecordPrincipalField
+            label="Owner" ariaLabel="Persona owner" principal={persona.owner} orgUsers={orgUsers}
+            organizationId={ownerOrgId} projectId={persona.scope === "project" ? projectId : undefined} readOnly={readOnlyInProject}
+            onChange={(owner) =>
+              run(() => scopedApi.update(scopeId, persona.id, { owner }), "Owner updated.", "Could not update this Persona's owner.")
+            }
+          />
+          <RecordPrincipalField
+            label="Champion (keeps this persona accurate)" ariaLabel="Persona champion" principal={persona.champion}
+            orgUsers={orgUsers} organizationId={ownerOrgId} projectId={persona.scope === "project" ? projectId : undefined}
+            readOnly={readOnlyInProject}
+            onChange={(champion) =>
+              run(() => scopedApi.update(scopeId, persona.id, { champion }), "Champion updated.", "Could not update this Persona's champion.")
+            }
+          />
 
-        <RepresentationPanel
-          heading="Represented by"
-          emptyText="No Stakeholder represents this Persona yet."
-          load={() => scopedApi.listStakeholders(scopeId, persona.id)}
-          linkFor={(stakeholder) => `${projectId ? "/projects" : "/orgs"}/${scopeId}/modules/stakeholders/stakeholders/${stakeholder.id}`}
-        />
+          <RepresentationPanel
+            heading="Represented by"
+            emptyText="No Stakeholder represents this Persona yet."
+            load={() => scopedApi.listStakeholders(scopeId, persona.id)}
+            linkFor={(stakeholder) => `${projectId ? "/projects" : "/orgs"}/${scopeId}/modules/stakeholders/stakeholders/${stakeholder.id}`}
+          />
 
-        <HeldNeedsPanel projectId={projectId} load={() => projectNeedApi.listPersonaNeeds(projectId ?? "", persona.id)} />
+          <HeldNeedsPanel projectId={projectId} load={() => projectNeedApi.listPersonaNeeds(projectId ?? "", persona.id)} />
 
-        <EngagementTimelinePanel
-          projectId={projectId}
-          subject={{ kind: "persona", id: persona.id, name: persona.name }}
-          load={() => projectEngagementApi.list(projectId ?? "", { persona_id: persona.id })}
-        />
+          <EngagementTimelinePanel
+            projectId={projectId}
+            subject={{ kind: "persona", id: persona.id, name: persona.name }}
+            load={() => projectEngagementApi.list(projectId ?? "", { persona_id: persona.id })}
+          />
+        </DetailCard>
 
         <VersionHistoryTable
           versions={versions}

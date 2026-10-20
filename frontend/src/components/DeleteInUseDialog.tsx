@@ -155,7 +155,7 @@ export function DeleteInUseDialog({
           )}
           {keep && (
             <section className="stack" style={{ gap: "0.25rem" }}>
-              <label className="row" style={{ gap: "0.5rem" }}>
+              <label className="checkbox-label" style={{ gap: "0.5rem" }}>
                 <input type="checkbox" checked={keepChecked} disabled={busy} onChange={(e) => void toggleKeep(e.target.checked)} />
                 <strong>{keep.label}</strong>
               </label>

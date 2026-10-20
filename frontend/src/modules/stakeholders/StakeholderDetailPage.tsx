@@ -31,6 +31,7 @@ import { api } from "../../api/client";
 import type { OrgUser, Project } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { RecordActivity } from "../../components/RecordActivity";
+import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordTags } from "../../components/RecordTags";
 import { DetailLayout } from "../../components/DetailLayout";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
@@ -60,6 +61,7 @@ import {
 import { levelName, useStakeholderScheme } from "./useStakeholderScheme";
 import { Badge } from "../../components/Badge";
 import { STAKEHOLDERS_HELP } from "./help";
+import { DetailCard } from "../../components/DetailCard";
 
 const TRANSITION_DONE: Record<LifecycleAction, string> = {
   activate: "Stakeholder activated.",
@@ -244,7 +246,7 @@ export function StakeholderDetailPage() {
 
   return (
     <DetailLayout
-      activity={projectId ? <RecordActivity projectId={projectId} artefactType="stakeholder" artefactId={stakeholder.id} /> : undefined}
+      activity={projectId ? <RecordActivity projectId={projectId} artefactType="stakeholder" artefactId={stakeholder.id} refreshToken={recordActivityKey(stakeholder)} /> : undefined}
       aside={
         <ArtefactLinksPanel
           projectId={projectId}
@@ -264,12 +266,11 @@ export function StakeholderDetailPage() {
           <>
             <Badge>{STAKEHOLDER_SCOPE_LABEL[stakeholder.scope]}</Badge>
             <Badge tone={STAKEHOLDER_STATUS_TONE[stakeholder.status]}>{STAKEHOLDER_STATUS_LABEL[stakeholder.status]}</Badge>
+            {stakeholder.is_archived && <Badge tone="muted">Archived</Badge>}
           </>
         }
-        subtitle={
-          `${[stakeholder.stakeholder_type_name, stakeholder.role, stakeholder.organisation_group].filter(Boolean).join(" · ") || "No type or role set"} · v${stakeholder.version_number}` +
-          (stakeholder.is_archived ? " · Archived" : "")
-        }
+        version={stakeholder.version_number}
+        subtitle={[stakeholder.stakeholder_type_name, stakeholder.role, stakeholder.organisation_group].filter(Boolean).join(" · ") || "No type or role set"}
         onEdit={readOnlyInProject ? undefined : () => setEditing(true)}
         actions={[archive.item, eraseAction.item]}
         transitions={
@@ -302,88 +303,90 @@ export function StakeholderDetailPage() {
           />
         )}
 
-        {stakeholder.description && <RecordField label="Description" value={stakeholder.description} />}
-        {stakeholder.interests && <RecordField label="Interests" value={stakeholder.interests} />}
-        {stakeholder.responsibilities && <RecordField label="Responsibilities" value={stakeholder.responsibilities} />}
-        {stakeholder.goals_needs && <RecordField label="Goals and needs" value={stakeholder.goals_needs} />}
-        {stakeholder.priorities && <RecordField label="Priorities" value={stakeholder.priorities} />}
-        {stakeholder.constraints && <RecordField label="Constraints" value={stakeholder.constraints} />}
-        {stakeholder.workflows_scenarios && <RecordField label="Workflows / use scenarios" value={stakeholder.workflows_scenarios} />}
-        {stakeholder.contact_info && <RecordField label="Contact / reference information" value={stakeholder.contact_info} />}
+        <DetailCard>
+          {stakeholder.description && <RecordField label="Description" value={stakeholder.description} />}
+          {stakeholder.interests && <RecordField label="Interests" value={stakeholder.interests} />}
+          {stakeholder.responsibilities && <RecordField label="Responsibilities" value={stakeholder.responsibilities} />}
+          {stakeholder.goals_needs && <RecordField label="Goals and needs" value={stakeholder.goals_needs} />}
+          {stakeholder.priorities && <RecordField label="Priorities" value={stakeholder.priorities} />}
+          {stakeholder.constraints && <RecordField label="Constraints" value={stakeholder.constraints} />}
+          {stakeholder.workflows_scenarios && <RecordField label="Workflows / use scenarios" value={stakeholder.workflows_scenarios} />}
+          {stakeholder.contact_info && <RecordField label="Contact / reference information" value={stakeholder.contact_info} />}
 
-        <RecordFieldGroup help={STAKEHOLDERS_HELP.stakeholderInfluenceInterest} label="Influence and interest">
-          <span data-testid="grid-position">
-            Influence: {levelName(scheme, "influence", stakeholder.influence_level_id)} · Interest: {levelName(scheme, "interest", stakeholder.interest_level_id)}
-            {hint?.quadrant && ` · ${GRID_QUADRANT_LABEL[hint.quadrant]}`}
-          </span>
-        </RecordFieldGroup>
-
-        <RecordFieldGroup helpNotNeeded label="Engagement">
-          <span data-testid="cadence">
-            Target cadence: {stakeholder.target_cadence ? TARGET_CADENCE_LABEL[stakeholder.target_cadence] : "Not set"}
-            {hint?.suggested_cadence && hint.suggested_cadence !== stakeholder.target_cadence &&
-              ` (suggested by their position: ${TARGET_CADENCE_LABEL[hint.suggested_cadence]})`}
-          </span>
-          {stakeholder.availability_constraints && (
-            <span className="text-muted">Their availability: {stakeholder.availability_constraints}</span>
-          )}
-          {projectId && <span data-testid="last-engaged">Last engaged: {stakeholder.last_engaged ?? "Never"}</span>}
-        </RecordFieldGroup>
-
-        <RecordPrincipalField
-          label="Owner" ariaLabel="Stakeholder owner" principal={stakeholder.owner} orgUsers={orgUsers}
-          organizationId={ownerOrgId} projectId={stakeholder.scope === "project" ? projectId : undefined}
-          readOnly={readOnlyInProject}
-          onChange={(owner) =>
-            run(() => scopedApi.update(scopeId, stakeholder.id, { owner }), "Owner updated.", "Could not update this Stakeholder's owner.")
-          }
-        />
-        <StakeholderGroupsField
-          current={stakeholder.groups}
-          groups={groups}
-          tier={projectId ? "project" : "organization"}
-          onSave={async (groupIds) => {
-            const refs = await groupApi.setStakeholderGroups(scopeId, stakeholder.id, groupIds);
-            setStakeholder({ ...stakeholder, groups: refs });
-            return refs;
-          }}
-        />
-        {stakeholder.user_id && (
-          <RecordFieldGroup helpNotNeeded label="Platform user">
-            <span>{linkedUser?.display_name ?? "A platform user"}</span>
+          <RecordFieldGroup help={STAKEHOLDERS_HELP.stakeholderInfluenceInterest} label="Influence and interest">
+            <span data-testid="grid-position">
+              Influence: {levelName(scheme, "influence", stakeholder.influence_level_id)} · Interest: {levelName(scheme, "interest", stakeholder.interest_level_id)}
+              {hint?.quadrant && ` · ${GRID_QUADRANT_LABEL[hint.quadrant]}`}
+            </span>
           </RecordFieldGroup>
-        )}
 
-        <RepresentationPanel
-          heading="Represents these Personas"
-          emptyText="This Stakeholder doesn't represent any Persona yet."
-          load={() => scopedApi.listPersonas(scopeId, stakeholder.id)}
-          linkFor={(persona) =>
-            projectId
-              ? `/projects/${projectId}/modules/stakeholders/personas/${persona.id}`
-              : `/orgs/${scopeId}/modules/stakeholders/personas/${persona.id}`
-          }
-          edit={
-            readOnlyInProject
-              ? undefined
-              : {
-                  options: personaOptions,
-                  pickerLabel: "Persona to represent",
-                  onAdd: async (personaId) => {
-                    await scopedApi.addPersona(scopeId, stakeholder.id, personaId);
-                  },
-                  onRemove: (persona) => scopedApi.removePersona(scopeId, stakeholder.id, persona.id),
-                }
-          }
-        />
+          <RecordFieldGroup helpNotNeeded label="Engagement">
+            <span data-testid="cadence">
+              Target cadence: {stakeholder.target_cadence ? TARGET_CADENCE_LABEL[stakeholder.target_cadence] : "Not set"}
+              {hint?.suggested_cadence && hint.suggested_cadence !== stakeholder.target_cadence &&
+                ` (suggested by their position: ${TARGET_CADENCE_LABEL[hint.suggested_cadence]})`}
+            </span>
+            {stakeholder.availability_constraints && (
+              <span className="text-muted">Their availability: {stakeholder.availability_constraints}</span>
+            )}
+            {projectId && <span data-testid="last-engaged">Last engaged: {stakeholder.last_engaged ?? "Never"}</span>}
+          </RecordFieldGroup>
 
-        <HeldNeedsPanel projectId={projectId} load={() => projectNeedApi.listStakeholderNeeds(projectId ?? "", stakeholder.id)} />
+          <RecordPrincipalField
+            label="Owner" ariaLabel="Stakeholder owner" principal={stakeholder.owner} orgUsers={orgUsers}
+            organizationId={ownerOrgId} projectId={stakeholder.scope === "project" ? projectId : undefined}
+            readOnly={readOnlyInProject}
+            onChange={(owner) =>
+              run(() => scopedApi.update(scopeId, stakeholder.id, { owner }), "Owner updated.", "Could not update this Stakeholder's owner.")
+            }
+          />
+          <StakeholderGroupsField
+            current={stakeholder.groups}
+            groups={groups}
+            tier={projectId ? "project" : "organization"}
+            onSave={async (groupIds) => {
+              const refs = await groupApi.setStakeholderGroups(scopeId, stakeholder.id, groupIds);
+              setStakeholder({ ...stakeholder, groups: refs });
+              return refs;
+            }}
+          />
+          {stakeholder.user_id && (
+            <RecordFieldGroup helpNotNeeded label="Platform user">
+              <span>{linkedUser?.display_name ?? "A platform user"}</span>
+            </RecordFieldGroup>
+          )}
 
-        <EngagementTimelinePanel
-          projectId={projectId}
-          subject={{ kind: "stakeholder", id: stakeholder.id, name: stakeholder.name }}
-          load={() => projectEngagementApi.listForStakeholder(projectId ?? "", stakeholder.id)}
-        />
+          <RepresentationPanel
+            heading="Represents these Personas"
+            emptyText="This Stakeholder doesn't represent any Persona yet."
+            load={() => scopedApi.listPersonas(scopeId, stakeholder.id)}
+            linkFor={(persona) =>
+              projectId
+                ? `/projects/${projectId}/modules/stakeholders/personas/${persona.id}`
+                : `/orgs/${scopeId}/modules/stakeholders/personas/${persona.id}`
+            }
+            edit={
+              readOnlyInProject
+                ? undefined
+                : {
+                    options: personaOptions,
+                    pickerLabel: "Persona to represent",
+                    onAdd: async (personaId) => {
+                      await scopedApi.addPersona(scopeId, stakeholder.id, personaId);
+                    },
+                    onRemove: (persona) => scopedApi.removePersona(scopeId, stakeholder.id, persona.id),
+                  }
+            }
+          />
+
+          <HeldNeedsPanel projectId={projectId} load={() => projectNeedApi.listStakeholderNeeds(projectId ?? "", stakeholder.id)} />
+
+          <EngagementTimelinePanel
+            projectId={projectId}
+            subject={{ kind: "stakeholder", id: stakeholder.id, name: stakeholder.name }}
+            load={() => projectEngagementApi.listForStakeholder(projectId ?? "", stakeholder.id)}
+          />
+        </DetailCard>
 
         <VersionHistoryTable
           versions={versions}

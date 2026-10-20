@@ -40,6 +40,7 @@ import {
 } from "./types";
 import { Badge } from "../../components/Badge";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
+import { DetailCard } from "../../components/DetailCard";
 
 type DetailTabKey = "requirements" | "reviews";
 
@@ -139,7 +140,7 @@ export function ProjectComplianceDetail({
       )}
 
       {liveStatus && (
-        <div className="card stack" aria-label="Overall compliance status">
+        <DetailCard heading="Overall compliance status">
           <div className="row" style={{ flexWrap: "wrap", gap: "1.5rem" }}>
             <Stat label="Overall state" value={COMPLIANCE_OVERALL_STATE_LABEL[liveStatus.overall_compliance_state]} />
             <Stat label="Approval state" value={COMPLIANCE_APPROVAL_STATE_LABEL[liveStatus.overall_approval_state]} />
@@ -167,7 +168,7 @@ export function ProjectComplianceDetail({
               </Badge>
             ))}
           </div>
-        </div>
+        </DetailCard>
       )}
 
       <Tabs<DetailTabKey>

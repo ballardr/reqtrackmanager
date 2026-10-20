@@ -29,6 +29,7 @@ import type { RiskTreatment, RiskTreatmentList, TreatmentAssessmentStatus } from
 import { Badge } from "../../components/Badge";
 import { FormActions } from "../../components/FormActions";
 import { TextAreaField } from "../../components/FormFields";
+import { DetailCard } from "../../components/DetailCard";
 
 /** The verdicts a person can record; "Needs reassessment" is only ever set by the system. */
 const ASSESSABLE: TreatmentAssessmentStatus[] = ["effective", "ineffective", "proposed"];
@@ -97,8 +98,7 @@ export function RiskTreatmentsPanel({
   if (list === null) return <Spinner />;
 
   return (
-    <section className="stack" aria-label="Treatments" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-      <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Treatments</h3>
+    <DetailCard heading="Treatments">
       <p className="text-muted" style={{ margin: 0 }}>
         {list.effective_count === 0
           ? "No effective treatment yet. Link a requirement, design or action in the Links panel, then assess whether it reduces this risk."
@@ -164,6 +164,6 @@ export function RiskTreatmentsPanel({
           </div>
         </Modal>
       )}
-    </section>
+    </DetailCard>
   );
 }

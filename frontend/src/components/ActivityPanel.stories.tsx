@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, within } from "storybook/test";
+import { expect, userEvent, within } from "storybook/test";
 
 import { buildChangeEntry, withRouter } from "../testing/storybook-helpers";
 import { ActivityPanel } from "./ActivityPanel";
@@ -28,11 +28,70 @@ export const Entries: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByText("Alex Morgan updated")).toBeInTheDocument();
-    await expect(
-      canvas.getByText("Jamie Lee submitted — Clarified the reset link expiry window")
-    ).toBeInTheDocument();
+    await expect(canvas.getByText("Jamie Lee submitted")).toBeInTheDocument();
+    // The note typed with the change is a quoted block under the sentence, not part of it.
+    await expect(canvas.getByText("Clarified the reset link expiry window")).toBeInTheDocument();
     await expect(canvas.getByText("Requirement")).toBeInTheDocument();
     await expect(canvas.getByText("Change request")).toBeInTheDocument();
+  },
+};
+
+/** The comment given at a workflow step (`detail.comment`) shows under the sentence, once, as text. */
+export const TransitionComments: Story = {
+  args: {
+    entries: [
+      buildChangeEntry({
+        entity_type: "pain_point", action: "addressed", actor_display_name: "Sam Park",
+        detail: { comment: "Fixed in release 2.1.\nVerified with the field team." },
+      }),
+      // A comment and a change note that say the same thing are shown once.
+      buildChangeEntry({
+        entity_type: "strategy", action: "approved", actor_display_name: "Sam Park",
+        detail: { comment: "Approved at the board", change_note: "Approved at the board" },
+      }),
+      // User text is never interpreted as HTML.
+      buildChangeEntry({
+        entity_type: "decision", action: "rejected", actor_display_name: "Sam Park",
+        detail: { comment: "<b>not bold</b>" },
+      }),
+      // A change request decided before the key was unified stored its comment as `note`.
+      buildChangeEntry({
+        entity_type: "change_request", entity_id: "cr-9", action: "rejected", actor_display_name: "Jo Lin",
+        detail: { note: "Out of scope this quarter" },
+      }),
+      buildChangeEntry({ entity_type: "pain_point", action: "triaged", actor_display_name: "No Comment", detail: null }),
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Sam Park addressed")).toBeInTheDocument();
+    const note = canvas.getByText(/Fixed in release 2\.1\./);
+    await expect(note.tagName).toBe("BLOCKQUOTE");
+    await expect(note).toHaveTextContent("Verified with the field team.");
+    await expect(canvas.getAllByText("Approved at the board")).toHaveLength(1);
+    await expect(canvas.getByText("<b>not bold</b>")).toBeInTheDocument();
+    await expect(canvas.getByText("Out of scope this quarter")).toBeInTheDocument();
+    await expect(canvas.getByText("No Comment triaged")).toBeInTheDocument();
+  },
+};
+
+/** A long comment is cut at three lines until "Show more" is pressed. */
+export const LongCommentCollapses: Story = {
+  decorators: [(Story) => <div style={{ width: 260 }}><Story /></div>],
+  args: {
+    entries: [
+      buildChangeEntry({
+        entity_type: "pain_point", action: "closed", actor_display_name: "Sam Park",
+        detail: { comment: "Closing this after a long review. ".repeat(20) },
+      }),
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const more = await canvas.findByRole("button", { name: "Show more" });
+    await expect(more).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(more);
+    await expect(canvas.getByRole("button", { name: "Show less" })).toHaveAttribute("aria-expanded", "true");
   },
 };
 

@@ -30,6 +30,8 @@ test("tag a record, filter by the tag, rename it, reclassify and delete it", asy
 
   await test.step("a tag is added from the record's header and survives a reload", async () => {
     await page.goto(`/projects/${project.id}/modules/stakeholders/personas/${tagged.id}`);
+    const plus = page.getByRole("button", { name: "Add tag" });
+    await plus.click();
     const box = page.getByRole("combobox", { name: "Tags" });
     await box.fill(tagName);
     // The chip shows at once and is saved in the background: wait for the save before reloading.
@@ -37,6 +39,10 @@ test("tag a record, filter by the tag, rename it, reclassify and delete it", asy
     await page.getByRole("option", { name: `Add tag "${tagName}"` }).click();
     await expect(page.getByRole("button", { name: `Remove tag ${tagName}` })).toBeVisible();
     await saved;
+    // The `[+]` is the same height as the tag chip beside it.
+    const chipHeight = (await page.locator(".tag-chip").first().boundingBox())!.height;
+    const plusHeight = (await plus.boundingBox())!.height;
+    expect(Math.abs(chipHeight - plusHeight)).toBeLessThan(1);
     await page.reload();
     await expect(page.getByRole("button", { name: `Remove tag ${tagName}` })).toBeVisible();
   });
@@ -140,6 +146,7 @@ test("a restricted project accepts only listed tags", async ({ page }) => {
   await expect(page.getByText("Tag added.")).toBeVisible();
 
   await page.goto(`/projects/${project.id}/modules/stakeholders/personas/${persona.id}`);
+  await page.getByRole("button", { name: "Add tag" }).click();
   const box = page.getByRole("combobox", { name: "Tags" });
   await expect(box).toHaveAttribute("placeholder", "Choose a tag…");
   await box.fill(`Made up ${suffix}`);
@@ -165,8 +172,10 @@ test("a create form applies the chosen tags, and the Requirements list tags the 
     await openNew(page, "Persona");
     const dialog = page.getByRole("dialog", { name: "New Persona (project)" });
     await dialog.getByLabel("Persona name").fill(personaName);
-    await dialog.getByRole("combobox", { name: "Tags" }).fill(tag);
-    await dialog.getByRole("option", { name: `Add tag "${tag}"` }).click();
+    await dialog.getByRole("button", { name: "Add tag" }).click();
+    // The picker is a popover outside the dialog.
+    await page.getByRole("combobox", { name: "Tags" }).fill(tag);
+    await page.getByRole("option", { name: `Add tag "${tag}"` }).click();
     await expect(dialog.getByRole("button", { name: `Remove tag ${tag}` })).toBeVisible();
     await dialog.getByRole("button", { name: "Save", exact: true }).click();
     await page.getByRole("button", { name: personaName }).click();
@@ -229,6 +238,7 @@ test("an organisation-owned persona is tagged from a project and managed in Org 
 
   await page.goto(`/projects/${project.id}/modules/stakeholders/personas/${persona.id}`);
   const saved = page.waitForResponse((r) => r.url().includes("/tags") && r.request().method() === "PUT" && r.ok());
+  await page.getByRole("button", { name: "Add tag" }).click();
   await page.getByRole("combobox", { name: "Tags" }).fill(tag);
   await page.getByRole("option", { name: `Add tag "${tag}"` }).click();
   await saved;

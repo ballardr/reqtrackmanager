@@ -58,6 +58,7 @@ import type { FileAsset, OrgUser, PrincipalRef, Project } from "../../api/types"
 import { api } from "../../api/client";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { RecordActivity } from "../../components/RecordActivity";
+import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordTags } from "../../components/RecordTags";
 import { RecordPrincipalField } from "../../components/RecordDetailParts";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
@@ -77,6 +78,7 @@ import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 import { TextAreaField } from "../../components/FormFields";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { DetailCard } from "../../components/DetailCard";
 
 /** The three optional-comment, positive/neutral-progression actions —
  * mirrors `StrategyDetailPage.tsx`'s `TransitionAction`/`TRANSITION_COPY`
@@ -229,7 +231,7 @@ export function PainPointDetailPage() {
 
   return (
     <DetailLayout
-      activity={projectId ? <RecordActivity projectId={projectId} artefactType="pain_point" artefactId={painPoint.id} /> : undefined}
+      activity={projectId ? <RecordActivity projectId={projectId} artefactType="pain_point" artefactId={painPoint.id} refreshToken={recordActivityKey(painPoint)} /> : undefined}
       aside={
         <ArtefactLinksPanel
           projectId={projectId}
@@ -289,21 +291,22 @@ export function PainPointDetailPage() {
 
       <div className="stack">
 
-        {painPoint.description && <Field label="Description" value={painPoint.description} />}
-        {painPoint.source && <Field label="Source" value={painPoint.source} />}
-        {painPoint.impact && <Field label="Impact" value={painPoint.impact} />}
-        {painPoint.evidence && <Field label="Evidence" value={painPoint.evidence} />}
+        <DetailCard>
+          {painPoint.description && <Field label="Description" value={painPoint.description} />}
+          {painPoint.source && <Field label="Source" value={painPoint.source} />}
+          {painPoint.impact && <Field label="Impact" value={painPoint.impact} />}
+          {painPoint.evidence && <Field label="Evidence" value={painPoint.evidence} />}
 
-        <RecordPrincipalField
-          label="Owner" ariaLabel="Pain Point owner" principal={painPoint.owner} orgUsers={orgUsers}
-          organizationId={project?.organization_id} projectId={projectId} readOnly={false} onChange={assignOwner}
-        />
+          <RecordPrincipalField
+            label="Owner" ariaLabel="Pain Point owner" principal={painPoint.owner} orgUsers={orgUsers}
+            organizationId={project?.organization_id} projectId={projectId} readOnly={false} onChange={assignOwner}
+          />
+        </DetailCard>
 
         <PainPointScoringPanel projectId={projectId} painPointId={painPoint.id} locked={painPoint.is_locked} />
 
 
-        <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-          <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Evidence</h3>
+        <DetailCard heading="Evidence">
           <FileAttachmentList
             files={files}
             disabled={painPoint.is_locked}
@@ -317,31 +320,29 @@ export function PainPointDetailPage() {
               setFiles((prev) => prev.filter((f) => f.id !== fileId));
             }}
           />
-        </div>
+        </DetailCard>
 
-        <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-          <ArtefactCommentsSection
-            comments={comments ?? []}
-            currentUserId={user?.id}
-            onPost={async (body) => {
-              const comment = await projectPainPointApi.addComment(projectId, painPoint.id, body);
-              setComments((prev) => [...(prev ?? []), comment]);
-              return comment;
-            }}
-            onEdit={async (commentId, body) => {
-              const updated = await projectPainPointApi.editComment(projectId, painPoint.id, commentId, body);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? updated : c)));
-            }}
-            onUploadAttachment={async (commentId, file) => {
-              const asset = await projectPainPointApi.uploadCommentAttachment(projectId, painPoint.id, commentId, file);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: [...c.attachments, asset] } : c)));
-            }}
-            onRemoveAttachment={async (commentId, fileId) => {
-              await projectPainPointApi.removeCommentAttachment(projectId, painPoint.id, commentId, fileId);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
-            }}
-          />
-        </div>
+        <ArtefactCommentsSection
+          comments={comments ?? []}
+          currentUserId={user?.id}
+          onPost={async (body) => {
+            const comment = await projectPainPointApi.addComment(projectId, painPoint.id, body);
+            setComments((prev) => [...(prev ?? []), comment]);
+            return comment;
+          }}
+          onEdit={async (commentId, body) => {
+            const updated = await projectPainPointApi.editComment(projectId, painPoint.id, commentId, body);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? updated : c)));
+          }}
+          onUploadAttachment={async (commentId, file) => {
+            const asset = await projectPainPointApi.uploadCommentAttachment(projectId, painPoint.id, commentId, file);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: [...c.attachments, asset] } : c)));
+          }}
+          onRemoveAttachment={async (commentId, fileId) => {
+            await projectPainPointApi.removeCommentAttachment(projectId, painPoint.id, commentId, fileId);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
+          }}
+        />
       </div>
 
       {editing && (

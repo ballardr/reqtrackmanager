@@ -8,13 +8,15 @@ A **Pain Point** records a problem, deficiency, or improvement opportunity motiv
 
 | A project's Pain Points |
 | --- |
-| Falcon-3's Pain Points with their scores, filterable by status — including Addressed, Rejected, Duplicate, Blocker and Intentional examples |
+| Falcon-3's Pain Points with their scores, filterable by status — including Addressed, Rejected, Duplicate, Blocker and Intentional examples (clear **Open only** to see the closed ones). The Blocker and Intentional badges follow the title |
 | ![Pain Points list for the Falcon-3 project showing seven Pain Points with status and score columns, a Blocker badge, and an Intentional badge](../../../static/img/screenshots/pain-point-list.png) |
 
 | An Addressed Pain Point with its persona scores |
 | --- |
 | Falcon-3's "field inspectors re-key paper reports" Pain Point — description, source, impact, evidence, and the Scoring section (relationships, including the Duplicate-of link from another Pain Point, sit below it) |
 | ![Detail view of an Addressed Pain Point for the Falcon-3 project, showing its description, source, impact, evidence, and a Scoring section with a model selector and a persona score](../../../static/img/screenshots/pain-point-detail.png) |
+
+The list opens on **open** Pain Points only (Submitted, Triaged and Accepted): **Open only** is ticked, and clearing it adds the Rejected, Duplicate, Addressed and Closed ones. A link that names a status, such as the Accepted figure in a report, opens the list with that status and **Open only** off.
 
 ## Fields
 

@@ -34,6 +34,7 @@ import { api } from "../../api/client";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { RecordActivity } from "../../components/RecordActivity";
+import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordTags } from "../../components/RecordTags";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailLayout } from "../../components/DetailLayout";
@@ -54,6 +55,7 @@ import type { FileAsset } from "../../api/types";
 import { Badge } from "../../components/Badge";
 import { TextAreaField } from "../../components/FormFields";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { DetailCard } from "../../components/DetailCard";
 
 export function DecisionDetailPage() {
   const { projectId, decisionId } = useParams<{ projectId: string; decisionId: string }>();
@@ -148,7 +150,7 @@ export function DecisionDetailPage() {
 
   return (
     <DetailLayout
-      activity={projectId ? <RecordActivity projectId={projectId} artefactType="decision" artefactId={decision.id} /> : undefined}
+      activity={projectId ? <RecordActivity projectId={projectId} artefactType="decision" artefactId={decision.id} refreshToken={recordActivityKey(decision)} /> : undefined}
       aside={
         <ArtefactLinksPanel
           projectId={projectId}
@@ -211,22 +213,23 @@ export function DecisionDetailPage() {
       />
       {archive.dialog}
       <div className="stack">
-        <p style={{ margin: 0 }}>{decision.decision_statement}</p>
-        <div className="row" style={{ gap: "2rem", flexWrap: "wrap" }}>
-          <RecordFieldGroup helpNotNeeded label="Owner"><PrincipalBadge principal={decision.owner} /></RecordFieldGroup>
-          <RecordFieldGroup helpNotNeeded label="Decision maker"><PrincipalBadge principal={decision.decision_maker} /></RecordFieldGroup>
-        </div>
+        <DetailCard>
+          <p style={{ margin: 0 }}>{decision.decision_statement}</p>
+          <div className="row" style={{ gap: "2rem", flexWrap: "wrap" }}>
+            <RecordFieldGroup helpNotNeeded label="Owner"><PrincipalBadge principal={decision.owner} /></RecordFieldGroup>
+            <RecordFieldGroup helpNotNeeded label="Decision maker"><PrincipalBadge principal={decision.decision_maker} /></RecordFieldGroup>
+          </div>
 
-        {decision.context && <RecordField label="Context" value={decision.context} />}
-        {decision.options_considered && <RecordField label="Options considered" value={decision.options_considered} />}
-        {decision.chosen_option && <RecordField label="Chosen option" value={decision.chosen_option} />}
-        {decision.rationale && <RecordField label="Rationale" value={decision.rationale} />}
-        {decision.consequences && <RecordField label="Consequences" value={decision.consequences} />}
-        {decision.assumptions && <RecordField label="Assumptions" value={decision.assumptions} />}
-        {decision.constraints && <RecordField label="Constraints" value={decision.constraints} />}
+          {decision.context && <RecordField label="Context" value={decision.context} />}
+          {decision.options_considered && <RecordField label="Options considered" value={decision.options_considered} />}
+          {decision.chosen_option && <RecordField label="Chosen option" value={decision.chosen_option} />}
+          {decision.rationale && <RecordField label="Rationale" value={decision.rationale} />}
+          {decision.consequences && <RecordField label="Consequences" value={decision.consequences} />}
+          {decision.assumptions && <RecordField label="Assumptions" value={decision.assumptions} />}
+          {decision.constraints && <RecordField label="Constraints" value={decision.constraints} />}
+        </DetailCard>
 
-        <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-          <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Attachments</h3>
+        <DetailCard heading="Attachments">
           <FileAttachmentList
             files={files}
             disabled={decision.is_locked}
@@ -240,31 +243,29 @@ export function DecisionDetailPage() {
               setFiles((prev) => prev.filter((f) => f.id !== fileId));
             }}
           />
-        </div>
+        </DetailCard>
 
-        <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-          <ArtefactCommentsSection
-            comments={comments ?? []}
-            currentUserId={user?.id}
-            onPost={async (body) => {
-              const comment = await decisionsApi.addDecisionComment(projectId, decision.id, body);
-              setComments((prev) => [...(prev ?? []), comment]);
-              return comment;
-            }}
-            onEdit={async (commentId, body) => {
-              const updated = await decisionsApi.editDecisionComment(projectId, decision.id, commentId, body);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? updated : c)));
-            }}
-            onUploadAttachment={async (commentId, file) => {
-              const asset = await decisionsApi.uploadDecisionCommentAttachment(projectId, decision.id, commentId, file);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: [...c.attachments, asset] } : c)));
-            }}
-            onRemoveAttachment={async (commentId, fileId) => {
-              await decisionsApi.removeDecisionCommentAttachment(projectId, decision.id, commentId, fileId);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
-            }}
-          />
-        </div>
+        <ArtefactCommentsSection
+          comments={comments ?? []}
+          currentUserId={user?.id}
+          onPost={async (body) => {
+            const comment = await decisionsApi.addDecisionComment(projectId, decision.id, body);
+            setComments((prev) => [...(prev ?? []), comment]);
+            return comment;
+          }}
+          onEdit={async (commentId, body) => {
+            const updated = await decisionsApi.editDecisionComment(projectId, decision.id, commentId, body);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? updated : c)));
+          }}
+          onUploadAttachment={async (commentId, file) => {
+            const asset = await decisionsApi.uploadDecisionCommentAttachment(projectId, decision.id, commentId, file);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: [...c.attachments, asset] } : c)));
+          }}
+          onRemoveAttachment={async (commentId, fileId) => {
+            await decisionsApi.removeDecisionCommentAttachment(projectId, decision.id, commentId, fileId);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
+          }}
+        />
       </div>
 
       {editing && (

@@ -55,6 +55,7 @@ import type { FileAsset, OrgUser, PrincipalRef, Project } from "../../api/types"
 import { api } from "../../api/client";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { RecordActivity } from "../../components/RecordActivity";
+import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordTags } from "../../components/RecordTags";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
@@ -78,6 +79,7 @@ import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 import { TextAreaField } from "../../components/FormFields";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { DetailCard } from "../../components/DetailCard";
 
 /** Every lifecycle action this page can offer, keyed by the action itself —
  * same generic confirm-dialog-copy pattern as `StrategyDetailPage.tsx`'s own
@@ -238,7 +240,7 @@ export function GuidingPrincipleDetailPage() {
 
   return (
     <DetailLayout
-      activity={projectId ? <RecordActivity projectId={projectId} artefactType="guiding_principle" artefactId={guidingPrinciple.id} /> : undefined}
+      activity={projectId ? <RecordActivity projectId={projectId} artefactType="guiding_principle" artefactId={guidingPrinciple.id} refreshToken={recordActivityKey(guidingPrinciple)} /> : undefined}
       aside={
         <ArtefactLinksPanel
           projectId={projectId}
@@ -275,11 +277,8 @@ export function GuidingPrincipleDetailPage() {
           </Badge>
           </>
         }
-        subtitle={
-          <>
-            {GUIDING_PRINCIPLE_PRIORITY_LABEL[guidingPrinciple.priority]} priority · v{guidingPrinciple.version_number}
-          </>
-        }
+        version={guidingPrinciple.version_number}
+        subtitle={`${GUIDING_PRINCIPLE_PRIORITY_LABEL[guidingPrinciple.priority]} priority`}
         onEdit={guidingPrinciple.is_locked ? undefined : () => setEditing(true)}
         actions={[archive.item]}
         transitions={
@@ -314,13 +313,15 @@ export function GuidingPrincipleDetailPage() {
 
       <div className="stack">
 
-        <Field label="Principle statement" value={guidingPrinciple.principle_statement} />
-        {guidingPrinciple.rationale && <Field label="Rationale" value={guidingPrinciple.rationale} />}
+        <DetailCard>
+          <Field label="Principle statement" value={guidingPrinciple.principle_statement} />
+          {guidingPrinciple.rationale && <Field label="Rationale" value={guidingPrinciple.rationale} />}
 
-        <RecordPrincipalField
-          label="Owner" ariaLabel="Guiding Principle owner" principal={guidingPrinciple.owner} orgUsers={orgUsers}
-          organizationId={ownerOrgId} projectId={projectId} readOnly={false} onChange={assignOwner}
-        />
+          <RecordPrincipalField
+            label="Owner" ariaLabel="Guiding Principle owner" principal={guidingPrinciple.owner} orgUsers={orgUsers}
+            organizationId={ownerOrgId} projectId={projectId} readOnly={false} onChange={assignOwner}
+          />
+        </DetailCard>
 
 
         <VersionHistoryTable
@@ -331,8 +332,7 @@ export function GuidingPrincipleDetailPage() {
           ]}
         />
 
-        <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-          <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Attachments</h3>
+        <DetailCard heading="Attachments">
           <FileAttachmentList
             files={files}
             disabled={guidingPrinciple.is_locked}
@@ -346,31 +346,29 @@ export function GuidingPrincipleDetailPage() {
               setFiles((prev) => prev.filter((f) => f.id !== fileId));
             }}
           />
-        </div>
+        </DetailCard>
 
-        <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-          <ArtefactCommentsSection
-            comments={comments ?? []}
-            currentUserId={user?.id}
-            onPost={async (body) => {
-              const comment = await scopedApi.addComment(scopeId, guidingPrinciple.id, body);
-              setComments((prev) => [...(prev ?? []), comment]);
-              return comment;
-            }}
-            onEdit={async (commentId, body) => {
-              const updated = await scopedApi.editComment(scopeId, guidingPrinciple.id, commentId, body);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? updated : c)));
-            }}
-            onUploadAttachment={async (commentId, file) => {
-              const asset = await scopedApi.uploadCommentAttachment(scopeId, guidingPrinciple.id, commentId, file);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: [...c.attachments, asset] } : c)));
-            }}
-            onRemoveAttachment={async (commentId, fileId) => {
-              await scopedApi.removeCommentAttachment(scopeId, guidingPrinciple.id, commentId, fileId);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
-            }}
-          />
-        </div>
+        <ArtefactCommentsSection
+          comments={comments ?? []}
+          currentUserId={user?.id}
+          onPost={async (body) => {
+            const comment = await scopedApi.addComment(scopeId, guidingPrinciple.id, body);
+            setComments((prev) => [...(prev ?? []), comment]);
+            return comment;
+          }}
+          onEdit={async (commentId, body) => {
+            const updated = await scopedApi.editComment(scopeId, guidingPrinciple.id, commentId, body);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? updated : c)));
+          }}
+          onUploadAttachment={async (commentId, file) => {
+            const asset = await scopedApi.uploadCommentAttachment(scopeId, guidingPrinciple.id, commentId, file);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: [...c.attachments, asset] } : c)));
+          }}
+          onRemoveAttachment={async (commentId, fileId) => {
+            await scopedApi.removeCommentAttachment(scopeId, guidingPrinciple.id, commentId, fileId);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
+          }}
+        />
       </div>
 
       {editing && (

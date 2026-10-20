@@ -47,6 +47,7 @@ import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
 import { Badge } from "../components/Badge";
 import { TextField } from "../components/FormFields";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { DetailCard } from "../components/DetailCard";
 
 /** Change request detail: submit/withdraw/decide and its discussion thread (C-R-01).
  *
@@ -298,7 +299,7 @@ export function ChangeRequestDetailPage() {
         />
       )}
       <div className="stack">
-      <div className="card stack">
+      <DetailCard>
         <div className="row">
           <Badge tone={CHANGE_REQUEST_STATUS_TONE[cr.status]}>
             {CHANGE_REQUEST_STATUS_LABEL[cr.status]}
@@ -502,10 +503,9 @@ export function ChangeRequestDetailPage() {
             </>
           )}
         </div>
-      </div>
+      </DetailCard>
 
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.changeRequests.tasks}</h2>
+      <DetailCard heading={strings.changeRequests.tasks}>
         {tasks.map((task) => (
           <label key={task.id} className="row" style={{ gap: "0.5rem" }}>
             <input
@@ -534,10 +534,9 @@ export function ChangeRequestDetailPage() {
             </button>
           </div>
         )}
-      </div>
+      </DetailCard>
 
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.changeRequests.votes}</h2>
+      <DetailCard heading={strings.changeRequests.votes}>
         <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{strings.changeRequests.votingAdvisoryNotice}</p>
         {tally && (
           <div className="row">
@@ -568,7 +567,7 @@ export function ChangeRequestDetailPage() {
             </button>
           </div>
         )}
-      </div>
+      </DetailCard>
 
       {approving && projectId && crId && (
         <ApproveChangeRequestDialog
@@ -610,8 +609,7 @@ export function ChangeRequestDetailPage() {
         </Modal>
       )}
 
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.discussion}</h2>
+      <DetailCard heading={strings.requirements.discussion}>
         <CommentThread
           comments={comments}
           onPost={postComment}
@@ -621,7 +619,7 @@ export function ChangeRequestDetailPage() {
           onEdit={editComment}
           currentUserId={user?.id}
         />
-      </div>
+      </DetailCard>
       </div>
     </DetailLayout>
   );

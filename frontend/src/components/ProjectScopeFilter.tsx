@@ -12,7 +12,7 @@
 import type { ProjectScopeState } from "../hooks/useProjectScope";
 import { useStrings } from "../context/TerminologyContext";
 import { FilterField } from "./FilterPanel";
-import type { ProjectScope } from "../api/projectScope";
+import { ProjectScopeSelect } from "./ProjectScopeSelect";
 
 /**
  * @param scope The list's scope state (`useProjectScope`).
@@ -22,18 +22,7 @@ export function ProjectScopeFilter({ scope }: { scope: ProjectScopeState }) {
   if (scope.available.length < 2) return null;
   return (
     <FilterField label={strings.projectScope.label}>
-      <select
-        className="input"
-        aria-label={strings.projectScope.label}
-        value={scope.scope}
-        onChange={(e) => scope.setScope(e.target.value as ProjectScope)}
-      >
-        {scope.available.map((option) => (
-          <option key={option} value={option}>
-            {strings.projectScope.options[option]}
-          </option>
-        ))}
-      </select>
+      <ProjectScopeSelect scope={scope} />
       {scope.widened && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.projectScope.widenedHint}</span>}
     </FilterField>
   );

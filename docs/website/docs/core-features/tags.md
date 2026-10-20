@@ -10,12 +10,13 @@ A requirement's **keywords** are its tags: the same labels, the same list.
 
 ## Tagging a record
 
-Open a record. Under its title is the **Tags** box, if you may tag that kind of record (the same people who may edit it; a decision or a risk needs the **Manage** permission on it, see [Role Management](role-management.md)).
+Open a record. Under its title are its tags, followed by a small **+** button, if you may tag that kind of record (the same people who may edit it; a decision or a risk needs the **Manage** permission on it, see [Role Management](role-management.md)).
 
-- Type to see the project's tags and pick one, or press **Enter** (or type a comma) to add what you typed. Remove a tag with the **×** on its chip.
+- Select the **+** ("Add tag") to open a small box. Type to see the project's tags and pick one, or press **Enter** (or type a comma) to add what you typed. The box stays open after each tag, so you can add several in one go; select **Done**, press **Escape** or click elsewhere to close it. Remove a tag with the **×** on its chip.
+- The same **+** is on the **Tags** line of a create form.
 - A change is saved at once, and appears in the record's **Activity** tab ("Alex added the tag Safety").
 - Tags are not part of a record's content, so you can tag an approved requirement without a change request.
-- A person who may only read a record sees its tags but no box.
+- A person who may only read a record sees its tags but no **+**.
 
 ```mermaid
 flowchart TD

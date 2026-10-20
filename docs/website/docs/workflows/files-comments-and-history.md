@@ -46,7 +46,7 @@ Discussion comments are excluded from the timeline by default, since they're inf
 
 ## One record's timeline
 
-Every record's detail page, whatever its type, has a panel beside the content with two tabs: **Links** and **Activity**. Activity is that one record's own timeline, newest first: who created, edited, archived or moved it through its lifecycle, and which links were added or removed. It loads 25 entries at a time; **Show more** fetches the next page. Which tab you last used is remembered for you.
+Every record's detail page, whatever its type, has a panel beside the content (below it on a narrow screen), one card whose two tabs, **Links** and **Activity**, are its title. A record's own fields sit in a **Details** card under its header, with a **Version n** label beside its status badges when it keeps versions; attachments, versions and comments each have a card of their own. Activity is that one record's own timeline, newest first: who created, edited, archived or moved it through its lifecycle, and which links were added or removed. A comment typed with a step (approving a decision, addressing a Pain Point, rejecting a change request) or a change note typed with an edit is shown in quotes under that entry, cut to three lines with **Show more** when it is long; the same text appears on the project overview and the project history page. It loads 25 entries at a time; **Show more** fetches the next page. Which tab you last used is remembered for you.
 
 ```mermaid
 flowchart LR

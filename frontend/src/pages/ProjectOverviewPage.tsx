@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
 import type { ChangeEntry, Project, ProjectAncestor, ProjectHierarchySummary, ProjectListItem, ProjectMetrics, RequirementStatus } from "../api/types";
-import { activityEntityLabel, activityEntryLink, describeActivityEntry, REQUIREMENT_STATUS_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import { activityEntityLabel, activityEntryLink, activityEntryNotes, describeActivityEntry, REQUIREMENT_STATUS_LABEL, STAGE_STATUS_LABEL } from "../api/types";
 import { EntitySwitcher } from "../components/EntitySwitcher";
 import { MetricTile } from "../components/MetricTile";
 import { ProjectHierarchyLabels } from "../components/ProjectHierarchyLabels";
@@ -14,9 +14,10 @@ import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
 import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
 import { useProjectScope } from "../hooks/useProjectScope";
-import { ProjectScopeFilter } from "../components/ProjectScopeFilter";
+import { ProjectScopeSelect } from "../components/ProjectScopeSelect";
 import { getInstalledModule } from "../modules/registry";
 import { loadProjectSwitcherOptions } from "../utils/entitySwitcherLoaders";
+import { ActivityNote } from "../components/ActivityNote";
 import { Badge } from "../components/Badge";
 import { useResetOnChange } from "../hooks/useResetOnChange";
 
@@ -153,17 +154,12 @@ export function ProjectOverviewPage() {
           <p className="text-muted">{project.summary}</p>
           <ProjectHierarchyLabels project={hierarchySummary} />
         </div>
-        <Link className="btn btn-primary" to={`/projects/${projectId}/requirements?new=1`}>
-          <Plus /> {strings.requirements.newRequirement}
-        </Link>
-      </div>
-      <div style={{ maxWidth: 320 }}>
-        <ProjectScopeFilter scope={projectScope} />
-        {projectScope.widened && (
-          <span className="text-muted" style={{ fontSize: "0.8rem" }}>
-            {strings.projectScope.coversProjects(metrics.scope_project_count)}
-          </span>
-        )}
+        <div className="row" style={{ alignItems: "center" }}>
+          <ProjectScopeSelect scope={projectScope} compact coveredProjects={metrics.scope_project_count} />
+          <Link className="btn btn-primary" to={`/projects/${projectId}/requirements?new=1`}>
+            <Plus /> {strings.requirements.newRequirement}
+          </Link>
+        </div>
       </div>
       <div className="grid grid-metrics">
         {tiles.map(([label, value, to]) => (
@@ -227,14 +223,17 @@ export function ProjectOverviewPage() {
               className="row"
               style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}
             >
-              <span>
-                <Badge>{activityEntityLabel(c.entity_type, orgLabelCap)}</Badge> {describeActivityEntry(c)}
-                {link && (
-                  <>
-                    {" "}
-                    <Link to={link.to}>{link.label}</Link>
-                  </>
-                )}
+              <span className="stack" style={{ gap: "0.25rem", minWidth: 0 }}>
+                <span>
+                  <Badge>{activityEntityLabel(c.entity_type, orgLabelCap)}</Badge> {describeActivityEntry(c)}
+                  {link && (
+                    <>
+                      {" "}
+                      <Link to={link.to}>{link.label}</Link>
+                    </>
+                  )}
+                </span>
+                {activityEntryNotes(c).map((note) => <ActivityNote key={note} text={note} />)}
               </span>
               <span className="text-muted">{new Date(c.timestamp).toLocaleString()}</span>
             </div>

@@ -354,7 +354,20 @@ export const LongRailScrollbarClearsToggle: Story = {
     const rail = canvasElement.querySelector<HTMLElement>(".nav-rail")!;
     await expect(getComputedStyle(rail).overflowY).not.toBe("auto");
     const toggle = canvas.getByRole("button", { name: "Collapse navigation" });
-    await expect(scroll.getBoundingClientRect().top).toBeGreaterThanOrEqual(toggle.getBoundingClientRect().bottom);
+    // The list starts at the top of the rail, level with the toggle, and leaves the strip under the toggle free
+    // so neither a link nor the scrollbar runs under it.
+    const t = toggle.getBoundingClientRect();
+    await expect(scroll.getBoundingClientRect().top).toBeLessThanOrEqual(canvasElement.querySelector(".nav-rail")!.getBoundingClientRect().top + 1);
+    await expect(scroll.getBoundingClientRect().right).toBeLessThanOrEqual(t.left + 1);
+    // The first item (a section label or a link) is level with the toggle, not below it.
+    const first = (scroll.firstElementChild as HTMLElement).getBoundingClientRect();
+    await expect(first.top).toBeGreaterThanOrEqual(t.top - 1);
+    await expect(first.top).toBeLessThanOrEqual(t.bottom);
+    for (const link of canvasElement.querySelectorAll<HTMLElement>(".nav-rail-scroll a")) {
+      const r = link.getBoundingClientRect();
+      const overlaps = r.left < t.right && r.right > t.left && r.top < t.bottom && r.bottom > t.top;
+      await expect(overlaps).toBe(false);
+    }
   },
 };
 

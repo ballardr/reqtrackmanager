@@ -109,6 +109,40 @@ export const BasicSortableTable: Story = {
   },
 };
 
+function HeaderActionDemo() {
+  const [sort, setSort] = useState<SortState | null>(null);
+  const [pressed, setPressed] = useState(0);
+  const columns: DirectoryColumn<DemoRow>[] = [
+    { ...COLUMNS[0], headerAction: <button type="button" aria-label="Name settings" onClick={() => setPressed((n) => n + 1)}>⚙</button> },
+    { ...COLUMNS[2], headerAction: <button type="button" aria-label="Status settings">⚙</button> },
+  ];
+  return (
+    <>
+      <DirectoryTable
+        ariaLabel="Demo directory" columns={columns} rows={ROWS} rowKey={(r) => r.id} sort={sort}
+        onSort={(key) => setSort((s) => (s?.key === key ? null : { key, direction: "asc" }))} emptyState={null}
+      />
+      <output aria-label="Pressed">{pressed}</output>
+    </>
+  );
+}
+
+/** A column can carry its own control (a settings gear) beside its header: a sibling of the sort button,
+ * so pressing it never sorts, and for a plain header it sits beside the text. */
+export const HeaderActionDoesNotSort: Story = {
+  render: () => <HeaderActionDemo />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const gear = canvas.getByRole("button", { name: "Name settings" });
+    // The gear is beside the sort button, not inside it.
+    await expect(gear.closest("button.th-sort")).toBeNull();
+    await userEvent.click(gear);
+    await expect(canvas.getByLabelText("Pressed")).toHaveTextContent("1");
+    await expect(canvas.getByRole("columnheader", { name: /Name/ })).toHaveAttribute("aria-sort", "none");
+    await expect(canvas.getByRole("button", { name: "Status settings" })).toBeInTheDocument();
+  },
+};
+
 /** `onRowClick` renders the first column's content as a real `<button>` —
  * keyboard-operable, and firing the caller's callback with the clicked
  * row, not the whole `<tr>`. */

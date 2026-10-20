@@ -396,7 +396,7 @@ export function RequirementAssessmentPanel({
                         {def?.name ?? "Required action"}
                         {def?.is_mandatory && <span className="text-muted"> (mandatory)</span>}
                       </span>
-                      <label className="row" style={{ gap: "0.3rem" }}>
+                      <label className="checkbox-label" style={{ gap: "0.3rem" }}>
                         <input type="checkbox" checked={assessment.is_completed} onChange={() => toggleActionComplete(assessment)} />
                         Completed
                       </label>

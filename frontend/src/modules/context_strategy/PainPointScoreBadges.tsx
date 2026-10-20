@@ -30,9 +30,12 @@ export function PainPointScoreBadge({ score }: { score: PainPointScoreValue | nu
  * blocked personas in its tooltip; renders nothing otherwise.
  *
  * @param summary The Pain Point's roll-up (or one score row).
+ * @param className Extra class, e.g. `badge-after` when it follows a title.
  */
-export function BlockerBadge({ summary }: { summary: Pick<PainPointScoringSummary, "is_blocker" | "blocker_labels"> }) {
+export function BlockerBadge({
+  summary, className,
+}: { summary: Pick<PainPointScoringSummary, "is_blocker" | "blocker_labels">; className?: string }) {
   if (!summary.is_blocker) return null;
   const who = summary.blocker_labels.length ? `Unusable for: ${summary.blocker_labels.join(", ")}` : "Unusable, no workaround";
-  return <Badge tone="danger" title={who}>Blocker</Badge>;
+  return <Badge tone="danger" title={who} className={className}>Blocker</Badge>;
 }

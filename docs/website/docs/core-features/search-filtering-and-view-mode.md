@@ -17,7 +17,7 @@ The **Projects** list is searchable by name/summary and filterable by active/arc
 
 ## Listing records from parent and child projects
 
-In a project that has a parent or child project you can open, every record list (requirements, change requests, actions, files, and each module's lists such as risks, decisions, engagements and people) and the project **Overview** has a **Show records from** filter: *This project*, *This + parent projects*, *This + child projects*, or *This + parent and child projects*. It is not shown when the project has no relatives you can open.
+In a project that has a parent or child project you can open, every record list (requirements, change requests, actions, files, and each module's lists such as risks, decisions, engagements and people) and the project **Overview** has a **Show records from** filter: *This project*, *This + parent projects*, *This + child projects*, or *This + parent and child projects*. It is not shown when the project has no relatives you can open. On the project **Overview** it is a compact select in the title row beside **New requirement**; hover or focus it to read what it covers (it is outlined while widened).
 
 - A row from another project is labelled **From \{project\}**, its code includes that project's code (for example `PLAT-REQ-001`), and it opens in its own project. Those rows are read-only in the list: no bulk selection or reordering, so to change one you open it where it lives.
 - You only ever see records you could already see in the other project: you need a role there, the feature must be switched on there, and you need permission to view that type of record. Anything else is left out, with no hint that it exists. Siblings and projects outside the tree are never included.

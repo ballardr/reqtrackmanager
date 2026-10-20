@@ -30,6 +30,7 @@ import { useParams } from "react-router-dom";
 import type { FileAsset } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { RecordActivity } from "../../components/RecordActivity";
+import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordTags } from "../../components/RecordTags";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
@@ -49,6 +50,7 @@ import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 import { TextAreaField } from "../../components/FormFields";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { DetailCard } from "../../components/DetailCard";
 
 /** Every lifecycle action this page can offer, keyed by the action itself —
  * used to build the confirm-dialog copy generically instead of repeating it
@@ -176,7 +178,7 @@ export function FutureStateDetailPage() {
 
   return (
     <DetailLayout
-      activity={projectId ? <RecordActivity projectId={projectId} artefactType="future_state" artefactId={futureState.id} /> : undefined}
+      activity={projectId ? <RecordActivity projectId={projectId} artefactType="future_state" artefactId={futureState.id} refreshToken={recordActivityKey(futureState)} /> : undefined}
       aside={
         <ArtefactLinksPanel
           projectId={projectId}
@@ -213,11 +215,8 @@ export function FutureStateDetailPage() {
           </Badge>
           </>
         }
-        subtitle={
-          <>
-            {futureState.target_date ? `Target date ${futureState.target_date} · ` : ""}v{futureState.version_number}
-          </>
-        }
+        version={futureState.version_number}
+        subtitle={futureState.target_date ? `Target date ${futureState.target_date}` : undefined}
         onEdit={futureState.is_locked ? undefined : () => setEditing(true)}
         actions={[archive.item]}
         transitions={
@@ -260,17 +259,18 @@ export function FutureStateDetailPage() {
 
       <div className="stack">
 
-        {futureState.current_state && <Field label="Current state" value={futureState.current_state} />}
-        <Field label="Desired state" value={futureState.desired_state} />
-        {futureState.outcomes && <Field label="Outcomes" value={futureState.outcomes} />}
-        {futureState.success_measures && <Field label="Success measures" value={futureState.success_measures} />}
-        {futureState.constraints && <Field label="Constraints" value={futureState.constraints} />}
-        {futureState.assumptions && <Field label="Assumptions" value={futureState.assumptions} />}
+        <DetailCard>
+          {futureState.current_state && <Field label="Current state" value={futureState.current_state} />}
+          <Field label="Desired state" value={futureState.desired_state} />
+          {futureState.outcomes && <Field label="Outcomes" value={futureState.outcomes} />}
+          {futureState.success_measures && <Field label="Success measures" value={futureState.success_measures} />}
+          {futureState.constraints && <Field label="Constraints" value={futureState.constraints} />}
+          {futureState.assumptions && <Field label="Assumptions" value={futureState.assumptions} />}
+        </DetailCard>
 
 
         {versions && versions.length > 1 && (
-          <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-            <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Versions</h3>
+          <DetailCard heading="Versions">
             <table className="table">
               <thead>
                 <tr><th>Version</th><th>Status</th><th>Changed</th><th>Change note</th></tr>
@@ -286,11 +286,10 @@ export function FutureStateDetailPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </DetailCard>
         )}
 
-        <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-          <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Attachments</h3>
+        <DetailCard heading="Attachments">
           <FileAttachmentList
             files={files}
             disabled={futureState.is_locked}
@@ -304,31 +303,29 @@ export function FutureStateDetailPage() {
               setFiles((prev) => prev.filter((f) => f.id !== fileId));
             }}
           />
-        </div>
+        </DetailCard>
 
-        <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-          <ArtefactCommentsSection
-            comments={comments ?? []}
-            currentUserId={user?.id}
-            onPost={async (body) => {
-              const comment = await scopedApi.addComment(scopeId, futureState.id, body);
-              setComments((prev) => [...(prev ?? []), comment]);
-              return comment;
-            }}
-            onEdit={async (commentId, body) => {
-              const updated = await scopedApi.editComment(scopeId, futureState.id, commentId, body);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? updated : c)));
-            }}
-            onUploadAttachment={async (commentId, file) => {
-              const asset = await scopedApi.uploadCommentAttachment(scopeId, futureState.id, commentId, file);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: [...c.attachments, asset] } : c)));
-            }}
-            onRemoveAttachment={async (commentId, fileId) => {
-              await scopedApi.removeCommentAttachment(scopeId, futureState.id, commentId, fileId);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
-            }}
-          />
-        </div>
+        <ArtefactCommentsSection
+          comments={comments ?? []}
+          currentUserId={user?.id}
+          onPost={async (body) => {
+            const comment = await scopedApi.addComment(scopeId, futureState.id, body);
+            setComments((prev) => [...(prev ?? []), comment]);
+            return comment;
+          }}
+          onEdit={async (commentId, body) => {
+            const updated = await scopedApi.editComment(scopeId, futureState.id, commentId, body);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? updated : c)));
+          }}
+          onUploadAttachment={async (commentId, file) => {
+            const asset = await scopedApi.uploadCommentAttachment(scopeId, futureState.id, commentId, file);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: [...c.attachments, asset] } : c)));
+          }}
+          onRemoveAttachment={async (commentId, fileId) => {
+            await scopedApi.removeCommentAttachment(scopeId, futureState.id, commentId, fileId);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
+          }}
+        />
       </div>
 
       {editing && (

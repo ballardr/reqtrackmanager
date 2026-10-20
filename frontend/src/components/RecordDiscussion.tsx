@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 
 import type { FileAsset } from "../api/types";
 import { ArtefactCommentsSection } from "./ArtefactCommentsSection";
+import { DetailCard } from "./DetailCard";
 import { FileAttachmentList } from "./FileAttachmentList";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 
@@ -76,8 +77,7 @@ export function RecordDiscussion<C extends DiscussionComment>({
 
   return (
     <>
-      <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-        <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Attachments</h3>
+      <DetailCard heading="Attachments">
         <FileAttachmentList
           files={files}
           disabled={attachmentsReadOnly}
@@ -91,10 +91,9 @@ export function RecordDiscussion<C extends DiscussionComment>({
             setFiles((prev) => prev.filter((f) => f.id !== fileId));
           }}
         />
-      </div>
+      </DetailCard>
 
-      <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-        <ArtefactCommentsSection
+      <ArtefactCommentsSection
           comments={comments ?? []}
           currentUserId={currentUserId}
           onPost={async (body) => {
@@ -115,7 +114,6 @@ export function RecordDiscussion<C extends DiscussionComment>({
             setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
           }}
         />
-      </div>
     </>
   );
 }

@@ -23,6 +23,7 @@ import { api } from "../../api/client";
 import type { OrgUser, Project } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { RecordActivity } from "../../components/RecordActivity";
+import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordTags } from "../../components/RecordTags";
 import { DetailLayout } from "../../components/DetailLayout";
 import { RecordDiscussion } from "../../components/RecordDiscussion";
@@ -48,6 +49,7 @@ import { RISK_STATUS_LABEL, RISK_STATUS_TONE, TREATMENT_STRATEGY_LABEL } from ".
 import type { Risk, RiskFieldValues, RiskStatus, RiskVersion } from "./types";
 import { Badge } from "../../components/Badge";
 import { RISK_HELP } from "./help";
+import { DetailCard } from "../../components/DetailCard";
 
 /** "Likely × Major" (and "× Undetectable" when scored), or "—" when nothing is set. */
 function levelSummary(
@@ -155,7 +157,7 @@ export function RiskDetailPage() {
 
   return (
     <DetailLayout
-      activity={projectId ? <RecordActivity projectId={projectId} artefactType="risk" artefactId={risk.id} /> : undefined}
+      activity={projectId ? <RecordActivity projectId={projectId} artefactType="risk" artefactId={risk.id} refreshToken={recordActivityKey(risk)} /> : undefined}
       aside={
         <ArtefactLinksPanel
           projectId={projectId}
@@ -181,6 +183,7 @@ export function RiskDetailPage() {
             <Badge tone={RISK_STATUS_TONE[risk.status]}>{RISK_STATUS_LABEL[risk.status]}</Badge>
           </>
         }
+        version={risk.version_number}
         subtitle={
           <>
             {risk.risk_type_name ?? "No type"} · Owner: <PrincipalBadge principal={risk.owner} /> ·{" "}
@@ -201,14 +204,15 @@ export function RiskDetailPage() {
       />
       {archive.dialog}
       <div className="stack">
-        {risk.statement && <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{risk.statement}</p>}
-        {risk.cause && <RecordField label="Cause" value={risk.cause} />}
-        {risk.risk_event && <RecordField label="Risk event" value={risk.risk_event} />}
-        {risk.consequence && <RecordField label="Consequence" value={risk.consequence} />}
-        {risk.acceptance_criteria && <RecordField label="Acceptance criteria" value={risk.acceptance_criteria} />}
+        <DetailCard>
+          {risk.statement && <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{risk.statement}</p>}
+          {risk.cause && <RecordField label="Cause" value={risk.cause} />}
+          {risk.risk_event && <RecordField label="Risk event" value={risk.risk_event} />}
+          {risk.consequence && <RecordField label="Consequence" value={risk.consequence} />}
+          {risk.acceptance_criteria && <RecordField label="Acceptance criteria" value={risk.acceptance_criteria} />}
+        </DetailCard>
 
-        <section className="stack" aria-label="Rating" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-          <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Rating</h3>
+        <DetailCard heading="Rating">
           <div className="row" style={{ gap: "2rem", flexWrap: "wrap" }}>
             <RecordFieldGroup help={RISK_HELP.riskInherent} label="Inherent">
               <RiskRatingBadge rating={risk.inherent_rating} />
@@ -229,7 +233,7 @@ export function RiskDetailPage() {
             </RecordFieldGroup>
           </div>
           <RiskMatrix scheme={scheme} risks={[risk]} basis="both" />
-        </section>
+        </DetailCard>
 
         <RiskTreatmentsPanel projectId={projectId} riskId={risk.id} refreshToken={treatmentsRefresh} onChanged={reloadRisk} />
         <RiskReviewsPanel risk={risk} scheme={scheme} userNames={userNames} onRecorded={reloadRisk} />

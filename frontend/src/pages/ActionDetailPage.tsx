@@ -15,6 +15,7 @@ import type {
 import { principalRef, REQUIREMENT_ACTION_OUTCOME_LABEL, savedPrincipalDisplay } from "../api/types";
 import { ArtefactLinksPanel } from "../components/ArtefactLinksPanel";
 import { RecordActivity } from "../components/RecordActivity";
+import { recordActivityKey } from "../components/recordActivityKey";
 import { RecordTags } from "../components/RecordTags";
 import { CommentThread } from "../components/CommentThread";
 import { DetailLayout } from "../components/DetailLayout";
@@ -30,6 +31,7 @@ import { useConfirmedAction } from "../components/useConfirmedAction";
 import { ActionFields } from "../components/ActionFields";
 import { LabeledSelect } from "../components/LabeledSelect";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { DetailCard } from "../components/DetailCard";
 
 /**
  * Detail view for a single requirement action: an editable outcome-status
@@ -223,7 +225,7 @@ export function ActionDetailPage() {
 
   return (
     <DetailLayout
-      activity={projectId && actionId ? <RecordActivity projectId={projectId} artefactType="requirement_action" artefactId={actionId} /> : undefined}
+      activity={projectId && actionId ? <RecordActivity projectId={projectId} artefactType="requirement_action" artefactId={actionId} refreshToken={recordActivityKey(action)} /> : undefined}
       contained={false}
       aside={
         projectId && actionId ? (
@@ -242,7 +244,7 @@ export function ActionDetailPage() {
       {archiveAction.dialog}
 
       <div className="stack">
-          <div className="card stack">
+          <DetailCard>
             <ActionFields
               values={form}
               onChange={(v) => updateForm(() => v)}
@@ -275,15 +277,13 @@ export function ActionDetailPage() {
                 {strings.actions.completedAt}: {new Date(action.completed_at).toLocaleString()}
               </span>
             )}
-          </div>
+          </DetailCard>
 
-          <div className="card stack">
-            <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.attachments}</h2>
+          <DetailCard heading={strings.requirements.attachments}>
             <FileAttachmentList files={files} onUpload={uploadFile} onRemove={removeFile} />
-          </div>
+          </DetailCard>
 
-          <div className="card stack">
-            <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.requirements.discussion}</h2>
+          <DetailCard heading={strings.requirements.discussion}>
             <CommentThread
               comments={comments}
               onPost={postComment}
@@ -293,7 +293,7 @@ export function ActionDetailPage() {
               onEdit={editComment}
               currentUserId={user?.id}
             />
-          </div>
+          </DetailCard>
       </div>
     </DetailLayout>
   );

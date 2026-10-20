@@ -173,12 +173,29 @@ test.describe("list scope filter across nested projects", () => {
     await page.goto(`/projects/${child.id}`);
     const scope = page.getByRole("combobox", { name: SCOPE_LABEL });
 
+    await test.step("the scope select sits in the title row, level with the New button, above nothing", async () => {
+      const title = await page.getByRole("heading", { level: 1 }).boundingBox();
+      const select = await scope.boundingBox();
+      const button = await page.getByRole("link", { name: /^New requirement$/i }).boundingBox();
+      expect(select!.x + select!.width).toBeLessThanOrEqual(button!.x + 1);
+      expect(Math.abs((select!.y + select!.height / 2) - (button!.y + button!.height / 2))).toBeLessThan(button!.height);
+      // Nothing is added between the title and the metric tiles by the scope control.
+      expect(select!.y).toBeLessThan(title!.y + title!.height + button!.height);
+    });
+
     await test.step("the overview counts only this project until widened, then says how many projects they cover", async () => {
       await expect(page.locator(".grid-metrics").getByText("Requirements", { exact: true }).locator("xpath=preceding-sibling::*[1]")).toHaveText("1");
       const saved = page.waitForResponse((r) => r.url().endsWith("/api/v1/auth/me/preferences") && r.request().method() === "PATCH");
       await scope.selectOption({ label: "This + parent projects" });
       expect((await saved).ok()).toBeTruthy();
-      await expect(page.getByText("Counts cover 2 projects")).toBeVisible();
+      await expect(scope).toHaveAccessibleDescription(/Counts cover 2 projects/);
+      await expect(scope).toHaveClass(/project-scope-select-widened/);
+      // The explanation is a tooltip on hover and on keyboard focus.
+      await scope.hover();
+      await expect(page.getByRole("tooltip")).toContainText("Counts cover 2 projects");
+      await page.mouse.move(0, 0);
+      await scope.focus();
+      await expect(page.getByRole("tooltip")).toContainText("Counts cover 2 projects");
       await expect(page.locator(".grid-metrics").getByText("Requirements", { exact: true }).locator("xpath=preceding-sibling::*[1]")).toHaveText("2");
     });
 

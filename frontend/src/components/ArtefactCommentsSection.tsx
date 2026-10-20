@@ -17,12 +17,16 @@
  *
  * Attachment upload/remove and edit are each opt-in via their callback; edit
  * is offered only on the current user's own comments.
+ *
+ * It is one `DetailCard` ("Comments"), so a detail page places it directly; each comment inside is a
+ * flat row (`.comment-row`), not a card, because cards never nest.
  */
 import { Paperclip, Pencil } from "lucide-react";
 import { useState } from "react";
 
 import { fileUrl } from "../api/client";
 import type { FileAsset } from "../api/types";
+import { DetailCard } from "./DetailCard";
 import { FileUploadTrigger } from "./FileUploadTrigger";
 import { ItemRow } from "./ItemRow";
 import { RemovableChip } from "./RemovableChip";
@@ -93,13 +97,12 @@ export function ArtefactCommentsSection<T extends ArtefactComment>({
   }
 
   return (
-    <div className="stack">
-      <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Comments</h3>
+    <DetailCard heading="Comments">
       {comments.length === 0 && <p className="text-muted" style={{ margin: 0 }}>No comments yet.</p>}
       {comments.map((c) => {
         const isEditing = editingId === c.id;
         return (
-          <div key={c.id} className="card stack" style={{ gap: "0.35rem" }}>
+          <div key={c.id} className="comment-row stack" style={{ gap: "0.35rem" }}>
             <div className="row" style={{ justifyContent: "space-between" }}>
               <span style={{ fontWeight: 600 }}>{c.author_display_name}</span>
               <span className="text-muted" style={{ fontSize: "0.8rem" }}>
@@ -179,6 +182,6 @@ export function ArtefactCommentsSection<T extends ArtefactComment>({
           </div>
         )}
       </div>
-    </div>
+    </DetailCard>
   );
 }

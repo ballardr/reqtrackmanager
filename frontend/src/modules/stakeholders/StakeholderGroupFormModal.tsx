@@ -56,7 +56,7 @@ export function StakeholderGroupFormModal({
           <TextField helpNotNeeded label="Description" value={description} onChange={setDescription} />
           <LabeledSelect helpNotNeeded label="Parent group" value={parentId} onChange={setParentId} options={parentOptions} placeholder="None (top level)" />
           <FormGridFull>
-            <label className="row" style={{ gap: "0.5rem", alignItems: "flex-start" }}>
+            <label className="checkbox-label" style={{ gap: "0.5rem" }}>
               <input type="checkbox" checked={exclusive} onChange={(e) => setExclusive(e.target.checked)} aria-label="One branch per stakeholder" />
               <span className="stack" style={{ gap: "0.1rem" }}>
                 <span>One branch per stakeholder</span>

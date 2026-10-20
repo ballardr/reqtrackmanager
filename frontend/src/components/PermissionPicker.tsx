@@ -101,7 +101,7 @@ export function PermissionPicker({
         >
           <div className="stack" style={{ gap: "0.35rem" }}>
             {group.items.map((permission) => (
-              <label className="row" style={{ gap: "0.5rem" }} key={permission.key}>
+              <label className="checkbox-label" style={{ gap: "0.5rem" }} key={permission.key}>
                 <input
                   type="checkbox"
                   checked={selectedSet.has(permission.key)}

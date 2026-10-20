@@ -23,7 +23,7 @@ const PAGE_SIZE = 25;
  * @param projectId The project the page is opened in.
  * @param artefactType The record's registered artefact type.
  * @param artefactId The record's id.
- * @param refreshToken Bump to reload from the first page.
+ * @param refreshToken Change to reload from the first page (a number to bump, or `recordActivityKey(record)` from `recordActivityKey.ts`).
  * @param api The activity API (the live one by default).
  */
 export function RecordActivity({
@@ -36,7 +36,7 @@ export function RecordActivity({
   projectId: string;
   artefactType: string;
   artefactId: string;
-  refreshToken?: number;
+  refreshToken?: number | string;
   api?: RecordActivityApi;
 }) {
   const strings = useStrings();

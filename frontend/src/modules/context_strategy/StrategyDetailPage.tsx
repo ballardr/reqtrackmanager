@@ -36,6 +36,7 @@ import { useParams } from "react-router-dom";
 import type { FileAsset } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { RecordActivity } from "../../components/RecordActivity";
+import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordTags } from "../../components/RecordTags";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
@@ -55,6 +56,7 @@ import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
 import { TextAreaField } from "../../components/FormFields";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { DetailCard } from "../../components/DetailCard";
 
 /** Every lifecycle action this page can offer, keyed by the action itself —
  * used to build the confirm-dialog copy generically instead of repeating it
@@ -181,7 +183,7 @@ export function StrategyDetailPage() {
 
   return (
     <DetailLayout
-      activity={projectId ? <RecordActivity projectId={projectId} artefactType="strategy" artefactId={strategy.id} /> : undefined}
+      activity={projectId ? <RecordActivity projectId={projectId} artefactType="strategy" artefactId={strategy.id} refreshToken={recordActivityKey(strategy)} /> : undefined}
       aside={
         <ArtefactLinksPanel
           projectId={projectId}
@@ -218,11 +220,8 @@ export function StrategyDetailPage() {
           </Badge>
           </>
         }
-        subtitle={
-          <>
-            {STRATEGY_PRIORITY_LABEL[strategy.priority]} priority · {STRATEGY_TIME_HORIZON_LABEL[strategy.time_horizon]} · v{strategy.version_number}
-          </>
-        }
+        version={strategy.version_number}
+        subtitle={`${STRATEGY_PRIORITY_LABEL[strategy.priority]} priority · ${STRATEGY_TIME_HORIZON_LABEL[strategy.time_horizon]}`}
         onEdit={strategy.is_locked ? undefined : () => setEditing(true)}
         actions={[archive.item]}
         transitions={
@@ -265,18 +264,19 @@ export function StrategyDetailPage() {
 
       <div className="stack">
 
-        <Field label="Objective / strategic theme" value={strategy.objective} />
-        {strategy.current_state && <Field label="Current state" value={strategy.current_state} />}
-        {strategy.desired_future_state && <Field label="Desired future state" value={strategy.desired_future_state} />}
-        {strategy.rationale && <Field label="Rationale" value={strategy.rationale} />}
-        {strategy.expected_outcomes && <Field label="Expected outcomes" value={strategy.expected_outcomes} />}
-        {strategy.constraints && <Field label="Constraints" value={strategy.constraints} />}
-        {strategy.measures_of_success && <Field label="Measures of success" value={strategy.measures_of_success} />}
+        <DetailCard>
+          <Field label="Objective / strategic theme" value={strategy.objective} />
+          {strategy.current_state && <Field label="Current state" value={strategy.current_state} />}
+          {strategy.desired_future_state && <Field label="Desired future state" value={strategy.desired_future_state} />}
+          {strategy.rationale && <Field label="Rationale" value={strategy.rationale} />}
+          {strategy.expected_outcomes && <Field label="Expected outcomes" value={strategy.expected_outcomes} />}
+          {strategy.constraints && <Field label="Constraints" value={strategy.constraints} />}
+          {strategy.measures_of_success && <Field label="Measures of success" value={strategy.measures_of_success} />}
+        </DetailCard>
 
 
         {versions && versions.length > 1 && (
-          <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-            <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Versions</h3>
+          <DetailCard heading="Versions">
             <table className="table">
               <thead>
                 <tr><th>Version</th><th>Status</th><th>Changed</th><th>Change note</th></tr>
@@ -292,11 +292,10 @@ export function StrategyDetailPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </DetailCard>
         )}
 
-        <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-          <h3 style={{ margin: 0, fontSize: "0.95rem" }}>Attachments</h3>
+        <DetailCard heading="Attachments">
           <FileAttachmentList
             files={files}
             disabled={strategy.is_locked}
@@ -310,31 +309,29 @@ export function StrategyDetailPage() {
               setFiles((prev) => prev.filter((f) => f.id !== fileId));
             }}
           />
-        </div>
+        </DetailCard>
 
-        <div className="stack" style={{ borderTop: "1px solid var(--color-border)", paddingTop: "0.75rem" }}>
-          <ArtefactCommentsSection
-            comments={comments ?? []}
-            currentUserId={user?.id}
-            onPost={async (body) => {
-              const comment = await scopedApi.addComment(scopeId, strategy.id, body);
-              setComments((prev) => [...(prev ?? []), comment]);
-              return comment;
-            }}
-            onEdit={async (commentId, body) => {
-              const updated = await scopedApi.editComment(scopeId, strategy.id, commentId, body);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? updated : c)));
-            }}
-            onUploadAttachment={async (commentId, file) => {
-              const asset = await scopedApi.uploadCommentAttachment(scopeId, strategy.id, commentId, file);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: [...c.attachments, asset] } : c)));
-            }}
-            onRemoveAttachment={async (commentId, fileId) => {
-              await scopedApi.removeCommentAttachment(scopeId, strategy.id, commentId, fileId);
-              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
-            }}
-          />
-        </div>
+        <ArtefactCommentsSection
+          comments={comments ?? []}
+          currentUserId={user?.id}
+          onPost={async (body) => {
+            const comment = await scopedApi.addComment(scopeId, strategy.id, body);
+            setComments((prev) => [...(prev ?? []), comment]);
+            return comment;
+          }}
+          onEdit={async (commentId, body) => {
+            const updated = await scopedApi.editComment(scopeId, strategy.id, commentId, body);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? updated : c)));
+          }}
+          onUploadAttachment={async (commentId, file) => {
+            const asset = await scopedApi.uploadCommentAttachment(scopeId, strategy.id, commentId, file);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: [...c.attachments, asset] } : c)));
+          }}
+          onRemoveAttachment={async (commentId, fileId) => {
+            await scopedApi.removeCommentAttachment(scopeId, strategy.id, commentId, fileId);
+            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
+          }}
+        />
       </div>
 
       {editing && (

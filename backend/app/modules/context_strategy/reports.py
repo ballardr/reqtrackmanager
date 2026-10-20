@@ -944,7 +944,8 @@ def collect_pain_point_coverage(db: Session, req: ReportContext) -> ReportResult
         ReportSection("ageing", "Age of open Pain Points", ["Pain point", "Project", "Status", "Identified", "Age (days)", "Tags"], age_rows),
     ]
     result.metrics = [
-        ReportMetric("Pain Points", len(pain_points), link=_page("pain-points")),
+        # open="0": this count includes every status, and the list opens on open Pain Points unless told otherwise.
+        ReportMetric("Pain Points", len(pain_points), link=_page("pain-points", open="0")),
         ReportMetric("Accepted", len(accepted), link=_page("pain-points", status="accepted")),
         ReportMetric("Accepted with no Requirement", len(uncovered), gap=True, link=_gap_table("pain-point-coverage", "uncovered")),
         ReportMetric(

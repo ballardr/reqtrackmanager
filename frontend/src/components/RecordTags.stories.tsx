@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
-import { buildChip, buildRecordTags, buildRecordTagsApi, TAGS_PROJECT_ID } from "../testing/tagsFixtures";
+import { buildChip, buildRecordTags, buildRecordTagsApi, openTagPicker, TAGS_PROJECT_ID } from "../testing/tagsFixtures";
 import { withToast } from "../testing/storybook-helpers";
 import { RecordTags } from "./RecordTags";
 
@@ -23,8 +23,8 @@ export const AddingATagSavesTheWholeSet: Story = {
   args: { api: buildRecordTagsApi() },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    await userEvent.type(await canvas.findByRole("combobox", { name: "Tags" }), "sec");
-    await userEvent.click(await canvas.findByRole("option", { name: "Security" }));
+    await userEvent.type(await openTagPicker(canvas), "sec");
+    await userEvent.click(await within(document.body).findByRole("option", { name: "Security" }));
     await waitFor(() => expect(args.api!.set).toHaveBeenCalledWith(TAGS_PROJECT_ID, "requirement", "req-1", ["Safety", "Security"]));
     await expect(await canvas.findByRole("button", { name: "Remove tag Security" })).toBeInTheDocument();
   },
@@ -48,8 +48,8 @@ export const ARefusedSaveIsRevertedWithAMessage: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.type(await canvas.findByRole("combobox", { name: "Tags" }), "sec");
-    await userEvent.click(await canvas.findByRole("option", { name: "Security" }));
+    await userEvent.type(await openTagPicker(canvas), "sec");
+    await userEvent.click(await within(document.body).findByRole("option", { name: "Security" }));
     await waitFor(() => expect(canvas.queryByRole("button", { name: "Remove tag Security" })).not.toBeInTheDocument());
     await expect(canvas.getByRole("button", { name: "Remove tag Safety" })).toBeInTheDocument();
     await expect(await within(document.body).findByText(/Could not save the tags: 'Security' is not in the tag list\./)).toBeInTheDocument();
@@ -62,7 +62,7 @@ export const ReadOnlyForSomeoneWhoCannotTag: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByText("Safety")).toBeInTheDocument();
-    await expect(canvas.queryByRole("combobox")).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Add tag" })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("button")).not.toBeInTheDocument();
   },
 };
@@ -89,7 +89,7 @@ export const AFailedReadShowsNothing: Story = {
 export const RestrictedProjectOffersTheListOnly: Story = {
   args: { api: buildRecordTagsApi(buildRecordTags({ restricted: true, tags: [] })) },
   play: async ({ canvasElement }) => {
-    const input = await within(canvasElement).findByRole("combobox", { name: "Tags" });
+    const input = await openTagPicker(within(canvasElement));
     await expect(input).toHaveAttribute("placeholder", "Choose a tag…");
   },
 };

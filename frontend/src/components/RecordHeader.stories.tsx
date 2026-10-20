@@ -14,7 +14,8 @@ const meta: Meta<typeof RecordHeader> = {
     recordLabel: "Persona",
     title: "Ada Lovelace",
     code: "PER-001",
-    subtitle: "Analyst · v3",
+    subtitle: "Analyst",
+    version: 3,
     back: { to: "/personas", label: "← Personas" },
     badges: <><Badge>Project</Badge><Badge tone="accent">Active</Badge></>,
     onEdit: fn(),
@@ -34,6 +35,38 @@ export const Default: Story = {
     await expect(canvas.getByRole("button", { name: "Retire" })).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Persona actions" }));
     await expect(within(document.body).getByRole("menuitem", { name: "Archive" })).toBeInTheDocument();
+  },
+};
+
+/** The version is a labelled, muted item on the badge line, never a line of its own. */
+export const VersionAfterTheBadges: Story = {
+  play: async ({ canvasElement }) => {
+    const version = within(canvasElement).getByText("Version 3");
+    await expect(version).toHaveAttribute("title", "Version 3 of this record");
+    await expect(version.parentElement).toContainElement(within(canvasElement).getByText("Active"));
+  },
+};
+
+/** A version with no badges still sits on its own badge line; a record with no version shows none. */
+export const VersionOnly: Story = {
+  args: { badges: undefined, subtitle: undefined },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByText("Version 3")).toBeInTheDocument();
+  },
+};
+
+export const NoVersionNoSubtitle: Story = {
+  args: { version: undefined, subtitle: undefined, badges: undefined },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).queryByText(/Version/)).not.toBeInTheDocument();
+  },
+};
+
+/** A long title keeps the version on the badge line under it. */
+export const LongTitleWithVersion: Story = {
+  args: { title: "A very long persona name that would otherwise push everything around when it wraps across several lines" },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByText("Version 3")).toBeInTheDocument();
   },
 };
 

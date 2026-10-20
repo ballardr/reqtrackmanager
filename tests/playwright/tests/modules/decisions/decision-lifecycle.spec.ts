@@ -126,8 +126,14 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     await expect(page.getByText("Under review", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Approve" }).click();
     let confirmDialog = page.getByRole("dialog", { name: "Approve this Decision?" });
+    await confirmDialog.getByLabel("Approval comment").fill("Agreed at the architecture board.");
     await confirmDialog.getByRole("button", { name: "Approve" }).click();
     await expect(page.getByText("Approved", { exact: true })).toBeVisible();
+
+    // The comment given at approval is shown, quoted, in the record's own Activity tab.
+    await page.getByRole("tab", { name: "Activity" }).click();
+    await expect(page.locator("blockquote.activity-note", { hasText: "Agreed at the architecture board." })).toBeVisible();
+    await page.getByRole("tab", { name: "Links" }).click();
 
     // --- Back to the list, create Decision B ("DEC-002") and move it to
     // Approved too.

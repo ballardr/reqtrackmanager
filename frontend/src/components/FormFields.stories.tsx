@@ -41,6 +41,52 @@ export const DateFieldIsLabelledAndReportsChanges: Story = {
   },
 };
 
+const LONG_LABEL = "Hide intentional limitations that the team has agreed to live with";
+
+/** The first line of the label's text sits beside the box, whatever the container's width. */
+async function expectBoxBesideItsText(canvasElement: HTMLElement) {
+  const box = within(canvasElement).getByRole("checkbox");
+  const text = box.parentElement!;
+  const range = document.createRange();
+  range.setStart(text.lastChild!, 0);
+  range.setEnd(text.lastChild!, 1);
+  const first = range.getClientRects()[0];
+  const b = box.getBoundingClientRect();
+  // The box and the first character of the text overlap vertically, and the text starts to the right of the box.
+  await expect(first.left).toBeGreaterThanOrEqual(b.right - 1);
+  await expect(Math.abs((first.top + first.height / 2) - (b.top + b.height / 2))).toBeLessThan(first.height);
+}
+
+/** A label long enough to wrap in a narrow container hangs beside its box, never under it. */
+export const CheckboxLongLabelWrapsBesideTheBox: Story = {
+  render: () => <div style={{ width: 220 }}><CheckboxField label={LONG_LABEL} checked={false} onChange={fn()} helpNotNeeded /></div>,
+  play: async ({ canvasElement }) => {
+    await expectBoxBesideItsText(canvasElement);
+    const label = within(canvasElement).getByRole("checkbox").parentElement!;
+    // More than one line of text, yet the box is still level with the first.
+    await expect(label.getBoundingClientRect().height).toBeGreaterThan(30);
+  },
+};
+
+export const CheckboxLongLabelWithHelpAndHint: Story = {
+  render: () => (
+    <div style={{ width: 220 }}>
+      <CheckboxField label={LONG_LABEL} checked={false} onChange={fn()} help="Hides pain points marked as intentional." hint="Shown again when unticked." />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    await expectBoxBesideItsText(canvasElement);
+    await expect(within(canvasElement).getByText("Shown again when unticked.")).toBeInTheDocument();
+  },
+};
+
+export const CheckboxShortLabelStaysOnOneLine: Story = {
+  render: () => <CheckboxField label="Include archived" checked={false} onChange={fn()} helpNotNeeded />,
+  play: async ({ canvasElement }) => {
+    await expectBoxBesideItsText(canvasElement);
+  },
+};
+
 export const CheckboxFieldReportsToggles: Story = {
   render: () => {
     const onChange = fn();

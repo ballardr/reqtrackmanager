@@ -100,7 +100,7 @@ export function CommentThread({
       {comments.map((c) => {
         const isEditing = editingId === c.id;
         return (
-          <div key={c.id} className="card stack" style={{ gap: "0.35rem" }}>
+          <div key={c.id} className="comment-row stack" style={{ gap: "0.35rem" }}>
             <div className="row" style={{ justifyContent: "space-between" }}>
               <span style={{ fontWeight: 600 }}>{c.author_display_name}</span>
               <span className="text-muted" style={{ fontSize: "0.8rem" }}>
