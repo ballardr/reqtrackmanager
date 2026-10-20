@@ -11352,3 +11352,11 @@ Closes the "Still open" item of the concurrency review (the unlocked `apply_*new
 - **Security and SOC 2 (change-management policy; identify, verify, remediate).** Identify: a user-visible 500 on concurrent edit; lock ordering as a deadlock source. Verify: no auth, audit or permission path changed; locks are single-row and taken in a fixed order (change request, then requirement; baseline in id order). Remediate: as above. No policy Known Gap changes.
 - **Users and groups parity / nested projects / modular boundary / time:** no person field, project-scoped definition table, per-module core value or time value is added. The locking getters are inside the module (`context_strategy`) or core (`requirements`); `rbac.lock_row_for_update` stays generic.
 - **Tests.** The behavioural tests commit a competing next version while the request waits on the lock, which a request that read before waiting would turn into a 500: they fail with the fix removed (verified) and pass with it, for requirement edit and approve, Strategy, Future State and Guiding Principle edit and propose, and (added because the pre-existing Risk test only proved blocking, and Persona, Stakeholder and Need had none) Risk, Persona, Stakeholder and Need edit. (Blocking alone proves nothing, because inserting a version row waits on the lock through its foreign key anyway; the pre-existing Risk test has that weakness.)
+
+## Leftovers (October 2026) Phase 2: icon scale confirmed final (2026-10-21)
+
+Closes the "icon scale still awaits the user's review" item of the platform review close-out. **Decided by: User** (Q1: accept the draft as final); recording it is the only work.
+
+- **Decision.** The size scale for icons outside buttons in the style guide's Icons section (12px in pills and chips; 14px beside caption text, disclosure chevrons and `ActionMenu` items; 16px beside body text, in headings and in the expanded nav rail, 14px in the collapsed rail) is final. The review promised after the platform review's icon-size phase is closed; the style guide no longer calls it provisional.
+- **Docs only.** No code, test, seed or website change; the scale is a UI-internal convention with no user-visible surface to document.
+- **SOC 2 / modules / parity / nested projects / time:** none apply.
