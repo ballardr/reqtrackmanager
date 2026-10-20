@@ -1,4 +1,4 @@
-import { Ban, Eye, ShieldCheck, Upload, UserCheck, UserX } from "lucide-react";
+import { Ban, Eye, Plus, ShieldCheck, Upload, UserCheck, UserX } from "lucide-react";
 import { useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
@@ -20,6 +20,7 @@ import { useOrgLabel, useOrgLabelPlural } from "../context/BrandingContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
 import { useRequestSequence } from "../hooks/useRequestSequence";
+import { AddUserModal, type AddUserMode } from "./AddUserModal";
 import { ServerModulesTab } from "./ServerModulesTab";
 import { ColorField, TextAreaField, TextField } from "../components/FormFields";
 import { LabeledSelect } from "../components/LabeledSelect";
@@ -65,6 +66,7 @@ function AccessReviewTab() {
   // "Confirmation and feedback rollout, precisely" list.
   const [confirmAction, setConfirmAction] = useState<{ kind: AccessReviewConfirmKind; userId: string } | null>(null);
   const [revokeAllPatsOpen, setRevokeAllPatsOpen] = useState(false);
+  const [addUserOpen, setAddUserOpen] = useState(false);
   // The full groups list and the server-
   // roles toggles both moved off the row (an unbounded joined string and an
   // always-visible dropdown respectively) into modals opened from the row's
@@ -143,6 +145,15 @@ function AccessReviewTab() {
       if (successMessage) showToast(successMessage);
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "Something went wrong.");
+    }
+  }
+
+  /** After "Add user": toast, and for a created account list it (all users, filtered to its email) so the new row is in view. */
+  function userAdded(email: string, mode: AddUserMode) {
+    showToast(mode === "invite" ? strings.system.addUserInvited(email) : strings.system.addUserCreated(email));
+    if (mode === "password") {
+      setView("all");
+      setSearch(email);
     }
   }
 
@@ -375,7 +386,12 @@ function AccessReviewTab() {
   return (
     <div className="stack">
       <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.system.users}</h2>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
+          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.system.users}</h2>
+          <button className="btn btn-primary" onClick={() => setAddUserOpen(true)}>
+            <Plus /> {strings.system.addUser}
+          </button>
+        </div>
         <p className="text-muted" style={{ margin: 0 }}>{strings.system.usersHint(orgLabel)}</p>
 
         {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
@@ -435,6 +451,7 @@ function AccessReviewTab() {
         {patResult && <div style={{ color: "var(--color-accent)" }}>{patResult}</div>}
       </div>
 
+      {addUserOpen && <AddUserModal onClose={() => setAddUserOpen(false)} onCreated={userAdded} />}
       {confirmAction && (
         <ConfirmDialog
           title={confirmActionCopy[confirmAction.kind].title}

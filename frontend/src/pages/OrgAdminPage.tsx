@@ -74,6 +74,8 @@ import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPa
 import { ImportConflictPanel } from "../components/ImportConflictPanel";
 import { LinkTypesPanel } from "../components/LinkTypesPanel";
 import { Modal } from "../components/Modal";
+import { NewUserFields } from "../components/NewUserFields";
+import { EMPTY_NEW_USER, type NewUserValues } from "../components/newUserValues";
 import { ModuleAvailabilitySelect, ModuleSettingsList } from "../components/ModuleSettingsList";
 import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
 import { OverridePill } from "../components/OverridePill";
@@ -289,10 +291,7 @@ export function OrgAdminPage() {
 
   // --- Requirement link types (C-G-09) ---------------------------------
 
-  const [newUserEmail, setNewUserEmail] = useState("");
-  const [newUserName, setNewUserName] = useState("");
-  const [newUserPassword, setNewUserPassword] = useState("");
-  const [newUserRole, setNewUserRole] = useState<OrgRole>("member");
+  const [newUser, setNewUser] = useState<NewUserValues>(EMPTY_NEW_USER);
   // "New user" now opens in a `Modal` (style guide "Pattern: modal dialog
   // for entity create/rename") rather than the permanently-visible inline
   // form it used to be — the first real usage of that pattern, setting the
@@ -1284,12 +1283,9 @@ export function OrgAdminPage() {
   async function createUser() {
     try {
       await api.post(`/api/v1/orgs/${orgId}/users`, {
-        email: newUserEmail, display_name: newUserName, password: newUserPassword, role: newUserRole,
+        email: newUser.email, display_name: newUser.displayName, password: newUser.password, role: newUser.role,
       });
-      setNewUserEmail("");
-      setNewUserName("");
-      setNewUserPassword("");
-      setNewUserRole("member");
+      setNewUser(EMPTY_NEW_USER);
       setNewUserModalOpen(false);
       showToast(strings.orgAdmin.userCreated);
       reload();
@@ -2781,33 +2777,12 @@ export function OrgAdminPage() {
             {newUserModalOpen && (
               <Modal title={strings.orgAdmin.newUser} onClose={() => setNewUserModalOpen(false)} size="lg">
                 <div className="stack">
-                  <FormGrid minColumn="18rem">
-                    <TextField helpNotNeeded
-                      label={strings.orgAdmin.email}
-                      value={newUserEmail}
-                      onChange={setNewUserEmail}
-                      inputProps={{ autoFocus: true, type: "email" }}
-                    />
-                    <TextField helpNotNeeded label={strings.orgAdmin.name} value={newUserName} onChange={setNewUserName} />
-                    <TextField helpNotNeeded
-                      label={strings.orgAdmin.password}
-                      value={newUserPassword}
-                      onChange={setNewUserPassword}
-                      inputProps={{ type: "password" }}
-                    />
-                    <LabeledSelect helpNotNeeded
-                      label={strings.orgAdmin.role}
-                      value={newUserRole}
-                      onChange={(next) => setNewUserRole(next as OrgRole)}
-                      options={[{ value: "member", label: ORG_ROLE_LABEL.member }, { value: "project_creator", label: ORG_ROLE_LABEL.project_creator }, { value: "org_admin", label: ORG_ROLE_LABEL.org_admin }]}
-                      placeholder={null}
-                    />
-                  </FormGrid>
+                  <NewUserFields values={newUser} onChange={(patch) => setNewUser((prev) => ({ ...prev, ...patch }))} />
                   <FormActions
                     onCancel={() => setNewUserModalOpen(false)}
                     onSave={createUser}
                     saveLabel={strings.common.create}
-                    saveDisabled={!newUserEmail || !newUserName || !newUserPassword}
+                    saveDisabled={!newUser.email || !newUser.displayName || !newUser.password}
                   />
                 </div>
               </Modal>

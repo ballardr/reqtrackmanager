@@ -27,6 +27,10 @@ _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 settings = get_settings()
 
+#: Shortest password accepted anywhere a person's password is set (signup, change-password, and an
+#: administrator creating an account), so the rule has one definition.
+MIN_PASSWORD_LENGTH = 8
+
 _exp_required = JWTClaimsRegistry(exp={"essential": True})
 
 

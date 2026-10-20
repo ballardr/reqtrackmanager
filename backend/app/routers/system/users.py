@@ -1,8 +1,8 @@
 """
 Module: routers.system.users
 
-Server-tier user administration (I-M-06): granting or revoking the server
-admin role itself, server-tier role grants/revokes (`UserServerRole`), the
+Server-tier user administration (I-M-06): adding a user (by invite or with a
+password), granting or revoking the server admin role itself, server-tier role grants/revokes (`UserServerRole`), the
 system-wide user access-review directory (C-A-13), the merged
 deactivate/reactivate/ban/unban action for orphaned (org-less) accounts,
 and platform-wide PAT bulk revocation. Every endpoint here is
@@ -15,25 +15,28 @@ package layout.
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import exists, func, select, true
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.models.enums import ServerRole
+from app.models.enums import OrgRole, ServerRole
 from app.models.organization import Organization, OrgGroup, UserOrgRole
 from app.models.server_role import UserServerRole
 from app.models.user import User
 from app.schemas.pat import BulkRevokeResult
 from app.services.audit import log_event
 from app.services.pats import revoke_matching
+from app.services.rate_limit import RateLimiter
 from app.services.rbac import get_user_org_group_ids, require_server_admin
+from app.services.user_provisioning import create_native_user, invite_user
 
 router = APIRouter(tags=["system-users"])
 settings = get_settings()
@@ -112,6 +115,109 @@ class OrphanedUserStatusUpdate(BaseModel):
     """
 
     action: Literal["deactivate", "reactivate", "ban", "unban"]
+
+
+class SystemUserCreate(BaseModel):
+    """Payload for `POST /users` — a server administrator adding a person.
+
+    Attributes:
+        email: The new person's email.
+        display_name: Shown name; required for `password` mode (an invitee chooses their own).
+        mode: `password` creates the account now with `password`; `invite` emails a sign-up link so the
+            person sets their own (and joins `organization_id` as a member, if given).
+        password: Required for `password` mode; never echoed back.
+        organization_id: Organisation to join, or `None` for an account with no membership
+            (`password` mode only).
+        role: Organisation role for `password` mode; ignored without an organisation.
+    """
+
+    email: EmailStr
+    display_name: str | None = Field(None, max_length=255)
+    mode: Literal["password", "invite"]
+    password: str | None = None
+    organization_id: UUID | None = None
+    role: OrgRole = OrgRole.MEMBER
+
+
+class SystemUserCreated(BaseModel):
+    """Result of `POST /users`: the account (password mode) or the pending invite (invite mode)."""
+
+    mode: Literal["password", "invite"]
+    email: str
+    display_name: str | None = None
+    user_id: UUID | None = None
+    invite_id: UUID | None = None
+
+
+_create_limiters: dict[tuple[int, int], RateLimiter] = {}
+
+
+def _enforce_create_rate_limit(user: User) -> None:
+    """Spends one of the calling administrator's account-creation tokens (per user, per worker process).
+
+    Raises:
+        HTTPException: 429 with `Retry-After` when accounts are being created too fast.
+    """
+    cfg = get_settings()
+    key = (cfg.user_create_rate_limit_burst, cfg.user_create_rate_limit_per_minute)
+    limiter = _create_limiters.setdefault(key, RateLimiter(key[0], key[1] / 60))
+    wait = limiter.acquire(user.id)
+    if wait is not None:
+        seconds = max(1, math.ceil(wait))
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"You are adding users too fast. Wait {seconds} second{'s' if seconds != 1 else ''} and try again.",
+            headers={"Retry-After": str(seconds)},
+        )
+
+
+@router.post("/users", response_model=SystemUserCreated, status_code=status.HTTP_201_CREATED)
+def create_system_user(
+    payload: SystemUserCreate,
+    current_user: User = Depends(require_server_admin),
+    db: Session = Depends(get_db),
+):
+    """Adds a person from Server Management, by invite or with an admin-set password.
+
+    Uses the same service as Org Admin's "New user" and "Invite user", so email uniqueness, the
+    `sso_only` guard, the password rule and the audit row are shared. This cannot grant server-admin or
+    a server role: those stay on their own audited endpoints.
+
+    Args:
+        payload: The person to add and how they get a credential.
+        current_user: The calling server administrator.
+        db: Active database session.
+
+    Returns:
+        The created account (`user_id`) or invite (`invite_id`); never a password, hash or token.
+
+    Raises:
+        HTTPException: 400 missing password, an invite into an organisation with a role other than
+            member, weak password, or an `sso_only` organisation; 404 organisation not found; 409 email in
+            use; 429 too many creations.
+    """
+    _enforce_create_rate_limit(current_user)
+    if payload.mode == "password":
+        if not payload.password or not (payload.display_name or "").strip():
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "A name and a password are required to create the account.")
+        user = create_native_user(
+            db, email=payload.email, display_name=payload.display_name.strip(), password=payload.password,
+            organization_id=payload.organization_id, role=payload.role, actor_id=current_user.id,
+        )
+        db.commit()
+        return SystemUserCreated(mode="password", email=user.email, display_name=user.display_name, user_id=user.id)
+    if payload.organization_id is not None and payload.role != OrgRole.MEMBER:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "An invited person joins as a member; change their role once they have signed up.",
+        )
+    invite = invite_user(
+        db, email=payload.email, organization_id=payload.organization_id, actor_id=current_user.id
+    )
+    db.commit()
+    return SystemUserCreated(
+        mode="invite", email=invite.email, display_name=payload.display_name, invite_id=invite.id
+    )
 
 
 @router.put("/users/{user_id}/server-admin", status_code=status.HTTP_204_NO_CONTENT)

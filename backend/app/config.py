@@ -154,6 +154,9 @@ class Settings(BaseSettings):
             rate limiter, a token bucket per user and per worker process). 0 disables the limiter.
         search_rate_limit_per_minute: The sustained searches per minute one person may send, per
             worker process; each pause in typing in the live dropdown is one request, so a query is several.
+        user_create_rate_limit_burst: Most accounts or invites one server administrator may create in a
+            burst from Server Management (a token bucket per user and per worker process). 0 disables it.
+        user_create_rate_limit_per_minute: The sustained creations per minute, per worker process.
         allow_external_modules: Deployment-level opt-in for the modular
             feature system's third-party discovery sources
             (`app.modules.registry`'s Python entry-point scan and
@@ -268,6 +271,8 @@ class Settings(BaseSettings):
     help_url: str = "https://ballardr.github.io/reqtrackmanager/"
     search_rate_limit_burst: int = 60
     search_rate_limit_per_minute: int = 120
+    user_create_rate_limit_burst: int = 20
+    user_create_rate_limit_per_minute: int = 30
     allow_external_modules: bool = False
     extra_modules_path: str | None = None
     module_frame_allowed_origins: str = ""

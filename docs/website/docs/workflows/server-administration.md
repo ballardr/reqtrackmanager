@@ -26,11 +26,22 @@ Opening any one org's admin page from here as a server admin (rather than an org
 | Access review, platform branding, public sign-up, email and module settings |
 | ![Server management page with section navigation](../../static/img/screenshots/server-management.png) |
 
-- **Access review** — the platform-wide user directory: every user on the deployment, filterable to orphaned accounts (no organisation membership at all) or other server administrators.
+- **Access review** — the platform-wide user directory: every user on the deployment, filterable to orphaned accounts (no organisation membership at all) or other server administrators. **Add user** creates a person from here (see [Adding a user](#adding-a-user)).
 - **Platform branding** — the deployment's own logo and login-page styling, distinct from an organisation's own branding.
 - **Public sign-up** — the deployment-wide sign-up mode: disabled (accounts created by an admin or invite only), always on (anyone can create an account, joining no organisation automatically), or restricted to organisations that have opted in by email domain. See [Signing in → Signing up](./signing-in.md#signing-up) for what a user sees on the other side of this setting.
 - **Email** — deployment-wide outbound email configuration.
 - **Modules** — which [modules](../modules/overview.md) exist for whom: the default entitlement policy (open or closed), what an organisation gets for a module it has not chosen itself (available, and on for new projects), an **Apply to all organisations** action that writes those defaults into existing organisations (type the word shown to confirm), and a per-organisation list to grant or withdraw a module. A module withdrawn from an organisation disappears from its administrators' and projects' module lists. A fresh install starts with every module available; an upgraded one changes only when you choose.
+
+## Adding a user
+
+**Server Management → Access Review → Add user** creates an account without going through an organisation first. Choose how the person gets their password:
+
+| Choice | What happens | Organisation |
+|--------|--------------|--------------|
+| **Create with a password I set** | The account exists at once and the person can sign in. You know the password until they change it, so share it securely. At least 8 characters. | Optional. With none, the account belongs to no organisation until an admin adds it (it then shows as an orphaned account). With one, pick the role. |
+| **Send an invite** | The person gets an email link and chooses their own name and password. This works even when public sign-up is off. | Optional. With one they join it as a member (change their role after they sign up); with none they get an account with no organisation. |
+
+An SSO-only organisation can't be chosen (its people sign in through the identity provider), and an email that already has an account is refused. Every creation is recorded in the audit log under your name. This dialog cannot make someone a server admin; use **Assign server roles** on their row for that.
 
 ## Managing orphaned accounts
 

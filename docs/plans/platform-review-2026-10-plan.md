@@ -1,11 +1,11 @@
 # Platform Review (October 2026) — Plan
 
-**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21) a global search (N26, Phase 23) and, at the user's request on 2026-10-19, record codes in reports, CSVs and embedded references (N27, Phase 24) and, the same day, server administrators adding users directly (N28, Phase 25). Phase 11 (Ontology) was removed the same day and left for Module 15. Phases 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 23 and 24 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q13 are answered (Q14 superseded) (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q29 (section 3b) carry a recommended answer and need sign-off (Q25, Q26 and Q27 were answered by the user on 2026-10-18) before the phase they gate.
+**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21) a global search (N26, Phase 23) and, at the user's request on 2026-10-19, record codes in reports, CSVs and embedded references (N27, Phase 24) and, the same day, server administrators adding users directly (N28, Phase 25). Phase 11 (Ontology) was removed the same day and left for Module 15. Phases 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 23, 24 and 25 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q13 are answered (Q14 superseded) (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q29 (section 3b) carry a recommended answer and need sign-off (Q25, Q26 and Q27 were answered by the user on 2026-10-18) before the phase they gate.
 **Decision tags:** the notes (N1–N25) and the answers in section 3 are **Decided by: User**. Every other design choice below is **Decided by: Agent** and can be revisited on the agent's own judgement.
 
 ## Status / Resume Here
 
-22 / 24 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3, 4, 5, 6, 7, 8 and 12 done 2026-10-18, Phases 9, 10, 13, 14, 15, 16, 17, 18 and 19 done 2026-10-19, Phases 20, 21, 23 and 24 done 2026-10-20; Phases 8, 9, 10, 13, 14, 15, 16, 17, 18, 19, 20, 21, 23 and 24 uncommitted at hand-back). **Work the phases in table order (user instruction, 2026-10-18).** Phase 3 was built ahead of 12–14 earlier the same day. **Phase 11 (Ontology) was removed 2026-10-18 (Decided by: User): it stays in Module 15; the number is not reused.** **Next: Phase 25.** The icon scale (Q9) was accepted 2026-10-18 and gets a user review now that Phase 21 is done.
+23 / 24 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3, 4, 5, 6, 7, 8 and 12 done 2026-10-18, Phases 9, 10, 13, 14, 15, 16, 17, 18 and 19 done 2026-10-19, Phases 20, 21, 23, 24 and 25 done 2026-10-20; Phases 8, 9, 10, 13, 14, 15, 16, 17, 18, 19, 20, 21, 23, 24 and 25 uncommitted at hand-back). **Work the phases in table order (user instruction, 2026-10-18).** Phase 3 was built ahead of 12–14 earlier the same day. **Phase 11 (Ontology) was removed 2026-10-18 (Decided by: User): it stays in Module 15; the number is not reused.** **Next: Phase 22 (close-out).** The icon scale (Q9) was accepted 2026-10-18 and gets a user review now that Phase 21 is done.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -31,7 +31,7 @@
 | 21 | Field help (?) tooltips | N25 | [x] |
 | 23 | Global search: plain header search box with live results, search page (scope, filters, field picker), per-user default search fields, per-type search registration | N26 | [x] |
 | 24 | Record codes in reports, CSV and PDF exports, bundles and embedded references | N7, N27 | [x] |
-| 25 | Server administrators can add users directly (Server Management → Users) | N28 | [ ] |
+| 25 | Server administrators can add users directly (Server Management → Users) | N28 | [x] |
 | 22 | Docs website, seeds, README and close-out (runs last; the number 22 is kept so references stay valid) | all | [ ] |
 
 ```mermaid
@@ -618,6 +618,12 @@ flowchart LR
 - **Nested projects / module boundary:** no project-scoped table, no module code; not applicable.
 - **Tests:** backend: server admin creates with and without an organisation, both modes (invite and password; the invited user can log in after accepting, the password user can log in immediately), weak password 400, duplicate email 409, `sso_only` 400, non-server-admin 403, audit row present, the org endpoint behaves exactly as before after the extraction, no secret in the response; Storybook for the form; Playwright: server admin adds a user with no organisation and one in an organisation, both appear in the list, an invited user accepts and logs in, and a password user logs in directly.
 - **Docs and seeds:** docs website page for Server Management users, `docs/solution-architecture.md` if the service extraction changes a described flow, SOC 2 access-control policy note; the seeds need no new data.
+
+- **Done 2026-10-20 (uncommitted at hand-back).** Details and decisions in `docs/decisions.md`.
+  - **Built:** `services/user_provisioning.py` (`create_native_user`, `invite_user_to_org`) shared by Org Admin's New user / Invite user and the new `POST /system/users` (server admin only, audited, rate limited, no privileged fields); `security.MIN_PASSWORD_LENGTH`; Server Management → Access Review **Add user** (`AddUserModal`) and the shared `NewUserFields`, now also used by Org Admin's New user dialog.
+  - **Found and fixed:** Org Admin could create an account with a one-character password.
+  - **Also:** `PendingInvite.organization_id` is nullable (migration 0103), so an invite works with or without an organisation, as the spec asked.
+  - **Tests:** backend `tests/test_system_user_create.py` (16); Storybook `AddUserModal`, `NewUserFields`, the page button; Playwright `server-admin-add-user.spec.ts`. The 12 MailHog-DNS project-invite tests fail on the host as before.
 
 ### Phase 22 — Close-out
 

@@ -465,3 +465,17 @@ export const TestEmailSendFailure: Story = {
 
 export const LightTheme: Story = { ...AccessReviewOrphanedAccounts, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...AccessReviewOrphanedAccounts, globals: { theme: "dark" } };
+
+export const AddUserButtonOpensTheDialog: Story = {
+  beforeEach: () => {
+    mockServerManagementApis([systemUser({})]);
+    const base = api.get as unknown as (path: string) => Promise<unknown>;
+    spyOn(api, "get").mockImplementation(async (path: string) => (path === "/api/v1/orgs" ? [] : base(path)));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Add user" }));
+    await expect(within(document.body).getByRole("dialog", { name: "Add user" })).toBeInTheDocument();
+  },
+};

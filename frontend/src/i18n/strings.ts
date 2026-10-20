@@ -1164,6 +1164,7 @@ const en = {
     inviteUserModalHint: "They'll get an email with a link to choose their own password and display name.",
     sendInvite: "Send invite",
     inviteSent: "Invite sent",
+    passwordRuleHint: "At least 8 characters.",
     invitedBy: (name: string) => `Invited by ${name}`,
     invitedSentOn: (date: string) => `Sent ${date}`,
     noUsersFound: "No users match this search/filter.",
@@ -1562,6 +1563,18 @@ const en = {
   },
   system: {
     users: "Users",
+    // Server Management → Users → "Add user".
+    addUser: "Add user",
+    addUserHint: (org: string) => `Create an account from here, with or without ${org}. Choose how the person gets their password.`,
+    addUserModeLabel: "How they get a password",
+    addUserModeInvite: "Send an invite (they choose their own password)",
+    addUserModePassword: "Create with a password I set",
+    addUserNoOrg: (org: string) => `No ${org}`,
+    addUserNoOrgHint: (org: string) => `The account belongs to no ${org} yet; add it to one later.`,
+    addUserInviteHint: "They get an email link to choose their own name and password. In an organisation they join as a member; change their role once they have signed up.",
+    addUserPasswordHint: "You will know this password until the person changes it. Share it securely.",
+    addUserCreated: (email: string) => `Created ${email}`,
+    addUserInvited: (email: string) => `Invite sent to ${email}`,
     usersHint: (org: string) => `Every user on the deployment. Filter to orphaned accounts (no ${org} membership — the one category a server admin can act on directly) or server administrators below.`,
     organizations: (orgPlural: string) => orgPlural,
     organizationCount: (n: number, org: string) => `Member of ${n} ${org}(s)`,
@@ -2188,6 +2201,8 @@ const en = {
     fieldPickerSummaryLimit: 3,
   },
   help: {
+    // Server Management → Add user
+    addUserOrganization: "The organisation the new person joins. Leave it as none for an account that belongs to no organisation yet.",
     // Requirements and change requests
     requirementLevel: "How binding the {requirement} is: a Requirement must be met, a Recommended one should be met unless there is a reason not to, and an Optional one is nice to have.",
     requirementTargetVersion: "The release this {requirement} is planned for. Leave it empty while that is undecided.",

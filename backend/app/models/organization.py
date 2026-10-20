@@ -445,8 +445,9 @@ class PendingInvite(UUIDPKMixin, TimestampMixin, Base):
     Attributes:
         email: Lowercased invitee address; matched against a signing-up or
             SSO-logging-in user's own (lowercased/verified) email.
-        organization_id: The organisation being granted (always, as
-            `member` — see `services/invites.py`).
+        organization_id: The organisation being granted (as `member` — see
+            `services/invites.py`), or `None` for a server administrator's invite to an
+            account that joins no organisation yet (never set together with `project_id`).
         project_id: The project being granted, if any — `None` for an
             org-only invite.
         project_role: The role to grant in `project_id`; `None` iff
@@ -463,8 +464,8 @@ class PendingInvite(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "pending_invites"
 
     email: Mapped[str] = mapped_column(String(255), index=True)
-    organization_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE")
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True
     )
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True

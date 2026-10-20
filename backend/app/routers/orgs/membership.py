@@ -50,7 +50,6 @@ from app.schemas.org import (
     UserAccessOut,
     UserAccessProject,
 )
-from app.security import hash_password
 from app.services import engagement, invites
 from app.services.audit import log_event
 from app.services.notifications import notify
@@ -65,6 +64,7 @@ from app.services.rbac import (
     require_org_admin_or_server_admin,
     require_org_role,
 )
+from app.services.user_provisioning import create_native_user, invite_user
 
 router = APIRouter(tags=["organizations-membership"])
 
@@ -83,36 +83,14 @@ def create_org_user(
     initial user of a newly created org). Every other org-scoped endpoint
     requires a genuine org role.
     """
-    if db.scalar(select(User).where(User.email == payload.email.lower())) is not None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "A user with this email already exists.")
-    org = db.get(Organization, organization_id)
-    if org is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
-    if org.sso_only:
-        # A brand-new native-credentialed account whose only org membership
-        # is sso_only could never log in (NativeAuthBackend rejects native
-        # login when every one of a user's orgs requires SSO) — same guard
-        # as self-signup's allow_self_signup/sso_only mutual exclusion.
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "This organisation is SSO-only; native accounts cannot be created for it directly.",
-        )
-    user = User(
-        email=payload.email.lower(),
-        display_name=payload.display_name,
-        password_hash=hash_password(payload.password),
-        auth_backend="native",
-    )
-    db.add(user)
-    db.flush()
-    db.add(UserOrgRole(user_id=user.id, organization_id=organization_id, role=payload.role))
-    log_event(
+    user = create_native_user(
         db,
-        entity_type="user",
-        entity_id=user.id,
-        action="created",
-        actor_id=current_user.id,
+        email=payload.email,
+        display_name=payload.display_name,
+        password=payload.password,
         organization_id=organization_id,
+        role=payload.role,
+        actor_id=current_user.id,
     )
     db.commit()
     return OrgUserOut(
@@ -390,24 +368,7 @@ def create_org_pending_invite(
     once that person's IdP group/role claim is configured to match on
     first SSO login.
     """
-    org = db.get(Organization, organization_id)
-    if org is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
-    if org.sso_only:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "This organisation is SSO-only; email invites are not used — access is provisioned at SSO login.",
-        )
-    email = payload.email.lower()
-    if db.scalar(select(User).where(User.email == email)) is not None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "A user with this email already exists.")
-    invite = invites.create_pending_invite(
-        db, email=email, organization=org, project=None, project_role=None, invited_by=current_user.id,
-    )
-    log_event(
-        db, entity_type="pending_invite", entity_id=invite.id, action="invited",
-        actor_id=current_user.id, organization_id=organization_id, detail={"email": email},
-    )
+    invite = invite_user(db, email=payload.email, organization_id=organization_id, actor_id=current_user.id)
     db.commit()
     return _org_pending_invite_out(invite, db)
 

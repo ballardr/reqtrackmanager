@@ -51,7 +51,7 @@ def create_pending_invite(
     db: Session,
     *,
     email: str,
-    organization: Organization,
+    organization: Organization | None,
     project: Project | None,
     project_role: ProjectRole | None,
     invited_by: uuid.UUID,
@@ -66,7 +66,7 @@ def create_pending_invite(
         db: Active database session; the row is added but not committed.
         email: The invitee's email address (lowercased by the caller).
         organization: The organisation being granted (as `member`, on
-            consumption).
+            consumption), or `None` to invite a person who joins no organisation yet.
         project: The project being granted, or `None` for an org-only invite.
         project_role: Required iff `project` is set.
         invited_by: The inviting user.
@@ -76,7 +76,7 @@ def create_pending_invite(
     """
     invite = PendingInvite(
         email=email,
-        organization_id=organization.id,
+        organization_id=organization.id if organization else None,
         project_id=project.id if project else None,
         project_role=project_role,
         invited_by=invited_by,
@@ -90,7 +90,7 @@ def create_pending_invite(
 
 
 def resend_pending_invite(
-    db: Session, invite: PendingInvite, *, organization: Organization, project: Project | None
+    db: Session, invite: PendingInvite, *, organization: Organization | None, project: Project | None
 ) -> PendingInvite:
     """Rotates `invite`'s token and `expires_at`, then re-sends the signup-
     link email — for a project admin retriggering delivery (e.g. "the
@@ -123,12 +123,16 @@ def resend_pending_invite(
     return invite
 
 
-def _send_invite_email(invite: PendingInvite, *, organization: Organization, project: Project | None) -> None:
+def _send_invite_email(invite: PendingInvite, *, organization: Organization | None, project: Project | None) -> None:
     """Shared signup-link email body/send for both `create_pending_invite`
     and `resend_pending_invite` — keeps the link format and wording in one
     place rather than duplicated across the two call sites."""
     settings = get_settings()
     signup_url = f"{settings.frontend_base_url.rstrip('/')}/signup?invite={invite.token}"
+    if organization is None:
+        send_email(invite.email, "You've been invited to ReqTrackManager",
+                   f"You've been invited to create an account. Sign up here: {signup_url}")
+        return
     if project is not None:
         body = f"You've been invited to join the project '{project.name}' in {organization.name}. Sign up here: {signup_url}"
     else:
@@ -223,6 +227,11 @@ def provision_sso_invite(
 
 
 def _grant_invite(db: Session, invite: PendingInvite, user: User) -> None:
+    if invite.organization_id is None:
+        # An invite to an account with no organisation: signing up is the whole grant.
+        log_event(db, entity_type="user", entity_id=user.id, action="invite_accepted", actor_id=user.id)
+        invite.accepted_at = datetime.now(UTC)
+        return
     existing_org_roles = set(
         db.scalars(
             select(UserOrgRole.role).where(
