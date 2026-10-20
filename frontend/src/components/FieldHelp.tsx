@@ -31,7 +31,22 @@ export type FieldHelpProps = {
   help?: string;
   /** Opt-out for a self-explanatory field (a title, a name); never combine with `help`. */
   helpNotNeeded?: boolean;
+  /**
+   * Marks the field required: a `*` after the caption and `required` on the control. Mark exactly the fields the
+   * form blocks on and the API rejects; an unmarked field is optional and its label never says so
+   * (docs/ux-style-guide.md, "Pattern: required fields").
+   */
+  required?: boolean;
 };
+
+/**
+ * The `*` after a required field's caption. The star is drawn by CSS (`.field-required::after`), so it is
+ * not part of the caption's text (a label lookup by its text still finds the field) and assistive
+ * technology never reads it: the control itself carries `required`.
+ */
+export function RequiredMark() {
+  return <span className="field-required" aria-hidden="true" />;
+}
 
 /**
  * The `(?)` button and the text it reveals.
@@ -79,15 +94,18 @@ export function FieldHelp({ label, help }: { label: string; help: string }) {
  * @param help The help text, when the field has any.
  * @param extra A control beside the caption.
  * @param muted Renders the small bold style detail pages use for a field group's caption.
+ * @param required Adds the `*` after the caption.
  */
 export function FieldCaption({
-  label, help, extra, htmlFor, muted,
-}: { label: string; help?: string; extra?: ReactNode; htmlFor?: string; muted?: boolean }) {
-  const text = htmlFor ? <label htmlFor={htmlFor}>{label}</label> : <span>{label}</span>;
-  if (!help && !extra) return muted ? <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}</span> : text;
+  label, help, extra, htmlFor, muted, required,
+}: { label: string; help?: string; extra?: ReactNode; htmlFor?: string; muted?: boolean; required?: boolean }) {
+  const mark = required ? <RequiredMark /> : null;
+  const text = htmlFor ? <label htmlFor={htmlFor}>{label}{mark}</label> : <span>{label}{mark}</span>;
+  const mutedText = <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}{mark}</span>;
+  if (!help && !extra) return muted ? mutedText : text;
   return (
     <span className="field-caption">
-      {muted ? <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{label}</span> : text}
+      {muted ? mutedText : text}
       {extra}
       {help && <FieldHelp label={label} help={help} />}
     </span>
@@ -107,16 +125,17 @@ export function FieldCaption({
  * @param help The help text, when the field has any.
  * @param extra A control beside the caption (an `OverridePill`).
  * @param hint Muted text under the control.
+ * @param required Adds the `*` after the caption (the control carries `required` itself).
  * @param children The control.
  */
 export function FieldShell({
-  label, controlId, help, extra, hint, children,
-}: { label: string; controlId: string; help?: string; extra?: ReactNode; hint?: ReactNode; children: ReactNode }) {
+  label, controlId, help, extra, hint, required, children,
+}: { label: string; controlId: string; help?: string; extra?: ReactNode; hint?: ReactNode; required?: boolean; children: ReactNode }) {
   const hintNode = hint && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{hint}</span>;
   if (!help && !extra) {
     return (
       <label className="stack" style={{ gap: "0.25rem" }}>
-        <span>{label}</span>
+        <span>{label}{required && <RequiredMark />}</span>
         {children}
         {hintNode}
       </label>
@@ -124,7 +143,7 @@ export function FieldShell({
   }
   return (
     <div className="stack" style={{ gap: "0.25rem" }}>
-      <FieldCaption htmlFor={controlId} label={label} extra={extra} help={help} />
+      <FieldCaption htmlFor={controlId} label={label} extra={extra} help={help} required={required} />
       {children}
       {hintNode}
     </div>

@@ -67,3 +67,20 @@ export const LongTitleWraps: Story = {
     await expect((canvasElement.firstElementChild as HTMLElement).scrollWidth).toBeLessThanOrEqual((canvasElement.firstElementChild as HTMLElement).clientWidth + 1);
   },
 };
+
+/** The dropdown's compact density is one line: code, truncated title (full title in the tooltip) and the place. */
+export const CompactIsOneLine: Story = {
+  args: {
+    density: "compact",
+    hit: buildSearchHit({ title: "voltage ".repeat(30).trim() }),
+  },
+  decorators: [(Story) => <div style={{ width: 320 }}><Story /></div>],
+  play: async ({ canvasElement }) => {
+    const row = canvasElement.querySelector(".search-hit-compact") as HTMLElement;
+    await expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth + 1);
+    await expect(row.getBoundingClientRect().height).toBeLessThan(28);
+    await expect(within(canvasElement).getByText("ALPHA-REQ-001")).toBeInTheDocument();
+    await expect(within(canvasElement).getByText("in Alpha")).toBeInTheDocument();
+    await expect(within(canvasElement).queryByText("Draft")).toBeNull(); // status stays on the results page
+  },
+};

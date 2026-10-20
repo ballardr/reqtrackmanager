@@ -29,3 +29,12 @@ export const Removable: Story = {
     await expect(args.onRemove).toHaveBeenCalled();
   },
 };
+
+/** A stored value that is not plain hex never reaches the style attribute: the chip shows no colour. */
+export const AnUnsafeColourIsIgnored: Story = {
+  args: { tag: { name: "Odd", colour: "#2b6cb0;background:url(//evil.example/x)" } },
+  play: async ({ canvasElement }) => {
+    const chip = canvasElement.querySelector(".tag-chip") as HTMLElement;
+    await expect(chip.getAttribute("style")).toBeNull();
+  },
+};

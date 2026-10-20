@@ -413,7 +413,7 @@ export const ClarifyPublishedRequirement: Story = {
 
     // Save is disabled until a clarification note is provided.
     await expect(body.getByRole("button", { name: "Save clarification" })).toBeDisabled();
-    await userEvent.type(body.getByLabelText("Clarification note (required)"), "Fixed a typo in the description.");
+    await userEvent.type(body.getByLabelText("Clarification note"), "Fixed a typo in the description.");
     await expect(body.getByRole("button", { name: "Save clarification" })).toBeEnabled();
     await userEvent.click(body.getByRole("button", { name: "Save clarification" }));
 

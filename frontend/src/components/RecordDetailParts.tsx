@@ -34,12 +34,12 @@ export function RecordField({ label, value }: { label: string; value: string }) 
  * @param help The group's `(?)` help text; `helpNotNeeded` for a self-explanatory group (see `FieldHelp`).
  */
 export function RecordFieldGroup({
-  label, children, gap = "0.25rem", action, help,
+  label, children, gap = "0.25rem", action, help, required,
 }: FieldHelpProps & { label: string; children: ReactNode; gap?: string; action?: ReactNode }) {
   return (
     <div className="stack" style={{ gap }}>
       <span className="row" style={{ gap: "0.35rem", alignItems: "center" }}>
-        <FieldCaption label={label} help={help} muted />
+        <FieldCaption label={label} help={help} muted required={required} />
         {action}
       </span>
       {children}

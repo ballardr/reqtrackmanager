@@ -6,6 +6,7 @@ import type { Organization } from "../api/types";
 import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
 import { FilterPanel } from "../components/FilterPanel";
+import { ListPageLayout } from "../components/ListPageLayout";
 import { Spinner } from "../components/Spinner";
 import { useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
@@ -67,8 +68,21 @@ export function OrgListPage({ target = "admin" }: { target?: "admin" | "overview
 
   return (
     <div className="stack">
-      <h1 style={{ margin: 0 }}>{heading}</h1>
-      <div className="side-grid">
+      <ListPageLayout
+        title={heading}
+        filter={
+          <FilterPanel
+            sectionKey="orgListFilters"
+            matching={filteredOrgs.length}
+            total={orgs.length}
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder={strings.serverOrgs.search(orgLabelPlural)}
+          >
+            {null}
+          </FilterPanel>
+        }
+      >
         <div className="stack">
           <DirectoryTable
             ariaLabel={heading}
@@ -85,17 +99,7 @@ export function OrgListPage({ target = "admin" }: { target?: "admin" | "overview
             }
           />
         </div>
-        <FilterPanel
-          sectionKey="orgListFilters"
-          matching={filteredOrgs.length}
-          total={orgs.length}
-          search={search}
-          onSearchChange={setSearch}
-          searchPlaceholder={strings.serverOrgs.search(orgLabelPlural)}
-        >
-          {null}
-        </FilterPanel>
-      </div>
+      </ListPageLayout>
     </div>
   );
 }

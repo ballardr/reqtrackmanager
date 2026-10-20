@@ -45,6 +45,7 @@ import { Link, useNavigate } from "react-router-dom";
 import type { Organization } from "../../api/types";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
+import { ListPageLayout } from "../../components/ListPageLayout";
 import { SplitButtonTrigger } from "../../components/SplitButtonTrigger";
 import { useViewMode, ViewToggle } from "../../components/ViewToggle";
 import { useAuth } from "../../context/AuthContext";
@@ -128,83 +129,83 @@ export function StandardListPage() {
 
   return (
     <div className="stack">
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <h1 style={{ margin: 0 }}>Compliance Standards</h1>
-        <SplitButtonTrigger
-          icon={<Plus size={16} />}
-          label="New standard"
-          onDefaultAction={() => setCreating(true)}
-          menuTitle="New standard"
-          moreOptionsLabel="More options"
-          disabled={orgs === null}
-          alternatives={[{ label: "Import standard", onSelect: () => setImporting(true) }]}
-        />
-      </div>
-
-      {orgs && orgs.length > 0 && (
-        <div className="row" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
-          <span className="text-muted">Compliance settings:</span>
-          {orgs.map((o) => (
-            <Link key={o.id} className="btn" to={`/standards/settings/${o.id}`}>{o.name}</Link>
-          ))}
-        </div>
-      )}
-
-      <div className="side-grid">
-        <div className="stack">
-          <div className="row" style={{ justifyContent: "flex-end" }}>
-            <ViewToggle mode={viewMode} onChange={setViewMode} />
+      <ListPageLayout
+        title="Compliance Standards"
+        actions={
+          <SplitButtonTrigger
+            icon={<Plus size={16} />}
+            label="New standard"
+            onDefaultAction={() => setCreating(true)}
+            menuTitle="New standard"
+            moreOptionsLabel="More options"
+            disabled={orgs === null}
+            alternatives={[{ label: "Import standard", onSelect: () => setImporting(true) }]}
+          />
+        }
+        filter={
+          <FilterPanel
+            sectionKey="compliance.standards"
+            total={rows?.length ?? 0}
+            matching={filtered.length}
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Search standards…"
+            searchAriaLabel="Search standards"
+          >
+            <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
+          </FilterPanel>
+        }
+      >
+        {orgs && orgs.length > 0 && (
+          <div className="row" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
+            <span className="text-muted">Compliance settings:</span>
+            {orgs.map((o) => (
+              <Link key={o.id} className="btn" to={`/standards/settings/${o.id}`}>{o.name}</Link>
+            ))}
           </div>
-
-          {rows === null && <p>Loading…</p>}
-          {rows !== null && rows.length > 0 && filtered.length === 0 && (
-            <p className="text-muted">No compliance standards match your search.</p>
-          )}
-          {rows !== null && filtered.length > 0 && viewMode === "list" && (
-            <DirectoryTable
-              ariaLabel="Compliance standards"
-              columns={columns}
-              rows={filtered}
-              rowKey={(s) => s.id}
-              onRowClick={(s) => navigate(`/standards/${s.id}`)}
-              emptyState={<p className="text-muted">No compliance standards yet.</p>}
-            />
-          )}
-          {rows !== null && filtered.length > 0 && viewMode === "tiles" && (
-            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
-              {filtered.map((s) => (
-                <Link
-                  key={s.id}
-                  to={`/standards/${s.id}`}
-                  className="card stack"
-                  style={{ gap: "0.5rem", color: "inherit", textDecoration: "none" }}
-                >
-                  <div style={{ fontWeight: 600, fontSize: "1.05rem" }}>{s.name}</div>
-                  <div className="text-muted" style={{ fontSize: "0.85rem" }}>{s.reference}</div>
-                  {showOrgColumn && <div className="text-muted" style={{ fontSize: "0.8rem" }}>{s.organization_name}</div>}
-                  <div className="text-muted" style={{ fontSize: "0.85rem" }}>
-                    Issuing organisation: {s.issuing_organisation ?? "—"}
-                  </div>
-                  <div className="text-muted" style={{ fontSize: "0.8rem" }}>{s.is_archived ? "Archived" : "Active"}</div>
-                </Link>
-              ))}
+        )}
+          <div className="stack">
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <ViewToggle mode={viewMode} onChange={setViewMode} />
             </div>
-          )}
-          {rows !== null && rows.length === 0 && <p className="text-muted">No compliance standards yet.</p>}
-        </div>
 
-        <FilterPanel
-          sectionKey="compliance.standards"
-          total={rows?.length ?? 0}
-          matching={filtered.length}
-          search={search}
-          onSearchChange={setSearch}
-          searchPlaceholder="Search standards…"
-          searchAriaLabel="Search standards"
-        >
-          <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
-        </FilterPanel>
-      </div>
+            {rows === null && <p>Loading…</p>}
+            {rows !== null && rows.length > 0 && filtered.length === 0 && (
+              <p className="text-muted">No compliance standards match your search.</p>
+            )}
+            {rows !== null && filtered.length > 0 && viewMode === "list" && (
+              <DirectoryTable
+                ariaLabel="Compliance standards"
+                columns={columns}
+                rows={filtered}
+                rowKey={(s) => s.id}
+                onRowClick={(s) => navigate(`/standards/${s.id}`)}
+                emptyState={<p className="text-muted">No compliance standards yet.</p>}
+              />
+            )}
+            {rows !== null && filtered.length > 0 && viewMode === "tiles" && (
+              <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
+                {filtered.map((s) => (
+                  <Link
+                    key={s.id}
+                    to={`/standards/${s.id}`}
+                    className="card stack"
+                    style={{ gap: "0.5rem", color: "inherit", textDecoration: "none" }}
+                  >
+                    <div style={{ fontWeight: 600, fontSize: "1.05rem" }}>{s.name}</div>
+                    <div className="text-muted" style={{ fontSize: "0.85rem" }}>{s.reference}</div>
+                    {showOrgColumn && <div className="text-muted" style={{ fontSize: "0.8rem" }}>{s.organization_name}</div>}
+                    <div className="text-muted" style={{ fontSize: "0.85rem" }}>
+                      Issuing organisation: {s.issuing_organisation ?? "—"}
+                    </div>
+                    <div className="text-muted" style={{ fontSize: "0.8rem" }}>{s.is_archived ? "Archived" : "Active"}</div>
+                  </Link>
+                ))}
+              </div>
+            )}
+            {rows !== null && rows.length === 0 && <p className="text-muted">No compliance standards yet.</p>}
+          </div>
+      </ListPageLayout>
 
       {creating && (
         <StandardFormModal

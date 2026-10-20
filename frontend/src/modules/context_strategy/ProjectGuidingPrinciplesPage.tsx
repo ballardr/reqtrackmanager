@@ -17,6 +17,7 @@ import type { Project } from "../../api/types";
 import { api } from "../../api/client";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ListPageLayout } from "../../components/ListPageLayout";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -98,11 +99,40 @@ export function ProjectGuidingPrinciplesPage() {
 
   return (
     <div className="container stack">
-      <h1 style={{ margin: 0 }}>Guiding Principle</h1>
-      <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
-        New Guiding Principle
-      </button>
-      <div className="side-grid">
+      <ListPageLayout
+        title="Guiding Principle"
+        actions={
+          <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
+            New Guiding Principle
+          </button>
+        }
+        filter={
+          <FilterPanel
+            sectionKey="context_strategy.guidingPrinciples.list" total={filtered.length}
+            search={search} onSearchChange={setSearch} searchPlaceholder="Search Guiding Principles…" searchAriaLabel="Search Guiding Principles"
+          >
+            <FilterField label="Status">
+              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as GuidingPrincipleStatus | "")}>
+                <option value="">All statuses</option>
+                {Object.entries(GUIDING_PRINCIPLE_STATUS_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterField label="Priority">
+              <select className="input" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as GuidingPrinciplePriority | "")}>
+                <option value="">All priorities</option>
+                {Object.entries(GUIDING_PRINCIPLE_PRIORITY_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </FilterField>
+            <ProjectScopeFilter scope={projectScope} />
+            {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
+          </FilterPanel>
+        }
+      >
         <DirectoryTable
           ariaLabel="Guiding Principles"
           columns={columns}
@@ -111,31 +141,7 @@ export function ProjectGuidingPrinciplesPage() {
           onRowClick={(g) => navigate(`/projects/${rowProjectId(g, projectId)}/modules/context_strategy/guiding-principles/${g.id}`)}
           emptyState={<p className="text-muted">No Guiding Principle recorded for this project yet.</p>}
         />
-        <FilterPanel
-          sectionKey="context_strategy.guidingPrinciples.list" total={filtered.length}
-          search={search} onSearchChange={setSearch} searchPlaceholder="Search Guiding Principles…" searchAriaLabel="Search Guiding Principles"
-        >
-          <FilterField label="Status">
-            <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as GuidingPrincipleStatus | "")}>
-              <option value="">All statuses</option>
-              {Object.entries(GUIDING_PRINCIPLE_STATUS_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label="Priority">
-            <select className="input" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as GuidingPrinciplePriority | "")}>
-              <option value="">All priorities</option>
-              {Object.entries(GUIDING_PRINCIPLE_PRIORITY_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </FilterField>
-          <ProjectScopeFilter scope={projectScope} />
-          {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
-          <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
-        </FilterPanel>
-      </div>
+      </ListPageLayout>
 
       {creating && (
         <GuidingPrincipleFormModal

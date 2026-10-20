@@ -6,6 +6,8 @@
  * (`aria-pressed`). Use it for a small, fixed set of kinds that sit above a list; a field with many values
  * or a free-text one belongs in the `FilterPanel`.
  */
+import type { ReactNode } from "react";
+
 import { FilterBadge } from "./FilterBadge";
 
 export interface ToggleChipOption<K extends string> {
@@ -13,6 +15,8 @@ export interface ToggleChipOption<K extends string> {
   label: string;
   /** Shown after the label, muted, when given (how many records of this kind there are). */
   count?: number;
+  /** A decorative icon before the label; the label still names the chip, so the icon is never the only cue. */
+  icon?: ReactNode;
 }
 
 /**
@@ -38,6 +42,8 @@ export function ToggleChips<K extends string>({
         const on = selected.includes(option.key);
         return (
           <FilterBadge key={option.key} active={on} pressed={on} onClick={() => onToggle(option.key)}>
+            {option.icon}
+            {option.icon && " "}
             {option.label}
             {option.count !== undefined && (
               <>

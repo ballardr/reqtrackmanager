@@ -1,18 +1,19 @@
 /**
  * Module: modules/stakeholders/PeopleListView
  *
- * The combined list on the People page: Personas, Stakeholders, Needs and Groups as rows of one table, for
+ * The combined list on the People page: Personas, Stakeholders and Groups as rows of one table, for
  * when more than one kind is selected. It is `RecordListView` (the shell every list in this module uses)
- * with the columns the kinds share — Name, Code, Kind, Details (a role or short description), Type, Scope,
+ * with the columns the kinds share — Name (with the kind's icon), Code, Kind, Details (a role or short description), Type, Scope,
  * Status — and no create form: records are created from the page's New menu. A kind's own columns and
  * filters (Stakeholders' influence and groups, Personas' weight) live in that kind's list, which the page
  * shows when just that kind is selected. Kind, status and scope render through their label maps.
  */
 import { Badge } from "../../components/Badge";
+import { PeopleKindIcon } from "./PeopleKindIcon";
 import { PEOPLE_KIND_LABEL, type PeopleRow } from "./peopleRows";
 import type { TagFilterState } from "../../hooks/useTagFilter";
 import type { ProjectScopeState } from "../../hooks/useProjectScope";
-import { RecordListView } from "./RecordListView";
+import { RecordListView, type RecordListPage } from "./RecordListView";
 import { PERSONA_SCOPE_LABEL, PERSONA_STATUS_LABEL, PERSONA_STATUS_TONE } from "./types";
 
 export function PeopleListView({
@@ -25,6 +26,7 @@ export function PeopleListView({
   onOpen,
   tagFilter,
   projectScope,
+  page,
 }: {
   rows: PeopleRow[];
   includeArchived: boolean;
@@ -38,6 +40,8 @@ export function PeopleListView({
   tagFilter?: { projectId: string; filter: TagFilterState };
   /** The project page's list scope (state kept by the page); omit where related projects are not offered. */
   projectScope?: ProjectScopeState;
+  /** The page header (title, actions, tabs) this list owns when it is a whole page. */
+  page?: RecordListPage;
 }) {
   return (
     <RecordListView<PeopleRow, never>
@@ -53,6 +57,7 @@ export function PeopleListView({
       statusTone={PERSONA_STATUS_TONE}
       scopeLabels={PERSONA_SCOPE_LABEL}
       typeName={(r) => r.typeName}
+      nameIcon={(r) => <PeopleKindIcon kind={r.kind} />}
       searchText={(r) => `${r.unique_code} ${r.name} ${r.summary} ${PEOPLE_KIND_LABEL[r.kind]}`}
       columnsBeforeType={[
         { key: "kind", label: "Kind", render: (r) => <Badge>{PEOPLE_KIND_LABEL[r.kind]}</Badge> },
@@ -67,6 +72,7 @@ export function PeopleListView({
       onOpen={onOpen}
       tagFilter={tagFilter}
       projectScope={projectScope}
+      page={page}
     />
   );
 }

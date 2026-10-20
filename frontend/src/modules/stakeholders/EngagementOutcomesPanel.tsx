@@ -150,7 +150,7 @@ export function EngagementOutcomesPanel({
                 label="Outcome type" value={targetType} placeholder={null}
                 onChange={(v) => { setTargetType(v as OutcomeTargetType); setPicked(""); }} options={typeOptions}
               />
-              <LabeledSelect helpNotNeeded label="Outcome record" value={picked} onChange={setPicked} options={candidates} placeholder="Choose…" />
+              <LabeledSelect helpNotNeeded required label="Outcome record" value={picked} onChange={setPicked} options={candidates} placeholder="Choose…" />
             </FormGrid>
             <FormActions
               onCancel={() => setAdding(false)}

@@ -190,7 +190,7 @@ export const MarkNonCompliantRequiresJustification: Story = {
     await userEvent.selectOptions(body.getByLabelText("Compliance status"), "non_compliant");
     const saveButton = body.getByRole("button", { name: "Update assessment" });
     await expect(saveButton).toBeDisabled();
-    await userEvent.type(body.getByLabelText("Justification (required)"), "Missing MFA on admin accounts.");
+    await userEvent.type(body.getByLabelText("Justification"), "Missing MFA on admin accounts.");
     await expect(saveButton).toBeEnabled();
     await userEvent.click(saveButton);
     await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
@@ -227,7 +227,7 @@ export const RejectRequiresDecisionNote: Story = {
     const dialogScope = within(dialog);
     const rejectButton = dialogScope.getByRole("button", { name: "Reject" });
     await expect(rejectButton).toBeDisabled();
-    await userEvent.type(dialogScope.getByLabelText("Decision note (required)"), "Evidence does not support this control.");
+    await userEvent.type(dialogScope.getByLabelText("Decision note"), "Evidence does not support this control.");
     await expect(rejectButton).toBeEnabled();
     await userEvent.click(rejectButton);
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(

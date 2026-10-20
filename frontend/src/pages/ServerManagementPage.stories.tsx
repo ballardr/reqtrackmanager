@@ -476,6 +476,7 @@ export const AddUserButtonOpensTheDialog: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Add user" }));
-    await expect(within(document.body).getByRole("dialog", { name: "Add user" })).toBeInTheDocument();
+    await userEvent.click(within(document.body).getByRole("menuitem", { name: "New user" }));
+    await expect(within(document.body).getByRole("dialog", { name: "New user" })).toBeInTheDocument();
   },
 };

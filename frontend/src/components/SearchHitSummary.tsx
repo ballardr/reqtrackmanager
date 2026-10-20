@@ -7,10 +7,15 @@
  *
  * The code is qualified by its owning project (or organisation) because a search spans projects
  * (`hitCode`). An organisation-owned record names the organisation rather than a project.
+ *
+ * `density="compact"` (the dropdown) is one line per hit: muted code, title truncated with a tooltip
+ * and the muted place right-aligned. The type is named by the dropdown's group heading, and the
+ * status and snippet stay on the results page.
  */
 import { hitCode, highlightParts, matchRanges, type SearchHit } from "../api/search";
 import { useStrings } from "../context/TerminologyContext";
 import { Badge } from "./Badge";
+import { Tooltip } from "./Tooltip";
 
 /** Text with the given `[start, end)` ranges wrapped in `<mark>`. */
 export function Highlighted({ text, ranges }: { text: string; ranges: [number, number][] }) {
@@ -33,11 +38,31 @@ export function Highlighted({ text, ranges }: { text: string; ranges: [number, n
  * @param hit The result.
  * @param terms The lower-case words searched for, to highlight in the code and title.
  * @param showSnippet Show the matching field's text under the title (the page; not the dropdown).
+ * @param density `comfortable` (the page, default) or `compact` (one line, the dropdown).
  */
-export function SearchHitSummary({ hit, terms, showSnippet = false }: { hit: SearchHit; terms: string[]; showSnippet?: boolean }) {
+export function SearchHitSummary({
+  hit, terms, showSnippet = false, density = "comfortable",
+}: { hit: SearchHit; terms: string[]; showSnippet?: boolean; density?: "comfortable" | "compact" }) {
   const strings = useStrings();
   const code = hitCode(hit);
   const where = hit.type === "project" ? null : hit.project_name ? strings.search.inProject(hit.project_name) : strings.search.inOrganisation;
+  if (density === "compact") {
+    return (
+      <span className="search-hit-compact">
+        {code && (
+          <span className="text-muted search-hit-compact__code">
+            <Highlighted text={code} ranges={matchRanges(code, terms)} />
+          </span>
+        )}
+        <Tooltip label={hit.title} className="search-hit-compact__title">
+          <span className="search-hit-compact__text">
+            <Highlighted text={hit.title} ranges={matchRanges(hit.title, terms)} />
+          </span>
+        </Tooltip>
+        {where && <span className="text-muted search-hit-compact__where">{where}</span>}
+      </span>
+    );
+  }
   return (
     <span className="stack" style={{ gap: "0.15rem", minWidth: 0 }}>
       <span style={{ overflowWrap: "anywhere" }}>

@@ -291,6 +291,32 @@ def test_colour_is_validated_and_clearable(world):
     assert world.client.patch(url, json={"clear_colour": True}, headers=auth_headers(world.token)).json()["colour"] is None
 
 
+CSS_INJECTION_COLOURS = [
+    "#aabbcc;background:url(//evil.example/x)",
+    "#aabbcc\n",
+    "red",
+    "#abc",
+    "#aabbccdd",
+    "url(javascript:alert(1))",
+    "#aabbcc\"onmouseover=\"x",
+    "var(--color-danger)",
+    "#gggggg",
+]
+
+
+@pytest.mark.parametrize("bad", CSS_INJECTION_COLOURS)
+def test_a_colour_that_is_not_plain_hex_is_rejected_on_create_and_update(world, bad):
+    project = world.project()
+    headers = auth_headers(world.token)
+    created = world.client.post(f"{_base(project)}/tags", json={"name": "styled", "colour": bad}, headers=headers)
+    assert created.status_code == 422
+    ok = world.client.post(f"{_base(project)}/tags", json={"name": "styled", "colour": "#2B6CB0"}, headers=headers)
+    assert ok.json()["colour"] == "#2b6cb0"
+    url = f"{_base(project)}/tags/{ok.json()['id']}"
+    assert world.client.patch(url, json={"colour": bad}, headers=headers).status_code == 422
+    assert _vocab(world, project)["tags"][0]["colour"] == "#2b6cb0"
+
+
 def test_merge_moves_records_once_and_removes_the_source(world):
     project = world.project()
     a, b, c = ((REQ, world.requirement(project, n)) for n in "ABC")

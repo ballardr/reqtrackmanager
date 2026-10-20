@@ -46,14 +46,14 @@ test.describe("Stakeholders: record codes in embedded references", () => {
     await expect(page.locator(".record-header").getByRole("heading")).toContainText(`Pat Regulator ${suffix}`);
 
     await test.step("the two Personas with one bare code are told apart by their owner", async () => {
-      await expect(page.getByText(`${org.code}-PER-001`, { exact: true })).toBeVisible();
-      await expect(page.getByText(`${project.code}-PER-001`, { exact: true })).toBeVisible();
-      await expect(page.getByRole("link", { name: `Shared technician ${suffix}` })).toBeVisible();
+      await expect(page.getByText(`${org.code}-PER-001`, { exact: true }).first()).toBeVisible();
+      await expect(page.getByText(`${project.code}-PER-001`, { exact: true }).first()).toBeVisible();
+      await expect(page.getByRole("link", { name: `Shared technician ${suffix}` }).first()).toBeVisible();
     });
 
     await test.step("the Need and the group carry their codes", async () => {
-      await expect(page.getByText(`${project.code}-NEED-001`, { exact: true })).toBeVisible();
-      await expect(page.getByText(`${project.code}-SGP-001`, { exact: true })).toBeVisible();
+      await expect(page.getByText(`${project.code}-NEED-001`, { exact: true }).first()).toBeVisible();
+      await expect(page.getByText(`${project.code}-SGP-001`, { exact: true }).first()).toBeVisible();
     });
   });
 });

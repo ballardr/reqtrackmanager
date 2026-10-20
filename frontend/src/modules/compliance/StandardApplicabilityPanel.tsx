@@ -193,7 +193,7 @@ function ExcludeProjectModal({
         {candidateProjects.length === 0 ? (
           <p className="text-muted">Every project in this organisation is already excluded, or none exist.</p>
         ) : (
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect helpNotNeeded required
             label="Project"
             value={projectId}
             onChange={setProjectId}
@@ -201,7 +201,7 @@ function ExcludeProjectModal({
             placeholder="Select a project…"
           />
         )}
-        <TextAreaField helpNotNeeded label="Reason (required)" value={reason} onChange={setReason} rows={2} />
+        <TextAreaField helpNotNeeded required label="Reason" value={reason} onChange={setReason} rows={2} />
         <FormActions
           onCancel={onCancel}
           onSave={() => onSave({ project_id: projectId, reason })}

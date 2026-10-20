@@ -9,7 +9,7 @@
 import { NeedFormModal } from "./NeedFormModal";
 import type { TagFilterState } from "../../hooks/useTagFilter";
 import type { ProjectScopeState } from "../../hooks/useProjectScope";
-import { RecordListView } from "./RecordListView";
+import { RecordListView, type RecordListPage } from "./RecordListView";
 import type { Need, NeedFieldValues } from "./types";
 import { NEED_STATUS_LABEL, NEED_STATUS_TONE } from "./types";
 
@@ -23,6 +23,7 @@ export function NeedListView({
   onOpen,
   tagFilter,
   projectScope,
+  page,
   onCreate,
 }: {
   needs: Need[];
@@ -36,6 +37,8 @@ export function NeedListView({
   tagFilter?: { projectId: string; filter: TagFilterState };
   /** The project page's list scope (state kept by the page); omit where related projects are not offered. */
   projectScope?: ProjectScopeState;
+  /** The page header (title, actions, tabs) this list owns when it is a whole page. */
+  page?: RecordListPage;
   /** Resolves on success; a rejection keeps the modal open and shows its message. Omit when needs are created elsewhere. */
   onCreate?: (values: NeedFieldValues) => Promise<void>;
 }) {
@@ -58,6 +61,7 @@ export function NeedListView({
       onOpen={onOpen}
       tagFilter={tagFilter}
       projectScope={projectScope}
+      page={page}
       onCreate={onCreate}
       renderCreateModal={
         onCreate ? (props) => <NeedFormModal error={props.error} onCancel={props.onCancel} onSave={props.onSave} /> : undefined

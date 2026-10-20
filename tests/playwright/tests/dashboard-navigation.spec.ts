@@ -136,10 +136,10 @@ test("dashboard glance tile with a non-default filter renders the correctly-filt
 
   // The regression itself: not just the dropdown, but the rendered list
   // and the persistent result count must already reflect the filter on first paint. Scoped
-  // to the main list column (`.side-grid`'s first child), not the
+  // to the main list column (`.list-page__content`), not the
   // FilterPanel sidebar, so the Status `<select>`'s own matching `<option>`
   // text can't false-match.
-  const mainColumn = page.locator(".side-grid > div").first();
+  const mainColumn = page.locator(".list-page__content");
   const statusBadges = mainColumn.locator("button.badge");
   await expect(statusBadges.first()).toBeVisible();
   const badgeTexts = await statusBadges.allTextContents();

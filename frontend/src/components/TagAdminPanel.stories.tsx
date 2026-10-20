@@ -69,7 +69,8 @@ export const AddingATag: Story = {
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
     await userEvent.type(await canvas.findByRole("textbox", { name: "New tag" }), "Q4 audit");
-    await userEvent.selectOptions(canvas.getByRole("combobox", { name: /Colour of Q4 audit/ }), "#2b6cb0");
+    await userEvent.click(canvas.getByRole("button", { name: "Blue" }));
+    await expect(canvas.getByRole("textbox", { name: "Colour (hex code)" })).toHaveValue("#2b6cb0");
     await userEvent.click(canvas.getByRole("button", { name: "Add tag" }));
     await waitFor(() => expect(args.api!.create).toHaveBeenCalledWith("Q4 audit", "#2b6cb0"));
     await expect(await body().findByText("Tag added.")).toBeInTheDocument();
@@ -102,14 +103,46 @@ export const RenamingATag: Story = {
   },
 };
 
+/** A tag's colour is set from the row menu: a preset, a typed hex code (also `#rgb`), or none. */
 export const ChangingAColour: Story = {
   args: { api: buildAdminApi() },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    await userEvent.selectOptions(await canvas.findByRole("combobox", { name: "Colour of Release 2" }), "#2f855a");
-    await waitFor(() => expect(args.api!.update).toHaveBeenCalledWith("tag-release-2", { colour: "#2f855a" }));
-    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Colour of Safety" }), "");
+    await userEvent.click(await canvas.findByRole("button", { name: "Release 2" }));
+    await userEvent.click(await body().findByRole("menuitem", { name: "Change colour of Release 2" }));
+    const dialog = await body().findByRole("dialog", { name: /Change colour of Release 2/ });
+    const hex = within(dialog).getByRole("textbox", { name: "Colour of Release 2 (hex code)" });
+    await userEvent.clear(hex);
+    await userEvent.type(hex, "#0a8");
+    await expect(hex).not.toHaveAttribute("aria-invalid");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save colour" }));
+    await waitFor(() => expect(args.api!.update).toHaveBeenCalledWith("tag-release-2", { colour: "#00aa88" }));
+
+    await userEvent.click(canvas.getByRole("button", { name: "Safety" }));
+    await userEvent.click(await body().findByRole("menuitem", { name: "Change colour of Safety" }));
+    const second = await body().findByRole("dialog", { name: /Change colour of Safety/ });
+    await userEvent.click(within(second).getByRole("button", { name: "No colour" }));
+    await userEvent.click(within(second).getByRole("button", { name: "Save colour" }));
     await waitFor(() => expect(args.api!.update).toHaveBeenCalledWith("tag-safety", { clear_colour: true }));
+  },
+};
+
+/** Text that is not a colour is flagged and never sent; the save keeps the last good colour. */
+export const ABadHexCodeIsFlaggedAndNotSent: Story = {
+  args: { api: buildAdminApi() },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Release 2" }));
+    await userEvent.click(await body().findByRole("menuitem", { name: "Change colour of Release 2" }));
+    const dialog = await body().findByRole("dialog", { name: /Change colour of Release 2/ });
+    const hex = within(dialog).getByRole("textbox", { name: "Colour of Release 2 (hex code)" });
+    await userEvent.clear(hex);
+    await userEvent.type(hex, "red;background:url(x)".slice(0, 7));
+    await expect(hex).toHaveAttribute("aria-invalid", "true");
+    await expect(within(dialog).getByRole("alert")).toHaveTextContent("Enter a colour as #rgb or #rrggbb.");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save colour" }));
+    // Release 2 had no colour, so nothing but "no colour" can be sent.
+    await waitFor(() => expect(args.api!.update).toHaveBeenCalledWith("tag-release-2", { clear_colour: true }));
   },
 };
 

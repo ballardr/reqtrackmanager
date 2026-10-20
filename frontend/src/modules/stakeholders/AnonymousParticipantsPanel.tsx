@@ -60,7 +60,7 @@ export function AnonymousParticipantsPanel({
 
   const addForm = (close: () => void) => (
     <div className="stack">
-      <TextField helpNotNeeded label="Participant label" value={label} onChange={setLabel} inputProps={{ autoFocus: true }} />
+      <TextField helpNotNeeded required label="Participant label" value={label} onChange={setLabel} inputProps={{ autoFocus: true }} />
       <LabeledSelect helpNotNeeded label="Persona represented" value={personaId} onChange={setPersonaId} options={personaOptions} placeholder="None" />
       <span className="text-muted" style={{ fontSize: "0.8rem" }}>
         Use a label such as “Participant 3”, not a name. Anyone who needs to be traced belongs in the Stakeholder register.

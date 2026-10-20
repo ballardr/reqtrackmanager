@@ -419,7 +419,7 @@ const en = {
     voteApprove: "Vote to approve",
     voteReject: "Vote to reject",
     yourVote: "Your vote",
-    voteComment: "Comment (optional)",
+    voteComment: "Comment",
     voteApproveCount: "approve",
     voteRejectCount: "reject",
     votingAdvisoryNotice: "Advisory only — does not change the manager's decision.",
@@ -1160,7 +1160,7 @@ const en = {
     // below sits next to both buttons so the difference is obvious rather
     // than discovered by trial.
     inviteUser: "Invite user",
-    newUserVsInviteHint: "‘New user’ sets a password immediately. ‘Invite user’ emails a sign-up link so they set their own.",
+    newUserModalHint: "You set their password now. To let them choose their own, use Invite user instead.",
     inviteUserModalHint: "They'll get an email with a link to choose their own password and display name.",
     sendInvite: "Send invite",
     inviteSent: "Invite sent",
@@ -1565,10 +1565,6 @@ const en = {
     users: "Users",
     // Server Management → Users → "Add user".
     addUser: "Add user",
-    addUserHint: (org: string) => `Create an account from here, with or without ${org}. Choose how the person gets their password.`,
-    addUserModeLabel: "How they get a password",
-    addUserModeInvite: "Send an invite (they choose their own password)",
-    addUserModePassword: "Create with a password I set",
     addUserNoOrg: (org: string) => `No ${org}`,
     addUserNoOrgHint: (org: string) => `The account belongs to no ${org} yet; add it to one later.`,
     addUserInviteHint: "They get an email link to choose their own name and password. In an organisation they join as a member; change their role once they have signed up.",
@@ -1809,7 +1805,7 @@ const en = {
     patName: "Name",
     patNamePlaceholder: "e.g. \"MCP server\"",
     patOrgs: (orgPlural: string) => `${orgPlural} this token can access`,
-    patProjects: "Projects (optional)",
+    patProjects: "Projects",
     patNoProjectsInOrgs: (org: string) => `No projects in the selected ${org}(s).`,
     patProjectsHint: (orgPlural: string) =>
       `Leave all unchecked to allow every {project} in the selected ${orgPlural.toLowerCase()}. Checking any narrows this token to only those {projects}.`,
@@ -1920,8 +1916,8 @@ const en = {
     removeLabel: (phrase: string, target: string) => `Remove link: ${phrase} ${target}`,
     quick: {
       label: "Link to",
-      placeholder: "Search for a record to link…",
-      hint: "Optional. Links are added when the record is saved.",
+      placeholder: "Search any record by code or title…",
+      hint: "Links are added when the record is saved.",
       noMatches: "No matching records.",
       listLabel: "Matching records",
       chosenLabel: "Records to link",
@@ -2074,6 +2070,9 @@ const en = {
       addButton: "Add tag",
       colourLabel: (name: string) => `Colour of ${name}`,
       noColour: "No colour",
+      changeColour: (name: string) => `Change colour of ${name}`,
+      colourSave: "Save colour",
+      colourSaved: "Colour saved.",
       colourHeading: "Colour",
       reclassifyButton: "Reclassify",
       nameHeading: "Tag",
@@ -2264,6 +2263,9 @@ const en = {
     failure: (verb: string, noun: string) => `Could not ${verb} the ${noun}.`,
   },
   common: {
+    requiredLegend: "* required",
+    hexCode: (field: string) => `${field} (hex code)`,
+    hexCodeInvalid: "Enter a colour as #rgb or #rrggbb.",
     loading: "Loading…",
     error: "Something went wrong.",
     cancel: "Cancel",

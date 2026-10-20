@@ -1,4 +1,4 @@
-import { Ban, Eye, Plus, ShieldCheck, Upload, UserCheck, UserX } from "lucide-react";
+import { Ban, Eye, ShieldCheck, Upload, UserCheck, UserX } from "lucide-react";
 import { useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
@@ -6,6 +6,7 @@ import { ApiError, api, fileUrl } from "../api/client";
 import type { BulkRevokeResult, ServerRole, ServerSettings, SignupConfig, SignupMode, SystemUser } from "../api/types";
 import { SERVER_ROLE_LABEL } from "../api/types";
 import { ActionMenu } from "../components/ActionMenu";
+import { AddUserMenu } from "../components/AddUserMenu";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
@@ -66,7 +67,7 @@ function AccessReviewTab() {
   // "Confirmation and feedback rollout, precisely" list.
   const [confirmAction, setConfirmAction] = useState<{ kind: AccessReviewConfirmKind; userId: string } | null>(null);
   const [revokeAllPatsOpen, setRevokeAllPatsOpen] = useState(false);
-  const [addUserOpen, setAddUserOpen] = useState(false);
+  const [addUserMode, setAddUserMode] = useState<AddUserMode | null>(null);
   // The full groups list and the server-
   // roles toggles both moved off the row (an unbounded joined string and an
   // always-visible dropdown respectively) into modals opened from the row's
@@ -388,9 +389,7 @@ function AccessReviewTab() {
       <div className="card stack">
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.system.users}</h2>
-          <button className="btn btn-primary" onClick={() => setAddUserOpen(true)}>
-            <Plus /> {strings.system.addUser}
-          </button>
+          <AddUserMenu onInvite={() => setAddUserMode("invite")} onNewUser={() => setAddUserMode("password")} />
         </div>
         <p className="text-muted" style={{ margin: 0 }}>{strings.system.usersHint(orgLabel)}</p>
 
@@ -451,7 +450,7 @@ function AccessReviewTab() {
         {patResult && <div style={{ color: "var(--color-accent)" }}>{patResult}</div>}
       </div>
 
-      {addUserOpen && <AddUserModal onClose={() => setAddUserOpen(false)} onCreated={userAdded} />}
+      {addUserMode && <AddUserModal mode={addUserMode} onClose={() => setAddUserMode(null)} onCreated={userAdded} />}
       {confirmAction && (
         <ConfirmDialog
           title={confirmActionCopy[confirmAction.kind].title}

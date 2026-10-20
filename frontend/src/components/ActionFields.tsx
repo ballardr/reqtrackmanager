@@ -51,7 +51,7 @@ export function ActionFields({
   return (
     <FormGrid minColumn="14rem">
       <FormGridFull>
-        <TextField helpNotNeeded label={strings.actions.name} value={values.title} onChange={(next) => set("title", next)} disabled={disabled} />
+        <TextField helpNotNeeded required={!disabled} label={strings.actions.name} value={values.title} onChange={(next) => set("title", next)} disabled={disabled} />
       </FormGridFull>
       <FormGridFull>
         <TextAreaField helpNotNeeded
@@ -59,7 +59,7 @@ export function ActionFields({
           rows={3} disabled={disabled}
         />
       </FormGridFull>
-      <LabeledSelect helpNotNeeded
+      <LabeledSelect helpNotNeeded required={!disabled}
         label={strings.actions.actionType}
         value={values.actionTypeId}
         onChange={(next) => set("actionTypeId", next)}

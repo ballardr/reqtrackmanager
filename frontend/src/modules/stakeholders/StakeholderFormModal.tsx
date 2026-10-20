@@ -146,7 +146,7 @@ export function StakeholderFormModal({
     <Modal title={initial ? `Edit ${initial.name}` : `New Stakeholder (${scopeLabel})`} onClose={onCancel} size="lg">
       <div className="stack">
         <FormGrid minColumn="18rem">
-          <TextField helpNotNeeded label="Name" ariaLabel="Stakeholder name" value={name} onChange={setName} />
+          <TextField helpNotNeeded required label="Name" ariaLabel="Stakeholder name" value={name} onChange={setName} />
           <LabeledSelect helpNotNeeded label="Type" value={typeId} onChange={setTypeId} options={options} placeholder="No type" />
           <TextField helpNotNeeded label="Role" value={role} onChange={setRole} />
           <TextField helpNotNeeded label="Organisation / group" value={group} onChange={setGroup} />
@@ -198,7 +198,7 @@ export function StakeholderFormModal({
               hint="What limits how often they will engage (their side, not ours)."
             />
           </FormGridFull>
-          {initial && <FormGridFull><TextField helpNotNeeded label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
+          {initial && <FormGridFull><TextField helpNotNeeded label="Change note" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
           {!initial && projectId && (
             <FormGridFull>
               <div className="stack">

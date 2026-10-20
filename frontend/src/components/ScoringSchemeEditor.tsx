@@ -117,7 +117,7 @@ export function ScoringSchemeEditor({ orgId, schemeKey }: { orgId: string; schem
               fields={[
                 { key: "name", getValue: (l) => l.name, placeholder: "Level name", ariaLabel: `${axis.label} level name`, maxWidth: 180 },
                 { key: "weight", getValue: (l) => String(l.weight), placeholder: "Weight", ariaLabel: `${axis.label} level weight`, maxWidth: 90, inputType: "number" },
-                { key: "description", getValue: (l) => l.description ?? "", placeholder: "Guidance (optional)", ariaLabel: `${axis.label} level guidance`, maxWidth: 360, optional: true },
+                { key: "description", getValue: (l) => l.description ?? "", placeholder: "Guidance", ariaLabel: `${axis.label} level guidance`, maxWidth: 360, optional: true },
               ]}
               getReassignLabel={(l) => l.name}
               onRename={async (id, values) => {

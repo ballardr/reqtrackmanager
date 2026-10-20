@@ -45,7 +45,7 @@ Project managers open **Project admin → Tags** to look after the project's tag
 | Task | How |
 | --- | --- |
 | Who may add a new tag | **Anyone who can tag a record** (a free list) or **Only tags listed here** (a restricted list: people pick from the list and an administrator adds to it) |
-| Add, rename, colour | The **New tag** box; the **⋮** menu on a tag renames it; the colour list marks the chip's edge. Renaming changes every record that carries it |
+| Add, rename, colour | The **New tag** box; the **⋮** menu on a tag renames it; **Change colour** on the same menu opens a picker: choose a swatch, pick any colour on the colour wheel, or type a hex code such as `#2b6cb0` or `#0a8`. **No colour** clears it. The colour marks the chip's edge. Renaming changes every record that carries it |
 | Merge two tags | **⋮ → Merge … into another tag**. Records get the other tag, and the first is deleted |
 | Change many records | **⋮ → Reclassify records tagged …**: add or remove other tags, optionally for one kind of record only. **Preview** shows the count; **Apply** makes the change |
 | Delete a tag | **⋮ → Delete …**. You type the tag's name to confirm, and the dialog says how many records lose it |

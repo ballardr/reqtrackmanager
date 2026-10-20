@@ -90,7 +90,7 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
     await page.getByText(new RegExp(reference)).click();
     await page.getByText(requirementName).click();
     await page.getByLabel("Compliance status", { exact: true }).selectOption({ label: "Non-compliant" });
-    await page.getByLabel("Justification (required)").fill("Failed the required E2E inspection.");
+    await page.getByLabel("Justification", { exact: true }).fill("Failed the required E2E inspection.");
     await page.getByRole("button", { name: "Update assessment" }).click();
     await expect(page.getByText("Current state: Assessed")).toBeVisible();
     await page.getByRole("button", { name: "Close" }).click();
@@ -332,7 +332,7 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
     await page.getByText(new RegExp(reference)).click();
     await page.getByText(childRequirementName).click();
     await page.getByLabel("Compliance status", { exact: true }).selectOption({ label: "Non-compliant" });
-    await page.getByLabel("Justification (required)").fill("Failed the required E2E filter-fixture inspection.");
+    await page.getByLabel("Justification", { exact: true }).fill("Failed the required E2E filter-fixture inspection.");
     await page.getByRole("button", { name: "Update assessment" }).click();
     await expect(page.getByText("Current state: Assessed")).toBeVisible();
     await page.getByRole("button", { name: "Close" }).click();

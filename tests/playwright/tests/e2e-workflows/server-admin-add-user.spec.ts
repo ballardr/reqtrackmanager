@@ -62,13 +62,15 @@ test("a server admin adds users with a password (with and without an organisatio
   await page.goto("/server/management");
   await page.getByPlaceholder("Search by name or email").waitFor();
 
-  async function openDialog() {
+  /** Opens "Add user ▾" and chooses one of its two items, which opens that dialog. */
+  async function openDialog(item: "New user" | "Invite user") {
     await page.getByRole("button", { name: "Add user" }).click();
-    return page.getByRole("dialog", { name: "Add user" });
+    await page.getByRole("menuitem", { name: item }).click();
+    return page.getByRole("dialog", { name: item });
   }
 
   await test.step("with a password and no organisation: created, listed, can log in", async () => {
-    const dialog = await openDialog();
+    const dialog = await openDialog("New user");
     await expect(dialog.getByRole("button", { name: "Create" })).toBeDisabled();
     await dialog.getByLabel("Email").fill(solo.email);
     await dialog.getByLabel("Name", { exact: true }).fill(solo.name);
@@ -83,7 +85,7 @@ test("a server admin adds users with a password (with and without an organisatio
   });
 
   await test.step("a short password is refused with a message and the dialog stays open", async () => {
-    const dialog = await openDialog();
+    const dialog = await openDialog("New user");
     await dialog.getByLabel("Email").fill(`e2e-add-weak-${suffix}@example.com`);
     await dialog.getByLabel("Name", { exact: true }).fill("Weak");
     await dialog.getByLabel("Password", { exact: true }).fill("short");
@@ -94,7 +96,7 @@ test("a server admin adds users with a password (with and without an organisatio
   });
 
   await test.step("with a password inside an organisation: created as a member of that organisation", async () => {
-    const dialog = await openDialog();
+    const dialog = await openDialog("New user");
     await dialog.getByLabel("Email").fill(member.email);
     await dialog.getByLabel("Name", { exact: true }).fill(member.name);
     await dialog.getByLabel("Password", { exact: true }).fill(member.password);
@@ -108,8 +110,7 @@ test("a server admin adds users with a password (with and without an organisatio
   });
 
   await test.step("an invite asks for no password and, in an organisation, names it", async () => {
-    const dialog = await openDialog();
-    await dialog.getByRole("combobox", { name: "How they get a password" }).selectOption("invite");
+    const dialog = await openDialog("Invite user");
     await expect(dialog.getByLabel("Password", { exact: true })).toHaveCount(0);
     await expect(dialog.getByRole("button", { name: "Send invite" })).toBeDisabled();
     await dialog.getByLabel("Email").fill(invitee.email);
@@ -119,8 +120,7 @@ test("a server admin adds users with a password (with and without an organisatio
   });
 
   await test.step("an invite with no organisation is sent too", async () => {
-    const dialog = await openDialog();
-    await dialog.getByRole("combobox", { name: "How they get a password" }).selectOption("invite");
+    const dialog = await openDialog("Invite user");
     await dialog.getByLabel("Email").fill(loner.email);
     await dialog.getByRole("button", { name: "Send invite" }).click();
     await expect(page.getByText(`Invite sent to ${loner.email}`)).toBeVisible();

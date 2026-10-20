@@ -16,6 +16,7 @@ import type {
 import { ENTITY_ACCENT_COLOR, REQUIREMENT_ACTION_OUTCOME_LABEL, REQUIREMENT_ACTION_OUTCOME_TONE } from "../api/types";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
+import { ListPageLayout } from "../components/ListPageLayout";
 import { PrincipalBadge } from "../components/PrincipalBadge";
 import { QuickLinkField } from "../components/QuickLinkField";
 import { SortableHeader } from "../components/SortableHeader";
@@ -185,128 +186,128 @@ export function ProjectActionsPage() {
 
   return (
     <div className="stack">
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <h1 style={{ margin: 0 }}>{strings.actions.title}</h1>
-        <button className="btn btn-primary" onClick={() => setShowNewForm((v) => !v)}>
-          <Plus /> {strings.actions.newAction}
-        </button>
-      </div>
-
-      {showNewForm && (
-        <div className="card stack">
-          <ActionFields
-            values={{ title: newTitle, description: newDescription, actionTypeId: newActionTypeId, assignee: newAssignee, dueDate: newDueDate }}
-            onChange={(v) => {
-              setNewTitle(v.title);
-              setNewDescription(v.description);
-              setNewActionTypeId(v.actionTypeId);
-              setNewAssignee(v.assignee);
-              setNewDueDate(v.dueDate);
-            }}
-            actionTypes={actionTypes}
-            orgUsers={orgUsers}
-            organizationId={organizationId}
-            projectId={projectId}
-          />
-          <QuickLinkField projectId={projectId ?? ""} artefactType="requirement_action" preferredType="requirement" value={newQuickLinks} onChange={setNewQuickLinks} />
-          <TagField projectId={projectId ?? ""} artefactType="requirement_action" value={newTags} onChange={setNewTags} />
-          <button
-            className="btn btn-primary" style={{ alignSelf: "flex-start" }}
-            onClick={createAction} disabled={!newTitle.trim() || !newActionTypeId}
-          >
-            {strings.common.create}
+      <ListPageLayout
+        title={strings.actions.title}
+        actions={
+          <button className="btn btn-primary" onClick={() => setShowNewForm((v) => !v)}>
+            <Plus /> {strings.actions.newAction}
           </button>
-        </div>
-      )}
-
-      <div className="side-grid">
-        <div className="stack">
-          {!actions && <Spinner />}
-          {actions && actions.length === 0 && <p className="text-muted">{strings.actions.empty}</p>}
-          {actions && actions.length > 0 && (
-            <div className="card" style={{ overflowX: "auto" }}>
-              <table>
-                <thead>
-                  <tr>
-                    <SortableHeader
-                      label={strings.actions.uniqueCode} sortKey="unique_code" sort={sort}
-                      onSort={(key) => setSort((s) => cycleSort(s, key))}
-                    />
-                    <SortableHeader
-                      label={strings.actions.name} sortKey="title" sort={sort}
-                      onSort={(key) => setSort((s) => cycleSort(s, key))}
-                    />
-                    <th>{strings.actions.actionType}</th>
-                    <SortableHeader
-                      label={strings.actions.outcome} sortKey="outcome_status" sort={sort}
-                      onSort={(key) => setSort((s) => cycleSort(s, key))}
-                    />
-                    <th>{strings.actions.assignee}</th>
-                    <SortableHeader
-                      label={strings.actions.dueDate} sortKey="due_date" sort={sort}
-                      onSort={(key) => setSort((s) => cycleSort(s, key))}
-                    />
-                  </tr>
-                </thead>
-                <tbody>
-                  {(sortedActions ?? actions).map((a) => (
-                    <tr
-                      key={a.id}
-                      className="entity-accent-row"
-                      style={{ ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.action }}
-                    >
-                      <td className="text-muted"><RecordCode code={a.unique_code} ownerProjectCode={a.from_project_code} /></td>
-                      <td>
-                        <Link to={`/projects/${rowProjectId(a, projectId ?? "")}/actions/${a.id}`}>{a.title}</Link>
-                        <ProjectScopeLabel row={a} />
-                        {a.is_archived && <Badge className="badge-after">{strings.actions.archived}</Badge>}
-                      </td>
-                      <td className="text-muted">{actionTypeName(a.action_type_id)}</td>
-                      <td>
-                        <FilterBadge
-                          active={outcomeFilter === a.outcome_status}
-                          tone={REQUIREMENT_ACTION_OUTCOME_TONE[a.outcome_status]}
-                          onClick={() => toggleOutcomeFilter(a.outcome_status)}
-                        >
-                          {REQUIREMENT_ACTION_OUTCOME_LABEL[a.outcome_status]}
-                        </FilterBadge>
-                      </td>
-                      <td className="text-muted"><PrincipalBadge principal={a.assignee} placeholder={strings.reviews.unassigned} /></td>
-                      <td className="text-muted">{a.due_date ?? "—"}</td>
+        }
+        filter={
+          <FilterPanel sectionKey="projectActionsFilters">
+            <FilterField label={strings.actions.actionType}>
+              <select className="input" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+                <option value="">{strings.actions.allTypes}</option>
+                {actionTypes.map((at) => (
+                  <option key={at.id} value={at.id}>
+                    {at.name}
+                  </option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterField label={strings.actions.outcome}>
+              <select className="input" value={outcomeFilter} onChange={(e) => setOutcomeFilter(e.target.value as RequirementActionOutcome | "")}>
+                <option value="">{strings.actions.allOutcomes}</option>
+                {OUTCOME_OPTIONS.map((o) => (
+                  <option key={o} value={o}>
+                    {REQUIREMENT_ACTION_OUTCOME_LABEL[o]}
+                  </option>
+                ))}
+              </select>
+            </FilterField>
+            <ProjectScopeFilter scope={projectScope} />
+            {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <FilterCheckbox label={strings.actions.includeArchived} checked={includeArchived} onChange={setIncludeArchived} />
+          </FilterPanel>
+        }
+      >
+        {showNewForm && (
+          <div className="card stack">
+            <ActionFields
+              values={{ title: newTitle, description: newDescription, actionTypeId: newActionTypeId, assignee: newAssignee, dueDate: newDueDate }}
+              onChange={(v) => {
+                setNewTitle(v.title);
+                setNewDescription(v.description);
+                setNewActionTypeId(v.actionTypeId);
+                setNewAssignee(v.assignee);
+                setNewDueDate(v.dueDate);
+              }}
+              actionTypes={actionTypes}
+              orgUsers={orgUsers}
+              organizationId={organizationId}
+              projectId={projectId}
+            />
+            <QuickLinkField projectId={projectId ?? ""} artefactType="requirement_action" preferredType="requirement" value={newQuickLinks} onChange={setNewQuickLinks} />
+            <TagField projectId={projectId ?? ""} artefactType="requirement_action" value={newTags} onChange={setNewTags} />
+            <button
+              className="btn btn-primary" style={{ alignSelf: "flex-start" }}
+              onClick={createAction} disabled={!newTitle.trim() || !newActionTypeId}
+            >
+              {strings.common.create}
+            </button>
+          </div>
+        )}
+          <div className="stack">
+            {!actions && <Spinner />}
+            {actions && actions.length === 0 && <p className="text-muted">{strings.actions.empty}</p>}
+            {actions && actions.length > 0 && (
+              <div className="card" style={{ overflowX: "auto" }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <SortableHeader
+                        label={strings.actions.uniqueCode} sortKey="unique_code" sort={sort}
+                        onSort={(key) => setSort((s) => cycleSort(s, key))}
+                      />
+                      <SortableHeader
+                        label={strings.actions.name} sortKey="title" sort={sort}
+                        onSort={(key) => setSort((s) => cycleSort(s, key))}
+                      />
+                      <th>{strings.actions.actionType}</th>
+                      <SortableHeader
+                        label={strings.actions.outcome} sortKey="outcome_status" sort={sort}
+                        onSort={(key) => setSort((s) => cycleSort(s, key))}
+                      />
+                      <th>{strings.actions.assignee}</th>
+                      <SortableHeader
+                        label={strings.actions.dueDate} sortKey="due_date" sort={sort}
+                        onSort={(key) => setSort((s) => cycleSort(s, key))}
+                      />
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        <FilterPanel sectionKey="projectActionsFilters">
-          <FilterField label={strings.actions.actionType}>
-            <select className="input" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-              <option value="">{strings.actions.allTypes}</option>
-              {actionTypes.map((at) => (
-                <option key={at.id} value={at.id}>
-                  {at.name}
-                </option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label={strings.actions.outcome}>
-            <select className="input" value={outcomeFilter} onChange={(e) => setOutcomeFilter(e.target.value as RequirementActionOutcome | "")}>
-              <option value="">{strings.actions.allOutcomes}</option>
-              {OUTCOME_OPTIONS.map((o) => (
-                <option key={o} value={o}>
-                  {REQUIREMENT_ACTION_OUTCOME_LABEL[o]}
-                </option>
-              ))}
-            </select>
-          </FilterField>
-          <ProjectScopeFilter scope={projectScope} />
-          {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
-          <FilterCheckbox label={strings.actions.includeArchived} checked={includeArchived} onChange={setIncludeArchived} />
-        </FilterPanel>
-      </div>
+                  </thead>
+                  <tbody>
+                    {(sortedActions ?? actions).map((a) => (
+                      <tr
+                        key={a.id}
+                        className="entity-accent-row"
+                        style={{ ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.action }}
+                      >
+                        <td className="text-muted"><RecordCode code={a.unique_code} ownerProjectCode={a.from_project_code} /></td>
+                        <td>
+                          <Link to={`/projects/${rowProjectId(a, projectId ?? "")}/actions/${a.id}`}>{a.title}</Link>
+                          <ProjectScopeLabel row={a} />
+                          {a.is_archived && <Badge className="badge-after">{strings.actions.archived}</Badge>}
+                        </td>
+                        <td className="text-muted">{actionTypeName(a.action_type_id)}</td>
+                        <td>
+                          <FilterBadge
+                            active={outcomeFilter === a.outcome_status}
+                            tone={REQUIREMENT_ACTION_OUTCOME_TONE[a.outcome_status]}
+                            onClick={() => toggleOutcomeFilter(a.outcome_status)}
+                          >
+                            {REQUIREMENT_ACTION_OUTCOME_LABEL[a.outcome_status]}
+                          </FilterBadge>
+                        </td>
+                        <td className="text-muted"><PrincipalBadge principal={a.assignee} placeholder={strings.reviews.unassigned} /></td>
+                        <td className="text-muted">{a.due_date ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+      </ListPageLayout>
     </div>
   );
 }

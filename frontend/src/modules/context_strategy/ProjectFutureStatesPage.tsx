@@ -23,6 +23,7 @@ import type { Project } from "../../api/types";
 import { api } from "../../api/client";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ListPageLayout } from "../../components/ListPageLayout";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -109,11 +110,35 @@ export function ProjectFutureStatesPage() {
 
   return (
     <div className="container stack">
-      <h1 style={{ margin: 0 }}>Future State</h1>
-      <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
-        New Future State
-      </button>
-      <div className="side-grid">
+      <ListPageLayout
+        title="Future State"
+        actions={
+          <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
+            New Future State
+          </button>
+        }
+        filter={
+          <FilterPanel
+            sectionKey="context_strategy.futureStates.list" total={filtered.length}
+            search={search} onSearchChange={setSearch} searchPlaceholder="Search Future State…" searchAriaLabel="Search Future State"
+          >
+            <FilterField label="Status">
+              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as FutureStateStatus | "")}>
+                <option value="">All statuses</option>
+                {Object.entries(FUTURE_STATE_STATUS_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterCheckbox label="On the roadmap only" checked={roadmapOnly} onChange={setRoadmapOnly} />
+            <FilterCheckbox label="Target date passed" checked={targetPassedOnly} onChange={setTargetPassedOnly} />
+            <FilterCheckbox label="Without success measures" checked={noMeasuresOnly} onChange={setNoMeasuresOnly} />
+            <ProjectScopeFilter scope={projectScope} />
+            {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
+          </FilterPanel>
+        }
+      >
         <DirectoryTable
           ariaLabel="Future States"
           columns={columns}
@@ -122,26 +147,7 @@ export function ProjectFutureStatesPage() {
           onRowClick={(fs) => navigate(`/projects/${rowProjectId(fs, projectId)}/modules/context_strategy/future-states/${fs.id}`)}
           emptyState={<p className="text-muted">No Future State recorded for this project yet.</p>}
         />
-        <FilterPanel
-          sectionKey="context_strategy.futureStates.list" total={filtered.length}
-          search={search} onSearchChange={setSearch} searchPlaceholder="Search Future State…" searchAriaLabel="Search Future State"
-        >
-          <FilterField label="Status">
-            <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as FutureStateStatus | "")}>
-              <option value="">All statuses</option>
-              {Object.entries(FUTURE_STATE_STATUS_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterCheckbox label="On the roadmap only" checked={roadmapOnly} onChange={setRoadmapOnly} />
-          <FilterCheckbox label="Target date passed" checked={targetPassedOnly} onChange={setTargetPassedOnly} />
-          <FilterCheckbox label="Without success measures" checked={noMeasuresOnly} onChange={setNoMeasuresOnly} />
-          <ProjectScopeFilter scope={projectScope} />
-          {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
-          <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
-        </FilterPanel>
-      </div>
+      </ListPageLayout>
 
       {creating && (
         <FutureStateFormModal

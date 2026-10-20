@@ -6,6 +6,7 @@ import { api } from "../api/client";
 import type { Notification } from "../api/types";
 import { getNotificationLink } from "../modules/artefactPaths";
 import { FilterCheckbox, FilterPanel } from "../components/FilterPanel";
+import { ListPageLayout } from "../components/ListPageLayout";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { toErrorMessage, useToast } from "../context/ToastContext";
@@ -73,16 +74,21 @@ export function NotificationsPage() {
 
   return (
     <div className="stack">
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <h1 style={{ margin: 0 }}>{strings.notifications.title}</h1>
-        {unreadCount > 0 && (
-          <button className="btn btn-primary" onClick={markAllRead}>
-            {strings.notifications.markAllRead}
-          </button>
-        )}
-      </div>
-
-      <div className="side-grid">
+      <ListPageLayout
+        title={strings.notifications.title}
+        actions={
+          unreadCount > 0 && (
+            <button className="btn btn-primary" onClick={markAllRead}>
+              {strings.notifications.markAllRead}
+            </button>
+          )
+        }
+        filter={
+          <FilterPanel sectionKey="notificationsFilters">
+            <FilterCheckbox label={strings.notifications.unreadOnly} checked={unreadOnly} onChange={setUnreadOnly} />
+          </FilterPanel>
+        }
+      >
         <div className="stack">
           <input
             className="input"
@@ -117,11 +123,7 @@ export function NotificationsPage() {
             <LoadMoreButton loaded={notifications.length} total={total} onClick={() => load(notifications.length, true)} />
           )}
         </div>
-
-        <FilterPanel sectionKey="notificationsFilters">
-          <FilterCheckbox label={strings.notifications.unreadOnly} checked={unreadOnly} onChange={setUnreadOnly} />
-        </FilterPanel>
-      </div>
+      </ListPageLayout>
     </div>
   );
 }

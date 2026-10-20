@@ -119,6 +119,7 @@ Read left to right: CI publishes a docs image tagged with the same version as th
 
 - The image is the same static site as the public one, served by unprivileged nginx on port 8080 (`docker-compose.yml` publishes it on 8200 under the `docs` profile). It is built for the root of its own host; to serve it under a sub-path such as `/docs/` behind your reverse proxy, set `DOCS_BASE_URL=/docs/` (and `DOCS_URL`) in your `.env` and build it with `docker compose --profile docs build docs`. The base path is baked in at build time, so a pulled image keeps its published `/`.
 - `HELP_URL` must be reachable from users' browsers, not just from the backend.
+- The dev/test stack (`tests/container/`) already sets `HELP_URL` to its own docs service, so Help is local there; only the production `docker-compose.yml` defaults to the public site.
 - No internal mirror and no wish for an external link? Set `HELP_ENABLED=false` to remove the Help link.
 
 ### Storage credential scope (known gap)

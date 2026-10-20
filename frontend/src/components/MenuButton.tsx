@@ -52,7 +52,7 @@ export function MenuButton({
         <ChevronDown aria-hidden="true" />
       </button>
       {open && (
-        <Popover anchorRef={triggerRef} title={name} onClose={() => setOpen(false)}>
+        <Popover anchorRef={triggerRef} fit title={name} onClose={() => setOpen(false)}>
           <ActionMenuList label={name} items={items} onSelect={() => setOpen(false)} />
         </Popover>
       )}

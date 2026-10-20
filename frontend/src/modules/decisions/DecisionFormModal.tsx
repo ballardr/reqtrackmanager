@@ -118,7 +118,7 @@ export function DecisionFormModal({
           {!initial && templates && templates.length > 0 && (
             <FormGridFull>
               <LabeledSelect help={DECISIONS_HELP.decisionTemplate}
-                label="Start from a template (optional)"
+                label="Start from a template"
                 value={templateId}
                 onChange={applyTemplate}
                 options={templates.map((t) => ({ value: t.id, label: t.name }))}
@@ -127,20 +127,20 @@ export function DecisionFormModal({
             </FormGridFull>
           )}
           <FormGridFull>
-            <TextField helpNotNeeded label="Decision title" value={title} onChange={setTitle} />
+            <TextField helpNotNeeded required label="Decision title" value={title} onChange={setTitle} />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField helpNotNeeded label="Decision statement" value={statement} onChange={setStatement} />
+            <TextAreaField helpNotNeeded required label="Decision statement" value={statement} onChange={setStatement} />
           </FormGridFull>
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect helpNotNeeded required
             label="Decision type"
             value={decisionTypeId}
             onChange={setDecisionTypeId}
             options={decisionTypes.map((t) => ({ value: t.id, label: t.name }))}
           />
-          <DateField helpNotNeeded label="Decision date (optional)" value={decisionDate} onChange={setDecisionDate} />
+          <DateField helpNotNeeded label="Decision date" value={decisionDate} onChange={setDecisionDate} />
           <PrincipalFormField helpNotNeeded
-            label="Decision maker (optional)"
+            label="Decision maker"
             orgUsers={orgUsers}
             organizationId={organizationId}
             projectId={projectId}
@@ -150,7 +150,7 @@ export function DecisionFormModal({
             ariaLabel="Decision maker"
             placeholder="Search users and groups…"
           />
-          <PrincipalFormField helpNotNeeded
+          <PrincipalFormField helpNotNeeded required
             label="Owner"
             orgUsers={orgUsers}
             organizationId={organizationId}

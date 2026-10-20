@@ -22,7 +22,7 @@ test.describe("Field help on the Persona form", () => {
 
     const dialog = page.getByRole("dialog", { name: "New Persona (project)" });
     const weight = dialog.getByLabel("Importance weight");
-    const helpButton = dialog.getByRole("button", { name: "Help: Importance weight (optional)" });
+    const helpButton = dialog.getByRole("button", { name: "Help: Importance weight" });
     const helpText = dialog.getByText(/How much this persona counts when scores are rolled up/);
 
     await weight.fill("4");

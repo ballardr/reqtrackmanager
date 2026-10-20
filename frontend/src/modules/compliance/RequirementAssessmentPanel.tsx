@@ -328,7 +328,8 @@ export function RequirementAssessmentPanel({
           />
           {applicability === "not_applicable" && (
             <TextAreaField helpNotNeeded
-              label="Justification (required)"
+              required
+              label="Justification"
               value={applicabilityJustification}
               onChange={setApplicabilityJustification}
               rows={2}
@@ -355,7 +356,8 @@ export function RequirementAssessmentPanel({
             />
             {status === "non_compliant" && (
               <TextAreaField helpNotNeeded
-                label="Justification (required)"
+                required
+                label="Justification"
                 value={statusJustification}
                 onChange={setStatusJustification}
                 rows={2}
@@ -485,7 +487,8 @@ export function RequirementAssessmentPanel({
           {pcr.approval_state === "pending_approval" && (
             <div className="stack">
               <TextAreaField helpNotNeeded
-                label="Decision note (optional for approval, required to reject)"
+                label="Decision note"
+                hint="Required to reject."
                 value={decisionNote}
                 onChange={setDecisionNote}
                 rows={2}
@@ -579,7 +582,7 @@ export function RequirementAssessmentPanel({
       {rejecting && (
         <Modal title="Reject this assessment?" onClose={() => setRejecting(false)}>
           <div className="stack">
-            <TextAreaField helpNotNeeded label="Decision note (required)" value={decisionNote} onChange={setDecisionNote} rows={3} />
+            <TextAreaField helpNotNeeded required label="Decision note" value={decisionNote} onChange={setDecisionNote} rows={3} />
             <div className="row" style={{ justifyContent: "flex-end" }}>
               <button className="btn" onClick={() => setRejecting(false)}>Cancel</button>
               <button className="btn btn-danger" disabled={!decisionNote.trim()} onClick={reject}>Reject</button>

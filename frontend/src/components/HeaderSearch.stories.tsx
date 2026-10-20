@@ -229,3 +229,20 @@ export const TooManySearchesSaysToWait: Story = {
     await canvas.findByText("You are searching too fast. Wait a moment and try again.", undefined, { timeout: 3000 });
   },
 };
+
+/** Every dropdown row is one line, even for a 200-character title, so several hits fit without scrolling. */
+export const EveryRowIsOneLine: Story = {
+  args: { api: fakeSearchApi(() => buildSearchResponse([
+    buildSearchHit({ id: "r1", title: "voltage ".repeat(30).trim() }),
+    buildSearchHit({ id: "r2", code: "REQ-002", title: "Voltage ripple" }),
+  ])) },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.type(canvas.getByRole("combobox", { name: "Search" }), "volt");
+    const listbox = await canvas.findByRole("listbox", { name: "Search results" }, { timeout: 3000 });
+    await waitFor(() => expect(within(listbox).getAllByRole("option")).toHaveLength(3));
+    for (const row of listbox.querySelectorAll(".search-hit-compact")) {
+      await expect(row.getBoundingClientRect().height).toBeLessThan(28);
+    }
+  },
+};

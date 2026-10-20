@@ -39,7 +39,7 @@ const LEVELS: RequirementLevel[] = ["requirement", "recommended", "optional"];
  * @param afterDescription Page-specific fields placed between description and target version.
  */
 export function RequirementFields({
-  values, onChange, stages, orgUsers, organizationId, projectId, saved, ownerPlaceholder, afterDescription,
+  values, onChange, stages, orgUsers, organizationId, projectId, saved, ownerPlaceholder, afterDescription, ownerRequired,
 }: {
   values: RequirementFieldValues;
   onChange: (next: RequirementFieldValues) => void;
@@ -50,6 +50,8 @@ export function RequirementFields({
   saved?: { owner: Principal | null; reviewer: Principal | null };
   ownerPlaceholder?: string;
   afterDescription?: ReactNode;
+  /** The owner is required: an edit names one, while a new requirement defaults to its creator. */
+  ownerRequired?: boolean;
 }) {
   const strings = useStrings();
   const set = <K extends keyof RequirementFieldValues>(key: K, value: RequirementFieldValues[K]) =>
@@ -57,7 +59,7 @@ export function RequirementFields({
   return (
     <>
       <FormGridFull>
-        <TextField helpNotNeeded label={strings.requirements.name} value={values.name} onChange={(next) => set("name", next)} placeholder={strings.requirements.name} />
+        <TextField helpNotNeeded required label={strings.requirements.name} value={values.name} onChange={(next) => set("name", next)} placeholder={strings.requirements.name} />
       </FormGridFull>
       <FormGridFull>
         <TextAreaField helpNotNeeded autoGrow label={strings.requirements.reasoning} rows={3} value={values.reasoning} onChange={(next) => set("reasoning", next)} inputProps={{ placeholder: strings.requirements.reasoning }} />
@@ -69,7 +71,7 @@ export function RequirementFields({
         <TextAreaField helpNotNeeded autoGrow label={strings.requirements.description} rows={2} value={values.description} onChange={(next) => set("description", next)} inputProps={{ placeholder: strings.requirements.description }} />
       </FormGridFull>
       {afterDescription}
-      <LabeledSelect help={strings.help.requirementTargetVersion}
+      <LabeledSelect help={strings.help.requirementTargetVersion} required
         label={strings.requirements.targetVersion}
         value={values.targetStageId}
         onChange={(next) => set("targetStageId", next)}
@@ -95,7 +97,7 @@ export function RequirementFields({
         onChange={(reviewer) => set("reviewer", reviewer)}
         ariaLabel={strings.requirements.reviewer} placeholder={strings.reviews.unassigned}
       />
-      <PrincipalFormField helpNotNeeded
+      <PrincipalFormField helpNotNeeded required={ownerRequired}
         label={strings.requirements.owner} orgUsers={orgUsers} organizationId={organizationId}
         projectId={projectId} value={values.owner}
         display={saved ? savedPrincipalDisplay(values.owner, saved.owner) : undefined}

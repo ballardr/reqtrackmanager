@@ -160,7 +160,7 @@ function VersionFormModal({
     <Modal title="New version" onClose={onCancel} size="lg">
       <div className="stack">
         <FormGrid minColumn="18rem">
-          <TextField helpNotNeeded
+          <TextField helpNotNeeded required
             label="Version label"
             value={versionLabel}
             onChange={setVersionLabel}

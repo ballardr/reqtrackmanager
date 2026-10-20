@@ -1,32 +1,43 @@
 /**
  * Module: modules/stakeholders/peopleRows
  *
- * The row model of the People page's combined list: a Persona, Stakeholder, Stakeholder Need and Stakeholder
- * group each become one `PeopleRow`, so `RecordListView` (which wants one record shape) can list them
- * together, and the pure helpers around it — the kinds the page can show, which of them a project has
- * switched on, and the `?kind=` query the old per-type routes redirect to.
+ * The row model of the People page's combined list: a Persona, Stakeholder and Stakeholder group each become
+ * one `PeopleRow`, so `RecordListView` (which wants one record shape) can list them together, and the pure
+ * helpers around it — the kinds the page can show, which of them a project has switched on, and the `?kind=`
+ * query the old per-type routes redirect to. Stakeholder Needs are not people: they have their own tab
+ * (`NeedsPage`), switched by `NEEDS_SUBCOMPONENT`.
  */
-import type { ListedRecord } from "./RecordListView";
-import type { Need, Persona, Stakeholder, StakeholderGroup } from "./types";
+import { Drama, Handshake, UsersRound, type LucideIcon } from "lucide-react";
 
-export type PeopleKind = "persona" | "stakeholder" | "need" | "group";
+import type { ListedRecord } from "./RecordListView";
+import type { Persona, Stakeholder, StakeholderGroup } from "./types";
+
+export type PeopleKind = "persona" | "stakeholder" | "group";
 
 /** Display order of the kinds, in the filter chips and the New menu. */
-export const PEOPLE_KINDS: PeopleKind[] = ["persona", "stakeholder", "need", "group"];
+export const PEOPLE_KINDS: PeopleKind[] = ["persona", "stakeholder", "group"];
+
+/** The module sub-component whose being off removes the Needs tab. */
+export const NEEDS_SUBCOMPONENT = "stakeholder_need";
 
 /** The kind named in the Kind column and the New menu. */
 export const PEOPLE_KIND_LABEL: Record<PeopleKind, string> = {
   persona: "Persona",
   stakeholder: "Stakeholder",
-  need: "Stakeholder Need",
   group: "Stakeholder Group",
+};
+
+/** The icon that marks each kind (`PeopleKindIcon`); the kind is always also named in text. */
+export const PEOPLE_KIND_ICON: Record<PeopleKind, LucideIcon> = {
+  persona: Drama,
+  stakeholder: Handshake,
+  group: UsersRound,
 };
 
 /** The kind named in the filter chips. */
 export const PEOPLE_KIND_PLURAL_LABEL: Record<PeopleKind, string> = {
   persona: "Personas",
   stakeholder: "Stakeholders",
-  need: "Needs",
   group: "Groups",
 };
 
@@ -34,7 +45,6 @@ export const PEOPLE_KIND_PLURAL_LABEL: Record<PeopleKind, string> = {
 export const PEOPLE_KIND_SUBCOMPONENT: Record<PeopleKind, string> = {
   persona: "persona",
   stakeholder: "stakeholder",
-  need: "stakeholder_need",
   group: "stakeholder",
 };
 
@@ -46,7 +56,7 @@ export interface PeopleRow extends ListedRecord {
   /** The kind's own type (Persona type, Stakeholder type); null for kinds without one. */
   typeName: string | null;
   /** The underlying record, for the page's per-kind actions. */
-  source: Persona | Stakeholder | Need | StakeholderGroup;
+  source: Persona | Stakeholder | StakeholderGroup;
 }
 
 export function personaRow(p: Persona): PeopleRow {
@@ -55,10 +65,6 @@ export function personaRow(p: Persona): PeopleRow {
 
 export function stakeholderRow(s: Stakeholder): PeopleRow {
   return { ...s, kind: "stakeholder", summary: s.role, typeName: s.stakeholder_type_name, source: s };
-}
-
-export function needRow(n: Need): PeopleRow {
-  return { ...n, kind: "need", summary: n.description, typeName: null, source: n };
 }
 
 export function groupRow(g: StakeholderGroup): PeopleRow {
@@ -94,4 +100,14 @@ export function selectedKinds(raw: string | null, enabled: PeopleKind[]): People
 /** The `?kind=` value for a selection: empty when every enabled kind is selected (the default). */
 export function kindQuery(selected: PeopleKind[], enabled: PeopleKind[]): string {
   return selected.length === enabled.length ? "" : selected.join(",");
+}
+
+/** Whether the project has the Needs tab: the `stakeholder_need` sub-component is on. */
+export function needsEnabled(disabledSubComponents: string[]): boolean {
+  return !disabledSubComponents.includes(NEEDS_SUBCOMPONENT);
+}
+
+/** Whether a raw `?kind=` value names the retired Need kind, which now lives on the Needs tab. */
+export function namesNeedKind(raw: string | null): boolean {
+  return (raw ?? "").split(",").includes("need");
 }

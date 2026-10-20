@@ -119,7 +119,7 @@ export function RiskFormModal({
       <div className="stack">
         <FormGrid minColumn="18rem">
           <FormGridFull>
-            <TextField helpNotNeeded label="Risk title" value={values.title} onChange={(value) => set("title", value)} />
+            <TextField helpNotNeeded required label="Risk title" value={values.title} onChange={(value) => set("title", value)} />
           </FormGridFull>
           {textField("statement", "Risk statement")}
           {textField("cause", "Cause")}
@@ -155,7 +155,7 @@ export function RiskFormModal({
             disabled={locked}
           />
           <DateField helpNotNeeded
-            label="Next review date (optional)" ariaLabel="Next review date"
+            label="Next review date" ariaLabel="Next review date"
             value={values.review_date ?? ""} onChange={(value) => set("review_date", value || null)}
           />
           {textField("acceptance_criteria", "Acceptance criteria", locked)}
@@ -169,7 +169,7 @@ export function RiskFormModal({
           )}
           {initial && (
             <FormGridFull>
-              <TextField helpNotNeeded label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />
+              <TextField helpNotNeeded label="Change note" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />
             </FormGridFull>
           )}
           {!initial && (

@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
 
+import { requiredCaptions } from "../testing/requiredMarkers";
 import { CheckboxField, ColorField, DateField, FileField, TextAreaField, TextField, ToggleField } from "./FormFields";
 
 const meta: Meta = { title: "Components/FormFields" };
@@ -90,6 +91,31 @@ export const ColorFieldReportsChanges: Story = {
   },
 };
 
+/** The wheel, the hex box and the presets stay in step; `#rgb` is widened, and a non-colour is flagged and never reported. */
+export const ColorFieldHexPresetsAndNoColour: Story = {
+  render: () => {
+    const onChange = fn();
+    return (
+      <ColorField
+        helpNotNeeded label="Tag colour" value="" onChange={onChange}
+        presets={[{ name: "Blue", hex: "#2b6cb0" }, { name: "Red", hex: "#c53030" }]} emptyLabel="No colour"
+      />
+    );
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const hex = canvas.getByRole("textbox", { name: "Tag colour (hex code)" });
+    await userEvent.type(hex, "0a8");
+    await expect(hex).not.toHaveAttribute("aria-invalid");
+    await userEvent.clear(hex);
+    await userEvent.type(hex, "nope");
+    await expect(hex).toHaveAttribute("aria-invalid", "true");
+    await expect(canvas.getByRole("alert")).toHaveTextContent("Enter a colour as #rgb or #rrggbb.");
+    await expect(canvas.getByRole("button", { name: "No colour" })).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(canvas.getByRole("button", { name: "Blue" }));
+  },
+};
+
 export const ToggleFieldNamesTheSwitchAndShowsItsHint: Story = {
   render: () => {
     const onChange = fn();
@@ -116,3 +142,27 @@ export const FileFieldReportsTheChosenFile: Story = {
 };
 
 export const DarkTheme: Story = { ...TextAreaShowsItsHint, globals: { theme: "dark" } };
+
+/** `required` puts a `*` after the caption (hidden from assistive technology) and the constraint on the control. */
+export const RequiredFieldsAreStarredAndConstrained: Story = {
+  render: () => (
+    <div className="stack">
+      <TextField helpNotNeeded required label="Title" value="" onChange={fn()} />
+      <TextAreaField helpNotNeeded required label="Statement" value="" onChange={fn()} />
+      <DateField helpNotNeeded required label="Due" value="" onChange={fn()} />
+      <TextField helpNotNeeded label="Notes" value="" onChange={fn()} />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(requiredCaptions(canvasElement)).toEqual(["Title", "Statement", "Due"]);
+    for (const name of ["Title", "Statement", "Due"]) {
+      const control = canvas.getByLabelText(name);
+      await expect(control).toBeRequired();
+      await expect(control).toHaveAttribute("aria-required", "true");
+    }
+    await expect(canvas.getByLabelText("Notes")).not.toBeRequired();
+    // The star is decoration for sighted users: the accessible name stays the bare caption.
+    await expect(canvasElement.querySelector(".field-required")).toHaveAttribute("aria-hidden", "true");
+  },
+};

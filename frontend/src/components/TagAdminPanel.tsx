@@ -29,7 +29,7 @@ import { Badge } from "./Badge";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { DirectoryTable, type DirectoryColumn } from "./DirectoryTable";
 import { FilterField } from "./FilterPanel";
-import { TextField } from "./FormFields";
+import { ColorField, TextField } from "./FormFields";
 import { FormActions } from "./FormActions";
 import { LabeledSelect } from "./LabeledSelect";
 import { MultiSelectDropdown } from "./MultiSelectDropdown";
@@ -40,6 +40,7 @@ import { TAG_COLOURS } from "./tagColours";
 
 type Dialog =
   | { kind: "rename"; tag: Tag }
+  | { kind: "colour"; tag: Tag }
   | { kind: "merge"; tag: Tag }
   | { kind: "delete"; tag: Tag }
   | { kind: "reclassify"; tag: Tag; artefactType?: string };
@@ -110,27 +111,12 @@ export function TagAdminPanel({ api, scope }: { api: TagAdminApi; scope: "projec
     {
       key: "colour",
       label: text.colourHeading,
-      render: (tag) => (
-        <select
-          className="input"
-          style={{ width: "auto" }}
-          aria-label={text.colourLabel(tag.name)}
-          value={TAG_COLOURS.some((c) => c.hex === tag.colour) ? (tag.colour ?? "") : tag.colour ? "custom" : ""}
-          disabled={!tag.editable}
-          onChange={(e) => {
-            const value = e.target.value;
-            if (value === "custom") return;
-            void run(async () => {
-              await api.update(tag.id, value === "" ? { clear_colour: true } : { colour: value });
-              return text.renamed;
-            });
-          }}
-        >
-          <option value="">{text.noColour}</option>
-          {tag.colour && !TAG_COLOURS.some((c) => c.hex === tag.colour) && <option value="custom">{tag.colour}</option>}
-          {TAG_COLOURS.map((c) => <option key={c.hex} value={c.hex}>{c.name}</option>)}
-        </select>
-      ),
+      render: (tag) => tag.colour ? (
+        <span className="row" style={{ gap: "0.4rem" }}>
+          <span className="colour-swatch" aria-hidden="true" style={{ background: tag.colour, cursor: "default" }} />
+          <span className="text-muted">{tag.colour}</span>
+        </span>
+      ) : <span className="text-muted">{text.noColour}</span>,
     },
     { key: "used", label: text.usedHeading, render: (tag) => text.recordsCount(tag.usage_count) },
     {
@@ -141,6 +127,7 @@ export function TagAdminPanel({ api, scope }: { api: TagAdminApi; scope: "projec
           triggerLabel={`${tag.name}`}
           items={[
             { label: text.rename(tag.name), key: "rename", onSelect: () => setDialog({ kind: "rename", tag }) },
+            { label: text.changeColour(tag.name), key: "colour", onSelect: () => setDialog({ kind: "colour", tag }) },
             ...(vocabulary.tags.length > 1
               ? [{ label: text.merge(tag.name), key: "merge", onSelect: () => setDialog({ kind: "merge", tag }) }]
               : []),
@@ -190,20 +177,19 @@ export function TagAdminPanel({ api, scope }: { api: TagAdminApi; scope: "projec
           if (newName.trim() !== "" && !nameProblem) void addTag();
         }}
       >
-        <TextField helpNotNeeded
+        <TextField helpNotNeeded required
           label={text.addLabel}
           value={newName}
           onChange={setNewName}
           placeholder={text.addPlaceholder}
           inputProps={{ maxLength: TAG_NAME_MAX_LENGTH * 2 }}
         />
-        <LabeledSelect helpNotNeeded
+        <ColorField helpNotNeeded
           label={text.colourHeading}
-          ariaLabel={text.colourLabel(newName.trim() || text.addLabel)}
           value={newColour}
           onChange={setNewColour}
-          placeholder={text.noColour}
-          options={TAG_COLOURS.map((c) => ({ value: c.hex, label: c.name }))}
+          presets={TAG_COLOURS}
+          emptyLabel={text.noColour}
         />
         <button type="submit" className="btn btn-primary" disabled={newName.trim() === "" || !!nameProblem}>
           {text.addButton}
@@ -237,6 +223,19 @@ export function TagAdminPanel({ api, scope }: { api: TagAdminApi; scope: "projec
             void run(async () => {
               await api.update(dialog.tag.id, { name });
               return text.renamed;
+            });
+          }}
+        />
+      )}
+      {dialog?.kind === "colour" && (
+        <ColourDialog
+          tag={dialog.tag}
+          onCancel={() => setDialog(null)}
+          onSave={(colour) => {
+            setDialog(null);
+            void run(async () => {
+              await api.update(dialog.tag.id, colour === "" ? { clear_colour: true } : { colour });
+              return text.colourSaved;
             });
           }}
         />
@@ -396,7 +395,7 @@ function RenameDialog({ tag, onCancel, onSave }: { tag: Tag; onCancel: () => voi
   return (
     <Modal title={strings.tags.admin.rename(tag.name)} onClose={onCancel}>
       <div className="stack">
-        <TextField helpNotNeeded
+        <TextField helpNotNeeded required
           label={strings.tags.admin.nameHeading}
           value={name}
           onChange={setName}
@@ -410,6 +409,27 @@ function RenameDialog({ tag, onCancel, onSave }: { tag: Tag; onCancel: () => voi
           saveLabel={strings.tags.admin.renameSave}
           saveDisabled={!!problem}
         />
+      </div>
+    </Modal>
+  );
+}
+
+/** Sets or clears one tag's colour: presets, the colour wheel or a hex code. */
+function ColourDialog({ tag, onCancel, onSave }: { tag: Tag; onCancel: () => void; onSave: (colour: string) => void }) {
+  const strings = useStrings();
+  const [colour, setColour] = useState(tag.colour ?? "");
+  return (
+    <Modal title={strings.tags.admin.changeColour(tag.name)} onClose={onCancel}>
+      <div className="stack">
+        <ColorField helpNotNeeded
+          label={strings.tags.admin.colourHeading}
+          ariaLabel={strings.tags.admin.colourLabel(tag.name)}
+          value={colour}
+          onChange={setColour}
+          presets={TAG_COLOURS}
+          emptyLabel={strings.tags.admin.noColour}
+        />
+        <FormActions onCancel={onCancel} onSave={() => onSave(colour)} saveLabel={strings.tags.admin.colourSave} />
       </div>
     </Modal>
   );

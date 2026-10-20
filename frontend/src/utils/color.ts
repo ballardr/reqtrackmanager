@@ -106,3 +106,19 @@ export function hoverShade(hex: string): string {
   const newL = towardsLight ? Math.max(0, l - delta) : Math.min(1, l + delta);
   return hslToHex(h, s, newL);
 }
+
+/**
+ * Normalises a typed colour to lower-case `#rrggbb`: accepts `#rgb`, `#rrggbb`, with or without the
+ * leading `#`, and surrounding spaces. Anything else (a name, a CSS function, extra characters) is
+ * rejected, so a value that reaches a style attribute is always plain hex.
+ *
+ * @param input The text a person typed or a stored value.
+ * @returns The `#rrggbb` form, or `null` when `input` is not a hex colour.
+ */
+export function normaliseHexColour(input: string): string | null {
+  const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(input.trim());
+  if (!match) return null;
+  const digits = match[1].toLowerCase();
+  const full = digits.length === 3 ? [...digits].map((d) => d + d).join("") : digits;
+  return `#${full}`;
+}

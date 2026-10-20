@@ -10,7 +10,7 @@ function Where() {
   return <p data-testid="where">{pathname + search}</p>;
 }
 
-function Harness({ kind }: { kind: "persona" | "stakeholder" | "need" }) {
+function Harness({ kind }: { kind: "persona" | "stakeholder" }) {
   return (
     <MemoryRouter initialEntries={["/projects/project-1/modules/stakeholders/old-list"]}>
       <Routes>
@@ -36,11 +36,3 @@ export const PersonaListRedirectsToPeople: Story = {
   },
 };
 
-export const NeedListRedirectsToPeople: Story = {
-  args: { kind: "need" },
-  play: async ({ canvasElement }) => {
-    await waitFor(() =>
-      expect(within(canvasElement).getByTestId("where")).toHaveTextContent("/projects/project-1/modules/stakeholders/people?kind=need"),
-    );
-  },
-};

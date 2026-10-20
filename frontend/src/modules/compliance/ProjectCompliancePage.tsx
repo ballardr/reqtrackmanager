@@ -314,7 +314,7 @@ function AssignStandardModal({
                 />
               )
             )}
-            <DateField helpNotNeeded label="Target compliance date (optional)" value={targetDate} onChange={setTargetDate} />
+            <DateField helpNotNeeded label="Target compliance date" value={targetDate} onChange={setTargetDate} />
           </FormGrid>
         )}
         <FormActions

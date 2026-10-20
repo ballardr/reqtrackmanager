@@ -24,13 +24,13 @@ const meta: Meta<typeof AddUserModal> = {
   title: "Pages/AddUserModal",
   component: AddUserModal,
   decorators: [withToast()],
-  args: { onClose: fn(), onCreated: fn() },
+  args: { mode: "password", onClose: fn(), onCreated: fn() },
 };
 export default meta;
 
 type Story = StoryObj<typeof AddUserModal>;
 
-const dialog = () => within(document.body).getByRole("dialog", { name: "Add user" });
+const dialog = () => within(document.body).getByRole("dialog", { name: /^(New user|Invite user)$/ });
 
 export const PasswordWithNoOrganisationHasNoRole: Story = {
   beforeEach: () => { mockApis(); },
@@ -53,10 +53,10 @@ export const PasswordWithNoOrganisationHasNoRole: Story = {
 };
 
 export const InvitingAsksForNoPasswordAndNeedsNoOrganisation: Story = {
+  args: { mode: "invite" },
   beforeEach: () => { mockApis(fn(async () => ({ mode: "invite", email: "i" }))); },
   play: async ({ args }) => {
     await waitFor(() => expect(within(dialog()).getByRole("option", { name: "Globex" })).toBeInTheDocument());
-    await userEvent.selectOptions(within(dialog()).getByRole("combobox", { name: "How they get a password" }), "invite");
     await expect(within(dialog()).queryByLabelText("Password", { exact: true })).not.toBeInTheDocument();
     await expect(within(dialog()).getByRole("button", { name: "Send invite" })).toBeDisabled();
     await userEvent.type(within(dialog()).getByLabelText("Email"), "invitee@example.com");
@@ -69,10 +69,10 @@ export const InvitingAsksForNoPasswordAndNeedsNoOrganisation: Story = {
 };
 
 export const InvitingToAnOrganisationSendsItsId: Story = {
+  args: { mode: "invite" },
   beforeEach: () => { mockApis(fn(async () => ({ mode: "invite", email: "i" }))); },
   play: async ({ args }) => {
     await waitFor(() => expect(within(dialog()).getByRole("option", { name: "Globex" })).toBeInTheDocument());
-    await userEvent.selectOptions(within(dialog()).getByRole("combobox", { name: "How they get a password" }), "invite");
     await userEvent.type(within(dialog()).getByLabelText("Email"), "invitee2@example.com");
     await userEvent.selectOptions(within(dialog()).getByRole("combobox", { name: "Organisation" }), "org-2");
     await userEvent.click(within(dialog()).getByRole("button", { name: "Send invite" }));

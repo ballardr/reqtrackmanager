@@ -142,14 +142,14 @@ export function StandardFormModal({
         <FormGrid minColumn="18rem">
           {!initial && orgs && orgs.length > 1 && (
             <FormGridFull>
-              <LabeledSelect helpNotNeeded
+              <LabeledSelect helpNotNeeded required
                 label="Organisation" value={selectedOrgId} onChange={setSelectedOrgId}
                 options={orgs.map((o) => ({ value: o.id, label: o.name }))} placeholder={null}
               />
             </FormGridFull>
           )}
           {!initial && (
-            <TextField help={COMPLIANCE_HELP.complianceStandardReference}
+            <TextField help={COMPLIANCE_HELP.complianceStandardReference} required
               label="Reference"
               ariaLabel="Standard reference"
               value={reference}
@@ -158,13 +158,13 @@ export function StandardFormModal({
               inputProps={{ autoFocus: !(orgs && orgs.length > 1) }}
             />
           )}
-          <TextField helpNotNeeded label="Name" ariaLabel="Standard name" value={name} onChange={setName} />
+          <TextField helpNotNeeded required label="Name" ariaLabel="Standard name" value={name} onChange={setName} />
           <FormGridFull>
             <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} rows={3} />
           </FormGridFull>
           <TextField helpNotNeeded label="Issuing organisation" value={issuingOrganisation} onChange={setIssuingOrganisation} />
           {initial && (
-            <PrincipalFormField helpNotNeeded
+            <PrincipalFormField helpNotNeeded required
               label="Owner"
               kinds={["user", "org_group"]}
               orgUsers={orgUsers}
@@ -181,7 +181,7 @@ export function StandardFormModal({
               <FormGridFull>
                 <h3 style={{ margin: "0.5rem 0 0" }}>Initial version</h3>
               </FormGridFull>
-              <TextField helpNotNeeded label="Initial version label" value={versionLabel} onChange={setVersionLabel} placeholder="e.g. 1.0" />
+              <TextField helpNotNeeded required label="Initial version label" value={versionLabel} onChange={setVersionLabel} placeholder="e.g. 1.0" />
               <DateField help={COMPLIANCE_HELP.complianceEffectiveDate} label="Effective date" value={effectiveDate} onChange={setEffectiveDate} />
               <FormGridFull>
                 <TextAreaField helpNotNeeded label="Change note" value={changeNote} onChange={setChangeNote} rows={2} />

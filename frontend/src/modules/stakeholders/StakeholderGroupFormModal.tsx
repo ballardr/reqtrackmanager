@@ -51,7 +51,7 @@ export function StakeholderGroupFormModal({
       <div className="stack">
         <FormGrid minColumn="18rem">
           <FormGridFull>
-            <TextField helpNotNeeded label="Name" ariaLabel="Group name" value={name} onChange={setName} />
+            <TextField helpNotNeeded required label="Name" ariaLabel="Group name" value={name} onChange={setName} />
           </FormGridFull>
           <TextField helpNotNeeded label="Description" value={description} onChange={setDescription} />
           <LabeledSelect helpNotNeeded label="Parent group" value={parentId} onChange={setParentId} options={parentOptions} placeholder="None (top level)" />

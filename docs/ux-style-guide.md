@@ -318,6 +318,8 @@ The main payoff is a *mixed* list, not a homogeneous one, where the accent lets 
 
 **Use this when a header/toolbar row has two or more secondary, non-primary actions that would otherwise sit side by side as separate, permanently-visible buttons** — the same "two blocks competing for the same job" shape Principle 5 (one door for add-one/add-many) and Principle 11 (grouped downloads) already name for creates and downloads, extended here to any small group of related actions on an existing entity (rename, export, and similar). **Don't use it for a single primary action** — a lone button stays a plain button; collapsing one action behind a menu adds a click for no reason. A rough floor: reach for `ActionMenu` at two or more secondary actions, not one. The one stated exception is a record's header, which always uses the menu (see "Pattern: record header and object actions").
 
+A menu is as wide as its longest label (up to the viewport less a margin) and wraps a label that still does not fit, never clips it (`Popover fit`, `.menu-item`). Two ways of doing one thing on two pages are one shared menu: `AddUserMenu` ("Add user ▾": Invite user, New user) serves Server Management and Org Admin.
+
 A menu of *choices for one primary action* (several kinds of "New") is `MenuButton` (`frontend/src/components/MenuButton.tsx`): a labelled button with a chevron, the same `Popover` and menu list as `ActionMenu` (`ActionMenuList`), because the choice itself is the point of the button and not a hidden extra.
 
 Built as `ActionMenu` (`frontend/src/components/ActionMenu.tsx`) — a `MoreVertical` kebab trigger (its own real accessible name via `triggerLabel`, e.g. `` `${orgLabelCap} actions` ``, per Principle 8 — never a bare, generic "More actions" once more than one `ActionMenu` could plausibly appear on the same page) that opens a `Popover` anchored to itself, reusing `Popover`'s existing positioning/focus-trap/outside-click-close logic rather than a new implementation — the same reuse `SplitButtonTrigger` already makes for its own revealed-alternatives list. Inside, `items` render as real `role="menuitem"` buttons inside a `role="menu"` container; selecting one closes the menu and then calls that item's own `onSelect` — callers don't close the menu themselves. Each item is an ordinary focusable `<button>`, so Tab/Shift+Tab already moves between them; this does not implement the full WAI-ARIA menu widget's arrow-key roving-tabindex pattern (`ResourceMenu`/`Tabs` do that for their own larger surfaces) — judged proportionate for a menu this short, not under-built, per the item's own S-M effort sizing. Revisit if a future call site needs a longer list.
@@ -463,6 +465,24 @@ flowchart TD
 Leave an existing `layout="side"` consumer alone unless it actually has this problem — don't move a narrow directory to `layout="top"` just because the option now exists; the default side placement remains correct for most of this app's filter/list pages (`RequirementsPage.tsx`, `ChangeRequestsPage.tsx`, `ProjectListPage.tsx`, and the rest listed in "Pattern: `FilterPanel`" above are not directories at all in "Pattern: directories at scale"'s sense, and stay on `layout="side"` unchanged).
 
 **Corollary, plans/completed/compliance-module-plan.md Phase 40:** `OrgComplianceOutstandingPanel.tsx` had been given `layout="top"` even though it's a stack of card sections, not a table at all — this rule's own stated criterion ("a wide, many-column directory *table*") never applied to it in the first place. Fixed to the `layout="side"`/`.side-grid` default, matching its sibling `OrgComplianceStandardsPanel.tsx`. The same phase also added a **standard-scoped Sub-section filter** to both this panel and the project-level `OutstandingPanel.tsx` — a filter dimension derived client-side from a standard's own requirement tree (each row's `requirement_id` walked up its `parent_requirement_id` chain to its top-level ancestor, `api.ts::findTopLevelAncestor`) rather than a real backend field, since no dedicated "section" concept exists in the data model. This is the shape to reuse the next time a filter needs to key off a hierarchy that itself has no flat/queryable field — derive the option set from the tree, don't invent a backend column for it.
+
+### Filter panel starts at the title (`ListPageLayout`)
+
+A list page with a side filter panel uses `ListPageLayout` (`frontend/src/components/ListPageLayout.tsx`), never a hand-written `.side-grid` under a title. The title, its actions and an optional tab strip sit in the left column with the list, and the filter panel fills the right column from the title's row down, so its top edge is level with the page title. Anything a page used to put above its list (a scoring-model switcher, a view tab strip, a banner) is a child of the list column, so it cannot push the filter down.
+
+```mermaid
+flowchart LR
+  subgraph L["Left column"]
+    T["Title and actions"] --> TB["Tabs (optional)"] --> C["Switchers, chips, the list"]
+  end
+  F["Filter panel, from the title's row down"]
+  L --- F
+```
+
+- The filter is after the list in the DOM (keyboard and screen-reader users reach the list first); grid areas place it. Below 860px the order is title, filter, list.
+- A list that is a whole page passes `page={{ title, actions, tabs, above }}` to `RecordListView`; an embedded panel with no title keeps the plain `side-grid`.
+- Pages that need a wide table keep `FilterPanel layout="top"`.
+- `scripts/check_list_page_layout.py` fails a file with an `<h1>` and a hand-written `side-grid`.
 
 ## Pattern: project-scoped member lists match Org Admin's Users table
 
@@ -751,6 +771,24 @@ flowchart LR
 - **Why not `SidePanel`:** `SidePanel` is an overlay for row detail, not a persistent column.
 - **Trace opens a large `Modal` with `Tabs`** (Tree, Map), not another aside section: the views need width and scroll, and neither is a persistent column. Both are unbounded in depth (the tree opens one branch at a time; the map adds a record's links on "Show more") so the user, not a hard-coded limit, decides how far to follow a trace. The tree uses native buttons and links (Tab/Enter), and the map is hand-built SVG in reading order with the tree as its text alternative. The map shows direction by position, lane headings and downstream arrowheads, never by colour alone (lane and stripe tints come from theme variables), explains its symbols in a key under the hint, and highlights a hovered or focused record's edges. Its "Show more" is a labelled pill on the record's bottom edge (the one place no edge attaches) with hover, focus, pending and "No more links" states; clicking a record is navigation, so the map has no click-to-select.
 
+## Pattern: detail page content
+
+A record detail page has three layers, always in this order, so the eye finds the title first, the facts second and the related material third:
+
+```mermaid
+flowchart TD
+    H["RecordHeader: back link, title, code, status pills, version, transitions<br/>(on the page background, never in a card)"] --> D["DetailCard 'Details': the record's own fields<br/>(RecordField / RecordPrincipalField rows)"]
+    D --> P["Panels: each its own card (held needs, comments, versions, attachments)"]
+    H -.-> A["Aside: ONE card, tab strip inside (Links, Activity)"]
+```
+
+- **The title and header are never in a card.** They are the page's heading; boxing them dilutes the one thing that identifies the page.
+- **The record's own fields sit in one `DetailCard`** (`components/DetailCard.tsx`), headed "Details". A second group of the record's own fields gets its own heading (for example "Scoring"). Do not scatter field rows over the background and do not make a card per field.
+- **A panel that is already a card is not wrapped again.** Cards never nest; a panel inside a `DetailCard` is a design error, not a style choice. A script in `scripts/` fails a card directly inside a card.
+- **The aside is one card with its tab strip inside it.** The tab strip is the title ("Links", "Activity"); the panels under it draw no card and no heading of their own, so a word never appears twice (as the tab and again as a heading). With no Activity tab the card has a single "Links" heading instead. The same card is used when the aside stacks under the content below 1280px.
+- **Version is header metadata, not a subtitle string.** `RecordHeader`'s `version` prop shows "Version N" beside the status pills; a page never formats `v{n}` itself.
+- **Status:** pages other than Requirement are being brought into line; until a page is migrated it may still have bare fields. New and reworked detail pages follow this pattern now.
+
 ## Pattern: tabbed picker modal
 
 *(New 2026-09-14 — Platform review 2026-09, Phase 7.)*
@@ -866,7 +904,7 @@ A record code (`REQ-001`) is shown through `<RecordCode>` or `useRecordCode()`, 
 
 ## Pattern: one list for related kinds, with a New menu
 
-Records a person thinks of together (Personas, Stakeholders, Needs and Groups on the People page) are one page with one list and one **New** menu, not a page and a New button each. Reason: separate pages make people hunt, and a fifth copy of the list shell is the debt "one component per pattern" exists to stop.
+Records a person thinks of together (Personas, Stakeholders and Groups on the People page) are one page with one list and one **New** menu, not a page and a New button each. Reason: separate pages make people hunt, and a fifth copy of the list shell is the debt "one component per pattern" exists to stop.
 
 ```mermaid
 flowchart LR
@@ -879,6 +917,8 @@ flowchart LR
 - **Kinds are chips** (`ToggleChips`, a `FilterBadge` per kind with `aria-pressed`), kept in the page address (`?kind=`) so a link reopens the same view. All enabled kinds are on to begin with; the last one cannot be turned off. A kind whose sub-component is off is absent from the chips and the menu; a nav entry serving several sub-components (`sub_components_any`) goes only when all are off.
 - **Several kinds share one table** (`RecordListView` over a row model with a `kind`); **one kind shows its own list**, so a kind's own columns and filters (Stakeholders' groups and influence) are never lost to the shared shape.
 - **One New menu** (`MenuButton`, a labelled button with a chevron, the labelled sibling of the kebab `ActionMenu`) offers each creatable kind. The lists are shown without their own New button (`RecordListView` with no `onCreate`); the page owns the create forms.
+- **Each kind has an icon** (`PEOPLE_KIND_ICON`, rendered by `PeopleKindIcon`) before the name in every row and in its chip. The icon is named by the kind (accessible name and tooltip), so the kind is never conveyed by shape or colour alone.
+- **Needs are a tab, not a kind.** A Stakeholder Need is not a person, so it has its own tab beside People (`PeopleTabs`, its own route `/needs`, its own list and New button). `?kind=need` redirects there; with Needs off there is no tab strip.
 - **Old per-type routes redirect** to the page with the kind selected, so bookmarks keep working. Detail pages are not merged: the kinds have different fields and lifecycles.
 
 ## Pattern: Save and activate
@@ -957,11 +997,21 @@ The top bar carries one search box (`components/HeaderSearch.tsx`), left of the 
 - **State is the URL** on the page (`q`, `scope`, `project`, `org`, `types`, `projects`, `statuses`, `fields`, `archived`, `match`, `sort`, `from`, `to`) so a search can be shared and reached with Back; the request itself is a POST so the text never reaches an access log.
 - **Omit, never redact** (server rule, as the scope filter): a project the viewer cannot open, a module off in it, or a record type they cannot view there leaves rows and counts out without a trace.
 
+## Pattern: required fields
+
+A required field is marked with a `*` after its caption; an optional field says nothing, and no label ever says "(optional)" or "(required)". Reason: with "(optional)" on the exceptions the form reads as if everything else were optional, and a star on the fields that block saving is what people already expect.
+
+- **How:** pass `required` to the shared field component (`TextField`, `TextAreaField`, `DateField`, `LabeledSelect`, `PrincipalFormField`, `RecordFieldGroup`, `CheckboxField`, `ColorField`, `FileField`, `UploadField`). It draws the star (CSS, so it is not part of the caption's text and assistive technology does not read it) and sets `required` and `aria-required` on the control, so the star and the constraint come from one place. Never type an asterisk by hand.
+- **Which fields:** exactly the ones the form blocks on and the API rejects. A field that is required only in some states (a rationale needed for one verdict) is `required` only then.
+- **Exception:** the sign-in pages (login, organisation login, two-factor code) keep the native `required` but show no `*` or legend; both fields are expected there (**Decided by: User**).
+- **Legend:** `FormGrid` shows "* required" once, and only while it holds a marked field.
+- **Enforced:** `scripts/check_required_markers.py` (a pytest) fails a label that says it is optional. A new or changed form's story states which fields are required (`requiredCaptions` in `testing/requiredMarkers.ts`).
+
 ## Pattern: field help
 
 Every form field that is not self-explanatory carries a `(?)` help button after its caption. Reason: some fields have no context on their own (a persona's importance weight, a scoring model, a review reminder lead time), and a guessed value leaves inconsistent data that nobody can later explain.
 
-- **How:** give the shared field component `help={strings.help.<key>}` (`TextField`, `TextAreaField`, `DateField`, `LabeledSelect`, `CheckboxField`, `ToggleField`, `ColorField`, `FileField`, `UploadField`, `PrincipalFormField`, `RecordFieldGroup`). `FieldCaption`/`FieldHelp` (`components/FieldHelp.tsx`) render the button, named "Help: {label}", and reveal the text **in place under the caption**, not in a floating `Popover`: forms are built inside dialogs and popovers, and a popover opened from a popover is not allowed. The button is keyboard-focusable, Escape closes the text (and not the dialog around it), and a tap works like a click.
+- **How:** give the shared field component `help={strings.help.<key>}` (`TextField`, `TextAreaField`, `DateField`, `LabeledSelect`, `CheckboxField`, `ToggleField`, `ColorField`, `FileField`, `UploadField`, `PrincipalFormField`, `RecordFieldGroup`). `ColorField` also takes `presets` (named swatches), `emptyLabel` (a "no colour" button) and has a colour picker plus a hex box that accepts `#rgb` or `#rrggbb`. `FieldCaption`/`FieldHelp` (`components/FieldHelp.tsx`) render the button, named "Help: {label}", and reveal the text **in place under the caption**, not in a floating `Popover`: forms are built inside dialogs and popovers, and a popover opened from a popover is not allowed. The button is keyboard-focusable, Escape closes the text (and not the dialog around it), and a tap works like a click.
 - **Copy:** the text lives in `strings.help` in `frontend/src/i18n/strings.ts`, written for the end user in one or two sentences: what the field is, what it affects, a typical value. Terminology tokens (`{requirement}`, `{project}`) are filled in per organisation, so help follows the renamed terms.
 - **Opt out:** a self-explanatory field (a name, a title, a comment, an email) passes `helpNotNeeded` instead, which keeps the decision greppable. A field whose visible `hint` already explains it opts out too; do not show the same sentence twice. Never pass both.
 - **Enforced:** `scripts/check_field_help.py` (a pytest, `backend/tests/test_field_help.py`) fails on a field with neither prop. Its baseline (`scripts/field_help_baseline.json`) is empty: a new field decides when it is written.

@@ -102,7 +102,7 @@ export function RepresentationPanel({
 
   const addForm = (close: () => void) => (
     <div className="stack">
-      <LabeledSelect helpNotNeeded label={edit!.pickerLabel} value={picked} onChange={setPicked} options={candidates} placeholder="Choose…" />
+      <LabeledSelect helpNotNeeded required label={edit!.pickerLabel} value={picked} onChange={setPicked} options={candidates} placeholder="Choose…" />
       <FormActions
         onCancel={close}
         onSave={async () => {

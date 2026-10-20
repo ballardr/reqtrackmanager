@@ -178,3 +178,101 @@ def test_untyped_structural_links_are_flagged_dedicated_and_cannot_be_deleted_ge
         headers=auth_headers(world.token),
     )
     assert gone.status_code == 400 and "structural" in gone.json()["detail"]
+
+
+def test_a_code_typed_as_displayed_finds_the_record_in_every_type(world):
+    """Elsewhere a record's code is shown qualified (`ACME-REQ-001`); the finder matches the stored
+    label (`REQ-001 Title`), so a qualified code used to find nothing."""
+    project = world.project()
+    page = world.requirement(project, "Page")
+    other = world.requirement(project, "Voltage limit")
+    action = world.action(project, "Check fuse")
+    pain = world.pain_point(project, "Slow reports")
+    dec = world.decision(project)
+    prefix = project["code"]
+
+    for qualified, expected_type, expected_id in [
+        (f"{prefix}-PP-001", PAIN, pain),
+        (f"{prefix}-DEC-1", DEC, dec),
+        (f"{prefix}-ACT-001", ACTION, action),
+        (f"{prefix}-{_code_of(world, project, other)}", REQ, other),
+    ]:
+        body = _candidates(world, project, (REQ, page), q=qualified.lower()).json()
+        assert [(i["type"], i["id"]) for i in body["items"]] == [(expected_type, str(expected_id))], qualified
+        # The same text narrowed to the type finds it too.
+        narrowed = _candidates(world, project, (REQ, page), other_type=expected_type, q=qualified).json()
+        assert [i["id"] for i in narrowed["items"]] == [str(expected_id)], qualified
+
+
+def _code_of(world: World, project: dict, requirement_id: uuid.UUID) -> str:
+    resp = world.client.get(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement_id}", headers=auth_headers(world.token)
+    )
+    return resp.json()["unique_code"]
+
+
+def test_the_bare_code_still_finds_a_record_whose_project_code_is_a_prefix_of_it(world):
+    """A project coded `PP` has the pain point `PP-001`: the unstripped text must keep matching."""
+    project = world.project("Pain Point")
+    assert project["code"] == "PP"
+    page = world.requirement(project, "Page")
+    pain = world.pain_point(project, "Slow reports")
+    body = _candidates(world, project, (REQ, page), q="PP-001").json()
+    assert [i["id"] for i in body["items"]] == [str(pain)]
+
+
+def test_every_registered_type_can_link_to_every_linkable_type(world):
+    """No (type, target) pair is left without a link type: from any record type's create form the
+    Link to box can reach every record type the project offers."""
+    from app.modules.registry import get_all_registered_artefact_types, get_module_registry
+    from app.services.link_authoring import DRAFT_ARTEFACT_ID, linkable_types_for_project
+    from app.models.project import Project
+
+    for key in get_module_registry():
+        world.enable(key)
+    project = world.project()
+    db = SessionLocal()
+    try:
+        linkable = linkable_types_for_project(db, db.get(Project, uuid.UUID(project["id"])))
+    finally:
+        db.close()
+    assert linkable, "expected at least the core types"
+    gaps = {}
+    for artefact_type in sorted(get_all_registered_artefact_types()):
+        resp = world.client.get(
+            f"/api/v1/projects/{project['id']}/artefacts/{artefact_type}/{DRAFT_ARTEFACT_ID}/link-types",
+            headers=auth_headers(world.token),
+        )
+        if resp.status_code != 200:
+            continue  # a type the caller cannot author links from has no quick-link field
+        reached = {t["type"] for option in resp.json() for t in option["other_types"]}
+        if reached != set(linkable):
+            gaps[artefact_type] = sorted(set(linkable) ^ reached)
+    assert gaps == {}
+
+
+def test_the_search_is_by_words_anywhere_in_the_code_or_title_in_any_order(world):
+    """Typing any word of a title, several words in any order, or a code plus a word finds the record, in any type."""
+    project = world.project("Pain Point")
+    page = world.requirement(project, "Page")
+    req = world.requirement(project, "Maximum supply voltage limit")
+    world.requirement(project, "Cable length")
+    pain = world.pain_point(project, "Reports arrive too late for the audit")
+
+    def ids(q: str, **params) -> list[str]:
+        body = _candidates(world, project, (REQ, page), q=q, **params).json()
+        return [i["id"] for i in body["items"]]
+
+    # A word in the middle of a title.
+    assert ids("supply") == [str(req)]
+    assert ids("audit") == [str(pain)]
+    # Several words, in any order, not touching each other.
+    assert ids("limit maximum") == [str(req)]
+    assert ids("late reports") == [str(pain)]
+    assert ids("voltage cable") == []
+    # A code and a word of the title together, the code as displayed (qualified) or bare.
+    assert ids("PP-PP-001 audit") == [str(pain)]
+    assert ids("pp-001 late") == [str(pain)]
+    assert ids("PP-PP-001 voltage") == []
+    # Narrowed to one type the same rule applies.
+    assert ids("too audit", other_type=PAIN) == [str(pain)]

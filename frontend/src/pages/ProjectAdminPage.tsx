@@ -2346,7 +2346,7 @@ export function ProjectAdminPage() {
           // "No roles assigned" in the Groups tab/SidePanel until one is
           // granted via the new per-row `MultiSelectDropdown`.
           <Modal title={strings.admin.newGroup} onClose={() => setNewGroupModalOpen(false)}>
-            <TextField helpNotNeeded
+            <TextField helpNotNeeded required
               label={strings.admin.name}
               value={newGroupName}
               onChange={setNewGroupName}

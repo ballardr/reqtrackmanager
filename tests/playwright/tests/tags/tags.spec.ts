@@ -69,6 +69,22 @@ test("tag a record, filter by the tag, rename it, reclassify and delete it", asy
     await expect(page.getByRole("button", { name: `Remove tag ${renamed}` })).toBeVisible();
   });
 
+  await test.step("a custom colour is typed as a hex code and shown on the tag; a bad code is refused", async () => {
+    await page.goto(`/projects/${project.id}/admin/tags`);
+    await page.getByRole("button", { name: renamed, exact: true }).click();
+    await page.getByRole("menuitem", { name: `Change colour of ${renamed}` }).click();
+    const dialog = page.getByRole("dialog", { name: `Change colour of ${renamed}` });
+    const hex = dialog.getByRole("textbox", { name: `Colour of ${renamed} (hex code)` });
+    await hex.fill("12f");
+    await expect(dialog.getByRole("alert")).toHaveCount(0);
+    await hex.fill("12f;x");
+    await expect(dialog.getByRole("alert")).toBeVisible();
+    await hex.fill("12f");
+    await dialog.getByRole("button", { name: "Save colour" }).click();
+    await expect(page.getByText("Colour saved.")).toBeVisible();
+    await expect(page.getByRole("table", { name: "Tags", exact: true }).getByText("#1122ff")).toBeVisible();
+  });
+
   await test.step("a previewed reclassify moves the record to another tag", async () => {
     await page.goto(`/projects/${project.id}/admin/tags`);
     await page.getByRole("textbox", { name: "New tag" }).fill(replacement);

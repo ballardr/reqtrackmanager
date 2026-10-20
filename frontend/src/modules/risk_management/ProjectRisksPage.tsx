@@ -27,6 +27,7 @@ import type { OrgUser, Project } from "../../api/types";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterBadge } from "../../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ListPageLayout } from "../../components/ListPageLayout";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { Spinner } from "../../components/Spinner";
@@ -178,85 +179,90 @@ export function ProjectRisksPage() {
 
   return (
     <div className="container stack">
-      <h1 style={{ margin: 0 }}>Risks</h1>
-      <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
-        New risk
-      </button>
-      <Tabs
-        idPrefix="risks-view"
-        tabs={[{ key: "register", label: "Register" }, { key: "matrix", label: "Matrix" }]}
-        active={view}
-        onChange={setView}
-      />
-      <div className="side-grid">
-        <div className="stack" {...tabPanelProps("risks-view", view)}>
-          {cell && (
-            <div className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
-              <Badge>
-                {cell.basis === "inherent" ? "Inherent" : "Residual"}:{" "}
-                {levelName(scheme, LIKELIHOOD_AXIS, cell.likelihoodLevelId)} likelihood,{" "}
-                {levelName(scheme, CONSEQUENCE_AXIS, cell.consequenceLevelId)} consequence
-              </Badge>
-              <button className="btn" onClick={() => setCell(null)}>Clear matrix filter</button>
-            </div>
-          )}
-          {view === "register" ? (
-            <DirectoryTable
-              ariaLabel="Risks"
-              columns={columns}
-              rows={filtered}
-              rowKey={(r) => r.id}
-              rowHref={(r) => `/projects/${rowProjectId(r, projectId)}/modules/risk_management/risks/${r.id}`}
-              emptyState={<p className="text-muted">{risks.length === 0 ? "No Risks recorded for this project yet." : "No Risks match these filters."}</p>}
-            />
-          ) : (
-            <div className="stack">
-              <LabeledSelect helpNotNeeded
-                label="Plot by" value={basis} onChange={(next) => setBasis(next as RiskMatrixBasis)}
-                options={BASIS_OPTIONS} placeholder={null}
+      <ListPageLayout
+        title="Risks"
+        actions={
+          <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
+            New risk
+          </button>
+        }
+        filter={
+          <FilterPanel
+            sectionKey="risks.list" total={filtered.length}
+            search={search} onSearchChange={setSearch} searchPlaceholder="Search risks…" searchAriaLabel="Search risks"
+          >
+            <FilterField label="Status">
+              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as RiskStatus | "")}>
+                <option value="">All statuses</option>
+                {Object.entries(RISK_STATUS_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterField label="Risk type">
+              <select className="input" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+                <option value="">All types</option>
+                {riskTypes.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterCheckbox label="Review overdue" checked={overdueOnly} onChange={setOverdueOnly} />
+            <FilterCheckbox label="No effective treatment" checked={untreatedOnly} onChange={setUntreatedOnly} />
+            <ProjectScopeFilter scope={projectScope} />
+            {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
+          </FilterPanel>
+        }
+      >
+        <Tabs
+          idPrefix="risks-view"
+          tabs={[{ key: "register", label: "Register" }, { key: "matrix", label: "Matrix" }]}
+          active={view}
+          onChange={setView}
+        />
+          <div className="stack" {...tabPanelProps("risks-view", view)}>
+            {cell && (
+              <div className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+                <Badge>
+                  {cell.basis === "inherent" ? "Inherent" : "Residual"}:{" "}
+                  {levelName(scheme, LIKELIHOOD_AXIS, cell.likelihoodLevelId)} likelihood,{" "}
+                  {levelName(scheme, CONSEQUENCE_AXIS, cell.consequenceLevelId)} consequence
+                </Badge>
+                <button className="btn" onClick={() => setCell(null)}>Clear matrix filter</button>
+              </div>
+            )}
+            {view === "register" ? (
+              <DirectoryTable
+                ariaLabel="Risks"
+                columns={columns}
+                rows={filtered}
+                rowKey={(r) => r.id}
+                rowHref={(r) => `/projects/${rowProjectId(r, projectId)}/modules/risk_management/risks/${r.id}`}
+                emptyState={<p className="text-muted">{risks.length === 0 ? "No Risks recorded for this project yet." : "No Risks match these filters."}</p>}
               />
-              <RiskMatrix
-                scheme={scheme} risks={filtered} basis={basis}
-                onCellClick={(likelihoodLevelId, consequenceLevelId) => {
-                  setCell({ basis, likelihoodLevelId, consequenceLevelId });
-                  setView("register");
-                }}
-              />
-              {unplotted > 0 && (
-                <p className="text-muted" style={{ margin: 0 }}>
-                  {unplotted} risk{unplotted === 1 ? " has" : "s have"} no {basis} likelihood and consequence, so {unplotted === 1 ? "isn't" : "aren't"} plotted.
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-        <FilterPanel
-          sectionKey="risks.list" total={filtered.length}
-          search={search} onSearchChange={setSearch} searchPlaceholder="Search risks…" searchAriaLabel="Search risks"
-        >
-          <FilterField label="Status">
-            <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as RiskStatus | "")}>
-              <option value="">All statuses</option>
-              {Object.entries(RISK_STATUS_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label="Risk type">
-            <select className="input" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-              <option value="">All types</option>
-              {riskTypes.map((t) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterCheckbox label="Review overdue" checked={overdueOnly} onChange={setOverdueOnly} />
-          <FilterCheckbox label="No effective treatment" checked={untreatedOnly} onChange={setUntreatedOnly} />
-          <ProjectScopeFilter scope={projectScope} />
-          {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
-          <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
-        </FilterPanel>
-      </div>
+            ) : (
+              <div className="stack">
+                <LabeledSelect helpNotNeeded
+                  label="Plot by" value={basis} onChange={(next) => setBasis(next as RiskMatrixBasis)}
+                  options={BASIS_OPTIONS} placeholder={null}
+                />
+                <RiskMatrix
+                  scheme={scheme} risks={filtered} basis={basis}
+                  onCellClick={(likelihoodLevelId, consequenceLevelId) => {
+                    setCell({ basis, likelihoodLevelId, consequenceLevelId });
+                    setView("register");
+                  }}
+                />
+                {unplotted > 0 && (
+                  <p className="text-muted" style={{ margin: 0 }}>
+                    {unplotted} risk{unplotted === 1 ? " has" : "s have"} no {basis} likelihood and consequence, so {unplotted === 1 ? "isn't" : "aren't"} plotted.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+      </ListPageLayout>
 
       {creating && (
         <RiskFormModal

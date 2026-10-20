@@ -176,6 +176,8 @@ services:
       PUBLIC_BACKEND_URL: ${PUBLIC_BACKEND_URL:-http://localhost:8000}
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
       MCP_SERVER_PUBLIC_URL: ${MCP_SERVER_PUBLIC_URL:-http://localhost:8100}
+      # The header Help link opens this stack's own `docs` service (below), not the public site.
+      HELP_URL: ${HELP_URL:-http://localhost:3001/reqtrackmanager/}
       # See keycloak service's comment above: the backend reaches Keycloak
       # over the Docker-internal network, but every org's oidc_issuer_url is
       # configured with Keycloak's browser-facing public URL

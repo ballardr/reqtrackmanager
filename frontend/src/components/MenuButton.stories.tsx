@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
 
+import { clippedMenuItems } from "../testing/orphanedControls";
 import { MenuButton } from "./MenuButton";
 
 const meta: Meta<typeof MenuButton> = {
@@ -50,5 +51,21 @@ export const Disabled: Story = {
   play: async ({ canvasElement }) => {
     const trigger = within(canvasElement).getByRole("button", { name: "New" });
     await expect(trigger).toBeDisabled();
+  },
+};
+
+/** A long label grows the menu to fit it (never clipped), and a label wider than the viewport wraps. */
+export const LongLabelsAreNeverClipped: Story = {
+  args: {
+    items: [
+      { label: "Stakeholder from organisational user", onSelect: fn() },
+      { label: "A very long choice ".repeat(12).trim(), onSelect: fn() },
+      { label: "Persona", onSelect: fn() },
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "New" }));
+    const menu = within(document.body).getByRole("menu", { name: "New" });
+    await expect(clippedMenuItems(menu)).toEqual([]);
   },
 };

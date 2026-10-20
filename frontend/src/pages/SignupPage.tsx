@@ -80,23 +80,23 @@ export function SignupPage() {
         ) : (
           config.signup_mode === "org_specified" && <p className="text-muted">{strings.signup.orgSpecifiedHint(orgLabelPlural)}</p>
         )}
-        <TextField helpNotNeeded
+        <TextField helpNotNeeded required
           label={strings.signup.displayName}
           value={displayName}
           onChange={setDisplayName}
-          inputProps={{ required: true, autoFocus: true }}
+          inputProps={{ autoFocus: true }}
         />
-        <TextField helpNotNeeded
+        <TextField helpNotNeeded required
           label={strings.signup.email}
           value={email}
           onChange={setEmail}
-          inputProps={{ required: true, type: "email" }}
+          inputProps={{ type: "email" }}
         />
-        <TextField helpNotNeeded
+        <TextField helpNotNeeded required
           label={strings.signup.password}
           value={password}
           onChange={setPassword}
-          inputProps={{ required: true, minLength: 8, type: "password" }}
+          inputProps={{ minLength: 8, type: "password" }}
         />
         {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
         <button className="btn btn-primary" type="submit" disabled={submitting}>

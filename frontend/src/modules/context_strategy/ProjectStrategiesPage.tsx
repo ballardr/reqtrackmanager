@@ -21,6 +21,7 @@ import type { Project } from "../../api/types";
 import { api } from "../../api/client";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ListPageLayout } from "../../components/ListPageLayout";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -100,11 +101,40 @@ export function ProjectStrategiesPage() {
 
   return (
     <div className="container stack">
-      <h1 style={{ margin: 0 }}>Strategy</h1>
-      <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
-        New Strategy
-      </button>
-      <div className="side-grid">
+      <ListPageLayout
+        title="Strategy"
+        actions={
+          <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
+            New Strategy
+          </button>
+        }
+        filter={
+          <FilterPanel
+            sectionKey="context_strategy.strategies.list" total={filtered.length}
+            search={search} onSearchChange={setSearch} searchPlaceholder="Search Strategy…" searchAriaLabel="Search Strategy"
+          >
+            <FilterField label="Status">
+              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StrategyStatus | "")}>
+                <option value="">All statuses</option>
+                {Object.entries(STRATEGY_STATUS_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterField label="Priority">
+              <select className="input" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as StrategyPriority | "")}>
+                <option value="">All priorities</option>
+                {Object.entries(STRATEGY_PRIORITY_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </FilterField>
+            <ProjectScopeFilter scope={projectScope} />
+            {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
+          </FilterPanel>
+        }
+      >
         <DirectoryTable
           ariaLabel="Strategies"
           columns={columns}
@@ -113,31 +143,7 @@ export function ProjectStrategiesPage() {
           onRowClick={(s) => navigate(`/projects/${rowProjectId(s, projectId)}/modules/context_strategy/strategies/${s.id}`)}
           emptyState={<p className="text-muted">No Strategy recorded for this project yet.</p>}
         />
-        <FilterPanel
-          sectionKey="context_strategy.strategies.list" total={filtered.length}
-          search={search} onSearchChange={setSearch} searchPlaceholder="Search Strategy…" searchAriaLabel="Search Strategy"
-        >
-          <FilterField label="Status">
-            <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StrategyStatus | "")}>
-              <option value="">All statuses</option>
-              {Object.entries(STRATEGY_STATUS_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label="Priority">
-            <select className="input" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as StrategyPriority | "")}>
-              <option value="">All priorities</option>
-              {Object.entries(STRATEGY_PRIORITY_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </FilterField>
-          <ProjectScopeFilter scope={projectScope} />
-          {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
-          <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
-        </FilterPanel>
-      </div>
+      </ListPageLayout>
 
       {creating && (
         <StrategyFormModal

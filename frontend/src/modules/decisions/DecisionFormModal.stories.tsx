@@ -5,6 +5,7 @@ import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { api } from "../../api/client";
 import type { OrgGroup, OrgUser, ProjectGroup } from "../../api/types";
 import { DecisionFormModal } from "./DecisionFormModal";
+import { requiredCaptions } from "../../testing/requiredMarkers";
 import type { Decision, DecisionTemplate, DecisionTypeDefinition } from "./types";
 
 const DECISION_TYPES: DecisionTypeDefinition[] = [
@@ -80,7 +81,7 @@ export const CreateFromTemplate: Story = {
   args: { templates: TEMPLATES },
   play: async () => {
     const body = within(document.body);
-    await userEvent.selectOptions(body.getByLabelText("Start from a template (optional)"), "template-1");
+    await userEvent.selectOptions(body.getByLabelText("Start from a template"), "template-1");
     await waitFor(() => expect(body.getByDisplayValue(
       "What is the issue that we're seeing that is motivating this decision?"
     )).toBeInTheDocument());
@@ -164,7 +165,7 @@ export const EditExisting: Story = {
     const body = within(document.body);
     await expect(body.getByRole("heading", { name: "Edit DEC-001" })).toBeInTheDocument();
     await expect(body.getByDisplayValue("Legacy MySQL is EOL.")).toBeInTheDocument();
-    await expect(body.queryByLabelText("Start from a template (optional)")).not.toBeInTheDocument();
+    await expect(body.queryByLabelText("Start from a template")).not.toBeInTheDocument();
     // The existing group owner shows its name, kind and member count.
     await expect(body.getByText("Platform Architecture")).toBeInTheDocument();
     await expect(body.getByText("Org group · 2 members")).toBeInTheDocument();
@@ -213,3 +214,12 @@ export const LongErrorAndLongTitleKeepTheActionsReachable: Story = {
 
 export const LightTheme: Story = { ...CreateNew };
 export const DarkTheme: Story = { ...CreateNew, globals: { theme: "dark" } };
+
+/** Title, statement, type and owner block saving and are marked; the decision date and decision maker are not. */
+export const RequiredFieldsAreMarked: Story = {
+  play: async () => {
+    const root = await within(document.body).findByRole("dialog");
+    await expect(requiredCaptions(root)).toEqual(["Decision title", "Decision statement", "Decision type", "Owner"]);
+    await expect(within(root).queryByText(/optional/i)).not.toBeInTheDocument();
+  },
+};

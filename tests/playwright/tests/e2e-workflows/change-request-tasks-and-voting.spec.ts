@@ -102,14 +102,14 @@ test.describe("change-request tasks and stakeholder voting", () => {
     });
 
     await test.step("two stakeholders cast opposing advisory votes with comments", async () => {
-      await page.getByPlaceholder("Comment (optional)").fill("Looks fine to me.");
+      await page.getByPlaceholder("Comment", { exact: true }).fill("Looks fine to me.");
       await page.getByRole("button", { name: "Vote to approve" }).click();
       await expect(page.getByText("1 approve")).toBeVisible();
 
       await logout(page);
       await loginAs(page, PERSONAS.stakeholderAlpha2.email);
       await page.goto(`/projects/${projectId}/change-requests/${crId}`);
-      await page.getByPlaceholder("Comment (optional)").fill("I'd like more testing first.");
+      await page.getByPlaceholder("Comment", { exact: true }).fill("I'd like more testing first.");
       await page.getByRole("button", { name: "Vote to reject" }).click();
       await expect(page.getByText("1 reject")).toBeVisible();
     });

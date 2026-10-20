@@ -59,7 +59,7 @@ test.describe("Compliance Module: post-publish clarification + version summary",
     await page.getByRole("button", { name: "Clarify Access control policy" }).click();
     const clarifyDialog = page.getByRole("dialog", { name: 'Clarify "Access control policy"' });
     await expect(clarifyDialog.getByRole("button", { name: "Save clarification" })).toBeDisabled();
-    await clarifyDialog.getByLabel("Clarification note (required)").fill("Fixed a typo in the description.");
+    await clarifyDialog.getByLabel("Clarification note", { exact: true }).fill("Fixed a typo in the description.");
     await clarifyDialog.getByLabel("Description", { exact: true }).fill("Restrict access to information on a need-to-know basis.");
     await expect(clarifyDialog.getByRole("button", { name: "Save clarification" })).toBeEnabled();
     await clarifyDialog.getByRole("button", { name: "Save clarification" }).click();

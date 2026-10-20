@@ -78,11 +78,11 @@ export function GuidingPrincipleFormModal({
       <div className="stack">
         <FormGrid minColumn="18rem">
           <FormGridFull>
-            <TextField helpNotNeeded label="Name" ariaLabel="Guiding Principle name" value={name} onChange={setName} />
+            <TextField helpNotNeeded required label="Name" ariaLabel="Guiding Principle name" value={name} onChange={setName} />
           </FormGridFull>
           {TEXT_FIELDS.map((f) => (
             <FormGridFull key={f.key}>
-              <TextAreaField helpNotNeeded
+              <TextAreaField helpNotNeeded required={f.key === "principle_statement"}
                 label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
                 onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
               />
@@ -96,7 +96,7 @@ export function GuidingPrincipleFormModal({
           />
           {initial && (
             <FormGridFull>
-              <TextField helpNotNeeded label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />
+              <TextField helpNotNeeded label="Change note" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />
             </FormGridFull>
           )}
           {!initial && projectId && (

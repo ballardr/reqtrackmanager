@@ -59,7 +59,7 @@ export function DecisionTemplateFormModal({
       <div className="stack">
         <FormGrid minColumn="18rem">
           <FormGridFull>
-            <TextField helpNotNeeded label="Template name" value={name} onChange={setName} />
+            <TextField helpNotNeeded required label="Template name" value={name} onChange={setName} />
           </FormGridFull>
           <FormGridFull>
             <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} />

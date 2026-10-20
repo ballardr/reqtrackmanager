@@ -182,7 +182,8 @@ test.describe("Stakeholders & Personas: Stakeholder groups", () => {
 
     // --- Clicking a group badge in the Groups column filters to that group.
     await page.getByLabel("Group by").selectOption("");
-    await page.getByRole("button", { name: `Beta ${suffix}`, exact: true }).first().click();
+    // The badge carries the group's code after its name, so match the name as a prefix.
+    await page.getByRole("button", { name: new RegExp(`^Beta ${suffix}`) }).first().click();
     await expect(page.getByRole("button", { name: `Alex ${suffix}` })).toHaveCount(0);
     await expect(page.getByRole("button", { name: `Bea ${suffix}` })).toBeVisible();
   });

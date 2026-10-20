@@ -35,7 +35,7 @@ function PromptEditModal({
   return (
     <Modal title="Edit session prompt" onClose={onCancel} size="lg">
       <div className="stack">
-        <TextAreaField helpNotNeeded label="Prompt" rows={2} value={text} onChange={setText} />
+        <TextAreaField helpNotNeeded required label="Prompt" rows={2} value={text} onChange={setText} />
         <TextAreaField helpNotNeeded label="Response notes" rows={5} value={notes} onChange={setNotes} hint="What was said. Notes can name people and are deleted with the engagement." />
         <FormActions
           onCancel={onCancel}
@@ -77,7 +77,7 @@ export function ResearchPromptsPanel({ projectId, engagementId }: { projectId: s
 
   const addForm = (close: () => void) => (
     <div className="stack">
-      <TextField helpNotNeeded label="New session prompt" value={draft} onChange={setDraft} inputProps={{ autoFocus: true }} />
+      <TextField helpNotNeeded required label="New session prompt" value={draft} onChange={setDraft} inputProps={{ autoFocus: true }} />
       <FormActions
         onCancel={close}
         onSave={() => {

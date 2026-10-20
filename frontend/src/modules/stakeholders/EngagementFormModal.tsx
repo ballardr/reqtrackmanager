@@ -66,13 +66,13 @@ export function EngagementFormModal({
       <div className="stack">
         <FormGrid minColumn="18rem">
           <FormGridFull>
-            <TextField helpNotNeeded label="Title" ariaLabel="Engagement title" value={title} onChange={setTitle} hint="What happened, e.g. “Quarterly review with the regulator”." />
+            <TextField helpNotNeeded required label="Title" ariaLabel="Engagement title" value={title} onChange={setTitle} hint="What happened, e.g. “Quarterly review with the regulator”." />
           </FormGridFull>
           <LabeledSelect helpNotNeeded
             label="Channel" value={channel} placeholder={null}
             onChange={(value) => setChannel(value as EngagementChannel)} options={CHANNEL_OPTIONS}
           />
-          <DateField helpNotNeeded label="Date" value={date} onChange={setDate} />
+          <DateField helpNotNeeded required label="Date" value={date} onChange={setDate} />
           {!compact && (
             <FormGridFull>
               <TextAreaField helpNotNeeded label="Purpose" rows={2} value={purpose} onChange={setPurpose} hint="Why the engagement took place." />

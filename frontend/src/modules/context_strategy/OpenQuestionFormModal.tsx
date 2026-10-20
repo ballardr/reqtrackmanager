@@ -88,7 +88,7 @@ export function OpenQuestionFormModal({
         <FormGrid minColumn="18rem">
           {TEXT_FIELDS.map((f) => (
             <FormGridFull key={f.key}>
-              <TextAreaField helpNotNeeded
+              <TextAreaField helpNotNeeded required={f.key === "question"}
                 label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
                 onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
               />
@@ -100,7 +100,7 @@ export function OpenQuestionFormModal({
             onChange={(v) => setPriority(v as OpenQuestionPriority)}
             options={Object.entries(OPEN_QUESTION_PRIORITY_LABEL).map(([value, label]) => ({ value, label }))}
           />
-          <DateField helpNotNeeded label="Due / review date (optional)" ariaLabel="Due date" value={dueDate} onChange={setDueDate} />
+          <DateField helpNotNeeded label="Due / review date" ariaLabel="Due date" value={dueDate} onChange={setDueDate} />
           {!initial && projectId && (
             <FormGridFull>
               <div className="stack">

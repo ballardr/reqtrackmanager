@@ -150,7 +150,7 @@ export function RiskReviewsPanel({
                 </p>
               </FormGridFull>
               <FormGridFull>
-                <TextAreaField helpNotNeeded label="Review notes" value={notes} onChange={setNotes} rows={3} />
+                <TextAreaField helpNotNeeded required label="Review notes" value={notes} onChange={setNotes} rows={3} />
               </FormGridFull>
               <DateField helpNotNeeded label="Next review date" value={nextDate} onChange={setNextDate} />
               <FormGridFull>

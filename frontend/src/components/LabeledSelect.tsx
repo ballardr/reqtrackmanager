@@ -28,6 +28,7 @@ export function LabeledSelect({
   hint,
   inputProps,
   help,
+  required,
 }: FieldHelpProps & {
   label: string;
   value: string;
@@ -45,9 +46,11 @@ export function LabeledSelect({
   const id = useId();
   const controlId = inputProps?.id ?? id;
   return (
-    <FieldShell label={label} controlId={controlId} help={help} hint={hint}>
+    <FieldShell label={label} controlId={controlId} help={help} hint={hint} required={required}>
       <select
         {...inputProps}
+        required={required}
+        aria-required={required || undefined}
         id={controlId}
         className="input"
         aria-label={ariaLabel ?? label}

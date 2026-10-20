@@ -35,6 +35,7 @@ import { api } from "../../api/client";
 import { projectScoringApi, type ScoringScheme } from "../../api/scoring";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ListPageLayout } from "../../components/ListPageLayout";
 import { ScoringModelSwitcher } from "../../components/ScoringModelSwitcher";
 import { Spinner } from "../../components/Spinner";
 import { cycleSort, type SortState } from "../../components/sortState";
@@ -198,73 +199,78 @@ export function ProjectPainPointsPage() {
 
   return (
     <div className="container stack">
-      <h1 style={{ margin: 0 }}>Pain Point</h1>
-      <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
-        New Pain Point
-      </button>
-      {scheme && model && (
-        <ScoringModelSwitcher
-          models={scheme.models.map((m) => ({ value: m.key, label: m.label }))}
-          model={model}
-          onModelChange={setModel}
-          rollups={Object.entries(PAIN_POINT_ROLLUP_LABEL).map(([value, label]) => ({ value, label }))}
-          rollup={rollup}
-          onRollupChange={(next) => setRollup(next as PainPointRollup)}
-        />
-      )}
-      <div className="side-grid">
-        <DirectoryTable
-          ariaLabel="Pain Points"
-          columns={columns}
-          rows={rows}
-          sort={sort}
-          onSort={(key) => setSort((current) => cycleSort(current, key))}
-          rowKey={(p) => p.id}
-          onRowClick={(p) => navigate(`/projects/${rowProjectId(p, projectId)}/modules/context_strategy/pain-points/${p.id}`)}
-          emptyState={<p className="text-muted">No Pain Points recorded for this project yet.</p>}
-        />
-        <FilterPanel
-          sectionKey="context_strategy.pain_points.list" total={filtered.length}
-          search={search} onSearchChange={setSearch} searchPlaceholder="Search Pain Points…" searchAriaLabel="Search Pain Points"
-        >
-          <FilterField label="Status">
-            <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as PainPointStatus | "")}>
-              <option value="">All statuses</option>
-              {Object.entries(PAIN_POINT_STATUS_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label="Priority">
-            <select className="input" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as PainPointPriority | "")}>
-              <option value="">All priorities</option>
-              {Object.entries(PAIN_POINT_PRIORITY_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label="Scoring">
-            <select className="input" value={scoredFilter} onChange={(e) => setScoredFilter(e.target.value as "" | "yes" | "no")}>
-              <option value="">Any scoring</option>
-              <option value="yes">Scored</option>
-              <option value="no">Not scored</option>
-            </select>
-          </FilterField>
-          <FilterCheckbox label="Open only" checked={openOnly} onChange={setOpenOnly} />
-          <FilterCheckbox label="Blockers only" checked={blockersOnly} onChange={setBlockersOnly} />
-          <FilterCheckbox
-            label="Hide intentional limitations" checked={hideIntentional}
-            onChange={(next) => { setHideIntentional(next); if (next) setOnlyIntentional(false); }}
+      <ListPageLayout
+        title="Pain Point"
+        actions={
+          <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
+            New Pain Point
+          </button>
+        }
+        filter={
+          <FilterPanel
+            sectionKey="context_strategy.pain_points.list" total={filtered.length}
+            search={search} onSearchChange={setSearch} searchPlaceholder="Search Pain Points…" searchAriaLabel="Search Pain Points"
+          >
+            <FilterField label="Status">
+              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as PainPointStatus | "")}>
+                <option value="">All statuses</option>
+                {Object.entries(PAIN_POINT_STATUS_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterField label="Priority">
+              <select className="input" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as PainPointPriority | "")}>
+                <option value="">All priorities</option>
+                {Object.entries(PAIN_POINT_PRIORITY_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterField label="Scoring">
+              <select className="input" value={scoredFilter} onChange={(e) => setScoredFilter(e.target.value as "" | "yes" | "no")}>
+                <option value="">Any scoring</option>
+                <option value="yes">Scored</option>
+                <option value="no">Not scored</option>
+              </select>
+            </FilterField>
+            <FilterCheckbox label="Open only" checked={openOnly} onChange={setOpenOnly} />
+            <FilterCheckbox label="Blockers only" checked={blockersOnly} onChange={setBlockersOnly} />
+            <FilterCheckbox
+              label="Hide intentional limitations" checked={hideIntentional}
+              onChange={(next) => { setHideIntentional(next); if (next) setOnlyIntentional(false); }}
+            />
+            <FilterCheckbox
+              label="Only intentional limitations" checked={onlyIntentional}
+              onChange={(next) => { setOnlyIntentional(next); if (next) setHideIntentional(false); }}
+            />
+            <ProjectScopeFilter scope={projectScope} />
+            {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
+          </FilterPanel>
+        }
+      >
+        {scheme && model && (
+          <ScoringModelSwitcher
+            models={scheme.models.map((m) => ({ value: m.key, label: m.label }))}
+            model={model}
+            onModelChange={setModel}
+            rollups={Object.entries(PAIN_POINT_ROLLUP_LABEL).map(([value, label]) => ({ value, label }))}
+            rollup={rollup}
+            onRollupChange={(next) => setRollup(next as PainPointRollup)}
           />
-          <FilterCheckbox
-            label="Only intentional limitations" checked={onlyIntentional}
-            onChange={(next) => { setOnlyIntentional(next); if (next) setHideIntentional(false); }}
+        )}
+          <DirectoryTable
+            ariaLabel="Pain Points"
+            columns={columns}
+            rows={rows}
+            sort={sort}
+            onSort={(key) => setSort((current) => cycleSort(current, key))}
+            rowKey={(p) => p.id}
+            onRowClick={(p) => navigate(`/projects/${rowProjectId(p, projectId)}/modules/context_strategy/pain-points/${p.id}`)}
+            emptyState={<p className="text-muted">No Pain Points recorded for this project yet.</p>}
           />
-          <ProjectScopeFilter scope={projectScope} />
-          {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
-          <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
-        </FilterPanel>
-      </div>
+      </ListPageLayout>
 
       {creating && (
         <PainPointFormModal

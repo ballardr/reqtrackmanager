@@ -4,9 +4,9 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { ApiError, api } from "../../api/client";
 import type { OrgUser } from "../../api/types";
 import { buildProject, withRouter, withToast } from "../../testing/storybook-helpers";
-import { buildNeed, buildPersona, buildStakeholder, buildStakeholderGroup, buildStakeholderScheme } from "./fixtures";
+import { buildPersona, buildStakeholder, buildStakeholderGroup, buildStakeholderScheme } from "./fixtures";
 import { PeoplePage } from "./PeoplePage";
-import type { EffectivePersonaType, Need, Persona, Stakeholder, StakeholderGroup } from "./types";
+import type { EffectivePersonaType, Persona, Stakeholder, StakeholderGroup } from "./types";
 
 const PROJECT_ID = "project-1";
 const BASE = `/api/v1/projects/${PROJECT_ID}/modules/stakeholders`;
@@ -32,14 +32,12 @@ const ORG_PERSONA = buildPersona({
   ...ORG, id: "persona-2", name: "Compliance Auditor", status: "draft", weight: null, effective_weight: 5, persona_type_name: "Secondary",
 });
 const STAKEHOLDER = buildStakeholder();
-const NEED = buildNeed();
 const GROUP = buildStakeholderGroup({ id: "group-1", name: "Client", scope: "project", organization_id: null, project_id: "project-1", member_count: 3 });
 
 interface Data {
   personas: Persona[];
   hiddenPersonas: Persona[];
   stakeholders: Stakeholder[];
-  needs: Need[];
   groups: StakeholderGroup[];
   /** `disabled_sub_components` the project reports for the module. */
   disabled: string[];
@@ -47,7 +45,7 @@ interface Data {
 
 function mockApis(data: Partial<Data> = {}) {
   const d: Data = {
-    personas: [PERSONA, ORG_PERSONA], hiddenPersonas: [], stakeholders: [STAKEHOLDER], needs: [NEED], groups: [GROUP],
+    personas: [PERSONA, ORG_PERSONA], hiddenPersonas: [], stakeholders: [STAKEHOLDER], groups: [GROUP],
     disabled: [], ...data,
   };
   spyOn(api, "get").mockImplementation(async (path: string) => {
@@ -59,7 +57,6 @@ function mockApis(data: Partial<Data> = {}) {
     if (route === `${BASE}/persona-types`) return PERSONA_TYPES;
     if (route === `${BASE}/stakeholders`) return d.stakeholders;
     if (route === `${BASE}/stakeholder-types`) return STAKEHOLDER_TYPES;
-    if (route === `${BASE}/needs`) return d.needs;
     if (route === `${BASE}/stakeholder-groups`) return d.groups;
     if (route === `/api/v1/projects/${PROJECT_ID}/scoring-schemes/stakeholder`) return buildStakeholderScheme();
     if (route === `/api/v1/projects/${PROJECT_ID}`) return buildProject({ id: PROJECT_ID, organization_id: "org-1" });
@@ -98,17 +95,25 @@ export const ListsEveryKindTogether: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Field Technician")).toBeInTheDocument());
     const table = within(canvas.getByRole("table", { name: "People" }));
-    for (const name of ["Field Technician", "Pat Regulator", "Diagnose faults quickly", "Client"]) {
+    for (const name of ["Field Technician", "Pat Regulator", "Client"]) {
       await expect(table.getByText(name)).toBeInTheDocument();
     }
     // Kind, scope and status go through their label maps, never the raw wire value.
-    for (const kind of ["Persona", "Stakeholder", "Stakeholder Need", "Stakeholder Group"]) {
+    for (const kind of ["Persona", "Stakeholder", "Stakeholder Group"]) {
       await expect(table.getAllByText(kind).length).toBeGreaterThan(0);
     }
     await expect(table.getByText("Organisation")).toBeInTheDocument();
     await expect(table.getByText("Draft")).toBeInTheDocument();
     await expect(canvas.queryByText("organization")).not.toBeInTheDocument();
     await expect(canvas.queryByText("stakeholder_need")).not.toBeInTheDocument();
+    // Needs are not people: they are a tab, not a row.
+    await expect(table.queryByText("Diagnose faults quickly")).not.toBeInTheDocument();
+    await expect(canvas.getByRole("tab", { name: "Needs" })).toBeInTheDocument();
+    await expect(canvas.getByRole("tab", { name: "People" })).toHaveAttribute("aria-selected", "true");
+    // Every row carries its kind's icon, named by the kind (never colour or shape alone).
+    for (const kind of ["Persona", "Stakeholder", "Stakeholder Group"]) {
+      await expect(table.getAllByRole("img", { name: kind }).length).toBeGreaterThan(0);
+    }
     // A group row says how many members it has; the list has no create button of its own.
     await expect(table.getByText("3 members")).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "New Persona" })).not.toBeInTheDocument();
@@ -121,29 +126,26 @@ export const KindChipsNarrowTheList: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => canvas.getByText("Field Technician"));
     const chips = within(canvas.getByRole("group", { name: "Kinds of record" }));
-    for (const name of [/Personas/, /Stakeholders/, /Needs/, /Groups/]) {
+    for (const name of [/Personas/, /Stakeholders/, /Groups/]) {
       await expect(chips.getByRole("button", { name })).toHaveAttribute("aria-pressed", "true");
     }
-    await userEvent.click(chips.getByRole("button", { name: /Needs/ }));
     await userEvent.click(chips.getByRole("button", { name: /Groups/ }));
-    await waitFor(() => expect(canvas.queryByText("Diagnose faults quickly")).not.toBeInTheDocument());
+    await waitFor(() => expect(canvas.queryByText("Client")).not.toBeInTheDocument());
     await expect(canvas.getByText("Field Technician")).toBeInTheDocument();
     await expect(canvas.getByText("Pat Regulator")).toBeInTheDocument();
-    await expect(chips.getByRole("button", { name: /Needs/ })).toHaveAttribute("aria-pressed", "false");
+    await expect(chips.getByRole("button", { name: /Groups/ })).toHaveAttribute("aria-pressed", "false");
   },
 };
 
 /** The last chip cannot be turned off: an empty selection would mean an empty page. */
 export const TheLastKindCannotBeTurnedOff: Story = {
-  parameters: { kind: "need" },
+  parameters: { kind: "group" },
   beforeEach: () => mockApis(),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByText("Diagnose faults quickly"));
-    const needs = within(canvas.getByRole("group", { name: "Kinds of record" })).getByRole("button", { name: /Needs/ });
-    await userEvent.click(needs);
-    await expect(needs).toHaveAttribute("aria-pressed", "true");
-    await expect(canvas.getByText("Diagnose faults quickly")).toBeInTheDocument();
+    const groups = await canvas.findByRole("button", { name: /Groups/ });
+    await userEvent.click(groups);
+    await expect(groups).toHaveAttribute("aria-pressed", "true");
   },
 };
 
@@ -177,31 +179,29 @@ export const StakeholdersOnlyKeepsGroupFilteringAndLastEngaged: Story = {
   },
 };
 
-export const NeedsOnly: Story = {
-  parameters: { kind: "need" },
-  beforeEach: () => mockApis(),
+/** A kind whose sub-component is off is not a chip and not in the New menu. */
+export const DisabledSubComponentRemovesItsKind: Story = {
+  beforeEach: () => mockApis({ disabled: ["persona"], personas: [] }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => canvas.getByText("Diagnose faults quickly"));
-    const table = within(canvas.getByRole("table", { name: "Stakeholder Needs" }));
-    await expect(table.getAllByText(/NEED-001/).length).toBeGreaterThan(0);
-    await expect(table.queryByRole("columnheader", { name: "Type" })).not.toBeInTheDocument();
+    await waitFor(() => canvas.getByText("Pat Regulator"));
+    const chips = within(canvas.getByRole("group", { name: "Kinds of record" }));
+    await expect(chips.queryByRole("button", { name: /Personas/ })).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "New" }));
+    const menu = within(within(document.body).getByRole("menu"));
+    await expect(menu.getByRole("menuitem", { name: "Stakeholder" })).toBeInTheDocument();
+    await expect(menu.queryByRole("menuitem", { name: "Persona" })).not.toBeInTheDocument();
+    await expect(api.get).not.toHaveBeenCalledWith(expect.stringContaining(`${BASE}/personas`));
   },
 };
 
-/** A kind whose sub-component is off is not a chip and not in the New menu. */
-export const DisabledSubComponentRemovesItsKind: Story = {
-  beforeEach: () => mockApis({ disabled: ["stakeholder_need"], needs: [] }),
+/** With Needs switched off there is nothing to tab to, so no tab strip. */
+export const WithoutNeedsThereAreNoTabs: Story = {
+  beforeEach: () => mockApis({ disabled: ["stakeholder_need"] }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => canvas.getByText("Field Technician"));
-    const chips = within(canvas.getByRole("group", { name: "Kinds of record" }));
-    await expect(chips.queryByRole("button", { name: /Needs/ })).not.toBeInTheDocument();
-    await userEvent.click(canvas.getByRole("button", { name: "New" }));
-    const menu = within(within(document.body).getByRole("menu"));
-    await expect(menu.getByRole("menuitem", { name: "Persona" })).toBeInTheDocument();
-    await expect(menu.queryByRole("menuitem", { name: "Stakeholder Need" })).not.toBeInTheDocument();
-    await expect(api.get).not.toHaveBeenCalledWith(expect.stringContaining(`${BASE}/needs`));
+    await expect(canvas.queryByRole("tablist")).not.toBeInTheDocument();
   },
 };
 
@@ -211,9 +211,11 @@ export const NewMenuOffersEveryKind: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole("button", { name: "New" }));
     const menu = within(within(document.body).getByRole("menu", { name: "New person or group" }));
-    for (const name of ["Persona", "Stakeholder", "Stakeholder from organisation user", "Stakeholder Need", "Stakeholder Group"]) {
+    for (const name of ["Persona", "Stakeholder", "Stakeholder from organisation user", "Stakeholder Group"]) {
       await expect(menu.getByRole("menuitem", { name })).toBeInTheDocument();
     }
+    // Needs are created from the Needs tab, not from People.
+    await expect(menu.queryByRole("menuitem", { name: "Stakeholder Need" })).not.toBeInTheDocument();
   },
 };
 
@@ -272,20 +274,6 @@ export const CreateStakeholderAndActivate: Story = {
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(`${BASE}/stakeholders`, expect.objectContaining({ name: "Pat Regulator", activate: true })),
     );
-  },
-};
-
-export const CreateNeed: Story = {
-  beforeEach: () => {
-    mockApis();
-    spyOn(api, "post").mockResolvedValue(buildNeed());
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await newMenuItem(canvas, "Stakeholder Need");
-    await userEvent.type(dialog().getByLabelText("Need name"), "Offline access");
-    await userEvent.click(dialog().getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith(`${BASE}/needs`, expect.objectContaining({ name: "Offline access" })));
   },
 };
 
@@ -371,7 +359,7 @@ export const StatusBadgeFiltersTheList: Story = {
 };
 
 export const EmptyState: Story = {
-  beforeEach: () => mockApis({ personas: [], stakeholders: [], needs: [], groups: [] }),
+  beforeEach: () => mockApis({ personas: [], stakeholders: [], groups: [] }),
   play: async ({ canvasElement }) => {
     await waitFor(() => expect(within(canvasElement).getByText("Nothing recorded for this project yet.")).toBeInTheDocument());
   },

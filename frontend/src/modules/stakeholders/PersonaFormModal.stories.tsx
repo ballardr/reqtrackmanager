@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
 
 import { buildPersona } from "./fixtures";
+import { requiredCaptions } from "../../testing/requiredMarkers";
 import { PersonaFormModal } from "./PersonaFormModal";
 
 const TYPE_OPTIONS = [
@@ -114,8 +115,20 @@ export const DarkTheme: Story = { ...CreateNeedsAName, globals: { theme: "dark" 
 export const ImportanceWeightHasHelp: Story = {
   play: async () => {
     await userEvent.type(dialog().getByLabelText("Importance weight"), "2");
-    await userEvent.click(dialog().getByRole("button", { name: "Help: Importance weight (optional)" }));
+    await userEvent.click(dialog().getByRole("button", { name: "Help: Importance weight" }));
     await expect(dialog().getByText(/How much this persona counts when scores are rolled up/)).toBeVisible();
     await expect(dialog().getByLabelText("Importance weight")).toHaveValue(2);
+  },
+};
+
+/** Only the name blocks saving, so only the name is marked; the others are optional and say nothing. */
+export const OnlyTheNameIsMarkedRequired: Story = {
+  play: async () => {
+    const root = within(document.body).getByRole("dialog");
+    await expect(requiredCaptions(root)).toEqual(["Name"]);
+    await expect(within(root).getByText("* required")).toBeVisible();
+    await expect(within(root).queryByText(/optional/i)).not.toBeInTheDocument();
+    await expect(dialog().getByLabelText("Persona name")).toBeRequired();
+    await expect(dialog().getByLabelText("Importance weight")).not.toBeRequired();
   },
 };

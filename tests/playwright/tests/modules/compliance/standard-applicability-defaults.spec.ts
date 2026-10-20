@@ -123,7 +123,7 @@ test.describe("Compliance Module: standard applicability defaults", () => {
     await page.getByRole("button", { name: "Exclude a project" }).click();
     const excludeDialog = page.getByRole("dialog", { name: "Exclude a project" });
     await excludeDialog.getByLabel("Project").selectOption({ label: PROJECT_NAMES.gamma1 });
-    await excludeDialog.getByLabel("Reason (required)").fill("Already governed by a separate local standard.");
+    await excludeDialog.getByLabel("Reason", { exact: true }).fill("Already governed by a separate local standard.");
     await excludeDialog.getByRole("button", { name: "Exclude" }).click();
     // Exact, and not the Exclude dialog's own <option>s (a merge-import can
     // add a "Gamma-1 … (imported)" project alongside).

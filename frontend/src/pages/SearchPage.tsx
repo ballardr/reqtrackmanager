@@ -27,6 +27,7 @@ import {
 import { ApiError } from "../api/client";
 import { CheckboxField, DateField } from "../components/FormFields";
 import { FilterField, FilterPanel } from "../components/FilterPanel";
+import { ListPageLayout } from "../components/ListPageLayout";
 import { ItemRow } from "../components/ItemRow";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
@@ -197,8 +198,122 @@ export function SearchPage({ api = searchApi }: { api?: SearchApi }) {
 
   return (
     <div className="stack">
-      <h1 style={{ margin: 0 }}>{ready ? strings.search.pageHeading(state.q.trim()) : strings.search.pageTitle}</h1>
-      <div className="side-grid">
+      <ListPageLayout
+        title={ready ? strings.search.pageHeading(state.q.trim()) : strings.search.pageTitle}
+        filter={
+          <FilterPanel
+            sectionKey="searchFilters"
+            search={queryText}
+            onSearchChange={setQueryText}
+            searchPlaceholder={strings.search.placeholder}
+            searchAriaLabel={strings.search.queryLabel}
+          >
+            <FilterField label={strings.search.scope}>
+              <select className="input" aria-label={strings.search.scope} value={selectedScopeKey} onChange={(e) => chooseScope(e.target.value)}>
+                {scopeChoices.map((c) => (
+                  <option key={scopeKey(c)} value={scopeKey(c)}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </FilterField>
+            {organizations.length > 1 && (
+              <FilterField label={strings.search.organisation}>
+                <select
+                  className="input"
+                  aria-label={strings.search.organisation}
+                  value={state.organizationId ?? ""}
+                  onChange={(e) => update({ organizationId: e.target.value || null })}
+                >
+                  <option value="">{strings.search.allOrganisations}</option>
+                  {organizations.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                </select>
+              </FilterField>
+            )}
+            <FilterField label={strings.search.recordType}>
+              <MultiSelectDropdown
+                triggerLabel={strings.search.recordType}
+                emptyLabel={strings.search.allTypes}
+                summaryLimit={2}
+                options={typeOptions.map((o) => ({
+                  ...o, checked: state.types.includes(o.value), optionLabel: o.label, onToggle: () => update({ types: toggled(state.types, o.value) }),
+                }))}
+              />
+            </FilterField>
+            {state.scope !== PROJECT_SCOPE && projectChoices.length > 1 && (
+              <FilterField label={strings.search.project}>
+                <MultiSelectDropdown
+                  triggerLabel={strings.search.project}
+                  emptyLabel={strings.search.allProjects}
+                  filterable
+                  summaryLimit={2}
+                  options={projectChoices.map((p) => ({
+                    value: p.id,
+                    label: p.name,
+                    hint: p.parent_name ? strings.search.inProject(p.parent_name) : undefined,
+                    checked: state.projectIds.includes(p.id),
+                    optionLabel: p.name,
+                    onToggle: () => update({ projectIds: toggled(state.projectIds, p.id) }),
+                  }))}
+                />
+              </FilterField>
+            )}
+            {statusOptions.length > 0 && (
+              <FilterField label={strings.search.status}>
+                <MultiSelectDropdown
+                  triggerLabel={strings.search.status}
+                  emptyLabel={strings.search.anyStatus}
+                  filterable
+                  summaryLimit={2}
+                  options={statusOptions.map((o) => ({
+                    ...o, checked: state.statuses.includes(o.value), optionLabel: o.label, onToggle: () => update({ statuses: toggled(state.statuses, o.value) }),
+                  }))}
+                />
+              </FilterField>
+            )}
+            {state.scope === PROJECT_SCOPE && (
+              <CheckboxField
+                help={strings.help.searchIncludeOrgRecords}
+                label={strings.search.includeOrgRecords}
+                checked={state.orgRecords ?? preferredOrgRecords}
+                onChange={(v) => update({ orgRecords: v })}
+              />
+            )}
+            <CheckboxField helpNotNeeded label={strings.search.includeArchived} checked={state.includeArchived} onChange={(v) => update({ includeArchived: v })} />
+            <DateField helpNotNeeded label={strings.search.updatedFrom} value={state.updatedFrom} onChange={(v) => update({ updatedFrom: v })} />
+            <DateField helpNotNeeded label={strings.search.updatedTo} value={state.updatedTo} onChange={(v) => update({ updatedTo: v })} />
+            <FilterField label={strings.search.searchIn}>
+              <SearchFieldPicker
+                label={strings.search.fieldsFilterLabel}
+                fields={fieldChoices}
+                value={effectiveFields}
+                onChange={(keys) => update({ fields: keys })}
+              />
+            </FilterField>
+            <FilterField label={strings.search.match}>
+              <select className="input" aria-label={strings.search.match} value={state.match} onChange={(e) => update({ match: e.target.value as SearchPageState["match"] })}>
+                <option value="contains">{strings.search.matchContains}</option>
+                <option value="phrase">{strings.search.matchPhrase}</option>
+              </select>
+            </FilterField>
+            <FilterField label={strings.search.sort}>
+              <select className="input" aria-label={strings.search.sort} value={state.sort} onChange={(e) => update({ sort: e.target.value as SearchPageState["sort"] })}>
+                <option value="relevance">{strings.search.sortRelevance}</option>
+                <option value="updated">{strings.search.sortUpdated}</option>
+              </select>
+            </FilterField>
+            {filterCount > 0 && (
+              <button type="button" className="btn" onClick={clearFilters}>
+                {strings.search.clearFilters}
+              </button>
+            )}
+          </FilterPanel>
+        }
+      >
         <div className="stack" aria-busy={pending}>
           {!ready && <p className="text-muted">{strings.search.startHint}</p>}
           {ready && !response && pending && <Spinner />}
@@ -240,119 +355,7 @@ export function SearchPage({ api = searchApi }: { api?: SearchApi }) {
             </>
           )}
         </div>
-
-        <FilterPanel
-          sectionKey="searchFilters"
-          search={queryText}
-          onSearchChange={setQueryText}
-          searchPlaceholder={strings.search.placeholder}
-          searchAriaLabel={strings.search.queryLabel}
-        >
-          <FilterField label={strings.search.scope}>
-            <select className="input" aria-label={strings.search.scope} value={selectedScopeKey} onChange={(e) => chooseScope(e.target.value)}>
-              {scopeChoices.map((c) => (
-                <option key={scopeKey(c)} value={scopeKey(c)}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </FilterField>
-          {organizations.length > 1 && (
-            <FilterField label={strings.search.organisation}>
-              <select
-                className="input"
-                aria-label={strings.search.organisation}
-                value={state.organizationId ?? ""}
-                onChange={(e) => update({ organizationId: e.target.value || null })}
-              >
-                <option value="">{strings.search.allOrganisations}</option>
-                {organizations.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
-                  </option>
-                ))}
-              </select>
-            </FilterField>
-          )}
-          <FilterField label={strings.search.recordType}>
-            <MultiSelectDropdown
-              triggerLabel={strings.search.recordType}
-              emptyLabel={strings.search.allTypes}
-              summaryLimit={2}
-              options={typeOptions.map((o) => ({
-                ...o, checked: state.types.includes(o.value), optionLabel: o.label, onToggle: () => update({ types: toggled(state.types, o.value) }),
-              }))}
-            />
-          </FilterField>
-          {state.scope !== PROJECT_SCOPE && projectChoices.length > 1 && (
-            <FilterField label={strings.search.project}>
-              <MultiSelectDropdown
-                triggerLabel={strings.search.project}
-                emptyLabel={strings.search.allProjects}
-                filterable
-                summaryLimit={2}
-                options={projectChoices.map((p) => ({
-                  value: p.id,
-                  label: p.name,
-                  hint: p.parent_name ? strings.search.inProject(p.parent_name) : undefined,
-                  checked: state.projectIds.includes(p.id),
-                  optionLabel: p.name,
-                  onToggle: () => update({ projectIds: toggled(state.projectIds, p.id) }),
-                }))}
-              />
-            </FilterField>
-          )}
-          {statusOptions.length > 0 && (
-            <FilterField label={strings.search.status}>
-              <MultiSelectDropdown
-                triggerLabel={strings.search.status}
-                emptyLabel={strings.search.anyStatus}
-                filterable
-                summaryLimit={2}
-                options={statusOptions.map((o) => ({
-                  ...o, checked: state.statuses.includes(o.value), optionLabel: o.label, onToggle: () => update({ statuses: toggled(state.statuses, o.value) }),
-                }))}
-              />
-            </FilterField>
-          )}
-          {state.scope === PROJECT_SCOPE && (
-            <CheckboxField
-              help={strings.help.searchIncludeOrgRecords}
-              label={strings.search.includeOrgRecords}
-              checked={state.orgRecords ?? preferredOrgRecords}
-              onChange={(v) => update({ orgRecords: v })}
-            />
-          )}
-          <CheckboxField helpNotNeeded label={strings.search.includeArchived} checked={state.includeArchived} onChange={(v) => update({ includeArchived: v })} />
-          <DateField helpNotNeeded label={strings.search.updatedFrom} value={state.updatedFrom} onChange={(v) => update({ updatedFrom: v })} />
-          <DateField helpNotNeeded label={strings.search.updatedTo} value={state.updatedTo} onChange={(v) => update({ updatedTo: v })} />
-          <FilterField label={strings.search.searchIn}>
-            <SearchFieldPicker
-              label={strings.search.fieldsFilterLabel}
-              fields={fieldChoices}
-              value={effectiveFields}
-              onChange={(keys) => update({ fields: keys })}
-            />
-          </FilterField>
-          <FilterField label={strings.search.match}>
-            <select className="input" aria-label={strings.search.match} value={state.match} onChange={(e) => update({ match: e.target.value as SearchPageState["match"] })}>
-              <option value="contains">{strings.search.matchContains}</option>
-              <option value="phrase">{strings.search.matchPhrase}</option>
-            </select>
-          </FilterField>
-          <FilterField label={strings.search.sort}>
-            <select className="input" aria-label={strings.search.sort} value={state.sort} onChange={(e) => update({ sort: e.target.value as SearchPageState["sort"] })}>
-              <option value="relevance">{strings.search.sortRelevance}</option>
-              <option value="updated">{strings.search.sortUpdated}</option>
-            </select>
-          </FilterField>
-          {filterCount > 0 && (
-            <button type="button" className="btn" onClick={clearFilters}>
-              {strings.search.clearFilters}
-            </button>
-          )}
-        </FilterPanel>
-      </div>
+      </ListPageLayout>
     </div>
   );
 }

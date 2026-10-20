@@ -115,7 +115,7 @@ export function LoginPage() {
             label={strings.login.twoFactorCode}
             value={code}
             onChange={setCode}
-            inputProps={{ inputMode: "numeric", autoFocus: true, required: true }}
+            inputProps={{ required: true, inputMode: "numeric", autoFocus: true }}
           />
           {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
           <button className="btn btn-primary" type="submit" disabled={submitting}>

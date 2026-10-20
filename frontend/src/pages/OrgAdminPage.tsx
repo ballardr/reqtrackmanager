@@ -74,6 +74,7 @@ import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPa
 import { ImportConflictPanel } from "../components/ImportConflictPanel";
 import { LinkTypesPanel } from "../components/LinkTypesPanel";
 import { Modal } from "../components/Modal";
+import { AddUserMenu } from "../components/AddUserMenu";
 import { NewUserFields } from "../components/NewUserFields";
 import { EMPTY_NEW_USER, type NewUserValues } from "../components/newUserValues";
 import { ModuleAvailabilitySelect, ModuleSettingsList } from "../components/ModuleSettingsList";
@@ -2177,9 +2178,9 @@ export function OrgAdminPage() {
         <div className="card stack">
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.createInitialAdmin}</h2>
           <FormGrid minColumn="14rem">
-            <TextField helpNotNeeded label={strings.orgAdmin.email} value={bootstrapEmail} onChange={setBootstrapEmail} />
-            <TextField helpNotNeeded label={strings.orgAdmin.name} value={bootstrapName} onChange={setBootstrapName} />
-            <TextField helpNotNeeded
+            <TextField helpNotNeeded required label={strings.orgAdmin.email} value={bootstrapEmail} onChange={setBootstrapEmail} />
+            <TextField helpNotNeeded required label={strings.orgAdmin.name} value={bootstrapName} onChange={setBootstrapName} />
+            <TextField helpNotNeeded required
               label={strings.orgAdmin.password}
               value={bootstrapPassword}
               onChange={setBootstrapPassword}
@@ -2547,7 +2548,7 @@ export function OrgAdminPage() {
             {renameModalOpen && (
               <Modal title={strings.orgAdmin.rename} onClose={() => setRenameModalOpen(false)}>
                 <div className="stack">
-                  <TextField helpNotNeeded
+                  <TextField helpNotNeeded required
                     label={strings.orgAdmin.rename}
                     value={orgNameEdit}
                     onChange={setOrgNameEdit}
@@ -2650,21 +2651,7 @@ export function OrgAdminPage() {
           <div className="stack">
             <CollapsibleSection sectionKey="orgAdmin.users" title={strings.orgAdmin.users(orgLabelCap)}>
               <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.5rem" }}>
-                <div className="stack" style={{ gap: "0.25rem" }}>
-                  <div className="row" style={{ gap: "0.5rem" }}>
-                    <button className="btn" onClick={() => setInviteUserModalOpen(true)}>
-                      <Send /> {strings.orgAdmin.inviteUser}
-                    </button>
-                    <button className="btn btn-primary" onClick={() => setNewUserModalOpen(true)}>
-                      <Plus /> {strings.orgAdmin.newUser}
-                    </button>
-                  </div>
-                  {/* "New user" (immediate password account) vs. "Invite
-                      user" (email sign-up link) — distinct, both-legitimate
-                      flows (docs/decisions.md) that read as ambiguous
-                      without this hint. */}
-                  <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.newUserVsInviteHint}</span>
-                </div>
+                <AddUserMenu onInvite={() => setInviteUserModalOpen(true)} onNewUser={() => setNewUserModalOpen(true)} />
                 {advanced?.auto_accept_email_domain && (
                   <button
                     className={`btn${outsideDomainUsers !== null ? " btn-primary" : ""}`}
@@ -2777,6 +2764,7 @@ export function OrgAdminPage() {
             {newUserModalOpen && (
               <Modal title={strings.orgAdmin.newUser} onClose={() => setNewUserModalOpen(false)} size="lg">
                 <div className="stack">
+                  <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.newUserModalHint}</p>
                   <NewUserFields values={newUser} onChange={(patch) => setNewUser((prev) => ({ ...prev, ...patch }))} />
                   <FormActions
                     onCancel={() => setNewUserModalOpen(false)}
@@ -2792,7 +2780,7 @@ export function OrgAdminPage() {
               <Modal title={strings.orgAdmin.inviteUser} onClose={() => setInviteUserModalOpen(false)}>
                 <div className="stack">
                   <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.inviteUserModalHint}</p>
-                  <TextField helpNotNeeded
+                  <TextField helpNotNeeded required
                     label={strings.orgAdmin.email}
                     value={inviteUserEmail}
                     onChange={setInviteUserEmail}
@@ -2890,7 +2878,7 @@ export function OrgAdminPage() {
                 // Popover for a one/two-field quick action on something
                 // that already exists, not creating a new entity.
                 <Modal title={strings.orgAdmin.newGroup} onClose={() => setNewGroupModalOpen(false)}>
-                  <TextField helpNotNeeded
+                  <TextField helpNotNeeded required
                     label={strings.admin.name}
                     value={newGroupName}
                     onChange={setNewGroupName}
@@ -3405,7 +3393,7 @@ export function OrgAdminPage() {
               >
                 <div className="stack">
                   <FormGrid minColumn="18rem">
-                    <TextField helpNotNeeded label={strings.admin.templateName} value={newTemplateName} onChange={setNewTemplateName} />
+                    <TextField helpNotNeeded required label={strings.admin.templateName} value={newTemplateName} onChange={setNewTemplateName} />
                     <ColorField helpNotNeeded label={strings.admin.accentColor} value={newTemplateAccentColor} onChange={setNewTemplateAccentColor} />
                     <FormGridFull>
                       <TextField helpNotNeeded label={strings.admin.footerText} value={newTemplateFooterText} onChange={setNewTemplateFooterText} />
@@ -3963,7 +3951,7 @@ export function OrgAdminPage() {
                             />
                           </FormGridFull>
                         )}
-                        <TextField helpNotNeeded
+                        <TextField helpNotNeeded required
                           label={strings.orgAdmin.customRoleName}
                           value={customRoleFormName}
                           onChange={setCustomRoleFormName}

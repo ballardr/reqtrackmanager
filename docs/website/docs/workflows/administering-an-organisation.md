@@ -13,6 +13,8 @@ Reach an organisation's admin page via **My organisations** in the nav, or from 
 
 ## Managing users
 
+**Add user ▾** (the same menu as Server Management) offers **Invite user** (emails a sign-up link so the person chooses their own password) and **New user** (an account you create now, with a password you set).
+
 The **Users** section lists every member, with access-review filters useful for periodic review: stale logins (180+ days), accounts without 2FA, and accounts with no project access at all. Once an accepted email domain is set (see below), it also lists existing accounts elsewhere in the system matching that domain but not yet members.
 
 ## Managing groups

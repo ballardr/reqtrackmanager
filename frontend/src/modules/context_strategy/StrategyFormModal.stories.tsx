@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import { StrategyFormModal } from "./StrategyFormModal";
+import { requiredCaptions } from "../../testing/requiredMarkers";
 import type { Strategy } from "./types";
 
 /**
@@ -86,3 +87,12 @@ export const LongErrorAndLongTitleKeepTheActionsReachable: Story = {
 
 export const LightTheme: Story = { ...CreateNew };
 export const DarkTheme: Story = { ...CreateNew, globals: { theme: "dark" } };
+
+/** The title and the objective block saving, and they are the marked fields. */
+export const TitleAndObjectiveAreMarkedRequired: Story = {
+  play: async () => {
+    const root = within(document.body).getByRole("dialog");
+    await expect(requiredCaptions(root)).toEqual(["Title", "Objective / strategic theme"]);
+    await expect(within(root).getByRole("button", { name: "Save" })).toBeDisabled();
+  },
+};

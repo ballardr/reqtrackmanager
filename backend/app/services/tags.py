@@ -142,7 +142,7 @@ def validate_colour(colour: str | None) -> str | None:
     """
     if not colour:
         return None
-    if not _COLOUR.match(colour):
+    if not _COLOUR.fullmatch(colour):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A tag colour must look like #1a2b3c.")
     return colour.lower()
 

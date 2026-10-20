@@ -138,7 +138,7 @@ export const ExcludeProjectFlow: Story = {
     await userEvent.selectOptions(body.getByLabelText("Project"), "proj-2");
     // Mandatory reason: the confirm button stays disabled until filled in.
     await expect(body.getByRole("button", { name: "Exclude" })).toBeDisabled();
-    await userEvent.type(body.getByLabelText("Reason (required)"), "Not applicable to this project.");
+    await userEvent.type(body.getByLabelText("Reason"), "Not applicable to this project.");
     await expect(body.getByRole("button", { name: "Exclude" })).toBeEnabled();
     await userEvent.click(body.getByRole("button", { name: "Exclude" }));
 

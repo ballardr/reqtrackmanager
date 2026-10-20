@@ -168,7 +168,7 @@ export const RevalidateEvidence: Story = {
     await userEvent.click(body.getByRole("button", { name: "Revalidate" }));
     const dialog = await waitFor(() => body.getByRole("dialog", { name: "Revalidate evidence" }));
     const dialogScope = within(dialog);
-    await userEvent.type(dialogScope.getByLabelText("New expiry date (optional)"), "2027-12-31");
+    await userEvent.type(dialogScope.getByLabelText("New expiry date"), "2027-12-31");
     await userEvent.click(dialogScope.getByRole("button", { name: "Revalidate" }));
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(

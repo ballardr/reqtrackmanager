@@ -656,7 +656,7 @@ function RequirementDetailPanel({
         {isDraft ? (
           <FormGrid minColumn="14rem">
             <TextField help={COMPLIANCE_HELP.complianceRequirementReference} label="Reference" value={reference} onChange={setReference} placeholder="e.g. A.5.1" />
-            <TextField helpNotNeeded label="Name" ariaLabel="Requirement name" value={name} onChange={setName} />
+            <TextField helpNotNeeded required label="Name" ariaLabel="Requirement name" value={name} onChange={setName} />
             <FormGridFull>
               <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} autoGrow />
             </FormGridFull>
@@ -736,7 +736,7 @@ function RequirementFormModal({
       <div className="stack">
         <FormGrid minColumn="18rem">
           <TextField help={COMPLIANCE_HELP.complianceRequirementReference} label="Reference" value={reference} onChange={setReference} placeholder="e.g. A.5.1" />
-          <TextField helpNotNeeded label="Name" ariaLabel="Requirement name" value={name} onChange={setName} />
+          <TextField helpNotNeeded required label="Name" ariaLabel="Requirement name" value={name} onChange={setName} />
           <FormGridFull>
             <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} rows={3} />
           </FormGridFull>
@@ -779,14 +779,14 @@ function RequiredActionFormModal({
     <Modal title={initial ? "Edit required action" : "New required action"} onClose={onCancel} size="lg">
       <div className="stack">
         <FormGrid minColumn="18rem">
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect helpNotNeeded required
             label="Action type"
             value={actionTypeId}
             onChange={setActionTypeId}
             options={actionTypes.map((t) => ({ value: t.id, label: t.name }))}
             placeholder={null}
           />
-          <TextField helpNotNeeded label="Name" ariaLabel="Required action name" value={name} onChange={setName} />
+          <TextField helpNotNeeded required label="Name" ariaLabel="Required action name" value={name} onChange={setName} />
           <FormGridFull>
             <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} rows={2} />
           </FormGridFull>
@@ -837,7 +837,7 @@ function RequirementClarifyModal({
         </p>
         <FormGrid minColumn="18rem">
           <TextField help={COMPLIANCE_HELP.complianceRequirementReference} label="Reference" value={reference} onChange={setReference} placeholder="e.g. A.5.1" />
-          <TextField helpNotNeeded label="Name" ariaLabel="Requirement name" value={name} onChange={setName} />
+          <TextField helpNotNeeded required label="Name" ariaLabel="Requirement name" value={name} onChange={setName} />
           <FormGridFull>
             <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} autoGrow />
           </FormGridFull>
@@ -845,8 +845,8 @@ function RequirementClarifyModal({
             <TextAreaField helpNotNeeded label="Reasoning" value={reasoning} onChange={setReasoning} autoGrow />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField helpNotNeeded
-              label="Clarification note (required)" value={clarificationNote} onChange={setClarificationNote} autoGrow
+            <TextAreaField helpNotNeeded required
+              label="Clarification note" value={clarificationNote} onChange={setClarificationNote} autoGrow
               inputProps={{ placeholder: "What changed, and why it's non-substantive." }}
             />
           </FormGridFull>

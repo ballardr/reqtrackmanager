@@ -101,7 +101,7 @@ export function ActionMenu({
         <MoreVertical />
       </button>
       {open && (
-        <Popover anchorRef={triggerRef} title={triggerLabel} onClose={() => setOpen(false)}>
+        <Popover anchorRef={triggerRef} fit title={triggerLabel} onClose={() => setOpen(false)}>
           <ActionMenuList label={triggerLabel} items={items} onSelect={() => setOpen(false)} />
         </Popover>
       )}
@@ -139,8 +139,7 @@ export function ActionMenuList({
           key={item.key ?? (typeof item.label === "string" ? item.label : i)}
           type="button"
           role="menuitem"
-          className={item.danger ? "btn btn-danger" : "btn"}
-          style={{ justifyContent: "flex-start" }}
+          className={item.danger ? "btn btn-danger menu-item" : "btn menu-item"}
           onClick={() => {
             onSelect();
             item.onSelect();

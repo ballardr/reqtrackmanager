@@ -32,17 +32,17 @@ export function NewUserFields({
   const showRole = show?.role ?? true;
   return (
     <FormGrid minColumn="18rem">
-      <TextField helpNotNeeded
+      <TextField helpNotNeeded required
         label={strings.orgAdmin.email}
         value={values.email}
         onChange={(email) => onChange({ email })}
         inputProps={{ autoFocus: true, type: "email" }}
       />
       {showName && (
-        <TextField helpNotNeeded label={strings.orgAdmin.name} value={values.displayName} onChange={(displayName) => onChange({ displayName })} />
+        <TextField helpNotNeeded required label={strings.orgAdmin.name} value={values.displayName} onChange={(displayName) => onChange({ displayName })} />
       )}
       {showPassword && (
-        <TextField helpNotNeeded
+        <TextField helpNotNeeded required
           label={strings.orgAdmin.password}
           value={values.password}
           onChange={(password) => onChange({ password })}

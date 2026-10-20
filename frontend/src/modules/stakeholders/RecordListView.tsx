@@ -29,13 +29,14 @@
  * treats a hidden record as absent), so `onOpen` is skipped for it.
  */
 import type { CollectedLink } from "../../api/artefactLinks";
-import { useState, type ReactNode } from "react";
+import { useState, type HTMLAttributes, type ReactNode } from "react";
 
 import type { BadgeTone } from "../../api/types";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterBadge } from "../../components/FilterBadge";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ListPageLayout } from "../../components/ListPageLayout";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
 import { TagFilterField } from "../../components/TagFilterField";
@@ -46,6 +47,18 @@ import { HIDDEN_SOURCE_LABEL, type HiddenSource } from "./types";
 import { Badge } from "../../components/Badge";
 
 /** What the list needs of any record kind. */
+/** The page-level header a list owns when it is a whole page: its title, actions and anything above the table. */
+export interface RecordListPage {
+  title: ReactNode;
+  /** Replaces the list's own New button and toolbar when given. */
+  actions?: ReactNode;
+  /** A tab strip shown under the title; the list column is its panel (`contentProps`). */
+  tabs?: ReactNode;
+  contentProps?: HTMLAttributes<HTMLDivElement>;
+  /** Chips or a switcher shown above the table in the list column. */
+  above?: ReactNode;
+}
+
 export interface ListedRecord {
   id: string;
   name: string;
@@ -80,6 +93,8 @@ export function RecordListView<R extends ListedRecord, V>({
   typeName,
   typeLabel = "Type",
   searchText,
+  nameIcon,
+  page,
   columnsBeforeType,
   columnsAfterScope,
   toolbar,
@@ -117,6 +132,10 @@ export function RecordListView<R extends ListedRecord, V>({
   typeLabel?: string;
   /** The text the search box matches against. */
   searchText: (record: R) => string;
+  /** Page-level header (title, actions, tabs) shown in the list column so the filter panel starts at the title (`ListPageLayout`); omit for a list embedded in another page. */
+  page?: RecordListPage;
+  /** A kind icon shown before each name (`PeopleKindIcon`); omit for a list that has one kind. */
+  nameIcon?: (record: R) => ReactNode;
   columnsBeforeType: DirectoryColumn<R>[];
   columnsAfterScope: DirectoryColumn<R>[];
   /** Extra controls beside the New button (e.g. "Add from org user"). */
@@ -157,7 +176,7 @@ export function RecordListView<R extends ListedRecord, V>({
   });
 
   const columns: DirectoryColumn<R>[] = [
-    { key: "name", label: "Name", render: (r) => <>{r.name}<ProjectScopeLabel row={r} /></> },
+    { key: "name", label: "Name", render: (r) => <>{nameIcon && <span className="record-name-icon">{nameIcon(r)}</span>}{r.name}<ProjectScopeLabel row={r} /></> },
     { key: "code", label: "Code", render: (r) => <span className="text-muted"><ScopedRecordCode record={r} /></span> },
     ...columnsBeforeType,
     ...(typeName
@@ -204,27 +223,12 @@ export function RecordListView<R extends ListedRecord, V>({
       : []),
   ];
 
-  return (
-    <div className="stack">
-      {(canCreate || toolbar) && (
-        <div className="row" style={{ gap: "0.5rem", alignSelf: "flex-start" }}>
-          {canCreate && (
-            <button className="btn btn-primary" onClick={() => setCreating(true)}>
-              {newLabel ?? `New ${noun}`}
-            </button>
-          )}
-          {toolbar}
-        </div>
-      )}
-      <div className="side-grid">
-        <DirectoryTable
-          ariaLabel={ariaLabel}
-          columns={columns}
-          rows={filtered}
-          rowKey={(r) => r.id}
-          onRowClick={(r) => { if (!r.project_hidden) onOpen(r); }}
-          emptyState={<p className="text-muted">{emptyText}</p>}
-        />
+  const newButton = canCreate && (
+    <button className="btn btn-primary" onClick={() => setCreating(true)}>
+      {newLabel ?? `New ${noun}`}
+    </button>
+  );
+  const filterPanel = (
         <FilterPanel
           sectionKey={sectionKey} total={filtered.length}
           search={search} onSearchChange={setSearch} searchPlaceholder={`Search ${noun}s…`} searchAriaLabel={`Search ${ariaLabel}`}
@@ -259,7 +263,45 @@ export function RecordListView<R extends ListedRecord, V>({
             <FilterCheckbox label="Show hidden" checked={includeHidden} onChange={onIncludeHiddenChange} />
           )}
         </FilterPanel>
-      </div>
+  );
+  const table = (
+        <DirectoryTable
+          ariaLabel={ariaLabel}
+          columns={columns}
+          rows={filtered}
+          rowKey={(r) => r.id}
+          onRowClick={(r) => { if (!r.project_hidden) onOpen(r); }}
+          emptyState={<p className="text-muted">{emptyText}</p>}
+        />
+  );
+
+  return (
+    <div className="stack">
+      {page ? (
+        <ListPageLayout
+          title={page.title}
+          actions={page.actions ?? ((newButton || toolbar) && <div className="row" style={{ gap: "0.5rem", alignSelf: "flex-start" }}>{newButton}{toolbar}</div>)}
+          tabs={page.tabs}
+          contentProps={page.contentProps}
+          filter={filterPanel}
+        >
+          {page.above}
+          {table}
+        </ListPageLayout>
+      ) : (
+        <>
+          {(canCreate || toolbar) && (
+            <div className="row" style={{ gap: "0.5rem", alignSelf: "flex-start" }}>
+              {newButton}
+              {toolbar}
+            </div>
+          )}
+          <div className="side-grid">
+            {table}
+            {filterPanel}
+          </div>
+        </>
+      )}
 
       {creating && onCreate && renderCreateModal &&
         renderCreateModal({

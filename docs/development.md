@@ -22,7 +22,7 @@ Once healthy:
 - **Prometheus metrics**: http://localhost:8000/metrics
 - **MCP server** (AI-assistant access to requirements — see [mcp-server.md](mcp-server.md)): http://localhost:8100/mcp
 - **MailHog UI** (view sent notification emails): http://localhost:8025
-- **Docs site preview** (see [Documentation website](#documentation-website) below): http://localhost:3001/reqtrackmanager/
+- **Docs site preview** (see [Documentation website](#documentation-website) below): http://localhost:3001/reqtrackmanager/ — the app's header **Help** link opens this local copy in this stack (`HELP_URL` in `tests/container/docker-compose.yml`; set `HELP_URL` in your shell to override). A real deployment keeps the public-site default.
 
 Default bootstrap admin login: `admin@example.com` / `ChangeMe123!`.
 

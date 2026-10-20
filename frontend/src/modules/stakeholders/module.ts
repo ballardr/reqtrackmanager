@@ -7,6 +7,7 @@ import { NEED_STATUS_LABEL, PERSONA_STATUS_LABEL, STAKEHOLDER_STATUS_LABEL } fro
 import { EngagementDetailPage } from "./EngagementDetailPage";
 import { EngagementStalenessReportView } from "./EngagementStalenessReportView";
 import { NeedDetailPage } from "./NeedDetailPage";
+import { NeedsPage } from "./NeedsPage";
 import { OrgPersonasPanel } from "./OrgPersonasPanel";
 import { OrgPersonaTypesPanel } from "./OrgPersonaTypesPanel";
 import { OrgStakeholdersPanel } from "./OrgStakeholdersPanel";
@@ -32,8 +33,8 @@ import { STAKEHOLDER_SCORING_SCHEME } from "./useStakeholderScheme";
  * so no core file is edited to add it.
  *
  * - `routes` (project-scoped, gated on the project's enabled-modules list):
- *   the People page (one list and New menu for Personas, Stakeholders, Needs and Groups; the old per-type list
- *   routes redirect to it), the Engagement list, and every record's detail page (a Need and an
+ *   the People page (one list and New menu for Personas, Stakeholders and Groups; the old per-type list
+ *   routes redirect to it), the Needs page (the tab beside People), the Engagement list, and every record's detail page (a Need and an
  *   Engagement are project-scoped only, so they have no global route or org panel). A detail route is also
  *   used for an org record opened from a project, so a persona's weight
  *   override stays reachable.
@@ -82,7 +83,7 @@ export const moduleDefinition: TierAModuleDefinition = {
       element: createElement(StakeholderDetailPage),
     },
     { path: "/projects/:projectId/modules/stakeholders/groups", element: createElement(ProjectStakeholderGroupsPage) },
-    { path: "/projects/:projectId/modules/stakeholders/needs", element: createElement(PeopleRedirect, { kind: "need" }) },
+    { path: "/projects/:projectId/modules/stakeholders/needs", element: createElement(NeedsPage) },
     { path: "/projects/:projectId/modules/stakeholders/needs/:needId", element: createElement(NeedDetailPage) },
     { path: "/projects/:projectId/modules/stakeholders/engagements", element: createElement(ProjectEngagementsPage) },
     {

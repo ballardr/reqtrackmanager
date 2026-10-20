@@ -87,7 +87,8 @@ test.describe("preferences: theme persistence, pronouns, landing page mode; help
     await test.step("the header Help link points at the configured docs URL and opens a new tab", async () => {
       // Asserted, not followed: the target is an external site.
       const help = page.getByRole("link", { name: "Help (opens in a new tab)" });
-      await expect(help).toHaveAttribute("href", /^https?:\/\//);
+      // The test stack points Help at its own docs service (`HELP_URL` in tests/container/docker-compose.yml).
+      await expect(help).toHaveAttribute("href", process.env.HELP_URL ?? "http://localhost:3001/reqtrackmanager/");
       await expect(help).toHaveAttribute("target", "_blank");
       await expect(help).toHaveAttribute("rel", /noopener/);
     });

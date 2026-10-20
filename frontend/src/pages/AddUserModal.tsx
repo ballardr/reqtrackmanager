@@ -1,9 +1,10 @@
 /**
  * Module: pages/AddUserModal
  *
- * Server Management → Users → "Add user": a server administrator creates an account, either by emailing
- * an invite (the person sets their own password) or with a password the administrator types. Either way
- * the account may belong to no organisation.
+ * Server Management → Users → "Add user ▾" (`AddUserMenu`): a server administrator creates an account,
+ * either by emailing an invite (mode `invite`, the person sets their own password) or with a password the
+ * administrator types (mode `password`, the "New user" dialog). The menu picks the mode; each is its own
+ * dialog. Either way the account may belong to no organisation.
  *
  * Responsibilities: collect the fields, call `POST /api/v1/system/users`, report the outcome through the
  * parent's `onCreated`. It never shows or stores the typed password beyond the form's own state.
@@ -27,12 +28,14 @@ const strings = t();
 export type AddUserMode = "invite" | "password";
 
 /**
+ * @param mode `invite` (email a sign-up link) or `password` (create with a password the administrator sets).
  * @param onClose Called when the dialog is cancelled or after a successful create.
  * @param onCreated Called once with the new person's email and how they were added.
  */
 export function AddUserModal({
-  onClose, onCreated,
+  mode, onClose, onCreated,
 }: {
+  mode: AddUserMode;
   onClose: () => void;
   onCreated: (email: string, mode: AddUserMode) => void;
 }) {
@@ -40,7 +43,6 @@ export function AddUserModal({
   const orgLabelCap = useOrgLabelCapitalized();
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [orgId, setOrgId] = useState("");
-  const [mode, setMode] = useState<AddUserMode>("password");
   const [values, setValues] = useState<NewUserValues>(EMPTY_NEW_USER);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -80,20 +82,11 @@ export function AddUserModal({
   }
 
   return (
-    <Modal title={strings.system.addUser} onClose={onClose} size="lg">
+    <Modal title={invite ? strings.orgAdmin.inviteUser : strings.orgAdmin.newUser} onClose={onClose} size="lg">
       <div className="stack">
-        <p className="text-muted" style={{ margin: 0 }}>{strings.system.addUserHint(orgLabel)}</p>
-        <LabeledSelect helpNotNeeded
-          label={strings.system.addUserModeLabel}
-          value={mode}
-          onChange={(next) => setMode(next as AddUserMode)}
-          options={[
-            { value: "password", label: strings.system.addUserModePassword },
-            { value: "invite", label: strings.system.addUserModeInvite },
-          ]}
-          placeholder={null}
-          hint={invite ? strings.system.addUserInviteHint : strings.system.addUserPasswordHint}
-        />
+        <p className="text-muted" style={{ margin: 0 }}>
+          {invite ? strings.system.addUserInviteHint : strings.system.addUserPasswordHint}
+        </p>
         <LabeledSelect help={strings.help.addUserOrganization}
           label={orgLabelCap}
           value={orgId}

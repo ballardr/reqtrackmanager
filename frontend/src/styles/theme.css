@@ -568,7 +568,7 @@ select.input {
 }
 
 .search-option {
-  padding: 0.35rem 0.5rem;
+  padding: 0.2rem 0.5rem;
   border-radius: 4px;
   cursor: pointer;
 }
@@ -576,6 +576,52 @@ select.input {
 .search-option[aria-selected="true"],
 .search-option:hover {
   background: var(--color-surface-alt);
+}
+
+.app-header .search-dropdown {
+  gap: 0.25rem;
+  padding: 0.5rem;
+}
+
+.search-group-heading {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.25rem 0.5rem 0;
+}
+
+/* One line per hit in the dropdown: the title takes the slack and truncates, the code and place keep their width. */
+.search-hit-compact {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.search-hit-compact__code,
+.search-hit-compact__where {
+  flex: none;
+  font-size: 0.75rem;
+}
+
+.search-hit-compact__where {
+  margin-left: auto;
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-hit-compact__title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.search-hit-compact__text {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .search-option--footer {
@@ -2037,6 +2083,14 @@ td:has(> .disclosure-toggle) {
   max-width: calc(100vw - 1rem);
 }
 
+/* A menu item (`ActionMenuList`) is a button whose label may be long: it wraps onto a second line
+   rather than clipping, once the menu has grown to the viewport's width. */
+.menu-item {
+  justify-content: flex-start;
+  text-align: left;
+  white-space: normal;
+}
+
 /* Field help (`FieldCaption`/`FieldHelp`, style guide "Pattern: field help"): the caption line of a
    field, with a `(?)` button after the label that reveals the help text in place. The text takes the
    whole line under the caption, so it never squeezes the caption. The icon is 14px (beside caption
@@ -2333,4 +2387,92 @@ td:has(> .disclosure-toggle) {
 /* A pill that follows running text on the same line (a status after a title): a gap, not a margin hack at each use. */
 .badge-after {
   margin-inline-start: 0.5rem;
+}
+
+/* A preset swatch in `ColorField`: a round colour chip; the pressed one carries a ring (not colour alone: aria-pressed too). */
+.colour-swatch {
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid var(--color-surface);
+  box-shadow: 0 0 0 1px var(--color-border);
+  cursor: pointer;
+}
+
+.colour-swatch[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--color-text);
+}
+
+/* The kind icon before a person's name (`PeopleKindIcon`); muted so the name stays the strongest text. */
+.record-name-icon {
+  display: inline-flex;
+  margin-right: 0.45rem;
+  vertical-align: text-bottom;
+  color: var(--color-text-muted);
+}
+
+.people-kind-icon {
+  display: inline-flex;
+}
+
+/* `ListPageLayout`: title, actions and list in the left column; the filter panel spans the right column
+   from the title's row down, so its top edge lines up with the title. One column on narrow viewports,
+   in the order title, filter, list. */
+.list-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  grid-template-areas:
+    "header filter"
+    "content filter";
+  grid-template-rows: auto 1fr;
+  align-items: start;
+  column-gap: 1rem;
+  row-gap: 1rem;
+}
+
+.list-page__header {
+  grid-area: header;
+  min-width: 0;
+}
+
+.list-page__filter {
+  grid-area: filter;
+  min-width: 0;
+}
+
+.list-page__content {
+  grid-area: content;
+  min-width: 0;
+}
+
+@media (max-width: 860px) {
+  .list-page {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "header"
+      "filter"
+      "content";
+    grid-template-rows: auto;
+  }
+}
+
+/* A required field's `*` (`RequiredMark`) and the form's one-line legend, shown only while the form has a mark. */
+.field-required {
+  color: var(--color-danger);
+}
+
+.field-required::after {
+  content: " *";
+}
+
+.form-required-legend {
+  display: none;
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+}
+
+.form-grid-wrap:has(.field-required) > .form-required-legend {
+  display: block;
 }

@@ -257,8 +257,8 @@ export function HeaderSearch({ api = searchApi }: { api?: SearchApi }) {
                 {live.error && <p style={{ margin: 0, color: "var(--color-danger)" }}>{live.error === "timeout" ? strings.search.timeout : live.error === "rate_limited" ? strings.search.rateLimited : strings.search.failed}</p>}
                 {live.settled && hits.length === 0 && <p className="text-muted" style={{ margin: 0 }}>{strings.search.noResults}</p>}
                 {groups.map((group) => (
-                  <div key={group.label} role="group" aria-label={group.label} className="stack" style={{ gap: "0.1rem" }}>
-                    <div className="text-muted" style={{ fontSize: "0.75rem", fontWeight: 600 }}>{group.label}</div>
+                  <div key={group.label} role="group" aria-label={group.label} className="stack" style={{ gap: 0 }}>
+                    <div className="text-muted search-group-heading">{group.label}</div>
                     {group.hits.map((hit) => {
                       const position = hits.indexOf(hit);
                       return (
@@ -272,7 +272,7 @@ export function HeaderSearch({ api = searchApi }: { api?: SearchApi }) {
                           onClick={() => openHit(hit)}
                           onMouseEnter={() => setActive(position)}
                         >
-                          <SearchHitSummary hit={hit} terms={terms} />
+                          <SearchHitSummary hit={hit} terms={terms} density="compact" />
                         </div>
                       );
                     })}

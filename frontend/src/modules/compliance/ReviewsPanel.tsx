@@ -190,7 +190,7 @@ function ReviewFormModal({
       <div className="stack">
         <FormGrid minColumn="18rem">
           <FormGridFull>
-            <TextField helpNotNeeded
+            <TextField helpNotNeeded required
               label="Frequency / description"
               ariaLabel="Frequency label"
               value={frequencyLabel}
@@ -198,9 +198,9 @@ function ReviewFormModal({
               placeholder="e.g. Annual security review"
             />
           </FormGridFull>
-          <DateField helpNotNeeded label="Next due date" value={nextDueDate} onChange={setNextDueDate} />
+          <DateField helpNotNeeded required label="Next due date" value={nextDueDate} onChange={setNextDueDate} />
           <TextField help={COMPLIANCE_HELP.complianceReviewRecurrence}
-            label="Recurs every (days, optional)"
+            label="Recurs every (days)"
             value={recurrenceDays}
             onChange={setRecurrenceDays}
             inputProps={{ min: 1, type: "number" }}

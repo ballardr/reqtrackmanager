@@ -313,7 +313,7 @@ export function EvidenceFormModal({
       <div className="stack">
         <FormGrid minColumn="18rem">
           <FormGridFull>
-            <TextField helpNotNeeded label="Title" ariaLabel="Evidence title" value={title} onChange={setTitle} />
+            <TextField helpNotNeeded required label="Title" ariaLabel="Evidence title" value={title} onChange={setTitle} />
           </FormGridFull>
           <FormGridFull>
             <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} rows={2} />
@@ -322,7 +322,8 @@ export function EvidenceFormModal({
           <DateField helpNotNeeded label="Issued date" value={issuedDate} onChange={setIssuedDate} />
           {!initial && (
             <DateField helpNotNeeded
-              label="Expiry date (optional — change later via Revalidate)"
+              label="Expiry date"
+              hint="Change it later with Revalidate."
               value={expiryDate}
               onChange={setExpiryDate}
             />
@@ -388,7 +389,7 @@ function RevalidateModal({
     <Modal title="Revalidate evidence" onClose={onCancel}>
       <div className="stack">
         <FormGrid minColumn="18rem">
-          <DateField helpNotNeeded label="New expiry date (optional)" value={newExpiryDate} onChange={setNewExpiryDate} />
+          <DateField helpNotNeeded label="New expiry date" value={newExpiryDate} onChange={setNewExpiryDate} />
           <FormGridFull>
             <TextAreaField helpNotNeeded label="Justification" value={justification} onChange={setJustification} rows={2} />
           </FormGridFull>

@@ -1,21 +1,22 @@
 /**
  * Module: modules/stakeholders/PeoplePage
  *
- * The project's one page for Personas, Stakeholders, Stakeholder Needs and Stakeholder groups, mounted at
+ * The project's one page for Personas, Stakeholders and Stakeholder groups, mounted at
  * `/projects/:projectId/modules/stakeholders/people` (`module.ts`, the "People" nav entry). The old
- * per-type list routes redirect here with the matching `?kind=`.
+ * per-type list routes redirect here with the matching `?kind=`. Stakeholder Needs are not people: they
+ * have their own tab beside this one (`NeedsPage`, `PeopleTabs`), and `?kind=need` redirects there.
  *
- * - **Kinds:** chips choose which kinds are listed (default: every kind the project has switched on, so a
- *   kind whose sub-component is off is simply absent). Several kinds share the combined `PeopleListView`;
- *   exactly one shows that kind's own list with its own columns and filters (`PersonaListView`,
- *   `StakeholderListView`, `NeedListView`, or the group manager). The choice lives in the URL.
+ * - **Kinds:** chips (each with the kind's icon) choose which kinds are listed (default: every kind the
+ *   project has switched on, so a kind whose sub-component is off is simply absent). Several kinds share
+ *   the combined `PeopleListView`; exactly one shows that kind's own list with its own columns and filters
+ *   (`PersonaListView`, `StakeholderListView`, or the group manager). The choice lives in the URL.
  * - **New:** one menu creates any kind. The create forms are the page's, so each list is shown without
  *   its own New button; "Save and activate" sits beside Save in them (activation has the same gate as
  *   creation, so it never bypasses an approval).
  * - Detail pages are unchanged: a row opens its own record, an org-owned one inside this project.
  */
 import { useMemo, useRef, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { api } from "../../api/client";
 import type { OrgUser, Project } from "../../api/types";
@@ -30,13 +31,14 @@ import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { useProjectEnabledModules } from "../../hooks/useProjectEnabledModules";
-import { projectNeedApi, projectPersonaApi, projectStakeholderApi, projectStakeholderGroupApi } from "./api";
+import { projectPersonaApi, projectStakeholderApi, projectStakeholderGroupApi } from "./api";
 import { createStakeholderWithGroups } from "./createStakeholder";
-import { NeedFormModal } from "./NeedFormModal";
-import { NeedListView } from "./NeedListView";
+import { PeopleKindIcon } from "./PeopleKindIcon";
 import { PeopleListView } from "./PeopleListView";
+import { PeopleTabs } from "./PeopleTabs";
+import { peoplePanelProps } from "./peopleTabState";
 import {
-  PEOPLE_KIND_LABEL, PEOPLE_KIND_PLURAL_LABEL, enabledKinds, groupRow, kindQuery, needRow, personaRow,
+  PEOPLE_KIND_LABEL, PEOPLE_KIND_PLURAL_LABEL, enabledKinds, groupRow, kindQuery, namesNeedKind, needsEnabled, personaRow,
   selectedKinds, stakeholderRow, type PeopleKind, type PeopleRow,
 } from "./peopleRows";
 import { PersonaFormModal } from "./PersonaFormModal";
@@ -47,7 +49,7 @@ import { StakeholderGroupFormModal } from "./StakeholderGroupFormModal";
 import { StakeholderGroupsPanel } from "./StakeholderGroupsPanel";
 import { StakeholderListView } from "./StakeholderListView";
 import type {
-  EffectivePersonaType, Need, NeedFieldValues, Persona, PersonaFieldValues, Stakeholder, StakeholderFieldValues,
+  EffectivePersonaType, Persona, PersonaFieldValues, Stakeholder, StakeholderFieldValues,
   StakeholderGroup, StakeholderGroupFieldValues,
 } from "./types";
 import { useStakeholderScheme } from "./useStakeholderScheme";
@@ -65,21 +67,19 @@ export function PeoplePage() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const { showToast } = useToast();
-  const commitNeedLinks = useCommitQuickLinks(projectId ?? "", "stakeholder_need");
   const commitPersonaLinks = useCommitQuickLinks(projectId ?? "", "persona");
   const commitStakeholderLinks = useCommitQuickLinks(projectId ?? "", "stakeholder");
-  const commitNeedTags = useCommitTags(projectId ?? "", "stakeholder_need");
   const commitPersonaTags = useCommitTags(projectId ?? "", "persona");
   const commitStakeholderTags = useCommitTags(projectId ?? "", "stakeholder");
   const { modules, loaded } = useProjectEnabledModules(projectId ?? null);
   const disabled = modules.find((m) => m.module_key === MODULE_KEY)?.disabled_sub_components;
   const enabled = useMemo(() => enabledKinds(disabled ?? []), [disabled]);
+  const hasNeeds = needsEnabled(disabled ?? []);
   const selected = selectedKinds(params.get("kind"), enabled);
   const only = selected.length === 1 ? selected[0] : null;
 
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [stakeholders, setStakeholders] = useState<Stakeholder[]>([]);
-  const [needs, setNeeds] = useState<Need[]>([]);
   const [groups, setGroups] = useState<StakeholderGroup[]>([]);
   const [personaTypes, setPersonaTypes] = useState<EffectivePersonaType[]>([]);
   const [stakeholderTypes, setStakeholderTypes] = useState<EffectivePersonaType[]>([]);
@@ -112,16 +112,14 @@ export function PeoplePage() {
         on("persona") ? projectPersonaApi.listTypes(projectId) : [],
         on("stakeholder") ? projectStakeholderApi.list(projectId, { include_archived: includeArchived, include_hidden: includeHidden, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }) : [],
         on("stakeholder") ? projectStakeholderApi.listTypes(projectId) : [],
-        on("need") ? projectNeedApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }) : [],
         on("group") ? projectStakeholderGroupApi.list(projectId, { tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }).catch(() => [] as StakeholderGroup[]) : [],
       ])
-        .then(([p, pt, s, st, n, g]) => {
+        .then(([p, pt, s, st, g]) => {
           if (mine !== loadSeq.current) return;
           setPersonas(p as Persona[]);
           setPersonaTypes(pt as EffectivePersonaType[]);
           setStakeholders(s as Stakeholder[]);
           setStakeholderTypes(st as EffectivePersonaType[]);
-          setNeeds(n as Need[]);
           setGroups(g as StakeholderGroup[]);
           setLoadError(null);
           setData("ready");
@@ -146,6 +144,13 @@ export function PeoplePage() {
   );
 
   if (!projectId) return null;
+  // The retired Need kind and a project with only Needs on both land on the Needs tab.
+  if (namesNeedKind(params.get("kind")) && loaded && hasNeeds) {
+    return <Navigate to={`/projects/${projectId}/modules/stakeholders/needs`} replace />;
+  }
+  if (loaded && enabled.length === 0 && hasNeeds) {
+    return <Navigate to={`/projects/${projectId}/modules/stakeholders/needs`} replace />;
+  }
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (!loaded || (enabled.length > 0 && data === "loading")) return <Spinner />;
   if (enabled.length === 0) return <p className="text-muted">{NOT_AVAILABLE}</p>;
@@ -168,7 +173,6 @@ export function PeoplePage() {
   const rows: PeopleRow[] = [
     ...(selected.includes("persona") ? personas.map(personaRow) : []),
     ...(selected.includes("stakeholder") ? stakeholders.map(stakeholderRow) : []),
-    ...(selected.includes("need") ? needs.map(needRow) : []),
     ...(selected.includes("group") ? groups.map(groupRow) : []),
   ];
 
@@ -178,7 +182,6 @@ export function PeoplePage() {
     const path: Record<PeopleKind, string> = {
       persona: `${rowBase}/personas/${row.id}`,
       stakeholder: `${rowBase}/stakeholders/${row.id}`,
-      need: `${rowBase}/needs/${row.id}`,
       group: `${rowBase}/groups?group=${row.id}`,
     };
     navigate(path[row.kind]);
@@ -218,31 +221,37 @@ export function PeoplePage() {
           { label: "Stakeholder from organisation user", onSelect: () => setCreating("stakeholder_from_user") },
         ]
       : []),
-    ...(enabled.includes("need") ? [{ label: "Stakeholder Need", onSelect: () => setCreating("need") }] : []),
     ...(enabled.includes("group") ? [{ label: "Stakeholder Group", onSelect: () => setCreating("group") }] : []),
   ];
 
   const hiddenControls = enabled.includes("persona") || enabled.includes("stakeholder");
 
+  const newMenu = <MenuButton label="New" primary items={newItems} menuLabel="New person or group" />;
+  const tabsStrip = <PeopleTabs projectId={projectId} active="people" hasPeople hasNeeds={hasNeeds} />;
+  const kindChips = enabled.length > 1 ? (
+      <ToggleChips<PeopleKind>
+        ariaLabel="Kinds of record"
+        options={enabled.map((k) => ({
+          key: k,
+          label: PEOPLE_KIND_PLURAL_LABEL[k],
+          icon: <PeopleKindIcon kind={k} labelled={false} />,
+          count: { persona: personas, stakeholder: stakeholders, group: groups }[k].length,
+        }))}
+        selected={selected}
+        onToggle={toggleKind}
+      />
+  ) : null;
+  /** The page header the lists own, so the filter panel starts at the title (`ListPageLayout`). */
+  const page = {
+    title: "People",
+    actions: newMenu,
+    tabs: tabsStrip,
+    contentProps: peoplePanelProps("people", true, hasNeeds),
+    above: kindChips,
+  };
+
   return (
     <div className="container stack">
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <h1 style={{ margin: 0 }}>People</h1>
-        <MenuButton label="New" primary items={newItems} menuLabel="New person or group" />
-      </div>
-      {enabled.length > 1 && (
-        <ToggleChips<PeopleKind>
-          ariaLabel="Kinds of record"
-          options={enabled.map((k) => ({
-            key: k,
-            label: PEOPLE_KIND_PLURAL_LABEL[k],
-            count: { persona: personas, stakeholder: stakeholders, need: needs, group: groups }[k].length,
-          }))}
-          selected={selected}
-          onToggle={toggleKind}
-        />
-      )}
-
       {only === "persona" && (
         <PersonaListView
           personas={personas}
@@ -261,6 +270,7 @@ export function PeoplePage() {
           onOpen={(p) => openRow(personaRow(p))}
           tagFilter={tagFilterProp}
           projectScope={projectScope}
+          page={page}
         />
       )}
       {only === "stakeholder" && (
@@ -286,22 +296,23 @@ export function PeoplePage() {
           onOpen={(s) => openRow(stakeholderRow(s))}
           tagFilter={tagFilterProp}
           projectScope={projectScope}
+          page={page}
         />
       )}
-      {only === "need" && (
-        <NeedListView
-          needs={needs}
-          ariaLabel="Stakeholder Needs"
-          sectionKey="stakeholders.needs.list"
-          emptyText="No Stakeholder Needs recorded for this project yet."
-          includeArchived={includeArchived}
-          onIncludeArchivedChange={setIncludeArchived}
-          onOpen={(n) => openRow(needRow(n))}
-          tagFilter={tagFilterProp}
-          projectScope={projectScope}
-        />
+      {only === "group" && (
+        // The group manager is not a filtered list, so it keeps a plain header above it.
+        <div className="stack">
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <h1 style={{ margin: 0 }}>People</h1>
+            {newMenu}
+          </div>
+          {tabsStrip}
+          <div className="stack" {...peoplePanelProps("people", true, hasNeeds)}>
+            {kindChips}
+            <StakeholderGroupsPanel key={refreshKey} projectId={projectId} initialGroupId={params.get("group")} />
+          </div>
+        </div>
       )}
-      {only === "group" && <StakeholderGroupsPanel key={refreshKey} projectId={projectId} initialGroupId={params.get("group")} />}
       {only === null && (
         <PeopleListView
           rows={rows}
@@ -315,6 +326,7 @@ export function PeoplePage() {
           onOpen={openRow}
           tagFilter={tagFilterProp}
           projectScope={projectScope}
+          page={page}
         />
       )}
 
@@ -357,17 +369,6 @@ export function PeoplePage() {
           error={createError} onCancel={cancelCreate}
           onSave={(values) =>
             create(async () => { await projectStakeholderApi.createFromUser(projectId, values); }, "Stakeholder created from user.")}
-        />
-      )}
-      {creating === "need" && (
-        <NeedFormModal
-          projectId={projectId} error={createError} onCancel={cancelCreate}
-          onSave={(values: NeedFieldValues, quickLinks, tags) =>
-            create(async () => {
-              const created = await projectNeedApi.create(projectId, values);
-              await commitNeedLinks(created.id, quickLinks);
-              await commitNeedTags(created.id, tags);
-            }, "Stakeholder Need created.")}
         />
       )}
       {creating === "group" && (

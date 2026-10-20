@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { installCleanupHook, chooseRecordAction, recordActionNames } from "../../e2e-workflows/helpers";
-import { API_BASE_URL, openNew, openPeople, setUpOrg, statusBadge } from "./helpers";
+import { API_BASE_URL, openNeeds, setUpOrg, statusBadge } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -22,11 +22,11 @@ test.describe("Stakeholders & Personas: Stakeholder Need", () => {
     const { suffix, project } = await setUpOrg(page, "Need");
     const name = `Diagnose faults ${suffix}`;
 
-    await openPeople(page, project.id, "need");
+    await openNeeds(page, project.id);
     await expect(page.getByText("No Stakeholder Needs recorded for this project yet.")).toBeVisible();
 
-    // --- Create (a Modal layer).
-    await openNew(page, "Stakeholder Need");
+    // --- Create (a Modal layer), from the Needs tab's own New button.
+    await page.getByRole("button", { name: "New Stakeholder Need" }).click();
     const dialog = page.getByRole("dialog", { name: "New Stakeholder Need" });
     await dialog.getByLabel("Need name").fill(name);
     await dialog.getByLabel("Need", { exact: true }).fill("Find out what is wrong without a laptop.");
@@ -95,7 +95,7 @@ test.describe("Stakeholders & Personas: Stakeholder Need", () => {
     await page.getByRole("button", { name: "Add to Requirements it gave rise to" }).click();
     await page.getByRole("dialog", { name: "Add to Requirements it gave rise to" }).getByLabel("Requirement it gave rise to").selectOption({ label: `${requirement.unique_code} ${requirementName}` });
     await page.getByRole("dialog", { name: "Add to Requirements it gave rise to" }).getByRole("button", { name: "Add", exact: true }).click();
-    await expect(page.getByRole("link", { name: `${requirement.unique_code} ${requirementName}` })).toBeVisible();
+    await expect(page.getByRole("link", { name: requirementName })).toBeVisible();
 
     // --- The Stakeholder's and the Persona's pages list the need, read-only, with its status label.
     await page.goto(`/projects/${project.id}/modules/stakeholders/stakeholders/${stakeholder.id}`);

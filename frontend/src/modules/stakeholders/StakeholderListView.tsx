@@ -36,7 +36,8 @@ import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { branchNames, descendantIds, groupPath } from "./groupTree";
 import type { TagFilterState } from "../../hooks/useTagFilter";
 import type { ProjectScopeState } from "../../hooks/useProjectScope";
-import { RecordListView } from "./RecordListView";
+import { PeopleKindIcon } from "./PeopleKindIcon";
+import { RecordListView, type RecordListPage } from "./RecordListView";
 import { StakeholderFormModal } from "./StakeholderFormModal";
 import { StakeholderGroupFilterFields } from "./StakeholderGroupFilterFields";
 import { StakeholderFromUserModal } from "./StakeholderFromUserModal";
@@ -66,6 +67,7 @@ export function StakeholderListView({
   onOpen,
   tagFilter,
   projectScope,
+  page,
   onCreate,
   onCreateFromUser,
 }: {
@@ -98,6 +100,8 @@ export function StakeholderListView({
   tagFilter?: { projectId: string; filter: TagFilterState };
   /** The project page's list scope (state kept by the page); omit where related projects are not offered. */
   projectScope?: ProjectScopeState;
+  /** The page header (title, actions, tabs) this list owns when it is a whole page. */
+  page?: RecordListPage;
   /** Resolves on success; a rejection keeps the modal open and shows its message. `groupIds` are the groups chosen on the form. Omit when stakeholders are created elsewhere. */
   onCreate?: (values: StakeholderFieldValues, groupIds: string[]) => Promise<void>;
   /** Same contract, for the "Add from org user" modal; omit to leave that button out. */
@@ -138,6 +142,7 @@ export function StakeholderListView({
         statusTone={STAKEHOLDER_STATUS_TONE}
         scopeLabels={STAKEHOLDER_SCOPE_LABEL}
         typeName={(s) => s.stakeholder_type_name}
+        nameIcon={() => <PeopleKindIcon kind="stakeholder" />}
         searchText={(s) => `${s.unique_code} ${s.name} ${s.role} ${s.organisation_group}`}
         columnsBeforeType={[{ key: "role", label: "Role", render: (s) => s.role || "—" }]}
         columnsAfterScope={[
@@ -199,6 +204,7 @@ export function StakeholderListView({
         onOpen={onOpen}
       tagFilter={tagFilter}
       projectScope={projectScope}
+      page={page}
         onCreate={onCreate && (({ group_ids: groupIds = [], ...values }) => onCreate(values as StakeholderFieldValues, groupIds))}
         renderCreateModal={onCreate ? (props) => (
           <StakeholderFormModal

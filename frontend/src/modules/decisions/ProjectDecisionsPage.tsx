@@ -36,6 +36,7 @@ import type { OrgUser, Project } from "../../api/types";
 import { api } from "../../api/client";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ListPageLayout } from "../../components/ListPageLayout";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
@@ -135,11 +136,41 @@ export function ProjectDecisionsPage() {
 
   return (
     <div className="container stack">
-      <h1 style={{ margin: 0 }}>Decisions</h1>
-      <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
-        New decision
-      </button>
-      <div className="side-grid">
+      <ListPageLayout
+        title="Decisions"
+        actions={
+          <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
+            New decision
+          </button>
+        }
+        filter={
+          <FilterPanel
+            sectionKey="decisions.list" total={decisions.length}
+            search={search} onSearchChange={setSearch} searchPlaceholder="Search decisions…" searchAriaLabel="Search decisions"
+          >
+            <FilterField label="Status">
+              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as DecisionStatus | "")}>
+                <option value="">All statuses</option>
+                {Object.entries(DECISION_STATUS_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterField label="Decision type">
+              <select className="input" value={decisionTypeFilter} onChange={(e) => setDecisionTypeFilter(e.target.value)}>
+                <option value="">All types</option>
+                {decisionTypes.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterCheckbox label="Owned by me or my groups" checked={ownedByMe} onChange={setOwnedByMe} />
+            <ProjectScopeFilter scope={projectScope} />
+            {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
+          </FilterPanel>
+        }
+      >
         <DirectoryTable
           ariaLabel="Decisions"
           columns={columns}
@@ -148,32 +179,7 @@ export function ProjectDecisionsPage() {
           onRowClick={setSelected}
           emptyState={<p className="text-muted">No Decisions recorded for this project yet.</p>}
         />
-        <FilterPanel
-          sectionKey="decisions.list" total={decisions.length}
-          search={search} onSearchChange={setSearch} searchPlaceholder="Search decisions…" searchAriaLabel="Search decisions"
-        >
-          <FilterField label="Status">
-            <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as DecisionStatus | "")}>
-              <option value="">All statuses</option>
-              {Object.entries(DECISION_STATUS_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label="Decision type">
-            <select className="input" value={decisionTypeFilter} onChange={(e) => setDecisionTypeFilter(e.target.value)}>
-              <option value="">All types</option>
-              {decisionTypes.map((t) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterCheckbox label="Owned by me or my groups" checked={ownedByMe} onChange={setOwnedByMe} />
-          <ProjectScopeFilter scope={projectScope} />
-          {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
-          <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
-        </FilterPanel>
-      </div>
+      </ListPageLayout>
 
       {creating && (
         <DecisionFormModal

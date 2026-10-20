@@ -274,7 +274,7 @@ export const DerivedOrderWithFloorAndOptionalField: Story = {
           fields={[
             { key: "name", getValue: (i) => i.name, placeholder: "Name", ariaLabel: "Level name" },
             { key: "weight", getValue: (i) => i.weight, placeholder: "Weight", ariaLabel: "Level weight", inputType: "number" },
-            { key: "note", getValue: (i) => i.note, placeholder: "Guidance (optional)", ariaLabel: "Level guidance", optional: true },
+            { key: "note", getValue: (i) => i.note, placeholder: "Guidance", ariaLabel: "Level guidance", optional: true },
           ]}
           getReassignLabel={(i) => i.name}
           onRename={async () => {}}

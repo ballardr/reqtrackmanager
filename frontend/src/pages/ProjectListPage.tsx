@@ -17,6 +17,7 @@ import { collapseProjectRoles, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
+import { ListPageLayout } from "../components/ListPageLayout";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Modal } from "../components/Modal";
 import { ProjectHierarchyLabels } from "../components/ProjectHierarchyLabels";
@@ -305,364 +306,364 @@ export function ProjectListPage() {
 
   return (
     <div className="stack">
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <h1 style={{ margin: 0 }}>{strings.projects.title}</h1>
-        <button className="btn btn-primary" onClick={() => setShowNewForm(true)}>
-          <Plus /> {strings.projects.newProject}
-        </button>
-      </div>
-
-      {/* Style guide "Pattern: modal dialog for entity create/rename" —
-          a brand-new entity opens in a Modal, not a permanently-visible
-          inline block that reflows the list underneath it. */}
-      {showNewForm && (
-        <Modal title={strings.projects.newProject} onClose={closeNewForm} size="lg">
-          <div className="stack">
-            <FormGrid minColumn="18rem">
-              {orgs.length > 1 && (
-                <LabeledSelect helpNotNeeded
-                  label={orgLabelCap}
-                  value={newOrgId}
-                  onChange={setNewOrgId}
-                  options={orgs.map((o) => ({ value: o.id, label: o.name }))}
-                  placeholder={null}
-                  inputProps={{ autoFocus: true }}
-                />
-              )}
-              <TextField helpNotNeeded
-                label={strings.projects.name}
-                value={newName}
-                onChange={setNewName}
-                inputProps={{ autoFocus: orgs.length <= 1 }}
-              />
-              {newOrg?.project_code_policy.assignment === "manual" && !importFile && (
-                <TextField helpNotNeeded
-                  label={strings.projects.code}
-                  value={newCode}
-                  onChange={(next) => setNewCode(next.toUpperCase())}
-                  hint={strings.projects.codeHint(describeCodePolicy(newOrg.project_code_policy))}
-                  inputProps={{ maxLength: newOrg.project_code_policy.max_length }}
-                />
-              )}
-              {newOrg?.project_code_policy.assignment === "auto" && (
-                <FormGridFull>
-                  <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.projects.codeAutomatic}</p>
-                </FormGridFull>
-              )}
-              <FormGridFull>
-                <TextAreaField helpNotNeeded label={strings.projects.summary} value={newSummary} onChange={setNewSummary} rows={2} />
-              </FormGridFull>
-              {!importFile && templateOptions.length > 0 && (
-                <LabeledSelect helpNotNeeded
-                  label={strings.projects.useTemplate}
-                  value={templateProjectId}
-                  onChange={setTemplateProjectId}
-                  options={templateOptions.map((p) => ({ value: p.id, label: p.name }))}
-                  placeholder={strings.projects.noTemplate}
-                />
-              )}
-              <LabeledSelect helpNotNeeded
-                label={strings.admin.visibility}
-                value={newVisibility}
-                onChange={(next) => setNewVisibility(next as "only_specified" | "org_wide")}
-                options={[{ value: "only_specified", label: strings.admin.visibilityOnlySpecified }, { value: "org_wide", label: strings.admin.visibilityOrgWide }]}
-                placeholder={null}
-                hint={strings.admin.visibilityHint(orgLabel)}
-              />
-              {/* Small usability fix: picking an import file below used to silently hide
-                  the template picker above with no explanation — this note
-                  replaces the silent disappearance, rather than a bigger
-                  redesign of the two fields' relationship. */}
-              {importFile && templateOptions.length > 0 && (
-                <FormGridFull>
-                  <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.projects.importIgnoresTemplate}</p>
-                </FormGridFull>
-              )}
-              {/* can_be_parent-gated (docs/decisions.md) — hidden entirely
-                  when there's nothing eligible to pick, rather than showing a
-                  picker with only "None" in it. */}
-              {showParentField && (
-                <>
-                  <LabeledSelect help={strings.help.projectParent}
-                    label={strings.projects.parentProject}
-                    value={parentProjectId}
-                    onChange={(next) => {
-                      setParentProjectId(next);
-                      // Same reasoning as ProjectAdminPage.tsx's parent select:
-                      // don't let a mode confirmed for one candidate parent
-                      // silently carry over to a different one before submit.
-                      if (MODES_NEEDING_CONFIRMATION.includes(roleInheritanceMode)) {
-                        setRoleInheritanceMode("none");
-                      }
-                    }}
-                    options={parentOptions.map((p) => ({ value: p.id, label: p.name }))}
-                    placeholder={strings.projects.noParent}
-                  />
-                  {parentProjectId && (
-                    <>
-                      <LabeledSelect help={strings.help.projectInheritAccess}
-                        label={strings.projects.inheritFromParent}
-                        value={roleInheritanceMode}
-                        onChange={(next) => requestInheritModeChange(next as ProjectRoleInheritanceMode)}
-                        options={(Object.keys(PROJECT_ROLE_INHERITANCE_MODE_LABEL) as ProjectRoleInheritanceMode[]).map((m) => ({
-                          value: m, label: PROJECT_ROLE_INHERITANCE_MODE_LABEL[m],
-                        }))}
-                        placeholder={null}
-                      />
-                      {roleInheritanceMode === "mirror_role" && (
-                        <LabeledSelect help={strings.help.projectRoleToMirror}
-                          label={strings.projects.inheritModeFilterRole}
-                          value={roleInheritanceFilterRole}
-                          onChange={(next) => setRoleInheritanceFilterRole(next as ProjectRole)}
-                          options={[{ value: "project_manager", label: PROJECT_ROLE_LABEL.project_manager }, { value: "project_administrator", label: PROJECT_ROLE_LABEL.project_administrator }, { value: "stakeholder", label: PROJECT_ROLE_LABEL.stakeholder }]}
-                          placeholder={null}
-                        />
-                      )}
-                    </>
-                  )}
-                </>
-              )}
-              <FormGridFull>
-                <FileField helpNotNeeded
-                  label={strings.projects.importFromBundle} accept=".zip,application/zip"
-                  onChange={setImportFile}
-                />
-              </FormGridFull>
-            </FormGrid>
-            <FormActions
-              error={createError}
-              onCancel={closeNewForm}
-              onSave={createProject}
-              saveLabel={strings.common.create}
-              saveDisabled={!newName || !newOrgId || (newOrg?.project_code_policy.assignment === "manual" && !importFile && !newCode)}
-            />
-          </div>
-        </Modal>
-      )}
-      {pendingInheritMode && selectedParent && (
-        <ConfirmDialog
-          title={strings.projects.inheritConfirmTitle}
-          message={
-            pendingInheritMode === "mirror_role"
-              ? strings.projects.inheritConfirmMirrorRole(selectedParent.name, PROJECT_ROLE_LABEL[roleInheritanceFilterRole])
-              : strings.projects.inheritConfirmMirrorAll(selectedParent.name)
-          }
-          confirmLabel={strings.projects.inheritConfirmButton}
-          onCancel={() => setPendingInheritMode(null)}
-          onConfirm={() => {
-            setRoleInheritanceMode(pendingInheritMode);
-            setPendingInheritMode(null);
-          }}
-        />
-      )}
-      {importWarnings && importWarnings.length > 0 && (
-        <div className="card stack" style={{ borderColor: "var(--color-warning, #b58900)" }}>
-          <strong>{strings.projects.importWarnings}</strong>
-          <ul style={{ margin: 0 }}>
-            {importWarnings.map((w, i) => <li key={i}>{w}</li>)}
-          </ul>
-        </div>
-      )}
-
-      <div className="side-grid">
-        <div className="stack">
-          <div className="row" style={{ justifyContent: "flex-end" }}>
-            <ViewToggle mode={viewMode} onChange={setViewMode} showTreeOption={hasHierarchy} />
-          </div>
-
-          {viewMode === "tree" && hasHierarchy && (
-            <div className="stack">
-              {orgsWithHierarchy.length > 1 && (
-                <select className="input" style={{ maxWidth: 280 }} aria-label={orgLabelCap} value={treeOrgId} onChange={(e) => setTreeOrgId(e.target.value)}>
-                  {orgsWithHierarchy.map((o) => (
+      <ListPageLayout
+        title={strings.projects.title}
+        actions={
+          <button className="btn btn-primary" onClick={() => setShowNewForm(true)}>
+            <Plus /> {strings.projects.newProject}
+          </button>
+        }
+        filter={
+          <FilterPanel
+            sectionKey="projectListFilters"
+            matching={total}
+            total={totalUnfiltered}
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder={strings.projects.search}
+          >
+            <FilterCheckbox label={strings.projects.favouritesOnly} checked={favoriteOnly} onChange={setFavoriteOnly} />
+            <FilterField label="Status">
+              <select className="input" value={showArchived ? "archived" : "active"} onChange={(e) => setShowArchived(e.target.value === "archived")}>
+                <option value="active">{strings.projects.active}</option>
+                <option value="archived">{strings.projects.archived}</option>
+              </select>
+            </FilterField>
+            {orgs.length > 1 && (
+              <FilterField label="Organisation">
+                <select className="input" value={orgFilter} onChange={(e) => setOrgFilter(e.target.value)}>
+                  <option value="">{strings.projects.allOrganisations(orgLabelPlural)}</option>
+                  {orgs.map((o) => (
                     <option key={o.id} value={o.id}>{o.name}</option>
                   ))}
                 </select>
-              )}
-              {!treeNodes && <Spinner />}
-              {treeNodes && (
-                <div className="card">
-                  <ProjectTree nodes={treeNodes} onAddChild={(parentId) => openAddSubProject(parentId, treeOrgId)} />
-                </div>
-              )}
-            </div>
-          )}
-
-          {viewMode !== "tree" && !projects && <Spinner />}
-          {viewMode !== "tree" && projects && projects.length === 0 && <p className="text-muted">{strings.projects.empty}</p>}
-          {projects && projects.length > 0 && viewMode === "tiles" && (
-            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
-              {projects.map((p) => (
-                <div key={p.id} className="card stack" style={{ gap: "0.5rem" }}>
-                  <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "nowrap" }}>
-                    <Link
-                      to={`/projects/${p.id}`}
-                      style={{
-                        fontWeight: 600, fontSize: "1.05rem", minWidth: 0, overflow: "hidden",
-                        textOverflow: "ellipsis", whiteSpace: "nowrap",
-                      }}
-                      title={p.name}
-                    >
-                      {p.name}
-                    </Link>
-                    <button
-                      className="btn"
-                      onClick={() => toggleFavorite(p)}
-                      title={p.is_favorite ? strings.projects.unfavorite : strings.projects.favorite}
-                      aria-label={p.is_favorite ? strings.projects.unfavorite : strings.projects.favorite}
-                      style={{ flexShrink: 0 }}
-                    >
-                      <Star fill={p.is_favorite ? "currentColor" : "none"} />
-                    </button>
-                  </div>
-                  {showOrgColumn && <div className="text-muted" style={{ fontSize: "0.8rem" }}>{p.organization_name}</div>}
-                  <ProjectHierarchyLabels project={p} />
-                  {p.current_stage_name && (
-                    <FilterBadge
-                      active={stageStatusFilter === p.current_stage_status}
-                      onClick={() => toggleStageStatusFilter(p.current_stage_status)}
-                      style={{ alignSelf: "flex-start" }}
-                    >
-                      {stageBadgeText(p.current_stage_name, p.current_stage_status)}
-                    </FilterBadge>
-                  )}
-                  <p
-                    className="text-muted"
-                    style={{
-                      margin: 0, marginTop: "0.15rem", flex: 1,
-                      display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden",
-                    }}
-                  >
-                    {p.summary || "—"}
-                  </p>
-                  <div className="text-muted" style={{ fontSize: "0.85rem" }}>
-                    {strings.projects.roles}: {collapseProjectRoles(p.my_roles).map((r) => PROJECT_ROLE_LABEL[r]).join(", ") || "—"}
-                  </div>
-                  <div className="text-muted" style={{ fontSize: "0.85rem" }}>
-                    {strings.projects.requirementCount}: {p.requirement_count}
-                  </div>
-                  <div className="text-muted" style={{ fontSize: "0.8rem" }}>
-                    {strings.projects.updated}: {new Date(p.updated_at).toLocaleString()}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          {projects && projects.length > 0 && viewMode === "list" && (
-            <div className="card" style={{ overflowX: "auto" }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th />
-                    <th>Name</th>
-                    {showOrgColumn && <th>{strings.projects.organisation(orgLabelCap)}</th>}
-                    <th>{strings.projects.stage}</th>
-                    <th>{strings.projects.roles}</th>
-                    <th>{strings.projects.requirementCount}</th>
-                    <th>{strings.projects.updated}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {projects.map((p) => (
-                    <tr key={p.id}>
-                      <td>
-                        <button
-                          className="btn"
-                          onClick={() => toggleFavorite(p)}
-                          title={p.is_favorite ? strings.projects.unfavorite : strings.projects.favorite}
-                          aria-label={p.is_favorite ? strings.projects.unfavorite : strings.projects.favorite}
-                        >
-                          <Star fill={p.is_favorite ? "currentColor" : "none"} />
-                        </button>
-                      </td>
-                      <td>
-                        <Link to={`/projects/${p.id}`}>{p.name}</Link>
-                        <div
-                          className="text-muted"
-                          style={{
-                            fontSize: "0.85rem", marginTop: "0.15rem",
-                            display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
-                          }}
-                        >
-                          {p.summary || "—"}
-                        </div>
-                        <ProjectHierarchyLabels project={p} />
-                      </td>
-                      {showOrgColumn && <td className="text-muted">{p.organization_name}</td>}
-                      <td>
-                        {p.current_stage_name && (
-                          <FilterBadge
-                            active={stageStatusFilter === p.current_stage_status}
-                            onClick={() => toggleStageStatusFilter(p.current_stage_status)}
-                          >
-                            {stageBadgeText(p.current_stage_name, p.current_stage_status)}
-                          </FilterBadge>
-                        )}
-                      </td>
-                      <td className="text-muted">{collapseProjectRoles(p.my_roles).map((r) => PROJECT_ROLE_LABEL[r]).join(", ") || "—"}</td>
-                      <td className="text-muted">{p.requirement_count}</td>
-                      <td className="text-muted">{new Date(p.updated_at).toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {viewMode !== "tree" && projects && (
-            <LoadMoreButton loaded={projects.length} total={total} onClick={() => loadProjects(projects.length, true)} />
-          )}
-        </div>
-
-        <FilterPanel
-          sectionKey="projectListFilters"
-          matching={total}
-          total={totalUnfiltered}
-          search={search}
-          onSearchChange={setSearch}
-          searchPlaceholder={strings.projects.search}
-        >
-          <FilterCheckbox label={strings.projects.favouritesOnly} checked={favoriteOnly} onChange={setFavoriteOnly} />
-          <FilterField label="Status">
-            <select className="input" value={showArchived ? "archived" : "active"} onChange={(e) => setShowArchived(e.target.value === "archived")}>
-              <option value="active">{strings.projects.active}</option>
-              <option value="archived">{strings.projects.archived}</option>
-            </select>
-          </FilterField>
-          {orgs.length > 1 && (
-            <FilterField label="Organisation">
-              <select className="input" value={orgFilter} onChange={(e) => setOrgFilter(e.target.value)}>
-                <option value="">{strings.projects.allOrganisations(orgLabelPlural)}</option>
-                {orgs.map((o) => (
-                  <option key={o.id} value={o.id}>{o.name}</option>
-                ))}
+              </FilterField>
+            )}
+            <FilterField label="Role">
+              <select className="input" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as ProjectRole | "")}>
+                <option value="">{strings.projects.allRoles}</option>
+                <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
+                <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
+                <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
+                <option value="member">{PROJECT_ROLE_LABEL.member}</option>
               </select>
             </FilterField>
-          )}
-          <FilterField label="Role">
-            <select className="input" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as ProjectRole | "")}>
-              <option value="">{strings.projects.allRoles}</option>
-              <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
-              <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
-              <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
-              <option value="member">{PROJECT_ROLE_LABEL.member}</option>
-            </select>
-          </FilterField>
-          <FilterField label={strings.projects.stageStatusLabel}>
-            <select
-              className="input"
-              value={stageStatusFilter}
-              onChange={(e) => setStageStatusFilter(e.target.value as StageStatus | "")}
-            >
-              <option value="">{strings.projects.allStages}</option>
-              <option value="scoping">{STAGE_STATUS_LABEL.scoping}</option>
-              <option value="review">{STAGE_STATUS_LABEL.review}</option>
-              <option value="approved">{STAGE_STATUS_LABEL.approved}</option>
-              <option value="completed">{STAGE_STATUS_LABEL.completed}</option>
-              <option value="archived">{STAGE_STATUS_LABEL.archived}</option>
-            </select>
-          </FilterField>
-        </FilterPanel>
-      </div>
+            <FilterField label={strings.projects.stageStatusLabel}>
+              <select
+                className="input"
+                value={stageStatusFilter}
+                onChange={(e) => setStageStatusFilter(e.target.value as StageStatus | "")}
+              >
+                <option value="">{strings.projects.allStages}</option>
+                <option value="scoping">{STAGE_STATUS_LABEL.scoping}</option>
+                <option value="review">{STAGE_STATUS_LABEL.review}</option>
+                <option value="approved">{STAGE_STATUS_LABEL.approved}</option>
+                <option value="completed">{STAGE_STATUS_LABEL.completed}</option>
+                <option value="archived">{STAGE_STATUS_LABEL.archived}</option>
+              </select>
+            </FilterField>
+          </FilterPanel>
+        }
+      >
+        {/* Style guide "Pattern: modal dialog for entity create/rename" —
+            a brand-new entity opens in a Modal, not a permanently-visible
+            inline block that reflows the list underneath it. */}
+        {showNewForm && (
+          <Modal title={strings.projects.newProject} onClose={closeNewForm} size="lg">
+            <div className="stack">
+              <FormGrid minColumn="18rem">
+                {orgs.length > 1 && (
+                  <LabeledSelect helpNotNeeded required
+                    label={orgLabelCap}
+                    value={newOrgId}
+                    onChange={setNewOrgId}
+                    options={orgs.map((o) => ({ value: o.id, label: o.name }))}
+                    placeholder={null}
+                    inputProps={{ autoFocus: true }}
+                  />
+                )}
+                <TextField helpNotNeeded required
+                  label={strings.projects.name}
+                  value={newName}
+                  onChange={setNewName}
+                  inputProps={{ autoFocus: orgs.length <= 1 }}
+                />
+                {newOrg?.project_code_policy.assignment === "manual" && !importFile && (
+                  <TextField helpNotNeeded required
+                    label={strings.projects.code}
+                    value={newCode}
+                    onChange={(next) => setNewCode(next.toUpperCase())}
+                    hint={strings.projects.codeHint(describeCodePolicy(newOrg.project_code_policy))}
+                    inputProps={{ maxLength: newOrg.project_code_policy.max_length }}
+                  />
+                )}
+                {newOrg?.project_code_policy.assignment === "auto" && (
+                  <FormGridFull>
+                    <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.projects.codeAutomatic}</p>
+                  </FormGridFull>
+                )}
+                <FormGridFull>
+                  <TextAreaField helpNotNeeded label={strings.projects.summary} value={newSummary} onChange={setNewSummary} rows={2} />
+                </FormGridFull>
+                {!importFile && templateOptions.length > 0 && (
+                  <LabeledSelect helpNotNeeded
+                    label={strings.projects.useTemplate}
+                    value={templateProjectId}
+                    onChange={setTemplateProjectId}
+                    options={templateOptions.map((p) => ({ value: p.id, label: p.name }))}
+                    placeholder={strings.projects.noTemplate}
+                  />
+                )}
+                <LabeledSelect helpNotNeeded
+                  label={strings.admin.visibility}
+                  value={newVisibility}
+                  onChange={(next) => setNewVisibility(next as "only_specified" | "org_wide")}
+                  options={[{ value: "only_specified", label: strings.admin.visibilityOnlySpecified }, { value: "org_wide", label: strings.admin.visibilityOrgWide }]}
+                  placeholder={null}
+                  hint={strings.admin.visibilityHint(orgLabel)}
+                />
+                {/* Small usability fix: picking an import file below used to silently hide
+                    the template picker above with no explanation — this note
+                    replaces the silent disappearance, rather than a bigger
+                    redesign of the two fields' relationship. */}
+                {importFile && templateOptions.length > 0 && (
+                  <FormGridFull>
+                    <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.projects.importIgnoresTemplate}</p>
+                  </FormGridFull>
+                )}
+                {/* can_be_parent-gated (docs/decisions.md) — hidden entirely
+                    when there's nothing eligible to pick, rather than showing a
+                    picker with only "None" in it. */}
+                {showParentField && (
+                  <>
+                    <LabeledSelect help={strings.help.projectParent}
+                      label={strings.projects.parentProject}
+                      value={parentProjectId}
+                      onChange={(next) => {
+                        setParentProjectId(next);
+                        // Same reasoning as ProjectAdminPage.tsx's parent select:
+                        // don't let a mode confirmed for one candidate parent
+                        // silently carry over to a different one before submit.
+                        if (MODES_NEEDING_CONFIRMATION.includes(roleInheritanceMode)) {
+                          setRoleInheritanceMode("none");
+                        }
+                      }}
+                      options={parentOptions.map((p) => ({ value: p.id, label: p.name }))}
+                      placeholder={strings.projects.noParent}
+                    />
+                    {parentProjectId && (
+                      <>
+                        <LabeledSelect help={strings.help.projectInheritAccess}
+                          label={strings.projects.inheritFromParent}
+                          value={roleInheritanceMode}
+                          onChange={(next) => requestInheritModeChange(next as ProjectRoleInheritanceMode)}
+                          options={(Object.keys(PROJECT_ROLE_INHERITANCE_MODE_LABEL) as ProjectRoleInheritanceMode[]).map((m) => ({
+                            value: m, label: PROJECT_ROLE_INHERITANCE_MODE_LABEL[m],
+                          }))}
+                          placeholder={null}
+                        />
+                        {roleInheritanceMode === "mirror_role" && (
+                          <LabeledSelect help={strings.help.projectRoleToMirror}
+                            label={strings.projects.inheritModeFilterRole}
+                            value={roleInheritanceFilterRole}
+                            onChange={(next) => setRoleInheritanceFilterRole(next as ProjectRole)}
+                            options={[{ value: "project_manager", label: PROJECT_ROLE_LABEL.project_manager }, { value: "project_administrator", label: PROJECT_ROLE_LABEL.project_administrator }, { value: "stakeholder", label: PROJECT_ROLE_LABEL.stakeholder }]}
+                            placeholder={null}
+                          />
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
+                <FormGridFull>
+                  <FileField helpNotNeeded
+                    label={strings.projects.importFromBundle} accept=".zip,application/zip"
+                    onChange={setImportFile}
+                  />
+                </FormGridFull>
+              </FormGrid>
+              <FormActions
+                error={createError}
+                onCancel={closeNewForm}
+                onSave={createProject}
+                saveLabel={strings.common.create}
+                saveDisabled={!newName || !newOrgId || (newOrg?.project_code_policy.assignment === "manual" && !importFile && !newCode)}
+              />
+            </div>
+          </Modal>
+        )}
+        {pendingInheritMode && selectedParent && (
+          <ConfirmDialog
+            title={strings.projects.inheritConfirmTitle}
+            message={
+              pendingInheritMode === "mirror_role"
+                ? strings.projects.inheritConfirmMirrorRole(selectedParent.name, PROJECT_ROLE_LABEL[roleInheritanceFilterRole])
+                : strings.projects.inheritConfirmMirrorAll(selectedParent.name)
+            }
+            confirmLabel={strings.projects.inheritConfirmButton}
+            onCancel={() => setPendingInheritMode(null)}
+            onConfirm={() => {
+              setRoleInheritanceMode(pendingInheritMode);
+              setPendingInheritMode(null);
+            }}
+          />
+        )}
+        {importWarnings && importWarnings.length > 0 && (
+          <div className="card stack" style={{ borderColor: "var(--color-warning, #b58900)" }}>
+            <strong>{strings.projects.importWarnings}</strong>
+            <ul style={{ margin: 0 }}>
+              {importWarnings.map((w, i) => <li key={i}>{w}</li>)}
+            </ul>
+          </div>
+        )}
+          <div className="stack">
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <ViewToggle mode={viewMode} onChange={setViewMode} showTreeOption={hasHierarchy} />
+            </div>
+
+            {viewMode === "tree" && hasHierarchy && (
+              <div className="stack">
+                {orgsWithHierarchy.length > 1 && (
+                  <select className="input" style={{ maxWidth: 280 }} aria-label={orgLabelCap} value={treeOrgId} onChange={(e) => setTreeOrgId(e.target.value)}>
+                    {orgsWithHierarchy.map((o) => (
+                      <option key={o.id} value={o.id}>{o.name}</option>
+                    ))}
+                  </select>
+                )}
+                {!treeNodes && <Spinner />}
+                {treeNodes && (
+                  <div className="card">
+                    <ProjectTree nodes={treeNodes} onAddChild={(parentId) => openAddSubProject(parentId, treeOrgId)} />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {viewMode !== "tree" && !projects && <Spinner />}
+            {viewMode !== "tree" && projects && projects.length === 0 && <p className="text-muted">{strings.projects.empty}</p>}
+            {projects && projects.length > 0 && viewMode === "tiles" && (
+              <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
+                {projects.map((p) => (
+                  <div key={p.id} className="card stack" style={{ gap: "0.5rem" }}>
+                    <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "nowrap" }}>
+                      <Link
+                        to={`/projects/${p.id}`}
+                        style={{
+                          fontWeight: 600, fontSize: "1.05rem", minWidth: 0, overflow: "hidden",
+                          textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        }}
+                        title={p.name}
+                      >
+                        {p.name}
+                      </Link>
+                      <button
+                        className="btn"
+                        onClick={() => toggleFavorite(p)}
+                        title={p.is_favorite ? strings.projects.unfavorite : strings.projects.favorite}
+                        aria-label={p.is_favorite ? strings.projects.unfavorite : strings.projects.favorite}
+                        style={{ flexShrink: 0 }}
+                      >
+                        <Star fill={p.is_favorite ? "currentColor" : "none"} />
+                      </button>
+                    </div>
+                    {showOrgColumn && <div className="text-muted" style={{ fontSize: "0.8rem" }}>{p.organization_name}</div>}
+                    <ProjectHierarchyLabels project={p} />
+                    {p.current_stage_name && (
+                      <FilterBadge
+                        active={stageStatusFilter === p.current_stage_status}
+                        onClick={() => toggleStageStatusFilter(p.current_stage_status)}
+                        style={{ alignSelf: "flex-start" }}
+                      >
+                        {stageBadgeText(p.current_stage_name, p.current_stage_status)}
+                      </FilterBadge>
+                    )}
+                    <p
+                      className="text-muted"
+                      style={{
+                        margin: 0, marginTop: "0.15rem", flex: 1,
+                        display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden",
+                      }}
+                    >
+                      {p.summary || "—"}
+                    </p>
+                    <div className="text-muted" style={{ fontSize: "0.85rem" }}>
+                      {strings.projects.roles}: {collapseProjectRoles(p.my_roles).map((r) => PROJECT_ROLE_LABEL[r]).join(", ") || "—"}
+                    </div>
+                    <div className="text-muted" style={{ fontSize: "0.85rem" }}>
+                      {strings.projects.requirementCount}: {p.requirement_count}
+                    </div>
+                    <div className="text-muted" style={{ fontSize: "0.8rem" }}>
+                      {strings.projects.updated}: {new Date(p.updated_at).toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {projects && projects.length > 0 && viewMode === "list" && (
+              <div className="card" style={{ overflowX: "auto" }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th />
+                      <th>Name</th>
+                      {showOrgColumn && <th>{strings.projects.organisation(orgLabelCap)}</th>}
+                      <th>{strings.projects.stage}</th>
+                      <th>{strings.projects.roles}</th>
+                      <th>{strings.projects.requirementCount}</th>
+                      <th>{strings.projects.updated}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {projects.map((p) => (
+                      <tr key={p.id}>
+                        <td>
+                          <button
+                            className="btn"
+                            onClick={() => toggleFavorite(p)}
+                            title={p.is_favorite ? strings.projects.unfavorite : strings.projects.favorite}
+                            aria-label={p.is_favorite ? strings.projects.unfavorite : strings.projects.favorite}
+                          >
+                            <Star fill={p.is_favorite ? "currentColor" : "none"} />
+                          </button>
+                        </td>
+                        <td>
+                          <Link to={`/projects/${p.id}`}>{p.name}</Link>
+                          <div
+                            className="text-muted"
+                            style={{
+                              fontSize: "0.85rem", marginTop: "0.15rem",
+                              display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+                            }}
+                          >
+                            {p.summary || "—"}
+                          </div>
+                          <ProjectHierarchyLabels project={p} />
+                        </td>
+                        {showOrgColumn && <td className="text-muted">{p.organization_name}</td>}
+                        <td>
+                          {p.current_stage_name && (
+                            <FilterBadge
+                              active={stageStatusFilter === p.current_stage_status}
+                              onClick={() => toggleStageStatusFilter(p.current_stage_status)}
+                            >
+                              {stageBadgeText(p.current_stage_name, p.current_stage_status)}
+                            </FilterBadge>
+                          )}
+                        </td>
+                        <td className="text-muted">{collapseProjectRoles(p.my_roles).map((r) => PROJECT_ROLE_LABEL[r]).join(", ") || "—"}</td>
+                        <td className="text-muted">{p.requirement_count}</td>
+                        <td className="text-muted">{new Date(p.updated_at).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {viewMode !== "tree" && projects && (
+              <LoadMoreButton loaded={projects.length} total={total} onClick={() => loadProjects(projects.length, true)} />
+            )}
+          </div>
+      </ListPageLayout>
     </div>
   );
 }

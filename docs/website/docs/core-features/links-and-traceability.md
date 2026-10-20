@@ -119,6 +119,7 @@ The same link reads correctly from all three pages, and any of them can add or r
 
 - **Add link** opens a dialog. When the project has a parent or child project, a **project** choice lets you link across them. Then find the record with one finder: a **Search** box over a scope that narrows step by step.
   - With nothing chosen, typing two or more characters searches **every kind of record** you can link to; each result is named with its kind.
+  - The search is by **words**: every word you type must appear in a record's code or title, in any order and anywhere in the title, so `limit voltage` finds "Maximum supply voltage limit". A code works as it is shown elsewhere, with the project code in front (`ACME-REQ-001`) or without (`REQ-001`). The same finder serves the **Link to** field on every create form.
   - Choose a **kind of record** ("Link to") to search only that kind, or to list its records.
   - Each kind can then be narrowed by its own steps, every one optional: a compliance clause by **Standard**, then **Version**, then **Requirement**; a requirement by **Component**, then **Category**; most others by a status or type. Changing an earlier step clears the later ones, and a long list of options has its own filter box.
 

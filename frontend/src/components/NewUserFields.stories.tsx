@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
 
+import { requiredCaptions } from "../testing/requiredMarkers";
 import { NewUserFields } from "./NewUserFields";
 import { EMPTY_NEW_USER } from "./newUserValues";
 
@@ -32,5 +33,21 @@ export const OptionalFieldsCanBeHidden: Story = {
     await expect(canvas.queryByLabelText("Name")).not.toBeInTheDocument();
     await expect(canvas.queryByLabelText("Password")).not.toBeInTheDocument();
     await expect(canvas.queryByRole("combobox", { name: "Role" })).not.toBeInTheDocument();
+  },
+};
+
+/** Every field a new account needs is marked; the role has a default and is not. */
+export const NewAccountFieldsAreMarkedRequired: Story = {
+  play: async ({ canvasElement }) => {
+    await expect(requiredCaptions(canvasElement)).toEqual(["Email", "Name", "Password"]);
+    await expect(within(canvasElement).getByText("* required")).toBeVisible();
+  },
+};
+
+/** An invite asks for the email only, so only the email is marked. */
+export const InviteMarksOnlyTheEmail: Story = {
+  args: { show: { displayName: false, password: false, role: false } },
+  play: async ({ canvasElement }) => {
+    await expect(requiredCaptions(canvasElement)).toEqual(["Email"]);
   },
 };

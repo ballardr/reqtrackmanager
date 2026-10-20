@@ -19,11 +19,11 @@ import { PrincipalPicker } from "./PrincipalPicker";
  * @param pickerProps Everything `PrincipalPicker` takes; `ariaLabel` is its accessible name.
  */
 export function PrincipalFormField({
-  label, help, ...pickerProps
+  label, help, required, ...pickerProps
 }: FieldHelpProps & { label: string } & ComponentProps<typeof PrincipalPicker>) {
   return (
     <div className="stack" style={{ gap: "0.25rem" }}>
-      <FieldCaption label={label} help={help} />
+      <FieldCaption label={label} help={help} required={required} />
       <PrincipalPicker {...pickerProps} />
     </div>
   );

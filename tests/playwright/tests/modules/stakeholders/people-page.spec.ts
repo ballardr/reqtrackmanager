@@ -1,15 +1,16 @@
 import { expect, test } from "@playwright/test";
 
 import { installCleanupHook } from "../../e2e-workflows/helpers";
-import { API_BASE_URL, openNew, openPeople, setUpOrg, statusBadge } from "./helpers";
+import { API_BASE_URL, openNeeds, openNew, openPeople, setUpOrg, statusBadge } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
 
 /**
  * Job to be done:
- * Personas, Stakeholders, Needs and Groups are one list ("People") with one New menu, so a person
- * designing for or with people finds them in one place. A record created with "Save and activate" is
+ * Personas, Stakeholders and Groups are one list ("People") with one New menu, so a person
+ * designing for or with people finds them in one place. Stakeholder Needs are not people: they are the
+ * "Needs" tab beside People, with a New button of their own. A record created with "Save and activate" is
  * active at once, created and activated in one step; Save leaves it a draft. The old per-type list
  * routes still work, and a kind whose sub-component is off disappears from the page, the New menu and,
  * when all are off, the nav rail.
@@ -25,27 +26,30 @@ test.describe("Stakeholders & Personas: People page", () => {
     const names = {
       persona: `Field Technician ${suffix}`,
       stakeholder: `Pat Regulator ${suffix}`,
-      need: `Offline access ${suffix}`,
       group: `Suppliers ${suffix}`,
     };
     await page.request.post(`${base}/personas`, { headers: adminHeaders, data: { name: names.persona } });
     await page.request.post(`${base}/stakeholders`, { headers: adminHeaders, data: { name: names.stakeholder } });
-    await page.request.post(`${base}/needs`, { headers: adminHeaders, data: { name: names.need } });
+    const needName = `Offline access ${suffix}`;
+    await page.request.post(`${base}/needs`, { headers: adminHeaders, data: { name: needName } });
     await page.request.post(`${base}/stakeholder-groups`, { headers: adminHeaders, data: { name: names.group } });
 
     await openPeople(page, project.id);
     const table = page.getByRole("table", { name: "People" });
     for (const name of Object.values(names)) await expect(table.getByText(name)).toBeVisible();
-    // The Kind column goes through its label map.
-    const row = table.locator("tr", { hasText: names.need });
-    await expect(row.getByText("Stakeholder Need", { exact: true })).toBeVisible();
+    // A need is not a person: it is not in this list, it is under the Needs tab.
+    await expect(table.getByText(needName)).toHaveCount(0);
+    // The Kind column goes through its label map, and each name carries its kind's icon.
+    const row = table.locator("tr", { hasText: names.group });
+    await expect(row.getByText("Stakeholder Group", { exact: true })).toBeVisible();
+    await expect(row.getByRole("img", { name: "Stakeholder Group" })).toBeVisible();
+    await expect(table.locator("tr", { hasText: names.persona }).getByRole("img", { name: "Persona" })).toBeVisible();
 
     // --- Chips narrow the list and write the choice into the URL.
     const chips = page.getByRole("group", { name: "Kinds of record" });
-    await chips.getByRole("button", { name: /^Needs/ }).click();
     await chips.getByRole("button", { name: /^Groups/ }).click();
     await expect(page).toHaveURL(/\?kind=persona(,|%2C)stakeholder$/);
-    await expect(table.getByText(names.need)).toHaveCount(0);
+    await expect(table.getByText(names.group)).toHaveCount(0);
     await expect(table.getByText(names.persona)).toBeVisible();
     await expect(table.getByText(names.stakeholder)).toBeVisible();
 
@@ -56,6 +60,7 @@ test.describe("Stakeholders & Personas: People page", () => {
     await expect(own.getByRole("columnheader", { name: "Influence" })).toBeVisible();
     await expect(own.getByRole("columnheader", { name: "Last engaged" })).toBeVisible();
     await expect(page.getByLabel("Group by")).toBeVisible();
+    await expect(own.locator("tr", { hasText: names.stakeholder }).getByRole("img", { name: "Stakeholder" })).toBeVisible();
 
     // --- The last kind cannot be turned off.
     await chips.getByRole("button", { name: /^Stakeholders/ }).click();
@@ -64,6 +69,13 @@ test.describe("Stakeholders & Personas: People page", () => {
     // --- A row opens its own detail page.
     await own.getByRole("button", { name: names.stakeholder }).click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/stakeholders/stakeholders/[^/]+$`));
+
+    // --- The Needs tab lists the need on its own route, and People is one tab away again.
+    await openNeeds(page, project.id);
+    await expect(page.getByRole("table", { name: "Stakeholder Needs" }).getByText(needName)).toBeVisible();
+    await expect(page.getByRole("button", { name: "New Stakeholder Need" })).toBeVisible();
+    await page.getByRole("tab", { name: "People" }).click();
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/stakeholders/people$`));
   });
 
   test("Save and activate creates an active record in one step; Save leaves a draft", async ({ page }) => {
@@ -106,32 +118,40 @@ test.describe("Stakeholders & Personas: People page", () => {
     const { suffix, project } = await setUpOrg(page, "ActivateForms");
     await openPeople(page, project.id);
 
-    for (const [item, dialogName, nameLabel] of [
-      ["Stakeholder", "New Stakeholder (project)", "Stakeholder name"],
-      ["Stakeholder Need", "New Stakeholder Need", "Need name"],
-    ] as const) {
-      await openNew(page, item);
-      const dialog = page.getByRole("dialog", { name: dialogName });
-      await dialog.getByLabel(nameLabel).fill(`${item} ${suffix}`);
-      await dialog.getByRole("button", { name: "Save and activate" }).click();
-      await expect(page.getByRole("dialog")).toHaveCount(0);
-    }
-    const table = page.getByRole("table", { name: "People" });
-    for (const item of ["Stakeholder", "Stakeholder Need"]) {
-      await expect(table.locator("tr", { hasText: `${item} ${suffix}` }).getByText("Active", { exact: true })).toBeVisible();
-    }
+    await openNew(page, "Stakeholder");
+    const dialog = page.getByRole("dialog", { name: "New Stakeholder (project)" });
+    await dialog.getByLabel("Stakeholder name").fill(`Stakeholder ${suffix}`);
+    await dialog.getByRole("button", { name: "Save and activate" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(
+      page.getByRole("table", { name: "People" }).locator("tr", { hasText: `Stakeholder ${suffix}` }).getByText("Active", { exact: true }),
+    ).toBeVisible();
+
+    // A Need is created from the Needs tab, with the same Save and activate.
+    await openNeeds(page, project.id);
+    await page.getByRole("button", { name: "New Stakeholder Need" }).click();
+    const needDialog = page.getByRole("dialog", { name: "New Stakeholder Need" });
+    await needDialog.getByLabel("Need name").fill(`Need ${suffix}`);
+    await needDialog.getByRole("button", { name: "Save and activate" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(
+      page.getByRole("table", { name: "Stakeholder Needs" }).locator("tr", { hasText: `Need ${suffix}` }).getByText("Active", { exact: true }),
+    ).toBeVisible();
+    await openPeople(page, project.id);
 
     // A group has no lifecycle, so its form has no such button.
     await openNew(page, "Stakeholder Group");
     await expect(page.getByRole("dialog").getByRole("button", { name: "Save and activate" })).toHaveCount(0);
   });
 
-  test("the old per-type list routes redirect to the People page with that kind selected", async ({ page }) => {
+  test("the old per-type list routes redirect to the People page with that kind selected; ?kind=need goes to Needs", async ({ page }) => {
     const { project } = await setUpOrg(page, "Redirect");
-    for (const [route, kind] of [["personas", "persona"], ["stakeholders", "stakeholder"], ["needs", "need"]] as const) {
+    for (const [route, kind] of [["personas", "persona"], ["stakeholders", "stakeholder"]] as const) {
       await page.goto(`/projects/${project.id}/modules/stakeholders/${route}`);
       await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/stakeholders/people\\?kind=${kind}$`));
     }
+    await page.goto(`/projects/${project.id}/modules/stakeholders/people?kind=need`);
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/stakeholders/needs$`));
   });
 
   test("a kind whose sub-component is off leaves the page and the New menu; all off removes People from the nav", async ({ page }) => {
@@ -146,11 +166,16 @@ test.describe("Stakeholders & Personas: People page", () => {
     await openPeople(page, project.id);
     const chips = page.getByRole("group", { name: "Kinds of record" });
     await expect(chips.getByRole("button", { name: /^Personas/ })).toBeVisible();
-    await expect(chips.getByRole("button", { name: /^Needs/ })).toHaveCount(0);
+    // With Needs off there is no Needs tab either.
+    await expect(page.getByRole("tab", { name: "Needs" })).toHaveCount(0);
+    expect((await sub("persona", false)).ok()).toBeTruthy();
+    await openPeople(page, project.id);
+    await expect(chips.getByRole("button", { name: /^Personas/ })).toHaveCount(0);
     await page.getByRole("button", { name: "New", exact: true }).click();
-    await expect(page.getByRole("menuitem", { name: "Persona", exact: true })).toBeVisible();
-    await expect(page.getByRole("menuitem", { name: "Stakeholder Need", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Stakeholder", exact: true })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Persona", exact: true })).toHaveCount(0);
     await page.keyboard.press("Escape");
+    expect((await sub("persona", true)).ok()).toBeTruthy();
 
     // With every sub-component People serves switched off, its nav entry goes; Engagements stays.
     expect((await sub("persona", false)).ok()).toBeTruthy();

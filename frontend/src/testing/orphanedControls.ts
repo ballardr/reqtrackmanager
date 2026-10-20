@@ -155,3 +155,25 @@ export function controlGeometry(root?: Element): ControlGeometry {
 export function orphanedControlViolations(root?: Element): string[] {
   return controlGeometry(root).violations;
 }
+
+/**
+ * The menu items under `menu` whose label is cut off (wider than the item) or that stick out of the
+ * menu or the viewport. A menu sizes to its longest label and wraps one that still does not fit, so
+ * this list is empty for a tidy menu.
+ *
+ * @param menu The `role="menu"` element (or its popover) to inspect.
+ * @returns Human-readable descriptions of each offending item.
+ */
+export function clippedMenuItems(menu: Element): string[] {
+  const bubble = menu.closest(".popover-bubble") ?? menu;
+  const box = bubble.getBoundingClientRect();
+  const problems: string[] = [];
+  if (box.left < 0 || box.right > window.innerWidth) problems.push("menu extends past the viewport");
+  for (const item of menu.querySelectorAll<HTMLElement>('[role="menuitem"]')) {
+    const rect = item.getBoundingClientRect();
+    const text = (item.textContent ?? "").trim();
+    if (item.scrollWidth > item.clientWidth + 1) problems.push(`"${text}" is clipped`);
+    if (rect.right > box.right + 1 || rect.left < box.left - 1) problems.push(`"${text}" sticks out of the menu`);
+  }
+  return problems;
+}

@@ -81,11 +81,11 @@ export function StrategyFormModal({
       <div className="stack">
         <FormGrid minColumn="18rem">
           <FormGridFull>
-            <TextField helpNotNeeded label="Title" ariaLabel="Strategy title" value={title} onChange={setTitle} />
+            <TextField helpNotNeeded required label="Title" ariaLabel="Strategy title" value={title} onChange={setTitle} />
           </FormGridFull>
           {TEXT_FIELDS.map((f) => (
             <FormGridFull key={f.key}>
-              <TextAreaField helpNotNeeded
+              <TextAreaField helpNotNeeded required={f.key === "objective"}
                 label={f.label} rows={f.rows} value={fields[f.key] ?? ""}
                 onChange={(value) => setFields((prev) => ({ ...prev, [f.key]: value }))}
               />
@@ -105,7 +105,7 @@ export function StrategyFormModal({
           />
           {initial && (
             <FormGridFull>
-              <TextField helpNotNeeded label="Change note (optional)" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />
+              <TextField helpNotNeeded label="Change note" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />
             </FormGridFull>
           )}
           {!initial && projectId && (

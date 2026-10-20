@@ -1,7 +1,7 @@
 /**
  * Module: modules/stakeholders/PeopleRedirect
  *
- * Sends the old per-type list routes (`.../personas`, `.../stakeholders`, `.../needs`) to the People page with
+ * Sends the old per-type list routes (`.../personas`, `.../stakeholders`) to the People page with
  * that kind selected, so bookmarks and links from before the lists were merged keep working. Detail routes
  * (`.../personas/:id`) are unchanged and do not use this.
  */

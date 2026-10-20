@@ -116,7 +116,7 @@ export function PainPointFormModal({
     <Modal title={initial ? `Edit ${initial.title}` : "New Pain Point"} onClose={onCancel} size="lg">
       <div className="stack">
         <FormGrid minColumn="18rem">
-          <LabeledSelect helpNotNeeded label="Type" value={painPointTypeId} onChange={setPainPointTypeId} options={typeOptions} />
+          <LabeledSelect helpNotNeeded required label="Type" value={painPointTypeId} onChange={setPainPointTypeId} options={typeOptions} />
           <LabeledSelect helpNotNeeded
             label="Priority"
             value={priority}
@@ -124,7 +124,7 @@ export function PainPointFormModal({
             options={Object.entries(PAIN_POINT_PRIORITY_LABEL).map(([value, label]) => ({ value, label }))}
           />
           <FormGridFull>
-            <TextField helpNotNeeded label="Title" ariaLabel="Pain Point title" value={title} onChange={setTitle} />
+            <TextField helpNotNeeded required label="Title" ariaLabel="Pain Point title" value={title} onChange={setTitle} />
           </FormGridFull>
           {TEXT_FIELDS.map((f) => (
             <FormGridFull key={f.key}>
@@ -150,7 +150,7 @@ export function PainPointFormModal({
           {!initial && scoring && (
             <FormGridFull>
               <section className="stack" aria-label="Scoring">
-                <strong>Scoring (optional)</strong>
+                <strong>Scoring</strong>
                 <PainPointScoreFields
                   axes={scoreAxes} personaRows={personaRows} mode={scoreMode} onModeChange={setScoreMode}
                   draft={scoreDraft} onDraftChange={setScoreDraft}

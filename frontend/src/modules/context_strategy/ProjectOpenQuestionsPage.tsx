@@ -27,6 +27,7 @@ import type { Project } from "../../api/types";
 import { api } from "../../api/client";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ListPageLayout } from "../../components/ListPageLayout";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { oneOf, useInitialSearchParams } from "../../hooks/useInitialSearchParams";
@@ -115,11 +116,43 @@ export function ProjectOpenQuestionsPage() {
 
   return (
     <div className="container stack">
-      <h1 style={{ margin: 0 }}>Open Question</h1>
-      <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
-        New Open Question
-      </button>
-      <div className="side-grid">
+      <ListPageLayout
+        title="Open Question"
+        actions={
+          <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
+            New Open Question
+          </button>
+        }
+        filter={
+          <FilterPanel
+            sectionKey="context_strategy.open_questions.list" total={filtered.length}
+            search={search} onSearchChange={setSearch} searchPlaceholder="Search Open Questions…" searchAriaLabel="Search Open Questions"
+          >
+            <FilterField label="Status">
+              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as OpenQuestionStatus | "")}>
+                <option value="">All statuses</option>
+                {Object.entries(OPEN_QUESTION_STATUS_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterField label="Priority">
+              <select className="input" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as OpenQuestionPriority | "")}>
+                <option value="">All priorities</option>
+                {Object.entries(OPEN_QUESTION_PRIORITY_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterCheckbox label="Open only" checked={openOnly} onChange={setOpenOnly} />
+            <FilterCheckbox label="Overdue only" checked={overdueOnly} onChange={setOverdueOnly} />
+            <FilterCheckbox label="Unowned only" checked={unownedOnly} onChange={setUnownedOnly} />
+            <ProjectScopeFilter scope={projectScope} />
+            {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
+          </FilterPanel>
+        }
+      >
         <DirectoryTable
           ariaLabel="Open Questions"
           columns={columns}
@@ -128,34 +161,7 @@ export function ProjectOpenQuestionsPage() {
           onRowClick={(q) => navigate(`/projects/${rowProjectId(q, projectId)}/modules/context_strategy/open-questions/${q.id}`)}
           emptyState={<p className="text-muted">No Open Questions recorded for this project yet.</p>}
         />
-        <FilterPanel
-          sectionKey="context_strategy.open_questions.list" total={filtered.length}
-          search={search} onSearchChange={setSearch} searchPlaceholder="Search Open Questions…" searchAriaLabel="Search Open Questions"
-        >
-          <FilterField label="Status">
-            <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as OpenQuestionStatus | "")}>
-              <option value="">All statuses</option>
-              {Object.entries(OPEN_QUESTION_STATUS_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label="Priority">
-            <select className="input" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as OpenQuestionPriority | "")}>
-              <option value="">All priorities</option>
-              {Object.entries(OPEN_QUESTION_PRIORITY_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterCheckbox label="Open only" checked={openOnly} onChange={setOpenOnly} />
-          <FilterCheckbox label="Overdue only" checked={overdueOnly} onChange={setOverdueOnly} />
-          <FilterCheckbox label="Unowned only" checked={unownedOnly} onChange={setUnownedOnly} />
-          <ProjectScopeFilter scope={projectScope} />
-          {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
-          <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
-        </FilterPanel>
-      </div>
+      </ListPageLayout>
 
       {creating && (
         <OpenQuestionFormModal

@@ -67,6 +67,9 @@ test.describe("global search", () => {
     // Inside a project the box searches that project, and names it only in the footer.
     await expect(listbox.getByText(`See all results for ‘${word}’ in This project`)).toBeVisible();
     await expect(page.getByRole("banner").getByRole("combobox", { name: /scope/i })).toHaveCount(0);
+    // The dropdown is one line per hit (the status and snippet stay on the results page).
+    const rowHeight = await result.evaluate((el) => el.getBoundingClientRect().height);
+    expect(rowHeight).toBeLessThan(40);
 
     await result.click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.projectId}/requirements/${requirement.id}$`));

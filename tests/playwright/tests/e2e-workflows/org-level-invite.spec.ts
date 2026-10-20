@@ -92,7 +92,8 @@ test("org admin invites a user org-level, and they can sign up and get org acces
   await test.step("invite the new email via the org-level 'Invite user' button", async () => {
     // Distinct from "New user" (immediate password account) — the whole
     // point of this feature.
-    await page.getByRole("button", { name: "Invite user" }).click();
+    await page.getByRole("button", { name: "Add user" }).click();
+    await page.getByRole("menuitem", { name: "Invite user" }).click();
     const dialog = page.getByRole("dialog", { name: "Invite user" });
     await expect(dialog.getByLabel("Password")).toHaveCount(0);
     await dialog.getByLabel("Email").fill(inviteeEmail);
@@ -164,7 +165,8 @@ test("org admin sees a pending org-level invite listed and can resend it, retrig
   await ensureExpanded(page, "Organisation users");
 
   await test.step("invite the new email via the org-level 'Invite user' button", async () => {
-    await page.getByRole("button", { name: "Invite user" }).click();
+    await page.getByRole("button", { name: "Add user" }).click();
+    await page.getByRole("menuitem", { name: "Invite user" }).click();
     const dialog = page.getByRole("dialog", { name: "Invite user" });
     await dialog.getByLabel("Email").fill(inviteeEmail);
     await dialog.getByRole("button", { name: "Send invite" }).click();

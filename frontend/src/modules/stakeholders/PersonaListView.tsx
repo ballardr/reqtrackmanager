@@ -11,7 +11,8 @@
 import { PersonaFormModal } from "./PersonaFormModal";
 import type { TagFilterState } from "../../hooks/useTagFilter";
 import type { ProjectScopeState } from "../../hooks/useProjectScope";
-import { RecordListView } from "./RecordListView";
+import { PeopleKindIcon } from "./PeopleKindIcon";
+import { RecordListView, type RecordListPage } from "./RecordListView";
 import type { Persona, PersonaFieldValues } from "./types";
 import { PERSONA_SCOPE_LABEL, PERSONA_STATUS_LABEL, PERSONA_STATUS_TONE } from "./types";
 
@@ -32,6 +33,7 @@ export function PersonaListView({
   onOpen,
   tagFilter,
   projectScope,
+  page,
   onCreate,
 }: {
   personas: Persona[];
@@ -55,6 +57,8 @@ export function PersonaListView({
   tagFilter?: { projectId: string; filter: TagFilterState };
   /** The project page's list scope (state kept by the page); omit where related projects are not offered. */
   projectScope?: ProjectScopeState;
+  /** The page header (title, actions, tabs) this list owns when it is a whole page. */
+  page?: RecordListPage;
   /** Resolves on success; a rejection keeps the modal open and shows its message. Omit when personas are created elsewhere. */
   onCreate?: (values: PersonaFieldValues) => Promise<void>;
 }) {
@@ -71,6 +75,7 @@ export function PersonaListView({
       statusTone={PERSONA_STATUS_TONE}
       scopeLabels={PERSONA_SCOPE_LABEL}
       typeName={(p) => p.persona_type_name}
+      nameIcon={() => <PeopleKindIcon kind="persona" />}
       searchText={(p) => `${p.unique_code} ${p.name} ${p.role_title}`}
       columnsBeforeType={[{ key: "role", label: "Role", render: (p) => p.role_title || "—" }]}
       columnsAfterScope={[
@@ -90,6 +95,7 @@ export function PersonaListView({
       onOpen={onOpen}
       tagFilter={tagFilter}
       projectScope={projectScope}
+      page={page}
       onCreate={onCreate}
       renderCreateModal={onCreate ? (props) => <PersonaFormModal {...props} typeOptions={typeOptions} /> : undefined}
     />

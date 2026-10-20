@@ -704,6 +704,7 @@ export function RequirementDetailPage() {
               organizationId={organizationId ?? undefined}
               projectId={projectId}
               saved={{ owner: requirement.owner, reviewer: requirement.reviewer }}
+              ownerRequired
             />
             <FormGridFull>
               <CustomFieldsForm

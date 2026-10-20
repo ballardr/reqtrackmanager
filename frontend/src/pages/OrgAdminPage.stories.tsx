@@ -290,12 +290,13 @@ export const NewUserOpensModalAndCreates: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Users" }));
-    await waitFor(() => expect(canvas.getByRole("button", { name: "New user" })).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Add user" })).toBeInTheDocument());
 
     const body = within(document.body);
     await expect(body.queryByRole("dialog")).not.toBeInTheDocument();
 
-    await userEvent.click(canvas.getByRole("button", { name: "New user" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Add user" }));
+    await userEvent.click(within(document.body).getByRole("menuitem", { name: "New user" }));
     const dialog = body.getByRole("dialog", { name: "New user" });
     await expect(within(dialog).getByRole("button", { name: "Create" })).toBeDisabled();
 
@@ -325,9 +326,10 @@ export const NewUserModalCancel: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Users" }));
-    await waitFor(() => expect(canvas.getByRole("button", { name: "New user" })).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Add user" })).toBeInTheDocument());
 
-    await userEvent.click(canvas.getByRole("button", { name: "New user" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Add user" }));
+    await userEvent.click(within(document.body).getByRole("menuitem", { name: "New user" }));
     const dialog = within(document.body).getByRole("dialog", { name: "New user" });
     await userEvent.type(within(dialog).getByLabelText("Email"), "discarded@example.com");
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
@@ -348,8 +350,9 @@ export const NewUserModalRoleSelect: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Users" }));
-    await waitFor(() => expect(canvas.getByRole("button", { name: "New user" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "New user" }));
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Add user" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Add user" }));
+    await userEvent.click(within(document.body).getByRole("menuitem", { name: "New user" }));
     const dialog = within(document.body).getByRole("dialog", { name: "New user" });
 
     await userEvent.type(within(dialog).getByLabelText("Email"), "sam@example.com");
@@ -606,15 +609,19 @@ export const InviteUserOpensModalAndCreates: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Users" }));
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Invite user" })).toBeInTheDocument());
-    // "New user" and "Invite user" are distinct, clearly-labelled actions
-    // (2026-08-31 UX ask: tell the two flows apart) — both present at once.
-    await expect(canvas.getByRole("button", { name: "New user" })).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Add user" })).toBeInTheDocument());
+    // "New user" and "Invite user" are distinct, clearly-labelled items of the one "Add user" menu.
+    await userEvent.click(canvas.getByRole("button", { name: "Add user" }));
+    const addMenu = within(document.body).getByRole("menu", { name: "Add user" });
+    await expect(within(addMenu).getByRole("menuitem", { name: "New user" })).toBeInTheDocument();
+    await expect(within(addMenu).getByRole("menuitem", { name: "Invite user" })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
 
     const body = within(document.body);
     await expect(body.queryByRole("dialog")).not.toBeInTheDocument();
 
-    await userEvent.click(canvas.getByRole("button", { name: "Invite user" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Add user" }));
+    await userEvent.click(within(document.body).getByRole("menuitem", { name: "Invite user" }));
     const dialog = body.getByRole("dialog", { name: "Invite user" });
     // Email only — no password/name field, unlike "New user"'s modal.
     await expect(within(dialog).queryByLabelText("Password")).not.toBeInTheDocument();
@@ -641,9 +648,10 @@ export const InviteUserModalCancel: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Users" }));
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Invite user" })).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByRole("button", { name: "Add user" })).toBeInTheDocument());
 
-    await userEvent.click(canvas.getByRole("button", { name: "Invite user" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Add user" }));
+    await userEvent.click(within(document.body).getByRole("menuitem", { name: "Invite user" }));
     const dialog = within(document.body).getByRole("dialog", { name: "Invite user" });
     await userEvent.type(within(dialog).getByLabelText("Email"), "discarded@example.com");
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
