@@ -1,11 +1,11 @@
 # Platform Review (October 2026) — Plan
 
-**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21) a global search (N26, Phase 23) and, at the user's request on 2026-10-19, record codes in reports, CSVs and embedded references (N27, Phase 24) and, the same day, server administrators adding users directly (N28, Phase 25), then a third review on 2026-10-20 (nine items, N29–N37, Phase 26) and a fourth the same day (ten items, N38–N47, Phase 27). Phase 11 (Ontology) was removed the same day and left for Module 15. Phases 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 23, 24, 25, 26 and 27 are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q13 are answered (Q14 superseded) (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q29 (section 3b) carry a recommended answer and need sign-off (Q25, Q26 and Q27 were answered by the user on 2026-10-18) before the phase they gate.
+**Status:** planned 2026-10-14, from a ten-note user review; extended 2026-10-18 with a second review (fifteen items, N11–N25, Phases 12–21) a global search (N26, Phase 23) and, at the user's request on 2026-10-19, record codes in reports, CSVs and embedded references (N27, Phase 24) and, the same day, server administrators adding users directly (N28, Phase 25), then a third review on 2026-10-20 (nine items, N29–N37, Phase 26) and a fourth the same day (ten items, N38–N47, Phase 27). Phase 11 (Ontology) was removed the same day and left for Module 15. All phases (1–27 except the removed Phase 11) are built. Phase 0 (sign-off) was done interactively on 2026-10-14: Q1–Q13 are answered (Q14 superseded) (section 3), with Q9 (non-button icon scale) deferred to a UX review inside Phase 4. Round-two questions Q15–Q29 (section 3b) carry a recommended answer and need sign-off (Q25, Q26 and Q27 were answered by the user on 2026-10-18) before the phase they gate.
 **Decision tags:** the notes (N1–N25) and the answers in section 3 are **Decided by: User**. Every other design choice below is **Decided by: Agent** and can be revisited on the agent's own judgement.
 
 ## Status / Resume Here
 
-25 / 26 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3, 4, 5, 6, 7, 8 and 12 done 2026-10-18, Phases 9, 10, 13, 14, 15, 16, 17, 18 and 19 done 2026-10-19, Phases 20, 21, 23, 24, 25, 26 and 27 done 2026-10-20; Phases 8, 9, 10, 13, 14, 15, 16, 17, 18, 19, 20, 21, 23, 24, 25, 26 and 27 uncommitted at hand-back). **Work the phases in table order (user instruction, 2026-10-18).** Phase 3 was built ahead of 12–14 earlier the same day. **Phase 11 (Ontology) was removed 2026-10-18 (Decided by: User): it stays in Module 15; the number is not reused.** **Next: Phase 22 (close-out), which stays last.** The icon scale (Q9) was accepted 2026-10-18 and gets a user review now that Phase 21 is done.
+26 / 26 phases complete (Phases 1 and 2 done 2026-10-14, Phases 3, 4, 5, 6, 7, 8 and 12 done 2026-10-18, Phases 9, 10, 13, 14, 15, 16, 17, 18 and 19 done 2026-10-19, Phases 20, 21, 22, 23, 24, 25, 26 and 27 done 2026-10-20). **Plan closed 2026-10-20 and moved to `docs/plans/completed/`.** Phase 11 (Ontology) was removed 2026-10-18 (Decided by: User): it stays in Module 15; the number is not reused. Open for the user (recorded in `docs/decisions.md`): the icon scale review (Q9), requirement approve taking an optional comment, and whether Risks, Decisions and Open Questions open on open items only.
 
 | # | Phase | Notes | Status |
 |---|-------|-------|--------|
@@ -34,7 +34,7 @@
 | 25 | Server administrators can add users directly (Server Management → Users) | N28 | [x] |
 | 26 | Third review: compact search dropdown, quick-link reach on every record type, Help → local docs in the test stack, filter panels aligned to the page title, People without needs (a Needs tab) plus kind icons, menu items that fit, required-field `*` on every form, custom tag colours, Server Management Add user menu | N29–N37 | [x] |
 | 27 | Fourth review: unlabelled `v1` on record headers, tag input becomes a `[+]` popover, detail-page Details card, one aside card with tabs and no repeated "Links" title, nav rail starts at the top, compact project-scope select on the overview, transition comments (approve, address, …) shown in the Activity tab, Pain Point score settings move to a gear on the Score column and the Blocker badge to the title, Pain Points default to open only, filter-panel checkboxes no longer wrap their text under the box | N38–N47 | [x] |
-| 22 | Docs website, seeds, README and close-out (runs last; the number 22 is kept so references stay valid) | all | [ ] |
+| 22 | Docs website, seeds, README and close-out (runs last; the number 22 is kept so references stay valid) | all | [x] |
 
 ```mermaid
 flowchart LR
@@ -734,6 +734,8 @@ Sub-phases, in this order: **27a** N38, N39, N41, N42, N44, N45, N46, N47 (small
 - `CLAUDE.md` agent rules added by their phases are confirmed present: org-default hide/restore (15), quick-link on create (17), field help (21), module-visibility (13), plus the save-and-activate review (16) and the search-provider rule for new artefact types (23) and the report-formatter rule for record codes (24).
 - Style guide sections added or changed: header search (no scope control), search results page with scope selector, Preferences search section, organisation defaults in a project, quick-link, field help, People list and New menu, scope filter, tags, pills, text beside controls, icon scale, record header and object actions, links aside tabs, form checklist, the stale token-table row.
 - Move this plan to `docs/plans/completed/` (Phase 2's rule) when 22/22.
+
+- **Done 2026-10-20 (uncommitted at hand-back).** Audit, decisions and the list of what was and was not done in `docs/decisions.md` ("Phase 22"). Built: website page `workflows/creating-records.md`; 25 website and 8 README screenshots retaken from a throwaway stack; restricted-tag project in the demo seed (both seeds verified on a fresh database); `CLAUDE.md` rules for module visibility and Save and activate; `docs/modules.md`, architecture, README and style-guide fixes; Persona weight input widened.
 
 ## 5. Standing checklist per phase
 

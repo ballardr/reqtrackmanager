@@ -170,6 +170,18 @@ def calculate_total(items: list[Item]) -> Decimal:
 - Mechanism: a tombstone in `ProjectDefinitionSuppression` (`services/definition_suppression.py`: register a `definition_kind`, subtract `get_suppressed_ids` in the effective-list resolver, call `forget_definition` when the organisation row is deleted). For a typed vocabulary use `TypeVocabulary` (`services/type_vocabulary.py`) and the shared endpoint bodies in `services/type_vocabulary_routes.py`; on the frontend `ProjectTypeVocabularyPanel` already provides the hide confirm and `RestoreOrgDefaultsButton`. Hidden defaults must also travel in the project bundle (export/import).
 - Reason: otherwise a project is stuck with every default or invents its own workaround per table. See [docs/ux-style-guide.md](docs/ux-style-guide.md)'s "Pattern: organisation defaults in a project" and `docs/decisions.md`'s Phase 15 entry.
 
+## Module Availability and Visibility
+
+- A module is checked at three levels from the server down (server entitlement, organisation enabled, project state; `docs/modules.md`'s gating section). Whoever cannot use a module must not be shown it: an API that lists modules or sub-components for an organisation or project admin omits the ones their organisation has no entitlement for or has disabled, and the matching UI renders only what the API returns. Server administrators keep the full view with each module's state and the tier that decided it.
+- A new default for module state goes in the server default table (`ServerModuleDefault`, consulted by `is_module_enabled` and `resolve_default_project_enabled`), never by flipping `ModuleDefinition.default_enabled`, which would switch a module on in every existing deployment on upgrade. A migration seeds nothing; only a fresh install is seeded.
+- Reason: an admin offered a switch they cannot meaningfully use, or a default flipped under a live organisation, are both defects users report as the product being wrong. See `docs/decisions.md`'s "Phase 13: module availability" entry.
+
+## Save and Activate
+
+- A create form for a type with a draft-to-active lifecycle offers **Save and activate** (`FormActions` `onSaveAndActivate`, an `activate: bool = false` field on the create payload) only where activating needs nothing beyond permission to create and no second person's approval is skipped. A type with an approval gate (requirements, change requests, decisions, strategies, future states, guiding principles) never gets it; segregation of duties must not be bypassed by a convenience button.
+- The create endpoint runs the type's own manage gate and then its own `transition_*` before a single commit, so one request records both audit events and a failed activation stores neither. No new endpoint and no new permission.
+- A new lifecycle type adds a row to the review table in `docs/decisions.md`'s "Phase 16: one People page and Save and activate" entry stating whether it applies and why.
+
 ## Users and Groups on Parity
 
 - Users and groups are treated on parity across the product: anything that can be applied to a user (an owner, assignee, decision maker, reviewer, role or permission grant, notification recipient, filter, report column) should also be applicable to a group, and anything that can be applied to a group should be applicable to a user. "Group" means both organisation groups and project groups unless a design says otherwise.

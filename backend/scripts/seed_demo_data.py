@@ -3144,6 +3144,16 @@ def main() -> None:
     create_tag_org.raise_for_status()
     tag_record(h_pm, drone["id"], "persona", persona_inspector["id"], ["Strategic"])
 
+    print("Seeding a restricted tag vocabulary — Solstice Cloud Platform lists its tags and allows no others,"
+          " so its tag field only offers the list (Falcon-3 stays free)...")
+    for name, colour in (("Security", "#c53030"), ("Performance", "#b7791f"), ("Availability", "#2b6cb0")):
+        create_tag(h_pm, cloud["id"], name, colour)
+    httpx.put(
+        f"{BASE}/projects/{cloud['id']}/tag-settings", json={"mode": "restricted"}, headers=h_pm, timeout=30,
+    ).raise_for_status()
+    for index, requirement in enumerate(list(cloud_reqs.values())[:3]):
+        tag_record(h_pm, cloud["id"], "requirement", requirement["id"], [("Security", "Performance", "Availability")[index]])
+
     print()
     print("Done. Demo personas (all password: DemoDemo123!):")
     print("  demo.admin@example.com       - org admin, project manager on all three projects")
@@ -3192,6 +3202,8 @@ def main() -> None:
           " Stakeholder (Dana Whitfield, Customer, monthly, represents BVLOS Remote Pilot); plus 3 Falcon-3 Engagements (a"
           " quick email log; a focus group aimed at a Stakeholder group, with anonymous participants, prompts and a finding;"
           " and a March briefing that leaves Pat Okafor overdue on a quarterly cadence)")
+    print("  Tags: Falcon-3 has a free vocabulary with colours (inherited by the Avionics sub-project); Solstice Cloud"
+          " Platform is restricted to three listed tags")
     print("  Risk Management (enabled org-wide): 4 Risks on Falcon-3 (RSK-001 flight controller failure — High inherent,"
           " Medium residual; a supply-chain risk; the regulator risk, whose Rare x Catastrophic cell is pinned to High; and one"
           " Identified risk with no assessment), with the Likelihood x Consequence matrix and 12 default Risk types")

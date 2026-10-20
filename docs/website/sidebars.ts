@@ -77,6 +77,7 @@ const sidebars: SidebarsConfig = {
         'workflows/preferences-and-help',
         'workflows/organisations-and-projects',
         'workflows/authoring-and-reviewing-requirements',
+        'workflows/creating-records',
         'workflows/change-requests',
         'workflows/stages-baselining-and-reviews',
         'workflows/requirement-actions',

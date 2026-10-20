@@ -292,7 +292,7 @@ export function PersonaDetailPage() {
                     type="number"
                     min="0"
                     step="any"
-                    style={{ maxWidth: "10rem" }}
+                    style={{ maxWidth: "14rem" }}
                     value={weightInput}
                     onChange={(e) => setWeightInput(e.target.value)}
                     aria-label="Project weight override"

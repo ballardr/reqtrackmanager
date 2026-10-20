@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from pathlib import Path
 
 import pytest
 
@@ -488,9 +489,11 @@ def test_default_search_fields_are_validated_when_saved(world):
     assert cleared.status_code == 200 and "search_default_fields" not in cleared.json()["ui_preferences"]
 
 
+@pytest.mark.skipif(
+    not (Path(__file__).resolve().parents[2] / "frontend" / "nginx.conf").exists(),
+    reason="frontend sources are not available (backend-only image)",
+)
 def test_the_frontend_access_log_never_records_the_query_string():
-    from pathlib import Path
-
     config = (Path(__file__).resolve().parents[2] / "frontend" / "nginx.conf").read_text()
     code = "\n".join(line for line in config.splitlines() if not line.lstrip().startswith("#"))
     assert "log_format path_only" in code and "access_log /dev/stdout path_only;" in code
