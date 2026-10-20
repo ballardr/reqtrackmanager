@@ -581,6 +581,8 @@ Tier 2 — irreversible, wide blast radius. The left panel is hypothetical, not 
 
 The other half of principle 7 — fired from one shared place, so a future mutation can't ship without it the way most of today's do.
 
+**A workflow step that carries a comment** (approve, reject, send back, activate, retire, withdraw) is a Tier-1 confirm built with `CommentConfirmDialog` (`components/CommentConfirmDialog.tsx`), never a hand-built `ConfirmDialog` with its own text area and state. It takes the title, a one-line explanation and the comment caption; `commentRequired` marks the box with the shared required mark and keeps confirm disabled until it holds text. The comment reaches the record's activity as `detail.comment` (and the version's change note where the type is versioned). `RecordLifecycleControls` is built on it.
+
 ## Pattern: deleting something that is still in use
 
 A definition (a status, an action type, a link type, a scoring level) that other records still use cannot simply be deleted, and the answer is not a dead-end error or an inline row that appears under the item. One shared component, `DeleteInUseDialog` (`frontend/src/components/DeleteInUseDialog.tsx`, reached through `DefinitionList`), opens a `Modal` that says what depends on the item and offers the ways out; every vocabulary that routes through `DefinitionList` uses it, so a new vocabulary gets it for free.

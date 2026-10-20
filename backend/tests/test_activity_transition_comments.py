@@ -12,7 +12,10 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from sqlalchemy import select
 
+from app.database import SessionLocal
+from app.models.audit import AuditEvent
 from tests.conftest import auth_headers
 from tests.link_world import REQ, World
 
@@ -138,12 +141,56 @@ def test_a_change_request_decision_with_no_note_adds_no_empty_comment(world):
     assert approved and "comment" not in (approved[0]["detail"] or {})
 
 
-def test_requirement_approve_takes_no_comment_today(world):
-    """Recorded gap (docs/decisions.md): direct approval of a requirement has no comment field, so its
-    activity shows the fixed change note only."""
+def _approve(world: World, project: dict, req: uuid.UUID, **body):
+    return world.client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{req}/approve",
+        headers=auth_headers(world.token), **({"json": body} if body else {}),
+    )
+
+
+def test_requirement_approve_without_a_body_keeps_the_fixed_change_note(world):
     project = world.project()
     req = world.requirement(project, "Direct")
-    resp = world.client.post(f"/api/v1/projects/{project['id']}/requirements/{req}/approve", headers=auth_headers(world.token))
+    resp = _approve(world, project, req)
     assert resp.status_code == 200, resp.text
     approved = [e for e in _activity(world, project, (REQ, req)) if e["action"] in ("approved", "updated")]
     assert any((e["detail"] or {}).get("change_note") == "Approved directly." for e in approved)
+    assert not any("comment" in (e["detail"] or {}) for e in approved)
+
+
+def test_requirement_approve_comment_reaches_the_activity_and_the_versions(world):
+    project = world.project()
+    req = world.requirement(project, "Commented")
+    resp = _approve(world, project, req, comment="  Checked against the interface spec  ")
+    assert resp.status_code == 200, resp.text
+
+    entries = _activity(world, project, (REQ, req))
+    assert [e["detail"]["change_note"] for e in entries if e["action"] == "updated"] == [
+        "Approved directly: Checked against the interface spec"
+    ]
+    versions = world.client.get(
+        f"/api/v1/projects/{project['id']}/requirements/{req}/history", headers=auth_headers(world.token)
+    ).json()
+    assert versions[-1]["change_note"] == "Approved directly: Checked against the interface spec"
+
+
+def test_requirement_approve_comment_is_recorded_on_the_audit_event(world):
+    project = world.project()
+    req = world.requirement(project, "Audited")
+    assert _approve(world, project, req, comment="Looks right").status_code == 200
+
+    with SessionLocal() as db:
+        event = db.scalars(
+            select(AuditEvent).where(AuditEvent.entity_id == str(req), AuditEvent.action == "approved")
+        ).one()
+        assert event.detail == {"comment": "Looks right"}
+
+
+@pytest.mark.parametrize("blank", ["", "   ", None])
+def test_requirement_approve_blank_comment_is_the_same_as_none(world, blank):
+    project = world.project()
+    req = world.requirement(project, "Blank")
+    resp = _approve(world, project, req, comment=blank)
+    assert resp.status_code == 200, resp.text
+    entries = _activity(world, project, (REQ, req))
+    assert [e["detail"]["change_note"] for e in entries if e["action"] == "updated"] == ["Approved directly."]

@@ -641,6 +641,30 @@ async def test_approve_requirement_blocked_until_ai_approval_enabled_for_both_or
 
 @pytest.mark.asyncio
 @requires_write_mode
+async def test_approve_requirement_comment_is_recorded_in_the_history(admin_token):
+    """The optional `comment` is appended to the "Approved via MCP" change note."""
+    project_id, component_id, category_id = _create_test_project(admin_token)
+    org_id = _own_org_id(admin_token)
+    _set_ai_approvals(admin_token, org_id, project_id, org_enabled=True, project_enabled=True)
+    async with _client(admin_token) as client:
+        created = await client.call_tool(
+            "create_requirement",
+            {"project_id": project_id, "name": "Approved with a note", "component_id": component_id, "category_id": category_id},
+        )
+        requirement_id = created.data["id"]
+        await client.call_tool(
+            "approve_requirement",
+            {"project_id": project_id, "requirement_id": requirement_id, "comment": "Checked the acceptance criteria"},
+        )
+    history = httpx.get(
+        f"{REQTRACK_API_URL}/api/v1/projects/{project_id}/requirements/{requirement_id}/history",
+        headers={"Authorization": f"Bearer {admin_token}"}, timeout=10,
+    ).json()
+    assert history[-1]["change_note"] == "Approved via MCP: Checked the acceptance criteria"
+
+
+@pytest.mark.asyncio
+@requires_write_mode
 async def test_a_plain_api_call_to_approve_is_unaffected_by_ai_approval_flags(admin_token):
     """Regression guard: the new gate must only ever apply to an MCP-
     originated call — a plain REST call (no X-Reqtrack-Client header, which

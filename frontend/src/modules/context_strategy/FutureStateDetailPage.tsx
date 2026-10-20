@@ -33,7 +33,7 @@ import { RecordActivity } from "../../components/RecordActivity";
 import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordTags } from "../../components/RecordTags";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
-import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { CommentConfirmDialog } from "../../components/CommentConfirmDialog";
 import { DetailLayout } from "../../components/DetailLayout";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { Spinner } from "../../components/Spinner";
@@ -48,7 +48,6 @@ import { RecordHeader } from "../../components/RecordHeader";
 import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
-import { TextAreaField } from "../../components/FormFields";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { DetailCard } from "../../components/DetailCard";
 
@@ -105,9 +104,7 @@ export function FutureStateDetailPage() {
   const [editing, setEditing] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [sendingBack, setSendingBack] = useState(false);
-  const [sendBackComment, setSendBackComment] = useState("");
   const [transitionAction, setTransitionAction] = useState<TransitionAction | null>(null);
-  const [transitionComment, setTransitionComment] = useState("");
 
   useEffect(() => {
     if (!scopeId || !futureStateId) return;
@@ -339,50 +336,32 @@ export function FutureStateDetailPage() {
       )}
 
       {sendingBack && (
-        <ConfirmDialog
+        <CommentConfirmDialog
           title="Send this Future State back to Draft?"
-          message={
-            <span className="stack" style={{ gap: "0.5rem" }}>
-              <span>A comment explaining what needs rework is required.</span>
-              <TextAreaField helpNotNeeded label="Send-back comment" value={sendBackComment} onChange={setSendBackComment} rows={2} />
-            </span>
-          }
+          intro="A comment explaining what needs rework is required."
+          commentLabel="Send-back comment"
+          commentRequired
           confirmLabel="Send back"
-          confirmDisabled={!sendBackComment.trim()}
-          onConfirm={async () => {
+          onConfirm={async (comment) => {
             setSendingBack(false);
-            const comment = sendBackComment;
-            setSendBackComment("");
             await runTransition(() => scopedApi.sendBack(scopeId, futureState.id, comment), "Future State sent back to draft.");
           }}
-          onCancel={() => { setSendingBack(false); setSendBackComment(""); }}
+          onCancel={() => setSendingBack(false)}
         />
       )}
 
       {transitionAction && (
-        <ConfirmDialog
+        <CommentConfirmDialog
           title={TRANSITION_COPY[transitionAction].title}
-          message={
-            <span className="stack" style={{ gap: "0.5rem" }}>
-              <span>{TRANSITION_COPY[transitionAction].body}</span>
-              <TextAreaField helpNotNeeded
-                label="Comment"
-                ariaLabel="Transition comment"
-                value={transitionComment}
-                onChange={setTransitionComment}
-                rows={2}
-              />
-            </span>
-          }
+          intro={TRANSITION_COPY[transitionAction].body}
+          ariaLabel="Transition comment"
           confirmLabel={TRANSITION_COPY[transitionAction].confirmLabel}
-          onConfirm={async () => {
+          onConfirm={async (comment) => {
             const action = transitionAction;
-            const comment = transitionComment;
             setTransitionAction(null);
-            setTransitionComment("");
             await runTransition(() => scopedApi[action](scopeId, futureState.id, comment), `Future State ${TRANSITION_COPY[action].confirmLabel.toLowerCase()}d.`);
           }}
-          onCancel={() => { setTransitionAction(null); setTransitionComment(""); }}
+          onCancel={() => setTransitionAction(null)}
         />
       )}
 

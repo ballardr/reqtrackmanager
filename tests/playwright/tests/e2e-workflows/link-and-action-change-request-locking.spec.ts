@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { approveRequirementFromDetail, loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Job to be done: Once a requirement is
@@ -98,7 +98,7 @@ test.describe("action/link change-request locking", () => {
       await expect(linkModal).not.toBeVisible();
       await expect(page.getByRole("link", { name: reqBName })).toBeVisible();
 
-      await page.getByRole("button", { name: "Approve", exact: true }).click();
+      await approveRequirementFromDetail(page);
       await expect(page.getByText("Requirement approved")).toBeVisible();
       await expect(page.getByText("Locked (approved)")).toBeVisible();
     });

@@ -36,7 +36,7 @@ import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { RecordActivity } from "../../components/RecordActivity";
 import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordTags } from "../../components/RecordTags";
-import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { CommentConfirmDialog } from "../../components/CommentConfirmDialog";
 import { DetailLayout } from "../../components/DetailLayout";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
@@ -53,7 +53,6 @@ import { DECISION_STATUS_LABEL, DECISION_STATUS_TONE } from "./types";
 import type { Decision, DecisionComment, DecisionFieldValues, DecisionTypeDefinition } from "./types";
 import type { FileAsset } from "../../api/types";
 import { Badge } from "../../components/Badge";
-import { TextAreaField } from "../../components/FormFields";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { DetailCard } from "../../components/DetailCard";
 
@@ -71,9 +70,7 @@ export function DecisionDetailPage() {
   const [editing, setEditing] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
-  const [approveComment, setApproveComment] = useState("");
   const [rejecting, setRejecting] = useState(false);
-  const [rejectComment, setRejectComment] = useState("");
   const [comments, setComments] = useState<DecisionComment[] | null>(null);
   const [files, setFiles] = useState<FileAsset[]>([]);
 
@@ -283,43 +280,31 @@ export function DecisionDetailPage() {
       )}
 
       {approving && (
-        <ConfirmDialog
+        <CommentConfirmDialog
           title="Approve this Decision?"
-          message={
-            <span className="stack" style={{ gap: "0.5rem" }}>
-              <span>This records a formal approval in the audit trail. A comment is optional.</span>
-              <TextAreaField helpNotNeeded label="Approval comment" value={approveComment} onChange={setApproveComment} rows={2} />
-            </span>
-          }
+          intro="This records a formal approval in the audit trail. A comment is optional."
+          commentLabel="Approval comment"
           confirmLabel="Approve"
-          onConfirm={async () => {
+          onConfirm={async (comment) => {
             setApproving(false);
-            const comment = approveComment;
-            setApproveComment("");
             await runTransition(() => decisionsApi.approveDecision(projectId, decision.id, comment), "Decision approved.");
           }}
-          onCancel={() => { setApproving(false); setApproveComment(""); }}
+          onCancel={() => setApproving(false)}
         />
       )}
 
       {rejecting && (
-        <ConfirmDialog
+        <CommentConfirmDialog
           title="Reject this Decision?"
-          message={
-            <span className="stack" style={{ gap: "0.5rem" }}>
-              <span>A comment explaining the rejection is required.</span>
-              <TextAreaField helpNotNeeded label="Rejection comment" value={rejectComment} onChange={setRejectComment} rows={2} />
-            </span>
-          }
+          intro="A comment explaining the rejection is required."
+          commentLabel="Rejection comment"
+          commentRequired
           confirmLabel="Reject"
-          confirmDisabled={!rejectComment.trim()}
-          onConfirm={async () => {
+          onConfirm={async (comment) => {
             setRejecting(false);
-            const comment = rejectComment;
-            setRejectComment("");
             await runTransition(() => decisionsApi.rejectDecision(projectId, decision.id, comment), "Decision rejected.");
           }}
-          onCancel={() => { setRejecting(false); setRejectComment(""); }}
+          onCancel={() => setRejecting(false)}
         />
       )}
     </DetailLayout>

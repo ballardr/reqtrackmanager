@@ -38,6 +38,7 @@ import { WatchingGroupsPanel } from "../components/WatchingGroupsPanel";
 import { RequirementFields } from "../components/RequirementFields";
 import { EMPTY_REQUIREMENT_FIELDS, type RequirementFieldValues } from "../components/requirementFieldValues";
 import { CommentThread } from "../components/CommentThread";
+import { CommentConfirmDialog } from "../components/CommentConfirmDialog";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
 import { DetailLayout } from "../components/DetailLayout";
@@ -125,6 +126,7 @@ export function RequirementDetailPage() {
   }
 
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [approving, setApproving] = useState(false);
   const [files, setFiles] = useState<FileAsset[]>([]);
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>([]);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
@@ -475,9 +477,10 @@ export function RequirementDetailPage() {
     }
   }
 
-  async function approveRequirement() {
+  async function approveRequirement(comment: string) {
+    setApproving(false);
     try {
-      await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/approve`);
+      await api.post(`/api/v1/projects/${projectId}/requirements/${requirementId}/approve`, { comment: comment || null });
       showToast(strings.requirements.approved);
       reload();
     } catch (err) {
@@ -611,7 +614,7 @@ export function RequirementDetailPage() {
         transitions={
           <>
             {canApprove && requirement.requires_approval && (
-              <button className="btn btn-primary" onClick={approveRequirement}>
+              <button className="btn btn-primary" onClick={() => setApproving(true)}>
                 <CheckCircle /> {strings.requirements.approve}
               </button>
             )}
@@ -638,6 +641,16 @@ export function RequirementDetailPage() {
         }
       />
       {archiveAction.dialog}
+      {approving && (
+        <CommentConfirmDialog
+          title={strings.requirements.approveDialogTitle}
+          intro={strings.requirements.approveDialogIntro}
+          confirmLabel={strings.requirements.approve}
+          commentLabel={strings.requirements.approveCommentLabel}
+          onConfirm={approveRequirement}
+          onCancel={() => setApproving(false)}
+        />
+      )}
 
       {projectId && (
         <WatchingGroupsPanel

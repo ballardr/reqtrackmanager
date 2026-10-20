@@ -5,14 +5,14 @@
 
 ## Status / Resume Here
 
-2 / 11 phases complete (Phases 1 and 2 finished 2026-10-21, uncommitted at hand-back; Phase 0, the questions, was already signed off). Every other phase can start; Phase 3 is next in table order.
+3 / 11 phases complete (Phases 1, 2 and 3 finished 2026-10-21, uncommitted at hand-back; Phase 0, the questions, was already signed off). Every other phase can start; Phase 4 is next in table order.
 
 | # | Phase | Source of the item | Status |
 |---|-------|--------------------|--------|
 | 0 | User sign-off on the questions in section 2 | decisions.md Phase 22 / 27 | [x] |
 | 1 | Lock every versioned update (Strategy, Future State, Guiding Principle, Requirement, Decision) | decisions.md, "Still open" in the concurrency review | [x] |
 | 2 | Icon scale review closed out | Phase 22 "Not done" (Q9) | [x] |
-| 3 | Requirement approve takes an optional comment | Phase 27 N44 | [ ] |
+| 3 | Requirement approve takes an optional comment | Phase 27 N44 | [x] |
 | 4 | "Open only" default on Risks, Decisions, Open Questions | Phase 27 N47 | [ ] |
 | 5 | Forms still on placeholder-only inputs move to the shared field components | style guide "Not yet migrated" | [ ] |
 | 6 | Report tables stop rendering every row | style guide "Not yet migrated" | [ ] |

@@ -18,7 +18,7 @@ Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (st
 
 Approves a draft or reviewed requirement (the same transition the UI's "Approve" button performs).
 
-Parameters: `project_id` (string), `requirement_id*` (string)
+Parameters: `project_id` (string), `requirement_id*` (string), `comment` (string)
 
 ## `complete_requirement` (approval)
 
