@@ -224,9 +224,9 @@ def test_the_bare_code_still_finds_a_record_whose_project_code_is_a_prefix_of_it
 def test_every_registered_type_can_link_to_every_linkable_type(world):
     """No (type, target) pair is left without a link type: from any record type's create form the
     Link to box can reach every record type the project offers."""
+    from app.models.project import Project
     from app.modules.registry import get_all_registered_artefact_types, get_module_registry
     from app.services.link_authoring import DRAFT_ARTEFACT_ID, linkable_types_for_project
-    from app.models.project import Project
 
     for key in get_module_registry():
         world.enable(key)

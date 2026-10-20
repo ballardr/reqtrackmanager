@@ -44,7 +44,7 @@ test.describe("comment editing and attachments", () => {
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByCode(page, "HW-FN-001");
       const commentRow = page.locator(".comment-row", { hasText: originalBody });
-      await expect(commentRow.getByRole("button", { name: "Edit comment" })).toHaveCount(0);
+      await expect(commentRow.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
 
       const projectId = page.url().match(/projects\/([0-9a-f-]+)/)![1];
       const requirementId = page.url().match(/requirements\/([0-9a-f-]+)/)![1];
@@ -69,7 +69,7 @@ test.describe("comment editing and attachments", () => {
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByCode(page, "HW-FN-001");
 
-      await page.locator(".comment-row", { hasText: originalBody }).getByRole("button", { name: "Edit comment" }).click();
+      await page.locator(".comment-row", { hasText: originalBody }).getByRole("button", { name: "Edit", exact: true }).click();
       // Once in edit mode, the original body text no longer appears as DOM
       // text content (replaced by a textarea, whose value isn't matched by
       // hasText) — re-locate the row as "the one currently being edited"
@@ -88,7 +88,7 @@ test.describe("comment editing and attachments", () => {
     });
 
     await test.step("remove one of the two attachments", async () => {
-      await page.locator(".comment-row", { hasText: editedBody }).getByRole("button", { name: "Edit comment" }).click();
+      await page.locator(".comment-row", { hasText: editedBody }).getByRole("button", { name: "Edit", exact: true }).click();
       const editingRow = page.locator(".comment-row", { has: page.locator("textarea") });
       await editingRow.getByRole("button", { name: "Remove attachment" }).first().click();
       await editingRow.getByRole("button", { name: "Save", exact: true }).click();
