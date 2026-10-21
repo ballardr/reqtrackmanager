@@ -189,6 +189,10 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     // link (`DecisionDetailPage.tsx`) from the nav-rail's own "Decisions"
     // link, which also matches a plain substring search on this page.
     await page.getByRole("link", { name: "← Decisions", exact: true }).click();
+    // The list opens on Decisions still to be made; the approved and superseded ones need the filter cleared.
+    await expect(page.getByRole("checkbox", { name: "Open only" })).toBeChecked();
+    await expect(page.getByRole("button", { name: "DEC-001" })).toHaveCount(0);
+    await page.getByRole("checkbox", { name: "Open only" }).uncheck();
     await page.getByRole("button", { name: "DEC-001" }).click();
     quickView = page.getByRole("dialog", { name: "DEC-001" });
     await quickView.getByRole("link", { name: "View full details" }).click();

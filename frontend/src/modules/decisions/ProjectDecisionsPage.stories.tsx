@@ -46,7 +46,12 @@ const meta: Meta<typeof ProjectDecisionsPage> = {
   title: "Modules/Decisions/ProjectDecisionsPage",
   component: ProjectDecisionsPage,
   decorators: [
-    withRouter(`/projects/${PROJECT_ID}/modules/decisions`, "/projects/:projectId/modules/decisions"),
+    // `parameters.query` opens the page the way a link with a status or `open=0` does.
+    (Story, context) =>
+      withRouter(
+        `/projects/${PROJECT_ID}/modules/decisions${context.parameters.query ?? ""}`,
+        "/projects/:projectId/modules/decisions",
+      )(Story, context),
     withToast(),
     withAuth(buildUser({ id: "user-1", display_name: "Alex Morgan" })),
   ],
@@ -55,8 +60,14 @@ export default meta;
 
 type Story = StoryObj<typeof ProjectDecisionsPage>;
 
+const MIXED = [
+  decision(),
+  decision({ id: "decision-2", unique_code: "DEC-002", title: "Use Terraform for infra", status: "draft", is_locked: false }),
+];
+
 export const ListsDecisions: Story = {
-  beforeEach: () => mockPageApis([decision(), decision({ id: "decision-2", unique_code: "DEC-002", title: "Use Terraform for infra", status: "draft", is_locked: false })]),
+  parameters: { query: "?open=0" },
+  beforeEach: () => mockPageApis(MIXED),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Adopt PostgreSQL for the new service")).toBeInTheDocument());
@@ -64,6 +75,57 @@ export const ListsDecisions: Story = {
     await expect(canvas.getByText("DEC-001")).toBeInTheDocument();
     // The Owner column shows a group owner by name with its kind.
     await expect(canvas.getAllByText("Platform Architecture")).toHaveLength(2);
+  },
+};
+
+/** The list opens on Decisions still to be made; unticking the filter shows the ones already made. */
+export const OpensOnOpenDecisionsByDefault: Story = {
+  beforeEach: () => mockPageApis(MIXED),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Use Terraform for infra")).toBeInTheDocument());
+    await expect(canvas.queryByText("Adopt PostgreSQL for the new service")).not.toBeInTheDocument();
+    const openOnly = canvas.getByRole("checkbox", { name: "Open only" });
+    await expect(openOnly).toBeChecked();
+    await userEvent.click(openOnly);
+    await expect(await canvas.findByText("Adopt PostgreSQL for the new service")).toBeInTheDocument();
+  },
+};
+
+/** Draft, proposed and under review are open; approved, rejected and superseded are not. */
+export const OpenStatusesAreTheOnesNotYetDecided: Story = {
+  beforeEach: () => mockPageApis(
+    (["draft", "proposed", "under_review", "approved", "rejected", "superseded"] as const)
+      .map((status, i) => decision({ id: `d-${i}`, unique_code: `DEC-00${i + 1}`, title: `Decision ${status}`, status })),
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Decision draft")).toBeInTheDocument());
+    await expect(canvas.getByText("Decision proposed")).toBeInTheDocument();
+    await expect(canvas.getByText("Decision under_review")).toBeInTheDocument();
+    for (const done of ["approved", "rejected", "superseded"]) {
+      await expect(canvas.queryByText(`Decision ${done}`)).not.toBeInTheDocument();
+    }
+  },
+};
+
+/** A link that names a status shows that slice, so the default never produces an empty list. */
+export const AStatusLinkStartsWithOpenOnlyOff: Story = {
+  parameters: { query: "?status=approved" },
+  beforeEach: () => mockPageApis([MIXED[0]]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Adopt PostgreSQL for the new service")).toBeInTheDocument());
+    await expect(canvas.getByRole("checkbox", { name: "Open only" })).not.toBeChecked();
+    await expect(canvas.getByLabelText("Status")).toHaveValue("approved");
+  },
+};
+
+/** When only the default hides everything, the empty state says why. */
+export const EmptyBecauseOfOpenOnlySaysSo: Story = {
+  beforeEach: () => mockPageApis([MIXED[0]]),
+  play: async ({ canvasElement }) => {
+    await waitFor(() => expect(within(canvasElement).getByText(/^No open Decisions\. Untick Open only/)).toBeInTheDocument());
   },
 };
 

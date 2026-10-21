@@ -48,6 +48,7 @@ import { Spinner } from "../../components/Spinner";
 import { cycleSort, type SortState } from "../../components/sortState";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { oneOf, useInitialSearchParams } from "../../hooks/useInitialSearchParams";
+import { useOpenOnly } from "../../hooks/useOpenOnly";
 import { projectPainPointApi } from "./api";
 import { PainPointFormModal } from "./PainPointFormModal";
 import { BlockerBadge, PainPointScoreBadge } from "./PainPointScoreBadges";
@@ -73,25 +74,6 @@ import { TagFilterField } from "../../components/TagFilterField";
 const SCHEME_KEY = "pain_point";
 const DEFAULT_ROLLUP: PainPointRollup = "weighted_average";
 
-/**
- * Whether the list starts on open Pain Points only: yes, unless the link says `open=0` or asks for a
- * particular slice (a status, scored or not, blockers, only the intentional ones), which the default
- * would otherwise hide.
- *
- * @param initial The URL's search parameters when the page opened.
- */
-function opensOnOpenOnly(initial: URLSearchParams): boolean {
-  const open = initial.get("open");
-  if (open === "1") return true;
-  if (open === "0") return false;
-  // Only values the page understands count; an unknown one is ignored, as it is for the filters themselves.
-  const namesASlice = (initial.get("status") ?? "") in PAIN_POINT_STATUS_LABEL
-    || ["yes", "no"].includes(initial.get("scored") ?? "")
-    || initial.get("blocker") === "1"
-    || initial.get("intentional") === "only";
-  return !namesASlice;
-}
-
 export function ProjectPainPointsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
@@ -112,7 +94,10 @@ export function ProjectPainPointsPage() {
   const projectScope = useProjectScope(projectId);
   const [hideIntentional, setHideIntentional] = useState(initial.get("intentional") === "hide");
   const [onlyIntentional, setOnlyIntentional] = useState(initial.get("intentional") === "only");
-  const [openOnly, setOpenOnly] = useState(() => opensOnOpenOnly(initial));
+  const [openOnly, setOpenOnly] = useOpenOnly(
+    initial, Object.keys(PAIN_POINT_STATUS_LABEL),
+    ["yes", "no"].includes(initial.get("scored") ?? "") || initial.get("blocker") === "1" || initial.get("intentional") === "only",
+  );
   const [blockersOnly, setBlockersOnly] = useState(initial.get("blocker") === "1");
   const [scoredFilter, setScoredFilter] = useState<"" | "yes" | "no">(() => oneOf(initial.get("scored"), ["yes", "no"] as const));
 

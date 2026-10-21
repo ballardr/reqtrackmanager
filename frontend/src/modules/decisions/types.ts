@@ -34,6 +34,9 @@ export const DECISION_STATUS_LABEL: Record<DecisionStatus, string> = {
   superseded: "Superseded",
 };
 
+/** Decisions still to be made (not yet approved, rejected or superseded); the Decisions list opens on these. */
+export const DECISION_OPEN_STATUSES: readonly DecisionStatus[] = ["draft", "proposed", "under_review"];
+
 // Same tone convention as `CHANGE_REQUEST_STATUS_TONE` (frontend/src/api/
 // types.ts) — a Decision's lifecycle is structurally the same "propose ->
 // review -> approve/reject" shape as a Change Request, so it maps the same

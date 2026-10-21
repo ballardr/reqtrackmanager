@@ -51,6 +51,7 @@ export default meta;
 type Story = StoryObj<typeof ProjectOpenQuestionsPage>;
 
 export const ListsOpenQuestions: Story = {
+  parameters: { query: "?open=0" },
   beforeEach: () => mockPageApis(QUESTIONS),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -58,6 +59,56 @@ export const ListsOpenQuestions: Story = {
     await expect(canvas.getByText("Resolved long ago")).toBeInTheDocument();
     await expect(canvas.getByRole("columnheader", { name: "Code" })).toBeInTheDocument();
     await expect(canvas.getAllByText(/OQ-\d{3}/).length).toBeGreaterThan(0);
+  },
+};
+
+/** The list opens on unresolved questions only, with the filter shown ticked. */
+export const OpensOnOpenQuestionsByDefault: Story = {
+  beforeEach: () => mockPageApis(QUESTIONS),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Overdue and unowned")).toBeInTheDocument());
+    await expect(canvas.queryByText("Resolved long ago")).not.toBeInTheDocument();
+    const openOnly = canvas.getByRole("checkbox", { name: "Open only" });
+    await expect(openOnly).toBeChecked();
+    await userEvent.click(openOnly);
+    await expect(await canvas.findByText("Resolved long ago")).toBeInTheDocument();
+  },
+};
+
+/** Open, investigating and ready for decision are open; resolved and withdrawn are not. */
+export const OpenStatusesAreTheUnresolvedOnes: Story = {
+  beforeEach: () => mockPageApis(
+    (["open", "investigating", "ready_for_decision", "resolved", "withdrawn"] as const)
+      .map((status, i) => question({ id: `q-${i}`, unique_code: `OQ-00${i + 1}`, question: `Question ${status}`, status })),
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Question open")).toBeInTheDocument());
+    await expect(canvas.getByText("Question investigating")).toBeInTheDocument();
+    await expect(canvas.getByText("Question ready_for_decision")).toBeInTheDocument();
+    await expect(canvas.queryByText("Question resolved")).not.toBeInTheDocument();
+    await expect(canvas.queryByText("Question withdrawn")).not.toBeInTheDocument();
+  },
+};
+
+/** A link that names a status shows that slice, so the default never produces an empty list. */
+export const AStatusLinkStartsWithOpenOnlyOff: Story = {
+  parameters: { query: "?status=resolved" },
+  beforeEach: () => mockPageApis(QUESTIONS),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Resolved long ago")).toBeInTheDocument());
+    await expect(canvas.queryByText("Overdue and unowned")).not.toBeInTheDocument();
+    await expect(canvas.getByRole("checkbox", { name: "Open only" })).not.toBeChecked();
+  },
+};
+
+/** When only the default hides everything, the empty state says why. */
+export const EmptyBecauseOfOpenOnlySaysSo: Story = {
+  beforeEach: () => mockPageApis([question({ status: "resolved" })]),
+  play: async ({ canvasElement }) => {
+    await waitFor(() => expect(within(canvasElement).getByText(/^No open Open Questions\. Untick Open only/)).toBeInTheDocument());
   },
 };
 

@@ -36,7 +36,12 @@ const meta: Meta<typeof ProjectRisksPage> = {
   component: ProjectRisksPage,
   decorators: [
     withAuth(buildUser({ id: "user-1", display_name: "Alex Morgan" })),
-    withRouter(`/projects/${PROJECT_ID}/modules/risk_management/risks`, "/projects/:projectId/modules/risk_management/risks"),
+    // `parameters.query` opens the page the way a link with a status or `open=0` does.
+    (Story, context) =>
+      withRouter(
+        `/projects/${PROJECT_ID}/modules/risk_management/risks${context.parameters.query ?? ""}`,
+        "/projects/:projectId/modules/risk_management/risks",
+      )(Story, context),
     withToast(),
   ],
 };
@@ -60,6 +65,69 @@ export const RegisterShowsRatingsStatusOwnerAndOverdue: Story = {
     await expect(within(table).getByRole("link", { name: "RSK-001" })).toHaveAttribute(
       "href", `/projects/${PROJECT_ID}/modules/risk_management/risks/risk-1`,
     );
+  },
+};
+
+const CLOSED_RISK = buildRisk({ id: "risk-3", unique_code: "RSK-003", title: "Retired supplier risk", status: "closed", allowed_next_statuses: [] });
+
+/** The register opens on open risks only; unticking the filter shows the closed ones. */
+export const OpensOnOpenRisksByDefault: Story = {
+  beforeEach: () => mockApis([...RISKS, CLOSED_RISK]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("table", { name: "Risks" });
+    await expect(canvas.getByRole("checkbox", { name: "Open only" })).toBeChecked();
+    await expect(canvas.getByRole("link", { name: "RSK-001" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("link", { name: "RSK-003" })).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("checkbox", { name: "Open only" }));
+    await expect(await canvas.findByRole("link", { name: "RSK-003" })).toBeInTheDocument();
+  },
+};
+
+/** Each status the register treats as open stays listed; every other status is hidden by the default. */
+export const OpenStatusesAreTheOnesStillBeingManaged: Story = {
+  beforeEach: () => mockApis([
+    ...(["identified", "assessed", "treatment_planned", "treatment_in_progress", "mitigated", "accepted"] as const)
+      .map((status, i) => buildRisk({ id: `open-${i}`, unique_code: `RSK-10${i}`, title: `Open ${status}`, status })),
+    ...(["transferred", "avoided", "realised", "rejected", "closed"] as const)
+      .map((status, i) => buildRisk({ id: `done-${i}`, unique_code: `RSK-20${i}`, title: `Done ${status}`, status })),
+  ]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("table", { name: "Risks" });
+    await expect(canvas.getAllByRole("link", { name: /^RSK-10\d$/ })).toHaveLength(6);
+    await expect(canvas.queryAllByRole("link", { name: /^RSK-20\d$/ })).toHaveLength(0);
+  },
+};
+
+/** A link that names a status shows that slice, so the default never produces an empty register. */
+export const AStatusLinkStartsWithOpenOnlyOff: Story = {
+  parameters: { query: "?status=closed" },
+  beforeEach: () => mockApis([...RISKS, CLOSED_RISK]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("link", { name: "RSK-003" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("link", { name: "RSK-001" })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("checkbox", { name: "Open only" })).not.toBeChecked();
+  },
+};
+
+/** `open=0` turns the default off. */
+export const OpenZeroShowsEverything: Story = {
+  parameters: { query: "?open=0" },
+  beforeEach: () => mockApis([...RISKS, CLOSED_RISK]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("link", { name: "RSK-003" })).toBeInTheDocument();
+    await expect(canvas.getByRole("checkbox", { name: "Open only" })).not.toBeChecked();
+  },
+};
+
+/** When only the default hides everything, the empty state says why. */
+export const EmptyBecauseOfOpenOnlySaysSo: Story = {
+  beforeEach: () => mockApis([CLOSED_RISK]),
+  play: async ({ canvasElement }) => {
+    await waitFor(() => expect(within(canvasElement).getByText(/^No open Risks\. Untick Open only/)).toBeInTheDocument());
   },
 };
 

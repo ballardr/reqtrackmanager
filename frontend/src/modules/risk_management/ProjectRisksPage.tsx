@@ -14,6 +14,11 @@
  *   plotted by inherent or residual rating (`RiskMatrix`). Clicking a cell
  *   narrows the register to that cell and returns to it.
  *
+ * The register opens on open risks only (the "Open only" filter is ticked and
+ * stays visible); a link with a valid `status`, or `open=0`, starts with it
+ * off (`hooks/useOpenOnly.ts`). Both are read once from the URL and only seed
+ * the filters.
+ *
  * Status and type render through their label maps; the rating is derived by the
  * backend. The project, org users, types, scheme and risks are fetched here
  * (no `ProjectContext` provider, as `ProjectDecisionsPage` does).
@@ -40,9 +45,11 @@ import { RiskFormModal } from "./RiskFormModal";
 import { RiskMatrix } from "./RiskMatrix";
 import { RiskRatingBadge } from "./RiskRatingBadge";
 import { CONSEQUENCE_AXIS, LIKELIHOOD_AXIS, levelName, useRiskScheme } from "./useRiskScheme";
-import { RISK_STATUS_LABEL, RISK_STATUS_TONE } from "./types";
+import { RISK_OPEN_STATUSES, RISK_STATUS_LABEL, RISK_STATUS_TONE } from "./types";
 import type { Risk, RiskFieldValues, RiskStatus } from "./types";
 import { Badge } from "../../components/Badge";
+import { oneOf, useInitialSearchParams } from "../../hooks/useInitialSearchParams";
+import { useOpenOnly } from "../../hooks/useOpenOnly";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { rowProjectId } from "../../api/projectScope";
@@ -78,6 +85,7 @@ export function ProjectRisksPage() {
   const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "risk");
   const commitTags = useCommitTags(projectId ?? "", "risk");
+  const initial = useInitialSearchParams();
   const scheme = useRiskScheme(projectId);
   const [project, setProject] = useState<Project | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
@@ -89,7 +97,8 @@ export function ProjectRisksPage() {
   const [basis, setBasis] = useState<RiskMatrixBasis>("inherent");
   const [cell, setCell] = useState<CellFilter | null>(null);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<RiskStatus | "">("");
+  const [statusFilter, setStatusFilter] = useState<RiskStatus | "">(() => oneOf(initial.get("status"), Object.keys(RISK_STATUS_LABEL) as RiskStatus[]));
+  const [openOnly, setOpenOnly] = useOpenOnly(initial, Object.keys(RISK_STATUS_LABEL));
   const [typeFilter, setTypeFilter] = useState("");
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [untreatedOnly, setUntreatedOnly] = useState(false);
@@ -131,9 +140,10 @@ export function ProjectRisksPage() {
     };
   }, [projectId, includeArchived, refreshKey, tagFilter.tags, tagFilter.mode, projectScope.scope]);
 
-  const filtered = useMemo(() => {
+  const matches = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    return (risks ?? []).filter((r) => {
+    return (r: Risk, applyOpenOnly: boolean) => {
+      if (applyOpenOnly && !RISK_OPEN_STATUSES.includes(r.status)) return false;
       if (statusFilter && r.status !== statusFilter) return false;
       if (typeFilter && r.risk_type_id !== typeFilter) return false;
       if (overdueOnly && !r.is_review_overdue) return false;
@@ -141,8 +151,9 @@ export function ProjectRisksPage() {
       if (cell && !inCell(r, cell)) return false;
       if (needle && !`${r.unique_code} ${r.title} ${r.statement}`.toLowerCase().includes(needle)) return false;
       return true;
-    });
-  }, [risks, search, statusFilter, typeFilter, overdueOnly, untreatedOnly, cell]);
+    };
+  }, [search, statusFilter, typeFilter, overdueOnly, untreatedOnly, cell]);
+  const filtered = useMemo(() => (risks ?? []).filter((r) => matches(r, openOnly)), [risks, matches, openOnly]);
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -175,6 +186,8 @@ export function ProjectRisksPage() {
     },
   ];
 
+  // An empty register the "Open only" default caused says so, so it is not read as "nothing recorded".
+  const emptyBecauseOfOpenOnly = openOnly && filtered.length === 0 && risks.some((r) => matches(r, false));
   const unplotted = filtered.length - countPlottable(filtered, basis);
 
   return (
@@ -207,6 +220,7 @@ export function ProjectRisksPage() {
                 ))}
               </select>
             </FilterField>
+            <FilterCheckbox label="Open only" checked={openOnly} onChange={setOpenOnly} />
             <FilterCheckbox label="Review overdue" checked={overdueOnly} onChange={setOverdueOnly} />
             <FilterCheckbox label="No effective treatment" checked={untreatedOnly} onChange={setUntreatedOnly} />
             <ProjectScopeFilter scope={projectScope} />
@@ -239,7 +253,13 @@ export function ProjectRisksPage() {
                 rows={filtered}
                 rowKey={(r) => r.id}
                 rowHref={(r) => `/projects/${rowProjectId(r, projectId)}/modules/risk_management/risks/${r.id}`}
-                emptyState={<p className="text-muted">{risks.length === 0 ? "No Risks recorded for this project yet." : "No Risks match these filters."}</p>}
+                emptyState={
+                  <p className="text-muted">
+                    {emptyBecauseOfOpenOnly
+                      ? "No open Risks. Untick Open only to include transferred, avoided, realised, rejected and closed ones."
+                      : risks.length === 0 ? "No Risks recorded for this project yet." : "No Risks match these filters."}
+                  </p>
+                }
               />
             ) : (
               <div className="stack">

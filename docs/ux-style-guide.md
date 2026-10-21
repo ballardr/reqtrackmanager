@@ -445,6 +445,15 @@ A future page adopting `FilterPanel` gets this shape for free: pass `total` (and
 
 **No filter fields beyond search.** A page with only a search box and no narrowing `FilterField`/`FilterCheckbox` controls (Org Groups, Project Groups, `OrgListPage.tsx`) still uses `FilterPanel` for its header (`ResultCount`/search chrome consistency with every other directory) and passes `children={null}`. `FilterPanel` omits the `"Filters"` heading (and, on mobile, the `CollapsibleSection` accordion around it) whenever `children` is `null` — the same reasoning `layout="top"` already applies to its own heading: a heading over an empty body reads as broken, not as an empty section.
 
+## Pattern: open-only default
+
+A record list with a lifecycle (Pain Points, Open Questions, Risks, Decisions) opens on its **open** items, because most visits want those, and shows the choice as a ticked **Open only** `FilterCheckbox` so it is never hidden state.
+
+- **One rule.** `useOpenOnly` / `opensOnOpenOnly` (`frontend/src/hooks/useOpenOnly.ts`) seeds the checkbox from the URL the page opened with: ticked unless the link says `open=0` or names a slice the default would hide (a valid `status`, or a type's own extra slice such as `blocker=1`); `open=1` keeps it ticked. A link therefore never lands on an empty list.
+- **"Open" is defined once per type**, beside its status labels (`*_OPEN_STATUSES` in the module's `types.ts`), never inline in a page: Pain Point submitted/triaged/accepted; Open Question open/investigating/ready for decision; Risk identified through mitigated, plus accepted (still on the register being managed); Decision draft/proposed/under review (not yet made).
+- **Empty state.** When the default alone hides everything, the message says so ("No open Risks. Untick Open only to include …") instead of "nothing recorded".
+- **Report figures** that count every status link with `open=0`.
+
 ## Pattern: filter panel placement — side vs. top
 
 *(New — follow-up UX fix, see `docs/decisions.md`. A live screenshot of Org Admin's Users table showed the Role column and everything after it visibly cramped against the filter panel's left edge — a genuine readability problem, not a CSS bug: `.side-grid`'s `grid-template-columns: minmax(0, 1fr) 240px` never actually overlaps content, it just leaves a many-column table less room than a narrow one.)*

@@ -57,8 +57,8 @@ The filters a link applies are on the destination page as ordinary controls, so 
 
 | Page | Filters it accepts in the address |
 | --- | --- |
-| Pain Point | `status`, `priority`, `open=1`, `intentional=hide` or `only`, `blocker=1`, `scored=yes` or `no`, `model`, `rollup` |
-| Open Question | `status`, `priority`, `open=1`, `overdue=1`, `unowned=1` |
+| Pain Point | `status`, `priority`, `open=1` or `0`, `intentional=hide` or `only`, `blocker=1`, `scored=yes` or `no`, `model`, `rollup` |
+| Open Question | `status`, `priority`, `open=1` or `0`, `overdue=1`, `unowned=1` |
 | Future State | `status`, `roadmap=1`, `target_passed=1`, `no_measures=1` |
 | Guiding Principle | `status` |
 

@@ -13,6 +13,8 @@ For example, "Flight controller fails in flight" is recorded as Risk RSK-001: Sa
 | Falcon-3's four Risks with inherent and residual ratings, status, owner and next review; one review is overdue |
 | ![Risk register for the Falcon-3 project listing four Risks with High and Medium rating badges, statuses from Identified to Accepted, and an Overdue marker on the supplier risk's review date](../../../static/img/screenshots/risk-register.png) |
 
+The register opens on the Risks still being managed (Identified through Mitigated, and Accepted): **Open only** is ticked, and clearing it adds the Transferred, Avoided, Realised, Rejected and Closed ones. A link that names a status opens the register with that status and **Open only** off.
+
 ## When to use a Risk
 
 Use a Risk for an uncertain event that would hurt the project if it happened: a supplier that may be late, a regulator that may withdraw an approval, a design that may fail in the field. It is not a defect (that has already happened) and not a Requirement (that says what the product must do). A Requirement often exists *because* of a Risk, and the module keeps that reason recorded and checkable.
