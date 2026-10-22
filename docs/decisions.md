@@ -11406,3 +11406,27 @@ Closes the open question left by the Pain Points default. **Decided by: User** (
 - **Docs.** Style guide (paragraph under "directories at scale"; "Not yet migrated" note removed); website reports page.
 - **SOC 2 / modules / parity / nested projects / time:** presentation only. No data, permission, audit or logging change; no module value added to a core enum, no project-scoped definition table, no person field and no time value.
 
+
+## Leftovers (October 2026) Phase 7: `SidePanel` detail views audited against the page checklist (2026-10-22)
+
+**Decided by: Agent** (the verdicts and the one move); the sweep itself came from the plan and the style guide's former "were not re-audited" note.
+
+- **Method.** Every `<SidePanel` in `frontend/src` (not stories) was checked against the four markers in the style guide's "Pattern: entity detail panel": a comment thread, file attachments, a Links panel, 3+ lifecycle actions each with its own `ConfirmDialog`. The checklist's threshold is **2 or more markers**; the plan's "3 or more" was a slip, and the style guide is the binding text, so 2 was used. The plan's candidate list was also partly stale: Guiding Principles, Strategies, Decision templates, Requirement detail, Risk, Compliance's standard versions, applicability tree and project compliance detail either are already pages or are in-place drill-downs and use no `SidePanel` at all (their file comments only explain why).
+- **Audit.**
+
+| Surface | Markers hit | Verdict |
+|---|---|---|
+| Compliance Evidence (`EvidencePanel`) | Attachments, Links (Edit/Revalidate/Archive, one dialog) = 2 | **Moved to a page** (`EvidenceDetailPage`) |
+| Compliance requirement assessment (`RequirementAssessmentPanel`) | Links = 1 | Stays. It has six sections, but the checklist's markers, not length, decide; its attachment flow belongs to the evidence it creates |
+| Compliance requirement in a standard version (`RequirementTree` detail) | None | Stays |
+| Decision quick view (`DecisionQuickViewPanel`) | None (read-only peek) | Stays; the Decisions precedent |
+| Org Admin: user access view | None (read-only) | Stays |
+| Org Admin: group details | 1 `ConfirmDialog` | Stays |
+| Project Admin: group details | None | Stays |
+
+- **The move.** `/projects/:projectId/modules/compliance/evidence/:evidenceId` (`EvidenceDetailPage`): `RecordHeader` with Edit, Revalidate and an Archive confirm, the fields, §15's revalidation history, Files (upload, unlink, link from shared resources), the shared Links, Activity and tags. No quick view: the Evidence list links straight to the page (Requirements' precedent), because a peek would show nothing the row does not. `EvidenceFormModal` and `RevalidateModal` moved to `EvidenceFormModals.tsx` so the list, the page and the requirement panel share them; `paths.ts` holds the URL builders.
+- **Reachability.** `compliance_evidence` in `artefactPaths` now resolves to the page, so a search hit, a Links-panel row and an expiry notification open the record rather than the Compliance page. The Compliance page reads `?tab=` once on mount, so the page's Back link returns to the Evidence tab instead of Standards.
+- **Gap found, not fixed here.** No Compliance record's create form has `QuickLinkField` or `TagField`, and no Compliance list has `TagFilterField`; the style guide's tag and quick-link patterns say omitting them needs a stated reason in this log, and none is recorded. The detail page does show tags (`RecordTags`), so a tag set elsewhere is visible. Raised with the user as a separate decision because it covers every Compliance type.
+- **Tests.** Storybook: `EvidenceDetailPage` (fields, files, links and history; expired and archived flags; revalidate; edit; archive confirm), `EvidencePanel` (rows link to the page), `ProjectCompliancePageTabs` (`?tab=` opens and falls back). Playwright: the project compliance spec now opens the evidence page, checks Back, revalidates and archives. `project-record-codes.spec.ts` passes unchanged.
+- **Docs.** Style guide: the "were not re-audited" sentence now records this sweep. Website: the Compliance evidence page.
+- **SOC 2 / modules / parity / nested projects / time:** presentation and routing only; the route and `artefactPaths` entry sit in the Compliance module's own registration, so no core file names it. No data, permission, audit or logging change; no module value added to a core enum, no project-scoped definition table, no person field. Revalidation shows the stored UTC instant as the browser's local date, as before.

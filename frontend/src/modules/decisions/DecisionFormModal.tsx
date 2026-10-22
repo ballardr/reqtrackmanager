@@ -4,7 +4,7 @@
  * Create/edit dialog for a Decision's content fields — shared by
  * `ProjectDecisionsPage.tsx` (create) and `DecisionDetailPanel.tsx` (edit),
  * distinguished by whether `initial` is passed, the same convention
- * `modules/compliance/EvidencePanel.tsx`'s `EvidenceFormModal` and
+ * `modules/compliance/EvidenceFormModals.tsx`'s `EvidenceFormModal` and
  * `StandardFormModal.tsx` both already use.
  *
  * Create mode only: a Decision Template picker pre-fills the seven free-text fields with that template's

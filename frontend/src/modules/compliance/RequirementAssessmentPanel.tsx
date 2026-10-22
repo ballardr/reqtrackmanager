@@ -17,11 +17,11 @@
  * 400 still surfaces as a toast either way.
  *
  * Evidence section: alongside linking already-existing evidence,
- * "Upload new evidence" reuses `EvidencePanel.tsx`'s own exported
+ * "Upload new evidence" reuses `EvidenceFormModals.tsx`'s exported
  * `EvidenceFormModal` to create a new `Evidence` record the same way that
  * panel does, immediately auto-links it to this assessment (no separate
  * manual "link existing" step), then reuses `FileAttachmentList`/
- * `ResourcePickerModal` — again exactly as `EvidencePanel.tsx` already does
+ * `ResourcePickerModal` — again exactly as `EvidenceDetailPage.tsx` already does
  * — so the actual file attaches in the same flow. `EvidenceFormModal`'s create form itself stages files before save, so
  * `createAndLinkEvidence` uploads those in the same step and only falls
  * back to the follow-up "Attach files" modal when none were staged —
@@ -43,7 +43,7 @@ import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import { ApplicabilityBadge } from "./ApplicabilityBadge";
-import { EvidenceFormModal } from "./EvidencePanel";
+import { EvidenceFormModal } from "./EvidenceFormModals";
 import {
   COMPLIANCE_APPLICABILITY_LABEL,
   COMPLIANCE_APPROVAL_STATE_LABEL,

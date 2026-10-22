@@ -671,7 +671,7 @@ Each of the four markers is independently checkable against a component's own im
 
 **When the checklist says "page," add a read-only quick-view `SidePanel` only if it earns its keep** — a minimal peek (title/name plus the one or two fields that identify the row, no actions, no edit, per this pattern's own "open it read-only" rule above) with a single "View full details" link into the page. Skip the quick view entirely (plain direct navigation, `rowHref` straight to the page — Requirements' own precedent, no quick-view step at all) when a fast peek isn't worth the extra layer for that entity's list.
 
-First applied when Decisions (lifecycle actions + relationships + comments + attachments = 4 of 4 markers) moved from a `SidePanel` (`DecisionDetailPanel.tsx`) to a full page (`DecisionDetailPage.tsx`) with a quick-view companion (`DecisionQuickViewPanel.tsx`), 2026-09-22 — see `docs/decisions.md`. Existing `SidePanel`-only entities were not re-audited against this checklist in this pass; worth a follow-up sweep if one is later found straining under it.
+First applied when Decisions (lifecycle actions + relationships + comments + attachments = 4 of 4 markers) moved from a `SidePanel` (`DecisionDetailPanel.tsx`) to a full page (`DecisionDetailPage.tsx`) with a quick-view companion (`DecisionQuickViewPanel.tsx`), 2026-09-22 — see `docs/decisions.md`. The remaining `SidePanel` detail views were then audited against it (see `docs/decisions.md`, "Leftovers (October 2026) Phase 7"): Compliance evidence (attachments and Links) moved to `EvidenceDetailPage`; the others hit 0 or 1 marker and stay panels. A new `SidePanel` detail view that hits two markers is a page from the start.
 
 ## Pattern: directory table
 

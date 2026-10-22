@@ -8,7 +8,6 @@ import { EvidencePanel } from "./EvidencePanel";
 import type { ComplianceEvidence } from "./types";
 
 const PROJECT_ID = "proj-1";
-const ORG_ID = "org-1";
 
 function evidence(overrides: Partial<ComplianceEvidence> = {}): ComplianceEvidence {
   return {
@@ -22,12 +21,9 @@ function evidence(overrides: Partial<ComplianceEvidence> = {}): ComplianceEviden
 }
 
 /**
- * The project's evidence library (§13-§15) — creation, the archive/
- * revalidate/edit `SidePanel` actions, and §15's append-only revalidation
- * history. File-attachment upload/link is exercised via `FileAttachmentList
- * .stories.tsx`/`ResourcePickerModal.stories.tsx`'s own dedicated coverage
- * of that shared mechanism — this file proves the wiring (correct evidence
- * id, correct endpoint), not the attachment widgets' own internals again.
+ * The project's evidence library (§13-§15) — the list, search and creation.
+ * Archive, revalidate, edit and files live on `EvidenceDetailPage` (its own
+ * stories).
  */
 function mockApis(initial: ComplianceEvidence[]) {
   let items = initial;
@@ -81,7 +77,7 @@ const meta: Meta<typeof EvidencePanel> = {
   title: "Modules/Compliance/EvidencePanel",
   component: EvidencePanel,
   decorators: [withToast(), withRouter("/")],
-  args: { projectId: PROJECT_ID, orgId: ORG_ID },
+  args: { projectId: PROJECT_ID },
 };
 export default meta;
 
@@ -159,51 +155,15 @@ export const AddEvidenceWithFileAttachment: Story = {
   },
 };
 
-export const RevalidateEvidence: Story = {
+/** A row is a real link to the evidence's own detail page. */
+export const RowsLinkToTheDetailPage: Story = {
   beforeEach: () => mockApis([evidence()]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const body = within(document.body);
-    await userEvent.click(canvas.getByText("IPX6 Test Certificate"));
-    await userEvent.click(body.getByRole("button", { name: "Revalidate" }));
-    const dialog = await waitFor(() => body.getByRole("dialog", { name: "Revalidate evidence" }));
-    const dialogScope = within(dialog);
-    await userEvent.type(dialogScope.getByLabelText("New expiry date"), "2027-12-31");
-    await userEvent.click(dialogScope.getByRole("button", { name: "Revalidate" }));
-
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
-      `/api/v1/projects/${PROJECT_ID}/modules/compliance/evidence/ev-1/revalidate`,
-      { new_expiry_date: "2027-12-31", justification: "" }
-    ));
-  },
-};
-
-export const ArchiveEvidence: Story = {
-  beforeEach: () => mockApis([evidence()]),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    const body = within(document.body);
-    await userEvent.click(canvas.getByText("IPX6 Test Certificate"));
-    await userEvent.click(body.getByRole("button", { name: "Archive" }));
-    const confirmDialog = await waitFor(() => body.getByRole("dialog", { name: /Archive/ }));
-    await userEvent.click(within(confirmDialog).getByRole("button", { name: "Archive" }));
-
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
-      `/api/v1/projects/${PROJECT_ID}/modules/compliance/evidence/ev-1/archive`
-    ));
-  },
-};
-
-/** Opening a piece of evidence shows its links in the shared Links panel. */
-export const EvidenceDetailShowsLinks: Story = {
-  beforeEach: () => mockApis([evidence()]),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByText("IPX6 Test Certificate"));
-    const body = within(canvasElement.ownerDocument.body);
-    await waitFor(() => expect(body.getByRole("link", { name: "SW-SEC-014 Encrypt at rest" })).toBeInTheDocument());
-    // The side panel names the evidence by its code too.
-    await expect(within(body.getByRole("dialog", { name: "IPX6 Test Certificate" })).getByText(/EVD-001/)).toBeInTheDocument();
+    const link = await canvas.findByRole("link", { name: "IPX6 Test Certificate" });
+    await expect(link).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/compliance/evidence/ev-1`);
+    // No side panel opens in place any more.
+    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
   },
 };
 

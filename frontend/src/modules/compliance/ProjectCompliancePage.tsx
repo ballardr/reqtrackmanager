@@ -15,7 +15,8 @@
  * Compliant/Pending-Approval/Reviews-Due listings §20/§21 call for as their
  * own drillable lists, gathered in one place so "what remains outstanding"
  * doesn't require opening every assignment in turn, per §21's own "make it
- * easy... to determine what remains outstanding").
+ * easy... to determine what remains outstanding"). `?tab=evidence|outstanding`
+ * opens that tab on arrival (read once; the evidence detail page's Back link uses it).
  *
  * Standard-to-project *assignment itself* is a Compliance Manager action on
  * the *org* router (`router.py::create_project_compliance`'s
@@ -67,9 +68,11 @@ import { FormActions } from "../../components/FormActions";
 import { FormGrid } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
+import { useInitialSearchParams, oneOf } from "../../hooks/useInitialSearchParams";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 
-type ComplianceTabKey = "standards" | "evidence" | "outstanding";
+const COMPLIANCE_TABS = ["standards", "evidence", "outstanding"] as const;
+type ComplianceTabKey = (typeof COMPLIANCE_TABS)[number];
 
 /** One row of the Standards tab's directory — a `ProjectCompliance`
  * assignment, decorated with its computed §20 status when active (archived
@@ -83,7 +86,8 @@ interface AssignmentRow {
 export function ProjectCompliancePage() {
   const { projectId } = useParams<{ projectId: string }>();
   const { showToast } = useToast();
-  const [tab, setTab] = useState<ComplianceTabKey>("standards");
+  const initialParams = useInitialSearchParams();
+  const [tab, setTab] = useState<ComplianceTabKey>(() => oneOf(initialParams.get("tab"), COMPLIANCE_TABS) || "standards");
   const [project, setProject] = useState<Project | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [assignments, setAssignments] = useState<ProjectCompliance[] | null>(null);
@@ -213,7 +217,7 @@ export function ProjectCompliancePage() {
       )}
       {tab === "evidence" && (
         <div {...tabPanelProps("project-compliance", "evidence")}>
-          <EvidencePanel projectId={projectId} orgId={project.organization_id} />
+          <EvidencePanel projectId={projectId} />
         </div>
       )}
       {tab === "outstanding" && (

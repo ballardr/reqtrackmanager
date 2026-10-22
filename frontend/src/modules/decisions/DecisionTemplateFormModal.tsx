@@ -6,7 +6,7 @@
  * shape, so this follows `modules/compliance/StandardFormModal.tsx`'s own
  * precedent: a dedicated `size="lg"` `Modal` form shared by create and edit,
  * distinguished by whether `initial` is passed (mirrors
- * `EvidencePanel.tsx`'s `EvidenceFormModal` for the smaller-scale version of
+ * `compliance/EvidenceFormModals.tsx`'s `EvidenceFormModal` for the smaller-scale version of
  * the same create/edit split).
  */
 import { useState } from "react";

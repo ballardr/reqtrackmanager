@@ -5,7 +5,7 @@
 
 ## Status / Resume Here
 
-6 / 11 phases complete (Phases 1–6 finished 2026-10-21/22, uncommitted at hand-back; Phase 0, the questions, was already signed off). Every other phase can start; Phase 7 is next in table order.
+7 / 11 phases complete (Phases 1–7 finished 2026-10-21/22, uncommitted at hand-back; Phase 0, the questions, was already signed off). Every other phase can start; Phase 8 is next in table order.
 
 | # | Phase | Source of the item | Status |
 |---|-------|--------------------|--------|
@@ -16,7 +16,7 @@
 | 4 | "Open only" default on Risks, Decisions, Open Questions | Phase 27 N47 | [x] |
 | 5 | Forms still on placeholder-only inputs move to the shared field components | style guide "Not yet migrated" | [x] |
 | 6 | Report tables stop rendering every row | style guide "Not yet migrated" | [x] |
-| 7 | `SidePanel`-only detail views audited against the page checklist | style guide, "Pattern: entity detail panel" | [ ] |
+| 7 | `SidePanel`-only detail views audited against the page checklist | style guide, "Pattern: entity detail panel" | [x] |
 | 8 | Spacing and radius become named tokens | style guide, design tokens | [ ] |
 | 9 | Backend gets a bucket-scoped storage credential | vendor policy Known Gap 3 | [ ] |
 | 10 | CI and policy gaps: dependency scanning, coverage threshold, stale policy text, CODEOWNERS and ruleset checklist | change-management policy Known Gaps 2–5 | [ ] |

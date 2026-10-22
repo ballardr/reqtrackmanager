@@ -835,6 +835,10 @@ export function listEvidence(projectId: string): Promise<ComplianceEvidence[]> {
   return api.get(`${projectBase(projectId)}/evidence`);
 }
 
+export function getEvidence(projectId: string, evidenceId: string): Promise<ComplianceEvidence> {
+  return api.get(`${projectBase(projectId)}/evidence/${evidenceId}`);
+}
+
 export function getExpiringEvidence(projectId: string): Promise<ComplianceEvidence[]> {
   return api.get(`${projectBase(projectId)}/expiring-evidence`);
 }
