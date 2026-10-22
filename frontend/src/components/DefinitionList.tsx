@@ -10,7 +10,7 @@ import {
   type DeleteInUseRemoveOption,
 } from "./DeleteInUseDialog";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { TextField } from "./FormFields";
+import { InlineTextInput, TextField } from "./FormFields";
 
 const strings = t();
 
@@ -210,14 +210,13 @@ export function DefinitionList<T extends { id: string }>({
             <div className="row" style={{ justifyContent: "space-between" }}>
               <div className="row">
                 {fields.map((f) => (
-                  <input
+                  <InlineTextInput
                     key={f.key}
-                    className="input"
                     type={f.inputType ?? "text"}
-                    style={{ maxWidth: f.maxWidth ?? 220 }}
-                    aria-label={f.ariaLabel}
+                    maxWidth={f.maxWidth ?? 220}
+                    ariaLabel={f.ariaLabel ?? f.placeholder ?? f.key}
                     value={draft[f.key]}
-                    onChange={(e) => setEdits((m) => ({ ...m, [item.id]: { ...draft, [f.key]: e.target.value } }))}
+                    onChange={(next) => setEdits((m) => ({ ...m, [item.id]: { ...draft, [f.key]: next } }))}
                   />
                 ))}
                 {dirty && isValid(draft) && (

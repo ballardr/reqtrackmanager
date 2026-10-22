@@ -101,7 +101,7 @@ import { Badge } from "../components/Badge";
 import { CheckboxField, ColorField, FileField, TextAreaField, TextField, ToggleField, UploadField } from "../components/FormFields";
 import { FormActions } from "../components/FormActions";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
-import { LabeledSelect } from "../components/LabeledSelect";
+import { InlineSelect, LabeledSelect } from "../components/LabeledSelect";
 import { RecordFieldGroup } from "../components/RecordDetailParts";
 
 /**
@@ -3005,19 +3005,13 @@ export function OrgAdminPage() {
                     )}
                     {nestableGroups.length > 0 && (
                       <div className="row">
-                        <select
-                          className="input"
-                          aria-label={strings.orgAdmin.addNestedGroup}
+                        <InlineSelect
+                          ariaLabel={strings.orgAdmin.addNestedGroup}
+                          placeholder={strings.orgAdmin.addNestedGroup}
                           value={nestSelections[g.id] ?? ""}
-                          onChange={(e) => setNestSelections((prev) => ({ ...prev, [g.id]: e.target.value }))}
-                        >
-                          <option value="">{strings.orgAdmin.addNestedGroup}</option>
-                          {nestableGroups.map((og) => (
-                            <option key={og.id} value={og.id}>
-                              {og.name}
-                            </option>
-                          ))}
-                        </select>
+                          options={nestableGroups.map((og) => ({ value: og.id, label: og.name }))}
+                          onChange={(next) => setNestSelections((prev) => ({ ...prev, [g.id]: next }))}
+                        />
                         <button
                           className="btn"
                           disabled={!nestSelections[g.id]}
@@ -3322,19 +3316,13 @@ export function OrgAdminPage() {
 
             {templateProjects.length > 0 && (
               <CollapsibleSection sectionKey="orgAdmin.defaultTemplate" title={strings.orgAdmin.defaultTemplate}>
-                <select
-                  className="input"
-                  aria-label={strings.orgAdmin.defaultTemplate}
+                <InlineSelect
+                  ariaLabel={strings.orgAdmin.defaultTemplate}
+                  placeholder={strings.projects.noTemplate}
                   value={org.default_template_project_id ?? ""}
-                  onChange={(e) => setDefaultTemplate(e.target.value)}
-                >
-                  <option value="">{strings.projects.noTemplate}</option>
-                  {templateProjects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
+                  options={templateProjects.map((p) => ({ value: p.id, label: p.name }))}
+                  onChange={setDefaultTemplate}
+                />
               </CollapsibleSection>
             )}
           </div>
@@ -3491,10 +3479,13 @@ export function OrgAdminPage() {
                   </span>
                 </div>
                 {scimGeneratedToken && (
-                  <div className="stack" style={{ gap: "0.25rem" }}>
-                    <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.scimTokenShownOnce}</span>
-                    <input className="input" readOnly value={scimGeneratedToken} aria-label={strings.orgAdmin.scimTokenLabel} onFocus={(e) => e.target.select()} />
-                  </div>
+                  <TextField helpNotNeeded
+                    label={strings.orgAdmin.scimTokenLabel}
+                    hint={strings.orgAdmin.scimTokenShownOnce}
+                    value={scimGeneratedToken}
+                    onChange={() => undefined}
+                    inputProps={{ readOnly: true, onFocus: (e) => e.target.select() }}
+                  />
                 )}
                 {scimError && <div style={{ color: "var(--color-danger)" }}>{scimError}</div>}
                 <div className="row">

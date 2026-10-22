@@ -68,3 +68,52 @@ export function LabeledSelect({
     </FieldShell>
   );
 }
+
+/**
+ * A select with no visible caption, for a control that sits in a row of other controls (an "add to this
+ * group" picker beside its button, a column mapping inside a table cell) where the row or the cell heading
+ * is the caption. The accessible name is required, so it cannot be left unnamed. A field in a form is a
+ * `LabeledSelect`.
+ *
+ * @param ariaLabel The select's accessible name.
+ * @param placeholder Leading empty option's text; `null` omits it.
+ * @param maxWidth Optional width cap in pixels.
+ */
+export function InlineSelect({
+  ariaLabel,
+  value,
+  onChange,
+  options,
+  disabled,
+  placeholder = "Select…",
+  maxWidth,
+  inputProps,
+}: {
+  ariaLabel: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string }[];
+  disabled?: boolean;
+  placeholder?: string | null;
+  maxWidth?: number;
+  inputProps?: Omit<SelectHTMLAttributes<HTMLSelectElement>, "value" | "onChange" | "className" | "aria-label" | "disabled">;
+}) {
+  return (
+    <select
+      {...inputProps}
+      className="input"
+      style={maxWidth ? { maxWidth } : undefined}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      {placeholder !== null && <option value="">{placeholder}</option>}
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  );
+}

@@ -855,6 +855,7 @@ A form is made of these parts and nothing hand-rolled (`scripts/check_form_marku
 |------|-----------|
 | One-line text, text area (`autoGrow` for long prose), date, number, colour, file | `TextField`, `TextAreaField`, `DateField`, `ColorField`, `FileField` (`FormFields.tsx`; a number or password is `TextField` with `inputProps={{ type }}`) |
 | Pick one of a list | `LabeledSelect` (`hint`, `ariaLabel`, `inputProps`) |
+| A control inside a row or table cell, where the row or column heading is the caption (an inline rename, an "add to group" picker beside its button, a CSV column mapping) | `InlineTextInput` (`FormFields.tsx`) and `InlineSelect` (`LabeledSelect.tsx`); both require an `ariaLabel`, so the control is always named. A field in a form is never one of these |
 | Pick a person or group | `PrincipalFormField` (create/edit forms), `RecordPrincipalField` (detail pages; always the compact picker) |
 | A yes/no chosen while filling the form in, or a setting with a hint | `CheckboxField`; `ToggleField` for an on/off setting |
 | Layout | `FormGrid` with `FormGridFull` for titles, text areas and notes; `minColumn="18rem"` in a dialog (give the `Modal` `size="lg"`) |
@@ -866,7 +867,7 @@ A form is made of these parts and nothing hand-rolled (`scripts/check_form_marku
 - One or two plain fields need no grid; three or more get one.
 - Every field has `help` or `helpNotNeeded` ([Pattern: field help](#pattern-field-help)).
 
-**Not yet migrated:** the inline add and rename rows of the project admin Structure section (stages, components, categories, custom fields), the branding, single sign-on and bootstrap cards of Organisation Admin and the CSV import wizard still use placeholder-only inputs or hand-built layouts; the generic report tables render every row (a very long report table is still one long page).
+**Not yet migrated:** the generic report tables render every row (a very long report table is still one long page).
 
 ## Pattern: button sizes
 
