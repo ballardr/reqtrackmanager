@@ -5,7 +5,7 @@
 
 ## Status / Resume Here
 
-11 / 11 phases complete (finished 2026-10-21 to 2026-10-23; the plan is archived). Open for the user: apply the branch-protection checklist, decide on the docs-site `braces` advisory (report-only for now), and answer the Compliance tag/quick-link question. Follow-ups: section 6.
+11 / 11 phases complete (finished 2026-10-21 to 2026-10-23; the plan is archived). Open for the user: decide on the docs-site `braces` advisory (report-only for now), and answer the Compliance tag/quick-link question. Follow-ups: section 6.
 
 | # | Phase | Source of the item | Status |
 |---|-------|--------------------|--------|

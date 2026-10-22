@@ -72,24 +72,24 @@ Read left to right: a vulnerable dependency or image stops the job before anythi
 
 ## Branch protection checklist (Company action)
 
-The "Main Branch" ruleset (Settings → Rules → Rulesets) exists but its enforcement is **Disabled**, so none of the CI gates above can block a merge yet. Only a repository admin can change it; the agent does not. Settings as found on 2026-10-22, and what to set:
+The "Main Branch" ruleset (Settings → Rules → Rulesets) was applied on 2026-10-23: it is **Active** and the five CI jobs below are required. The approvals count is deliberately left at 0 (accepted exception, Known Gap 2). Only a repository admin can change it; the agent does not. Read back from GitHub on 2026-10-23:
 
-| Setting | Found | Set to | Why |
+| Setting | Found (2026-10-22) | Set to / state now | Why |
 | --- | --- | --- | --- |
-| Enforcement status | Disabled | **Active** | A disabled ruleset enforces nothing. |
-| Required status checks | `Backend tests, coverage & E2E`, `Build production container images (not published)`, `Build, version, and push production container images` | `Frontend lint, build & test`, `Backend tests & coverage`, `E2E (Playwright) suite`, `Dependency vulnerability scan`, `Build, version, and push production container images` | The first two found names no longer exist (the job was split and renamed), so enabling them as they are would block every merge forever; the frontend job was not required at all. A name must match a job's `name:` exactly. |
+| Enforcement status | Disabled | **Active** (applied) | A disabled ruleset enforces nothing. |
+| Required status checks (applied) | `Backend tests, coverage & E2E`, `Build production container images (not published)`, `Build, version, and push production container images` | `Frontend lint, build & test`, `Backend tests & coverage`, `E2E (Playwright) suite`, `Dependency vulnerability scan`, `Build, version, and push production container images` | The first two found names no longer exist (the job was split and renamed), so enabling them as they are would block every merge forever; the frontend job was not required at all. A name must match a job's `name:` exactly. |
 | Require branches up to date | On (strict) | Keep | A merge result is the one that was tested. |
-| Required approvals | 0 | Decide: 1 with the owner as a bypass actor, or 1 with a second reviewer | A sole owner cannot approve their own pull request, so 1 with no bypass blocks every merge. With a bypass the owner can merge their own change; the bypass is itself an auditable ruleset event. |
+| Required approvals | 0 | **Kept at 0 (User decision, 2026-10-23).** There is one maintainer and no second person who can approve. Revisit when a second reviewer exists: then 1 approval | A sole owner cannot approve their own pull request, so 1 with no bypass blocks every merge. With a bypass the owner can merge their own change; the bypass is itself an auditable ruleset event. |
 | Require review from Code Owners | On | Keep (needs `.github/CODEOWNERS`, now present) | Without the file the rule has nobody to ask. |
-| Bypass actors | None | Owner only, if the 1-approval option above is chosen | Keeps an emergency path without disabling the rule. |
+| Bypass actors | None | None. Not needed at 0 approvals; with 1 approval and a sole maintainer the owner would need to be one | Keeps an emergency path without disabling the rule. |
 | Block deletions, block force pushes | On | Keep | Protects history. |
 
-Once applied, mark Known Gap 2 resolved here and in the control matrix (CC4.1, CC8.1).
+This checklist is complete as far as it can be today; what remains is Known Gap 2.
 
 ## Known Gaps / Exceptions
 
 1. ~~No CI pipeline~~ — **resolved.** `.github/workflows/ci.yml` runs on every push/PR to `main`; every job above is gating. See Implementation above.
-2. **The review requirement is configured but not enforced.** The "Main Branch" ruleset is disabled, requires 0 approvals and lists stale check names; `.github/CODEOWNERS` now exists. Applying the [checklist above](#branch-protection-checklist-company-action) is a Company action in GitHub settings, not a workflow change.
+2. **Accepted exception: no reviewer approval before merge (Decided by: User, 2026-10-23).** The "Main Branch" ruleset is Active, requires a pull request and the five CI jobs with strict up-to-date merging, so a failing job blocks a merge. It requires 0 approvals because the project has one maintainer and nobody else can approve; GitHub does not let an author approve their own pull request, so 1 approval would block every merge. There is therefore no segregation of duties between author and merger; the compensating controls are the CI gates, the decisions log and the security-review pass in this policy. Close it by raising the count to 1 when a second reviewer exists, then update this section and the control matrix (CC8.1).
 3. ~~No automated dependency/container vulnerability scanning~~ — **resolved with one reported exception.** `dependency-scan` and the Trivy step in `docker-build` fail on fixable findings; existing findings were fixed by upgrades (FastAPI 0.111.0 → 0.136.3 with Starlette pinned at 1.9.0 for seven Starlette advisories; the nginx base images 1.27 → 1.30 for about 58 fixable Alpine findings; `follow-redirects` and `launch-editor` in the documentation site lockfile). **Open:** the documentation site's `braces` advisory (GHSA-vfj7-8cjw-p6xm, a build-time glob dependency of Docusaurus) has no patched release, so that step is reported, not gating; the published docs image contains only static files. Findings with no released fix are excluded from the image scan and shown again on every run. Dependency scanning does not cover the third-party images in the Compose files (PostgreSQL, SeaweedFS, Keycloak, MailHog).
 4. ~~No coverage threshold~~ — **resolved.** See Implementation: `--cov-fail-under=93.2`. Frontend coverage is reported only, because the Storybook figure excludes the page logic the Playwright suite covers.
 5. ~~Container images are built but not published~~ — **resolved.** `docker-build` pushes the backend, frontend, mcp-server and docs images to ghcr.io on every push to `main`, tagged with the GitVersion SemVer, the commit SHA and `latest`, after the scans pass.
