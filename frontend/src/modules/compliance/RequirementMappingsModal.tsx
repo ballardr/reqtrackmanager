@@ -152,8 +152,8 @@ export function RequirementMappingsModal({ orgId, standardId, versionId, require
           </table>
         )}
 
-        <h3 style={{ margin: "0.5rem 0 0" }}>Add mapping</h3>
-        <div className="row" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
+        <h3 style={{ margin: "var(--space-3) 0 0" }}>Add mapping</h3>
+        <div className="row" style={{ flexWrap: "wrap", gap: "var(--space-3)" }}>
           <LabeledSelect helpNotNeeded
             label="Target standard"
             value={targetStandardId}

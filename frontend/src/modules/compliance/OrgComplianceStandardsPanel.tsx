@@ -301,10 +301,10 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
                                       return (
                                         <li
                                           key={versionGroup.key}
-                                          style={{ marginLeft: "1.75rem", borderLeft: "2px solid var(--color-border)", paddingLeft: "0.75rem", marginBottom: "0.5rem" }}
+                                          style={{ marginLeft: "1.75rem", borderLeft: "2px solid var(--color-border)", paddingLeft: "var(--space-4)", marginBottom: "var(--space-3)" }}
                                         >
                                           {singleVersion ? (
-                                            <h4 style={{ margin: "0.25rem 0" }}>{versionGroup.label}</h4>
+                                            <h4 style={{ margin: "var(--space-1) 0" }}>{versionGroup.label}</h4>
                                           ) : (
                                             <button
                                               type="button"
@@ -325,14 +325,14 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
                                                 padding: 0,
                                                 marginLeft: "1.75rem",
                                                 borderLeft: "2px solid var(--color-border)",
-                                                paddingLeft: "0.75rem",
+                                                paddingLeft: "var(--space-4)",
                                               }}
                                             >
                                               {versionGroup.rows.map((row) => (
                                                 <li
                                                   key={row.project_compliance_id}
                                                   className="row"
-                                                  style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", padding: "0.35rem 0" }}
+                                                  style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", padding: "var(--space-2) 0" }}
                                                 >
                                                   <Link to={`/projects/${row.project_id}/modules/compliance`}>{row.project_name}</Link>
                                                   <span>
@@ -357,14 +357,14 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
                                   padding: 0,
                                   marginLeft: "1.75rem",
                                   borderLeft: "2px solid var(--color-border)",
-                                  paddingLeft: "0.75rem",
+                                  paddingLeft: "var(--space-4)",
                                 }}
                               >
                                 {group.rows.map((row) => (
                                   <li
                                     key={row.project_compliance_id}
                                     className="row"
-                                    style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", padding: "0.35rem 0" }}
+                                    style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", padding: "var(--space-2) 0" }}
                                   >
                                     <span>
                                       <Link to={`/projects/${row.project_id}/modules/compliance`}>{`${row.standard_reference} — ${row.standard_name}`}</Link>

@@ -74,7 +74,7 @@ export function ReportExportButton<K extends ReportDownloadKind = "pdf" | "csv">
       </button>
       {menuOpen && (
         <Popover anchorRef={triggerRef} title="Export" onClose={() => setMenuOpen(false)}>
-          <div className="stack" style={{ gap: "0.25rem", minWidth: 180 }}>
+          <div className="stack" style={{ gap: "var(--space-1)", minWidth: 180 }}>
             {kinds.map((kind) => (
               <button
                 key={kind} type="button" className="btn" style={{ justifyContent: "flex-start" }} disabled={downloading !== null}

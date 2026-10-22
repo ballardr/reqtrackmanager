@@ -237,7 +237,7 @@ export function ProjectRisksPage() {
         />
           <div className="stack" {...tabPanelProps("risks-view", view)}>
             {cell && (
-              <div className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+              <div className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
                 <Badge>
                   {cell.basis === "inherent" ? "Inherent" : "Residual"}:{" "}
                   {levelName(scheme, LIKELIHOOD_AXIS, cell.likelihoodLevelId)} likelihood,{" "}

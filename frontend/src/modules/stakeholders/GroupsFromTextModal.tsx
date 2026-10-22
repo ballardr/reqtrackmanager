@@ -41,7 +41,7 @@ export function GroupsFromTextModal({
             <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
               {proposals.map((p) => (
                 <li key={p.name}>
-                  <label className="checkbox-label" style={{ gap: "0.5rem" }}>
+                  <label className="checkbox-label" style={{ gap: "var(--space-3)" }}>
                     <input
                       type="checkbox" aria-label={p.name} checked={chosen.has(p.name)}
                       onChange={(e) => {

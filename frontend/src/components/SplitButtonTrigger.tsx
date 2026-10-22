@@ -93,7 +93,7 @@ export function SplitButtonTrigger({
       </button>
       {menuOpen && (
         <Popover anchorRef={chevronRef} title={menuTitle} onClose={() => setMenuOpen(false)}>
-          <div className="stack" style={{ gap: "0.25rem", minWidth: 180 }}>
+          <div className="stack" style={{ gap: "var(--space-1)", minWidth: 180 }}>
             {alternatives.map((alt, i) => (
               <button
                 key={i}

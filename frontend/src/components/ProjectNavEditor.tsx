@@ -162,8 +162,8 @@ export function ProjectNavEditor({
     const pinned = PINNED_NAV_KEYS.includes(key);
     return (
       <li key={key} className="row" style={{ justifyContent: "space-between" }}>
-        <span className="row" style={{ gap: "0.5rem" }}>{item.icon} {item.label}</span>
-        <span className="row" style={{ gap: "0.25rem" }}>
+        <span className="row" style={{ gap: "var(--space-3)" }}>{item.icon} {item.label}</span>
+        <span className="row" style={{ gap: "var(--space-1)" }}>
           {pinned ? (
             <span className="text-muted" style={{ fontSize: "0.8rem" }}>{customise.pinned}</span>
           ) : (
@@ -195,7 +195,7 @@ export function ProjectNavEditor({
   return (
     <Modal title={customise.title} onClose={onClose}>
       <p className="text-muted" style={{ margin: 0 }}>{customise.intro}</p>
-      <fieldset className="stack" style={{ border: "none", padding: 0, margin: 0, gap: "0.25rem" }}>
+      <fieldset className="stack" style={{ border: "none", padding: 0, margin: 0, gap: "var(--space-1)" }}>
         <legend style={{ fontWeight: 600, padding: 0 }}>{customise.scopeLegend}</legend>
         <label>
           <input type="radio" name="project-nav-scope" checked={scope === "all"} onChange={() => setScope("all")} />{" "}
@@ -207,13 +207,13 @@ export function ProjectNavEditor({
         </label>
         {scope === "all" && hasOverride && <span className="text-muted">{customise.scopeReplacesOverride}</span>}
       </fieldset>
-      <section className="stack" style={{ gap: "0.4rem" }} aria-label={customise.navigationHeading}>
+      <section className="stack" style={{ gap: "var(--space-2)" }} aria-label={customise.navigationHeading}>
         <h3 style={{ margin: 0, fontSize: "0.95rem" }}>{customise.navigationHeading}</h3>
         <ul className="stack" style={{ listStyle: "none", margin: 0, padding: 0, gap: "0.3rem" }}>
           {main.map((key, index) => renderRow("main", key, index, main))}
         </ul>
       </section>
-      <section className="stack" style={{ gap: "0.4rem" }} aria-label={customise.moreHeading}>
+      <section className="stack" style={{ gap: "var(--space-2)" }} aria-label={customise.moreHeading}>
         <h3 style={{ margin: 0, fontSize: "0.95rem" }}>{customise.moreHeading}</h3>
         {more.length === 0 ? (
           <p className="text-muted" style={{ margin: 0 }}>{customise.emptyMore}</p>

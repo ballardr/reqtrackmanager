@@ -2114,7 +2114,7 @@ export function OrgAdminPage() {
     // pre-existing role.
     return (
       <div className="stack">
-        <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
+        <div className="row" style={{ alignItems: "center", gap: "var(--space-1)" }}>
           <h1 style={{ margin: 0 }}>{degradedOrgName ?? strings.orgAdmin.organizations(orgLabelPlural)}</h1>
           {/* An escape hatch off a dead-end degraded org page —
               this org is disabled, but a server admin can still jump
@@ -2160,7 +2160,7 @@ export function OrgAdminPage() {
     // from this page at all.
     return (
       <div className="stack">
-        <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
+        <div className="row" style={{ alignItems: "center", gap: "var(--space-1)" }}>
           <h1 style={{ margin: 0 }}>{degradedOrgName ?? strings.orgAdmin.organizations(orgLabelPlural)}</h1>
           {/* Same escape hatch as the disabled-org case above —
               a server admin isn't a member here, but can still jump
@@ -2399,7 +2399,7 @@ export function OrgAdminPage() {
         if (row.kind === "invited") {
           const invite = row.invite;
           return (
-            <div className="row" style={{ gap: "0.4rem", alignItems: "center" }}>
+            <div className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
               <Badge>{PENDING_INVITE_STATUS_LABEL[invite.status]}</Badge>
               <button
                 className="btn"
@@ -2452,7 +2452,7 @@ export function OrgAdminPage() {
         const u = row.user;
         const isSelf = u.user_id === user?.id;
         return (
-          <div className="row" style={{ gap: "0.25rem" }}>
+          <div className="row" style={{ gap: "var(--space-1)" }}>
             <ActionMenu
               triggerLabel={strings.orgAdmin.usersActionsFor(u.display_name)}
               items={[
@@ -2509,7 +2509,7 @@ export function OrgAdminPage() {
         {activeGroup === "overview" && (
           <div className="stack">
             <div className="row" style={{ justifyContent: "space-between" }}>
-              <div className="stack" style={{ gap: "0.35rem" }}>
+              <div className="stack" style={{ gap: "var(--space-2)" }}>
                 {/* Org name is now shown once, universally, as `ResourceMenu`'s
                     own title above every group — repeating it here as a
                     second <h1> (previously the only place it appeared at
@@ -2650,7 +2650,7 @@ export function OrgAdminPage() {
         {activeGroup === "users" && (
           <div className="stack">
             <CollapsibleSection sectionKey="orgAdmin.users" title={strings.orgAdmin.users(orgLabelCap)}>
-              <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.5rem" }}>
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "var(--space-3)" }}>
                 <AddUserMenu onInvite={() => setInviteUserModalOpen(true)} onNewUser={() => setNewUserModalOpen(true)} />
                 {advanced?.auto_accept_email_domain && (
                   <button
@@ -2802,7 +2802,7 @@ export function OrgAdminPage() {
                 {!userAccess && !userAccessError && <Spinner />}
                 {userAccess && (
                   <div className="stack">
-                    <div className="stack" style={{ gap: "0.25rem" }}>
+                    <div className="stack" style={{ gap: "var(--space-1)" }}>
                       <strong>{strings.orgAdmin.userAccessOrgGroups(orgLabelCap)}</strong>
                       {userAccess.org_groups.length === 0 ? (
                         <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.userAccessNoOrgGroups(orgLabel)}</p>
@@ -2814,7 +2814,7 @@ export function OrgAdminPage() {
                         </ul>
                       )}
                     </div>
-                    <div className="stack" style={{ gap: "0.25rem" }}>
+                    <div className="stack" style={{ gap: "var(--space-1)" }}>
                       <strong>{strings.orgAdmin.userAccessProjects}</strong>
                       {userAccess.projects.length === 0 ? (
                         <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.userAccessNoProjects}</p>
@@ -2825,9 +2825,9 @@ export function OrgAdminPage() {
                           const canExpand = collapsedRoles.length < p.roles.length;
                           const shownRoles = isExpanded ? p.roles : collapsedRoles;
                           return (
-                            <div key={p.project_id} className="card stack" style={{ gap: "0.4rem" }}>
+                            <div key={p.project_id} className="card stack" style={{ gap: "var(--space-2)" }}>
                               <Link to={`/projects/${p.project_id}`}>{p.project_name}</Link>
-                              <div className="row" style={{ gap: "0.25rem", flexWrap: "wrap", alignItems: "center" }}>
+                              <div className="row" style={{ gap: "var(--space-1)", flexWrap: "wrap", alignItems: "center" }}>
                                 {shownRoles.map((r) => (
                                   <Badge key={r}>{PROJECT_ROLE_LABEL[r]}</Badge>
                                 ))}
@@ -2835,7 +2835,7 @@ export function OrgAdminPage() {
                                   <button
                                     type="button"
                                     className="btn"
-                                    style={{ fontSize: "0.75rem", padding: "0.15rem 0.5rem" }}
+                                    style={{ fontSize: "0.75rem", padding: "0.15rem var(--space-3)" }}
                                     onClick={() => toggleAccessProjectExpanded(p.project_id)}
                                   >
                                     {isExpanded
@@ -2962,7 +2962,7 @@ export function OrgAdminPage() {
                       <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
                         {members.map((u) => (
                           <li key={u.user_id} style={{ listStyle: "disc" }}>
-                            <span className="row" style={{ justifyContent: "space-between", gap: "0.5rem" }}>
+                            <span className="row" style={{ justifyContent: "space-between", gap: "var(--space-3)" }}>
                               <span>
                                 {u.display_name} <span className="text-muted">({u.email})</span>
                               </span>
@@ -2988,7 +2988,7 @@ export function OrgAdminPage() {
                       <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
                         {nestedGroups.map((og) => (
                           <li key={og.id} style={{ listStyle: "circle" }}>
-                            <span className="row" style={{ justifyContent: "space-between", gap: "0.5rem" }}>
+                            <span className="row" style={{ justifyContent: "space-between", gap: "var(--space-3)" }}>
                               <span>{strings.orgAdmin.nestedGroupLabel(og.name)}</span>
                               <button
                                 className="btn"
@@ -3029,7 +3029,7 @@ export function OrgAdminPage() {
                         (bug fix, see comment above): with no SSO configured,
                         only the muted hint renders, nothing else. */}
                     {ssoConfigured ? (
-                      <div className="stack" style={{ gap: "0.5rem" }}>
+                      <div className="stack" style={{ gap: "var(--space-3)" }}>
                         <CheckboxField help={strings.help.ssoGroupSync}
                           label={strings.orgAdmin.syncFromSso}
                           checked={syncEnabled}
@@ -3120,9 +3120,9 @@ export function OrgAdminPage() {
               <CollapsibleSection sectionKey="orgAdmin.projects" title={strings.orgAdmin.projects}>
                 <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.projectsHint(orgLabel)}</p>
                 {orgProjects.map((p) => (
-                  <div key={p.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
+                  <div key={p.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "var(--space-3)" }}>
                     <div className="row" style={{ justifyContent: "space-between" }}>
-                      <span className="row" style={{ gap: "0.5rem" }}>
+                      <span className="row" style={{ gap: "var(--space-3)" }}>
                         {p.name}
                         {p.is_archived && <Badge>{strings.projects.archived}</Badge>}
                       </span>
@@ -3141,7 +3141,7 @@ export function OrgAdminPage() {
               // is the direct fix for "should show up in a similar way to
               // the project admin page," not a parallel reimplementation.
               <Modal title={strings.orgAdmin.manageUsersModalTitle(manageUsersProjectName)} onClose={closeManageUsers} size="lg">
-                <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+                <div className="row" style={{ gap: "var(--space-3)", flexWrap: "wrap" }}>
                   <button className="btn btn-primary" onClick={() => setManageUsersAddMemberModalOpen(true)}>
                     <Plus /> {strings.admin.addMember}
                   </button>
@@ -3259,7 +3259,7 @@ export function OrgAdminPage() {
                 <div style={{ color: "var(--color-accent)" }}>{strings.orgAdmin.loginBackgroundUploaded}</div>
               )}
               {org.login_background_file_id && (
-                <img src={fileUrl(org.login_background_file_id)} alt="" style={{ maxHeight: 100, borderRadius: 4 }} />
+                <img src={fileUrl(org.login_background_file_id)} alt="" style={{ maxHeight: 100, borderRadius: "var(--radius-sm)" }} />
               )}
 
               <TextField helpNotNeeded
@@ -3357,7 +3357,7 @@ export function OrgAdminPage() {
                   <span>
                     {tpl.name} <Badge style={{ background: tpl.accent_color_hex }}>&nbsp;&nbsp;</Badge>
                   </span>
-                  <div className="row" style={{ gap: "0.4rem" }}>
+                  <div className="row" style={{ gap: "var(--space-2)" }}>
                     <button className="btn" onClick={() => startEditTemplate(tpl)}>
                       {strings.common.edit}
                     </button>
@@ -3395,7 +3395,7 @@ export function OrgAdminPage() {
                       onChange={setNewTemplateIncludeLogo}
                     />
                     <FormGridFull>
-                      <div className="stack" style={{ gap: "0.25rem" }}>
+                      <div className="stack" style={{ gap: "var(--space-1)" }}>
                         <strong>{strings.admin.templateContent}</strong>
                         <ReportContentEditor
                           idPrefix="template-report-content"
@@ -3553,7 +3553,7 @@ export function OrgAdminPage() {
                   </FormGridFull>
                 </FormGrid>
 
-                <div className="stack" style={{ gap: "0.4rem" }}>
+                <div className="stack" style={{ gap: "var(--space-2)" }}>
                   <strong>{strings.orgAdmin.testEmail}</strong>
                   <span className="text-muted" style={{ fontSize: "0.85rem" }}>{strings.orgAdmin.testEmailHint(orgLabel)}</span>
                   <div className="row" style={{ alignItems: "flex-end" }}>
@@ -3897,7 +3897,7 @@ export function OrgAdminPage() {
                     {
                       key: "actions", label: "",
                       render: (r) => (
-                        <div className="row" style={{ gap: "0.25rem" }}>
+                        <div className="row" style={{ gap: "var(--space-1)" }}>
                           <button
                             className="btn"
                             aria-label={strings.orgAdmin.editCustomRole(r.name)}
@@ -3969,7 +3969,7 @@ export function OrgAdminPage() {
                           />
                         </FormGridFull>
                         <FormGridFull>
-                          <div className="stack" style={{ gap: "0.25rem" }}>
+                          <div className="stack" style={{ gap: "var(--space-1)" }}>
                             <span>{strings.orgAdmin.customRolePermissionsLabel}</span>
                             <PermissionPicker
                               permissions={permissions}
@@ -4014,7 +4014,7 @@ export function OrgAdminPage() {
                       ? strings.orgAdmin.customRoleSelectScopeFirst(matchingEntityScope.label)
                       : strings.orgAdmin.customRoleSelectProjectFirst;
                     return (
-                      <div className="card stack" key={role.id} style={{ gap: "0.5rem" }}>
+                      <div className="card stack" key={role.id} style={{ gap: "var(--space-3)" }}>
                         <div className="row" style={{ justifyContent: "space-between" }}>
                           <strong>{role.name}</strong>
                           <Badge>{customRoleScopeLabel(role.scope)}</Badge>
@@ -4043,7 +4043,7 @@ export function OrgAdminPage() {
                             placeholder={strings.common.selectOption}
                           />
                         )}
-                        <div className="row" style={{ gap: "1rem", flexWrap: "wrap" }}>
+                        <div className="row" style={{ gap: "var(--space-5)", flexWrap: "wrap" }}>
                           <RecordFieldGroup helpNotNeeded label={strings.orgAdmin.customRoleGrantFieldLabel}>
                             <UserAutocomplete
                               users={users}
@@ -4161,7 +4161,7 @@ export function OrgAdminPage() {
         <ConfirmDialog
           title={strings.orgAdmin.allowAiApprovalsAckTitle}
           message={
-            <span className="stack" style={{ gap: "0.5rem" }}>
+            <span className="stack" style={{ gap: "var(--space-3)" }}>
               <span>{strings.orgAdmin.allowAiApprovalsAckBody}</span>
               <CheckboxField helpNotNeeded
                 label={strings.orgAdmin.allowAiApprovalsAckCheckbox}

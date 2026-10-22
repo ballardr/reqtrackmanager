@@ -47,7 +47,7 @@ export const Overridden: Story = {
 
 export const AllStatesSideBySide: Story = {
   render: () => (
-    <div style={{ display: "flex", gap: "0.5rem" }}>
+    <div style={{ display: "flex", gap: "var(--space-3)" }}>
       <ApplicabilityBadge pcr={pcr({ applicability_source: "explicit" })} />
       <ApplicabilityBadge pcr={pcr({ applicability_source: "inherited", effective_applicability: "not_applicable" })} />
       <ApplicabilityBadge pcr={pcr({ applicability_source: "overridden", explicit_applicability: "applicable" })} />

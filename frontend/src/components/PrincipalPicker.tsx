@@ -72,7 +72,7 @@ export function PrincipalPicker({
   );
   if (compact) {
     return (
-      <div className="row" style={{ gap: "0.35rem", alignItems: "center" }}>
+      <div className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
         <PrincipalBadge principal={shown} />
         <AddPopoverButton label={`${value ? "Change" : "Assign"}: ${ariaLabel}`} icon={value ? Pencil : undefined}>
           {(close) => search(close)}
@@ -86,8 +86,8 @@ export function PrincipalPicker({
     );
   }
   return (
-    <div className="stack" style={{ gap: "0.35rem" }}>
-      <div className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+    <div className="stack" style={{ gap: "var(--space-2)" }}>
+      <div className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
         <PrincipalBadge principal={shown} />
         {value && (
           <button type="button" className="btn" onClick={() => onChange(null)} aria-label={`${clearLabel}: ${ariaLabel}`}>

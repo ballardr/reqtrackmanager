@@ -674,18 +674,18 @@ export function RequirementDetailPage() {
           )}
           <div>
             <div className="text-muted">{strings.requirements.reasoning}</div>
-            <p style={{ marginTop: "0.25rem" }}>{requirement.reasoning}</p>
+            <p style={{ marginTop: "var(--space-1)" }}>{requirement.reasoning}</p>
           </div>
           {requirement.clarification && (
             <div>
               <div className="text-muted">{strings.requirements.clarification}</div>
-              <p style={{ marginTop: "0.25rem" }}>{requirement.clarification}</p>
+              <p style={{ marginTop: "var(--space-1)" }}>{requirement.clarification}</p>
             </div>
           )}
           {requirement.description && (
             <div>
               <div className="text-muted">{strings.requirements.description}</div>
-              <p style={{ marginTop: "0.25rem" }}>{requirement.description}</p>
+              <p style={{ marginTop: "var(--space-1)" }}>{requirement.description}</p>
             </div>
           )}
           <div className="row">
@@ -903,7 +903,7 @@ export function RequirementDetailPage() {
             className="row entity-accent-card"
             style={{
               justifyContent: "space-between",
-              paddingLeft: "0.5rem",
+              paddingLeft: "var(--space-3)",
               ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.action,
             }}
           >
@@ -931,7 +931,7 @@ export function RequirementDetailPage() {
             title={requirement.is_locked ? strings.requirements.unlinkActionViaChangeRequestTitle : strings.requirements.unlinkActionTitle}
             message={
               requirement.is_locked ? (
-                <span className="stack" style={{ gap: "0.5rem" }}>
+                <span className="stack" style={{ gap: "var(--space-3)" }}>
                   <span>{strings.requirements.unlinkActionViaChangeRequestConfirm}</span>
                   <TextAreaField helpNotNeeded
                     label={strings.changeRequests.reason}

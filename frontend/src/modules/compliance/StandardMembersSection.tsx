@@ -177,7 +177,7 @@ export function StandardMembersSection({
         row.kind === "user" ? (
           row.member.display_name
         ) : (
-          <span className="row" style={{ gap: "0.35rem", alignItems: "center" }}>
+          <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
             <Users size={14} aria-hidden="true" />
             {row.group.group_name} <Badge>Org group</Badge>
           </span>

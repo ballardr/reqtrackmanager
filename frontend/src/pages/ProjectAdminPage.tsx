@@ -1521,7 +1521,7 @@ export function ProjectAdminPage() {
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
         <div className="stack" style={{ gap: "0.15rem" }}>
-          <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
+          <div className="row" style={{ alignItems: "center", gap: "var(--space-1)" }}>
             <h1 style={{ margin: 0 }}>{project.name}</h1>
             <EntitySwitcher
               label="Switch project"
@@ -1779,7 +1779,7 @@ export function ProjectAdminPage() {
           <ConfirmDialog
             title={strings.admin.allowAiApprovalsAckTitle}
             message={
-              <span className="stack" style={{ gap: "0.5rem" }}>
+              <span className="stack" style={{ gap: "var(--space-3)" }}>
                 <span>{strings.admin.allowAiApprovalsAckBody}</span>
                 <CheckboxField helpNotNeeded
                   label={strings.admin.allowAiApprovalsAckCheckbox}
@@ -1819,7 +1819,7 @@ export function ProjectAdminPage() {
             across the app is a separate, deliberately-deferred roadmap
             item (see docs/decisions.md); this is only where its existing
             (still mostly-inert) UI lives now. */}
-        <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)", margin: "0.25rem 0" }} />
+        <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)", margin: "var(--space-1) 0" }} />
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.terminology}</h2>
         <p className="text-muted" style={{ margin: 0 }}>{strings.admin.terminologyHint}</p>
         <FormGrid minColumn="14rem">
@@ -1850,7 +1850,7 @@ export function ProjectAdminPage() {
           const nameEdit = stageNameEdits[s.id] ?? s.name;
           const otherStages = stages.filter((other) => other.id !== s.id);
           return (
-          <div key={s.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
+          <div key={s.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "var(--space-3)" }}>
             <div className="row" style={{ justifyContent: "space-between" }}>
               <div className="row">
                 <InlineTextInput
@@ -1952,7 +1952,7 @@ export function ProjectAdminPage() {
           const componentDirty = componentEdit.name !== c.name || componentEdit.prefix !== c.prefix;
           const otherComponents = components.filter((other) => other.id !== c.id);
           return (
-            <div key={c.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.75rem" }}>
+            <div key={c.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "var(--space-4)" }}>
               <div className="row" style={{ justifyContent: "space-between" }}>
                 <div className="row">
                   <InlineTextInput
@@ -2025,7 +2025,7 @@ export function ProjectAdminPage() {
                   onCancel={() => setDeletingComponentId(null)}
                 />
               )}
-              <div className="stack" style={{ paddingLeft: "1.5rem", gap: "0.4rem" }}>
+              <div className="stack" style={{ paddingLeft: "var(--space-6)", gap: "var(--space-2)" }}>
                 {ownCategories.map((cat, catIdx) => {
                   const categoryEdit = categoryEdits[cat.id] ?? { name: cat.name, prefix: cat.prefix };
                   const categoryDirty = categoryEdit.name !== cat.name || categoryEdit.prefix !== cat.prefix;
@@ -2237,7 +2237,7 @@ export function ProjectAdminPage() {
               {strings.admin.materializeAll}
             </button>
           </div>
-          <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+          <div className="row" style={{ gap: "var(--space-3)", flexWrap: "wrap" }}>
             <button className="btn btn-primary" onClick={() => setAddMemberModalOpen(true)}>
               <Plus /> {strings.admin.addMember}
             </button>
@@ -2643,7 +2643,7 @@ export function ProjectAdminPage() {
                     <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
                       {referencedProjects.map((p) => (
                         <li key={p.id} className="row" style={{ justifyContent: "space-between", listStyle: "circle" }}>
-                          <span className="row" style={{ gap: "0.35rem" }}>
+                          <span className="row" style={{ gap: "var(--space-2)" }}>
                             {strings.admin.viaProjectMembers(p.name)}
                             <Link to={`/projects/${p.id}/admin/members`}>{strings.admin.viaProjectMembersLinkLabel}</Link>
                           </span>

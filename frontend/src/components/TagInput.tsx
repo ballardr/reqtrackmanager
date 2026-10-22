@@ -140,8 +140,8 @@ export function TagInput({
 
   const addLabel = strings.tags.addTag;
   return (
-    <div className="stack" style={{ gap: "0.25rem" }}>
-      <div className="row" style={{ gap: "0.35rem", alignItems: "center" }}>
+    <div className="stack" style={{ gap: "var(--space-1)" }}>
+      <div className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
         {value.length === 0 && disabled && <span className="text-muted">{strings.tags.none}</span>}
         {value.map((name) => (
           <TagChip
@@ -169,7 +169,7 @@ export function TagInput({
       </div>
       {popoverOpen && !disabled && (
         <Popover anchorRef={addRef} title={addLabel} onClose={closePopover} fit>
-          <div className="stack" style={{ gap: "0.4rem", minWidth: "14rem" }}>
+          <div className="stack" style={{ gap: "var(--space-2)", minWidth: "14rem" }}>
             <input
               ref={inputRef}
               className="input"
@@ -203,7 +203,7 @@ export function TagInput({
                 style={{ gap: "0.15rem", maxHeight: 220, overflowY: "auto" }}
               >
                 {options.length === 0 && (
-                  <span className="text-muted" style={{ padding: "0.35rem 0.5rem" }}>{strings.tags.noMatches}</span>
+                  <span className="text-muted" style={{ padding: "var(--space-2) var(--space-3)" }}>{strings.tags.noMatches}</span>
                 )}
                 {options.map((option, i) => (
                   <button

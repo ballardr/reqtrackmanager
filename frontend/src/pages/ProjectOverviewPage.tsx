@@ -143,7 +143,7 @@ export function ProjectOverviewPage() {
       )}
       <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
-          <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
+          <div className="row" style={{ alignItems: "center", gap: "var(--space-1)" }}>
             <h1 style={{ margin: 0 }}>{project.name}</h1>
             <EntitySwitcher
               label="Switch project"
@@ -198,7 +198,7 @@ export function ProjectOverviewPage() {
                 </span>
                 <span className="text-muted">{s.completed_percent}%</span>
               </div>
-              <div style={{ background: "var(--color-surface-alt)", borderRadius: 4, height: 8, overflow: "hidden" }}>
+              <div style={{ background: "var(--color-surface-alt)", borderRadius: "var(--radius-sm)", height: 8, overflow: "hidden" }}>
                 <div
                   style={{
                     width: `${s.completed_percent}%`,
@@ -221,9 +221,9 @@ export function ProjectOverviewPage() {
             <div
               key={idx}
               className="row"
-              style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}
+              style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", paddingBottom: "var(--space-3)" }}
             >
-              <span className="stack" style={{ gap: "0.25rem", minWidth: 0 }}>
+              <span className="stack" style={{ gap: "var(--space-1)", minWidth: 0 }}>
                 <span>
                   <Badge>{activityEntityLabel(c.entity_type, orgLabelCap)}</Badge> {describeActivityEntry(c)}
                   {link && (

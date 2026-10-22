@@ -85,7 +85,7 @@ export function PermissionPicker({
   const groups = groupByArtefactType(permissions);
 
   return (
-    <div className="stack" style={{ gap: "0.5rem", maxHeight: "22rem", overflowY: "auto" }}>
+    <div className="stack" style={{ gap: "var(--space-3)", maxHeight: "22rem", overflowY: "auto" }}>
       {groups.map((group) => (
         <CollapsibleSection
           key={group.key}
@@ -99,9 +99,9 @@ export function PermissionPicker({
                 : ADMINISTRATIVE_GROUP_LABEL
           }
         >
-          <div className="stack" style={{ gap: "0.35rem" }}>
+          <div className="stack" style={{ gap: "var(--space-2)" }}>
             {group.items.map((permission) => (
-              <label className="checkbox-label" style={{ gap: "0.5rem" }} key={permission.key}>
+              <label className="checkbox-label" style={{ gap: "var(--space-3)" }} key={permission.key}>
                 <input
                   type="checkbox"
                   checked={selectedSet.has(permission.key)}

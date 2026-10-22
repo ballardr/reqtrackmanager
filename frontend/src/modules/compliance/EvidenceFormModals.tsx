@@ -71,7 +71,7 @@ export function EvidenceFormModal({
           </FormGridFull>
           {!initial && (
             <FormGridFull>
-              <div className="stack" style={{ gap: "0.25rem" }}>
+              <div className="stack" style={{ gap: "var(--space-1)" }}>
                 <span>Files</span>
                 {stagedFiles.length > 0 && (
                   <div className="row" style={{ flexWrap: "wrap" }}>

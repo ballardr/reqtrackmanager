@@ -156,7 +156,7 @@ export function StakeholderFormModal({
               <ScoringLevelPicker axis={interestAxis} value={interest} onChange={setInterest} />
             </>
           )}
-          <div className="stack" style={{ gap: "0.25rem" }}>
+          <div className="stack" style={{ gap: "var(--space-1)" }}>
             <LabeledSelect help={STAKEHOLDERS_HELP.stakeholderCadence}
               label="Target engagement cadence" value={cadence} onChange={setCadence} options={CADENCE_OPTIONS}
               placeholder="Not set"
@@ -169,7 +169,7 @@ export function StakeholderFormModal({
             )}
           </div>
           {!initial && groups && groups.length > 0 && (
-            <div className="stack" style={{ gap: "0.25rem" }}>
+            <div className="stack" style={{ gap: "var(--space-1)" }}>
               <span>Groups</span>
               <TreeSelect
                 triggerLabel={groupTier === "project" ? "Project groups" : "Organisation groups"}

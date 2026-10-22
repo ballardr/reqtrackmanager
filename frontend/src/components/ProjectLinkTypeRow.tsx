@@ -32,9 +32,9 @@ export function ProjectLinkTypeRow({
   return (
     <div
       className="row"
-      style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}
+      style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", paddingBottom: "var(--space-3)" }}
     >
-      <div className="row" style={{ gap: "0.5rem", opacity: item.hidden || shadowed ? 0.7 : 1 }}>
+      <div className="row" style={{ gap: "var(--space-3)", opacity: item.hidden || shadowed ? 0.7 : 1 }}>
         <strong>{item.forward_name}</strong>
         <span className="text-muted">{item.reverse_name}</span>
         <Badge>{scopeLabel}</Badge>

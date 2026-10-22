@@ -206,7 +206,7 @@ export function DefinitionList<T extends { id: string }>({
         const atFloor = items.length <= minItems;
         const floorHint = minItems > 1 ? strings.admin.deleteMinItemsHint(minItems) : strings.admin.deleteLastOneHint;
         return (
-          <div key={item.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
+          <div key={item.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "var(--space-3)" }}>
             <div className="row" style={{ justifyContent: "space-between" }}>
               <div className="row">
                 {fields.map((f) => (

@@ -141,7 +141,7 @@ export function ProjectComplianceDetail({
 
       {liveStatus && (
         <DetailCard heading="Overall compliance status">
-          <div className="row" style={{ flexWrap: "wrap", gap: "1.5rem" }}>
+          <div className="row" style={{ flexWrap: "wrap", gap: "var(--space-6)" }}>
             <Stat label="Overall state" value={COMPLIANCE_OVERALL_STATE_LABEL[liveStatus.overall_compliance_state]} />
             <Stat label="Approval state" value={COMPLIANCE_APPROVAL_STATE_LABEL[liveStatus.overall_approval_state]} />
             <Stat
@@ -161,7 +161,7 @@ export function ProjectComplianceDetail({
               </Badge>
             )}
           </div>
-          <div className="row" style={{ flexWrap: "wrap", gap: "0.75rem" }}>
+          <div className="row" style={{ flexWrap: "wrap", gap: "var(--space-4)" }}>
             {Object.entries(liveStatus.counts_by_status).map(([key, count]) => (
               <Badge key={key}>
                 {COMPLIANCE_STATUS_LABEL[key as ComplianceStatus] ?? key}: {count}

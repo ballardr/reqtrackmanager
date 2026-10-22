@@ -128,7 +128,7 @@ export function ReportContentEditor({
           {withContent.length > 0 ? strings.reports.contentSetFor(withContent.join(", ")) : strings.reports.noContentSet}
         </span>
 
-        <div className="stack" style={{ gap: "0.25rem" }}>
+        <div className="stack" style={{ gap: "var(--space-1)" }}>
           {fieldHeader(strings.reports.introduction, "intro", Boolean(entry?.intro.trim()), () => update({ intro: "" }))}
           <RichTextEditor
             rows={3}
@@ -139,7 +139,7 @@ export function ReportContentEditor({
           {inheritedPreview("intro", Boolean(entry?.intro.trim()))}
         </div>
 
-        <div className="stack" style={{ gap: "0.25rem" }}>
+        <div className="stack" style={{ gap: "var(--space-1)" }}>
           {fieldHeader(null, "chapters", (entry?.chapters.length ?? 0) > 0, () => update({ chapters: [] }))}
           <ReportChapterListEditor
             label={strings.reports.bodyChapters}
@@ -150,7 +150,7 @@ export function ReportContentEditor({
           {inheritedPreview("chapters", (entry?.chapters.length ?? 0) > 0)}
         </div>
 
-        <div className="stack" style={{ gap: "0.25rem" }}>
+        <div className="stack" style={{ gap: "var(--space-1)" }}>
           {fieldHeader(null, "appendices", (entry?.appendices.length ?? 0) > 0, () => update({ appendices: [] }))}
           <ReportChapterListEditor
             label={strings.reports.appendices}
@@ -163,7 +163,7 @@ export function ReportContentEditor({
 
         <details>
           <summary>{strings.reports.placeholdersTitle}</summary>
-          <p className="text-muted" style={{ margin: "0.25rem 0" }}>{strings.reports.placeholdersHint}</p>
+          <p className="text-muted" style={{ margin: "var(--space-1) 0" }}>{strings.reports.placeholdersHint}</p>
           <ul style={{ margin: 0 }}>
             {PLACEHOLDERS.map((p) => (
               <li key={p.token}>

@@ -157,7 +157,7 @@ export function StandardListPage() {
         }
       >
         {orgs && orgs.length > 0 && (
-          <div className="row" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
+          <div className="row" style={{ flexWrap: "wrap", gap: "var(--space-3)" }}>
             <span className="text-muted">Compliance settings:</span>
             {orgs.map((o) => (
               <Link key={o.id} className="btn" to={`/standards/settings/${o.id}`}>{o.name}</Link>
@@ -190,7 +190,7 @@ export function StandardListPage() {
                     key={s.id}
                     to={`/standards/${s.id}`}
                     className="card stack"
-                    style={{ gap: "0.5rem", color: "inherit", textDecoration: "none" }}
+                    style={{ gap: "var(--space-3)", color: "inherit", textDecoration: "none" }}
                   >
                     <div style={{ fontWeight: 600, fontSize: "1.05rem" }}>{s.name}</div>
                     <div className="text-muted" style={{ fontSize: "0.85rem" }}>{s.reference}</div>

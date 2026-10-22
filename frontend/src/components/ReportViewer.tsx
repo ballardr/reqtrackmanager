@@ -104,8 +104,8 @@ export function ReportSectionTable({ section }: { section: ReportSection }) {
   const [visible, setVisible] = useState(REPORT_TABLE_PAGE_SIZE);
   const shown = Math.min(visible, section.rows.length);
   return (
-    <section id={`report-section-${section.key}`} className="stack report-section" style={{ gap: "0.5rem" }} aria-label={section.title}>
-      <div className="row" style={{ alignItems: "center", gap: "0.5rem" }}>
+    <section id={`report-section-${section.key}`} className="stack report-section" style={{ gap: "var(--space-3)" }} aria-label={section.title}>
+      <div className="row" style={{ alignItems: "center", gap: "var(--space-3)" }}>
         <h3 style={{ margin: 0 }}>{section.title}</h3>
         {section.gap && (
           <Badge tone={section.rows.length > 0 ? "warning" : "muted"}>
@@ -147,7 +147,7 @@ export function ReportSectionTable({ section }: { section: ReportSection }) {
         </div>
       )}
       {section.rows.length > shown && (
-        <div className="stack" style={{ gap: "0.5rem", alignItems: "center" }}>
+        <div className="stack" style={{ gap: "var(--space-3)", alignItems: "center" }}>
           <span className="text-muted" role="status" style={{ fontSize: "0.85rem" }}>
             {strings.reports.tableShowing(shown, section.rows.length)}
           </span>

@@ -57,7 +57,7 @@ function NestedInClickableHeader() {
         tabIndex={0}
         onClick={() => setCollapsed((c) => !c)}
         className="row"
-        style={{ gap: "0.5rem", cursor: "pointer" }}
+        style={{ gap: "var(--space-3)", cursor: "pointer" }}
       >
         <ToggleSwitch checked={checked} onChange={setChecked} label="Enable 2FA" />
         <span>Two-factor authentication ({collapsed ? "collapsed" : "expanded"})</span>

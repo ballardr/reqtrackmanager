@@ -45,7 +45,7 @@ export function ViewToggle({
   showTilesOption?: boolean;
 }) {
   return (
-    <div className="row" style={{ gap: "0.25rem" }}>
+    <div className="row" style={{ gap: "var(--space-1)" }}>
       {showTilesOption && (
         <button
           className={`btn ${mode === "tiles" ? "btn-primary" : ""}`}

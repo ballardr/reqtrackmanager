@@ -337,7 +337,7 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
   }
 
   return (
-    <div className="stack" style={{ gap: "0.5rem" }}>
+    <div className="stack" style={{ gap: "var(--space-3)" }}>
       <div className="row">
         <FileUploadTrigger
           ref={fileInputRef}
@@ -357,7 +357,7 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
         </button>
         {exportMenuOpen && (
           <Popover anchorRef={exportTriggerRef} title="Export" onClose={() => setExportMenuOpen(false)}>
-            <div className="stack" style={{ gap: "0.25rem", minWidth: 180 }}>
+            <div className="stack" style={{ gap: "var(--space-1)", minWidth: 180 }}>
               <button
                 type="button" className="btn" style={{ justifyContent: "flex-start" }} disabled={exporting}
                 onClick={() => {
@@ -410,7 +410,7 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
                     </td>
                     <td>
                       {canFixValue && (
-                        <label className="checkbox-label" style={{ gap: "0.35rem", marginBottom: "0.25rem" }}>
+                        <label className="checkbox-label" style={{ gap: "var(--space-2)", marginBottom: "var(--space-1)" }}>
                           <input
                             type="checkbox"
                             checked={fixedMode[field.key] ?? false}
@@ -464,7 +464,7 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
           </table>
 
           {rows.length > 0 && (
-            <div className="stack" style={{ gap: "0.25rem" }}>
+            <div className="stack" style={{ gap: "var(--space-1)" }}>
               <strong>Preview (first {Math.min(PREVIEW_ROWS, rows.length)} of {rows.length} rows)</strong>
               <div style={{ overflowX: "auto" }}>
                 <table>

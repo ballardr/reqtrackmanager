@@ -22,7 +22,7 @@ export function PrincipalFormField({
   label, help, required, ...pickerProps
 }: FieldHelpProps & { label: string } & ComponentProps<typeof PrincipalPicker>) {
   return (
-    <div className="stack" style={{ gap: "0.25rem" }}>
+    <div className="stack" style={{ gap: "var(--space-1)" }}>
       <FieldCaption label={label} help={help} required={required} />
       <PrincipalPicker {...pickerProps} />
     </div>

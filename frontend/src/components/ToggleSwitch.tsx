@@ -37,7 +37,7 @@ export function ToggleSwitch({
       style={{
         width: 40,
         height: 22,
-        borderRadius: 999,
+        borderRadius: "var(--radius-pill)",
         border: "1px solid var(--color-border)",
         background: checked ? "var(--color-primary)" : "var(--color-surface-alt)",
         position: "relative",

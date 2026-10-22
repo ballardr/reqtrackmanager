@@ -313,7 +313,7 @@ export function AddArtefactLinkModal({
               />
             )}
             {levels.map((level, index) => (
-              <div key={level.key} className="stack" style={{ gap: "0.25rem" }}>
+              <div key={level.key} className="stack" style={{ gap: "var(--space-1)" }}>
                 {(level.truncated || level.options.length > LEVEL_FILTER_THRESHOLD || level.filter) && (
                   <input
                     className="input"

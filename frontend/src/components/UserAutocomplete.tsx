@@ -279,7 +279,7 @@ export function UserAutocomplete({
         onKeyDown={handleKeyDown}
       />
       {inviteCapable && !query && (
-        <p className="text-muted" style={{ margin: "0.25rem 0 0", fontSize: "0.75rem" }}>
+        <p className="text-muted" style={{ margin: "var(--space-1) 0 0", fontSize: "0.75rem" }}>
           {strings.userAutocomplete.canInviteHint}
         </p>
       )}
@@ -289,8 +289,8 @@ export function UserAutocomplete({
           role="listbox"
           className="card stack"
           style={{
-            position: "absolute", top: "100%", left: 0, right: 0, zIndex: 10, marginTop: "0.25rem",
-            padding: "0.25rem", gap: "0.15rem", maxHeight: 260, overflowY: "auto",
+            position: "absolute", top: "100%", left: 0, right: 0, zIndex: 10, marginTop: "var(--space-1)",
+            padding: "var(--space-1)", gap: "0.15rem", maxHeight: 260, overflowY: "auto",
           }}
         >
           {matches.map((u, i) => (
@@ -322,7 +322,7 @@ export function UserAutocomplete({
                 type="button"
                 className="btn"
                 style={{
-                  border: "none", justifyContent: "flex-start", textAlign: "left", alignItems: "center", gap: "0.35rem",
+                  border: "none", justifyContent: "flex-start", textAlign: "left", alignItems: "center", gap: "var(--space-2)",
                   background: highlightedIndex === index ? "var(--color-surface-alt)" : undefined,
                 }}
                 onMouseEnter={() => setHighlightedIndex(index)}
@@ -344,7 +344,7 @@ export function UserAutocomplete({
                 type="button"
                 className="btn"
                 style={{
-                  border: "none", justifyContent: "flex-start", textAlign: "left", alignItems: "center", gap: "0.35rem",
+                  border: "none", justifyContent: "flex-start", textAlign: "left", alignItems: "center", gap: "var(--space-2)",
                   background: highlightedIndex === index ? "var(--color-surface-alt)" : undefined,
                 }}
                 onMouseEnter={() => setHighlightedIndex(index)}

@@ -222,9 +222,9 @@ export function ServerOrganisationsPage() {
                   any of them are. Hidden for the import path (above), which
                   carries its own already-existing settings instead. */}
               {!importFile && creationChoices && creationChoices.length > 0 && (
-                <div className="stack" style={{ gap: "0.5rem" }}>
+                <div className="stack" style={{ gap: "var(--space-3)" }}>
                   {[...new Set(creationChoices.map((c) => c.group_label))].map((groupLabel) => (
-                    <div key={groupLabel} className="stack" style={{ gap: "0.25rem" }}>
+                    <div key={groupLabel} className="stack" style={{ gap: "var(--space-1)" }}>
                       <strong>{groupLabel}</strong>
                       {creationChoices
                         .filter((c) => c.group_label === groupLabel)

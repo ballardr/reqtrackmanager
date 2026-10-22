@@ -24,6 +24,18 @@
   --nav-rail-width-collapsed: 56px;
   --nav-toggle-overhang: 14px;
   --chip-height: 1.5rem;
+  /* Spacing and radius scale (rem, so it follows the user's font size). A one-off value between two
+     steps stays a literal; a value on a step uses the token (scripts/check_spacing_tokens.py). */
+  --space-1: 0.25rem;
+  --space-2: 0.375rem;
+  --space-3: 0.5rem;
+  --space-4: 0.75rem;
+  --space-5: 1rem;
+  --space-6: 1.5rem;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-pill: 999px;
 }
 
 :root[data-theme="light"] {
@@ -116,30 +128,30 @@ textarea {
 .container {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 0 1rem;
+  padding: 0 var(--space-5);
   width: 100%;
 }
 
 .card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
-  padding: 1rem;
+  padding: var(--space-5);
 }
 
 .btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--space-2);
   /* Text beside a control wraps; the control does not (style guide "Pattern: text beside controls"). */
   flex: none;
   white-space: nowrap;
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   color: var(--color-text);
-  border-radius: 6px;
-  padding: 0.5rem 0.9rem;
+  border-radius: var(--radius-md);
+  padding: var(--space-3) 0.9rem;
   cursor: pointer;
 }
 
@@ -230,8 +242,8 @@ textarea {
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
   border-left: none;
-  padding-left: 0.5rem;
-  padding-right: 0.5rem;
+  padding-left: var(--space-3);
+  padding-right: var(--space-3);
 }
 
 /* `Tabs` (style guide "Pattern: Tabs") — deliberately distinct from `.btn`:
@@ -242,7 +254,7 @@ textarea {
 .tabs-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem 1.25rem;
+  gap: var(--space-1) 1.25rem;
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -253,7 +265,7 @@ textarea {
   border: none;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
-  padding: 0.5rem 0.1rem;
+  padding: var(--space-3) 0.1rem;
   color: var(--color-text-muted);
   font: inherit;
   cursor: pointer;
@@ -287,7 +299,7 @@ textarea {
   height: var(--header-height);
   display: flex;
   align-items: center;
-  padding: 0 1.5rem;
+  padding: 0 var(--space-6);
   position: sticky;
   top: 0;
   z-index: 20;
@@ -314,8 +326,8 @@ textarea.input {
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   color: var(--color-text);
-  border-radius: 6px;
-  padding: 0.5rem 0.6rem;
+  border-radius: var(--radius-md);
+  padding: var(--space-3) 0.6rem;
 }
 
 /* Every single-value <select> draws the same chevron, at the same place: the browser's own arrow
@@ -358,7 +370,7 @@ select.input[size] {
   overflow-wrap: anywhere;
   text-align: center;
   line-height: 1.25;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 0.15rem 0.6rem;
   font-size: 0.75rem;
   background: var(--color-surface-alt);
@@ -378,7 +390,7 @@ select.input[size] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.25rem;
+  gap: var(--space-1);
   max-width: none;
   max-height: none;
   overflow: visible;
@@ -462,7 +474,7 @@ select.input[size] {
   min-width: 16px;
   height: 16px;
   padding: 0 3px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: #dc2626;
   color: #ffffff;
   font-size: 0.65rem;
@@ -508,15 +520,15 @@ select.input[size] {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: var(--space-2);
 }
 
 .header-search__input {
   width: 17rem;
   max-width: 28vw;
-  padding: 0.4rem 0.65rem;
+  padding: var(--space-2) 0.65rem;
   border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.08);
   color: var(--color-header-text);
   font: inherit;
@@ -537,7 +549,7 @@ select.input[size] {
   position: absolute;
   inset: 0;
   z-index: 25;
-  padding: 0 1rem;
+  padding: 0 var(--space-5);
   background: var(--color-header-bg);
 }
 
@@ -568,7 +580,7 @@ select.input[size] {
   max-height: 70vh;
   overflow-y: auto;
   z-index: 30;
-  gap: 0.5rem;
+  gap: var(--space-3);
   color: var(--color-text);
 }
 
@@ -583,8 +595,8 @@ select.input[size] {
 }
 
 .search-option {
-  padding: 0.2rem 0.5rem;
-  border-radius: 4px;
+  padding: 0.2rem var(--space-3);
+  border-radius: var(--radius-sm);
   cursor: pointer;
 }
 
@@ -594,21 +606,21 @@ select.input[size] {
 }
 
 .app-header .search-dropdown {
-  gap: 0.25rem;
-  padding: 0.5rem;
+  gap: var(--space-1);
+  padding: var(--space-3);
 }
 
 .search-group-heading {
   font-size: 0.7rem;
   font-weight: 600;
-  padding: 0.25rem 0.5rem 0;
+  padding: var(--space-1) var(--space-3) 0;
 }
 
 /* One line per hit in the dropdown: the title takes the slack and truncates, the code and place keep their width. */
 .search-hit-compact {
   display: flex;
   align-items: baseline;
-  gap: 0.5rem;
+  gap: var(--space-3);
   min-width: 0;
   white-space: nowrap;
 }
@@ -670,7 +682,7 @@ select.input[size] {
   font-size: 0.78rem;
   line-height: 1.3;
   padding: 0.3rem 0.55rem;
-  border-radius: 5px;
+  border-radius: var(--radius-md);
   white-space: nowrap;
   z-index: 1000;
   pointer-events: none;
@@ -679,7 +691,7 @@ select.input[size] {
 
 .grid {
   display: grid;
-  gap: 1rem;
+  gap: var(--space-5);
 }
 
 /* Track minimum (220px) must match `StatCard`'s own inline `minWidth: 220`
@@ -712,7 +724,7 @@ select.input[size] {
   overflow: hidden;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
 }
 
@@ -750,14 +762,14 @@ select.input[size] {
 .stat-groups {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
-  gap: 1rem;
+  gap: var(--space-5);
 }
 
 .stat-group {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
 }
 
 .stat-group-head {
@@ -765,7 +777,7 @@ select.input[size] {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.35rem 0.5rem;
+  gap: var(--space-2) var(--space-3);
 }
 
 .stat-group-title {
@@ -782,8 +794,8 @@ select.input[size] {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.35rem 0;
+  gap: var(--space-4);
+  padding: var(--space-2) 0;
   border-top: 1px solid var(--color-border);
 }
 
@@ -850,7 +862,7 @@ select.input[size] {
 .stat-link:focus-visible::after {
   outline: 2px solid var(--color-primary);
   outline-offset: -2px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .figure-projects-row {
@@ -865,8 +877,8 @@ select.input[size] {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 0.55rem 0.5rem;
+  gap: var(--space-5);
+  padding: 0.55rem var(--space-3);
   color: inherit;
   text-decoration: none;
   font-variant-numeric: tabular-nums;
@@ -895,13 +907,13 @@ a.figure-projects-link:hover {
 .stack {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: var(--space-4);
 }
 
 .row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
@@ -912,7 +924,7 @@ a.figure-projects-link:hover {
   display: flex;
   flex-wrap: nowrap;
   align-items: flex-start;
-  gap: 0.4rem;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -932,7 +944,7 @@ a.figure-projects-link:hover {
 .item-row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-3);
   flex-wrap: nowrap;
   min-width: 0;
 }
@@ -947,7 +959,7 @@ a.figure-projects-link:hover {
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: var(--space-2);
   margin-left: auto;
 }
 
@@ -1019,15 +1031,15 @@ a.figure-projects-link:hover {
   flex: 1 1 auto;
   min-height: 0;
   margin-right: var(--nav-toggle-overhang);
-  padding: 1rem 0.5rem 0.75rem 0.75rem;
+  padding: var(--space-5) var(--space-3) var(--space-4) var(--space-4);
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--color-border) transparent;
 }
 
 .nav-rail-icons .nav-rail-scroll {
-  padding-left: 0.4rem;
-  padding-right: 0.4rem;
+  padding-left: var(--space-2);
+  padding-right: var(--space-2);
 }
 
 .nav-rail-scroll::-webkit-scrollbar {
@@ -1040,7 +1052,7 @@ a.figure-projects-link:hover {
 
 .nav-rail-scroll::-webkit-scrollbar-thumb {
   background: var(--color-border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .nav-rail-icons {
@@ -1051,7 +1063,7 @@ a.figure-projects-link:hover {
    margin — the two widths above are the single source of truth for both
    the rail's own width and this offset. */
 .app-content {
-  padding: 1.5rem;
+  padding: var(--space-6);
 }
 
 .nav-rail ~ .app-content {
@@ -1120,7 +1132,7 @@ a.figure-projects-link:hover {
 .detail-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 1rem;
+  gap: var(--space-5);
   align-items: start;
 }
 
@@ -1135,7 +1147,7 @@ a.figure-projects-link:hover {
 .detail-layout__aside {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--space-3);
   min-width: 0;
 }
 
@@ -1175,7 +1187,7 @@ a.figure-projects-link:hover {
 }
 
 .comment-row {
-  padding: 0.5rem 0;
+  padding: var(--space-3) 0;
   border-top: 1px solid var(--color-border);
 }
 
@@ -1198,14 +1210,14 @@ a.figure-projects-link:hover {
 
 .artefact-links__group-row {
   align-items: center;
-  gap: 0.35rem;
+  gap: var(--space-2);
 }
 
 /* A group heading that collapses its list: a button that reads as the heading it sits in. */
 .artefact-links__toggle {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: var(--space-1);
   background: none;
   border: none;
   padding: 0;
@@ -1231,7 +1243,7 @@ a.figure-projects-link:hover {
 .artefact-links__phrase-label {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: var(--space-2);
   font-size: 0.78rem;
   color: var(--color-text-muted);
 }
@@ -1244,7 +1256,7 @@ a.figure-projects-link:hover {
 }
 
 .artefact-links__code {
-  margin-left: 0.4rem;
+  margin-left: var(--space-2);
   font-size: 0.72rem;
   color: var(--color-text-muted);
   white-space: nowrap;
@@ -1261,7 +1273,7 @@ a.figure-projects-link:hover {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: var(--space-2);
 }
 
 .artefact-links__row {
@@ -1272,7 +1284,7 @@ a.figure-projects-link:hover {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.35rem;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -1289,13 +1301,13 @@ a.figure-projects-link:hover {
 /* Compact variant (`ArtefactLinksPanel` with `compact`): inside another record's card, so no card
    chrome, a caption-sized title with the icon buttons beside it, and tighter spacing. */
 .artefact-links--compact {
-  gap: 0.35rem;
+  gap: var(--space-2);
 }
 
 .artefact-links--compact .artefact-links__header {
   justify-content: flex-start;
   align-items: center;
-  gap: 0.35rem;
+  gap: var(--space-2);
 }
 
 .artefact-links--compact .artefact-links__title {
@@ -1306,7 +1318,7 @@ a.figure-projects-link:hover {
 
 .artefact-links--compact .artefact-links__buttons {
   flex-wrap: nowrap;
-  gap: 0.25rem;
+  gap: var(--space-1);
 }
 
 .artefact-links--compact .artefact-links__group {
@@ -1332,7 +1344,7 @@ a.figure-projects-link:hover {
 
 .link-trace__callout {
   margin: 0;
-  padding: 0.5rem 0.75rem;
+  padding: var(--space-3) var(--space-4);
   font-size: 0.85rem;
   border-left: 3px solid var(--color-info);
   background: var(--color-surface-alt);
@@ -1344,16 +1356,16 @@ a.figure-projects-link:hover {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: var(--space-2);
 }
 
 .link-trace__children {
-  margin: 0.35rem 0 0 0.6rem;
+  margin: var(--space-2) 0 0 0.6rem;
   padding-left: 0.9rem;
   border-left: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: var(--space-2);
 }
 
 .link-trace__toggle {
@@ -1361,7 +1373,7 @@ a.figure-projects-link:hover {
   align-items: center;
   padding: 0.15rem;
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: var(--color-text);
   cursor: pointer;
@@ -1377,7 +1389,7 @@ a.figure-projects-link:hover {
   overflow: auto;
   max-height: max(14rem, calc(80vh - 16.5rem));
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--color-surface);
 }
 
@@ -1612,7 +1624,7 @@ a.figure-projects-link:hover {
 
 /* The key under the map hint; its swatches reuse the map's own classes so they cannot drift. */
 .link-trace__filter {
-  gap: 0.5rem;
+  gap: var(--space-3);
   align-items: center;
   font-size: 0.85rem;
   cursor: pointer;
@@ -1621,7 +1633,7 @@ a.figure-projects-link:hover {
 .link-trace__hint-row {
   justify-content: space-between;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--space-4);
 }
 
 .link-trace__key-button {
@@ -1635,7 +1647,7 @@ a.figure-projects-link:hover {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--space-3);
   font-size: 0.8rem;
   color: var(--color-text-muted);
 }
@@ -1643,7 +1655,7 @@ a.figure-projects-link:hover {
 .link-trace__legend li {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--space-2);
 }
 
 .link-trace__legend svg {
@@ -1661,7 +1673,7 @@ a.figure-projects-link:hover {
      narrow-viewport override below already learned this the same way. */
   grid-template-columns: minmax(0, 1fr) 240px;
   align-items: start;
-  gap: 1rem;
+  gap: var(--space-5);
 }
 
 .nav-section-label {
@@ -1679,7 +1691,7 @@ a.figure-projects-link:hover {
   width: 100%;
   box-sizing: border-box;
   padding: 0.45rem 0.6rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--color-text) !important;
   text-decoration: none !important;
   font-size: 0.92rem;
@@ -1727,7 +1739,7 @@ a.figure-projects-link:hover {
   width: 100%;
   box-sizing: border-box;
   padding: 0.45rem 0.6rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-size: 0.92rem;
 }
 
@@ -1779,7 +1791,7 @@ a.figure-projects-link:hover {
   align-items: center;
   background: none;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 0.2rem;
   color: inherit;
   cursor: pointer;
@@ -1807,7 +1819,7 @@ a.figure-projects-link:hover {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
-  padding-left: 0.75rem;
+  padding-left: var(--space-4);
 }
 
 /* Icon-only collapsed rail state: hide link labels, centre the icons,
@@ -1832,8 +1844,8 @@ given to the entity quick-switch chevron itself since it
   align-items: center;
   background: none;
   border: none;
-  border-radius: 6px;
-  padding: 0.35rem;
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
   color: inherit;
   cursor: pointer;
 }
@@ -1861,7 +1873,7 @@ given to the entity quick-switch chevron itself since it
 .nav-rail-icons .nav-section-label {
   height: 1px;
   padding: 0;
-  margin: 0.6rem 0.4rem;
+  margin: 0.6rem var(--space-2);
   overflow: hidden;
   text-indent: -9999px;
   background: var(--color-border);
@@ -1882,14 +1894,14 @@ given to the entity quick-switch chevron itself since it
   display: flex;
   align-items: flex-start;
   flex-wrap: nowrap;
-  gap: 1.5rem;
+  gap: var(--space-6);
 }
 
 .resource-menu-nav {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 0.5rem;
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
   width: 220px;
   flex-shrink: 0;
 }
@@ -1902,7 +1914,7 @@ table {
 th,
 td {
   text-align: left;
-  padding: 0.5rem 0.6rem;
+  padding: var(--space-3) 0.6rem;
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -1923,7 +1935,7 @@ th:has(> .th-with-action > .th-sort) {
   gap: 0.3rem;
   background: none;
   border: none;
-  padding: 0.5rem 0.6rem;
+  padding: var(--space-3) 0.6rem;
   margin: 0;
   font: inherit;
   font-weight: inherit;
@@ -1954,11 +1966,11 @@ td:has(> .disclosure-toggle) {
   display: flex;
   width: 100%;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--space-2);
   background: none;
   border: none;
-  border-radius: 6px;
-  padding: 0.5rem 0.6rem;
+  border-radius: var(--radius-md);
+  padding: var(--space-3) 0.6rem;
   margin: 0;
   font: inherit;
   color: inherit;
@@ -2002,8 +2014,8 @@ td:has(> .disclosure-toggle) {
   }
   .nav-rail-scroll {
     margin-right: 0;
-    padding-left: 0.4rem;
-    padding-right: 0.4rem;
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
   }
   .nav-rail:not(.nav-rail-icons) {
     width: var(--nav-rail-width-collapsed);
@@ -2020,7 +2032,7 @@ td:has(> .disclosure-toggle) {
   .nav-rail:not(.nav-rail-icons) .nav-section-label {
     height: 1px;
     padding: 0;
-    margin: 0.6rem 0.4rem;
+    margin: 0.6rem var(--space-2);
     overflow: hidden;
     text-indent: -9999px;
     background: var(--color-border);
@@ -2086,7 +2098,7 @@ td:has(> .disclosure-toggle) {
   }
   tr {
     border-bottom: 1px solid var(--color-border);
-    padding: 0.5rem 0;
+    padding: var(--space-3) 0;
   }
 }
 
@@ -2102,7 +2114,7 @@ td:has(> .disclosure-toggle) {
   z-index: 1200;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--space-3);
   align-items: flex-end;
   pointer-events: none;
 }
@@ -2114,7 +2126,7 @@ td:has(> .disclosure-toggle) {
   background: var(--color-text);
   color: var(--color-bg);
   padding: 0.6rem 0.7rem 0.6rem 0.9rem;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   font-size: 0.88rem;
   max-width: 360px;
@@ -2166,7 +2178,7 @@ td:has(> .disclosure-toggle) {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.25rem 0.5rem;
+  gap: var(--space-1) var(--space-3);
 }
 
 .field-help__button {
@@ -2207,7 +2219,7 @@ td:has(> .disclosure-toggle) {
 .form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--form-grid-min, 15rem)), 1fr));
-  gap: 0.75rem 1.5rem;
+  gap: var(--space-4) var(--space-6);
   align-items: start;
 }
 
@@ -2220,8 +2232,8 @@ td:has(> .disclosure-toggle) {
 .aligned-rows {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  column-gap: 0.75rem;
-  row-gap: 0.5rem;
+  column-gap: var(--space-4);
+  row-gap: var(--space-3);
   align-items: center;
   list-style: none;
   margin: 0;
@@ -2234,7 +2246,7 @@ td:has(> .disclosure-toggle) {
 
 .aligned-rows__actions {
   display: inline-flex;
-  gap: 0.35rem;
+  gap: var(--space-2);
   justify-content: flex-end;
 }
 
@@ -2250,17 +2262,17 @@ td:has(> .disclosure-toggle) {
   padding: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: var(--space-2);
 }
 
 .removable-item {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: var(--space-1);
   border: 1px solid var(--color-border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-surface-alt);
-  padding: 0.1rem 0.25rem 0.1rem 0.65rem;
+  padding: 0.1rem var(--space-1) 0.1rem 0.65rem;
   font-size: 0.9rem;
 }
 
@@ -2270,7 +2282,7 @@ td:has(> .disclosure-toggle) {
   justify-content: center;
   background: none;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 0.2rem;
   color: var(--color-text-muted);
   cursor: pointer;
@@ -2294,7 +2306,7 @@ td:has(> .disclosure-toggle) {
 .text-button {
   background: none;
   border: none;
-  padding: 0 0 0 0.35rem;
+  padding: 0 0 0 var(--space-2);
   font: inherit;
   color: var(--color-primary);
   cursor: pointer;
@@ -2311,7 +2323,7 @@ td:has(> .disclosure-toggle) {
   padding: 0;
 }
 .module-settings-row {
-  padding: 0.75rem 0;
+  padding: var(--space-4) 0;
   border-bottom: 1px solid var(--color-border);
 }
 .module-settings-row:last-child {
@@ -2321,7 +2333,7 @@ td:has(> .disclosure-toggle) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: var(--space-5);
 }
 .module-settings-text {
   display: flex;
@@ -2333,7 +2345,7 @@ td:has(> .disclosure-toggle) {
   flex-shrink: 0;
 }
 .module-settings-version {
-  margin-left: 0.5rem;
+  margin-left: var(--space-3);
   font-size: 0.75rem;
 }
 .module-settings-small {
@@ -2341,15 +2353,15 @@ td:has(> .disclosure-toggle) {
 }
 .module-settings-row > .disclosure-toggle {
   width: auto;
-  margin-top: 0.35rem;
-  padding: 0.25rem 0.4rem;
+  margin-top: var(--space-2);
+  padding: var(--space-1) var(--space-2);
 }
 .module-settings-sublist {
-  margin-top: 0.25rem;
-  padding-left: 1.5rem;
+  margin-top: var(--space-1);
+  padding-left: var(--space-6);
 }
 .module-settings-sublist > li {
-  padding: 0.35rem 0;
+  padding: var(--space-2) 0;
 }
 
 /* Scoring matrix (components/ScoringMatrixChart.tsx):
@@ -2367,7 +2379,7 @@ td:has(> .disclosure-toggle) {
 .scoring-matrix th,
 .scoring-matrix td {
   border: 1px solid var(--color-border);
-  padding: 0.35rem 0.5rem;
+  padding: var(--space-2) var(--space-3);
   min-width: 4.5rem;
   text-align: center;
   vertical-align: middle;
@@ -2375,7 +2387,7 @@ td:has(> .disclosure-toggle) {
 .scoring-matrix caption {
   caption-side: bottom;
   text-align: left;
-  padding-top: 0.35rem;
+  padding-top: var(--space-2);
 }
 .scoring-matrix__band {
   display: block;
@@ -2389,12 +2401,12 @@ td:has(> .disclosure-toggle) {
 }
 .scoring-matrix__dot {
   display: inline-block;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-text);
   opacity: 0.75;
 }
 .scoring-matrix__select {
-  margin-top: 0.25rem;
+  margin-top: var(--space-1);
   max-width: 7rem;
   font-size: 0.75rem;
 }
@@ -2418,13 +2430,13 @@ td:has(> .disclosure-toggle) {
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: var(--space-1);
   max-width: 100%;
   /* One height for every chip and chip-shaped control in a row (style guide "Pattern: chips"); a label
      that wraps grows past it. */
   min-height: var(--chip-height);
   box-sizing: border-box;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 0.15rem 0.6rem;
   font-size: 0.75rem;
   line-height: 1.25;
@@ -2435,7 +2447,7 @@ td:has(> .disclosure-toggle) {
 /* A tag: the user's own colour (inline `--tag-colour`) marks the left edge; the label keeps the theme's text colour. */
 .tag-chip {
   border-left: 3px solid var(--tag-colour, var(--color-border));
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 /* The `[+]` that opens the tag picker: a chip-sized, tag-shaped button at the end of the chip row. */
@@ -2443,7 +2455,7 @@ td:has(> .disclosure-toggle) {
   width: var(--chip-height);
   padding: 0;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   color: inherit;
 }
@@ -2504,11 +2516,11 @@ select.input.project-scope-select {
 .th-with-action {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: var(--space-1);
 }
 
 th:has(> .th-with-action > .th-sort) > .th-with-action {
-  padding-right: 0.4rem;
+  padding-right: var(--space-2);
 }
 
 /* A settings control whose current choice is not the default: an accent mark on the button, so a changed view shows while it is closed. */
@@ -2519,7 +2531,7 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 
 /* A pill that follows running text on the same line (a status after a title): a gap, not a margin hack at each use. */
 .badge-after {
-  margin-inline-start: 0.5rem;
+  margin-inline-start: var(--space-3);
 }
 
 /* A preset swatch in `ColorField`: a round colour chip; the pressed one carries a ring (not colour alone: aria-pressed too). */
@@ -2561,8 +2573,8 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
     "content filter";
   grid-template-rows: auto 1fr;
   align-items: start;
-  column-gap: 1rem;
-  row-gap: 1rem;
+  column-gap: var(--space-5);
+  row-gap: var(--space-5);
 }
 
 .list-page__header {
@@ -2602,7 +2614,7 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 
 .form-required-legend {
   display: none;
-  margin: 0.5rem 0 0;
+  margin: var(--space-3) 0 0;
   font-size: 0.8rem;
 }
 

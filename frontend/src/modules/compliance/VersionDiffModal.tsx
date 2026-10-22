@@ -126,7 +126,7 @@ export function VersionDiffModal({ orgId, standardId, fromVersionId, versions, o
 function DiffSection({ title, children }: { title: string; children: ReactNode }) {
   const isEmpty = Array.isArray(children) ? children.length === 0 : false;
   return (
-    <div className="stack" style={{ gap: "0.25rem" }}>
+    <div className="stack" style={{ gap: "var(--space-1)" }}>
       <h4 style={{ margin: 0 }}>{title}</h4>
       {isEmpty ? <p className="text-muted" style={{ margin: 0 }}>None.</p> : <ul style={{ margin: 0 }}>{children}</ul>}
     </div>

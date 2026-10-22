@@ -313,7 +313,7 @@ export function ChangeRequestDetailPage() {
         </div>
 
         {cr.kind === "modify_requirement" ? (
-          <div className="stack" style={{ gap: "0.5rem" }}>
+          <div className="stack" style={{ gap: "var(--space-3)" }}>
             <strong>{strings.changeRequests.fieldsToChange}</strong>
             {cr.changed_fields.map((field) => (
               <div key={field}>
@@ -322,7 +322,7 @@ export function ChangeRequestDetailPage() {
             ))}
           </div>
         ) : cr.kind === "add_action" ? (
-          <div className="stack" style={{ gap: "0.5rem" }}>
+          <div className="stack" style={{ gap: "var(--space-3)" }}>
             <strong>
               {cr.proposed_action_link_id ? strings.changeRequests.proposedLinkAction : strings.changeRequests.proposedAddAction}
             </strong>
@@ -357,7 +357,7 @@ export function ChangeRequestDetailPage() {
             )}
           </div>
         ) : cr.kind === "remove_action" ? (
-          <div className="stack" style={{ gap: "0.5rem" }}>
+          <div className="stack" style={{ gap: "var(--space-3)" }}>
             <strong>{strings.changeRequests.proposedRemoveAction}</strong>
             <p>
               {linkedActionPreview
@@ -368,7 +368,7 @@ export function ChangeRequestDetailPage() {
         ) : cr.kind === "add_link" ? (
           <ProposedLinksSection links={cr.proposed_links} title={strings.changeRequests.proposedAddLink} />
         ) : cr.kind === "remove_link" ? (
-          <div className="stack" style={{ gap: "0.5rem" }}>
+          <div className="stack" style={{ gap: "var(--space-3)" }}>
             <strong>{strings.changeRequests.proposedRemoveLink}</strong>
             <p>
               {linkPreview
@@ -377,7 +377,7 @@ export function ChangeRequestDetailPage() {
             </p>
           </div>
         ) : (
-          <div className="stack" style={{ gap: "0.5rem" }}>
+          <div className="stack" style={{ gap: "var(--space-3)" }}>
             <p>
               <strong>{strings.requirements.reasoning}:</strong> {cr.proposed_reasoning}
             </p>
@@ -507,7 +507,7 @@ export function ChangeRequestDetailPage() {
 
       <DetailCard heading={strings.changeRequests.tasks}>
         {tasks.map((task) => (
-          <label key={task.id} className="row" style={{ gap: "0.5rem" }}>
+          <label key={task.id} className="row" style={{ gap: "var(--space-3)" }}>
             <input
               type="checkbox" checked={task.is_done}
               disabled={!(canManageTasks || task.can_mark_done)}
@@ -592,7 +592,7 @@ export function ChangeRequestDetailPage() {
               <p className="text-muted">{strings.changeRequests.noVoteComments}</p>
             )}
             {tally.votes.filter((v) => v.comment).map((v) => (
-              <div key={v.id} className="card stack" style={{ gap: "0.35rem" }}>
+              <div key={v.id} className="card stack" style={{ gap: "var(--space-2)" }}>
                 <div className="row" style={{ justifyContent: "space-between" }}>
                   <span style={{ fontWeight: 600 }}>{userDisplayName(v.user_id)}</span>
                   <Badge>

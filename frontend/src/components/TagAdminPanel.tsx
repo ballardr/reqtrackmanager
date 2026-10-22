@@ -112,7 +112,7 @@ export function TagAdminPanel({ api, scope }: { api: TagAdminApi; scope: "projec
       key: "colour",
       label: text.colourHeading,
       render: (tag) => tag.colour ? (
-        <span className="row" style={{ gap: "0.4rem" }}>
+        <span className="row" style={{ gap: "var(--space-2)" }}>
           <span className="colour-swatch" aria-hidden="true" style={{ background: tag.colour, cursor: "default" }} />
           <span className="text-muted">{tag.colour}</span>
         </span>
@@ -377,9 +377,9 @@ function UsageTables({
         );
       })}
       {usage.unused.length > 0 && (
-        <div className="stack" style={{ gap: "0.25rem" }}>
+        <div className="stack" style={{ gap: "var(--space-1)" }}>
           <h4 style={{ margin: 0 }}>{text.unusedHeading}</h4>
-          <div className="row" style={{ gap: "0.35rem" }}>
+          <div className="row" style={{ gap: "var(--space-2)" }}>
             {usage.unused.map((tag) => <TagChip key={tag.id} tag={tag} />)}
           </div>
         </div>

@@ -93,7 +93,7 @@ export function RiskFormModal({
       <FormGridFull>
         <fieldset className="stack" style={{ border: "none", padding: 0, margin: 0 }}>
           <legend style={{ fontWeight: 600 }}>{heading}</legend>
-          <div className="row" style={{ gap: "1rem", flexWrap: "wrap", alignItems: "flex-start" }}>
+          <div className="row" style={{ gap: "var(--space-5)", flexWrap: "wrap", alignItems: "flex-start" }}>
             {AXES.map(({ axis, suffix }) => {
               const found = findAxis(scheme, axis);
               if (!found) return null;

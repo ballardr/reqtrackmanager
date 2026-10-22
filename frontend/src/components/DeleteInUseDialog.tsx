@@ -154,8 +154,8 @@ export function DeleteInUseDialog({
             </div>
           )}
           {keep && (
-            <section className="stack" style={{ gap: "0.25rem" }}>
-              <label className="checkbox-label" style={{ gap: "0.5rem" }}>
+            <section className="stack" style={{ gap: "var(--space-1)" }}>
+              <label className="checkbox-label" style={{ gap: "var(--space-3)" }}>
                 <input type="checkbox" checked={keepChecked} disabled={busy} onChange={(e) => void toggleKeep(e.target.checked)} />
                 <strong>{keep.label}</strong>
               </label>
@@ -170,7 +170,7 @@ export function DeleteInUseDialog({
             </div>
           )}
           {!justDelete && (
-          <section className="stack" style={{ gap: "0.5rem" }}>
+          <section className="stack" style={{ gap: "var(--space-3)" }}>
             <strong>{moveHeading ?? strings.admin.deleteInUseMoveHeading}</strong>
             <span className="text-muted">{moveHint ?? strings.admin.deleteInUseMoveHint}</span>
             {candidates.length === 0 && !renderMovePicker ? (
@@ -220,7 +220,7 @@ export function DeleteInUseDialog({
           </section>
           )}
           {remove && !justDelete && (
-            <section className="stack" style={{ gap: "0.5rem" }}>
+            <section className="stack" style={{ gap: "var(--space-3)" }}>
               <strong>{remove.heading ?? strings.admin.deleteInUseRemoveHeading}</strong>
               <span className="text-muted">{remove.description}</span>
               <div className="row">

@@ -68,14 +68,14 @@ export function PainPointScoreFields({
         const values = draft[row.key] ?? EMPTY_SCORE_ROW;
         return (
           <div key={row.key} className="stack" role="group" aria-label={`${row.label} scores`}>
-            <div className="row" style={{ gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+            <div className="row" style={{ gap: "var(--space-3)", alignItems: "center", flexWrap: "wrap" }}>
               <strong>{row.label}</strong>
               {row.note && <span className="text-muted">{row.note}</span>}
               {row.retired && <Badge tone="muted">{PAIN_POINT_SCORE_TARGET_STATUS_LABEL.inactive}</Badge>}
               {savedRow && <PainPointScoreBadge score={savedRow.score} />}
               {savedRow && <BlockerBadge summary={{ is_blocker: savedRow.is_blocker, blocker_labels: [] }} />}
             </div>
-            <div className="row" style={{ gap: "1rem", flexWrap: "wrap", alignItems: "flex-start" }}>
+            <div className="row" style={{ gap: "var(--space-5)", flexWrap: "wrap", alignItems: "flex-start" }}>
               {SCORE_AXIS_KEYS.map((axisKey) => axes[axisKey] && (
                 <ScoringLevelPicker
                   key={axisKey} axis={axes[axisKey]} value={values[axisKey]}

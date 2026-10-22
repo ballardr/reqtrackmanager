@@ -231,7 +231,7 @@ export function ArtefactLinksPanel({
   const viewOptions = (
     <AddPopoverButton label={strings.artefactLinks.viewOptions} icon={SlidersHorizontal} size={compactView ? "sm" : "md"}>
       {() => (
-        <div className="stack" style={{ gap: "0.5rem" }}>
+        <div className="stack" style={{ gap: "var(--space-3)" }}>
           <label className="checkbox-label">
             <input type="checkbox" aria-label={strings.artefactLinks.viewCompact} checked={compactView} onChange={(e) => setCompactView(e.target.checked)} />
             <span>{strings.artefactLinks.viewCompact}</span>
@@ -302,7 +302,7 @@ export function ArtefactLinksPanel({
           const isCollapsed = collapsed[group.type] ?? (collapsedTypes?.includes(group.type) ?? false);
           const listId = `artefact-links-${artefactId}-${group.type}`;
           return (
-            <div key={group.label} className="stack" style={{ gap: "0.35rem" }}>
+            <div key={group.label} className="stack" style={{ gap: "var(--space-2)" }}>
               <div className="row artefact-links__group-row">
                 <h3 className="artefact-links__group">
                   <button
@@ -384,7 +384,7 @@ export function ArtefactLinksPanel({
           title={strings.artefactLinks.removeTitle}
           message={
             changeRequest ? (
-              <span className="stack" style={{ gap: "0.5rem" }}>
+              <span className="stack" style={{ gap: "var(--space-3)" }}>
                 <span>{strings.artefactLinks.removeConfirmViaChangeRequest}</span>
                 <TextAreaField helpNotNeeded
                   label={strings.artefactLinks.reasonLabel}

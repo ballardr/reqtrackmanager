@@ -199,7 +199,7 @@ export function ProjectCompliancePage() {
       />
       {tab === "standards" && (
         <div className="stack" {...tabPanelProps("project-compliance", "standards")}>
-          <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+          <div className="row" style={{ gap: "var(--space-3)", flexWrap: "wrap" }}>
             <button className="btn btn-primary" onClick={() => setAssigning(true)}>
               Assign standard
             </button>

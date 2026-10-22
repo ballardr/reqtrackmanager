@@ -51,7 +51,7 @@ export function CommentConfirmDialog({
     <ConfirmDialog
       title={title}
       message={
-        <span className="stack" style={{ gap: "0.5rem" }}>
+        <span className="stack" style={{ gap: "var(--space-3)" }}>
           <span>{intro}</span>
           <TextAreaField
             helpNotNeeded

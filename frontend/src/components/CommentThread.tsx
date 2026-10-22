@@ -100,7 +100,7 @@ export function CommentThread({
       {comments.map((c) => {
         const isEditing = editingId === c.id;
         return (
-          <div key={c.id} className="comment-row stack" style={{ gap: "0.35rem" }}>
+          <div key={c.id} className="comment-row stack" style={{ gap: "var(--space-2)" }}>
             <div className="row" style={{ justifyContent: "space-between" }}>
               <span style={{ fontWeight: 600 }}>{c.author_display_name}</span>
               <span className="text-muted" style={{ fontSize: "0.8rem" }}>
@@ -110,7 +110,7 @@ export function CommentThread({
             </div>
 
             {isEditing ? (
-              <div className="stack" style={{ gap: "0.4rem" }}>
+              <div className="stack" style={{ gap: "var(--space-2)" }}>
                 <textarea className="input" rows={2} value={editBody} onChange={(e) => setEditBody(e.target.value)} aria-label="Edit comment" />
                 {c.attachments.length > 0 && (
                   <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
@@ -150,7 +150,7 @@ export function CommentThread({
                 {c.attachments.length > 0 && (
                   <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
                     {c.attachments.map((a) => (
-                      <a key={a.id} href={fileUrl(a.id)} target="_blank" rel="noreferrer" className="row" style={{ gap: "0.25rem" }}>
+                      <a key={a.id} href={fileUrl(a.id)} target="_blank" rel="noreferrer" className="row" style={{ gap: "var(--space-1)" }}>
                         <Paperclip size={12} /> {a.filename}
                       </a>
                     ))}

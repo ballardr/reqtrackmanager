@@ -274,7 +274,7 @@ export function StandardWorkspacePage() {
           <DetailCard>
             <p>{standard.description || <span className="text-muted">No description.</span>}</p>
             {standard.issuing_organisation && <p className="text-muted">Issued by {standard.issuing_organisation}</p>}
-            <div className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+            <div className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
               <span className="text-muted">Owner:</span>
               <PrincipalBadge principal={standard.owner} />
             </div>
@@ -303,7 +303,7 @@ export function StandardWorkspacePage() {
         ) : (
           <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
             {history.map((h) => (
-              <li key={h.id} style={{ borderBottom: "1px solid var(--color-border)", padding: "0.4rem 0" }}>
+              <li key={h.id} style={{ borderBottom: "1px solid var(--color-border)", padding: "var(--space-2) 0" }}>
                 <span className="text-muted">{new Date(h.created_at).toLocaleString()}</span>
                 {" — "}
                 {userDisplayName(orgUsers, h.actor_id)} — {activityActionLabel(h.action)}

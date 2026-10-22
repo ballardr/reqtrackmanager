@@ -39,7 +39,7 @@ export function RecordFieldGroup({
 }: FieldHelpProps & { label: string; children: ReactNode; gap?: string; action?: ReactNode }) {
   return (
     <div className="stack" style={{ gap }}>
-      <span className="row" style={{ gap: "0.35rem", alignItems: "center" }}>
+      <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
         <FieldCaption label={label} help={help} muted required={required} />
         {action}
       </span>

@@ -446,7 +446,7 @@ export function PreferencesPage() {
       {activeGroup === "profile" && (
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.preferences.profile}</h2>
-        <div className="stack" style={{ gap: "0.25rem" }}>
+        <div className="stack" style={{ gap: "var(--space-1)" }}>
           <span>{strings.preferences.avatar}</span>
           <div className="row">
             {user?.avatar_file_id && (
@@ -574,7 +574,7 @@ export function PreferencesPage() {
           sectionKey="preferences.security.two_factor"
           variant="plain"
           title={
-            <span className="row" style={{ gap: "0.5rem" }}>
+            <span className="row" style={{ gap: "var(--space-3)" }}>
               {strings.preferences.twoFactor}
               <ToggleSwitch
                 checked={!!user?.is_2fa_enabled || !!enrollment}
@@ -643,7 +643,7 @@ export function PreferencesPage() {
           const roles = myOrgRoles[org.id] ?? [];
           const orgProjects = myProjects.filter((p) => p.organization_id === org.id);
           return (
-            <div key={org.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.75rem" }}>
+            <div key={org.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "var(--space-4)" }}>
               <div className="row" style={{ justifyContent: "space-between" }}>
                 <span>
                   <strong>{org.name}</strong>{" "}
@@ -651,7 +651,7 @@ export function PreferencesPage() {
                     <Badge key={r}>{ORG_ROLE_LABEL[r]}</Badge>
                   ))}
                 </span>
-                <div className="row" style={{ gap: "0.4rem" }}>
+                <div className="row" style={{ gap: "var(--space-2)" }}>
                   {roles.includes("org_admin") && (
                     <Link to={`/orgs/${org.id}/admin`} className="btn">{strings.preferences.manageOrganisation(orgLabel)}</Link>
                   )}
@@ -685,7 +685,7 @@ export function PreferencesPage() {
                 </ul>
               )}
               {(myGroupsByOrg[org.id] ?? []).length > 0 && (
-                <div className="stack" style={{ gap: "0.25rem" }}>
+                <div className="stack" style={{ gap: "var(--space-1)" }}>
                   <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.preferences.myGroups}</span>
                   <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
                     {(myGroupsByOrg[org.id] ?? []).map((g) => (
@@ -706,7 +706,7 @@ export function PreferencesPage() {
       {activeGroup === "pats" && (
       <div className="card stack">
         <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div className="stack" style={{ gap: "0.25rem" }}>
+          <div className="stack" style={{ gap: "var(--space-1)" }}>
             <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.preferences.pats}</h2>
             <p className="text-muted" style={{ margin: 0 }}>{strings.preferences.patsHint(orgLabel)}</p>
           </div>
@@ -788,7 +788,7 @@ export function PreferencesPage() {
                   }
                 />
                 <FormGridFull>
-                  <div className="stack" style={{ gap: "0.25rem" }}>
+                  <div className="stack" style={{ gap: "var(--space-1)" }}>
                     <span>{strings.preferences.patOrgs(orgLabelPlural)}</span>
                     {myOrgs.map((org) => (
                       <CheckboxField helpNotNeeded
@@ -802,7 +802,7 @@ export function PreferencesPage() {
                 </FormGridFull>
                 {newPatOrgIds.size > 0 && (
                   <FormGridFull>
-                    <div className="stack" style={{ gap: "0.25rem" }}>
+                    <div className="stack" style={{ gap: "var(--space-1)" }}>
                       <span>{strings.preferences.patProjects}</span>
                       {(() => {
                         const scopedProjects = myProjects.filter((p) => newPatOrgIds.has(p.organization_id));
@@ -835,10 +835,10 @@ export function PreferencesPage() {
         )}
 
         {createdPat && (
-          <div className="stack" style={{ border: "1px solid var(--color-accent)", borderRadius: 6, padding: "0.75rem" }}>
+          <div className="stack" style={{ border: "1px solid var(--color-accent)", borderRadius: "var(--radius-md)", padding: "var(--space-4)" }}>
             <strong>{strings.preferences.patCreatedTitle}</strong>
             <p className="text-muted">{strings.preferences.patCreatedHint}</p>
-            <code style={{ wordBreak: "break-all", background: "var(--color-surface-alt)", padding: "0.5rem", borderRadius: 4 }}>
+            <code style={{ wordBreak: "break-all", background: "var(--color-surface-alt)", padding: "var(--space-3)", borderRadius: "var(--radius-sm)" }}>
               {createdPat.token}
             </code>
             <button className="btn" onClick={() => navigator.clipboard.writeText(createdPat.token)} style={{ alignSelf: "flex-start" }}>
@@ -861,7 +861,7 @@ export function PreferencesPage() {
             <tr>
               <th></th>
               <th>
-                <div className="stack" style={{ gap: "0.25rem", alignItems: "center" }}>
+                <div className="stack" style={{ gap: "var(--space-1)", alignItems: "center" }}>
                   {strings.notifications.ui}
                   <button className="btn" onClick={() => toggleAllNotificationPrefs("ui_enabled")}>
                     {strings.notifications.toggleAll}
@@ -869,7 +869,7 @@ export function PreferencesPage() {
                 </div>
               </th>
               <th>
-                <div className="stack" style={{ gap: "0.25rem", alignItems: "center" }}>
+                <div className="stack" style={{ gap: "var(--space-1)", alignItems: "center" }}>
                   {strings.notifications.email}
                   <button className="btn" onClick={() => toggleAllNotificationPrefs("email_enabled")}>
                     {strings.notifications.toggleAll}

@@ -76,7 +76,7 @@ export function RecordHeader({
   const Heading = headingLevel;
   const hasControls = onEdit || items.length > 0;
   return (
-    <header className="stack record-header" style={{ gap: "0.5rem" }}>
+    <header className="stack record-header" style={{ gap: "var(--space-3)" }}>
       {back && ("to" in back ? (
         <Link to={back.to}>{back.label}</Link>
       ) : (

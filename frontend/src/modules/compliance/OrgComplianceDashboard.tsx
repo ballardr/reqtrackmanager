@@ -211,7 +211,7 @@ export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
         />
       </div>
 
-      <div className="row" style={{ gap: "1rem", flexWrap: "wrap", alignItems: "flex-start" }}>
+      <div className="row" style={{ gap: "var(--space-5)", flexWrap: "wrap", alignItems: "flex-start" }}>
         <div className="card stack" style={{ flex: "1 1 260px" }}>
           <h3 style={{ margin: 0 }}>Standards with the most outstanding issues</h3>
           {standardsWithMostIssues.length === 0 ? (

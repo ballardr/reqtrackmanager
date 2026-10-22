@@ -157,9 +157,9 @@ export function CheckboxField({
   title?: string;
 }) {
   return (
-    <div className="stack" style={{ gap: "0.25rem" }}>
+    <div className="stack" style={{ gap: "var(--space-1)" }}>
       {heading && <FieldCaption label={heading} help={help} required={required} />}
-      <span className="row" style={{ gap: "0.4rem", alignItems: "flex-start", flexWrap: "nowrap", minHeight: heading ? "2.25rem" : undefined }}>
+      <span className="row" style={{ gap: "var(--space-2)", alignItems: "flex-start", flexWrap: "nowrap", minHeight: heading ? "2.25rem" : undefined }}>
         <label className="checkbox-label">
           <input
             type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} aria-label={ariaLabel} required={required}
@@ -203,7 +203,7 @@ export function ColorField({
   const name = ariaLabel ?? label;
   return (
     <FieldShell label={label} controlId={id} help={help} hint={hint} required={required}>
-      <span className="row" style={{ gap: "0.4rem", alignItems: "center" }}>
+      <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
         <input
           id={id} type="color" value={normaliseHexColour(value) ?? "#000000"} aria-label={name}
           onChange={(e) => { setDraft(null); onChange(e.target.value); }}
@@ -311,7 +311,7 @@ export function UploadField({
   children: ReactNode;
 }) {
   return (
-    <div className="stack" style={{ gap: "0.25rem" }}>
+    <div className="stack" style={{ gap: "var(--space-1)" }}>
       <FieldCaption htmlFor={id} label={label} extra={labelExtra} help={help} required={required} />
       <FileUploadTrigger id={id} accept={accept} disabled={disabled} onSelect={onSelect}>
         {children}

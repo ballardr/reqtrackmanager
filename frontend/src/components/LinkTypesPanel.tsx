@@ -354,7 +354,7 @@ export function LinkTypesPanel({ scope }: { scope: LinkTypesScope }) {
         item.dedicated_endpoint ? (
           <span className="text-muted">{strings.orgAdmin.linkTypeDedicatedNote}</span>
         ) : (
-          <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+          <div className="row" style={{ gap: "var(--space-3)", flexWrap: "wrap" }}>
             <span className="text-muted">{strings.orgAdmin.linkTypeCanLinkFrom}</span>
             <div style={{ minWidth: 200 }}>
               <MultiSelectDropdown
@@ -414,8 +414,8 @@ export function LinkTypesPanel({ scope }: { scope: LinkTypesScope }) {
             </Badge>
           )}
           {!isProject && customisation && (
-            <div className="stack" style={{ gap: "0.25rem" }}>
-              <div className="row" style={{ gap: "0.75rem" }}>
+            <div className="stack" style={{ gap: "var(--space-1)" }}>
+              <div className="row" style={{ gap: "var(--space-4)" }}>
                 <ToggleSwitch
                   checked={!customisation.locks.includes("link_types")}
                   label={strings.orgAdmin.projectCustomisationLinkTypes}

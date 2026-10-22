@@ -179,7 +179,7 @@ export function StandardFormModal({
           {!initial && (
             <>
               <FormGridFull>
-                <h3 style={{ margin: "0.5rem 0 0" }}>Initial version</h3>
+                <h3 style={{ margin: "var(--space-3) 0 0" }}>Initial version</h3>
               </FormGridFull>
               <TextField helpNotNeeded required label="Initial version label" value={versionLabel} onChange={setVersionLabel} placeholder="e.g. 1.0" />
               <DateField help={COMPLIANCE_HELP.complianceEffectiveDate} label="Effective date" value={effectiveDate} onChange={setEffectiveDate} />

@@ -27,7 +27,7 @@ export function StakeholderReportGroupControls({
   const groups = useProjectStakeholderGroups(projectId);
   if (groups.length === 0) return null;
   return (
-    <div className="row" style={{ gap: "1rem", alignItems: "flex-end", flexWrap: "wrap" }}>
+    <div className="row" style={{ gap: "var(--space-5)", alignItems: "flex-end", flexWrap: "wrap" }}>
       <StakeholderGroupFilterFields
         groups={groups}
         groupId={typeof values.group_id === "string" ? values.group_id : ""}

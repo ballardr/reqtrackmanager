@@ -43,7 +43,7 @@ export function ReportParamsForm({
   const shown = params.filter((p) => !hidden.includes(p.name));
   if (shown.length === 0 && !supportsIncludeChildren && !projectOptions) return null;
   return (
-    <div className="row" style={{ gap: "1rem", flexWrap: "wrap", alignItems: "flex-end" }} role="group" aria-label="Report options">
+    <div className="row" style={{ gap: "var(--space-5)", flexWrap: "wrap", alignItems: "flex-end" }} role="group" aria-label="Report options">
       {projectOptions && (
         <LabeledSelect helpNotNeeded
           label="Project"
@@ -57,7 +57,7 @@ export function ReportParamsForm({
         <ParamControl key={param.name} param={param} value={values[param.name]} onChange={(v) => onChange(param.name, v)} />
       ))}
       {supportsIncludeChildren && (
-        <div className="row" style={{ alignItems: "center", gap: "0.5rem" }}>
+        <div className="row" style={{ alignItems: "center", gap: "var(--space-3)" }}>
           <ToggleSwitch
             label="Include child projects"
             checked={values.include_children === true}
@@ -81,7 +81,7 @@ function ParamControl({
   const help = param.description || undefined;
   if (param.type === "boolean") {
     return (
-      <div className="row" style={{ alignItems: "center", gap: "0.5rem" }} title={help}>
+      <div className="row" style={{ alignItems: "center", gap: "var(--space-3)" }} title={help}>
         <ToggleSwitch label={label} checked={value === true} onChange={onChange} />
         <span>{label}</span>
       </div>
@@ -100,7 +100,7 @@ function ParamControl({
   }
   const inputType = param.type === "integer" ? "number" : param.type === "date" ? "date" : "text";
   return (
-    <label className="stack" style={{ gap: "0.25rem" }} title={help}>
+    <label className="stack" style={{ gap: "var(--space-1)" }} title={help}>
       <span>{label}</span>
       <input
         className="input"

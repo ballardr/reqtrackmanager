@@ -97,17 +97,17 @@ export function ScoringBandsEditor({
   }
 
   return (
-    <div className="stack" style={{ gap: "0.5rem" }}>
-      <div className="row" style={{ gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+    <div className="stack" style={{ gap: "var(--space-3)" }}>
+      <div className="row" style={{ gap: "var(--space-3)", alignItems: "center", flexWrap: "wrap" }}>
         <span>Rating bands</span>
         <OverridePill custom={custom} defaultLabel={defaultLabel} resetLabel={resetLabel}
           onReset={() => void run(onReset)} disabled={busy} />
       </div>
       {draft.map((band, i) => (
-        <div key={i} className="row" style={{ gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+        <div key={i} className="row" style={{ gap: "var(--space-3)", flexWrap: "wrap", alignItems: "center" }}>
           <input className="input" style={{ maxWidth: 160 }} aria-label={`Band ${i + 1} label`} value={band.label}
             onChange={(e) => update(i, { label: e.target.value })} />
-          <label className="row" style={{ gap: "0.25rem", alignItems: "center" }}>
+          <label className="row" style={{ gap: "var(--space-1)", alignItems: "center" }}>
             <span className="text-muted">from</span>
             <input className="input" type="number" min={0} max={99.9} step={0.1} style={{ maxWidth: 90 }}
               aria-label={`Band ${i + 1} starts at percent`} value={band.percent} disabled={i === 0}
@@ -126,7 +126,7 @@ export function ScoringBandsEditor({
         </div>
       ))}
       {error && dirty && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-      <div className="row" style={{ gap: "0.5rem" }}>
+      <div className="row" style={{ gap: "var(--space-3)" }}>
         <button type="button" className="btn" disabled={draft.length >= MAX_BANDS}
           onClick={() => setDraft((d) => [...d, { label: "", percent: d.length ? "" : "0", tone: "muted" }])}>
           <Plus /> Add band

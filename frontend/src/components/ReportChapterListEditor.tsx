@@ -35,7 +35,7 @@ export function ReportChapterListEditor({
     <div className="stack">
       <strong>{label}</strong>
       {list.map((chapter, idx) => (
-        <div key={idx} className="card stack" style={{ gap: "0.4rem" }}>
+        <div key={idx} className="card stack" style={{ gap: "var(--space-2)" }}>
           <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-end" }}>
             <TextField helpNotNeeded
               label="Chapter title"
@@ -47,7 +47,7 @@ export function ReportChapterListEditor({
                 setList(next);
               }}
             />
-            <div className="row" style={{ gap: "0.25rem" }}>
+            <div className="row" style={{ gap: "var(--space-1)" }}>
               <button
                 className="btn"
                 disabled={idx === 0}

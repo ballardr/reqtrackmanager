@@ -90,7 +90,7 @@ export function LinkTraceTree({
         const hops = resolved.groups[flow];
         const headingId = `link-trace-${flow}`;
         return (
-          <section key={flow} aria-labelledby={headingId} className="stack" style={{ gap: "0.35rem" }}>
+          <section key={flow} aria-labelledby={headingId} className="stack" style={{ gap: "var(--space-2)" }}>
             <h3 id={headingId} className="artefact-links__group">
               {labels[flow].title} <span className="text-muted">· {labels[flow].help}</span>
             </h3>

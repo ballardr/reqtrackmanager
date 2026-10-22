@@ -65,7 +65,7 @@ export function ReportCatalogue({
   return (
     <div className="stack">
       {options.length > 1 && (
-        <div className="stack" style={{ gap: "0.25rem" }}>
+        <div className="stack" style={{ gap: "var(--space-1)" }}>
           <LabeledSelect helpNotNeeded
             label="Report"
             value={selected.id}

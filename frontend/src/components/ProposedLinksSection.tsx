@@ -15,7 +15,7 @@ import { Badge } from "./Badge";
 export function ProposedLinksSection({ links, title }: { links: ProposedLink[]; title?: string }) {
   const strings = useStrings();
   return (
-    <div className="stack" style={{ gap: "0.5rem" }} aria-label={title ?? strings.changeRequests.proposedLinks}>
+    <div className="stack" style={{ gap: "var(--space-3)" }} aria-label={title ?? strings.changeRequests.proposedLinks}>
       <strong>{title ?? strings.changeRequests.proposedLinks}</strong>
       <p className="text-muted" style={{ margin: 0 }}>{strings.changeRequests.proposedLinksHelp}</p>
       <ul className="artefact-links__list">

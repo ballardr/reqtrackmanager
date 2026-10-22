@@ -107,10 +107,10 @@ export function ResourcePickerModal({
 
   return (
     <Modal title={title} onClose={onClose} size="lg">
-      <div className="row" style={{ alignItems: "stretch", gap: "1rem" }}>
+      <div className="row" style={{ alignItems: "stretch", gap: "var(--space-5)" }}>
         <div
           className="stack"
-          style={{ minWidth: 200, flexShrink: 0, borderRight: "1px solid var(--color-border)", paddingRight: "1rem" }}
+          style={{ minWidth: 200, flexShrink: 0, borderRight: "1px solid var(--color-border)", paddingRight: "var(--space-5)" }}
         >
           {sources.map((s) => (
             <button

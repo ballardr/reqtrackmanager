@@ -1057,7 +1057,7 @@ Every form field that is not self-explanatory carries a `(?)` help button after 
 
 ## Tokens
 
-`frontend/src/styles/theme.css` is already, functionally, the design system — CSS custom properties for colour, a working light/dark split, and spacing/radii used consistently even though not yet named as tokens. This section documents it as one, rather than proposing a new palette; every value below is already in the codebase.
+`frontend/src/styles/theme.css` is already, functionally, the design system — CSS custom properties for colour, a working light/dark split, and a named spacing and radius scale. This section documents it as one, rather than proposing a new palette; every value below is already in the codebase.
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
@@ -1075,7 +1075,18 @@ Every form field that is not self-explanatory carries a `(?)` help button after 
 
 Only the three entity kinds core owns have an accent variable. A module registers its own accent as a `{ light, dark }` pair on its `TierAModuleDefinition.entityAccentColor` and it is resolved client-side (`useEntityAccentColor()`); a module's colour is never a variable in `theme.css`.
 
-Dark-theme equivalents already exist for every themed token (`:root[data-theme="dark"]`); the header chrome is the one deliberate exception, fixed regardless of theme. Not yet formalised as named tokens, though consistently used in practice: spacing clusters around `4 / 6 / 8 / 12 / 16 / 24px`, and border radius is a consistent `6px` throughout. Worth promoting to explicit `--space-*`/`--radius-*` custom properties as a small follow-up, rather than inventing a new scale — the values already agree with each other, they're just inline rather than named.
+Dark-theme equivalents already exist for every themed token (`:root[data-theme="dark"]`); the header chrome is the one deliberate exception, fixed regardless of theme. **Spacing and radius** are named tokens. Spacing is in `rem`, so it follows the user's font size.
+
+| Token | Value | Token | Value |
+|---|---|---|---|
+| `--space-1` | `0.25rem` (4px) | `--radius-sm` | `4px` (small chips, code, thumbnails) |
+| `--space-2` | `0.375rem` (6px) | `--radius-md` | `6px` (controls, panels, tooltips) |
+| `--space-3` | `0.5rem` (8px) | `--radius-lg` | `8px` (cards, dialogs) |
+| `--space-4` | `0.75rem` (12px) | `--radius-pill` | `999px` (pills, toggles) |
+| `--space-5` | `1rem` (16px) | | |
+| `--space-6` | `1.5rem` (24px) | | |
+
+Write a `padding`, `margin`, `gap` or `border-radius` that sits on the scale as the token, in the stylesheet (`padding: var(--space-3)`) and in an inline style (`gap: "var(--space-3)"`); `scripts/check_spacing_tokens.py` (pinned by `backend/tests/test_spacing_tokens.py`) fails a literal that has a token. A value between two steps (0.3rem, 0.6rem), a hairline (`1px`), `0`, `50%` for a circle and a size such as a control height are not spacing-scale values and stay literal; do not widen the scale to absorb a one-off. A module never adds a token to the core stylesheet.
 
 Typography: the app's own system-font stack (`-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`) at a 15px base.
 

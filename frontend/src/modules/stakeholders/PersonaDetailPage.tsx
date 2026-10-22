@@ -273,7 +273,7 @@ export function PersonaDetailPage() {
           <RecordFieldGroup help={STAKEHOLDERS_HELP.personaImportanceWeight} label="Importance weight" gap="0.35rem">
             {projectId ? (
               <>
-                <div className="row" style={{ gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
+                <div className="row" style={{ gap: "var(--space-4)", alignItems: "center", flexWrap: "wrap" }}>
                   <span data-testid="effective-weight">
                     {persona.effective_weight === null ? "Not weighted" : persona.effective_weight}
                   </span>
@@ -286,7 +286,7 @@ export function PersonaDetailPage() {
                     }
                   />
                 </div>
-                <div className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+                <div className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
                   <input
                     className="input"
                     type="number"

@@ -113,8 +113,8 @@ export function ResearchFindingsPanel({
   if (findings === null) return null;
 
   return (
-    <div className="stack" style={{ gap: "0.5rem" }}>
-      <span className="row" style={{ gap: "0.35rem", alignItems: "center" }}>
+    <div className="stack" style={{ gap: "var(--space-3)" }}>
+      <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
         <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>Findings</span>
         <button type="button" className="btn btn-sm btn-icon" aria-label="Add finding" title="Add finding" aria-haspopup="dialog" onClick={() => setCreating(true)}>
           <Plus aria-hidden="true" />
@@ -122,13 +122,13 @@ export function ResearchFindingsPanel({
       </span>
       {findings.length === 0 && <span className="text-muted">No findings recorded for this engagement.</span>}
       {findings.map((f) => (
-        <div key={f.id} id={`finding-${f.id}`} className="card stack" style={{ gap: "0.35rem" }} aria-label={`Finding ${f.title}`}>
+        <div key={f.id} id={`finding-${f.id}`} className="card stack" style={{ gap: "var(--space-2)" }} aria-label={`Finding ${f.title}`}>
           <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-            <span className="row" style={{ gap: "0.5rem", alignItems: "baseline" }}>
+            <span className="row" style={{ gap: "var(--space-3)", alignItems: "baseline" }}>
               <span className="text-muted" style={{ fontSize: "0.85rem" }}><RecordCode code={f.unique_code} /></span>
               <strong>{f.title}</strong>
             </span>
-            <span className="row" style={{ gap: "0.35rem" }}>
+            <span className="row" style={{ gap: "var(--space-2)" }}>
               <button className="btn btn-sm btn-icon" aria-label={`Edit ${f.title}`} title={`Edit ${f.title}`} onClick={() => { setFormError(null); setEditing(f); }}><Pencil /></button>
               <button className="btn btn-sm btn-icon" aria-label={`Delete ${f.title}`} title={`Delete ${f.title}`} onClick={() => setDeleting(f)}><Trash2 /></button>
             </span>

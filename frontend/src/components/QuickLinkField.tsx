@@ -181,7 +181,7 @@ export function QuickLinkField({
   }
 
   return (
-    <div className="stack" style={{ gap: "0.25rem" }}>
+    <div className="stack" style={{ gap: "var(--space-1)" }}>
       <label htmlFor={`${listboxId}-input`}>{strings.artefactLinks.quick.label}</label>
       <div ref={containerRef} style={{ position: "relative" }}>
         <input
@@ -209,11 +209,11 @@ export function QuickLinkField({
             aria-label={strings.artefactLinks.quick.listLabel}
             className="card stack"
             style={{
-              position: "absolute", top: "100%", left: 0, right: 0, zIndex: 10, marginTop: "0.25rem",
-              padding: "0.25rem", gap: "0.15rem", maxHeight: 260, overflowY: "auto",
+              position: "absolute", top: "100%", left: 0, right: 0, zIndex: 10, marginTop: "var(--space-1)",
+              padding: "var(--space-1)", gap: "0.15rem", maxHeight: 260, overflowY: "auto",
             }}
           >
-            {matches.length === 0 && <span className="text-muted" style={{ padding: "0.35rem 0.5rem" }}>{strings.artefactLinks.quick.noMatches}</span>}
+            {matches.length === 0 && <span className="text-muted" style={{ padding: "var(--space-2) var(--space-3)" }}>{strings.artefactLinks.quick.noMatches}</span>}
             {matches.map((c, i) => (
               <button
                 key={`${c.type}:${c.id}`}
@@ -237,7 +237,7 @@ export function QuickLinkField({
       </div>
       <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.artefactLinks.quick.hint}</span>
       {value.length > 0 && (
-        <ul className="stack" style={{ gap: "0.25rem", listStyle: "none", margin: 0, padding: 0 }} aria-label={strings.artefactLinks.quick.chosenLabel}>
+        <ul className="stack" style={{ gap: "var(--space-1)", listStyle: "none", margin: 0, padding: 0 }} aria-label={strings.artefactLinks.quick.chosenLabel}>
           {value.map((link) => {
             const choices = relationshipsFor(link);
             return (
@@ -259,7 +259,7 @@ export function QuickLinkField({
                 {choices.length > 1 ? (
                   <select
                     className="input"
-                    style={{ width: "auto", marginRight: "0.5rem" }}
+                    style={{ width: "auto", marginRight: "var(--space-3)" }}
                     aria-label={strings.artefactLinks.quick.relationshipLabel(link.otherLabel)}
                     value={`${link.link_type_id}:${link.direction}`}
                     onChange={(e) => changeRelationship(link, e.target.value)}
@@ -267,7 +267,7 @@ export function QuickLinkField({
                     {choices.map((o) => <option key={optionKey(o)} value={optionKey(o)}>{o.phrase}</option>)}
                   </select>
                 ) : (
-                  <span className="text-muted" style={{ marginRight: "0.5rem" }}>{link.phrase}</span>
+                  <span className="text-muted" style={{ marginRight: "var(--space-3)" }}>{link.phrase}</span>
                 )}
                 <span>{link.otherLabel}</span> <span className="text-muted">({link.otherTypeLabel})</span>
               </ItemRow>

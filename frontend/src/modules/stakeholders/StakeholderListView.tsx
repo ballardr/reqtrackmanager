@@ -157,7 +157,7 @@ export function StakeholderListView({
                 key: "groups", label: "Groups",
                 render: (s: Stakeholder) =>
                   s.groups.length === 0 ? "—" : (
-                    <span className="row" style={{ gap: "0.25rem" }}>
+                    <span className="row" style={{ gap: "var(--space-1)" }}>
                       {s.groups.map((g) => (
                         <FilterBadge key={g.id} active={groupFilter === g.id} onClick={() => setGroupFilter(groupFilter === g.id ? "" : g.id)}>
                           <span title={groupPath(groups, g.id)}>
