@@ -10,12 +10,11 @@
  * Every button always renders regardless of role: the backend enforces the owner
  * role and a 403 surfaces as a toast through the caller's handlers.
  *
- * External dependencies: `ConfirmDialog` (style guide, "confirmation, in two tiers").
+ * External dependencies: `CommentConfirmDialog` (style guide, "confirmation, in two tiers").
  */
 import { useState, type ReactNode } from "react";
 
-import { ConfirmDialog } from "./ConfirmDialog";
-import { TextAreaField } from "./FormFields";
+import { CommentConfirmDialog } from "./CommentConfirmDialog";
 
 export type LifecycleAction = "activate" | "retire";
 
@@ -40,7 +39,6 @@ export function RecordLifecycleControls({
   onTransition: (action: LifecycleAction, comment: string) => Promise<void>;
 }) {
   const [action, setAction] = useState<LifecycleAction | null>(null);
-  const [comment, setComment] = useState("");
 
   const copy: Record<LifecycleAction, { title: string; body: ReactNode; confirmLabel: string }> = {
     activate: { title: `Activate this ${noun}?`, body: activateBody, confirmLabel: "Activate" },
@@ -57,29 +55,16 @@ export function RecordLifecycleControls({
       {status !== "retired" && <button className="btn btn-danger" onClick={() => setAction("retire")}>Retire</button>}
 
       {action && (
-        <ConfirmDialog
+        <CommentConfirmDialog
           title={copy[action].title}
-          message={
-            <span className="stack" style={{ gap: "0.5rem" }}>
-              <span>{copy[action].body}</span>
-              <TextAreaField helpNotNeeded
-                label="Comment"
-                ariaLabel="Transition comment"
-                value={comment}
-                onChange={setComment}
-                rows={2}
-              />
-            </span>
-          }
+          intro={copy[action].body}
+          ariaLabel="Transition comment"
           confirmLabel={copy[action].confirmLabel}
-          onConfirm={async () => {
-            const chosen = action;
-            const text = comment;
+          onConfirm={async (comment) => {
             setAction(null);
-            setComment("");
-            await onTransition(chosen, text);
+            await onTransition(action, comment);
           }}
-          onCancel={() => { setAction(null); setComment(""); }}
+          onCancel={() => setAction(null)}
         />
       )}
     </>

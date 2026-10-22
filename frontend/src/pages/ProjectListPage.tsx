@@ -544,7 +544,7 @@ export function ProjectListPage() {
             {projects && projects.length > 0 && viewMode === "tiles" && (
               <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
                 {projects.map((p) => (
-                  <div key={p.id} className="card stack" style={{ gap: "0.5rem" }}>
+                  <div key={p.id} className="card stack" style={{ gap: "var(--space-3)" }}>
                     <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "nowrap" }}>
                       <Link
                         to={`/projects/${p.id}`}

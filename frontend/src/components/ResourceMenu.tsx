@@ -116,7 +116,7 @@ export function ResourceMenu<K extends string>({
     <div className="stack">
       {title && (
         <div className="stack" style={{ gap: "0.15rem" }}>
-          <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
+          <div className="row" style={{ alignItems: "center", gap: "var(--space-1)" }}>
             <h1 style={{ margin: 0 }}>{title}</h1>
             {titleAdornment}
           </div>

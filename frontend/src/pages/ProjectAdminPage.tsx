@@ -77,8 +77,8 @@ import { loadProjectSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { describeCodePolicy, normaliseProjectCode } from "../utils/codePolicy";
 import { downloadBlob } from "../utils/download";
 import { Badge } from "../components/Badge";
-import { CheckboxField, TextAreaField, TextField, ToggleField } from "../components/FormFields";
-import { LabeledSelect } from "../components/LabeledSelect";
+import { CheckboxField, InlineTextInput, TextAreaField, TextField, ToggleField } from "../components/FormFields";
+import { InlineSelect, LabeledSelect } from "../components/LabeledSelect";
 import { FormActions } from "../components/FormActions";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
 import { RecordFieldGroup } from "../components/RecordDetailParts";
@@ -1521,7 +1521,7 @@ export function ProjectAdminPage() {
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
         <div className="stack" style={{ gap: "0.15rem" }}>
-          <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
+          <div className="row" style={{ alignItems: "center", gap: "var(--space-1)" }}>
             <h1 style={{ margin: 0 }}>{project.name}</h1>
             <EntitySwitcher
               label="Switch project"
@@ -1779,7 +1779,7 @@ export function ProjectAdminPage() {
           <ConfirmDialog
             title={strings.admin.allowAiApprovalsAckTitle}
             message={
-              <span className="stack" style={{ gap: "0.5rem" }}>
+              <span className="stack" style={{ gap: "var(--space-3)" }}>
                 <span>{strings.admin.allowAiApprovalsAckBody}</span>
                 <CheckboxField helpNotNeeded
                   label={strings.admin.allowAiApprovalsAckCheckbox}
@@ -1819,7 +1819,7 @@ export function ProjectAdminPage() {
             across the app is a separate, deliberately-deferred roadmap
             item (see docs/decisions.md); this is only where its existing
             (still mostly-inert) UI lives now. */}
-        <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)", margin: "0.25rem 0" }} />
+        <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)", margin: "var(--space-1) 0" }} />
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.terminology}</h2>
         <p className="text-muted" style={{ margin: 0 }}>{strings.admin.terminologyHint}</p>
         <FormGrid minColumn="14rem">
@@ -1850,12 +1850,12 @@ export function ProjectAdminPage() {
           const nameEdit = stageNameEdits[s.id] ?? s.name;
           const otherStages = stages.filter((other) => other.id !== s.id);
           return (
-          <div key={s.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}>
+          <div key={s.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "var(--space-3)" }}>
             <div className="row" style={{ justifyContent: "space-between" }}>
               <div className="row">
-                <input
-                  className="input" style={{ maxWidth: 220 }} value={nameEdit} aria-label={`${strings.admin.name}: ${s.name}`}
-                  onChange={(e) => setStageNameEdits((m) => ({ ...m, [s.id]: e.target.value }))}
+                <InlineTextInput
+                  maxWidth={220} value={nameEdit} ariaLabel={`${strings.admin.name}: ${s.name}`}
+                  onChange={(next) => setStageNameEdits((m) => ({ ...m, [s.id]: next }))}
                 />
                 {nameEdit !== s.name && nameEdit && (
                   <button
@@ -1905,10 +1905,10 @@ export function ProjectAdminPage() {
             </div>
             {s.status === "review" && (
               <div className="row">
-                <input
-                  className="input" type="datetime-local" style={{ maxWidth: 220 }} aria-label={`${strings.admin.reviewDeadline}: ${s.name}`}
+                <InlineTextInput
+                  type="datetime-local" maxWidth={220} ariaLabel={`${strings.admin.reviewDeadline}: ${s.name}`}
                   value={deadlineInputs[s.id] ?? ""}
-                  onChange={(e) => setDeadlineInputs((d) => ({ ...d, [s.id]: e.target.value }))}
+                  onChange={(next) => setDeadlineInputs((d) => ({ ...d, [s.id]: next }))}
                 />
                 <button
                   className="btn"
@@ -1952,16 +1952,16 @@ export function ProjectAdminPage() {
           const componentDirty = componentEdit.name !== c.name || componentEdit.prefix !== c.prefix;
           const otherComponents = components.filter((other) => other.id !== c.id);
           return (
-            <div key={c.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "0.75rem" }}>
+            <div key={c.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "var(--space-4)" }}>
               <div className="row" style={{ justifyContent: "space-between" }}>
                 <div className="row">
-                  <input
-                    className="input" style={{ maxWidth: 180 }} value={componentEdit.name} aria-label={`${strings.admin.name}: ${c.name}`}
-                    onChange={(e) => setComponentEdits((m) => ({ ...m, [c.id]: { ...componentEdit, name: e.target.value } }))}
+                  <InlineTextInput
+                    maxWidth={180} value={componentEdit.name} ariaLabel={`${strings.admin.name}: ${c.name}`}
+                    onChange={(next) => setComponentEdits((m) => ({ ...m, [c.id]: { ...componentEdit, name: next } }))}
                   />
-                  <input
-                    className="input" style={{ maxWidth: 80 }} value={componentEdit.prefix} aria-label={`${strings.admin.prefix}: ${c.name}`}
-                    onChange={(e) => setComponentEdits((m) => ({ ...m, [c.id]: { ...componentEdit, prefix: e.target.value.toUpperCase() } }))}
+                  <InlineTextInput
+                    maxWidth={80} value={componentEdit.prefix} ariaLabel={`${strings.admin.prefix}: ${c.name}`}
+                    onChange={(next) => setComponentEdits((m) => ({ ...m, [c.id]: { ...componentEdit, prefix: next.toUpperCase() } }))}
                   />
                   {componentDirty && componentEdit.name && componentEdit.prefix && (
                     <button
@@ -2025,7 +2025,7 @@ export function ProjectAdminPage() {
                   onCancel={() => setDeletingComponentId(null)}
                 />
               )}
-              <div className="stack" style={{ paddingLeft: "1.5rem", gap: "0.4rem" }}>
+              <div className="stack" style={{ paddingLeft: "var(--space-6)", gap: "var(--space-2)" }}>
                 {ownCategories.map((cat, catIdx) => {
                   const categoryEdit = categoryEdits[cat.id] ?? { name: cat.name, prefix: cat.prefix };
                   const categoryDirty = categoryEdit.name !== cat.name || categoryEdit.prefix !== cat.prefix;
@@ -2034,13 +2034,13 @@ export function ProjectAdminPage() {
                   <div key={cat.id} className="stack" style={{ gap: "0.3rem" }}>
                     <div className="row" style={{ justifyContent: "space-between" }}>
                       <div className="row">
-                        <input
-                          className="input" style={{ maxWidth: 180 }} value={categoryEdit.name} aria-label={`${strings.admin.name}: ${cat.name}`}
-                          onChange={(e) => setCategoryEdits((m) => ({ ...m, [cat.id]: { ...categoryEdit, name: e.target.value } }))}
+                        <InlineTextInput
+                          maxWidth={180} value={categoryEdit.name} ariaLabel={`${strings.admin.name}: ${cat.name}`}
+                          onChange={(next) => setCategoryEdits((m) => ({ ...m, [cat.id]: { ...categoryEdit, name: next } }))}
                         />
-                        <input
-                          className="input" style={{ maxWidth: 80 }} value={categoryEdit.prefix} aria-label={`${strings.admin.prefix}: ${cat.name}`}
-                          onChange={(e) => setCategoryEdits((m) => ({ ...m, [cat.id]: { ...categoryEdit, prefix: e.target.value.toUpperCase() } }))}
+                        <InlineTextInput
+                          maxWidth={80} value={categoryEdit.prefix} ariaLabel={`${strings.admin.prefix}: ${cat.name}`}
+                          onChange={(next) => setCategoryEdits((m) => ({ ...m, [cat.id]: { ...categoryEdit, prefix: next.toUpperCase() } }))}
                         />
                         {categoryDirty && categoryEdit.name && categoryEdit.prefix && (
                           <button
@@ -2237,7 +2237,7 @@ export function ProjectAdminPage() {
               {strings.admin.materializeAll}
             </button>
           </div>
-          <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+          <div className="row" style={{ gap: "var(--space-3)", flexWrap: "wrap" }}>
             <button className="btn btn-primary" onClick={() => setAddMemberModalOpen(true)}>
               <Plus /> {strings.admin.addMember}
             </button>
@@ -2435,37 +2435,25 @@ export function ProjectAdminPage() {
         <p className="text-muted" style={{ margin: 0 }}>{strings.admin.memberSourcesHint}</p>
         {sourceCandidates.length > 0 ? (
           <div className="row" style={{ flexWrap: "wrap" }}>
-            <select
-              className="input" style={{ maxWidth: 280 }} value={addSourceId}
-              aria-label={strings.admin.memberSourceProjectSelect}
-              onChange={(e) => setAddSourceId(e.target.value)}
-            >
-              <option value="">{strings.common.selectOption}</option>
-              {sourceCandidates.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-            <select
-              className="input" style={{ maxWidth: 200 }} value={addMirrorMode}
-              aria-label={strings.admin.memberSourceModeSelect}
-              onChange={(e) => setAddMirrorMode(e.target.value as ProjectRoleInheritanceMode)}
-            >
-              {(Object.keys(PROJECT_ROLE_INHERITANCE_MODE_LABEL) as ProjectRoleInheritanceMode[])
+            <InlineSelect
+              maxWidth={280} value={addSourceId} ariaLabel={strings.admin.memberSourceProjectSelect}
+              placeholder={strings.common.selectOption}
+              options={sourceCandidates.map((c) => ({ value: c.id, label: c.name }))}
+              onChange={setAddSourceId}
+            />
+            <InlineSelect
+              maxWidth={200} value={addMirrorMode} ariaLabel={strings.admin.memberSourceModeSelect} placeholder={null}
+              options={(Object.keys(PROJECT_ROLE_INHERITANCE_MODE_LABEL) as ProjectRoleInheritanceMode[])
                 .filter((m) => m !== "none")
-                .map((m) => (
-                  <option key={m} value={m}>{PROJECT_ROLE_INHERITANCE_MODE_LABEL[m]}</option>
-                ))}
-            </select>
+                .map((m) => ({ value: m, label: PROJECT_ROLE_INHERITANCE_MODE_LABEL[m] }))}
+              onChange={(next) => setAddMirrorMode(next as ProjectRoleInheritanceMode)}
+            />
             {addMirrorMode === "mirror_role" && (
-              <select
-                className="input" style={{ maxWidth: 200 }} value={addMirrorFilterRole}
-                aria-label={strings.admin.memberSourceFilterRoleSelect}
-                onChange={(e) => setAddMirrorFilterRole(e.target.value as ProjectRole)}
-              >
-                <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
-                <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
-                <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
-              </select>
+              <InlineSelect
+                maxWidth={200} value={addMirrorFilterRole} ariaLabel={strings.admin.memberSourceFilterRoleSelect} placeholder={null}
+                options={(["project_manager", "project_administrator", "stakeholder"] as const).map((r) => ({ value: r, label: PROJECT_ROLE_LABEL[r] }))}
+                onChange={(next) => setAddMirrorFilterRole(next as ProjectRole)}
+              />
             )}
             <button className="btn" onClick={addMemberSource} disabled={!addSourceId}>
               {strings.admin.addMemberSource}
@@ -2629,19 +2617,13 @@ export function ProjectAdminPage() {
                 )}
                 {nestableOrgGroups.length > 0 && (
                   <div className="row">
-                    <select
-                      className="input"
-                      aria-label={strings.admin.addOrgGroupToProjectGroup(orgLabel)}
+                    <InlineSelect
+                      ariaLabel={strings.admin.addOrgGroupToProjectGroup(orgLabel)}
+                      placeholder={strings.admin.addOrgGroupToProjectGroup(orgLabel)}
                       value={orgGroupSelections[g.id] ?? ""}
-                      onChange={(e) => setOrgGroupSelections((prev) => ({ ...prev, [g.id]: e.target.value }))}
-                    >
-                      <option value="">{strings.admin.addOrgGroupToProjectGroup(orgLabel)}</option>
-                      {nestableOrgGroups.map((og) => (
-                        <option key={og.id} value={og.id}>
-                          {og.name}
-                        </option>
-                      ))}
-                    </select>
+                      options={nestableOrgGroups.map((og) => ({ value: og.id, label: og.name }))}
+                      onChange={(next) => setOrgGroupSelections((prev) => ({ ...prev, [g.id]: next }))}
+                    />
                     <button
                       className="btn"
                       disabled={!orgGroupSelections[g.id]}
@@ -2661,7 +2643,7 @@ export function ProjectAdminPage() {
                     <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
                       {referencedProjects.map((p) => (
                         <li key={p.id} className="row" style={{ justifyContent: "space-between", listStyle: "circle" }}>
-                          <span className="row" style={{ gap: "0.35rem" }}>
+                          <span className="row" style={{ gap: "var(--space-2)" }}>
                             {strings.admin.viaProjectMembers(p.name)}
                             <Link to={`/projects/${p.id}/admin/members`}>{strings.admin.viaProjectMembersLinkLabel}</Link>
                           </span>
@@ -2684,19 +2666,13 @@ export function ProjectAdminPage() {
                 )}
                 {referenceableProjects.length > 0 && (
                   <div className="row">
-                    <select
-                      className="input"
+                    <InlineSelect
                       value={sourceProjectSelections[g.id] ?? ""}
-                      aria-label={strings.admin.projectReferenceSelect}
-                      onChange={(e) => setSourceProjectSelections((prev) => ({ ...prev, [g.id]: e.target.value }))}
-                    >
-                      <option value="">{strings.admin.addProjectReferenceToProjectGroup}</option>
-                      {referenceableProjects.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
+                      ariaLabel={strings.admin.projectReferenceSelect}
+                      placeholder={strings.admin.addProjectReferenceToProjectGroup}
+                      options={referenceableProjects.map((p) => ({ value: p.id, label: p.name }))}
+                      onChange={(next) => setSourceProjectSelections((prev) => ({ ...prev, [g.id]: next }))}
+                    />
                     <button
                       className="btn"
                       disabled={!sourceProjectSelections[g.id]}

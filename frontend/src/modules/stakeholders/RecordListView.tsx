@@ -201,7 +201,7 @@ export function RecordListView<R extends ListedRecord, V>({
           key: "visibility", label: "Visibility",
           render: (r: R) =>
             r.project_hidden && r.hidden_source ? (
-              <span className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+              <span className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
                 <Badge>{HIDDEN_SOURCE_LABEL[r.hidden_source]}</Badge>
                 <button className="btn" aria-label={`Show ${r.name} in this project`} onClick={() => onShowHidden(r)}>
                   Show
@@ -280,7 +280,7 @@ export function RecordListView<R extends ListedRecord, V>({
       {page ? (
         <ListPageLayout
           title={page.title}
-          actions={page.actions ?? ((newButton || toolbar) && <div className="row" style={{ gap: "0.5rem", alignSelf: "flex-start" }}>{newButton}{toolbar}</div>)}
+          actions={page.actions ?? ((newButton || toolbar) && <div className="row" style={{ gap: "var(--space-3)", alignSelf: "flex-start" }}>{newButton}{toolbar}</div>)}
           tabs={page.tabs}
           contentProps={page.contentProps}
           filter={filterPanel}
@@ -291,7 +291,7 @@ export function RecordListView<R extends ListedRecord, V>({
       ) : (
         <>
           {(canCreate || toolbar) && (
-            <div className="row" style={{ gap: "0.5rem", alignSelf: "flex-start" }}>
+            <div className="row" style={{ gap: "var(--space-3)", alignSelf: "flex-start" }}>
               {newButton}
               {toolbar}
             </div>

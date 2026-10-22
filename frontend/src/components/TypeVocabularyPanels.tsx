@@ -176,7 +176,7 @@ export function OrgTypeVocabularyPanel<T extends OrgTypeRow>({
         deleteLabel={`Delete ${noun} type`}
         addLabel={`Add ${noun} type`}
         renderExtra={(item) => (
-          <span key="is-active" className="row" style={{ gap: "0.35rem", alignItems: "center" }}>
+          <span key="is-active" className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
             <span className="text-muted" style={{ fontSize: "0.8rem" }}>Active</span>
             <ToggleSwitch
               checked={item.is_active}
@@ -292,7 +292,7 @@ export function ProjectTypeVocabularyPanel({
         minItems={0}
         addLabel={`Add project-only ${noun} type`}
         renderExtra={(item) => (
-          <span key="type-extra" className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+          <span key="type-extra" className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
             <span className="text-muted" style={{ fontSize: "0.75rem" }}>{SOURCE_LABEL[item.source]}</span>
             <span className="text-muted" style={{ fontSize: "0.8rem" }}>Enabled</span>
             <ToggleSwitch

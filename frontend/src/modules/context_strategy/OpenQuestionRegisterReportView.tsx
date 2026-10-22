@@ -30,7 +30,7 @@ export function OpenQuestionRegisterReportView({ result, scope, values, figureAc
   return (
     <div className="stack">
       <ReportSummary result={result} figureAction={figureAction} />
-      <section className="stack" style={{ gap: "0.5rem" }} aria-label="Open Questions">
+      <section className="stack" style={{ gap: "var(--space-3)" }} aria-label="Open Questions">
         <h3 style={{ margin: 0 }}>Open Questions</h3>
         {items.length === 0 ? (
           <p className="text-muted" style={{ margin: 0 }}>

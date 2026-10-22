@@ -563,7 +563,7 @@ export function ChangeRequestsPage() {
         );
       case "attachments":
         return (
-          <div className="stack" style={{ gap: "0.25rem" }}>
+          <div className="stack" style={{ gap: "var(--space-1)" }}>
             {orgResources.length === 0 && (
               <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
                 {strings.changeRequests.noAttachmentsAvailable(orgLabel, orgLabelCap)}
@@ -663,12 +663,12 @@ export function ChangeRequestsPage() {
                     {strings.changeRequests.fieldsToChangeHint}
                   </p>
                   {CHANGEABLE_REQUIREMENT_FIELDS.map((field) => (
-                    <div key={field} className="stack" style={{ gap: "0.35rem" }}>
-                      <label className="checkbox-label" style={{ gap: "0.5rem" }}>
+                    <div key={field} className="stack" style={{ gap: "var(--space-2)" }}>
+                      <label className="checkbox-label" style={{ gap: "var(--space-3)" }}>
                         <input type="checkbox" checked={changedFields.has(field)} onChange={() => toggleChangedField(field)} />
                         {CHANGEABLE_FIELD_LABEL[field]}
                       </label>
-                      {changedFields.has(field) && <div style={{ marginLeft: "1.5rem" }}>{renderFieldEditor(field)}</div>}
+                      {changedFields.has(field) && <div style={{ marginLeft: "var(--space-6)" }}>{renderFieldEditor(field)}</div>}
                     </div>
                   ))}
                 </div>
@@ -845,14 +845,14 @@ export function ChangeRequestsPage() {
                   <div
                     key={cr.id}
                     className="card stack entity-accent-card"
-                    style={{ gap: "0.5rem", ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.change_request }}
+                    style={{ gap: "var(--space-3)", ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.change_request }}
                   >
                     <Link to={`/projects/${rowProjectId(cr, projectId ?? "")}/change-requests/${cr.id}`} style={{ fontWeight: 600 }}>
                       {crTitle(cr)}
                     </Link>
                     <small className="text-muted"><RecordCode code={cr.unique_code} ownerProjectCode={cr.from_project_code} /></small>
                     <ProjectScopeLabel row={cr} />
-                    <div className="row" style={{ gap: "0.4rem" }}>
+                    <div className="row" style={{ gap: "var(--space-2)" }}>
                       <FilterBadge
                         active={statusFilter === cr.status}
                         tone={CHANGE_REQUEST_STATUS_TONE[cr.status]}

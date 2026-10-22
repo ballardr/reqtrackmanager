@@ -32,6 +32,10 @@ Add a comment in the discussion thread for informal back-and-forth — this work
 
 A requirement's detail page also carries a **review date** and an assigned reviewer, tracked separately from stage-level review deadlines — see [Stages, baselining, and reviews → Scheduling and recording an individual review](./stages-baselining-and-reviews.md#scheduling-and-recording-an-individual-review).
 
+## Approving a requirement directly
+
+A project manager can approve a Draft or Reviewed requirement from its detail page with **Approve**. A dialog asks you to confirm and lets you add an optional **Approval comment** saying what you checked. The comment is quoted under the approval in the requirement's Activity tab and kept in its version history.
+
 ## Marking a requirement completed
 
 Once a requirement is approved, a project manager can mark it **Completed** from its detail page (and uncomplete it to correct a mistake) — a separate status from approval, for tracking which approved requirements have actually been delivered and verified, not just baselined.

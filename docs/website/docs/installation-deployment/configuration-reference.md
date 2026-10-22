@@ -27,7 +27,7 @@ This table is ported from the project [README](https://github.com/ballardr/reqtr
 | `STORAGE_BACKEND` | `local` (Compose default: `s3`) | — | File storage backend: `local` (filesystem) or `s3` (S3-compatible) |
 | `STORAGE_LOCAL_DIR` | `./data/files` | — | Filesystem directory used by the `local` storage backend |
 | `STORAGE_S3_BUCKET` / `STORAGE_S3_ENDPOINT_URL` / `STORAGE_S3_ACCESS_KEY` | see `docker-compose.yml` | — | Connection details for the `s3` storage backend |
-| `STORAGE_ROOT_PASSWORD` / `STORAGE_S3_SECRET_KEY` | `minioadmin` | **Yes** | Bundled storage service's admin password, shared with the backend's S3 secret key |
+| `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY` | `minioadmin` / — | **Yes** | The one S3 identity of the bundled storage service, limited to the application bucket; the backend uses the same pair. Earlier `STORAGE_ROOT_USER` / `STORAGE_ROOT_PASSWORD` still work. See [Production deployment](./production-deployment.md#hardening-the-bundled-storage-further) |
 | `SMTP_HOST` | — | **Yes** | Outgoing SMTP host — a real provider in production, MailHog in the dev/eval stack |
 | `SMTP_PORT` / `SMTP_USE_TLS` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM_ADDRESS` | see `docker-compose.yml` | Recommended | Remaining SMTP connection details |
 | `DEPLOYMENT_NOTIFICATION_EMAIL` | unset | — | Address notified of deployment-level events such as low disk space |

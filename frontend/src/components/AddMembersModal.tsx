@@ -200,7 +200,7 @@ export function AddMembersModal({
             {hint}
           </p>
         )}
-        <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap", alignItems: "flex-start" }}>
+        <div className="row" style={{ gap: "var(--space-3)", flexWrap: "wrap", alignItems: "flex-start" }}>
           <UserAutocomplete
             users={users.filter((u) => !staged.some((e) => e.kind === "user" && e.id === u.user_id))}
             placeholder={strings.admin.addOrInviteMemberPlaceholder}
@@ -237,12 +237,12 @@ export function AddMembersModal({
         {staged.length === 0 ? (
           <p className="text-muted" style={{ margin: 0 }}>{strings.admin.addMembersStagedEmpty}</p>
         ) : (
-          <ul className="stack" style={{ margin: 0, padding: 0, listStyle: "none", gap: "0.4rem" }}>
+          <ul className="stack" style={{ margin: 0, padding: 0, listStyle: "none", gap: "var(--space-2)" }}>
             {staged.map((entry) => {
               const state = rowState[entry.key] ?? { status: "idle" };
               return (
                 <li key={entry.key} className="stack" style={{ gap: "0.15rem" }}>
-                  <div className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+                  <div className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
                     <span style={{ flex: 1, minWidth: 0 }}>{entry.label}</span>
                     {showRole && (
                       <select

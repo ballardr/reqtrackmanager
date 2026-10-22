@@ -67,7 +67,7 @@ export function WatchingGroupsPanel({
   if (groups === null || (!canManage && groups.length === 0)) return null;
 
   return (
-    <div className="card stack" style={{ gap: "0.5rem" }} role="region" aria-label={strings.watchers.title}>
+    <div className="card stack" style={{ gap: "var(--space-3)" }} role="region" aria-label={strings.watchers.title}>
       <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.watchers.title}</h2>
       <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
         {strings.watchers.explanation}
@@ -77,7 +77,7 @@ export function WatchingGroupsPanel({
       ) : (
         <ul style={{ listStyle: "none", padding: 0, margin: 0 }} className="stack">
           {groups.map((group) => (
-            <li key={`${group.type}:${group.id}`} className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+            <li key={`${group.type}:${group.id}`} className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
               <PrincipalBadge principal={group} />
               {canManage && (
                 <button

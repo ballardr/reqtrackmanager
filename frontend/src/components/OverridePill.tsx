@@ -28,7 +28,7 @@ export function OverridePill({
     return <Badge>{defaultLabel ?? strings.common.platformDefault}</Badge>;
   }
   return (
-    <span className="row" style={{ gap: "0.5rem", display: "inline-flex" }}>
+    <span className="row" style={{ gap: "var(--space-3)", display: "inline-flex" }}>
       <Badge>{strings.common.customValue}</Badge>
       {onReset && (
         <button type="button" className="btn" onClick={onReset} disabled={disabled}>

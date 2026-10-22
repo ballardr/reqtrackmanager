@@ -15,11 +15,19 @@
  * (`eligible_projects === 0`) shows an explicit empty state rather than a
  * wall of empty tables.
  */
+import { useState } from "react";
 import type { ReportMetric, ReportResult, ReportSection } from "../api/reports";
+import { t } from "../i18n/strings";
+import { LoadMoreButton } from "./LoadMoreButton";
 import { StatBar, type StatBarItem } from "./StatBar";
 import type { StatFigureAction } from "../utils/statFigureAction";
 import { StatGroups, type StatGroup } from "./StatGroups";
 import { Badge } from "./Badge";
+
+const strings = t();
+
+/** Rows a report table shows before "Load more"; exports (PDF, Word, CSV) always carry every row. */
+export const REPORT_TABLE_PAGE_SIZE = 50;
 
 /**
  * Decides what clicking a headline figure does: open a page (`to`), act in
@@ -86,13 +94,18 @@ export function ReportSummary({ result, figureAction }: { result: ReportResult; 
 
 /**
  * One report section as a headed table (gap sections carry a count badge).
+ * The response is already loaded, so a long table shows the first
+ * `REPORT_TABLE_PAGE_SIZE` rows and reveals the next page client-side, with a
+ * "Showing n of m" count while rows remain hidden.
  *
  * @param section The section to render.
  */
 export function ReportSectionTable({ section }: { section: ReportSection }) {
+  const [visible, setVisible] = useState(REPORT_TABLE_PAGE_SIZE);
+  const shown = Math.min(visible, section.rows.length);
   return (
-    <section id={`report-section-${section.key}`} className="stack report-section" style={{ gap: "0.5rem" }} aria-label={section.title}>
-      <div className="row" style={{ alignItems: "center", gap: "0.5rem" }}>
+    <section id={`report-section-${section.key}`} className="stack report-section" style={{ gap: "var(--space-3)" }} aria-label={section.title}>
+      <div className="row" style={{ alignItems: "center", gap: "var(--space-3)" }}>
         <h3 style={{ margin: 0 }}>{section.title}</h3>
         {section.gap && (
           <Badge tone={section.rows.length > 0 ? "warning" : "muted"}>
@@ -122,7 +135,7 @@ export function ReportSectionTable({ section }: { section: ReportSection }) {
               </tr>
             </thead>
             <tbody>
-              {section.rows.map((row, index) => (
+              {section.rows.slice(0, shown).map((row, index) => (
                 <tr key={index}>
                   {row.map((cell, cellIndex) => (
                     <td key={cellIndex}>{cell}</td>
@@ -131,6 +144,14 @@ export function ReportSectionTable({ section }: { section: ReportSection }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+      {section.rows.length > shown && (
+        <div className="stack" style={{ gap: "var(--space-3)", alignItems: "center" }}>
+          <span className="text-muted" role="status" style={{ fontSize: "0.85rem" }}>
+            {strings.reports.tableShowing(shown, section.rows.length)}
+          </span>
+          <LoadMoreButton loaded={shown} total={section.rows.length} onClick={() => setVisible(shown + REPORT_TABLE_PAGE_SIZE)} />
         </div>
       )}
     </section>

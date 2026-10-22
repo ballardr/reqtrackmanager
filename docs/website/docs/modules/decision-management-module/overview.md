@@ -10,8 +10,10 @@ For example, a project team choosing between two authentication approaches recor
 
 | The Decisions list |
 | --- |
-| A project's Decisions, filterable by status and type — a mix of Superseded, Approved, and Draft in this example |
+| A project's Decisions, filterable by status and type — a mix of Superseded, Approved, and Draft in this example (clear **Open only** to see the Approved and Superseded ones) |
 | ![Decisions list for a project showing three Decisions in Superseded, Approved, and Draft status, with type and owner columns](../../../static/img/screenshots/decision-list.png) |
+
+The list opens on Decisions still to be made (Draft, Proposed and Under review): **Open only** is ticked, and clearing it adds the Approved, Rejected and Superseded ones. A link that names a status opens the list with that status and **Open only** off.
 
 ## When to use a Decision Record
 

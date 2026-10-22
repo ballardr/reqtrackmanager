@@ -73,7 +73,7 @@ export function ReviewsPanel({
       ) : (
         <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
           {reviews.map((r) => (
-            <li key={r.id} className="card stack" style={{ marginBottom: "0.5rem", padding: "0.6rem 0.85rem" }}>
+            <li key={r.id} className="card stack" style={{ marginBottom: "var(--space-3)", padding: "0.6rem 0.85rem" }}>
               <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
                 <span>
                   <strong>{r.frequency_label}</strong> — due {r.next_due_date}
@@ -90,7 +90,7 @@ export function ReviewsPanel({
                   r.outcome && <span className="text-muted">{COMPLIANCE_REVIEW_OUTCOME_LABEL[r.outcome]}</span>
                 )}
               </div>
-              <div className="row" style={{ gap: "0.5rem", alignItems: "center", fontSize: "0.85rem" }}>
+              <div className="row" style={{ gap: "var(--space-3)", alignItems: "center", fontSize: "0.85rem" }}>
                 <span className="text-muted">Owner:</span>
                 <PrincipalBadge principal={r.owner} />
                 {r.notes && <span className="text-muted">— {r.notes}</span>}

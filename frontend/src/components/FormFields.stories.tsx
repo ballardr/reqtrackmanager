@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
 
 import { requiredCaptions } from "../testing/requiredMarkers";
-import { CheckboxField, ColorField, DateField, FileField, TextAreaField, TextField, ToggleField } from "./FormFields";
+import { CheckboxField, ColorField, DateField, FileField, InlineTextInput, TextAreaField, TextField, ToggleField } from "./FormFields";
 
 const meta: Meta = { title: "Components/FormFields" };
 export default meta;
@@ -97,6 +97,16 @@ export const CheckboxFieldReportsToggles: Story = {
     await expect(box).not.toBeChecked();
     await userEvent.click(box);
     await expect(within(canvasElement).getByText("Tick once agreed.")).toBeInTheDocument();
+  },
+};
+
+/** A caption-less input in an inline row is named by its `ariaLabel`, and reports changes. */
+export const InlineTextInputIsNamedByItsAriaLabel: Story = {
+  render: () => <InlineTextInput ariaLabel="Name: Alpha" value="Alpha" onChange={fn()} maxWidth={220} />,
+  play: async ({ canvasElement }) => {
+    const input = within(canvasElement).getByLabelText("Name: Alpha");
+    await expect(input).toHaveValue("Alpha");
+    await expect(input).toHaveStyle({ maxWidth: "220px" });
   },
 };
 

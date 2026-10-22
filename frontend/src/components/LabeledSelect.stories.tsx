@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
 
-import { LabeledSelect } from "./LabeledSelect";
+import { InlineSelect, LabeledSelect } from "./LabeledSelect";
 import { MultiSelectDropdown } from "./MultiSelectDropdown";
 
 const meta: Meta<typeof LabeledSelect> = {
@@ -74,5 +74,18 @@ export const SelectChevronsLineUpWithTheCustomDropdown: Story = {
       const chevronGap = parseFloat(style.borderRightWidth) + 0.6 * parseFloat(getComputedStyle(document.documentElement).fontSize);
       await expect(Math.abs(chevronGap - dropdownGap)).toBeLessThan(1);
     }
+  },
+};
+
+/** A caption-less select (an "add to group" picker beside its button) is named by `ariaLabel` and reports the pick. */
+export const InlineSelectIsNamedByItsAriaLabel: Story = {
+  render: (args) => (
+    <InlineSelect ariaLabel="Add group" placeholder="Add group" value="" onChange={args.onChange} options={args.options} maxWidth={280} />
+  ),
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("option", { name: "Add group" })).toBeInTheDocument();
+    await userEvent.selectOptions(canvas.getByLabelText("Add group"), "std-1");
+    await expect(args.onChange).toHaveBeenCalledWith("std-1");
   },
 };

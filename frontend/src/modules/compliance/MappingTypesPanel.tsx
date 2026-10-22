@@ -74,7 +74,7 @@ export function MappingTypesPanel({ orgId }: { orgId: string }) {
         deleteLabel="Delete relationship type"
         addLabel="Add relationship type"
         renderExtra={(item) => (
-          <span key="implies-equivalence" className="row" style={{ gap: "0.35rem", alignItems: "center" }}>
+          <span key="implies-equivalence" className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
             <span className="text-muted" style={{ fontSize: "0.8rem" }}>Implies equivalence</span>
             <ToggleSwitch
               checked={item.implies_equivalence}

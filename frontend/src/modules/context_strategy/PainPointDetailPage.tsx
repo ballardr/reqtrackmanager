@@ -62,7 +62,7 @@ import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordTags } from "../../components/RecordTags";
 import { RecordPrincipalField } from "../../components/RecordDetailParts";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
-import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { CommentConfirmDialog } from "../../components/CommentConfirmDialog";
 import { DetailLayout } from "../../components/DetailLayout";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { Spinner } from "../../components/Spinner";
@@ -76,7 +76,6 @@ import type { EffectivePainPointType, PainPoint, PainPointComment, PainPointFiel
 import { RecordHeader } from "../../components/RecordHeader";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
-import { TextAreaField } from "../../components/FormFields";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { DetailCard } from "../../components/DetailCard";
 
@@ -137,9 +136,7 @@ export function PainPointDetailPage() {
   const [editing, setEditing] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [optionalAction, setOptionalAction] = useState<OptionalCommentAction | null>(null);
-  const [optionalComment, setOptionalComment] = useState("");
   const [mandatoryAction, setMandatoryAction] = useState<MandatoryCommentAction | null>(null);
-  const [mandatoryComment, setMandatoryComment] = useState("");
 
   useEffect(() => {
     if (!projectId) return;
@@ -356,62 +353,40 @@ export function PainPointDetailPage() {
       )}
 
       {optionalAction && (
-        <ConfirmDialog
+        <CommentConfirmDialog
           title={OPTIONAL_COMMENT_COPY[optionalAction].title}
-          message={
-            <span className="stack" style={{ gap: "0.5rem" }}>
-              <span>{OPTIONAL_COMMENT_COPY[optionalAction].body}</span>
-              <TextAreaField helpNotNeeded
-                label="Comment"
-                ariaLabel="Transition comment"
-                value={optionalComment}
-                onChange={setOptionalComment}
-                rows={2}
-              />
-            </span>
-          }
+          intro={OPTIONAL_COMMENT_COPY[optionalAction].body}
+          ariaLabel="Transition comment"
           confirmLabel={OPTIONAL_COMMENT_COPY[optionalAction].confirmLabel}
-          onConfirm={async () => {
+          onConfirm={async (comment) => {
             const action = optionalAction;
-            const comment = optionalComment;
             setOptionalAction(null);
-            setOptionalComment("");
             await runTransition(
               () => projectPainPointApi[action](projectId, painPoint.id, comment),
               `Pain Point ${OPTIONAL_COMMENT_COPY[action].confirmLabel.toLowerCase()}ed.`,
             );
           }}
-          onCancel={() => { setOptionalAction(null); setOptionalComment(""); }}
+          onCancel={() => setOptionalAction(null)}
         />
       )}
 
       {mandatoryAction && (
-        <ConfirmDialog
+        <CommentConfirmDialog
           title={MANDATORY_COMMENT_COPY[mandatoryAction].title}
-          message={
-            <span className="stack" style={{ gap: "0.5rem" }}>
-              <span>{MANDATORY_COMMENT_COPY[mandatoryAction].hint}</span>
-              <TextAreaField helpNotNeeded
-                label={mandatoryAction === "reject" ? "Rejection comment" : "Duplicate comment"}
-                value={mandatoryComment}
-                onChange={setMandatoryComment}
-              />
-            </span>
-          }
+          intro={MANDATORY_COMMENT_COPY[mandatoryAction].hint}
+          commentLabel={mandatoryAction === "reject" ? "Rejection comment" : "Duplicate comment"}
+          commentRequired
           confirmLabel={MANDATORY_COMMENT_COPY[mandatoryAction].confirmLabel}
-          confirmDisabled={!mandatoryComment.trim()}
-          onConfirm={async () => {
+          onConfirm={async (comment) => {
             const action = mandatoryAction;
-            const comment = mandatoryComment;
             setMandatoryAction(null);
-            setMandatoryComment("");
             if (action === "reject") {
               await runTransition(() => projectPainPointApi.reject(projectId, painPoint.id, comment), "Pain Point rejected.");
             } else {
               await runTransition(() => projectPainPointApi.markDuplicate(projectId, painPoint.id, comment), "Pain Point marked a duplicate.");
             }
           }}
-          onCancel={() => { setMandatoryAction(null); setMandatoryComment(""); }}
+          onCancel={() => setMandatoryAction(null)}
         />
       )}
 

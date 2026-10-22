@@ -7,7 +7,9 @@ import type { Category, Component, CustomFieldDefinition, ProjectStage } from ".
 import { REQUIREMENT_LEVEL_LABEL } from "../api/types";
 import { useTerm } from "../context/TerminologyContext";
 import { downloadBlob } from "../utils/download";
+import { RequiredMark } from "./FieldHelp";
 import { FileUploadTrigger } from "./FileUploadTrigger";
+import { InlineSelect } from "./LabeledSelect";
 import { Modal } from "./Modal";
 import { Popover } from "./Popover";
 
@@ -292,34 +294,27 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
 
     if (field.key === "level") {
       return (
-        <select
-          className="input" aria-label={`Fixed ${field.label.toLowerCase()}`}
-          value={value || "requirement"} onChange={(e) => setValue(e.target.value)}
-        >
-          <option value="requirement">{REQUIREMENT_LEVEL_LABEL.requirement}</option>
-          <option value="recommended">{REQUIREMENT_LEVEL_LABEL.recommended}</option>
-          <option value="optional">{REQUIREMENT_LEVEL_LABEL.optional}</option>
-        </select>
+        <InlineSelect
+          ariaLabel={`Fixed ${field.label.toLowerCase()}`} placeholder={null}
+          value={value || "requirement"} onChange={setValue}
+          options={(["requirement", "recommended", "optional"] as const).map((l) => ({ value: l, label: REQUIREMENT_LEVEL_LABEL[l] }))}
+        />
       );
     }
     if (field.key === "target_version") {
       return (
-        <select className="input" aria-label={`Fixed ${field.label.toLowerCase()}`} value={value} onChange={(e) => setValue(e.target.value)}>
-          <option value="">— Project's default stage —</option>
-          {stages.map((s) => (
-            <option key={s.id} value={s.name}>{s.name}</option>
-          ))}
-        </select>
+        <InlineSelect
+          ariaLabel={`Fixed ${field.label.toLowerCase()}`} placeholder="— Project's default stage —" value={value} onChange={setValue}
+          options={stages.map((s) => ({ value: s.name, label: s.name }))}
+        />
       );
     }
     if (field.key === "component_prefix") {
       return (
-        <select className="input" aria-label={`Fixed ${field.label.toLowerCase()}`} value={value} onChange={(e) => setValue(e.target.value)}>
-          <option value="">— Choose —</option>
-          {components.map((c) => (
-            <option key={c.id} value={c.prefix}>{c.name} ({c.prefix})</option>
-          ))}
-        </select>
+        <InlineSelect
+          ariaLabel={`Fixed ${field.label.toLowerCase()}`} placeholder="— Choose —" value={value} onChange={setValue}
+          options={components.map((c) => ({ value: c.prefix, label: `${c.name} (${c.prefix})` }))}
+        />
       );
     }
     // category_prefix: filtered to the fixed component's own categories
@@ -331,22 +326,18 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
     const fixedComponent = fixedComponentPrefix ? components.find((c) => c.prefix === fixedComponentPrefix) : undefined;
     const categoryOptions = fixedComponent ? categories.filter((c) => c.component_id === fixedComponent.id) : categories;
     return (
-      <select className="input" aria-label={`Fixed ${field.label.toLowerCase()}`} value={value} onChange={(e) => setValue(e.target.value)}>
-        <option value="">— Choose —</option>
-        {categoryOptions.map((c) => {
+      <InlineSelect
+        ariaLabel={`Fixed ${field.label.toLowerCase()}`} placeholder="— Choose —" value={value} onChange={setValue}
+        options={categoryOptions.map((c) => {
           const owner = components.find((comp) => comp.id === c.component_id);
-          return (
-            <option key={c.id} value={c.prefix}>
-              {fixedComponent ? "" : owner ? `${owner.name} / ` : ""}{c.name} ({c.prefix})
-            </option>
-          );
+          return { value: c.prefix, label: `${fixedComponent ? "" : owner ? `${owner.name} / ` : ""}${c.name} (${c.prefix})` };
         })}
-      </select>
+      />
     );
   }
 
   return (
-    <div className="stack" style={{ gap: "0.5rem" }}>
+    <div className="stack" style={{ gap: "var(--space-3)" }}>
       <div className="row">
         <FileUploadTrigger
           ref={fileInputRef}
@@ -366,7 +357,7 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
         </button>
         {exportMenuOpen && (
           <Popover anchorRef={exportTriggerRef} title="Export" onClose={() => setExportMenuOpen(false)}>
-            <div className="stack" style={{ gap: "0.25rem", minWidth: 180 }}>
+            <div className="stack" style={{ gap: "var(--space-1)", minWidth: 180 }}>
               <button
                 type="button" className="btn" style={{ justifyContent: "flex-start" }} disabled={exporting}
                 onClick={() => {
@@ -415,11 +406,11 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
                   <tr key={field.key}>
                     <td>
                       {field.label}
-                      {field.required && <span style={{ color: "var(--color-danger)" }}> *</span>}
+                      {field.required && <RequiredMark />}
                     </td>
                     <td>
                       {canFixValue && (
-                        <label className="checkbox-label" style={{ gap: "0.35rem", marginBottom: "0.25rem" }}>
+                        <label className="checkbox-label" style={{ gap: "var(--space-2)", marginBottom: "var(--space-1)" }}>
                           <input
                             type="checkbox"
                             checked={fixedMode[field.key] ?? false}
@@ -440,17 +431,12 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
                       {canFixValue && fixedMode[field.key] ? (
                         renderFixedValueInput(field)
                       ) : (
-                        <select
-                          className="input"
-                          aria-label={`Map ${field.label}`}
+                        <InlineSelect
+                          ariaLabel={`Map ${field.label}`} placeholder="— Not mapped —"
                           value={mapping[field.key] ?? ""}
-                          onChange={(e) => setMapping((prev) => ({ ...prev, [field.key]: e.target.value }))}
-                        >
-                          <option value="">— Not mapped —</option>
-                          {headers.map((h) => (
-                            <option key={h} value={h}>{h}</option>
-                          ))}
-                        </select>
+                          options={headers.map((h) => ({ value: h, label: h }))}
+                          onChange={(next) => setMapping((prev) => ({ ...prev, [field.key]: next }))}
+                        />
                       )}
                     </td>
                     <td className="text-muted">{field.hint}</td>
@@ -461,19 +447,14 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
                 const key = customFieldColumnKey(definition);
                 return (
                   <tr key={key}>
-                    <td>{definition.name}{definition.required && <span style={{ color: "var(--color-danger)" }}> *</span>}</td>
+                    <td>{definition.name}{definition.required && <RequiredMark />}</td>
                     <td>
-                      <select
-                        className="input"
-                        aria-label={`Map ${definition.name}`}
+                      <InlineSelect
+                        ariaLabel={`Map ${definition.name}`} placeholder="— Not mapped —"
                         value={mapping[key] ?? ""}
-                        onChange={(e) => setMapping((prev) => ({ ...prev, [key]: e.target.value }))}
-                      >
-                        <option value="">— Not mapped —</option>
-                        {headers.map((h) => (
-                          <option key={h} value={h}>{h}</option>
-                        ))}
-                      </select>
+                        options={headers.map((h) => ({ value: h, label: h }))}
+                        onChange={(next) => setMapping((prev) => ({ ...prev, [key]: next }))}
+                      />
                     </td>
                     <td className="text-muted">Custom field ({definition.field_type}).</td>
                   </tr>
@@ -483,7 +464,7 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
           </table>
 
           {rows.length > 0 && (
-            <div className="stack" style={{ gap: "0.25rem" }}>
+            <div className="stack" style={{ gap: "var(--space-1)" }}>
               <strong>Preview (first {Math.min(PREVIEW_ROWS, rows.length)} of {rows.length} rows)</strong>
               <div style={{ overflowX: "auto" }}>
                 <table>

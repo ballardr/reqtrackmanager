@@ -68,7 +68,7 @@ export function ActionFields({
         disabled={disabled}
       />
       {disabled && archivedAssignee ? (
-        <div className="stack" style={{ gap: "0.25rem" }}>
+        <div className="stack" style={{ gap: "var(--space-1)" }}>
           <span>{strings.actions.assignee}</span>
           {archivedAssignee}
         </div>

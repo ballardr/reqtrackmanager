@@ -15,10 +15,14 @@
  * The list column shows `question` itself, not a separate `title` — Open
  * Question has no `title` field (see `types.ts`'s own docstring).
  *
+ * The list opens on unresolved Open Questions only (the "Open only" filter is
+ * ticked and stays visible); a link with a valid `status`, or `open=0`, starts
+ * with it off (`hooks/useOpenOnly.ts`).
+ *
  * Filters can be pre-set from the URL (a report figure links here, e.g.
- * `?open=1&overdue=1`): `status`, `priority`, `open=1` (unresolved),
- * `overdue=1` (due date passed) and `unowned=1`. They only seed the state;
- * each is a visible control in the filter panel.
+ * `?open=1&overdue=1`): `status`, `priority`, `open=1|0` (unresolved; the
+ * default), `overdue=1` (due date passed) and `unowned=1`. They only seed the
+ * state; each is a visible control in the filter panel.
  */
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -31,6 +35,7 @@ import { ListPageLayout } from "../../components/ListPageLayout";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { oneOf, useInitialSearchParams } from "../../hooks/useInitialSearchParams";
+import { useOpenOnly } from "../../hooks/useOpenOnly";
 import { projectOpenQuestionApi } from "./api";
 import { OpenQuestionFormModal } from "./OpenQuestionFormModal";
 import { OPEN_QUESTION_OPEN_STATUSES, OPEN_QUESTION_PRIORITY_LABEL, OPEN_QUESTION_STATUS_LABEL, OPEN_QUESTION_STATUS_TONE } from "./types";
@@ -64,7 +69,7 @@ export function ProjectOpenQuestionsPage() {
   const [includeArchived, setIncludeArchived] = useState(false);
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
-  const [openOnly, setOpenOnly] = useState(initial.get("open") === "1");
+  const [openOnly, setOpenOnly] = useOpenOnly(initial, Object.keys(OPEN_QUESTION_STATUS_LABEL));
   const [overdueOnly, setOverdueOnly] = useState(initial.get("overdue") === "1");
   const [unownedOnly, setUnownedOnly] = useState(initial.get("unowned") === "1");
 
@@ -93,15 +98,18 @@ export function ProjectOpenQuestionsPage() {
   if (openQuestions === null || project === null) return <Spinner />;
 
   const today = new Date().toISOString().slice(0, 10); // UTC, like the report's reference date
-  const filtered = openQuestions.filter((q) => {
-    if (openOnly && !OPEN_QUESTION_OPEN_STATUSES.includes(q.status)) return false;
+  const matches = (q: OpenQuestion, applyOpenOnly: boolean) => {
+    if (applyOpenOnly && !OPEN_QUESTION_OPEN_STATUSES.includes(q.status)) return false;
     if (overdueOnly && !(q.due_date !== null && q.due_date < today)) return false;
     if (unownedOnly && q.owner !== null) return false;
     if (statusFilter && q.status !== statusFilter) return false;
     if (priorityFilter && q.priority !== priorityFilter) return false;
     if (search && !`${q.unique_code} ${q.question}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
-  });
+  };
+  const filtered = openQuestions.filter((q) => matches(q, openOnly));
+  // An empty list the "Open only" default caused says so, so it is not read as "nothing recorded".
+  const emptyBecauseOfOpenOnly = openOnly && filtered.length === 0 && openQuestions.some((q) => matches(q, false));
 
   const columns: DirectoryColumn<OpenQuestion>[] = [
     { key: "question", label: "Question", render: (q) => <>{q.question}<ProjectScopeLabel row={q} /></> },
@@ -159,7 +167,15 @@ export function ProjectOpenQuestionsPage() {
           rows={filtered}
           rowKey={(q) => q.id}
           onRowClick={(q) => navigate(`/projects/${rowProjectId(q, projectId)}/modules/context_strategy/open-questions/${q.id}`)}
-          emptyState={<p className="text-muted">No Open Questions recorded for this project yet.</p>}
+          emptyState={
+            <p className="text-muted">
+              {emptyBecauseOfOpenOnly
+                ? "No open Open Questions. Untick Open only to include resolved and withdrawn ones."
+                : openQuestions.length > 0
+                  ? "No Open Questions match these filters."
+                  : "No Open Questions recorded for this project yet."}
+            </p>
+          }
         />
       </ListPageLayout>
 

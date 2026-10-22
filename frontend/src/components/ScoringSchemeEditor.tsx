@@ -82,7 +82,7 @@ export function ScoringSchemeEditor({ orgId, schemeKey }: { orgId: string; schem
         <p className="text-muted" style={{ margin: 0 }}>
           Used unless a project sets its own; anyone viewing scores can still switch model.
         </p>
-        <div className="row" style={{ gap: "0.75rem", alignItems: "flex-end", flexWrap: "wrap" }}>
+        <div className="row" style={{ gap: "var(--space-4)", alignItems: "flex-end", flexWrap: "wrap" }}>
           <LabeledSelect help={strings.help.scoringDefaultModel}
             label="Default model"
             value={scheme.default_model_key}
@@ -108,7 +108,7 @@ export function ScoringSchemeEditor({ orgId, schemeKey }: { orgId: string; schem
           two levels, and the highest weight is the axis's top level.
         </p>
         {scheme.axes.map((axis) => (
-          <div key={axis.key} className="stack" style={{ gap: "0.35rem" }}>
+          <div key={axis.key} className="stack" style={{ gap: "var(--space-2)" }}>
             <h4 style={{ margin: 0 }}>{axis.label}</h4>
             {axis.description && <span className="text-muted">{axis.description}</span>}
             <DefinitionList<ScoringLevel>

@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, within } from "storybook/test";
+import { expect, userEvent, within } from "storybook/test";
 
 import { buildReportResult } from "../testing/reportFixtures";
 import { withRouter } from "../testing/storybook-helpers";
 import { statBlockViolations } from "../testing/statBlockGeometry";
-import { ReportViewer } from "./ReportViewer";
+import { REPORT_TABLE_PAGE_SIZE, ReportViewer } from "./ReportViewer";
 
 const meta: Meta<typeof ReportViewer> = {
   title: "Components/Reports/ReportViewer",
@@ -109,5 +109,41 @@ export const FiguresFollowTheFigureAction: Story = {
 export const SectionsAreAnchored: Story = {
   play: async ({ canvasElement }) => {
     await expect(canvasElement.querySelector("#report-section-gaps")).not.toBeNull();
+  },
+};
+
+const manyRows = (count: number) => Array.from({ length: count }, (_, i) => [`Item ${i + 1}`, i % 2 ? "Open" : "Closed"]);
+
+/** A long table shows the first page with "Showing n of m", reveals the next page on request, and drops the controls once every row is shown. */
+export const LongTablePagesOnScreen: Story = {
+  args: {
+    result: buildReportResult({
+      sections: [{ key: "items", title: "Items", columns: ["Name", "Status"], rows: manyRows(500), note: "", gap: false }],
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const items = within(canvas.getByRole("region", { name: "Items" }));
+    await expect(items.getAllByRole("row")).toHaveLength(REPORT_TABLE_PAGE_SIZE + 1);
+    await expect(items.getByText("Showing 50 of 500 rows")).toBeInTheDocument();
+    await userEvent.click(items.getByRole("button", { name: /Load more/ }));
+    await expect(items.getAllByRole("row")).toHaveLength(2 * REPORT_TABLE_PAGE_SIZE + 1);
+    await expect(items.getByText("Showing 100 of 500 rows")).toBeInTheDocument();
+  },
+};
+
+/** A table at or under one page has no count or button, and a gap badge still counts every row. */
+export const ShortTableHasNoPagingControls: Story = {
+  args: {
+    result: buildReportResult({
+      sections: [{ key: "gaps", title: "Unowned items", columns: ["Name", "Status"], rows: manyRows(REPORT_TABLE_PAGE_SIZE), note: "", gap: true }],
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getAllByRole("row")).toHaveLength(REPORT_TABLE_PAGE_SIZE + 1);
+    await expect(canvas.queryByRole("button", { name: /Load more/ })).not.toBeInTheDocument();
+    await expect(canvas.queryByText(/Showing/)).not.toBeInTheDocument();
+    await expect(canvas.getByText(`Needs attention · ${REPORT_TABLE_PAGE_SIZE}`)).toBeInTheDocument();
   },
 };

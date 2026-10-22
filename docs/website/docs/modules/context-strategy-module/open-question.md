@@ -11,6 +11,8 @@ An **Open Question** records something that still needs deciding before a Strate
 | Falcon-3's battery-vendor Open Question — context and evidence, with the Links panel (its Add link dialog offers the Strategies it can relate to) |
 | ![Detail view of an Open Question for the Falcon-3 project in Ready for Decision status, showing its context, evidence, an unassigned owner, Resolve/Withdraw actions, and the Links panel](../../../static/img/screenshots/open-question-detail.png) |
 
+The list opens on unresolved Open Questions only (Open, Investigating and Ready for Decision): **Open only** is ticked, and clearing it adds the Resolved and Withdrawn ones. A link that names a status opens the list with that status and **Open only** off.
+
 ## Fields
 
 | Field | Holds |

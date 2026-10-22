@@ -28,10 +28,10 @@ export function ImportConflictPanel({
     <div className="stack">
       <strong>{strings.importMerge.conflictsTitle(conflicts.length)}</strong>
       {projectConflicts.length > 0 && (
-        <div className="stack" style={{ gap: "0.5rem" }}>
+        <div className="stack" style={{ gap: "var(--space-3)" }}>
           <span className="text-muted">{strings.importMerge.projectsSection}</span>
           {projectConflicts.map((c) => (
-            <div key={c.id} className="card stack" style={{ gap: "0.25rem" }}>
+            <div key={c.id} className="card stack" style={{ gap: "var(--space-1)" }}>
               <strong>{c.name}</strong>
               <label>
                 <input
@@ -52,10 +52,10 @@ export function ImportConflictPanel({
         </div>
       )}
       {templateConflicts.length > 0 && (
-        <div className="stack" style={{ gap: "0.5rem" }}>
+        <div className="stack" style={{ gap: "var(--space-3)" }}>
           <span className="text-muted">{strings.importMerge.reportTemplatesSection}</span>
           {templateConflicts.map((c) => (
-            <div key={c.id} className="card stack" style={{ gap: "0.25rem" }}>
+            <div key={c.id} className="card stack" style={{ gap: "var(--space-1)" }}>
               <strong>{c.name}</strong>
               <label>
                 <input

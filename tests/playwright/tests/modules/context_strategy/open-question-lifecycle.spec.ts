@@ -141,6 +141,10 @@ test.describe("Context & Strategy: create -> investigate -> mark ready -> resolv
     // --- Back on the list, the first Open Question shows its final status.
     await page.getByRole("link", { name: "← Open Question", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/open-questions$`));
+    // The list opens on unresolved questions only, so the resolved one appears once that filter is cleared.
+    await expect(page.getByRole("checkbox", { name: "Open only" })).toBeChecked();
+    await expect(page.locator("tr", { hasText: questionText })).toHaveCount(0);
+    await page.getByRole("checkbox", { name: "Open only" }).uncheck();
     const firstRow = page.locator("tr", { hasText: questionText });
     await expect(firstRow.getByText("Resolved", { exact: true })).toBeVisible();
 

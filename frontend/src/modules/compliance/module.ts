@@ -9,6 +9,8 @@ import { ComplianceGlobalNavLink } from "./ComplianceGlobalNavLink";
 import { ComplianceOrgOverviewTiles } from "./ComplianceOrgOverviewTiles";
 import { ComplianceProjectOverviewTiles } from "./ComplianceProjectOverviewTiles";
 import { ComplianceSettingsPage } from "./ComplianceSettingsPage";
+import { EvidenceDetailPage } from "./EvidenceDetailPage";
+import { evidencePath, projectCompliancePath } from "./paths";
 import { OrgComplianceDashboard } from "./OrgComplianceDashboard";
 import { OrgComplianceOutstandingPanel } from "./OrgComplianceOutstandingPanel";
 import { OrgComplianceStandardsPanel } from "./OrgComplianceStandardsPanel";
@@ -32,8 +34,8 @@ import { StandardWorkspacePage } from "./StandardWorkspacePage";
  * remember" motivation the backend's own `INSTALLED_MODULES`/registry-driven
  * `Base.metadata` auto-import follow-ups already established.
  *
- * `routes`: this module's single project-scoped route,
- * `ProjectCompliancePage` — `path` uses React Router's own `:projectId` param
+ * `routes`: this module's project-scoped routes, `ProjectCompliancePage`
+ * and `EvidenceDetailPage` (one piece of evidence) — `path` uses React Router's own `:projectId` param
  * syntax and must match, once the router segment is substituted for a real
  * id, the `nav_path` the backend's `ModuleFrontendManifest` declares
  * (`backend/app/modules/compliance/module.py`), which uses a literal
@@ -115,16 +117,14 @@ import { StandardWorkspacePage } from "./StandardWorkspacePage";
  */
 const strings = t();
 
-/** Compliance's records have no pages of their own: each is managed from the project's Compliance page. */
-const projectCompliancePath = (projectId: string) => `/projects/${projectId}/modules/compliance`;
-
 export const moduleDefinition: TierAModuleDefinition = {
   key: "compliance",
   artefactPaths: {
     compliance_requirement: () => "/standards",
-    compliance_evidence: projectCompliancePath,
-    project_compliance_requirement: projectCompliancePath,
-    compliance_required_action_assessment: projectCompliancePath,
+    compliance_evidence: evidencePath,
+    // Assessments are managed from the project's Compliance page, which has no page per assessment.
+    project_compliance_requirement: (projectId) => projectCompliancePath(projectId),
+    compliance_required_action_assessment: (projectId) => projectCompliancePath(projectId),
   },
   artefactStatusLabels: {
     compliance_requirement: COMPLIANCE_STANDARD_VERSION_STATUS_LABEL,
@@ -134,6 +134,7 @@ export const moduleDefinition: TierAModuleDefinition = {
   artefactInactiveStatuses: { compliance_requirement: ["retired"] },
   routes: [
     { path: "/projects/:projectId/modules/compliance", element: createElement(ProjectCompliancePage) },
+    { path: "/projects/:projectId/modules/compliance/evidence/:evidenceId", element: createElement(EvidenceDetailPage) },
   ],
   globalRoutes: [
     { path: "/standards", element: createElement(StandardListPage) },

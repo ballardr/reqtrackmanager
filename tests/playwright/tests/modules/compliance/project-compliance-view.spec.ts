@@ -181,9 +181,12 @@ test.describe("Compliance Module: project compliance view", () => {
 
     // The file was attached during creation, not as a separate upload step —
     // confirm it's already present on the newly-created record.
-    await page.getByText(evidenceTitle).click();
+    await page.getByRole("link", { name: evidenceTitle }).click();
+    await expect(page.getByRole("heading", { name: evidenceTitle })).toBeVisible();
     await expect(page.getByText("evidence-file.txt")).toBeVisible();
-    await page.getByRole("button", { name: "Close" }).click();
+    // The evidence is its own page: Back returns to the Evidence tab (not the default Standards tab).
+    await page.getByRole("link", { name: "← Evidence" }).click();
+    await expect(page.getByRole("tab", { name: "Evidence", selected: true })).toBeVisible();
 
     await page.getByRole("tab", { name: "Standards" }).click();
     await page.getByText(new RegExp(reference)).click();
@@ -218,8 +221,23 @@ test.describe("Compliance Module: project compliance view", () => {
     await page.getByRole("button", { name: "← Back" }).click();
     await page.getByRole("tab", { name: "Evidence" }).click();
     await expect(page.getByText(inlineEvidenceTitle)).toBeVisible();
-    await page.getByText(inlineEvidenceTitle).click();
+    await page.getByRole("link", { name: inlineEvidenceTitle }).click();
     await expect(page.getByText("inline-evidence.txt")).toBeVisible();
+
+    // The evidence page's own actions: revalidate records a new expiry in its history, and archive
+    // asks for confirmation first.
+    await page.getByRole("button", { name: "Revalidate" }).click();
+    const revalidateDialog = page.getByRole("dialog", { name: "Revalidate evidence" });
+    await revalidateDialog.getByLabel("New expiry date").fill("2099-12-31");
+    await revalidateDialog.getByLabel("Justification").fill("Re-tested by the lab");
+    await revalidateDialog.getByRole("button", { name: "Revalidate" }).click();
+    await expect(page.getByRole("heading", { name: "Revalidation history" })).toBeVisible();
+    await expect(page.getByText(/Re-tested by the lab/)).toBeVisible();
+
+    await page.getByRole("button", { name: "Evidence actions" }).click();
+    await page.getByRole("menuitem", { name: "Archive" }).click();
+    await page.getByRole("dialog", { name: "Archive this evidence?" }).getByRole("button", { name: "Archive" }).click();
+    await expect(page.getByText("Archived", { exact: true })).toBeVisible();
   });
 
   /**

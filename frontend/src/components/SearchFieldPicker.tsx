@@ -42,7 +42,7 @@ export function SearchFieldPicker({
   }
 
   return (
-    <div className="stack" style={{ gap: "0.25rem" }}>
+    <div className="stack" style={{ gap: "var(--space-1)" }}>
       <MultiSelectDropdown
         id={id}
         triggerLabel={label}

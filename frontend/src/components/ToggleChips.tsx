@@ -37,7 +37,7 @@ export function ToggleChips<K extends string>({
   onToggle: (key: K) => void;
 }) {
   return (
-    <div role="group" aria-label={ariaLabel} className="row" style={{ gap: "0.4rem" }}>
+    <div role="group" aria-label={ariaLabel} className="row" style={{ gap: "var(--space-2)" }}>
       {options.map((option) => {
         const on = selected.includes(option.key);
         return (

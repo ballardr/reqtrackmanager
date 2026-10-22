@@ -27,7 +27,7 @@ export function PrincipalBadge({ principal, placeholder = "Unassigned" }: { prin
           ? null
           : `${principal.member_count} ${principal.member_count === 1 ? "member" : "members"}`;
   return (
-    <span className="row" style={{ gap: "0.35rem", alignItems: "center" }} title={detail ? `${kind}: ${principal.label}` : kind}>
+    <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }} title={detail ? `${kind}: ${principal.label}` : kind}>
       <Icon size={14} aria-hidden="true" />
       <span>{principal.label}</span>
       {principal.type !== "user" && <Badge tone="muted">{detail ? `${kind} · ${detail}` : kind}</Badge>}

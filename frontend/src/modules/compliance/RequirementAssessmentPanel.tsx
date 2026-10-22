@@ -17,11 +17,11 @@
  * 400 still surfaces as a toast either way.
  *
  * Evidence section: alongside linking already-existing evidence,
- * "Upload new evidence" reuses `EvidencePanel.tsx`'s own exported
+ * "Upload new evidence" reuses `EvidenceFormModals.tsx`'s exported
  * `EvidenceFormModal` to create a new `Evidence` record the same way that
  * panel does, immediately auto-links it to this assessment (no separate
  * manual "link existing" step), then reuses `FileAttachmentList`/
- * `ResourcePickerModal` — again exactly as `EvidencePanel.tsx` already does
+ * `ResourcePickerModal` — again exactly as `EvidenceDetailPage.tsx` already does
  * — so the actual file attaches in the same flow. `EvidenceFormModal`'s create form itself stages files before save, so
  * `createAndLinkEvidence` uploads those in the same step and only falls
  * back to the follow-up "Attach files" modal when none were staged —
@@ -43,7 +43,7 @@ import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import { ApplicabilityBadge } from "./ApplicabilityBadge";
-import { EvidenceFormModal } from "./EvidencePanel";
+import { EvidenceFormModal } from "./EvidenceFormModals";
 import {
   COMPLIANCE_APPLICABILITY_LABEL,
   COMPLIANCE_APPROVAL_STATE_LABEL,
@@ -314,7 +314,7 @@ export function RequirementAssessmentPanel({
 
         <section className="stack">
           <h3 style={{ margin: 0 }}>Applicability</h3>
-          <div className="row" style={{ alignItems: "center", gap: "0.5rem" }}>
+          <div className="row" style={{ alignItems: "center", gap: "var(--space-3)" }}>
             <span>Effective:</span>
             <ApplicabilityBadge pcr={pcr} />
           </div>
@@ -390,7 +390,7 @@ export function RequirementAssessmentPanel({
               {assessments.map((assessment) => {
                 const def = actionDefs.find((d) => d.id === assessment.required_action_id);
                 return (
-                  <li key={assessment.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", padding: "0.4rem 0" }}>
+                  <li key={assessment.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", padding: "var(--space-2) 0" }}>
                     <div className="row" style={{ justifyContent: "space-between" }}>
                       <span>
                         {def?.name ?? "Required action"}
@@ -401,7 +401,7 @@ export function RequirementAssessmentPanel({
                         Completed
                       </label>
                     </div>
-                    <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+                    <div className="row" style={{ gap: "var(--space-3)", flexWrap: "wrap" }}>
                       <div className="stack" style={{ gap: "0.2rem" }}>
                         <span className="text-muted" style={{ fontSize: "0.8rem" }}>Assignee</span>
                         <PrincipalPicker
@@ -453,14 +453,14 @@ export function RequirementAssessmentPanel({
           ) : (
             <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
               {linkedEvidence.map((e) => (
-                <li key={e.id} className="row" style={{ justifyContent: "space-between", padding: "0.25rem 0" }}>
+                <li key={e.id} className="row" style={{ justifyContent: "space-between", padding: "var(--space-1) 0" }}>
                   <span>{e.title}</span>
                   <button className="btn btn-danger" onClick={() => unlinkEvidence(e.id)} aria-label={`Unlink ${e.title}`}>Unlink</button>
                 </li>
               ))}
             </ul>
           )}
-          <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+          <div className="row" style={{ gap: "var(--space-3)", flexWrap: "wrap" }}>
             {linkableEvidence.length > 0 && (
               <>
                 <select className="input" value={linkEvidenceId} onChange={(e) => setLinkEvidenceId(e.target.value)} aria-label="Link existing evidence">

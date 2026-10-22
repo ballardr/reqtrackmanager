@@ -58,7 +58,7 @@ export function RecordTags({
   if (!data.can_edit) {
     if (data.tags.length === 0) return null;
     return (
-      <div className="row" style={{ gap: "0.35rem" }} aria-label={strings.tags.label} role="group">
+      <div className="row" style={{ gap: "var(--space-2)" }} aria-label={strings.tags.label} role="group">
         {data.tags.map((tag) => <TagChip key={tag.id} tag={tag} />)}
       </div>
     );

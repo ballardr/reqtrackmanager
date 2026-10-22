@@ -25,7 +25,7 @@ function PopoverHarness({ onClose, initialOpen = true }: { onClose: () => void; 
       </button>
       {open && (
         <Popover anchorRef={anchorRef} title="New group" onClose={close}>
-          <label className="stack" style={{ gap: "0.25rem" }}>
+          <label className="stack" style={{ gap: "var(--space-1)" }}>
             Group name
             <input className="input" placeholder="e.g. Firmware" />
           </label>

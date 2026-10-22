@@ -96,7 +96,7 @@ def update_prompt(
     prompt = _get_prompt(db, engagement, prompt_id)
     sent = payload.model_dump(exclude_unset=True)
     if "prompt" in sent and sent["prompt"] is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A prompt cannot be empty.")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "A prompt cannot be empty.")
     if "response_notes" in sent:
         prompt.response_notes = sent["response_notes"] or ""
     if "prompt" in sent:
@@ -176,7 +176,7 @@ def update_anonymous(
     sent = payload.model_dump(exclude_unset=True)
     if "label" in sent:
         if sent["label"] is None:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A participant label cannot be empty.")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "A participant label cannot be empty.")
         participant.label = sent["label"].strip()
     if "persona_id" in sent:
         if sent["persona_id"] is not None:
@@ -249,7 +249,7 @@ def update_finding(
     """Edits a finding (only fields present change), audit-logs and commits."""
     sent = payload.model_dump(exclude_unset=True)
     if "title" in sent and sent["title"] is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A finding title cannot be null.")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "A finding title cannot be null.")
     if "title" in sent:
         finding.title = sent["title"]
     if "description" in sent:

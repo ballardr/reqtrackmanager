@@ -17,7 +17,7 @@
     "test-storybook": "vitest run --project=storybook"
   },
   "dependencies": {
-    "dompurify": "^3.4.16",
+    "dompurify": "^3.4.17",
     "lucide-react": "^0.446.0",
     "papaparse": "^5.5.4",
     "react": "^19.3.0",

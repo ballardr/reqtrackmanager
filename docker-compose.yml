@@ -8,9 +8,8 @@
 # wiping the live database").
 #
 # Before running this in production, override at minimum JWT_SECRET,
-# APP_SECRET_ENCRYPTION_KEY, SERVER_ADMIN_PASSWORD, STORAGE_ROOT_PASSWORD,
-# CORS_ORIGINS, and the SMTP_* variables via a `.env` file — see
-# docs/deployment.md.
+# APP_SECRET_ENCRYPTION_KEY, SERVER_ADMIN_PASSWORD, STORAGE_SECRET_KEY, CORS_ORIGINS, and the
+# SMTP_* variables via a `.env` file — see docs/deployment.md.
 #
 # backend/frontend/mcp-server each declare both `image:` and `build:`.
 # `image:` names the same picture .github/workflows/ci.yml pushes to
@@ -50,16 +49,22 @@ services:
   # the plain head_bucket/create_bucket/put_object/get_object/delete_object
   # calls `backend/app/storage_backends/s3.py` makes (no presigned URLs,
   # multipart, versioning, or MinIO Admin API in use anywhere in the app),
-  # and its `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` env vars are the
-  # same bootstrap shape MinIO's `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD`
-  # were, just under S3's own generic names.
+  # and it is configured with ONE S3 identity (STORAGE_ACCESS_KEY /
+  # STORAGE_SECRET_KEY) that may act on the application bucket only, so the
+  # backend's credential cannot reach any other bucket, list buckets, or
+  # change storage configuration. Everything except the S3 gateway listens on
+  # loopback, because SeaweedFS's filer and master APIs carry no
+  # authentication. See docs/deployment.md, "Storage credential scope", for
+  # how to harden further.
   storage:
     image: chrislusf/seaweedfs:3.97
     container_name: reqtrack-storage
-    command: server -dir=/data -s3 -s3.port=9000
-    environment:
-      AWS_ACCESS_KEY_ID: ${STORAGE_ROOT_USER:-minioadmin}
-      AWS_SECRET_ACCESS_KEY: ${STORAGE_ROOT_PASSWORD:?Set STORAGE_ROOT_PASSWORD in production}
+    command: >-
+      server -dir=/data -ip=127.0.0.1 -ip.bind=127.0.0.1
+      -s3 -s3.port=9000 -s3.ip.bind=:: -s3.config=/etc/seaweedfs/s3.json
+    configs:
+      - source: storage_identity
+        target: /etc/seaweedfs/s3.json
     volumes:
       - reqtrack_storage_data:/data
     # No host port published: only the backend talks to this over the
@@ -69,28 +74,14 @@ services:
     healthcheck:
       # The S3 API's own /healthz is broken in this image (returns 404 —
       # it's parsed as a bucket name; see seaweedfs#8243), so this checks
-      # the master's cluster-status endpoint instead, which the same
-      # `server -s3` process also serves on port 9333. wget, not curl —
-      # this image has no curl binary.
-      #
-      # Uses the container's own name (`reqtrack-storage`, set above),
-      # not `localhost`: on GitHub Actions' runners this healthcheck
-      # consistently failed every probe with "Connection refused" for the
-      # full retry budget even though `weed`'s own logs showed
-      # master/filer/S3 all up within ~16s — `weed` binds its HTTP/gRPC
-      # ports to the container's real interface (and, environment-
-      # dependently, apparently not always to the IPv4 loopback address
-      # `localhost` resolves to first), so a same-container `wget` to
-      # `localhost` isn't reliable across environments. Going via the
-      # container's own name resolves through Docker's embedded DNS to
-      # the same address every other service already reaches it on,
-      # which `weed` definitely listens on (it's how filer/master/S3
-      # talk to each other internally) — verified this route works via a
-      # local repro of the exact failure. See docs/decisions.md.
-      test: ["CMD", "wget", "-qO-", "http://reqtrack-storage:9333/cluster/status"]
+      # the master's cluster-status endpoint (loopback only) and that the S3
+      # gateway answers (403 without credentials). wget, not curl — this
+      # image has no curl binary.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9333/cluster/status && wget -S -qO- http://127.0.0.1:9000/ 2>&1 | grep -q 'HTTP/1.1 403'"]
       interval: 10s
       timeout: 5s
       retries: 10
+      start_period: 30s
 
   backend:
     # Deliberately single-process (no `--workers`/replica count here): login
@@ -121,8 +112,8 @@ services:
       STORAGE_BACKEND: ${STORAGE_BACKEND:-s3}
       STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-reqtrackmanager}
       STORAGE_S3_ENDPOINT_URL: ${STORAGE_S3_ENDPOINT_URL:-http://storage:9000}
-      STORAGE_S3_ACCESS_KEY: ${STORAGE_ROOT_USER:-minioadmin}
-      STORAGE_S3_SECRET_KEY: ${STORAGE_ROOT_PASSWORD:?Set STORAGE_ROOT_PASSWORD in production}
+      STORAGE_S3_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-${STORAGE_ROOT_USER:-minioadmin}}
+      STORAGE_S3_SECRET_KEY: ${STORAGE_SECRET_KEY:-${STORAGE_ROOT_PASSWORD:?Set STORAGE_SECRET_KEY in production}}
       SMTP_HOST: ${SMTP_HOST:?Set SMTP_HOST to a real SMTP provider in production}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
@@ -309,3 +300,14 @@ volumes:
   reqtrack_db_data:
   reqtrack_storage_data:
   reqtrack_local_files:
+
+# The one S3 identity the bundled storage accepts. It is restricted to the
+# application bucket (Admin lets it create that bucket on first start, as the
+# backend does; it cannot touch any other bucket). A value containing a quote or
+# backslash makes this invalid JSON, which SeaweedFS rejects at startup.
+configs:
+  storage_identity:
+    content: |
+      {"identities":[{"name":"app",
+        "credentials":[{"accessKey":"${STORAGE_ACCESS_KEY:-${STORAGE_ROOT_USER:-minioadmin}}","secretKey":"${STORAGE_SECRET_KEY:-${STORAGE_ROOT_PASSWORD:?Set STORAGE_SECRET_KEY in production}}"}],
+        "actions":["Admin:${STORAGE_S3_BUCKET:-reqtrackmanager}","Read:${STORAGE_S3_BUCKET:-reqtrackmanager}","Write:${STORAGE_S3_BUCKET:-reqtrackmanager}","List:${STORAGE_S3_BUCKET:-reqtrackmanager}"]}]}

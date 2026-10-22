@@ -158,7 +158,7 @@ export function StakeholderGroupsPanel({
 
   return (
     <div className="stack">
-      <div className="row" style={{ gap: "0.5rem", alignSelf: "flex-start" }}>
+      <div className="row" style={{ gap: "var(--space-3)", alignSelf: "flex-start" }}>
         <button className="btn btn-primary" onClick={() => { setFormError(null); setForm({ parentId: null }); }}>
           New group
         </button>
@@ -176,7 +176,7 @@ export function StakeholderGroupsPanel({
             nodes={tree}
             nodeLabel={(n) => n.name}
             renderNode={(n) => (
-              <span className="row" style={{ gap: "0.35rem", alignItems: "center" }}>
+              <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
                 <button
                   className="btn" style={{ fontWeight: n.id === selectedId ? 700 : 400 }}
                   aria-pressed={n.id === selectedId} onClick={() => setSelectedId(n.id)}
@@ -208,7 +208,7 @@ export function StakeholderGroupsPanel({
       )}
 
       {selected && (
-        <div className="stack" style={{ gap: "0.5rem" }} aria-label={`Members of ${selected.name}`} role="region">
+        <div className="stack" style={{ gap: "var(--space-3)" }} aria-label={`Members of ${selected.name}`} role="region">
           <h2 style={{ margin: 0, fontSize: "1rem" }}>Members of {selected.name}</h2>
           {selected.description && <p className="text-muted" style={{ margin: 0 }}>{selected.description}</p>}
           {members === null ? <Spinner /> : members.length === 0 ? (
@@ -221,7 +221,7 @@ export function StakeholderGroupsPanel({
                   {!m.direct && <span className="text-muted"> · via a child group</span>}
                   {m.direct && editable(selected) && (
                     <button
-                      className="btn" style={{ marginLeft: "0.5rem" }} aria-label={`Remove ${m.name} from ${selected.name}`}
+                      className="btn" style={{ marginLeft: "var(--space-3)" }} aria-label={`Remove ${m.name} from ${selected.name}`}
                       onClick={() => act(() => groupApi.removeMember(scopeId, selected.id, m.stakeholder_id), "Removed from the group.", "Could not remove this stakeholder.")}
                     >
                       Remove
@@ -232,7 +232,7 @@ export function StakeholderGroupsPanel({
             </ul>
           )}
           {editable(selected) && (
-            <div className="row" style={{ gap: "0.5rem", alignItems: "flex-end" }}>
+            <div className="row" style={{ gap: "var(--space-3)", alignItems: "flex-end" }}>
               <LabeledSelect helpNotNeeded
                 label="Stakeholder to add" value={picked} onChange={setPicked} placeholder="Choose…"
                 options={candidates.filter((c) => !memberIds.has(c.value))}

@@ -134,7 +134,7 @@ export function FieldShell({
   const hintNode = hint && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{hint}</span>;
   if (!help && !extra) {
     return (
-      <label className="stack" style={{ gap: "0.25rem" }}>
+      <label className="stack" style={{ gap: "var(--space-1)" }}>
         <span>{label}{required && <RequiredMark />}</span>
         {children}
         {hintNode}
@@ -142,7 +142,7 @@ export function FieldShell({
     );
   }
   return (
-    <div className="stack" style={{ gap: "0.25rem" }}>
+    <div className="stack" style={{ gap: "var(--space-1)" }}>
       <FieldCaption htmlFor={controlId} label={label} extra={extra} help={help} required={required} />
       {children}
       {hintNode}

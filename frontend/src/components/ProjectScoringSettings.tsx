@@ -63,7 +63,7 @@ export function ProjectScoringSettings({ projectId, schemeKey }: { projectId: st
     <div className="stack">
       <section className="stack" aria-labelledby={`${schemeKey}-project-default-model`}>
         <h3 id={`${schemeKey}-project-default-model`} style={{ margin: 0 }}>Default model</h3>
-        <div className="row" style={{ gap: "0.75rem", alignItems: "flex-end", flexWrap: "wrap" }}>
+        <div className="row" style={{ gap: "var(--space-4)", alignItems: "flex-end", flexWrap: "wrap" }}>
           <LabeledSelect help={strings.help.scoringDefaultModel}
             label="Default model"
             value={scheme.default_model_key}

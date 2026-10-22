@@ -73,7 +73,7 @@ export function SearchHitSummary({
         )}
         <Highlighted text={hit.title} ranges={matchRanges(hit.title, terms)} />
       </span>
-      <span className="row" style={{ gap: "0.4rem", fontSize: "0.8rem" }}>
+      <span className="row" style={{ gap: "var(--space-2)", fontSize: "0.8rem" }}>
         <Badge>{hit.type_label}</Badge>
         {hit.status_label && <Badge tone="muted">{hit.status_label}</Badge>}
         {hit.is_archived && <Badge tone="warning">{strings.search.archivedBadge}</Badge>}

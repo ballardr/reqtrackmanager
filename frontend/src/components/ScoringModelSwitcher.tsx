@@ -36,7 +36,7 @@ export function ScoringModelSwitcher({
 }) {
   const strings = useStrings();
   return (
-    <div className="row" style={{ gap: "1rem", flexWrap: "wrap", alignItems: "flex-end" }}>
+    <div className="row" style={{ gap: "var(--space-5)", flexWrap: "wrap", alignItems: "flex-end" }}>
       <LabeledSelect help={strings.help.scoringModel} label="Scoring model" value={model} onChange={onModelChange} options={models} placeholder={null} />
       {rollups && rollup !== undefined && onRollupChange && (
         <LabeledSelect help={strings.help.scoringRollup} label="Combine personas by" value={rollup} onChange={onRollupChange} options={rollups} placeholder={null} />

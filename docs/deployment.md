@@ -4,7 +4,7 @@ This guide covers installing and configuring a new ReqTrackManager instance, fro
 
 ## Prerequisites
 
-- Docker and Docker Compose v2 (`docker compose`, not the legacy `docker-compose`).
+- Docker and Docker Compose 2.23.1 or newer (`docker compose`, not the legacy `docker-compose`).
 - A host with persistent volume storage for PostgreSQL (and the bundled `storage` service, if using the bundled S3-compatible storage backend).
 - For production: a domain name and TLS termination in front of the frontend/backend (ReqTrackManager does not terminate TLS itself — see [Production deployment](#production-deployment) below).
 
@@ -12,7 +12,7 @@ This guide covers installing and configuring a new ReqTrackManager instance, fro
 
 ReqTrackManager ships **two** Compose files with different purposes — using the wrong one for the wrong purpose is the single most important thing to get right:
 
-- **`docker-compose.yml`** (repo root) — the **production-oriented** stack. No MailHog, no baked-in secret defaults; it refuses to start (`docker compose up` fails fast with a clear error) until you provide `JWT_SECRET`, `APP_SECRET_ENCRYPTION_KEY`, `SERVER_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `STORAGE_ROOT_PASSWORD`, and `SMTP_HOST`. This is what a real deployment runs.
+- **`docker-compose.yml`** (repo root) — the **production-oriented** stack. No MailHog, no baked-in secret defaults; it refuses to start (`docker compose up` fails fast with a clear error) until you provide `JWT_SECRET`, `APP_SECRET_ENCRYPTION_KEY`, `SERVER_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `STORAGE_SECRET_KEY`, and `SMTP_HOST`. This is what a real deployment runs.
 - **`tests/container/docker-compose.yml`** — the **local development and automated testing** stack. Same shape, plus MailHog and a real Keycloak instance (for testing per-organisation SSO end-to-end, E-U-01), with dev-friendly defaults for everything and its own dedicated `reqtrack_test` Postgres database. This is what `backend/tests/` (pytest), `tests/playwright/`, and CI (`.github/workflows/ci.yml`) all run against.
 
 These two are deliberately kept separate rather than sharing one file with a dev override, because sharing led to a real, serious bug during development: running the backend test suite against what was meant to be a "just add a test override" version of the same stack silently dropped and recreated the *production* database's schema (see [decisions.md](decisions.md), "Database: the test suite was wiping the live database"). Never run `pytest`, or anything from `tests/`, against the root stack.
@@ -35,7 +35,7 @@ flowchart TD
 | `db` | PostgreSQL, the primary data store | Yes (no host port published) | Yes (`reqtrack_test`, port 5432 published) |
 | `backend` | FastAPI application, runs migrations on startup | Yes | Yes |
 | `frontend` | Static React SPA served by nginx | Yes | Yes |
-| `storage` | Bundled S3-compatible file storage (SeaweedFS) | Yes, if `STORAGE_BACKEND=s3` | Yes |
+| `storage` | Bundled S3-compatible file storage (SeaweedFS) | Yes | Yes |
 | `mcp-server` | Read-only MCP server exposing requirements to AI assistants (see [mcp-server.md](mcp-server.md)) | Yes | Yes |
 | `mailhog` | Local SMTP catcher with a web UI | **No** — replace with a real SMTP provider via `SMTP_HOST` | Yes |
 | `keycloak` | Real OIDC identity provider, for testing per-org SSO login end-to-end (E-U-01) | **No** — a real deployment points `oidc_issuer_url` at each org's own IdP instead, never at this test container | Yes |
@@ -63,7 +63,7 @@ JWT_SECRET=<random 32+ byte secret>
 APP_SECRET_ENCRYPTION_KEY=<random 32+ byte secret>  # distinct from JWT_SECRET — see README's Configuration table
 SERVER_ADMIN_PASSWORD=<strong password>
 POSTGRES_PASSWORD=<strong password>
-STORAGE_ROOT_PASSWORD=<strong password>        # if using the bundled storage service
+STORAGE_SECRET_KEY=<strong password>           # S3 secret for the bundled storage (STORAGE_ACCESS_KEY optional)
 
 # Networking
 CORS_ORIGINS=https://your-domain.example
@@ -85,7 +85,7 @@ The full list of backend environment variables, with defaults, is documented in 
 
 ### Obtaining container images
 
-CI (`.github/workflows/ci.yml`) builds the production `backend`, `frontend`, `mcp-server`, and `docs` images on every change and, once the `frontend` and `backend-and-e2e` jobs pass on a push to `main`, pushes all four to `ghcr.io/<owner>/<repo>-{backend,frontend,mcp-server,docs}` (see [development.md's Continuous integration](development.md#continuous-integration) section). Pull requests still build every image, proving the Dockerfiles work, but never push — only a merge to `main` publishes.
+CI (`.github/workflows/ci.yml`) builds the production `backend`, `frontend`, `mcp-server`, and `docs` images on every change and, once the `frontend`, `backend-tests`, `e2e-tests` and `dependency-scan` jobs pass on a push to `main`, pushes all four to `ghcr.io/<owner>/<repo>-{backend,frontend,mcp-server,docs}` (see [development.md's Continuous integration](development.md#continuous-integration) section). Pull requests still build every image, proving the Dockerfiles work, but never push — only a merge to `main` publishes.
 
 Each image is tagged three ways:
 
@@ -122,11 +122,82 @@ Read left to right: CI publishes a docs image tagged with the same version as th
 - The dev/test stack (`tests/container/`) already sets `HELP_URL` to its own docs service, so Help is local there; only the production `docker-compose.yml` defaults to the public site.
 - No internal mirror and no wish for an external link? Set `HELP_ENABLED=false` to remove the Help link.
 
-### Storage credential scope (known gap)
+### Storage credential scope
 
-By default `STORAGE_S3_ACCESS_KEY`/`STORAGE_S3_SECRET_KEY` are wired to `STORAGE_ROOT_USER`/`STORAGE_ROOT_PASSWORD` (see `docker-compose.yml`), so the backend authenticates to the bundled storage service as its single admin identity rather than a credential limited to its own bucket — a backend compromise (or a leaked environment variable) currently grants access to the whole storage service, not just this app's own files.
+The bundled storage service (SeaweedFS) accepts **one** S3 identity, defined by plain configuration: `STORAGE_ACCESS_KEY` and `STORAGE_SECRET_KEY`. The backend uses the same pair. The identity may act on the application bucket (`STORAGE_S3_BUCKET`) only, so a leaked backend credential cannot read or write any other bucket, list buckets, or change storage configuration.
 
-This used to be narrowable via MinIO's `mc admin user`/`mc admin policy` CLI (a scoped service-account recipe lived here previously), but the bundled storage service is now SeaweedFS (see [decisions.md](decisions.md)'s "Storage backend: MinIO images no longer pullable, replaced with SeaweedFS" entry, forced by MinIO discontinuing free image distribution), which scopes credentials differently — via a filer `identities.json`/IAM config rather than an `mc`-style CLI — and that path hasn't been set up or verified against this stack yet. Documented here as an open gap rather than silently dropped: if you need scoped storage credentials for a production deployment today, either configure SeaweedFS's own IAM identity file yourself (see the [SeaweedFS S3 API docs](https://github.com/seaweedfs/seaweedfs/wiki/Amazon-S3-API)) or point `STORAGE_S3_ENDPOINT_URL` at a real external S3-compatible provider with its own IAM instead of the bundled service.
+```mermaid
+flowchart LR
+    BE["backend"] -->|"S3 :9000<br/>STORAGE_ACCESS_KEY / STORAGE_SECRET_KEY<br/>one bucket only"| S3["S3 gateway"]
+    subgraph storage["storage container"]
+        S3 --- Internal["filer, master, volume<br/>loopback only, no authentication"]
+    end
+```
+
+Read left to right: the S3 gateway is the only port reachable on the Compose network. SeaweedFS's filer and master APIs carry no authentication, so they listen on loopback inside the container and the backend cannot reach them.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `STORAGE_ACCESS_KEY` | `minioadmin` (or `STORAGE_ROOT_USER`) | Access key of the identity. Change it to something unguessable |
+| `STORAGE_SECRET_KEY` | required (or `STORAGE_ROOT_PASSWORD`) | Secret of the identity. Compose refuses to start without it. It is needed even with `STORAGE_BACKEND=local` or an external provider (set any value then, or your provider's secret) |
+
+- `STORAGE_ROOT_USER` / `STORAGE_ROOT_PASSWORD` from earlier releases still work as the access key and secret, so no `.env` change is needed to upgrade (see below). The pair is no longer an administrator, so the name is historical.
+- Values must not contain quotes or backslashes (the identity file is JSON; SeaweedFS refuses to start on an invalid one rather than running open).
+- To rotate, change both values and run `docker compose up -d storage backend`.
+- To use a different bucket, set `STORAGE_S3_BUCKET`; the identity follows it.
+
+#### Hardening the bundled storage further
+
+What is already in place: a single bucket-scoped identity, no published ports, and loopback-only internal APIs. Beyond that, in rough order of value:
+
+1. **Use an external S3 provider with its own IAM** if you can. Set `STORAGE_S3_ENDPOINT_URL`, and put a credential limited to your bucket in `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY`. Scoping, auditing, encryption at rest and TLS are then the provider's.
+2. **Choose a random access key and a long secret.** The defaults are only there so existing setups keep working.
+3. **Add identities for other users or tools** instead of sharing the backend's. Replace the identity file in a `docker-compose.override.yml`:
+
+   ```yaml
+   configs:
+     storage_identity: !override   # replaces the inline content (needs Docker Compose 2.24 or newer)
+       file: ./s3-identities.json
+   ```
+
+   ```json
+   {"identities": [
+     {"name": "app",     "credentials": [{"accessKey": "APP_KEY",    "secretKey": "APP_SECRET"}],
+      "actions": ["Admin:reqtrackmanager", "Read:reqtrackmanager", "Write:reqtrackmanager", "List:reqtrackmanager"]},
+     {"name": "auditor", "credentials": [{"accessKey": "AUDIT_KEY",  "secretKey": "AUDIT_SECRET"}],
+      "actions": ["Read:reqtrackmanager", "List:reqtrackmanager"]},
+     {"name": "operator","credentials": [{"accessKey": "OPS_KEY",    "secretKey": "OPS_SECRET"}],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]}
+   ]}
+   ```
+
+   An action without `:bucket` applies to every bucket, so reserve it for an operator who needs it. `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY` must still match the `app` identity, because the backend reads them.
+4. **Remove the right to create or delete the bucket.** `Admin:<bucket>` is what lets the backend create its bucket on first start. Create it yourself once (`docker exec -it reqtrack-storage weed shell`, then `s3.bucket.create -name reqtrackmanager`), then drop `Admin:` from the app identity's actions.
+5. **Inspect without any S3 login:** `docker exec -it reqtrack-storage weed shell`, then `s3.bucket.list` or `fs.ls /buckets/reqtrackmanager`.
+6. **Keep the secret out of version control and shell history.** Use a `.env` file readable by the deploy user only, or your orchestrator's secret store. The secret also appears in the storage container's identity file and in `docker compose config` output, so restrict who can run Docker on the host.
+7. **Transport and rest.** Traffic between `backend` and `storage` is plain HTTP on the Compose network; if they are ever on different hosts, put TLS in front or use an external provider. Encrypt the `reqtrack_storage_data` volume at the host or disk level.
+8. **Do not publish storage ports** or remove the loopback flags (`-ip.bind=127.0.0.1`) from the `storage` command; the filer and master have no authentication.
+
+### Upgrading to the bucket-scoped credential
+
+**No `.env` change is required.** An existing `.env` with `STORAGE_ROOT_PASSWORD` (and optionally `STORAGE_ROOT_USER`) keeps working: those values become the access key and secret. Tested by writing a file under the previous setup and reading it back with the same credential after upgrading. What changes is what that credential can do:
+
+- It can no longer administer storage: listing buckets, creating or touching other buckets, or `aws s3 mb` now fail with `AccessDenied`. Use `weed shell` (hardening step 5) or add an operator identity (step 3).
+- The filer, master and volume ports are no longer reachable from other containers. Tooling that called `storage:8888` or `storage:9333` across the network must run inside the container instead.
+- `storage` can take up to 30 seconds to report healthy after a restart.
+
+Steps: back up (`scripts/backup.sh` for the database, a snapshot of `reqtrack_storage_data` for files); **replace your `docker-compose.yml` with the new one** (`git pull`, or copy it; `docker compose pull` fetches images only, and the storage configuration lives in this file, so pulling alone leaves the old, unscoped setup running; re-apply any local edits you made to the file); then `docker compose pull && docker compose up -d`. This needs Docker Compose 2.23.1 or newer (`docker compose version`), for inline `configs`. Check that `docker compose ps` shows `storage` and `backend` healthy and that an existing attachment opens. Optionally rename `STORAGE_ROOT_USER` / `STORAGE_ROOT_PASSWORD` to `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY`.
+
+| Symptom | Cause and fix |
+|---------|---------------|
+| `configs.storage_identity` is not valid, or an unknown `content` attribute | Docker Compose is older than 2.23.1; upgrade it |
+| `required variable ... STORAGE_SECRET_KEY` | Neither `STORAGE_SECRET_KEY` nor `STORAGE_ROOT_PASSWORD` is set |
+| `storage` exits with `unmarshal error` in its log | A value contains a quote or backslash (fine before this release, not now); change it |
+| Uploads fail with `AccessDenied` | The bucket name differs from `STORAGE_S3_BUCKET`, or the credential in use is not the one `storage` was started with; run `docker compose up -d storage backend` |
+
+**Rolling back:** restore the previous `docker-compose.yml` and image tag and run `docker compose up -d`. Data is untouched and the same variables are read.
+
+**Development and test stack (`tests/container`):** no `.env` change; run `docker compose up -d` there so `storage` and `backend` are recreated.
 
 ### TLS and reverse proxy
 

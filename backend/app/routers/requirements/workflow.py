@@ -23,12 +23,18 @@ from app.models.project import Project, ProjectComponent
 from app.models.requirement import Requirement, RequirementReview
 from app.models.user import User
 from app.routers.requirements.core import REQUIRES_APPROVAL_STATUSES, _to_out
-from app.schemas.requirement import RequirementDueForReviewOut, RequirementOut, RequirementReviewCreate, RequirementReviewOut
+from app.schemas.requirement import (
+    RequirementApproveRequest,
+    RequirementDueForReviewOut,
+    RequirementOut,
+    RequirementReviewCreate,
+    RequirementReviewOut,
+)
 from app.services import pubsub
 from app.services.audit import log_event
 from app.services.principals import is_principal_member, principal_ref
 from app.services.rbac import get_effective_project_roles, require_ai_approvals_enabled, require_project_manage, require_project_view
-from app.services.requirements import apply_new_version, get_current_version
+from app.services.requirements import apply_new_version, get_current_version, get_current_version_for_update
 from app.services.reviews import get_due_reviews_for_project, reviewer_labels
 
 router = APIRouter(tags=["requirements-workflow"])
@@ -145,7 +151,7 @@ def record_review_outcome(
 
 @router.post("/{requirement_id}/approve", response_model=RequirementOut)
 def approve_requirement(
-    project_id: UUID, requirement_id: UUID,
+    project_id: UUID, requirement_id: UUID, payload: RequirementApproveRequest | None = None,
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
     channel: str = Depends(get_request_channel),
 ):
@@ -171,6 +177,10 @@ def approve_requirement(
     organisation to both have explicitly enabled AI approval (docs/decisions.md's
     "AI approval via MCP" entry) — a plain UI/API call is unaffected by that
     flag either way.
+
+    The body is optional; its `comment` (what the approver checked) is recorded as the audit event's
+    `detail.comment` and appended to the version's change note, so it shows in the Activity tab and
+    the Versions table.
     """
     if ProjectRole.PROJECT_MANAGER not in get_effective_project_roles(db, current_user.id, project_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a project manager can approve a requirement.")
@@ -179,17 +189,23 @@ def approve_requirement(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
     if channel == "mcp":
         require_ai_approvals_enabled(db, db.get(Project, project_id))
-    current_version = get_current_version(db, requirement.id)
+    current_version = get_current_version_for_update(db, requirement.id)
     if current_version.status not in REQUIRES_APPROVAL_STATUSES:
         raise HTTPException(status.HTTP_409_CONFLICT, "Only a draft or reviewed requirement can be approved.")
+    comment = ((payload.comment if payload else None) or "").strip()
+    note = "Approved via MCP" if channel == "mcp" else "Approved directly"
     new_version = apply_new_version(
         db, requirement, current_version, current_user,
         status_value=RequirementStatus.APPROVED,
-        change_note="Approved via MCP." if channel == "mcp" else "Approved directly.",
+        change_note=f"{note}: {comment}" if comment else f"{note}.",
     )
+    detail: dict[str, str] = {}
+    if channel == "mcp":
+        detail["via"] = "mcp"
+    if comment:
+        detail["comment"] = comment
     log_event(db, entity_type="requirement", entity_id=requirement.id, action="approved",
-              actor_id=current_user.id, project_id=project_id,
-              detail={"via": "mcp"} if channel == "mcp" else None)
+              actor_id=current_user.id, project_id=project_id, detail=detail or None)
     db.commit()
     db.refresh(requirement)
     pubsub.notify(project_id, {"type": "requirement", "action": "approved", "id": str(requirement.id)})

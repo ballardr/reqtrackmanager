@@ -61,7 +61,7 @@ export function EngagementTimelinePanel({
   }
 
   return (
-    <div className="stack" style={{ gap: "0.5rem" }}>
+    <div className="stack" style={{ gap: "var(--space-3)" }}>
       <RepresentationPanel
         heading="Engagements"
         emptyText="No engagements logged yet."

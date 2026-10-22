@@ -185,7 +185,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
         <Link
           to="/projects"
           className="row"
-          style={{ fontWeight: 700, textDecoration: "none", color: "var(--color-header-text)", gap: "0.5rem" }}
+          style={{ fontWeight: 700, textDecoration: "none", color: "var(--color-header-text)", gap: "var(--space-3)" }}
         >
           {/* U-C-02: resolved org/platform branding (BrandingContext) — an
               org's own logo/title, falling back to the platform default,
@@ -218,7 +218,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
               <Link
                 to="/preferences"
                 className="row"
-                style={{ color: "var(--color-header-text)", textDecoration: "none", gap: "0.4rem" }}
+                style={{ color: "var(--color-header-text)", textDecoration: "none", gap: "var(--space-2)" }}
                 title={strings.nav.preferences}
                 aria-label={`${user.display_name} — ${strings.nav.preferences}`}
               >
@@ -296,7 +296,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
             {!railIconOnly && (
               <div
                 className="text-muted"
-                style={{ marginTop: "auto", paddingTop: "0.75rem", fontSize: "0.7rem", lineHeight: 1.6 }}
+                style={{ marginTop: "auto", paddingTop: "var(--space-4)", fontSize: "0.7rem", lineHeight: 1.6 }}
               >
                 <div title={strings.nav.frontendBuildDetail(GIT_SHA, BUILD_DATE)}>{strings.nav.frontendVersion(APP_VERSION)}</div>
                 <div title={backendVersion ? strings.nav.backendBuildDetail(backendVersion.git_sha, backendVersion.build_date) : undefined}>

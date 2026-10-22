@@ -101,7 +101,7 @@ export function ArtefactLinkRulesView({
           <div
             key={rule.artefact_type}
             className="row"
-            style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", paddingBottom: "0.5rem" }}
+            style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", paddingBottom: "var(--space-3)" }}
           >
             <strong style={{ minWidth: 180 }}>{rule.label}</strong>
             <div className="row">

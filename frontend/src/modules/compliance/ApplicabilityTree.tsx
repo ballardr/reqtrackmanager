@@ -122,11 +122,11 @@ export function ApplicabilityTree({
         <button
           type="button"
           className="card"
-          style={{ width: "100%", textAlign: "left", padding: "0.5rem 0.75rem", marginBottom: "0.4rem", cursor: "pointer" }}
+          style={{ width: "100%", textAlign: "left", padding: "var(--space-3) var(--space-4)", marginBottom: "var(--space-2)", cursor: "pointer" }}
           onClick={() => pcr && setSelectedPcrId(pcr.id)}
           disabled={!pcr}
         >
-          <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.4rem" }}>
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "var(--space-2)" }}>
             <span>
               {node.reference && <span className="text-muted">{node.reference} — </span>}
               <strong>{node.name}</strong>

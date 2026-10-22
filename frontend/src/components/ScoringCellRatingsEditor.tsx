@@ -77,8 +77,8 @@ export function ScoringCellRatingsEditor({
   }
 
   return (
-    <div className="stack" style={{ gap: "0.5rem" }}>
-      <div className="row" style={{ gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+    <div className="stack" style={{ gap: "var(--space-3)" }}>
+      <div className="row" style={{ gap: "var(--space-3)", alignItems: "center", flexWrap: "wrap" }}>
         <span>Cell ratings</span>
         <OverridePill custom={custom} defaultLabel={defaultLabel} resetLabel={resetLabel}
           onReset={() => void run(onReset)} disabled={busy} />
@@ -88,7 +88,7 @@ export function ScoringCellRatingsEditor({
       </p>
       <ScoringMatrixChart xAxis={xAxis} yAxis={yAxis} bands={bands} cellRatings={draft}
         onCellRatingChange={change} caption={caption} />
-      <div className="row" style={{ gap: "0.5rem" }}>
+      <div className="row" style={{ gap: "var(--space-3)" }}>
         <button type="button" className="btn btn-primary" disabled={!dirty || busy}
           onClick={() => void run(() => onSave(draft))}>
           Save cell ratings

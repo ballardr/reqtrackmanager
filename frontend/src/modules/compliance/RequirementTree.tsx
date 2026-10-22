@@ -308,7 +308,7 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
     const actions = actionsByRequirement[node.id];
     return (
       <li key={node.id} style={{ marginLeft: node.depth === 0 ? 0 : "1.25rem" }}>
-        <div className="card stack" style={{ padding: "0.5rem 0.75rem", marginBottom: "0.4rem" }}>
+        <div className="card stack" style={{ padding: "var(--space-3) var(--space-4)", marginBottom: "var(--space-2)" }}>
           <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
             <button
               type="button"
@@ -318,8 +318,8 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
             >
               {isExpanded ? <ChevronDown /> : <ChevronRight />}
             </button>
-            <div className="stack" style={{ gap: "0.1rem", flex: 1, marginLeft: "0.5rem" }}>
-              <strong className="row" style={{ gap: "0.4rem" }}>
+            <div className="stack" style={{ gap: "0.1rem", flex: 1, marginLeft: "var(--space-3)" }}>
+              <strong className="row" style={{ gap: "var(--space-2)" }}>
                 {node.reference && <span className="text-muted">{node.reference} — </span>}
                 {node.name}
                 <ClarificationBadge requirement={node} />
@@ -368,8 +368,8 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
             </div>
           </div>
           {isExpanded && (
-            <div className="stack" style={{ marginLeft: "1.75rem", borderLeft: "2px solid var(--color-border)", paddingLeft: "0.75rem" }}>
-              <h4 style={{ margin: "0.25rem 0 0" }}>Required actions</h4>
+            <div className="stack" style={{ marginLeft: "1.75rem", borderLeft: "2px solid var(--color-border)", paddingLeft: "var(--space-4)" }}>
+              <h4 style={{ margin: "var(--space-1) 0 0" }}>Required actions</h4>
               {actions === undefined ? (
                 <Spinner />
               ) : actions.length === 0 ? (
@@ -377,7 +377,7 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
               ) : (
                 <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
                   {actions.map((action, actionIndex) => (
-                    <li key={action.id} className="row" style={{ justifyContent: "space-between", padding: "0.25rem 0" }}>
+                    <li key={action.id} className="row" style={{ justifyContent: "space-between", padding: "var(--space-1) 0" }}>
                       <span>
                         {action.name}
                         {action.is_mandatory && <span className="text-muted"> (mandatory)</span>}
@@ -474,11 +474,11 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
                     <button
                       type="button"
                       className="btn"
-                      style={{ width: "100%", justifyContent: "flex-start", textAlign: "left", padding: "0.6rem 0.5rem" }}
+                      style={{ width: "100%", justifyContent: "flex-start", textAlign: "left", padding: "0.6rem var(--space-3)" }}
                       onClick={() => setDetailRequirement(req)}
                     >
                       <span className="stack" style={{ gap: "0.1rem" }}>
-                        <strong className="row" style={{ gap: "0.4rem" }}>
+                        <strong className="row" style={{ gap: "var(--space-2)" }}>
                           {req.reference && <span className="text-muted">{req.reference} — </span>}
                           {req.name}
                           <ClarificationBadge requirement={req} />
@@ -691,7 +691,7 @@ function RequirementDetailPanel({
           </div>
         )}
 
-        <h4 style={{ margin: "0.5rem 0 0" }}>Required actions</h4>
+        <h4 style={{ margin: "var(--space-3) 0 0" }}>Required actions</h4>
         {actions === undefined ? (
           <Spinner />
         ) : actions.length === 0 ? (
@@ -699,7 +699,7 @@ function RequirementDetailPanel({
         ) : (
           <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
             {actions.map((action) => (
-              <li key={action.id} style={{ padding: "0.25rem 0" }}>
+              <li key={action.id} style={{ padding: "var(--space-1) 0" }}>
                 {action.name}
                 {action.is_mandatory && <span className="text-muted"> (mandatory)</span>}
                 <span className="text-muted"> — {actionTypes.find((t) => t.id === action.action_type_id)?.name ?? "—"}</span>

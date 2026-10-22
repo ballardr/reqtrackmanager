@@ -4,7 +4,7 @@
  * The labelled controls every create/edit form is built from (docs/ux-style-guide.md, "Pattern:
  * compact forms and add-on-demand"): a single-line input, a multi-line textarea, a date input and a
  * checkbox, each with a visible label that is also the accessible name (principle 13) and an optional
- * hint underneath. Lay them out in a `FormGrid`; pick from a list with `LabeledSelect` and people with
+ * hint underneath (`InlineTextInput` is the caption-less form for an inline row). Lay them out in a `FormGrid`; pick from a list with `LabeledSelect` and people with
  * `PrincipalFormField`. Every field takes `help` (a `(?)` button revealing what the field means,
  * `FieldHelp`) or, for a self-explanatory field, `helpNotNeeded`.
  */
@@ -47,6 +47,34 @@ export function TextField({
         onChange={(e) => onChange(e.target.value)} aria-label={ariaLabel ?? label} placeholder={placeholder} disabled={disabled}
       />
     </FieldShell>
+  );
+}
+
+/**
+ * A single-line input with no visible caption, for an inline add or rename row where the row is the
+ * caption (a stage's name beside its status badge). The accessible name is required, so it cannot be left
+ * unnamed. A field in a form is a `TextField`.
+ *
+ * @param ariaLabel The input's accessible name.
+ * @param type The HTML input type (`text`, `number`, `datetime-local`).
+ * @param maxWidth Optional width cap in pixels.
+ */
+export function InlineTextInput({
+  ariaLabel, value, onChange, type = "text", maxWidth, placeholder, disabled,
+}: {
+  ariaLabel: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: "text" | "number" | "datetime-local";
+  maxWidth?: number;
+  placeholder?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <input
+      className="input" type={type} style={maxWidth ? { maxWidth } : undefined} value={value} aria-label={ariaLabel}
+      placeholder={placeholder} disabled={disabled} onChange={(e) => onChange(e.target.value)}
+    />
   );
 }
 
@@ -129,9 +157,9 @@ export function CheckboxField({
   title?: string;
 }) {
   return (
-    <div className="stack" style={{ gap: "0.25rem" }}>
+    <div className="stack" style={{ gap: "var(--space-1)" }}>
       {heading && <FieldCaption label={heading} help={help} required={required} />}
-      <span className="row" style={{ gap: "0.4rem", alignItems: "flex-start", flexWrap: "nowrap", minHeight: heading ? "2.25rem" : undefined }}>
+      <span className="row" style={{ gap: "var(--space-2)", alignItems: "flex-start", flexWrap: "nowrap", minHeight: heading ? "2.25rem" : undefined }}>
         <label className="checkbox-label">
           <input
             type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} aria-label={ariaLabel} required={required}
@@ -175,7 +203,7 @@ export function ColorField({
   const name = ariaLabel ?? label;
   return (
     <FieldShell label={label} controlId={id} help={help} hint={hint} required={required}>
-      <span className="row" style={{ gap: "0.4rem", alignItems: "center" }}>
+      <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
         <input
           id={id} type="color" value={normaliseHexColour(value) ?? "#000000"} aria-label={name}
           onChange={(e) => { setDraft(null); onChange(e.target.value); }}
@@ -283,7 +311,7 @@ export function UploadField({
   children: ReactNode;
 }) {
   return (
-    <div className="stack" style={{ gap: "0.25rem" }}>
+    <div className="stack" style={{ gap: "var(--space-1)" }}>
       <FieldCaption htmlFor={id} label={label} extra={labelExtra} help={help} required={required} />
       <FileUploadTrigger id={id} accept={accept} disabled={disabled} onSelect={onSelect}>
         {children}

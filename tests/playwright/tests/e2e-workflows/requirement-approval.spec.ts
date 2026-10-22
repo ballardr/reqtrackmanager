@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, logout, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { approveRequirementFromDetail, loginAs, logout, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Before this feature, a requirement only ever reached "approved" as a side
@@ -22,6 +22,7 @@ import { loginAs, logout, openProject, openRequirementByName, PERSONAS, PROJECT_
 test.describe("requirement approval", () => {
   test("a project manager approves a draft requirement directly; a stakeholder cannot", async ({ page }) => {
     const name = `E2E Approval ${Date.now()}`;
+    const approvalComment = `Checked against the interface spec ${Date.now()}`;
 
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await page.goto("/projects");
@@ -62,11 +63,19 @@ test.describe("requirement approval", () => {
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByName(page, name);
       await expect(page.getByRole("link", { name: "Make change request" })).toHaveCount(0);
-      await page.getByRole("button", { name: "Approve", exact: true }).click();
+      await approveRequirementFromDetail(page, approvalComment);
       await expect(page.getByText("Requirement approved")).toBeVisible();
       await expect(page.getByText("Locked (approved)")).toBeVisible();
       await expect(page.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
       await expect(page.getByRole("link", { name: "Make change request" })).toBeVisible();
+    });
+
+    await test.step("the approval comment is quoted under the approval in the Activity tab", async () => {
+      await page.getByRole("tab", { name: "Activity" }).click();
+      await expect(page.locator("blockquote.activity-note", { hasText: approvalComment })).toBeVisible();
+      // The selected aside tab is a remembered per-user preference on this shared persona, so put
+      // it back: later specs on this persona expect to find the Links panel without switching.
+      await page.getByRole("tab", { name: "Links" }).click();
     });
   });
 });

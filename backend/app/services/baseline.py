@@ -16,7 +16,7 @@ from app.models.enums import RequirementStatus, StageStatus
 from app.models.project import Project, ProjectStage
 from app.models.requirement import Baseline, BaselineItem, Requirement, RequirementVersion
 from app.models.user import User
-from app.services.requirements import apply_new_version
+from app.services.requirements import apply_new_version, get_current_version_for_update
 
 
 def project_is_locked(db: Session, project_id) -> bool:
@@ -52,7 +52,9 @@ def create_baseline_for_stage(db: Session, project: Project, stage: ProjectStage
     db.flush()
 
     requirements = db.scalars(
-        select(Requirement).where(Requirement.project_id == project.id, Requirement.is_archived.is_(False))
+        select(Requirement)
+        .where(Requirement.project_id == project.id, Requirement.is_archived.is_(False))
+        .order_by(Requirement.id)
     ).all()
     for requirement in requirements:
         current_version = db.scalar(
@@ -62,6 +64,10 @@ def create_baseline_for_stage(db: Session, project: Project, stage: ProjectStage
         )
         if current_version is None:
             continue
+        if current_version.status in (RequirementStatus.DRAFT, RequirementStatus.REVIEWED):
+            # Only a requirement about to be approved is locked (in id order, so two baselines cannot
+            # deadlock), and it is re-read under the lock: a concurrent edit may have moved it on.
+            current_version = get_current_version_for_update(db, requirement.id)
         if current_version.status in (RequirementStatus.DRAFT, RequirementStatus.REVIEWED):
             current_version = apply_new_version(
                 db, requirement, current_version, actor,

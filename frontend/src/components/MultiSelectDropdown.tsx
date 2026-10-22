@@ -104,7 +104,7 @@ export function MultiSelectDropdown({
       </button>
       {open && (
         <Popover anchorRef={triggerRef} title={triggerLabel} onClose={() => setOpen(false)}>
-          <div className="stack" style={{ gap: "0.5rem" }}>
+          <div className="stack" style={{ gap: "var(--space-3)" }}>
             {filterable && (
               <input
                 type="search"
@@ -119,10 +119,10 @@ export function MultiSelectDropdown({
               role="group"
               aria-label={triggerLabel}
               className="stack"
-              style={{ gap: "0.35rem", ...(filterable ? { maxHeight: "18rem", overflowY: "auto" } : {}) }}
+              style={{ gap: "var(--space-2)", ...(filterable ? { maxHeight: "18rem", overflowY: "auto" } : {}) }}
             >
               {visible.map((opt) => (
-                <label key={opt.value} className="row" style={{ gap: "0.35rem", fontSize: "0.85rem", flexWrap: "nowrap" }}>
+                <label key={opt.value} className="row" style={{ gap: "var(--space-2)", fontSize: "0.85rem", flexWrap: "nowrap" }}>
                   <input
                     type="checkbox"
                     checked={opt.checked}

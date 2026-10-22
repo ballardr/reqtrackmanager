@@ -69,7 +69,7 @@ export function StatusPieChart({
       <div className="stack" style={{ gap: "0.2rem", width: "100%" }}>
         {segments.map(([label, value], idx) => {
           const row = (
-            <span className="row" style={{ gap: "0.4rem" }}>
+            <span className="row" style={{ gap: "var(--space-2)" }}>
               <span
                 style={{
                   width: 10, height: 10, borderRadius: "50%",

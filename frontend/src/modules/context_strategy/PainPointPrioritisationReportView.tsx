@@ -109,7 +109,7 @@ function GroupView({ group, showProject }: { group: ReportScoredGroup; showProje
                     </Badge>
                   </td>
                   <td>
-                    <span className="row" style={{ gap: "0.35rem", flexWrap: "wrap" }}>
+                    <span className="row" style={{ gap: "var(--space-2)", flexWrap: "wrap" }}>
                       {item.is_blocker && (
                         <Badge tone="danger" title={item.blocker_personas.length ? `Unusable for: ${item.blocker_personas.join(", ")}` : "Unusable, no workaround"}>
                           Blocker

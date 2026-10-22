@@ -1,4 +1,6 @@
-# Module 15 — Workflows (and the System Ontology) — Plan
+# Module 15 — Automations (formerly "Workflows"; and the System Ontology) — Plan
+
+> Renamed 2026-10-22 (**Decided by: User**) so it does not collide with [Workflow Capture](module-16-workflow-capture-plan.md), which documents how stakeholders work. Body text below still says "workflow" for the automation; read it as "automation".
 
 **Status:** planned 2026-10-13. Phase 0 (design sign-off) is open: the questions in section 7 need the user's answers before Phase 1 starts. Nothing is built.
 
@@ -279,7 +281,7 @@ Backend tests pinning behaviour; Storybook for new UI; Playwright spec for new U
 | Q6 | Granularity and exemptions of workflow-only creation | Per artefact type per project. CSV and bundle import exempt for project administrators only; MCP direct create is blocked like the UI. |
 | Q7 | Workflows in nested projects | Union: org, own and ancestors' workflows. |
 | Q8 | Templates: copied or live-linked? | Copied, with an "update available" note. |
-| Q9 | Name: "Workflows" collides with the approval-lifecycle meaning | Keep "Workflows" as the user-facing name (it is what users will look for); use "approval process" for the other meaning in new UI text. Alternatives: "Playbooks", "Guided creation". |
+| Q9 | Name: "Workflows" collides with the approval-lifecycle meaning and with Workflow Capture (Module 16) | **Decided by: User** (2026-10-22): renamed **Automations** in user-facing text (module key and file names are chosen in Phase 5). Replaces the earlier recommendation to keep "Workflows". |
 | Q10 | Canvas library | React Flow (`@xyflow/react`) with trace-map-styled nodes; side-panel controls as the keyboard path. Rete.js rejected (heavier dependency set, dataflow-oriented). HTML `<canvas>` libraries (Konva, Fabric) rejected: pixels cannot use the app's CSS, theme tokens or shared components, are invisible to assistive technology, and would mean rebuilding drag, connect, zoom and selection; their only advantage (thousands of nodes) does not apply under the box cap. |
 | Q11 | Ontology format | Own JSON plus generated Markdown and Mermaid; no OWL or JSON-LD until needed. |
 | Q12 | Register change request as an artefact type so workflows can create one? | Yes, in Phase 2a; this also puts it into links, ontology and FGAC. Needs care because a change request targets an existing requirement. |

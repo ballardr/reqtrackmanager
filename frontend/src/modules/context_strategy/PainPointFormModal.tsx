@@ -139,7 +139,7 @@ export function PainPointFormModal({
             value={dateIdentified} onChange={setDateIdentified}
           />
           <FormGridFull>
-            <div className="row" style={{ alignItems: "center", gap: "0.5rem" }}>
+            <div className="row" style={{ alignItems: "center", gap: "var(--space-3)" }}>
               <ToggleSwitch checked={isIntentional} onChange={setIsIntentional} label="Intentional limitation" />
               <span>
                 Intentional limitation

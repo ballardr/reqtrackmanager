@@ -1419,7 +1419,7 @@ if MCP_WRITES_ENABLED:
     # (surfaced verbatim by `_call_backend`) says which.
 
     @mcp.tool
-    async def approve_requirement(project_id: str | None = None, *, requirement_id: str) -> dict:
+    async def approve_requirement(project_id: str | None = None, *, requirement_id: str, comment: str = "") -> dict:
         """Approves a draft or reviewed requirement (the same transition the
         UI's "Approve" button performs).
 
@@ -1429,19 +1429,22 @@ if MCP_WRITES_ENABLED:
         even if your account's own role would normally allow this directly.
         The caller's own account still needs the project-manager role
         either way. Recorded in the requirement's version history with the
-        change note "Approved via MCP." so it's visibly distinguishable
-        from a human approving directly in the UI.
+        change note "Approved via MCP." (followed by your comment, if any) so
+        it's visibly distinguishable from a human approving directly in the UI.
 
         Args:
             project_id: The project's UUID (from `list_projects`).
             requirement_id: The requirement's UUID (from `list_requirements`).
+            comment: Optional note on what was checked; recorded in the activity and version history.
 
         Returns:
             The requirement's new current detail, same shape as `get_requirement`.
         """
         pid = _require_project_id(project_id)
         rid = _require_uuid(requirement_id, "requirement_id")
-        response = await _call_backend("POST", f"/api/v1/projects/{pid}/requirements/{rid}/approve")
+        response = await _call_backend(
+            "POST", f"/api/v1/projects/{pid}/requirements/{rid}/approve", json={"comment": comment},
+        )
         return response.json()
 
     @mcp.tool

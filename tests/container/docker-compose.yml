@@ -64,19 +64,22 @@ services:
   # the plain head_bucket/create_bucket/put_object/get_object/delete_object
   # calls `backend/app/storage_backends/s3.py` makes (no presigned URLs,
   # multipart, versioning, or MinIO Admin API in use anywhere in the app),
-  # and its `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` env vars are the
-  # same bootstrap shape MinIO's `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD`
-  # were, just under S3's own generic names. There's no bundled admin
-  # console UI in this replacement (SeaweedFS has no equivalent to MinIO's
-  # `:9001` console) — see docs/deployment.md's storage backend section for
-  # how to inspect bucket contents without one.
+  # and it is configured with ONE S3 identity (STORAGE_ACCESS_KEY /
+  # STORAGE_SECRET_KEY) that may act on the application bucket only, with
+  # everything except the S3 gateway on loopback — the same as the production
+  # stack (see docs/deployment.md, "Storage credential scope"). There's no
+  # bundled admin console UI in this replacement (SeaweedFS has no equivalent
+  # to MinIO's `:9001` console) — see docs/deployment.md's storage backend
+  # section for how to inspect bucket contents without one.
   storage:
     image: chrislusf/seaweedfs:3.97
     container_name: reqtrack-test-storage
-    command: server -dir=/data -s3 -s3.port=9000
-    environment:
-      AWS_ACCESS_KEY_ID: ${STORAGE_ROOT_USER:-minioadmin}
-      AWS_SECRET_ACCESS_KEY: ${STORAGE_ROOT_PASSWORD:-minioadmin}
+    command: >-
+      server -dir=/data -ip=127.0.0.1 -ip.bind=127.0.0.1
+      -s3 -s3.port=9000 -s3.ip.bind=:: -s3.config=/etc/seaweedfs/s3.json
+    configs:
+      - source: storage_identity
+        target: /etc/seaweedfs/s3.json
     volumes:
       - reqtrack_test_storage_data:/data
     ports:
@@ -84,29 +87,14 @@ services:
     healthcheck:
       # The S3 API's own /healthz is broken in this image (returns 404 —
       # it's parsed as a bucket name; see seaweedfs#8243), so this checks
-      # the master's cluster-status endpoint instead, which the same
-      # `server -s3` process also serves on port 9333. wget, not curl —
-      # this image has no curl binary.
-      #
-      # Uses the container's own name (`reqtrack-test-storage`, set
-      # above), not `localhost`: on GitHub Actions' runners this
-      # healthcheck consistently failed every probe with
-      # "Connection refused" for the full retry budget even though
-      # `weed`'s own logs showed master/filer/S3 all up within ~16s —
-      # `weed` binds its HTTP/gRPC ports to the container's real
-      # interface (and, environment-dependently, apparently not always
-      # to the IPv4 loopback address `localhost` resolves to first), so
-      # a same-container `wget` to `localhost` isn't reliable across
-      # environments. Going via the container's own name resolves
-      # through Docker's embedded DNS to the same address every other
-      # service already reaches it on, which `weed` definitely listens
-      # on (it's how filer/master/S3 talk to each other internally) —
-      # verified this route works via a local repro of the exact
-      # failure. See docs/decisions.md.
-      test: ["CMD", "wget", "-qO-", "http://reqtrack-test-storage:9333/cluster/status"]
+      # the master's cluster-status endpoint (loopback only) and that the S3
+      # gateway answers (403 without credentials). wget, not curl — this
+      # image has no curl binary.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9333/cluster/status && wget -S -qO- http://127.0.0.1:9000/ 2>&1 | grep -q 'HTTP/1.1 403'"]
       interval: 10s
       timeout: 5s
       retries: 10
+      start_period: 30s
 
   mailhog:
     image: mailhog/mailhog:v1.0.1
@@ -168,8 +156,8 @@ services:
       STORAGE_BACKEND: ${STORAGE_BACKEND:-s3}
       STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-reqtrackmanager}
       STORAGE_S3_ENDPOINT_URL: ${STORAGE_S3_ENDPOINT_URL:-http://storage:9000}
-      STORAGE_S3_ACCESS_KEY: ${STORAGE_ROOT_USER:-minioadmin}
-      STORAGE_S3_SECRET_KEY: ${STORAGE_ROOT_PASSWORD:-minioadmin}
+      STORAGE_S3_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-reqtrackapp}
+      STORAGE_S3_SECRET_KEY: ${STORAGE_SECRET_KEY:-reqtrackapp}
       SMTP_HOST: mailhog
       SMTP_PORT: 1025
       DEPLOYMENT_NOTIFICATION_EMAIL: ${DEPLOYMENT_NOTIFICATION_EMAIL:-}
@@ -271,6 +259,15 @@ services:
       start_period: 60s
       timeout: 5s
       retries: 10
+
+# The one S3 identity the bundled storage accepts, restricted to the application
+# bucket (Admin lets it create that bucket on first start, as the backend does).
+configs:
+  storage_identity:
+    content: |
+      {"identities":[{"name":"app",
+        "credentials":[{"accessKey":"${STORAGE_ACCESS_KEY:-reqtrackapp}","secretKey":"${STORAGE_SECRET_KEY:-reqtrackapp}"}],
+        "actions":["Admin:${STORAGE_S3_BUCKET:-reqtrackmanager}","Read:${STORAGE_S3_BUCKET:-reqtrackmanager}","Write:${STORAGE_S3_BUCKET:-reqtrackmanager}","List:${STORAGE_S3_BUCKET:-reqtrackmanager}"]}]}
 
 volumes:
   reqtrack_test_db_data:

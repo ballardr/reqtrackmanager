@@ -186,7 +186,7 @@ async def redact_sensitive_validation_errors(request: Request, exc: RequestValid
             # rejected value into a 500.
             error["input"] = str(error["input"])
         errors.append(error)
-    return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content={"detail": jsonable_encoder(errors)})
+    return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, content={"detail": jsonable_encoder(errors)})
 
 
 @app.middleware("http")

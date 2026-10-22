@@ -15,7 +15,7 @@ const meta: Meta<typeof StakeholderGroupFilterFields> = {
   component: StakeholderGroupFilterFields,
   args: { groups: GROUPS, groupId: "", groupBy: "", onGroupIdChange: fn(), onGroupByChange: fn() },
   render: (args) => (
-    <div className="row" style={{ gap: "1rem" }}>
+    <div className="row" style={{ gap: "var(--space-5)" }}>
       <StakeholderGroupFilterFields {...args} />
     </div>
   ),

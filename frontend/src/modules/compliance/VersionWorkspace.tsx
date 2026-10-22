@@ -112,7 +112,7 @@ export function VersionWorkspace({ orgId, standard, version, versions, actionTyp
           <button className="btn" onClick={onBack} style={{ alignSelf: "flex-start" }}>
             ← Back to {standard.name}
           </button>
-          <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
+          <div className="row" style={{ alignItems: "center", gap: "var(--space-1)" }}>
             <h3 style={{ margin: 0 }}>
               {standard.reference} — {version.version_label}
             </h3>
@@ -151,7 +151,7 @@ export function VersionWorkspace({ orgId, standard, version, versions, actionTyp
         </p>
       )}
 
-      <div className="card stack" style={{ gap: "0.4rem" }}>
+      <div className="card stack" style={{ gap: "var(--space-2)" }}>
         <TextAreaField helpNotNeeded
           label="Version summary"
           value={summary}

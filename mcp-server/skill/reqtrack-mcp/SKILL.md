@@ -78,7 +78,7 @@ Write tools exist only when the server runs with `MCP_WRITES_ENABLED`. If they a
 
 ## AI-approval gating
 
-`approve_requirement`, `decide_change_request` and `complete_requirement` act as an approval. They work only when **both** the organisation and the project have enabled AI approval, and the caller holds the project manager role. Otherwise they fail with "AI approval is not enabled". Do not retry. Tell the user a person must approve, or that an organisation admin and a project manager can enable it. Module approve/reject tools (for example `decisions_approve_decision`, `compliance_approve_requirement`) use the same gate. Approvals made this way are visibly marked "via MCP".
+`approve_requirement`, `decide_change_request` and `complete_requirement` act as an approval. They work only when **both** the organisation and the project have enabled AI approval, and the caller holds the project manager role. Otherwise they fail with "AI approval is not enabled". Do not retry. Tell the user a person must approve, or that an organisation admin and a project manager can enable it. Module approve/reject tools (for example `decisions_approve_decision`, `compliance_approve_requirement`) use the same gate. Approvals made this way are visibly marked "via MCP". `approve_requirement` takes an optional `comment` saying what you checked; give one, it is recorded in the activity and version history.
 
 Never approve, decide or complete something on your own initiative. Only do it when the user has explicitly asked for that specific item.
 

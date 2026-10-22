@@ -19,6 +19,8 @@ A project's Reports page can also offer reports from enabled modules (for exampl
 
 Every report row that names a record leads with its [record code](../reference/glossary.md#record-code) and ends with the record's [tags](./tags.md), in the PDF, Word file, CSV and on screen alike, so a printed page or a spreadsheet can say *which* `PER-001` it means.
 
+On screen, a long report table shows its first 50 rows with a "Showing 50 of n rows" count and a **Load more** button; the PDF, Word and CSV downloads always contain every row.
+
 ```mermaid
 flowchart TD
     R["A record in a report"] --> Q{"Whose record is it?"}

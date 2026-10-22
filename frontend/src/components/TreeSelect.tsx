@@ -82,7 +82,7 @@ export function TreeSelect({
               emptyText="No options."
               nodeLabel={(n) => n.label}
               renderNode={(n) => (
-                <label className="checkbox-label" style={{ gap: "0.35rem", fontSize: "0.85rem" }} title={n.disabled ? n.title : undefined}>
+                <label className="checkbox-label" style={{ gap: "var(--space-2)", fontSize: "0.85rem" }} title={n.disabled ? n.title : undefined}>
                   <input
                     type="checkbox"
                     checked={selected.has(n.id)}

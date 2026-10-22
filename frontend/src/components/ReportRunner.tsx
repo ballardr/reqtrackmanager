@@ -162,7 +162,7 @@ export function ReportRunner({
   const View = view?.component;
   return (
     <div className="stack">
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: "1rem" }}>
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: "var(--space-5)" }}>
         <ReportParamsForm
           params={entry.params}
           values={values}
@@ -171,7 +171,7 @@ export function ReportRunner({
           supportsIncludeChildren={entry.supports_include_children}
           projectOptions={entry.supports_project_filter ? entry.projects.map((p) => ({ value: p.id, label: p.name })) : undefined}
         />
-        <div className="row" style={{ alignItems: "flex-end", gap: "0.75rem" }}>
+        <div className="row" style={{ alignItems: "flex-end", gap: "var(--space-4)" }}>
           {templates.length > 0 && (
             <LabeledSelect help={strings.help.reportBrandingTemplate}
               label="Branding template"

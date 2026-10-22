@@ -66,7 +66,7 @@ import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordTags } from "../../components/RecordTags";
 import { RecordPrincipalField } from "../../components/RecordDetailParts";
 import { ArtefactCommentsSection } from "../../components/ArtefactCommentsSection";
-import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { CommentConfirmDialog } from "../../components/CommentConfirmDialog";
 import { DetailLayout } from "../../components/DetailLayout";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
 import { Spinner } from "../../components/Spinner";
@@ -79,7 +79,6 @@ import type { OpenQuestion, OpenQuestionComment, OpenQuestionFieldValues } from 
 import { RecordHeader } from "../../components/RecordHeader";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { Badge } from "../../components/Badge";
-import { TextAreaField } from "../../components/FormFields";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { DetailCard } from "../../components/DetailCard";
 
@@ -116,9 +115,7 @@ export function OpenQuestionDetailPage() {
   const [editing, setEditing] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [optionalAction, setOptionalAction] = useState<OptionalCommentAction | null>(null);
-  const [optionalComment, setOptionalComment] = useState("");
   const [withdrawConfirm, setWithdrawConfirm] = useState(false);
-  const [withdrawComment, setWithdrawComment] = useState("");
 
   useEffect(() => {
     if (!projectId) return;
@@ -327,26 +324,14 @@ export function OpenQuestionDetailPage() {
       )}
 
       {optionalAction && (
-        <ConfirmDialog
+        <CommentConfirmDialog
           title={OPTIONAL_COMMENT_COPY[optionalAction].title}
-          message={
-            <span className="stack" style={{ gap: "0.5rem" }}>
-              <span>{OPTIONAL_COMMENT_COPY[optionalAction].body}</span>
-              <TextAreaField helpNotNeeded
-                label="Comment"
-                ariaLabel="Transition comment"
-                value={optionalComment}
-                onChange={setOptionalComment}
-                rows={2}
-              />
-            </span>
-          }
+          intro={OPTIONAL_COMMENT_COPY[optionalAction].body}
+          ariaLabel="Transition comment"
           confirmLabel={OPTIONAL_COMMENT_COPY[optionalAction].confirmLabel}
-          onConfirm={async () => {
+          onConfirm={async (comment) => {
             const action = optionalAction;
-            const comment = optionalComment;
             setOptionalAction(null);
-            setOptionalComment("");
             if (action === "mark_ready_for_decision") {
               await runTransition(
                 () => projectOpenQuestionApi.markReadyForDecision(projectId, openQuestion.id, comment),
@@ -359,33 +344,22 @@ export function OpenQuestionDetailPage() {
               );
             }
           }}
-          onCancel={() => { setOptionalAction(null); setOptionalComment(""); }}
+          onCancel={() => setOptionalAction(null)}
         />
       )}
 
       {withdrawConfirm && (
-        <ConfirmDialog
+        <CommentConfirmDialog
           title="Withdraw this Open Question?"
-          message={
-            <span className="stack" style={{ gap: "0.5rem" }}>
-              <span>A comment explaining why is required.</span>
-              <TextAreaField helpNotNeeded
-                label="Withdrawal comment"
-                value={withdrawComment}
-                onChange={setWithdrawComment}
-                rows={2}
-              />
-            </span>
-          }
+          intro="A comment explaining why is required."
+          commentLabel="Withdrawal comment"
+          commentRequired
           confirmLabel="Withdraw"
-          confirmDisabled={!withdrawComment.trim()}
-          onConfirm={async () => {
-            const comment = withdrawComment;
+          onConfirm={async (comment) => {
             setWithdrawConfirm(false);
-            setWithdrawComment("");
             await runTransition(() => projectOpenQuestionApi.withdraw(projectId, openQuestion.id, comment), "Open Question withdrawn.");
           }}
-          onCancel={() => { setWithdrawConfirm(false); setWithdrawComment(""); }}
+          onCancel={() => setWithdrawConfirm(false)}
         />
       )}
 

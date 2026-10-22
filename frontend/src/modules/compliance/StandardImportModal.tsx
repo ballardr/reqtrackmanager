@@ -104,7 +104,7 @@ export function StandardImportModal({
         </p>
 
         {conflictMessage && (
-          <div className="card stack" style={{ gap: "0.5rem" }}>
+          <div className="card stack" style={{ gap: "var(--space-3)" }}>
             <p style={{ margin: 0 }}>{conflictMessage}</p>
             <div className="row">
               <button className="btn" disabled={importing} onClick={() => doImport("skip")}>

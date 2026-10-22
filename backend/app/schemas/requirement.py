@@ -189,6 +189,16 @@ class CommentOut(BaseModel):
     attachments: list[FileAssetOut] = []
 
 
+class RequirementApproveRequest(BaseModel):
+    """Optional body of `POST /requirements/{id}/approve`: what the approver checked.
+
+    A blank or whitespace-only comment is treated as none. Stored as the audit event's `detail.comment`
+    and in the new version's change note, the same key every other workflow step uses.
+    """
+
+    comment: str | None = None
+
+
 class RequirementReviewCreate(BaseModel):
     outcome: RequirementReviewOutcome
     comment: str | None = None

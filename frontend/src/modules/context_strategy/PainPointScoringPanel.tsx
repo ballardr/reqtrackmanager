@@ -130,7 +130,7 @@ export function PainPointScoringPanel({
         rollup={rollup}
         onRollupChange={(next) => { setRollup(next as PainPointRollup); void refreshRollup(model, next as PainPointRollup); }}
       />
-      <div className="row" role="group" style={{ gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }} aria-label="Rolled-up score">
+      <div className="row" role="group" style={{ gap: "var(--space-3)", alignItems: "center", flexWrap: "wrap" }} aria-label="Rolled-up score">
         <PainPointScoreBadge score={scores.score} />
         <BlockerBadge summary={scores} />
         <span className="text-muted" style={{ fontSize: "0.85rem" }}>

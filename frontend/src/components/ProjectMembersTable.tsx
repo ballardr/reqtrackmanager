@@ -440,7 +440,7 @@ export function ProjectMembersTable({
         // signals kind" idiom (the invited row's status badge in the Role
         // column) rather than a whole extra Type column.
         return (
-          <span className="row" style={{ gap: "0.4rem", alignItems: "center" }}>
+          <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
             <Badge>{strings.membersTable.groupRowBadge}</Badge>
             {row.group.org_group_name}
           </span>
@@ -464,7 +464,7 @@ export function ProjectMembersTable({
         if (row.kind === "invited") {
           const invite = row.invite;
           return (
-            <div className="row" style={{ gap: "0.4rem", alignItems: "center" }}>
+            <div className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
               <Badge>{PENDING_INVITE_STATUS_LABEL[invite.status]}</Badge>
               <button
                 className="btn"

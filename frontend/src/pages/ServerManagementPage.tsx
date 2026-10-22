@@ -298,13 +298,13 @@ function AccessReviewTab() {
         const canExpand = u.organization_names.length > 2;
         const shownNames = expanded || !canExpand ? u.organization_names : u.organization_names.slice(0, 2);
         return (
-          <span className="row" style={{ gap: "0.4rem", flexWrap: "wrap", alignItems: "center" }}>
+          <span className="row" style={{ gap: "var(--space-2)", flexWrap: "wrap", alignItems: "center" }}>
             <span>{shownNames.join(", ")}</span>
             {canExpand && (
               <button
                 type="button"
                 className="btn"
-                style={{ fontSize: "0.75rem", padding: "0.15rem 0.5rem" }}
+                style={{ fontSize: "0.75rem", padding: "0.15rem var(--space-3)" }}
                 onClick={() => toggleExpandedOrgs(u.user_id)}
               >
                 {expanded
@@ -354,7 +354,7 @@ function AccessReviewTab() {
       // menu, visible at a glance.
       key: "actions", label: "",
       render: (u) => (
-        <div className="row" style={{ gap: "0.4rem", justifyContent: "flex-end" }}>
+        <div className="row" style={{ gap: "var(--space-2)", justifyContent: "flex-end" }}>
           {u.is_banned && <span className="text-muted">{strings.system.bannedBadge}</span>}
           {!u.is_active && !u.is_banned && <span className="text-muted">{strings.system.deactivated}</span>}
           <ActionMenu
@@ -387,7 +387,7 @@ function AccessReviewTab() {
   return (
     <div className="stack">
       <div className="card stack">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "var(--space-3)" }}>
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.system.users}</h2>
           <AddUserMenu onInvite={() => setAddUserMode("invite")} onNewUser={() => setAddUserMode("password")} />
         </div>
@@ -503,7 +503,7 @@ function AccessReviewTab() {
               const checked = role === "server_admin" ? assignRolesUser.is_server_admin : assignRolesUser.is_module_administrator;
               const roleLabel = SERVER_ROLE_LABEL[role];
               return (
-                <label key={role} className="row" style={{ gap: "0.5rem" }}>
+                <label key={role} className="row" style={{ gap: "var(--space-3)" }}>
                   <input
                     type="checkbox"
                     checked={checked}
@@ -635,7 +635,7 @@ function PlatformBrandingTab() {
   return (
     <div className="card stack">
       <p className="text-muted" style={{ margin: 0 }}>{strings.serverSettings.hint(currentOrgLabel)}</p>
-      <div className="stack" style={{ gap: "0.25rem" }}>
+      <div className="stack" style={{ gap: "var(--space-1)" }}>
         <label htmlFor="platform-logo-input">{strings.serverSettings.logo}</label>
         <FileUploadTrigger id="platform-logo-input" accept="image/*" disabled={logoUploading} onSelect={uploadLogo}>
           <Upload size={14} /> {strings.common.chooseFile}
@@ -687,7 +687,7 @@ function PlatformBrandingTab() {
           setAccentColor(next);
         }}
       />
-      <div className="stack" style={{ gap: "0.25rem" }}>
+      <div className="stack" style={{ gap: "var(--space-1)" }}>
         <label htmlFor="platform-login-background-input">{strings.serverSettings.loginBackground}</label>
         <FileUploadTrigger
           id="platform-login-background-input"
@@ -704,7 +704,7 @@ function PlatformBrandingTab() {
         <div style={{ color: "var(--color-accent)" }}>{strings.serverSettings.loginBackgroundUploaded}</div>
       )}
       {settings.default_login_background_file_id && (
-        <img src={fileUrl(settings.default_login_background_file_id)} alt="" style={{ maxHeight: 100, borderRadius: 4 }} />
+        <img src={fileUrl(settings.default_login_background_file_id)} alt="" style={{ maxHeight: 100, borderRadius: "var(--radius-sm)" }} />
       )}
       <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)" }} />
       <h3 style={{ margin: 0 }}>{strings.serverSettings.emailFooterTitle}</h3>

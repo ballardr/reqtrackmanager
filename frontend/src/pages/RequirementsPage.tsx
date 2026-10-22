@@ -662,7 +662,7 @@ export function RequirementsPage() {
         />
 
         {importResult && (
-          <div className="card stack" style={{ gap: "0.4rem" }}>
+          <div className="card stack" style={{ gap: "var(--space-2)" }}>
             <div className="row" style={{ justifyContent: "space-between" }}>
               <strong>
                 Import complete: {importResult.created} created, {importResult.errors.length} error(s)
@@ -855,14 +855,14 @@ export function RequirementsPage() {
                 require the same manager/administrator role the single-row
                 Archive button already requires on `RequirementDetailPage.tsx`. */}
             {viewMode === "list" && canManageProject && selectedIds.size > 0 && (
-              <div className="card row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
-                <div className="row" style={{ gap: "0.75rem", alignItems: "center" }}>
+              <div className="card row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "var(--space-3)" }}>
+                <div className="row" style={{ gap: "var(--space-4)", alignItems: "center" }}>
                   <strong>{strings.requirements.bulkSelectedCount(selectedIds.size)}</strong>
                   <button className="btn" onClick={() => setSelectedIds(new Set())} disabled={bulkRunning}>
                     {strings.requirements.bulkClearSelection}
                   </button>
                 </div>
-                <div className="row" style={{ gap: "0.5rem" }}>
+                <div className="row" style={{ gap: "var(--space-3)" }}>
                   <button className="btn" onClick={() => setBulkTagDialogOpen(true)} disabled={bulkRunning}>
                     {strings.requirements.bulkTagSelected}
                   </button>
@@ -882,7 +882,7 @@ export function RequirementsPage() {
                   </button>
                   {bulkMovePopoverOpen && (
                     <Popover anchorRef={bulkMoveTriggerRef} title={strings.requirements.bulkMoveToStage} onClose={() => setBulkMovePopoverOpen(false)}>
-                      <div className="stack" style={{ gap: "0.5rem", minWidth: 200 }}>
+                      <div className="stack" style={{ gap: "var(--space-3)", minWidth: 200 }}>
                         <select
                           className="input"
                           aria-label={strings.requirements.targetVersion}
@@ -955,14 +955,14 @@ export function RequirementsPage() {
                   <div
                     key={r.id}
                     className="card stack entity-accent-card"
-                    style={{ gap: "0.5rem", ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.requirement }}
+                    style={{ gap: "var(--space-3)", ["--entity-accent-color" as string]: ENTITY_ACCENT_COLOR.requirement }}
                   >
                     <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
                       <span className="text-muted" style={{ fontSize: "0.8rem" }}>
                         <RecordCode code={r.unique_code} ownerProjectCode={r.from_project_code} />
                       </span>
                       {!r.from_project_id && (
-                        <div className="row" style={{ gap: "0.25rem" }}>
+                        <div className="row" style={{ gap: "var(--space-1)" }}>
                           <button className="btn" onClick={() => move(r.id, "up")} title={strings.common.up} aria-label={strings.common.up}>
                             <ArrowUp />
                           </button>
@@ -982,7 +982,7 @@ export function RequirementsPage() {
                       </p>
                     )}
                     <div className="row" style={{ justifyContent: "space-between" }}>
-                      <div className="row" style={{ gap: "0.4rem" }}>
+                      <div className="row" style={{ gap: "var(--space-2)" }}>
                         <FilterBadge
                           active={statusFilter === r.status}
                           tone={REQUIREMENT_STATUS_TONE[r.status]}
@@ -998,7 +998,7 @@ export function RequirementsPage() {
                         {r.is_locked && <Badge>{strings.requirements.locked}</Badge>}
                         {r.is_archived && <Badge>{strings.requirements.archivedBadge}</Badge>}
                       </div>
-                      <div className="row" style={{ gap: "0.5rem" }}>{badges(r)}</div>
+                      <div className="row" style={{ gap: "var(--space-3)" }}>{badges(r)}</div>
                     </div>
                     <div className="text-muted" style={{ fontSize: "0.85rem" }}>
                       {r.from_project_id ? "—" : `${componentName(r.component_id)} · ${categoryName(r.category_id)}`}
@@ -1068,7 +1068,7 @@ export function RequirementsPage() {
                           <ProjectScopeLabel row={r} />
                         </td>
                         <td>
-                          <div className="row" style={{ gap: "0.4rem" }}>
+                          <div className="row" style={{ gap: "var(--space-2)" }}>
                             <FilterBadge
                               active={statusFilter === r.status}
                               tone={REQUIREMENT_STATUS_TONE[r.status]}
@@ -1090,7 +1090,7 @@ export function RequirementsPage() {
                         </td>
                         <td>
                           {!r.from_project_id && (
-                            <div className="row" style={{ gap: "0.25rem" }}>
+                            <div className="row" style={{ gap: "var(--space-1)" }}>
                               <button className="btn" onClick={() => move(r.id, "up")} title={strings.common.up} aria-label={strings.common.up}>
                                 <ArrowUp />
                               </button>

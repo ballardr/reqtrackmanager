@@ -28,7 +28,7 @@
  * same convention every other frontend type in this codebase already uses).
  */
 
-import type { OrgUser, Principal } from "../../api/types";
+import type { BadgeTone, OrgUser, Principal } from "../../api/types";
 import type { ProjectScopedRow } from "../../api/projectScope";
 
 /** Shared "id -> display name" lookup for the Project Compliance View's own
@@ -96,6 +96,12 @@ export const COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL: Record<ComplianceEvidence
   valid: "Valid",
   expiring_soon: "Expiring soon",
   expired: "Expired",
+};
+export const COMPLIANCE_EVIDENCE_VALIDITY_STATE_TONE: Record<ComplianceEvidenceValidityState, BadgeTone> = {
+  no_expiry: "muted",
+  valid: "accent",
+  expiring_soon: "warning",
+  expired: "danger",
 };
 export type ComplianceReviewStatus = "scheduled" | "completed";
 export const COMPLIANCE_REVIEW_STATUS_LABEL: Record<ComplianceReviewStatus, string> = {

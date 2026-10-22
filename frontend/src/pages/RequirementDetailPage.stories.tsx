@@ -185,7 +185,48 @@ export const ManagerCanApproveDraftRequirement: Story = {
     await expect(canvas.queryByRole("link", { name: "Make change request" })).not.toBeInTheDocument();
 
     await userEvent.click(approveButton);
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Approve this requirement?" }));
+    await userEvent.type(dialog.getByLabelText("Approval comment"), "Checked against the interface spec");
+    await userEvent.click(dialog.getByRole("button", { name: "Approve" }));
     await waitFor(() => expect(within(document.body).getByText("Requirement approved")).toBeInTheDocument());
+    await expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/requirements/${REQUIREMENT_ID}/approve`,
+      { comment: "Checked against the interface spec" },
+    );
+  },
+};
+
+/** The approval comment is optional: confirming with the box empty sends no comment. */
+export const ManagerApprovesWithoutAComment: Story = {
+  beforeEach: () => {
+    mockRequirementDetailApis(["project_manager"], { status: "draft" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Approve" }));
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Approve this requirement?" }));
+    await expect(dialog.getByLabelText("Approval comment")).not.toBeRequired();
+    await userEvent.click(dialog.getByRole("button", { name: "Approve" }));
+    await waitFor(() => expect(within(document.body).getByText("Requirement approved")).toBeInTheDocument());
+    await expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/requirements/${REQUIREMENT_ID}/approve`,
+      { comment: null },
+    );
+  },
+};
+
+/** Cancelling the approve dialog approves nothing. */
+export const ManagerCancelsApprove: Story = {
+  beforeEach: () => {
+    mockRequirementDetailApis(["project_manager"], { status: "draft" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Approve" }));
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Approve this requirement?" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument());
+    await expect(api.post).not.toHaveBeenCalledWith(expect.stringContaining("/approve"), expect.anything());
   },
 };
 

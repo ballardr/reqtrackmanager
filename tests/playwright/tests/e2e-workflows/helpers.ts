@@ -671,6 +671,21 @@ export async function chooseRecordAction(page: Page, recordLabel: string, item: 
 }
 
 /**
+ * Approves the requirement on screen through the Approve button and its confirm dialog.
+ *
+ * Args:
+ *   page: A requirement detail page the signed-in project manager can approve on.
+ *   comment: Optional approval comment typed into the dialog.
+ */
+export async function approveRequirementFromDetail(page: Page, comment?: string): Promise<void> {
+  await page.getByRole("button", { name: "Approve", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Approve this requirement?" });
+  if (comment) await dialog.getByLabel("Approval comment").fill(comment);
+  await dialog.getByRole("button", { name: "Approve", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+}
+
+/**
  * Item labels in a record's object-action menu, or `[]` when the page draws no menu (the
  * user has no object actions there). Closes the menu again.
  */

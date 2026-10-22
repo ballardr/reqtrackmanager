@@ -445,6 +445,15 @@ A future page adopting `FilterPanel` gets this shape for free: pass `total` (and
 
 **No filter fields beyond search.** A page with only a search box and no narrowing `FilterField`/`FilterCheckbox` controls (Org Groups, Project Groups, `OrgListPage.tsx`) still uses `FilterPanel` for its header (`ResultCount`/search chrome consistency with every other directory) and passes `children={null}`. `FilterPanel` omits the `"Filters"` heading (and, on mobile, the `CollapsibleSection` accordion around it) whenever `children` is `null` — the same reasoning `layout="top"` already applies to its own heading: a heading over an empty body reads as broken, not as an empty section.
 
+## Pattern: open-only default
+
+A record list with a lifecycle (Pain Points, Open Questions, Risks, Decisions) opens on its **open** items, because most visits want those, and shows the choice as a ticked **Open only** `FilterCheckbox` so it is never hidden state.
+
+- **One rule.** `useOpenOnly` / `opensOnOpenOnly` (`frontend/src/hooks/useOpenOnly.ts`) seeds the checkbox from the URL the page opened with: ticked unless the link says `open=0` or names a slice the default would hide (a valid `status`, or a type's own extra slice such as `blocker=1`); `open=1` keeps it ticked. A link therefore never lands on an empty list.
+- **"Open" is defined once per type**, beside its status labels (`*_OPEN_STATUSES` in the module's `types.ts`), never inline in a page: Pain Point submitted/triaged/accepted; Open Question open/investigating/ready for decision; Risk identified through mitigated, plus accepted (still on the register being managed); Decision draft/proposed/under review (not yet made).
+- **Empty state.** When the default alone hides everything, the message says so ("No open Risks. Untick Open only to include …") instead of "nothing recorded".
+- **Report figures** that count every status link with `open=0`.
+
 ## Pattern: filter panel placement — side vs. top
 
 *(New — follow-up UX fix, see `docs/decisions.md`. A live screenshot of Org Admin's Users table showed the Role column and everything after it visibly cramped against the filter panel's left edge — a genuine readability problem, not a CSS bug: `.side-grid`'s `grid-template-columns: minmax(0, 1fr) 240px` never actually overlaps content, it just leaves a many-column table less room than a narrow one.)*
@@ -581,6 +590,8 @@ Tier 2 — irreversible, wide blast radius. The left panel is hypothetical, not 
 
 The other half of principle 7 — fired from one shared place, so a future mutation can't ship without it the way most of today's do.
 
+**A workflow step that carries a comment** (approve, reject, send back, activate, retire, withdraw) is a Tier-1 confirm built with `CommentConfirmDialog` (`components/CommentConfirmDialog.tsx`), never a hand-built `ConfirmDialog` with its own text area and state. It takes the title, a one-line explanation and the comment caption; `commentRequired` marks the box with the shared required mark and keeps confirm disabled until it holds text. The comment reaches the record's activity as `detail.comment` (and the version's change note where the type is versioned). `RecordLifecycleControls` is built on it.
+
 ## Pattern: deleting something that is still in use
 
 A definition (a status, an action type, a link type, a scoring level) that other records still use cannot simply be deleted, and the answer is not a dead-end error or an inline row that appears under the item. One shared component, `DeleteInUseDialog` (`frontend/src/components/DeleteInUseDialog.tsx`, reached through `DefinitionList`), opens a `Modal` that says what depends on the item and offers the ways out; every vocabulary that routes through `DefinitionList` uses it, so a new vocabulary gets it for free.
@@ -634,6 +645,8 @@ flowchart TD
 
 Read top to bottom: the branch point is what kind of list this is; everything below a "Directory" answer is required together, everything below "Feed" is already the existing, correctly-applied pattern. *Why:* this used to describe two real gaps — Org Admin's Users table had three fixed audit-filter buttons but no way to search by name or email, and neither Users nor Groups paginated at all; Org Admin's and Project Admin's Groups sections both rendered every group's full member list open and inline, unconditionally, which was unnoticeable at a handful of seed-data groups and became the entire page at a hundred. Both are now fixed: Org Admin's Users table (Phase A, 2026-08-31 follow-up UX batch) got real search, `limit`/`offset` pagination, and its filters moved into `FilterPanel`; Org Admin's and Project Admin's Groups sections (Phase B, same batch) both moved onto `DirectoryTable` (see "Pattern: directory table" below) with a per-row `SidePanel` replacing the always-expanded accordion — a group's member list is now collapsed by default the way this pattern requires, since it simply isn't rendered until its row is opened. All five/six of this app's directories (Org Users, Org Groups, Project Groups, Project Members, Server Admin's Access Review) now share this one shell rather than five bespoke ones.
 
+**Report tables** are feeds that are already fully loaded, so `ReportSectionTable` (`ReportViewer.tsx`) pages them client-side: the first `REPORT_TABLE_PAGE_SIZE` (50) rows, a "Showing n of m rows" count and `LoadMoreButton` while rows remain, nothing when the table fits one page. A module's custom report view that shows a section composes `ReportSectionTable` and gets this; it never maps `section.rows` itself. PDF, Word and CSV exports carry every row.
+
 ## Pattern: entity detail panel (view, not just create)
 
 `SidePanel` isn't only for creating something new — the same shape (a layer anchored to the row that opened it, portalled above the page, the list underneath left untouched) is also the right container for *viewing* one record's full detail without navigating away from the list it's part of. Open it read-only: no form fields, no Save button, just the data, with the same close affordance (✕, Escape, backdrop click) every other `SidePanel`/`Modal` already gives.
@@ -658,7 +671,7 @@ Each of the four markers is independently checkable against a component's own im
 
 **When the checklist says "page," add a read-only quick-view `SidePanel` only if it earns its keep** — a minimal peek (title/name plus the one or two fields that identify the row, no actions, no edit, per this pattern's own "open it read-only" rule above) with a single "View full details" link into the page. Skip the quick view entirely (plain direct navigation, `rowHref` straight to the page — Requirements' own precedent, no quick-view step at all) when a fast peek isn't worth the extra layer for that entity's list.
 
-First applied when Decisions (lifecycle actions + relationships + comments + attachments = 4 of 4 markers) moved from a `SidePanel` (`DecisionDetailPanel.tsx`) to a full page (`DecisionDetailPage.tsx`) with a quick-view companion (`DecisionQuickViewPanel.tsx`), 2026-09-22 — see `docs/decisions.md`. Existing `SidePanel`-only entities were not re-audited against this checklist in this pass; worth a follow-up sweep if one is later found straining under it.
+First applied when Decisions (lifecycle actions + relationships + comments + attachments = 4 of 4 markers) moved from a `SidePanel` (`DecisionDetailPanel.tsx`) to a full page (`DecisionDetailPage.tsx`) with a quick-view companion (`DecisionQuickViewPanel.tsx`), 2026-09-22 — see `docs/decisions.md`. The remaining `SidePanel` detail views were then audited against it (see `docs/decisions.md`, "Leftovers (October 2026) Phase 7"): Compliance evidence (attachments and Links) moved to `EvidenceDetailPage`; the others hit 0 or 1 marker and stay panels. A new `SidePanel` detail view that hits two markers is a page from the start.
 
 ## Pattern: directory table
 
@@ -844,6 +857,7 @@ A form is made of these parts and nothing hand-rolled (`scripts/check_form_marku
 |------|-----------|
 | One-line text, text area (`autoGrow` for long prose), date, number, colour, file | `TextField`, `TextAreaField`, `DateField`, `ColorField`, `FileField` (`FormFields.tsx`; a number or password is `TextField` with `inputProps={{ type }}`) |
 | Pick one of a list | `LabeledSelect` (`hint`, `ariaLabel`, `inputProps`) |
+| A control inside a row or table cell, where the row or column heading is the caption (an inline rename, an "add to group" picker beside its button, a CSV column mapping) | `InlineTextInput` (`FormFields.tsx`) and `InlineSelect` (`LabeledSelect.tsx`); both require an `ariaLabel`, so the control is always named. A field in a form is never one of these |
 | Pick a person or group | `PrincipalFormField` (create/edit forms), `RecordPrincipalField` (detail pages; always the compact picker) |
 | A yes/no chosen while filling the form in, or a setting with a hint | `CheckboxField`; `ToggleField` for an on/off setting |
 | Layout | `FormGrid` with `FormGridFull` for titles, text areas and notes; `minColumn="18rem"` in a dialog (give the `Modal` `size="lg"`) |
@@ -854,8 +868,6 @@ A form is made of these parts and nothing hand-rolled (`scripts/check_form_marku
 - A form that two places share its fields (an action created from the Actions page and from a requirement, and edited on its own page) shares them as a component (`ActionFields`), not as two copies.
 - One or two plain fields need no grid; three or more get one.
 - Every field has `help` or `helpNotNeeded` ([Pattern: field help](#pattern-field-help)).
-
-**Not yet migrated:** the inline add and rename rows of the project admin Structure section (stages, components, categories, custom fields), the branding, single sign-on and bootstrap cards of Organisation Admin and the CSV import wizard still use placeholder-only inputs or hand-built layouts; the generic report tables render every row (a very long report table is still one long page).
 
 ## Pattern: button sizes
 
@@ -1045,7 +1057,7 @@ Every form field that is not self-explanatory carries a `(?)` help button after 
 
 ## Tokens
 
-`frontend/src/styles/theme.css` is already, functionally, the design system — CSS custom properties for colour, a working light/dark split, and spacing/radii used consistently even though not yet named as tokens. This section documents it as one, rather than proposing a new palette; every value below is already in the codebase.
+`frontend/src/styles/theme.css` is already, functionally, the design system — CSS custom properties for colour, a working light/dark split, and a named spacing and radius scale. This section documents it as one, rather than proposing a new palette; every value below is already in the codebase.
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
@@ -1063,7 +1075,18 @@ Every form field that is not self-explanatory carries a `(?)` help button after 
 
 Only the three entity kinds core owns have an accent variable. A module registers its own accent as a `{ light, dark }` pair on its `TierAModuleDefinition.entityAccentColor` and it is resolved client-side (`useEntityAccentColor()`); a module's colour is never a variable in `theme.css`.
 
-Dark-theme equivalents already exist for every themed token (`:root[data-theme="dark"]`); the header chrome is the one deliberate exception, fixed regardless of theme. Not yet formalised as named tokens, though consistently used in practice: spacing clusters around `4 / 6 / 8 / 12 / 16 / 24px`, and border radius is a consistent `6px` throughout. Worth promoting to explicit `--space-*`/`--radius-*` custom properties as a small follow-up, rather than inventing a new scale — the values already agree with each other, they're just inline rather than named.
+Dark-theme equivalents already exist for every themed token (`:root[data-theme="dark"]`); the header chrome is the one deliberate exception, fixed regardless of theme. **Spacing and radius** are named tokens. Spacing is in `rem`, so it follows the user's font size.
+
+| Token | Value | Token | Value |
+|---|---|---|---|
+| `--space-1` | `0.25rem` (4px) | `--radius-sm` | `4px` (small chips, code, thumbnails) |
+| `--space-2` | `0.375rem` (6px) | `--radius-md` | `6px` (controls, panels, tooltips) |
+| `--space-3` | `0.5rem` (8px) | `--radius-lg` | `8px` (cards, dialogs) |
+| `--space-4` | `0.75rem` (12px) | `--radius-pill` | `999px` (pills, toggles) |
+| `--space-5` | `1rem` (16px) | | |
+| `--space-6` | `1.5rem` (24px) | | |
+
+Write a `padding`, `margin`, `gap` or `border-radius` that sits on the scale as the token, in the stylesheet (`padding: var(--space-3)`) and in an inline style (`gap: "var(--space-3)"`); `scripts/check_spacing_tokens.py` (pinned by `backend/tests/test_spacing_tokens.py`) fails a literal that has a token. A value between two steps (0.3rem, 0.6rem), a hairline (`1px`), `0`, `50%` for a circle and a size such as a control height are not spacing-scale values and stay literal; do not widen the scale to absorb a one-off. A module never adds a token to the core stylesheet.
 
 Typography: the app's own system-font stack (`-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`) at a 15px base.
 
@@ -1071,7 +1094,7 @@ Typography: the app's own system-font stack (`-apple-system, BlinkMacSystemFont,
 
 **App chrome.** *(New 2026-08-24; toggle position updated 2026-09-13, Platform Review Phase 2.)* A fixed top bar (`.app-header`, deliberately theme-independent — see the colour token table above) plus a pinned, full-height left nav rail (`.nav-rail`, `Layout.tsx`) that stays on screen while page content scrolls. The rail always shows a global section, plus a project-scoped section once a project is selected; it collapses to icon-only via a small circular button (`.nav-rail-toggle`, theme.css) fixed to the viewport and centred on the rail/content divider — a sibling of both `.nav-rail` and `.app-content`, not part of the rail's own scrolling content, so its position never moves with rail scroll or content length, and it tracks the same width tokens `.app-content`'s own left margin uses so it stays centred on the divider whether the rail is expanded or collapsed. The toggle is persisted per-user (`useUiPreference("nav_rail_collapsed")`), and a separate, independent preference (`content_boxed`) controls whether page content fills the remaining width or stays capped at 1200px. App and API version strings are pinned at the bottom of the rail (see the seventh pass's [App/API version](plans/completed/ux-audit-2026-08.md#appapi-version-investigated-working-as-designed) finding for how they're populated). `BrandingProvider`/`TerminologyProvider` wrap everything below the header, so org branding and terminology overrides reach every page and nav label without prop-drilling. *(2026-10-06, Platform Enhancements Phase 4.)* The project section's order is per-user (`ProjectNavSection`, `ProjectNavEditor`): reordering uses up/down buttons (drag-only fails keyboard use), "hide" means *move behind More* (never remove; Overview and Admin are pinned; the active route's item is always shown), and the layout is stored per user with an optional per-project override. Reach for the same shape for any other user-orderable rail section. *(2026-10-19, Platform Review Phase 14.)* The product-default Project order is the core work items (Overview … Reviews due), then module items, then Project history and Project admin last. A module entry whose sub-component is off for the project is not shown. The rail's item list (`.nav-rail-scroll`) is the scroll container and starts at the top of the rail, level with the fixed collapse toggle. It leaves the strip under the toggle free (`margin-right: var(--nav-toggle-overhang)`), so neither a link nor its thin, token-coloured scrollbar runs under the toggle, in every browser.
 
-**Icons.** *(Expanded 2026-08-24 — the previous version of this table named six icons; the app actually uses about fifty. Verified against every `lucide-react` import in `frontend/src`, not assumed.)* `lucide-react` throughout, no other icon set. **Size scale (Decided by: User, 2026-10-18; to be reviewed after Platform Review Phase 21):** 12px in pills and removable chips; 14px beside caption or small text, for disclosure chevrons and in `ActionMenu` items; 16px beside body text, in headings and in the expanded nav rail (14px in the collapsed, icon-only rail). Buttons take their size from the button (see [Pattern: button sizes](#pattern-button-sizes)); a nav-rail icon never shrinks for a long label. Icons are grouped below:
+**Icons.** *(Expanded 2026-08-24 — the previous version of this table named six icons; the app actually uses about fifty. Verified against every `lucide-react` import in `frontend/src`, not assumed.)* `lucide-react` throughout, no other icon set. **Size scale (Decided by: User; accepted as the draft 2026-10-18, confirmed final 2026-10-21):** 12px in pills and removable chips; 14px beside caption or small text, for disclosure chevrons and in `ActionMenu` items; 16px beside body text, in headings and in the expanded nav rail (14px in the collapsed, icon-only rail). Buttons take their size from the button (see [Pattern: button sizes](#pattern-button-sizes)); a nav-rail icon never shrinks for a long label. Icons are grouped below:
 
 | Meaning | Icon | Notes |
 |---|---|---|

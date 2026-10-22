@@ -55,7 +55,7 @@ export function StakeholderGroupsField({
       {current.length === 0 ? (
         <span className="text-muted">Not in any group.</span>
       ) : (
-        <span className="row" style={{ gap: "0.35rem" }}>
+        <span className="row" style={{ gap: "var(--space-2)" }}>
           {current.map((g) => (
             <Badge key={g.id} title={groupPath(groups, g.id)}>
               {g.name}{" "}
@@ -66,7 +66,7 @@ export function StakeholderGroupsField({
           ))}
         </span>
       )}
-      <div className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+      <div className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
         <TreeSelect
           triggerLabel={tier === "project" ? "Project groups" : "Organisation groups"}
           nodes={groupSelectNodes(

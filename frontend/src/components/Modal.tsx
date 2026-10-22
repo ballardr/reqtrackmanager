@@ -64,7 +64,7 @@ export function Modal({
         alignItems: "center",
         justifyContent: "center",
         zIndex: 1100,
-        padding: "1rem",
+        padding: "var(--space-5)",
       }}
     >
       <div

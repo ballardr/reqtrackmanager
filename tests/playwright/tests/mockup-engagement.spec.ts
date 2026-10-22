@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { chooseRecordAction, clickAndAwaitSave, selectProjectAdminGroup, recordCodeText } from "./e2e-workflows/helpers";
+import { approveRequirementFromDetail, chooseRecordAction, clickAndAwaitSave, selectProjectAdminGroup, recordCodeText } from "./e2e-workflows/helpers";
 
 /**
  * Coverage for the mockup-driven engagement features added on top of the
@@ -108,7 +108,7 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
     // A modify change request can only target an already-locked requirement
     // — this spec never baselines
     // a stage (unlike golden-path.spec.ts), so approve it directly instead.
-    await page.getByRole("button", { name: "Approve", exact: true }).click();
+    await approveRequirementFromDetail(page);
     await expect(page.getByText("Locked (approved)")).toBeVisible();
   });
 

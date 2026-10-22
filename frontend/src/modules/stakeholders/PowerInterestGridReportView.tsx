@@ -37,8 +37,8 @@ const QUADRANT_TONE: Record<GridQuadrant, BadgeTone> = {
 
 function Quadrant({ quadrant, items }: { quadrant: GridQuadrant; items: GridItem[] }) {
   return (
-    <section className="card stack" style={{ gap: "0.5rem", minHeight: "8rem" }} aria-label={GRID_QUADRANT_LABEL[quadrant]}>
-      <div className="row" style={{ alignItems: "center", gap: "0.5rem" }}>
+    <section className="card stack" style={{ gap: "var(--space-3)", minHeight: "8rem" }} aria-label={GRID_QUADRANT_LABEL[quadrant]}>
+      <div className="row" style={{ alignItems: "center", gap: "var(--space-3)" }}>
         <h3 style={{ margin: 0 }}>{GRID_QUADRANT_LABEL[quadrant]}</h3>
         <Badge tone={QUADRANT_TONE[quadrant]}>{items.length}</Badge>
       </div>
@@ -82,8 +82,8 @@ export function PowerInterestGridReportView({ result, scope, values, onValueChan
     <div className="stack">
       <StakeholderReportGroupControls projectId={scope.kind === "project" ? scope.id : null} values={values} onValueChange={onValueChange} />
       <ReportSummary result={result} figureAction={figureAction} />
-      <div className="stack" style={{ gap: "0.5rem" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "auto 1fr 1fr", gap: "0.75rem", alignItems: "stretch" }}>
+      <div className="stack" style={{ gap: "var(--space-3)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "auto 1fr 1fr", gap: "var(--space-4)", alignItems: "stretch" }}>
           {GRID_LAYOUT.map((row, index) => (
             <div key={row[0]} style={{ display: "contents" }}>
               <span className="text-muted" style={{ writingMode: "vertical-rl", transform: "rotate(180deg)", textAlign: "center", fontWeight: 600 }}>

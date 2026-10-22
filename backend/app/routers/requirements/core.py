@@ -77,6 +77,7 @@ from app.services.requirements import (
     archive_requirement,
     create_requirement,
     get_current_version,
+    get_current_version_for_update,
     get_keywords,
     is_locked,
     set_keywords,
@@ -694,7 +695,7 @@ def update_requirement(
     requirement = db.get(Requirement, requirement_id)
     if requirement is None or requirement.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
-    current_version = get_current_version(db, requirement.id)
+    current_version = get_current_version_for_update(db, requirement.id)
     if is_locked(current_version):
         raise HTTPException(
             status.HTTP_409_CONFLICT,

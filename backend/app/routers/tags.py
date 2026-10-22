@@ -226,12 +226,12 @@ def reclassify_project_tags(
             owner = tag_service.require_visible_record(resolver, project, item.artefact_type, item.artefact_id)
             if owner is None:
                 raise HTTPException(
-                    status.HTTP_422_UNPROCESSABLE_ENTITY, "Organisation-owned records are reclassified from Organisation Admin.",
+                    status.HTTP_422_UNPROCESSABLE_CONTENT, "Organisation-owned records are reclassified from Organisation Admin.",
                 )
             tag_service.require_tag_authority(resolver, item.artefact_type)
             records.append((item.artefact_type, item.artefact_id, owner))
     else:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose records or a tag to reclassify from.")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Choose records or a tag to reclassify from.")
     result = tag_service.reclassify(
         db, scope=scope, actor_id=current_user.id, records=records, add_ids=body.add, remove_ids=body.remove,
         dry_run=body.dry_run,
@@ -437,7 +437,7 @@ def reclassify_org_tags(
     """Adds and removes organisation tags on every organisation-owned record carrying `from_tag_id`."""
     _org_or_404(db, organization_id)
     if body.from_tag_id is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose the tag to reclassify from.")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Choose the tag to reclassify from.")
     scope = TagScope(organization_id, None)
     records = tag_service.records_with_tag(db, scope=scope, tag_id=body.from_tag_id, artefact_types=body.artefact_types)
     result = tag_service.reclassify(

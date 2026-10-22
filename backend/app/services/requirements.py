@@ -28,7 +28,7 @@ from app.schemas.principal import PrincipalOut, PrincipalRef
 from app.services import tags as tag_service
 from app.services.artefact_changes import notify_artefact_changed, requirement_content_changed
 from app.services.principals import principal_columns, principal_labels, principal_ref
-from app.services.rbac import lock_project_for_update
+from app.services.rbac import lock_project_for_update, lock_row_for_update
 
 # C-G-11: completion is an overlay marker on top of APPROVED, not a
 # separate lifecycle status a requirement can be "in" — a completed
@@ -47,6 +47,20 @@ def get_current_version(db: Session, requirement_id: UUID) -> RequirementVersion
     if version is None:
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Requirement has no current version.")
     return version
+
+
+def get_current_version_for_update(db: Session, requirement_id: UUID) -> RequirementVersion:
+    """`get_current_version` after locking the requirement row, for every path that
+    writes a next version: a second concurrent edit waits for the first, then reads
+    the version the first created instead of dying on the
+    `(requirement_id, version_number)` unique constraint (see `lock_row_for_update`).
+    The lock must precede the read, which is why the two are one call.
+
+    Raises:
+        HTTPException: 500 if the requirement has no current version.
+    """
+    lock_row_for_update(db, Requirement, requirement_id)
+    return get_current_version(db, requirement_id)
 
 
 def is_locked(version: RequirementVersion) -> bool:

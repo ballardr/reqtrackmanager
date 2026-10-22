@@ -213,7 +213,7 @@ export function RichTextEditor({
           <button
             type="button"
             className={`btn${mode === "markdown" ? " btn-primary" : ""}`}
-            style={{ borderRadius: "6px 0 0 6px" }}
+            style={{ borderRadius: "var(--radius-md) 0 0 var(--radius-md)" }}
             onClick={() => switchMode("markdown")}
           >
             Markdown
@@ -221,13 +221,13 @@ export function RichTextEditor({
           <button
             type="button"
             className={`btn${mode === "rich" ? " btn-primary" : ""}`}
-            style={{ borderRadius: "0 6px 6px 0", marginLeft: -1 }}
+            style={{ borderRadius: "0 var(--radius-md) var(--radius-md) 0", marginLeft: -1 }}
             onClick={() => switchMode("rich")}
           >
             Rich text
           </button>
         </div>
-        <div className="row" style={{ gap: "0.25rem" }}>
+        <div className="row" style={{ gap: "var(--space-1)" }}>
           {organizationId && (
             <Tooltip label="Insert image">
               <button type="button" className="btn" aria-label="Insert image" onClick={openImagePicker}>
@@ -280,7 +280,7 @@ export function RichTextEditor({
         </div>
       </div>
       {imagePickerOpen && (
-        <div className="card stack" style={{ padding: "0.5rem" }}>
+        <div className="card stack" style={{ padding: "var(--space-3)" }}>
           <div className="row" style={{ justifyContent: "space-between" }}>
             <strong style={{ fontSize: "0.85rem" }}>Insert image</strong>
             <button type="button" className="btn" onClick={() => setImagePickerOpen(false)}>
@@ -293,20 +293,20 @@ export function RichTextEditor({
           ) : orgImages.length === 0 ? (
             <span className="text-muted">No images uploaded to this organisation yet.</span>
           ) : (
-            <div className="row" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
+            <div className="row" style={{ flexWrap: "wrap", gap: "var(--space-3)" }}>
               {orgImages.map((img) => (
                 <button
                   key={img.id}
                   type="button"
                   className="btn"
-                  style={{ padding: "0.25rem", flexDirection: "column", height: "auto" }}
+                  style={{ padding: "var(--space-1)", flexDirection: "column", height: "auto" }}
                   title={img.filename}
                   onClick={() => insertImage(img)}
                 >
                   <img
                     src={resolveImageRef(`attachment:${img.id}`) ?? ""}
                     alt={img.filename}
-                    style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 4 }}
+                    style={{ width: 64, height: 64, objectFit: "cover", borderRadius: "var(--radius-sm)" }}
                   />
                   <span style={{ fontSize: "0.7rem", maxWidth: 64, overflow: "hidden", textOverflow: "ellipsis" }}>
                     {img.filename}
@@ -315,7 +315,7 @@ export function RichTextEditor({
               ))}
             </div>
           )}
-          <div className="stack" style={{ gap: "0.25rem" }}>
+          <div className="stack" style={{ gap: "var(--space-1)" }}>
             <span className="text-muted" style={{ fontSize: "0.8rem" }}>Or upload a new image</span>
             <FileUploadTrigger accept="image/*" disabled={uploadingImage} onSelect={uploadImage}>
               <Upload size={14} /> Choose file

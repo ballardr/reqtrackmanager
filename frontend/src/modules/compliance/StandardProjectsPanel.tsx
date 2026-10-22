@@ -63,7 +63,7 @@ export function StandardProjectsPanel({ orgId, standard }: { orgId: string; stan
             <li
               key={row.project_compliance_id}
               className="row"
-              style={{ justifyContent: "space-between", padding: "0.5rem 0", borderBottom: "1px solid var(--color-border)" }}
+              style={{ justifyContent: "space-between", padding: "var(--space-3) 0", borderBottom: "1px solid var(--color-border)" }}
             >
               <span>
                 <Link to={`/projects/${row.project_id}/modules/compliance`}>{row.project_name}</Link>

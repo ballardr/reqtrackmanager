@@ -65,7 +65,7 @@ function TreeViewRow<N extends TreeViewNode<N>>({
 
   return (
     <li>
-      <div className="row" style={{ gap: "0.25rem", alignItems: "center", paddingLeft: `${depth * 1.5}rem`, minHeight: "2rem" }}>
+      <div className="row" style={{ gap: "var(--space-1)", alignItems: "center", paddingLeft: `${depth * 1.5}rem`, minHeight: "2rem" }}>
         {hasChildren ? (
           <button
             className="btn"

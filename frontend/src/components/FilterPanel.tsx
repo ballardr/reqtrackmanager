@@ -86,7 +86,7 @@ export function FilterPanel({
   // an empty body reads as broken, not as an empty section.
   const hasFilterFields = children != null;
   const body = isTop ? (
-    <div className="row" style={{ gap: "0.75rem", rowGap: "0.5rem", flexWrap: "wrap", alignItems: "flex-end" }}>
+    <div className="row" style={{ gap: "var(--space-4)", rowGap: "var(--space-3)", flexWrap: "wrap", alignItems: "flex-end" }}>
       {children}
     </div>
   ) : (
@@ -99,7 +99,7 @@ export function FilterPanel({
     >
       <div
         className={isTop ? "row" : "stack"}
-        style={isTop ? { gap: "0.75rem", rowGap: "0.5rem", flexWrap: "wrap", alignItems: "center" } : { gap: "0.5rem" }}
+        style={isTop ? { gap: "var(--space-4)", rowGap: "var(--space-3)", flexWrap: "wrap", alignItems: "center" } : { gap: "var(--space-3)" }}
       >
         {total !== undefined && <ResultCount matching={matching ?? total} total={total} />}
         {onSearchChange && (
@@ -131,7 +131,7 @@ export function FilterPanel({
 
 export function FilterField({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <label className="stack" style={{ gap: "0.25rem" }}>
+    <label className="stack" style={{ gap: "var(--space-1)" }}>
       <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>
         {label}
       </span>

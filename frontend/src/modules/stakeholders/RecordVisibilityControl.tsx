@@ -42,7 +42,7 @@ export function RecordVisibilityControl({
 
   return (
     <RecordFieldGroup help={STAKEHOLDERS_HELP.recordVisibility} label="Visibility in this project" gap="0.35rem">
-      <div className="row" style={{ gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
+      <div className="row" style={{ gap: "var(--space-4)", alignItems: "center", flexWrap: "wrap" }}>
         <span data-testid="project-visibility">
           {shownDespiteParent ? "Shown, although a parent project hides it" : "Visible"}
         </span>

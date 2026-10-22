@@ -108,7 +108,7 @@ export function StandardVersionsSection({
             <li
               key={v.id}
               className="row"
-              style={{ justifyContent: "space-between", padding: "0.5rem 0", borderBottom: "1px solid var(--color-border)" }}
+              style={{ justifyContent: "space-between", padding: "var(--space-3) 0", borderBottom: "1px solid var(--color-border)" }}
             >
               <button className="btn" onClick={() => openVersion(v.id)}>
                 {v.version_label}

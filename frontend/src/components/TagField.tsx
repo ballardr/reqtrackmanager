@@ -48,7 +48,7 @@ export function TagField({
 
   if (!data || !data.can_edit) return null;
   return (
-    <div className="stack" style={{ gap: "0.25rem" }}>
+    <div className="stack" style={{ gap: "var(--space-1)" }}>
       <span>{strings.tags.label}</span>
       <TagInput value={value} onChange={onChange} suggestions={data.suggestions} restricted={data.restricted} />
       <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.tags.create.hint}</span>

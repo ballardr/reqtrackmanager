@@ -131,7 +131,7 @@ export function OrgOverviewPage() {
 
   return (
     <div className="stack">
-      <div className="row" style={{ alignItems: "center", gap: "0.25rem" }}>
+      <div className="row" style={{ alignItems: "center", gap: "var(--space-1)" }}>
         <h1 style={{ margin: 0 }}>{org.name}</h1>
         <EntitySwitcher
           label="Switch organisation"

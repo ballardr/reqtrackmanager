@@ -65,7 +65,7 @@ export function ProposedLinksEditor({
   if (!allowed) return null;
 
   return (
-    <div className="stack" style={{ gap: "0.5rem" }} role="group" aria-label={strings.changeRequests.proposedLinks}>
+    <div className="stack" style={{ gap: "var(--space-3)" }} role="group" aria-label={strings.changeRequests.proposedLinks}>
       <div className="row" style={{ justifyContent: "space-between" }}>
         <strong>{strings.changeRequests.proposedLinks}</strong>
         <button type="button" className="btn" onClick={() => setAdding(true)}>

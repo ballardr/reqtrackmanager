@@ -24,6 +24,10 @@
  * the list's Type column/filter and the create/detail forms, it just no
  * longer hosts their CRUD UI.
  *
+ * The list opens on Decisions still to be made (draft, proposed, under review): the
+ * "Open only" filter is ticked and stays visible, and a link with a valid
+ * `status`, or `open=0`, starts with it off (`hooks/useOpenOnly.ts`).
+ *
  * Links to and from a Decision (Requirements, Pain Points, other Decisions, ...) are shown and
  * edited in the shared Links panel on `DecisionDetailPage.tsx`, and a Decision's links appear on
  * the other record's own page the same way — nothing here is Decision-specific.
@@ -44,10 +48,12 @@ import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as decisionsApi from "./api";
 import { DecisionFormModal } from "./DecisionFormModal";
 import { DecisionQuickViewPanel } from "./DecisionQuickViewPanel";
-import { DECISION_STATUS_LABEL, DECISION_STATUS_TONE } from "./types";
+import { DECISION_OPEN_STATUSES, DECISION_STATUS_LABEL, DECISION_STATUS_TONE } from "./types";
 import type { Decision, DecisionFieldValues, DecisionStatus, DecisionTemplate, DecisionTypeDefinition } from "./types";
 import { Badge } from "../../components/Badge";
+import { oneOf, useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useOpenOnly } from "../../hooks/useOpenOnly";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { rowProjectId } from "../../api/projectScope";
@@ -63,6 +69,7 @@ export function ProjectDecisionsPage() {
   const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "decision");
   const commitTags = useCommitTags(projectId ?? "", "decision");
+  const initial = useInitialSearchParams();
   const [project, setProject] = useState<Project | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [decisionTypes, setDecisionTypes] = useState<DecisionTypeDefinition[]>([]);
@@ -71,7 +78,8 @@ export function ProjectDecisionsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<DecisionStatus | "">("");
+  const [statusFilter, setStatusFilter] = useState<DecisionStatus | "">(() => oneOf(initial.get("status"), Object.keys(DECISION_STATUS_LABEL) as DecisionStatus[]));
+  const [openOnly, setOpenOnly] = useOpenOnly(initial, Object.keys(DECISION_STATUS_LABEL));
   const [decisionTypeFilter, setDecisionTypeFilter] = useState("");
   const [includeArchived, setIncludeArchived] = useState(false);
   const [ownedByMe, setOwnedByMe] = useState(false);
@@ -117,6 +125,10 @@ export function ProjectDecisionsPage() {
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (decisions === null || project === null) return <Spinner />;
 
+  const rows = openOnly ? decisions.filter((d) => DECISION_OPEN_STATUSES.includes(d.status)) : decisions;
+  // An empty list the "Open only" default caused says so, so it is not read as "nothing recorded".
+  const emptyBecauseOfOpenOnly = openOnly && rows.length === 0 && decisions.length > 0;
+
   const columns: DirectoryColumn<Decision>[] = [
     { key: "unique_code", label: "Code", render: (d) => <RecordCode code={d.unique_code} ownerProjectCode={d.from_project_code} /> },
     { key: "title", label: "Title", render: (d) => <>{d.title}<ProjectScopeLabel row={d} /></> },
@@ -145,7 +157,7 @@ export function ProjectDecisionsPage() {
         }
         filter={
           <FilterPanel
-            sectionKey="decisions.list" total={decisions.length}
+            sectionKey="decisions.list" total={rows.length}
             search={search} onSearchChange={setSearch} searchPlaceholder="Search decisions…" searchAriaLabel="Search decisions"
           >
             <FilterField label="Status">
@@ -164,6 +176,7 @@ export function ProjectDecisionsPage() {
                 ))}
               </select>
             </FilterField>
+            <FilterCheckbox label="Open only" checked={openOnly} onChange={setOpenOnly} />
             <FilterCheckbox label="Owned by me or my groups" checked={ownedByMe} onChange={setOwnedByMe} />
             <ProjectScopeFilter scope={projectScope} />
             {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
@@ -174,10 +187,18 @@ export function ProjectDecisionsPage() {
         <DirectoryTable
           ariaLabel="Decisions"
           columns={columns}
-          rows={decisions}
+          rows={rows}
           rowKey={(d) => d.id}
           onRowClick={setSelected}
-          emptyState={<p className="text-muted">No Decisions recorded for this project yet.</p>}
+          emptyState={
+            <p className="text-muted">
+              {emptyBecauseOfOpenOnly
+                ? "No open Decisions. Untick Open only to include approved, rejected and superseded ones."
+                : decisions.length > 0
+                  ? "No Decisions match these filters."
+                  : "No Decisions recorded for this project yet."}
+            </p>
+          }
         />
       </ListPageLayout>
 

@@ -1,0 +1,6 @@
+# Code owners: who GitHub asks to review a pull request, and whose approval the "Main Branch"
+# ruleset's "Require review from Code Owners" rule counts. See the "Branch protection checklist" in
+# docs/soc2/policies/change-management-and-secure-development-policy.md. Add narrower patterns below
+# the `*` line when another person owns an area (the last matching pattern wins).
+
+*   @ballardr
