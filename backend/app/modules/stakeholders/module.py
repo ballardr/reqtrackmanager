@@ -51,6 +51,7 @@ other new modules.
 
 from __future__ import annotations
 
+from functools import cache
 from pathlib import Path
 from uuid import UUID
 
@@ -137,9 +138,12 @@ def _principal_references() -> tuple[PrincipalReference, ...]:
     )
 
 
+@cache
 def get_router() -> APIRouter | None:
     """The org-scoped router (Persona + Stakeholder routes); imported lazily
-    to avoid import cycles with this module's own registration."""
+    to avoid import cycles with this module's own registration. Built once:
+    combining the sub-routers re-creates every route's validation model, and
+    callers (the report catalogue, route listings) ask on every request."""
     from app.modules.stakeholders.group_router import router as group_router
     from app.modules.stakeholders.router import router
     from app.modules.stakeholders.stakeholder_router import router as stakeholder_router
@@ -151,9 +155,11 @@ def get_router() -> APIRouter | None:
     return combined
 
 
+@cache
 def get_project_router() -> APIRouter | None:
     """The project-scoped router (Persona + Stakeholder routes); imported
-    lazily like `get_router`."""
+    lazily like `get_router`, and built once for the same reason (about three
+    seconds per build, which made every Reports page load wait that long)."""
     from app.modules.stakeholders.engagement_project_router import router as engagement_router
     from app.modules.stakeholders.group_project_router import router as group_router
     from app.modules.stakeholders.need_project_router import router as need_router

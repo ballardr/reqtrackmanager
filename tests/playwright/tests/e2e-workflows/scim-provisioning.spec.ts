@@ -40,7 +40,7 @@ test.describe("SCIM provisioning token", () => {
     let token = "";
     await test.step("generate a token and see it shown exactly once", async () => {
       await page.getByRole("button", { name: "Generate SCIM token" }).click();
-      const tokenInput = page.getByText("Copy this token now").locator("xpath=following-sibling::input[1]");
+      const tokenInput = page.getByLabel("SCIM token", { exact: true });
       await expect(tokenInput).toBeVisible();
       token = await tokenInput.inputValue();
       expect(token).toMatch(/^rtm_scim_/);

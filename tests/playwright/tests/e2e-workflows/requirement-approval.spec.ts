@@ -73,6 +73,9 @@ test.describe("requirement approval", () => {
     await test.step("the approval comment is quoted under the approval in the Activity tab", async () => {
       await page.getByRole("tab", { name: "Activity" }).click();
       await expect(page.locator("blockquote.activity-note", { hasText: approvalComment })).toBeVisible();
+      // The selected aside tab is a remembered per-user preference on this shared persona, so put
+      // it back: later specs on this persona expect to find the Links panel without switching.
+      await page.getByRole("tab", { name: "Links" }).click();
     });
   });
 });
