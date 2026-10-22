@@ -66,7 +66,7 @@ JWT_SECRET=<random 32+ byte secret>              # access token signing
 APP_SECRET_ENCRYPTION_KEY=<random 32+ byte secret>  # encrypts stored secrets at rest — distinct from JWT_SECRET
 SERVER_ADMIN_PASSWORD=<strong password>           # bootstrap admin account
 POSTGRES_PASSWORD=<strong password>
-STORAGE_ROOT_PASSWORD=<strong password>           # if using the bundled storage service
+STORAGE_SECRET_KEY=<strong password>              # S3 secret for the bundled storage (STORAGE_ACCESS_KEY optional)
 CORS_ORIGINS=https://your-domain.example
 SMTP_HOST=smtp.your-provider.example              # a real provider — MailHog is dev/test-only
 ```
@@ -133,7 +133,7 @@ Backend environment variables (set via `docker-compose.yml`, a `.env` file, or y
 | `STORAGE_BACKEND` | `local` (Compose default: `s3`) | — | File storage backend: `local` (filesystem) or `s3` (S3-compatible), I-M-10 |
 | `STORAGE_LOCAL_DIR` | `./data/files` | — | Filesystem directory used by the `local` storage backend |
 | `STORAGE_S3_BUCKET` / `STORAGE_S3_ENDPOINT_URL` / `STORAGE_S3_ACCESS_KEY` | see `docker-compose.yml` | — | Connection details for the `s3` storage backend |
-| `STORAGE_ROOT_PASSWORD` / `STORAGE_S3_SECRET_KEY` | `minioadmin` | **Yes** | Bundled storage service's admin password, shared with the backend's S3 secret key |
+| `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY` | `minioadmin` / — | **Yes** | The one S3 identity of the bundled storage service, limited to the application bucket; the backend uses the same pair. Earlier `STORAGE_ROOT_USER` / `STORAGE_ROOT_PASSWORD` still work. Hardening: [docs/deployment.md](docs/deployment.md#hardening-the-bundled-storage-further) |
 | `SMTP_HOST` | — | **Yes** | Outgoing SMTP host (C-N-03) — a real provider in production, MailHog in the dev/test stack |
 | `SMTP_PORT` / `SMTP_USE_TLS` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM_ADDRESS` | see `docker-compose.yml` | Recommended | Remaining SMTP connection details |
 | `DEPLOYMENT_NOTIFICATION_EMAIL` | unset | — | Address notified of deployment-level events such as low disk space (I-M-09, I-M-11) |

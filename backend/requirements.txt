@@ -39,7 +39,7 @@ aiosmtplib==5.1.2
 # regardless of version (autoescape always on, templates never built from
 # a runtime string, no |safe on user-supplied data).
 jinja2==3.1.6
-boto3==1.35.24
+boto3==1.43.117
 apscheduler==3.10.4
 # `authlib` was removed (2026-08 security uplift): its only use was
 # `authlib.jose` in services/oidc_client.py, which authlib itself deprecated
