@@ -11394,3 +11394,15 @@ Closes the open question left by the Pain Points default. **Decided by: User** (
 - **Tests.** Stories for both components; Playwright `inline-admin-controls-labelled.spec.ts` (Structure rows and the CSV mapping found by label); the existing structural, CSV, hierarchy and link-type specs pass unchanged against the rebuilt frontend. `tsc -b`, `eslint`, the three form checks and the affected stories pass.
 - **Style guide.** The form-parts table lists the two inline components; the "Not yet migrated" note now names only the report tables (the next phase).
 - **SOC 2 / modules / parity / nested projects / time:** presentation only. No data, permission, audit or logging change; no module value added to a core enum, no project-scoped definition table, no person field and no time value.
+
+## Leftovers (October 2026) Phase 6: report tables page on screen (2026-10-22)
+
+**Decided by: Agent** (page size and wording); the scope came from the plan and the style guide's former "Not yet migrated" note.
+
+- **Behaviour.** `ReportSectionTable` shows the first 50 rows (`REPORT_TABLE_PAGE_SIZE`), a "Showing n of m rows" count and `LoadMoreButton` (50 more per click) while rows remain; a table of 50 or fewer shows neither. Paging is client-side because the report response is already fully loaded; the gap badge still counts every row. Exports are unchanged and carry every row.
+- **Reach.** The four module report views that compose `ReportSectionTable` (Open Question register, Pain Point prioritisation, Power/interest grid, Engagement staleness) inherit it with no edit; no report maps `section.rows` itself.
+- **Judgement call.** Revealed rows reset on reload and when the report is re-run (state is per mounted table); a "show all" control was not added because 50-row steps are one click per page and a very large report is better exported.
+- **Tests.** Storybook (500 rows paging, a 50-row table with no controls); Playwright `report-table-paging.spec.ts` (55 real decisions: first page, Load more, CSV still has all 55, reload returns to the first page); the Decision report spec still passes.
+- **Docs.** Style guide (paragraph under "directories at scale"; "Not yet migrated" note removed); website reports page.
+- **SOC 2 / modules / parity / nested projects / time:** presentation only. No data, permission, audit or logging change; no module value added to a core enum, no project-scoped definition table, no person field and no time value.
+

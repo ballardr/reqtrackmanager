@@ -1670,6 +1670,8 @@ const en = {
   reports: {
     title: "Reports",
     generatePdf: "Generate PDF",
+    // A long report table is paged on screen; exports still carry every row.
+    tableShowing: (shown: number, total: number) => `Showing ${shown} of ${total} rows`,
     moreFormats: "More formats",
     templateAndLayout: "Template & layout",
     reportTemplate: "Report template",

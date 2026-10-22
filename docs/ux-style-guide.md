@@ -645,6 +645,8 @@ flowchart TD
 
 Read top to bottom: the branch point is what kind of list this is; everything below a "Directory" answer is required together, everything below "Feed" is already the existing, correctly-applied pattern. *Why:* this used to describe two real gaps — Org Admin's Users table had three fixed audit-filter buttons but no way to search by name or email, and neither Users nor Groups paginated at all; Org Admin's and Project Admin's Groups sections both rendered every group's full member list open and inline, unconditionally, which was unnoticeable at a handful of seed-data groups and became the entire page at a hundred. Both are now fixed: Org Admin's Users table (Phase A, 2026-08-31 follow-up UX batch) got real search, `limit`/`offset` pagination, and its filters moved into `FilterPanel`; Org Admin's and Project Admin's Groups sections (Phase B, same batch) both moved onto `DirectoryTable` (see "Pattern: directory table" below) with a per-row `SidePanel` replacing the always-expanded accordion — a group's member list is now collapsed by default the way this pattern requires, since it simply isn't rendered until its row is opened. All five/six of this app's directories (Org Users, Org Groups, Project Groups, Project Members, Server Admin's Access Review) now share this one shell rather than five bespoke ones.
 
+**Report tables** are feeds that are already fully loaded, so `ReportSectionTable` (`ReportViewer.tsx`) pages them client-side: the first `REPORT_TABLE_PAGE_SIZE` (50) rows, a "Showing n of m rows" count and `LoadMoreButton` while rows remain, nothing when the table fits one page. A module's custom report view that shows a section composes `ReportSectionTable` and gets this; it never maps `section.rows` itself. PDF, Word and CSV exports carry every row.
+
 ## Pattern: entity detail panel (view, not just create)
 
 `SidePanel` isn't only for creating something new — the same shape (a layer anchored to the row that opened it, portalled above the page, the list underneath left untouched) is also the right container for *viewing* one record's full detail without navigating away from the list it's part of. Open it read-only: no form fields, no Save button, just the data, with the same close affordance (✕, Escape, backdrop click) every other `SidePanel`/`Modal` already gives.
@@ -866,8 +868,6 @@ A form is made of these parts and nothing hand-rolled (`scripts/check_form_marku
 - A form that two places share its fields (an action created from the Actions page and from a requirement, and edited on its own page) shares them as a component (`ActionFields`), not as two copies.
 - One or two plain fields need no grid; three or more get one.
 - Every field has `help` or `helpNotNeeded` ([Pattern: field help](#pattern-field-help)).
-
-**Not yet migrated:** the generic report tables render every row (a very long report table is still one long page).
 
 ## Pattern: button sizes
 
