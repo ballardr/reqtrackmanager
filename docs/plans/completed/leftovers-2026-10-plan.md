@@ -1,11 +1,11 @@
 # Leftovers (October 2026) — Plan
 
-**Status:** planned 2026-10-21, not started. Built from a review of `docs/decisions.md`, `docs/ux-style-guide.md` and the SOC 2 Known Gaps sections. Module plans (5–15), resource profiling and disaster recovery are separate and excluded.
+**Status:** complete 2026-10-23 (11 / 11). Built from a review of `docs/decisions.md`, `docs/ux-style-guide.md` and the SOC 2 Known Gaps sections. Module plans (5–15), resource profiling and disaster recovery are separate and excluded.
 **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. Questions Q1–Q6 were answered by the user on 2026-10-21 (section 2); everything else about *how* is **Decided by: Agent**.
 
 ## Status / Resume Here
 
-10 / 11 phases complete (Phases 1–10 finished 2026-10-21/22, uncommitted at hand-back; Phase 0, the questions, was already signed off). Phase 11 (close-out) is next. Open for the user after Phase 10: apply the branch-protection checklist, and decide on the docs-site `braces` advisory (report-only for now). Follow-up: section 6.
+11 / 11 phases complete (finished 2026-10-21 to 2026-10-23; the plan is archived). Open for the user: apply the branch-protection checklist, decide on the docs-site `braces` advisory (report-only for now), and answer the Compliance tag/quick-link question. Follow-ups: section 6.
 
 | # | Phase | Source of the item | Status |
 |---|-------|--------------------|--------|
@@ -20,7 +20,7 @@
 | 8 | Spacing and radius become named tokens | style guide, design tokens | [x] |
 | 9 | Backend gets a bucket-scoped storage credential | vendor policy Known Gap 3 | [x] |
 | 10 | CI and policy gaps: dependency scanning, coverage threshold, stale policy text, CODEOWNERS and ruleset checklist | change-management policy Known Gaps 2–5 | [x] |
-| 11 | Docs website, seeds, README, close-out and archive this plan | all | [ ] |
+| 11 | Docs website, seeds, README, close-out and archive this plan | all | [x] |
 
 ```mermaid
 flowchart LR
@@ -165,7 +165,7 @@ Each phase follows the standing checklist in section 4. Every requirement states
 | A sole owner cannot satisfy a required approval | Checklist names the options (owner bypass or a second reviewer); the user decides when applying it |
 | Concurrent-edit tests flake | Use a barrier in the test, not sleeps; do not widen timeouts |
 
-When the table reads 11 / 11: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").
+The table reads 11 / 11, so this file lives in `docs/plans/completed/`.
 
 ## 6. Follow-ups (outside this plan's phases)
 
@@ -176,3 +176,5 @@ Raised during Phase 10 (**Decided by: User**, 2026-10-22: record it as a follow-
   - **Work:** one shared `iter_routes(router)` helper yielding each `APIRoute` with its full path, used by all three; decide between the private `_IncludedRouter` fields (needs recursion and prefix combining) and a public route (`url_path_for`, or `app.openapi()`, which loses `openapi_extra` and `dependant`); confirm where `dependant` and `openapi_extra` live in the lazy model; then bump FastAPI and Starlette together.
   - **Tests:** a nested-router case (prefixes at two levels) for the helper; a guard that the module MCP manifest and the project-scope scan are non-empty, so a walker that finds nothing fails instead of passing; the full backend suite.
   - **Risk:** a missed route fails silently (tools vanish, a scan checks nothing), which is why the non-empty guards matter. Estimated half a day to a day.
+
+- **Decide whether Compliance records get tags and quick links.** Raised in Phase 7 (**Decided by: Agent** to raise it; the answer is the user's). No Compliance create form has `QuickLinkField` or `TagField` and no Compliance list has `TagFilterField`, with no reason recorded in `docs/decisions.md`, which the style guide's tag and quick-link patterns require. Either build them for every Compliance type or record why each is omitted.

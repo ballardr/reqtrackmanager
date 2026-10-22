@@ -11476,3 +11476,13 @@ Closes the open question left by the Pain Points default. **Decided by: User** (
 - **Tests.** `backend/tests/test_ci_gates.py` pins the threshold, the audits, the report-only exception, scan-before-push, the `needs` edge and CODEOWNERS (it skips inside the backend container, which cannot see the repository root, and was run directly on the host). Full backend suite on the final dependency set: 2824 passed, 45 skipped (the six new gate tests skip in the container), coverage 95.23% against the 93.2% gate. The 413 constant rename came after that run and was re-tested on the three export/import files (30 passed).
 - **Security review (identify, verify, remediate).** Identify: the scan results above. Verify: re-ran `pip-audit` and Trivy after each fix (all clean) and confirmed Starlette 1.9.0 and nginx 1.30 under the running stack (frontend and docs health endpoints on IPv4 and IPv6). Remediate: the upgrades and the pin. No authorization, audit or logging path changed.
 - **SOC 2 / modules / parity / nested projects / time:** CI and dependency changes only. No module value added to a core enum, no project-scoped definition table, no person field, no time value.
+
+## Leftovers (October 2026) Phase 11: close-out (2026-10-23)
+
+**Decided by: Agent** (the review and the archive); the scope was the plan's.
+
+- **Docs website review.** Already updated by the phases that changed user-visible behaviour: the requirement approval comment (workflow page), Open only on Risks, Decisions, Open Questions and Pain Points, report table paging (reports and export page), the Compliance evidence page, and the storage credential and CI wording (installation pages). Phases 1, 2, 5 (forms keep their behaviour), 8, 9 beyond configuration and 10 have no further user-visible surface. README and `docs/solution-architecture.md` already describe the scoped storage identity and the CI scanning and coverage gate.
+- **Seeds.** Both `seed_e2e_dataset.py` and `seed_demo_data.py` were run against a freshly created and migrated scratch database (a second backend process on it, then dropped) and completed; neither needed a change.
+- **Archive.** The plan moved to `docs/plans/completed/`; no other file named it.
+- **Still open for the user:** the branch-protection checklist (change-management policy), the docs-site `braces` advisory, and whether Compliance records get tags and quick links (Phase 7's gap); all three are in the plan's follow-ups or its status line.
+- **SOC 2 / modules / parity / nested projects / time:** documentation only; no behaviour change.
