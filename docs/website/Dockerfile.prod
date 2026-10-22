@@ -20,7 +20,7 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM nginxinc/nginx-unprivileged:1.27-alpine
+FROM nginxinc/nginx-unprivileged:1.30-alpine
 
 ARG DOCS_BASE_URL=/
 # The stock entrypoint renders /etc/nginx/templates/*.template with this

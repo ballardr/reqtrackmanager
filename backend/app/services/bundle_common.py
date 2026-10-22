@@ -38,7 +38,7 @@ def enforce_upload_size_limit(data: bytes, *, what: str) -> None:
     alone already exceeds `MAX_IMPORT_UPLOAD_BYTES`."""
     if len(data) > MAX_IMPORT_UPLOAD_BYTES:
         raise HTTPException(
-            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status.HTTP_413_CONTENT_TOO_LARGE,
             f"{what} is too large ({len(data)} bytes; max {MAX_IMPORT_UPLOAD_BYTES} bytes).",
         )
 
@@ -54,7 +54,7 @@ def enforce_zip_uncompressed_size_limit(zf: zipfile.ZipFile) -> None:
     total = sum(zi.file_size for zi in zf.infolist())
     if total > MAX_BUNDLE_UNCOMPRESSED_BYTES:
         raise HTTPException(
-            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status.HTTP_413_CONTENT_TOO_LARGE,
             f"Bundle's uncompressed contents ({total} bytes) exceed the maximum allowed ({MAX_BUNDLE_UNCOMPRESSED_BYTES} bytes).",
         )
 

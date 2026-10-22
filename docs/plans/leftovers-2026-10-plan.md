@@ -5,7 +5,7 @@
 
 ## Status / Resume Here
 
-9 / 11 phases complete (Phases 1–9 finished 2026-10-21/22, uncommitted at hand-back; Phase 0, the questions, was already signed off). Every other phase can start; Phase 10 is next in table order.
+10 / 11 phases complete (Phases 1–10 finished 2026-10-21/22, uncommitted at hand-back; Phase 0, the questions, was already signed off). Phase 11 (close-out) is next. Open for the user after Phase 10: apply the branch-protection checklist, and decide on the docs-site `braces` advisory (report-only for now). Follow-up: section 6.
 
 | # | Phase | Source of the item | Status |
 |---|-------|--------------------|--------|
@@ -19,7 +19,7 @@
 | 7 | `SidePanel`-only detail views audited against the page checklist | style guide, "Pattern: entity detail panel" | [x] |
 | 8 | Spacing and radius become named tokens | style guide, design tokens | [x] |
 | 9 | Backend gets a bucket-scoped storage credential | vendor policy Known Gap 3 | [x] |
-| 10 | CI and policy gaps: dependency scanning, coverage threshold, stale policy text, CODEOWNERS and ruleset checklist | change-management policy Known Gaps 2–5 | [ ] |
+| 10 | CI and policy gaps: dependency scanning, coverage threshold, stale policy text, CODEOWNERS and ruleset checklist | change-management policy Known Gaps 2–5 | [x] |
 | 11 | Docs website, seeds, README, close-out and archive this plan | all | [ ] |
 
 ```mermaid
@@ -166,3 +166,13 @@ Each phase follows the standing checklist in section 4. Every requirement states
 | Concurrent-edit tests flake | Use a barrier in the test, not sleeps; do not widen timeouts |
 
 When the table reads 11 / 11: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").
+
+## 6. Follow-ups (outside this plan's phases)
+
+Raised during Phase 10 (**Decided by: User**, 2026-10-22: record it as a follow-up).
+
+- **Move the backend off FastAPI 0.136.3 by rewriting the route walkers.** Phase 10 pinned `fastapi==0.136.3` because later releases keep included routers as lazy `_IncludedRouter` entries, so `APIRouter.routes` no longer lists every route with its full path. Three places read that list: `backend/app/modules/registry.py` (the lookup that validates module MCP tools; a miss silently drops the tool), `backend/app/services/report_framework.py` (`_mounted_path`) and `backend/tests/test_project_scope.py` (the `app.routes` scan).
+  - **Why:** the pin stops the backend taking later FastAPI fixes and features, and the Starlette pin has to move with it.
+  - **Work:** one shared `iter_routes(router)` helper yielding each `APIRoute` with its full path, used by all three; decide between the private `_IncludedRouter` fields (needs recursion and prefix combining) and a public route (`url_path_for`, or `app.openapi()`, which loses `openapi_extra` and `dependant`); confirm where `dependant` and `openapi_extra` live in the lazy model; then bump FastAPI and Starlette together.
+  - **Tests:** a nested-router case (prefixes at two levels) for the helper; a guard that the module MCP manifest and the project-scope scan are non-empty, so a walker that finds nothing fails instead of passing; the full backend suite.
+  - **Risk:** a missed route fails silently (tools vanish, a scan checks nothing), which is why the non-empty guards matter. Estimated half a day to a day.

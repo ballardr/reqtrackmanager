@@ -1,6 +1,6 @@
 # GitHub Actions CI pipeline.
 #
-# Seven jobs, run on every push to main, every pull request, and on demand:
+# Eight jobs, run on every push to main, every pull request, and on demand:
 #   1. frontend          - lint, type-check, production build, then the
 #                          Storybook/Vitest suite (real Chromium) with
 #                          coverage
@@ -38,17 +38,24 @@
 #                          badge files and racing each other — see that job's
 #                          own comment. Doesn't need e2e-tests: nothing it
 #                          reads comes from that job.
-#   5. docker-build      - builds the production backend, frontend,
+#   5. dependency-scan   - pip-audit (backend, mcp-server) and npm audit
+#                          (frontend, Playwright; the docs site is reported
+#                          only) against the pinned dependency files. Runs in
+#                          parallel with the test jobs; docker-build needs it.
+#   6. docker-build      - builds the production backend, frontend,
 #                          mcp-server and docs-site images, gated on jobs 1-3
-#                          passing; tags each with GitVersion's computed SemVer
-#                          plus the commit SHA and `latest`, and pushes all to
-#                          ghcr.io — except on pull_request runs, which still
-#                          build (proving the Dockerfiles work) but never push
-#   6. docs              - builds docs/website/ (Docusaurus) and fails on any
+#                          and dependency-scan passing; scans every image with
+#                          Trivy (HIGH/CRITICAL with a fix fail the job) before
+#                          anything is pushed; tags each with GitVersion's
+#                          computed SemVer plus the commit SHA and `latest`, and
+#                          pushes all to ghcr.io — except on pull_request runs,
+#                          which still build (proving the Dockerfiles work) but
+#                          never push
+#   7. docs              - builds docs/website/ (Docusaurus) and fails on any
 #                          broken internal link/anchor (onBrokenLinks/
 #                          onBrokenAnchors: 'throw'), on every push and PR —
 #                          independent of and parallel with every job above.
-#   7. docs-deploy       - needs: [docs]. Push-only-on-main, same gating
+#   8. docs-deploy       - needs: [docs]. Push-only-on-main, same gating
 #                          shape as docker-build; deploys docs/website/'s
 #                          build to GitHub Pages via actions/deploy-pages.
 #                          Requires GitHub Pages enabled in this repo's own
@@ -372,11 +379,15 @@ jobs:
       # database isolation is already generic on `PYTEST_XDIST_WORKER`
       # (`_gw0`, `_gw1`, ...), not hardcoded to any worker count, so this is
       # a mechanical bump, not a design change.
+      # --cov-fail-under is the published figure (95.2% on 2026-10-22) minus two
+      # points, so a real drop fails the build while normal churn does not. Raise
+      # it when coverage rises; never lower it to make a failing run pass.
       - name: Run backend tests with coverage
         working-directory: tests/container
         run: |
           docker compose exec -T backend python -m pytest -n 4 \
             --cov=app --cov-report=xml --cov-report=term-missing --cov-report=html \
+            --cov-fail-under=93.2 \
             --junitxml=pytest-report.xml -q
           docker compose cp backend:/app/coverage.xml ./coverage.xml
           docker compose cp backend:/app/pytest-report.xml ./pytest-report.xml
@@ -854,13 +865,59 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
 
+  dependency-scan:
+    name: Dependency vulnerability scan
+    runs-on: ubuntu-latest
+    # Independent of every test job and cheap (~1-2 minutes); docker-build
+    # needs it so a vulnerable dependency stops the images being published.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      # pip-audit resolves the full dependency tree (so a vulnerable
+      # transitive package is found, not only the ones named in the file).
+      # A finding is fixed by upgrading the package; there is no ignore list.
+      - name: Install pip-audit
+        run: python3 -m pip install pip-audit==2.10.1
+
+      - name: Audit backend Python dependencies
+        run: python3 -m pip_audit -r backend/requirements.txt
+
+      - name: Audit mcp-server Python dependencies
+        run: python3 -m pip_audit -r mcp-server/requirements.txt
+
+      # --omit=dev: only what ships to users is gated. The frontend bundle is
+      # built from these production dependencies; test-only tooling is not.
+      - name: Audit frontend npm dependencies
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Audit Playwright npm dependencies
+        working-directory: tests/playwright
+        run: npm audit --omit=dev --audit-level=high
+
+      # Reported but not gating, because the only open finding (`braces`, a
+      # build-time glob dependency of Docusaurus) has no patched release: the
+      # published docs image is static files served by nginx and contains none
+      # of it. Make this step gating (remove continue-on-error) once
+      # Docusaurus moves off the vulnerable range.
+      - name: Audit documentation site npm dependencies (not gating)
+        working-directory: docs/website
+        continue-on-error: true
+        run: npm audit --omit=dev --audit-level=high
+
   docker-build:
     name: Build, version, and push production container images
     runs-on: ubuntu-latest
-    needs: [frontend, backend-tests, e2e-tests]
-    # Normal runs finish in ~2-3 minutes; see backend-tests'
-    # timeout-minutes comment for why every job here now has a ceiling.
-    timeout-minutes: 20
+    needs: [frontend, backend-tests, e2e-tests, dependency-scan]
+    # Normal runs finish in ~5 minutes (four image builds, the image scans and
+    # the push); see backend-tests' timeout-minutes comment for why every job
+    # here now has a ceiling.
+    timeout-minutes: 30
     # Builds and tags on every run (proving all three production Dockerfiles
     # still build cleanly), but only pushes to ghcr.io when this isn't a
     # pull_request run — a same-repo PR's GITHUB_TOKEN could technically
@@ -903,6 +960,84 @@ jobs:
         run: echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v4
+
+      # Documentation site image, for hosting the docs inside a deployment
+      # (HELP_URL). The first build uses a non-default base path and is smoke
+      # tested, because a wrong base path is the way this image breaks: the
+      # home page would load but every asset and nested page would 404.
+      - name: Build docs image for smoke test (base path /docs/)
+        uses: docker/build-push-action@v7
+        with:
+          context: ./docs/website
+          file: ./docs/website/Dockerfile.prod
+          load: true
+          push: false
+          build-args: |
+            DOCS_BASE_URL=/docs/
+          tags: docs-smoke:test
+
+      - name: Smoke test docs image
+        run: |
+          docker run -d --name docs-smoke -p 8081:8080 docs-smoke:test
+          for i in $(seq 1 30); do curl -sf http://localhost:8081/health && break; sleep 1; done
+          curl -sf http://localhost:8081/docs/ -o /dev/null
+          curl -sf http://localhost:8081/docs/installation-deployment/overview -o /dev/null
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8081/docs/no-such-page)
+          test "$code" = "404"
+          docker rm -f docs-smoke
+
+      # Vulnerability scan of every image before any of them is pushed, so a
+      # vulnerable image never reaches the registry a deployment pulls from.
+      # The images are built here only to be scanned (build args that only
+      # label the image are omitted); the push steps below rebuild them from
+      # the same builder's cache. The docs image is the smoke-test build above.
+      - name: Build backend image for scanning
+        uses: docker/build-push-action@v7
+        with:
+          context: ./backend
+          load: true
+          push: false
+          tags: scan-backend:ci
+
+      - name: Build frontend image for scanning
+        uses: docker/build-push-action@v7
+        with:
+          context: ./frontend
+          load: true
+          push: false
+          tags: scan-frontend:ci
+
+      - name: Build mcp-server image for scanning
+        uses: docker/build-push-action@v7
+        with:
+          context: ./mcp-server
+          load: true
+          push: false
+          tags: scan-mcp-server:ci
+
+      # HIGH and CRITICAL findings that have a fix available fail the job: fix
+      # them by moving the base image or the dependency, never by an ignore
+      # file. `--ignore-unfixed` leaves out only findings with no released fix,
+      # which nothing in this repository can remediate; they are re-checked on
+      # every run, so one is reported as soon as a fix exists. Trivy is run from
+      # its own pinned image rather than a third-party action.
+      - name: Scan images for HIGH/CRITICAL vulnerabilities (Trivy)
+        env:
+          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2
+          TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1,ghcr.io/aquasecurity/trivy-java-db:1
+        run: |
+          status=0
+          for image in scan-backend:ci scan-frontend:ci scan-mcp-server:ci docs-smoke:test; do
+            echo "::group::Trivy $image"
+            docker run --rm \
+              -e TRIVY_DB_REPOSITORY -e TRIVY_JAVA_DB_REPOSITORY \
+              -v /var/run/docker.sock:/var/run/docker.sock \
+              ghcr.io/aquasecurity/trivy:0.75.0 image \
+              --severity HIGH,CRITICAL --ignore-unfixed --scanners vuln \
+              --exit-code 1 --no-progress "$image" || status=1
+            echo "::endgroup::"
+          done
+          exit $status
 
       - name: Log in to ghcr.io
         if: github.event_name != 'pull_request'
@@ -949,31 +1084,6 @@ jobs:
             ghcr.io/${{ github.repository }}-mcp-server:${{ steps.gitversion.outputs.semVer }}
             ghcr.io/${{ github.repository }}-mcp-server:${{ github.sha }}
             ghcr.io/${{ github.repository }}-mcp-server:latest
-
-      # Documentation site image, for hosting the docs inside a deployment
-      # (HELP_URL). The first build uses a non-default base path and is smoke
-      # tested, because a wrong base path is the way this image breaks: the
-      # home page would load but every asset and nested page would 404.
-      - name: Build docs image for smoke test (base path /docs/)
-        uses: docker/build-push-action@v7
-        with:
-          context: ./docs/website
-          file: ./docs/website/Dockerfile.prod
-          load: true
-          push: false
-          build-args: |
-            DOCS_BASE_URL=/docs/
-          tags: docs-smoke:test
-
-      - name: Smoke test docs image
-        run: |
-          docker run -d --name docs-smoke -p 8081:8080 docs-smoke:test
-          for i in $(seq 1 30); do curl -sf http://localhost:8081/health && break; sleep 1; done
-          curl -sf http://localhost:8081/docs/ -o /dev/null
-          curl -sf http://localhost:8081/docs/installation-deployment/overview -o /dev/null
-          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8081/docs/no-such-page)
-          test "$code" = "404"
-          docker rm -f docs-smoke
 
       - name: Build and push docs image
         uses: docker/build-push-action@v7

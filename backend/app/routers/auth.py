@@ -357,11 +357,11 @@ def update_preferences(
         if patch.get(SEARCH_DEFAULT_FIELDS_KEY) is not None:
             patch[SEARCH_DEFAULT_FIELDS_KEY] = validate_default_fields(db, current_user, patch[SEARCH_DEFAULT_FIELDS_KEY])
         if patch.get(SEARCH_INCLUDE_ORG_RECORDS_KEY) is not None and not isinstance(patch[SEARCH_INCLUDE_ORG_RECORDS_KEY], bool):
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "search_include_org_records must be true or false.")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "search_include_org_records must be true or false.")
         try:
             current_user.ui_preferences = merge_ui_preferences(current_user.ui_preferences, patch)
         except ValueError as exc:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     if payload.display_name is not None:
         if current_user.display_name_locked:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Your display name has been locked by an organisation admin.")

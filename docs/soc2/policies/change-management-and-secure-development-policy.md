@@ -55,16 +55,45 @@ flowchart LR
 
 This is one of the better-evidenced policies in this package precisely because the codebase's own working conventions already closely match what CC8.1 asks for — the gap was formalizing CI enforcement, not inventing a process from nothing. See `docs/decisions.md` for the running record and `docs/deployment.md`'s "Two separate Compose stacks" section for the environment-isolation rationale.
 
-- **CI enforcement**: `.github/workflows/ci.yml` — `frontend` (lint/type-check/build), `backend-and-e2e` (the real `tests/container/docker-compose.yml` stack; pytest with coverage + JUnit reporting; `ruff check`; the full Playwright suite), and `docker-build` (production image builds, gated on the other two, not published).
+- **CI enforcement**: `.github/workflows/ci.yml` — `frontend` (lint/type-check/build/Storybook tests), `backend-tests` (the real `tests/container/docker-compose.yml` stack; pytest with coverage and a failing threshold, JUnit reporting; `ruff check`), `e2e-tests` (the full Playwright suite), `dependency-scan` (`pip-audit` on the backend and mcp-server requirements, `npm audit --omit=dev` at high on the frontend and Playwright lockfiles) and `docker-build` (production images built, scanned with Trivy for fixable HIGH/CRITICAL findings, then pushed to ghcr.io on `main` only; a pull request builds and scans but never pushes). The documentation site's `npm audit` is reported but not gating (see Known Gaps).
+- **Coverage threshold**: `--cov-fail-under=93.2`, the published backend figure (95.2% on 2026-10-22) minus two points. It is raised when coverage rises and never lowered to make a run pass.
+- **Code owners**: `.github/CODEOWNERS` names the reviewer GitHub requests on every pull request.
+
+```mermaid
+flowchart LR
+    PR[Pull request] --> T[frontend, backend-tests, e2e-tests]
+    PR --> D[dependency-scan]
+    T --> B[docker-build: build, Trivy scan]
+    D --> B
+    B -->|main only| P[Push to ghcr.io]
+```
+
+Read left to right: a vulnerable dependency or image stops the job before anything is published.
+
+## Branch protection checklist (Company action)
+
+The "Main Branch" ruleset (Settings → Rules → Rulesets) exists but its enforcement is **Disabled**, so none of the CI gates above can block a merge yet. Only a repository admin can change it; the agent does not. Settings as found on 2026-10-22, and what to set:
+
+| Setting | Found | Set to | Why |
+| --- | --- | --- | --- |
+| Enforcement status | Disabled | **Active** | A disabled ruleset enforces nothing. |
+| Required status checks | `Backend tests, coverage & E2E`, `Build production container images (not published)`, `Build, version, and push production container images` | `Frontend lint, build & test`, `Backend tests & coverage`, `E2E (Playwright) suite`, `Dependency vulnerability scan`, `Build, version, and push production container images` | The first two found names no longer exist (the job was split and renamed), so enabling them as they are would block every merge forever; the frontend job was not required at all. A name must match a job's `name:` exactly. |
+| Require branches up to date | On (strict) | Keep | A merge result is the one that was tested. |
+| Required approvals | 0 | Decide: 1 with the owner as a bypass actor, or 1 with a second reviewer | A sole owner cannot approve their own pull request, so 1 with no bypass blocks every merge. With a bypass the owner can merge their own change; the bypass is itself an auditable ruleset event. |
+| Require review from Code Owners | On | Keep (needs `.github/CODEOWNERS`, now present) | Without the file the rule has nobody to ask. |
+| Bypass actors | None | Owner only, if the 1-approval option above is chosen | Keeps an emergency path without disabling the rule. |
+| Block deletions, block force pushes | On | Keep | Protects history. |
+
+Once applied, mark Known Gap 2 resolved here and in the control matrix (CC4.1, CC8.1).
 
 ## Known Gaps / Exceptions
 
-1. ~~No CI pipeline~~ — **resolved.** `.github/workflows/ci.yml` now runs on every push/PR to `main`: frontend lint + type-check + build, the full backend pytest suite with coverage (published as a check + job-summary + downloadable HTML report) and `ruff` lint against the real dev/test Docker Compose stack, and the full Playwright E2E suite against the running containers — all gating (a failure blocks the check from passing). A third job builds (but does not push) the production backend/frontend images once the two test jobs pass. See Implementation below.
-2. **No formal code review / pull-request approval requirement is enforced by tooling** (e.g. branch protection requiring an approving review). The CI checks above are a prerequisite for this — a required check has no teeth without branch protection requiring it to pass before merge. Recommendation: adopt branch protection once the repository has more than one contributor, requiring both an independent approval and the CI checks to pass before merge to the default branch.
-3. **No automated dependency/container vulnerability scanning** (e.g. `pip-audit`, `npm audit` in CI, Trivy/Grype for container images). Recommendation: add as a step in `.github/workflows/ci.yml`'s `backend-and-e2e`/`docker-build` jobs.
-4. **No coverage threshold is enforced**, only reported — the pipeline publishes the percentage (currently ~90% backend line coverage) but does not fail the build if it drops. Recommendation: once a stable baseline is agreed, add `--cov-fail-under=N` to the pytest invocation.
-5. **Container images are built but not published.** `docker-build`'s two `docker/build-push-action` steps run with `push: false` deliberately — the system hasn't been through enough real-world (developer) usage yet to trust an automated publish. The job, and the workflow file itself, document exactly what to uncomment (a `docker/login-action` step, `packages: write` permission — already granted — and flipping `push: false` to `true`) once that changes.
-4. **Pre-release migration convention:** during initial development, schema changes are folded into the single baseline migration rather than issued as incremental Alembic revisions (documented in `docs/decisions.md`). This is appropriate before a first production release but must stop once real production data exists — every schema change after that point needs its own forward migration, since the baseline-squash convention would otherwise require a destructive `down -v` against live data.
+1. ~~No CI pipeline~~ — **resolved.** `.github/workflows/ci.yml` runs on every push/PR to `main`; every job above is gating. See Implementation above.
+2. **The review requirement is configured but not enforced.** The "Main Branch" ruleset is disabled, requires 0 approvals and lists stale check names; `.github/CODEOWNERS` now exists. Applying the [checklist above](#branch-protection-checklist-company-action) is a Company action in GitHub settings, not a workflow change.
+3. ~~No automated dependency/container vulnerability scanning~~ — **resolved with one reported exception.** `dependency-scan` and the Trivy step in `docker-build` fail on fixable findings; existing findings were fixed by upgrades (FastAPI 0.111.0 → 0.136.3 with Starlette pinned at 1.9.0 for seven Starlette advisories; the nginx base images 1.27 → 1.30 for about 58 fixable Alpine findings; `follow-redirects` and `launch-editor` in the documentation site lockfile). **Open:** the documentation site's `braces` advisory (GHSA-vfj7-8cjw-p6xm, a build-time glob dependency of Docusaurus) has no patched release, so that step is reported, not gating; the published docs image contains only static files. Findings with no released fix are excluded from the image scan and shown again on every run. Dependency scanning does not cover the third-party images in the Compose files (PostgreSQL, SeaweedFS, Keycloak, MailHog).
+4. ~~No coverage threshold~~ — **resolved.** See Implementation: `--cov-fail-under=93.2`. Frontend coverage is reported only, because the Storybook figure excludes the page logic the Playwright suite covers.
+5. ~~Container images are built but not published~~ — **resolved.** `docker-build` pushes the backend, frontend, mcp-server and docs images to ghcr.io on every push to `main`, tagged with the GitVersion SemVer, the commit SHA and `latest`, after the scans pass.
+6. **Pre-release migration convention:** during initial development, schema changes are folded into the single baseline migration rather than issued as incremental Alembic revisions (documented in `docs/decisions.md`). This is appropriate before a first production release but must stop once real production data exists — every schema change after that point needs its own forward migration, since the baseline-squash convention would otherwise require a destructive `down -v` against live data.
 
 ## Related Documents
 

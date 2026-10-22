@@ -71,7 +71,7 @@ def validated_restrictions(
             normalise_artefact_types(target_types, field_name="allowed_target_types"),
         )
     except ValueError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
 
 
 def check_nesting_scope(scope: LinkNestingScope, flow: LinkFlow) -> None:
@@ -81,7 +81,7 @@ def check_nesting_scope(scope: LinkNestingScope, flow: LinkFlow) -> None:
     try:
         validate_nesting_scope(scope, flow)
     except ValueError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
 
 
 def _check_name(db: Session, project: Project, forward_name: str, exclude_id: uuid.UUID | None) -> None:
@@ -321,7 +321,7 @@ def set_customisation_locks(db: Session, organization_id: uuid.UUID, locks: Coll
     unknown = sorted(set(locks) - set(PROJECT_CUSTOMISATION_LOCK_KEYS))
     if unknown:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, f"Unknown customisation lock(s): {', '.join(unknown)}."
+            status.HTTP_422_UNPROCESSABLE_CONTENT, f"Unknown customisation lock(s): {', '.join(unknown)}."
         )
     new = [key for key in PROJECT_CUSTOMISATION_LOCK_KEYS if key in set(locks)]
     previous = list(organization.project_customisation_locks or [])

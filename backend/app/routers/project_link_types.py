@@ -412,7 +412,7 @@ def set_project_artefact_link_rule(
     try:
         rule = set_artefact_rule(db, project.organization_id, artefact_type, payload.link_type_ids, project)
     except ValueError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     log_event(
         db, entity_type="artefact_type_link_rule", entity_id=rule.id, action="updated", actor_id=current_user.id,
         organization_id=project.organization_id, project_id=project.id,

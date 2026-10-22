@@ -284,7 +284,7 @@ def update_engagement_from_payload(
     sent = payload.model_dump(exclude_unset=True)
     for required in ("title", "channel", "engagement_date"):
         if required in sent and sent[required] is None:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"An engagement's {required} cannot be null.")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"An engagement's {required} cannot be null.")
     for text_field in _TEXT_FIELDS:
         if text_field in sent and sent[text_field] is None:
             sent[text_field] = ""
@@ -521,7 +521,7 @@ def add_outcome(
     kind = eng.get_outcome_kind(payload.kind)
     if kind is None or payload.target_type not in kind.target_types:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, f"\"{payload.kind}\" cannot point at a {payload.target_type}."
+            status.HTTP_422_UNPROCESSABLE_CONTENT, f"\"{payload.kind}\" cannot point at a {payload.target_type}."
         )
     if not rel.target_type_available(payload.target_type):
         raise HTTPException(status.HTTP_409_CONFLICT, f"{payload.target_type} is not available until its module is installed.")

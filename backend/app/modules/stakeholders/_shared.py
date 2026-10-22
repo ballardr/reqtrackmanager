@@ -326,7 +326,7 @@ def update_persona_from_payload(
     sent = payload.model_dump(exclude_unset=True, exclude={"change_note"})
     # `name` is NOT NULL: an explicit null would otherwise be applied verbatim.
     if "name" in sent and sent["name"] is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A Persona name cannot be null.")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "A Persona name cannot be null.")
     for text_field in ("description", "role_title", "goals", "needs", "behaviours", "context_environment",
                        "skills_proficiency", "frequency_of_use", "constraints"):
         if text_field in sent and sent[text_field] is None:

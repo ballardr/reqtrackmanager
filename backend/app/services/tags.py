@@ -124,13 +124,13 @@ def normalise_tag_name(raw: str) -> tuple[str, str]:
     """
     name = _SPACES.sub(" ", (raw or "").strip())
     if not name:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A tag needs a name.")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "A tag needs a name.")
     if len(name) > MAX_TAG_NAME_LENGTH:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, f"A tag name can be at most {MAX_TAG_NAME_LENGTH} characters."
+            status.HTTP_422_UNPROCESSABLE_CONTENT, f"A tag name can be at most {MAX_TAG_NAME_LENGTH} characters."
         )
     if _FORBIDDEN_CHARS.search(name):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A tag name cannot contain a comma or semicolon.")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "A tag name cannot contain a comma or semicolon.")
     return name, name.casefold()
 
 
@@ -143,7 +143,7 @@ def validate_colour(colour: str | None) -> str | None:
     if not colour:
         return None
     if not _COLOUR.fullmatch(colour):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A tag colour must look like #1a2b3c.")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "A tag colour must look like #1a2b3c.")
     return colour.lower()
 
 
@@ -154,7 +154,7 @@ def _validate_mode(mode: str) -> str:
         HTTPException: 422 otherwise.
     """
     if mode not in TAG_MODES:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Tag mode must be 'free' or 'restricted'.")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Tag mode must be 'free' or 'restricted'.")
     return mode
 
 
@@ -381,7 +381,7 @@ def find_tagged_records(
     """
     keys = {normalise_tag_name(n)[1] for n in names if n and n.strip()}
     if not keys:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Give at least one tag.")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Give at least one tag.")
     if artefact_type is not None and artefact_type not in get_all_registered_artefact_types():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Artefact type not found.")
     scope_ids = project_ids if project_ids is not None else {project.id}
@@ -496,7 +496,7 @@ def _resolve_names(
                 mode = mode_for_scope(db, scope) if enforce_mode else TAG_MODE_FREE
             if mode == TAG_MODE_RESTRICTED:
                 raise HTTPException(
-                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status.HTTP_422_UNPROCESSABLE_CONTENT,
                     f"'{name}' is not in the tag list. A project administrator can add it.",
                 )
             tag = Tag(
@@ -555,7 +555,7 @@ def set_record_tags(
     )
     if len(wanted) > MAX_TAGS_PER_RECORD:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, f"A record can carry at most {MAX_TAGS_PER_RECORD} tags."
+            status.HTTP_422_UNPROCESSABLE_CONTENT, f"A record can carry at most {MAX_TAGS_PER_RECORD} tags."
         )
     change = TagChange()
     wanted_ids = {t.id for t in wanted}
@@ -721,7 +721,7 @@ def merge_tags(db: Session, *, scope: TagScope, actor_id: uuid.UUID, source_id: 
         HTTPException: 404 for a tag outside the scope; 422 when both are the same tag.
     """
     if source_id == target_id:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose a different tag to merge into.")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Choose a different tag to merge into.")
     source, target = _load_tag(db, scope, source_id), _load_tag(db, scope, target_id)
     already = select(ArtefactTag.artefact_type, ArtefactTag.artefact_id).where(ArtefactTag.tag_id == target.id)
     rows = db.scalars(select(ArtefactTag).where(ArtefactTag.tag_id == source.id)).all()
@@ -780,7 +780,7 @@ def set_mode(db: Session, *, project: Project | None, organization: Organization
         )
     elif organization is not None:
         if mode is None:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "An organisation must choose a tag mode.")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "An organisation must choose a tag mode.")
         organization.tag_mode = _validate_mode(mode)
         log_event(
             db, entity_type="tag_settings", entity_id=organization.id, action="updated", actor_id=actor_id,
@@ -823,10 +823,10 @@ def reclassify(
             or when neither list names a tag.
     """
     if not add_ids and not remove_ids:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose a tag to add or remove.")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Choose a tag to add or remove.")
     if len(records) > MAX_RECLASSIFY_RECORDS:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, f"Reclassify at most {MAX_RECLASSIFY_RECORDS} records at a time.",
+            status.HTTP_422_UNPROCESSABLE_CONTENT, f"Reclassify at most {MAX_RECLASSIFY_RECORDS} records at a time.",
         )
     to_add = [_load_tag(db, scope, i) for i in dict.fromkeys(add_ids)]
     to_remove = [_load_tag(db, scope, i) for i in dict.fromkeys(remove_ids)]

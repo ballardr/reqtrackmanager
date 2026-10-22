@@ -277,7 +277,7 @@ def _resolve_scope(db: Session, user: User, params: SearchParams) -> tuple[set[u
     scope = params.scope
     if scope == "project":
         if params.project_id is None:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A project is required to search one project.")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "A project is required to search one project.")
         openable = _openable(db, user.id, {params.project_id})
         if not openable:
             raise _not_found()
@@ -502,15 +502,15 @@ def validate_default_fields(db: Session, user: User, value: object) -> list[str]
         HTTPException: 422 when it is not a list of known field keys.
     """
     if not isinstance(value, list) or not all(isinstance(k, str) for k in value) or len(value) > MAX_FIELD_KEYS:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Default search fields must be a list of field keys.")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Default search fields must be a list of field keys.")
     if COMMENTS_FIELD in value:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, "Comments can be searched for one search at a time, not saved as a default."
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "Comments can be searched for one search at a time, not saved as a default."
         )
     offered = {key for key, _label, _types in available_fields(db, user)}
     unknown = sorted({k for k in value if k not in offered})
     if unknown:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Unknown search fields: {', '.join(unknown)}.")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"Unknown search fields: {', '.join(unknown)}.")
     return ["id", "title", *[k for k in dict.fromkeys(value) if k not in ("id", "title")]]
 
 
@@ -940,12 +940,12 @@ def _validate(params: SearchParams) -> None:
     """
     query = " ".join(params.q.split())
     if len(query) < MIN_QUERY:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Search for at least {MIN_QUERY} characters.")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"Search for at least {MIN_QUERY} characters.")
     if len(query) > MAX_QUERY:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Search text is limited to {MAX_QUERY} characters.")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"Search text is limited to {MAX_QUERY} characters.")
     if params.offset + params.limit > MAX_DEPTH:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, f"Results are limited to the first {MAX_DEPTH}. Refine the search to narrow them."
+            status.HTTP_422_UNPROCESSABLE_CONTENT, f"Results are limited to the first {MAX_DEPTH}. Refine the search to narrow them."
         )
 
 

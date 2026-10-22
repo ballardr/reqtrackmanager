@@ -173,7 +173,7 @@ def update_need_from_payload(
     request body change), audit-logs, commits and returns the API shape."""
     sent = payload.model_dump(exclude_unset=True, exclude={"change_note"})
     if "name" in sent and sent["name"] is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A Stakeholder Need name cannot be null.")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "A Stakeholder Need name cannot be null.")
     for text_field in _TEXT_FIELDS:
         if text_field in sent and sent[text_field] is None:
             sent[text_field] = ""
