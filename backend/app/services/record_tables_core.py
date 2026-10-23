@@ -59,6 +59,7 @@ from app.services import requirements as requirement_service
 from app.services import tags as tag_service
 from app.services.audit import log_event
 from app.services.custom_fields import validate_custom_field_values
+from app.services.labels import REQUIREMENT_STATUS_TONE
 from app.services.principals import principal_ref, validate_principal
 from app.services.project_hierarchy import resolve_effective_action_types
 from app.services.rbac import get_effective_project_roles
@@ -296,7 +297,10 @@ def _requirement_columns(db: Session, project: Project) -> list[RecordColumn]:
     ]
     for definition in _custom_field_definitions(db, project.id):
         columns.append(_custom_field_column(definition))
-    columns.append(RecordColumn("status", "Status", lambda t, r: statuses[version(t, r).status.value], kind="enum"))
+    columns.append(RecordColumn(
+        "status", "Status", lambda t, r: statuses[version(t, r).status.value], kind="enum",
+        tones={statuses[value]: tone for value, tone in REQUIREMENT_STATUS_TONE.items() if value in statuses},
+    ))
     return columns
 
 

@@ -54,6 +54,7 @@ READ_ONLY_TOOLS = {
     # custom-role-definition tools; no grant-roster tool exists (see docs/decisions.md).
     "list_permissions", "list_custom_roles", "get_custom_role",
     "list_tags", "get_artefact_tags", "find_artefacts_by_tag", "get_record_by_code", "search_records",
+    "get_record_list_report",
 }
 WRITE_TOOLS = {
     "create_requirement", "update_requirement", "create_artefact_link", "delete_artefact_link",
@@ -893,3 +894,28 @@ async def test_search_records_validates_arguments_and_finds_a_real_project(admin
         assert {"hits", "total", "type_counts", "fields_used"} <= set(result)
         assert any(hit["id"] == projects[0]["id"] for hit in result["hits"])
         assert all("qualified_code" in hit for hit in result["hits"])
+
+
+@pytest.mark.asyncio
+async def test_get_record_list_report_validates_arguments_and_returns_the_table(admin_token):
+    """Bad arguments are rejected before any backend call; a real run returns the report's table, code first."""
+    async with _client(admin_token) as client:
+        for arguments, message in (
+            ({"record_type": "requirement", "project_scope": "everywhere"}, "project_scope must be"),
+            ({"record_type": "requirement", "tag_mode": "some"}, "'tag_mode' must be"),
+        ):
+            with pytest.raises(ToolError, match=message):
+                await client.call_tool("get_record_list_report", {"project_id": str(uuid.uuid4()), **arguments})
+
+        projects = (await client.call_tool("list_projects", {})).data
+        if not projects:
+            pytest.skip("No projects visible to the admin account — seed data (E2E or demo) hasn't been loaded.")
+        report = (
+            await client.call_tool("get_record_list_report", {"project_id": projects[0]["id"], "record_type": "requirement"})
+        ).data
+        assert report["title"] == "Requirements"
+        section = report["sections"][0]
+        assert section["columns"][0] == "Code" and "Name" in section["columns"]
+        assert report["metrics"][0]["value"] == len(section["rows"])
+        with pytest.raises(ToolError):
+            await client.call_tool("get_record_list_report", {"project_id": projects[0]["id"], "record_type": "no_such_type"})

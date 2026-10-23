@@ -1,7 +1,7 @@
 """
 Module: routers.report_catalogue
 
-Lists the module-contributed reports a caller can run, so the Reports UI
+Lists the reports a caller can run (the platform's record list and the module-contributed ones), so the Reports UI
 decides what to show without probing for 403/404. The
 list is computed by `services.report_framework` from the registry's
 `ReportDefinition`s: module enabled, declared sub-component enabled, and (for
@@ -25,6 +25,7 @@ from app.models.enums import OrgRole
 from app.models.project import Project
 from app.models.user import User
 from app.services.rbac import require_org_role, require_project_view
+from app.services.record_list_report import catalogue_entry as record_list_catalogue_entry
 from app.services.report_framework import ReportCatalogueEntryOut, organization_catalogue, project_catalogue
 
 router = APIRouter(prefix="/api/v1", tags=["reports"])
@@ -34,9 +35,12 @@ router = APIRouter(prefix="/api/v1", tags=["reports"])
 def get_project_report_catalogue(
     project_id: UUID, current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ) -> list[ReportCatalogueEntryOut]:
-    """Module reports runnable on this project (module and sub-component
-    enabled), with their parameters and formats."""
-    return project_catalogue(db, db.get(Project, project_id))
+    """Reports runnable on this project, with their parameters and formats: the platform's
+    record list (when the caller can list any record type), then each module report whose
+    module and sub-component are enabled."""
+    project = db.get(Project, project_id)
+    record_list = record_list_catalogue_entry(db, current_user, project)
+    return [*([record_list] if record_list else []), *project_catalogue(db, project)]
 
 
 @router.get("/orgs/{organization_id}/report-catalogue", response_model=list[ReportCatalogueEntryOut])

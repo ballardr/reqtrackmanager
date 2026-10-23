@@ -41,6 +41,7 @@ from app.routers import (
     pats,
     project_link_types,
     projects,
+    record_list_report,
     record_tables,
     report_catalogue,
     reports,
@@ -275,6 +276,7 @@ app.include_router(reports.router)
 app.include_router(report_catalogue.router)
 app.include_router(search.router)
 app.include_router(record_tables.router)
+app.include_router(record_list_report.router)
 app.include_router(files.router)
 app.include_router(custom_fields.router)
 app.include_router(action_types.router)

@@ -1,11 +1,13 @@
 /**
  * Module: api/recordTables
  *
- * Types and calls for the generic record table routes (`/projects/{id}/records/{type}/columns|export|import`),
- * which every record list's Export and Import use. A record type is addressed only by its registered type
+ * Types and calls for the generic record table routes (`/projects/{id}/records/{type}/columns|export|import`)
+ * and the record-list report (`/projects/{id}/reports/record-list`, the PDF and Word of a list), which every
+ * record list's Export and Import use. A record type is addressed only by its registered type
  * string; nothing here knows a particular type or module.
  */
 import { api } from "./client";
+import type { ReportDownloadKind } from "./reports";
 
 /** One column of a record type's table (`RecordColumnOut`). */
 export interface RecordColumn {
@@ -70,8 +72,11 @@ export interface RecordImportResult {
 /** Injectable calls so stories stay off the network. */
 export interface RecordTablesApi {
   columns: (projectId: string, recordType: string) => Promise<RecordColumns>;
-  /** The list as a CSV, narrowed by the list's own filters (`filters` is a query string without the leading `?`). */
-  exportCsv: (projectId: string, recordType: string, filters: string) => Promise<Blob>;
+  /**
+   * The list as a file, narrowed by the list's own filters (`filters` is a query string without the leading `?`):
+   * the CSV that re-imports, or a PDF or Word document of the same rows (the record-list report).
+   */
+  exportFile: (projectId: string, recordType: string, kind: ReportDownloadKind, filters: string) => Promise<Blob>;
   /** A preview (`dryRun`) or an apply of the CSV. */
   importFile: (projectId: string, recordType: string, file: File, dryRun: boolean) => Promise<RecordImportResult>;
 }
@@ -80,8 +85,12 @@ const base = (projectId: string, recordType: string) => `/api/v1/projects/${proj
 
 export const recordTablesApi: RecordTablesApi = {
   columns: (projectId, recordType) => api.get<RecordColumns>(`${base(projectId, recordType)}/columns`),
-  exportCsv: (projectId, recordType, filters) =>
-    api.getForBlob(`${base(projectId, recordType)}/export${filters ? `?${filters}` : ""}`),
+  exportFile: (projectId, recordType, kind, filters) =>
+    kind === "csv"
+      ? api.getForBlob(`${base(projectId, recordType)}/export${filters ? `?${filters}` : ""}`)
+      : api.getForBlob(
+        `/api/v1/projects/${projectId}/reports/record-list?${new URLSearchParams({ record_type: recordType, format: kind })}${filters ? `&${filters}` : ""}`,
+      ),
   importFile: (projectId, recordType, file, dryRun) =>
     api.postFile<RecordImportResult>(`${base(projectId, recordType)}/import?dry_run=${dryRun}`, file),
 };

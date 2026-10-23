@@ -1,11 +1,11 @@
 # List Data and Form UX (October 2026) — Plan
 
-**Status:** planned 2026-10-22, not started. Built from eight items the user picked up (section 1). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position), 7 (type definition), 7b (module bundles), 8 (record-table extension point), 8b (personal-data policy) and 9 (shared list actions) are done; Phase 10 is next.
+**Status:** planned 2026-10-22, not started. Built from eight items the user picked up (section 1). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position), 7 (type definition), 7b (module bundles), 8 (record-table extension point), 8b (personal-data policy), 9 (shared list actions) and 10 (record-list report) are done; Phase 11 is next.
 **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. Q1–Q4 were answered by the user on 2026-10-22 (section 2). Everything in the "Agent defaults" table is **Decided by: Agent** and open to override before the phase that uses it starts.
 
 ## Status / Resume Here
 
-11 / 17 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–9 done 2026-10-23, Phase 9 uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
+12 / 17 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–10 done 2026-10-23, Phase 10 uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
 
 | # | Phase | Item | Status |
 |---|-------|------|--------|
@@ -21,7 +21,7 @@
 | 8 | Record-table extension point (backend): columns, list, CSV out, CSV in with update | 5 | [x] |
 | 8b | Personal-data policy: column sensitivity, server default, organisation override, new permission | 5 | [x] |
 | 9 | Shared list actions (frontend): Export menu + Import wizard on `ListPageLayout` pages; Requirements migrated | 5 | [x] |
-| 10 | Record-list report in the Reports page (CSV, PDF, Word of any type) | 5 | [ ] |
+| 10 | Record-list report in the Reports page (CSV, PDF, Word of any type) | 5 | [x] |
 | 11 | Roll-out A: core types (Requirements, Change Requests, Actions) | 5 | [ ] |
 | 12 | Roll-out B: Context & Strategy, Stakeholders (Persona, Stakeholder, Need, Group, Engagement, Research Finding) | 5 | [ ] |
 | 13 | Roll-out C: Risk, Decisions, Compliance | 5 | [ ] |
@@ -222,6 +222,7 @@ flowchart LR
 - **Why:** the user could not export a basic Pain Point table from the Reports page.
 - **Work:** one `ReportDefinition` "Record list" (D8) built on the provider list; parameters: `record_type`, status/open filter, tags, project scope; `record_types` per the codes rule; PDF/Word via the framework (coloured cells from Phase 2 where a column has a tone); `mcp_guidance.md`/skill reference regenerated per the MCP rule (`generate_mcp_module_tools_reference.py`, in `backend/`).
 - **Tests:** `test_report_record_codes.py` passes; catalogue Storybook; Playwright generating a Pain Point table.
+- **Delivered (2026-10-23):** a platform report (not a module `ReportDefinition`: the framework is module-shaped and this report belongs to no module) at `GET /projects/{id}/reports/record-list`, in the catalogue as "Platform: Record list", built on `build_table`; PDF and Word join every list's Export menu with the page's filters; `RecordColumn.tones`; one core MCP tool `get_record_list_report`; a 5,000-row limit on documents. **Carried forward, with reasons in decisions.md:** the Reports page offers type, project scope and tag (status/open filters are per type, so they come from the list's Export menu); Playwright drives Requirements because Pain Points has no provider until Phase 12; `test_report_record_codes.py` does not apply to a non-`ReportDefinition` report.
 
 ### Phases 11–13 — Roll-out
 

@@ -4,9 +4,9 @@
  * The Export and Import controls of a record list (docs/ux-style-guide.md, "Pattern: list actions (export and
  * import)"), rendered by `ListPageLayout` beside the page's own actions so no list hand-builds them.
  *
- * - **Export** is `ReportExportButton`'s popover: the list as a CSV that re-imports, narrowed by the page's own
- *   filters (never the full set), plus the import template, plus a note when the personal-data policy left
- *   columns out. PDF and Word join the same popover through the record-list report.
+ * - **Export** is `ReportExportButton`'s popover: the list as a CSV that re-imports, a PDF or a Word document
+ *   (the record-list report), each narrowed by the page's own filters (never the full set), plus the import
+ *   template, plus a note when the personal-data policy left columns out.
  * - **Import** is a file picker that opens `CsvImportWizard`; it is shown only to a person who may create or
  *   update the type's records, and not at all for a type that gives a reason it cannot be imported.
  *
@@ -16,6 +16,7 @@
 import { Upload } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+import type { ReportDownloadKind } from "../api/reports";
 import { omittedColumnsNote, recordTablesApi, type RecordColumns, type RecordTablesApi } from "../api/recordTables";
 import { useRecordTableExport, fileStem } from "../hooks/useRecordTableExport";
 import { t } from "../i18n/strings";
@@ -26,6 +27,9 @@ import { FileUploadTrigger } from "./FileUploadTrigger";
 import { ReportExportButton } from "./ReportExportButton";
 
 const strings = t();
+
+/** The formats of the Export menu: the CSV that re-imports, then the record-list report's PDF and Word. */
+const EXPORT_KINDS: readonly ReportDownloadKind[] = ["csv", "pdf", "docx"];
 
 /** What a list page tells `ListPageLayout` so it can offer Export and Import. */
 export interface RecordListActions {
@@ -51,7 +55,7 @@ export function ListActions({ projectId, recordType, filters = "", onImported, t
   const [columns, setColumns] = useState<RecordColumns | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const label = columns?.label ?? "";
-  const { exportCsv } = useRecordTableExport(projectId, recordType, label, filters, tables);
+  const { exportList } = useRecordTableExport(projectId, recordType, label, filters, tables);
 
   useEffect(() => {
     let active = true;
@@ -72,8 +76,8 @@ export function ListActions({ projectId, recordType, filters = "", onImported, t
   return (
     <>
       <ReportExportButton
-        kinds={["csv"]}
-        onDownload={exportCsv}
+        kinds={EXPORT_KINDS}
+        onDownload={exportList}
         extras={canImport ? [{ key: "template", label: strings.recordTables.downloadTemplate, onSelect: downloadTemplate }] : []}
         note={omittedColumnsNote(columns) || undefined}
       />

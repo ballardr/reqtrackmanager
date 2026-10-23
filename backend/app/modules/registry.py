@@ -1579,6 +1579,9 @@ class RecordColumn:
         choices: The cell texts the column accepts when they are a closed list (enum labels, the project's
             stage names), so the import wizard offers a pick list for "same value for every row".
             `None` for free text and for values that are not a short closed list (a person, a date).
+        tones: Badge tone per cell text (`{"Approved": "accent"}`, tone names as `report_model.TONE_FILL`), so the
+            record-list report's PDF and Word fill the cell as the screen's badge does. A cell text not listed is
+            left plain; the text itself still names the value, so a greyscale print reads.
     """
 
     key: str
@@ -1590,6 +1593,7 @@ class RecordColumn:
     required: bool = False
     sensitivity: str = "none"
     choices: tuple[str, ...] | None = None
+    tones: Mapping[str, str] = field(default_factory=dict, compare=False)
 
     @property
     def importable(self) -> bool:

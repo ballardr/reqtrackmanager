@@ -2297,7 +2297,8 @@ const en = {
   recordTables: {
     import: "Import",
     downloadTemplate: "Download import template",
-    exported: (label: string) => `${label} exported as CSV.`,
+    exported: (label: string, format: string) => `${label} exported as ${format}.`,
+    formatName: { csv: "CSV", pdf: "PDF", docx: "Word file" },
     exportFailed: (label: string) => `Could not export ${label.toLowerCase()}.`,
     templateReady: "Import template downloaded.",
     importTitle: (label: string) => `Import ${label}`,

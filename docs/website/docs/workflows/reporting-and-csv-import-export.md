@@ -21,6 +21,8 @@ Open a project's **Reports** page:
 
 Two doors lead to the same data. The Reports page exports requirements as a formatted CSV. The **Requirements** page's own **Export** button downloads the list *as it is filtered on screen* as a CSV that you can edit and import back: every field, including custom field values and target stage, with the record's code in the first column. Columns that your organisation's policy keeps out of exports (personal data) are left out, and the Export menu says so.
 
+The list's **Export** menu also offers **Download PDF report** and **Download Word report**: the same rows and filters as a formatted document. The Reports page's **Record list** report produces the same table for any record type without opening its list.
+
 ## Importing requirements from a CSV file
 
 From a project's **Requirements** page, click **Import** and choose a file:

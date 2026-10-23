@@ -1,12 +1,13 @@
 /**
  * Module: hooks/useRecordTableExport
  *
- * Downloads a record list as a CSV with the list's own filters, and the import template, for the shared list
- * actions. Reports the outcome in a `Toast` (success or failure), so a caller only decides when to start it.
- * The server writes the file that re-imports, so the browser only saves what it is sent.
+ * Downloads a record list as a CSV (the file that re-imports), a PDF or a Word document, each with the list's own
+ * filters, for the shared list actions. Reports the outcome in a `Toast` (success or failure), so a caller only
+ * decides when to start it. The server writes every file, so the browser only saves what it is sent.
  */
 import { useCallback } from "react";
 
+import type { ReportDownloadKind } from "../api/reports";
 import { recordTablesApi, type RecordTablesApi } from "../api/recordTables";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
@@ -25,20 +26,21 @@ export function fileStem(label: string): string {
  * @param label The type's plural name (for the file name and messages).
  * @param filters The list's filters as a query string without the leading `?` (`status=draft&tag=a`).
  * @param tables Injectable calls (stories pass fakes).
- * @returns `exportCsv`, which downloads the filtered list and resolves when the download started or failed.
+ * @returns `exportList`, which downloads the filtered list in the chosen format and resolves when the download
+ *   started or failed.
  */
 export function useRecordTableExport(
   projectId: string, recordType: string, label: string, filters: string, tables: RecordTablesApi = recordTablesApi,
-): { exportCsv: () => Promise<void> } {
+): { exportList: (kind: ReportDownloadKind) => Promise<void> } {
   const { showToast } = useToast();
-  const exportCsv = useCallback(async () => {
+  const exportList = useCallback(async (kind: ReportDownloadKind) => {
     try {
-      const blob = await tables.exportCsv(projectId, recordType, filters);
-      downloadBlob(blob, `${fileStem(label)}-export.csv`);
-      showToast(strings.recordTables.exported(label));
+      const blob = await tables.exportFile(projectId, recordType, kind, filters);
+      downloadBlob(blob, `${fileStem(label)}-export.${kind}`);
+      showToast(strings.recordTables.exported(label, strings.recordTables.formatName[kind]));
     } catch (err) {
       showToast(toErrorMessage(err, strings.recordTables.exportFailed(label)), "error");
     }
   }, [projectId, recordType, label, filters, tables, showToast]);
-  return { exportCsv };
+  return { exportList };
 }

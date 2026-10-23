@@ -75,7 +75,7 @@ export function failing(message: string) {
 export function fakeRecordTables(overrides: Partial<RecordTablesApi> = {}, columns: RecordColumns = buildRecordColumns()): RecordTablesApi {
   return {
     columns: fn(async () => columns),
-    exportCsv: fn(async () => new Blob(["code,name\n"], { type: "text/csv" })),
+    exportFile: fn(async () => new Blob(["code,name\n"], { type: "text/csv" })),
     importFile: fn(async () => buildImportResult()),
     ...overrides,
   };

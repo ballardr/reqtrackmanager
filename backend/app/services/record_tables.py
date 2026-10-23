@@ -86,6 +86,8 @@ CODE_COLUMN = "code"
 PROJECT_COLUMN = "project"
 #: Query parameters every table request takes; a provider declares the rest in `filter_params`.
 GENERIC_PARAMS = frozenset({"format", "project_scope", "tag", "tag_mode"})
+#: Further query parameters the record-list report takes (its own, never a provider's filter).
+REPORT_PARAMS = frozenset({"record_type", "report_template_id"})
 _FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
 
 
@@ -303,6 +305,7 @@ class RecordTable:
         omitted: Sensitivity tags whose columns were left out by the policy.
         filter_keys: The names of the filters that were applied (for the audit event; never their values).
         included: Sensitivity tags whose columns were written (for the audit event).
+        tones: Cell-text-to-tone map by column key, for the columns that colour their cells in a report.
     """
 
     columns: list[tuple[str, str]]
@@ -310,17 +313,25 @@ class RecordTable:
     omitted: list[str]
     filter_keys: list[str]
     included: list[str] = field(default_factory=list)
+    tones: dict[str, Mapping[str, str]] = field(default_factory=dict)
 
 
-def split_params(provider: RecordTableProvider, query: Sequence[tuple[str, str]]) -> RecordFilters:
+def split_params(
+    provider: RecordTableProvider, query: Sequence[tuple[str, str]], *, also: frozenset[str] = frozenset(),
+) -> RecordFilters:
     """The provider's filters out of a request's query string.
+
+    Args:
+        provider: The record type's table.
+        query: The request's query parameters as pairs.
+        also: Further parameter names the caller itself takes (not filters).
 
     Raises:
         HTTPException: 422 for a parameter neither generic nor declared by the provider, so a filter the
             export cannot honour is refused instead of silently dropped (a filtered-looking screen must not
             download an unfiltered file).
     """
-    allowed = GENERIC_PARAMS | provider.filter_params
+    allowed = GENERIC_PARAMS | provider.filter_params | also
     unknown = sorted({k for k, _ in query if k not in allowed})
     if unknown:
         raise HTTPException(
@@ -391,6 +402,7 @@ def build_table(
         keys.append("project_scope")
     return RecordTable(
         columns=header, rows=rows, omitted=omitted, filter_keys=sorted(keys), included=_sensitivity_tags(columns),
+        tones={c.key: c.tones for c in columns if c.tones},
     )
 
 

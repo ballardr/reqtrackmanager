@@ -27,15 +27,34 @@ export const ExportSendsThePagesFilters: Story = {
     const menu = within(within(document.body).getByRole("dialog", { name: "Export" }));
     await userEvent.click(menu.getByRole("button", { name: "Download CSV report" }));
     await waitFor(() =>
-      expect(args.tables!.exportCsv).toHaveBeenCalledWith("project-1", "requirement", "status=draft&tag=safety&tag_mode=any"),
+      expect(args.tables!.exportFile).toHaveBeenCalledWith("project-1", "requirement", "csv", "status=draft&tag=safety&tag_mode=any"),
     );
     await expect(await within(document.body).findByText("Requirements exported as CSV.")).toBeInTheDocument();
   },
 };
 
+/** PDF and Word come from the record-list report and carry the same filters as the CSV. */
+export const PdfAndWordCarryTheSameFilters: Story = {
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Export" }));
+    await userEvent.click(within(within(document.body).getByRole("dialog", { name: "Export" })).getByRole("button", { name: "Download PDF report" }));
+    await waitFor(() =>
+      expect(args.tables!.exportFile).toHaveBeenCalledWith("project-1", "requirement", "pdf", "status=draft&tag=safety&tag_mode=any"),
+    );
+    await expect(await within(document.body).findByText("Requirements exported as PDF.")).toBeInTheDocument();
+    await userEvent.click(await canvas.findByRole("button", { name: "Export" }));
+    await userEvent.click(within(within(document.body).getByRole("dialog", { name: "Export" })).getByRole("button", { name: "Download Word report" }));
+    await waitFor(() =>
+      expect(args.tables!.exportFile).toHaveBeenCalledWith("project-1", "requirement", "docx", "status=draft&tag=safety&tag_mode=any"),
+    );
+    await expect(await within(document.body).findByText("Requirements exported as Word file.")).toBeInTheDocument();
+  },
+};
+
 /** A failed download is reported, not swallowed. */
 export const AFailedExportIsReported: Story = {
-  args: { tables: fakeRecordTables({ exportCsv: failing("Server unavailable.") }) },
+  args: { tables: fakeRecordTables({ exportFile: failing("Server unavailable.") }) },
   play: async ({ canvasElement }) => {
     await userEvent.click(await within(canvasElement).findByRole("button", { name: "Export" }));
     await userEvent.click(within(document.body).getByRole("button", { name: "Download CSV report" }));
