@@ -1546,15 +1546,28 @@ class RecordImportContext:
     Attributes:
         db: The session. Providers never commit: the engine owns the transaction (a savepoint per row, one
             commit at the end of an apply, a rollback for a preview).
-        project: The project being imported into.
+        project: The project being imported into; `None` when the import is into the organisation's own records
+            (`OrganizationRecordTable`), whose providers read `organization` instead.
         user: The person importing; the actor for the type's own audit events.
         cache: Per-import scratch for lookups (a user by email), so a 5,000-row file does not repeat them.
+        organization: The organisation being imported into (set for both tiers by the engine).
     """
 
     db: Session
     project: Any
     user: Any
     cache: dict[str, Any] = field(default_factory=dict)
+    organization: Any = None
+
+    @property
+    def organization_id(self) -> uuid.UUID:
+        """The organisation being imported into: the project's, or the organisation itself at the organisation tier."""
+        return self.project.organization_id if self.project is not None else self.organization.id
+
+    @property
+    def project_id(self) -> uuid.UUID | None:
+        """The project being imported into, or `None` at the organisation tier."""
+        return self.project.id if self.project is not None else None
 
 
 @dataclass(frozen=True)
@@ -1602,6 +1615,43 @@ class RecordColumn:
 
 
 @dataclass(frozen=True)
+class OrganizationRecordTable:
+    """How a record type offers the records its **organisation** owns (a Strategy or a Persona shared by every
+    project) as a table, for the organisation-level lists. The engine's organisation routes
+    (`/orgs/{id}/records/{type}/...`) use it exactly as the project routes use the provider, and the same
+    `RecordColumn`s: a column is declared once and serves both tiers.
+
+    Every callable takes the `Organization` where the project tier takes a project; nothing here commits.
+
+    Attributes:
+        subcomponent: The owning module's sub-component whose organisation-level state gates the list (the same
+            one the organisation list endpoint requires); the route answers 404 while it is off.
+        columns: `(db, organization) -> columns` (first column excluded; the engine adds `code`).
+        list_records: `(db, user, organization, filters) -> records`: the organisation's own records, with the
+            filters of the organisation list (the endpoint and the provider share one query).
+        find: `(db, organization, unique_code) -> record | None`, searching **this organisation's own records only**.
+        prepare: `(db, organization, records) -> prepared`: batch lookups handed to every column's `get`.
+        create: `(ctx, values) -> record` through the organisation endpoint's own create path (`ctx.project` is
+            `None`; use `ctx.organization`). `None` for a type import cannot create.
+        update: `(ctx, record, values) -> None` through its own update path. `None` for a type import cannot update.
+        filter_params: The organisation list's filter parameter names; any other is refused.
+        can_create / can_update: `(db, user, organization_id) -> bool`, the same check as the organisation
+            endpoint's create / update. `None` falls back to the fine-grained `propose_create` / `manage` permission.
+    """
+
+    subcomponent: str
+    columns: Callable[[Session, Any], Sequence[RecordColumn]]
+    list_records: Callable[[Session, Any, Any, RecordFilters], list[Any]]
+    find: Callable[[Session, Any, str], Any | None]
+    prepare: Callable[[Session, Any, list[Any]], Any] | None = None
+    create: Callable[[RecordImportContext, Mapping[str, Any]], Any] | None = None
+    update: Callable[[RecordImportContext, Any, Mapping[str, Any]], None] | None = None
+    filter_params: frozenset[str] = frozenset()
+    can_create: Callable[[Session, Any, uuid.UUID], bool] | None = None
+    can_update: Callable[[Session, Any, uuid.UUID], bool] | None = None
+
+
+@dataclass(frozen=True)
 class RecordTableProvider:
     """How a record type offers its list as a table that leaves as CSV (PDF and Word through the
     record-list report) and, for an authored type, comes back as an import that creates and updates.
@@ -1640,6 +1690,8 @@ class RecordTableProvider:
             (`ACME-PER-001`, always qualified, since its bare code could equal a project record's), and is
             never matched by an import into a project, whose `find` searches the project's own records only.
             `None` for a type that has no organisation-owned records.
+        organization: The type's table at the organisation tier (`OrganizationRecordTable`): the organisation's own
+            records on the organisation-level lists. `None` for a type the organisation cannot own.
     """
 
     label: str
@@ -1657,6 +1709,7 @@ class RecordTableProvider:
     code_of: Callable[[Any], str] = lambda record: record.unique_code
     approval_gated: bool = False
     organization_owned: Callable[[Any], bool] | None = None
+    organization: OrganizationRecordTable | None = None
 
 
 @dataclass(frozen=True)

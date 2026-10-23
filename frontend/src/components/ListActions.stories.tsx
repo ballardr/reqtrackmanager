@@ -27,9 +27,22 @@ export const ExportSendsThePagesFilters: Story = {
     const menu = within(within(document.body).getByRole("dialog", { name: "Export" }));
     await userEvent.click(menu.getByRole("button", { name: "Download CSV report" }));
     await waitFor(() =>
-      expect(args.tables!.exportFile).toHaveBeenCalledWith("project-1", "requirement", "csv", "status=draft&tag=safety&tag_mode=any"),
+      expect(args.tables!.exportFile).toHaveBeenCalledWith({ projectId: "project-1" }, "requirement", "csv", "status=draft&tag=safety&tag_mode=any"),
     );
     await expect(await within(document.body).findByText("Requirements exported as CSV.")).toBeInTheDocument();
+  },
+};
+
+/** An organisation's own list exports through the organisation owner, with the same filters. */
+export const AnOrganisationListExportsItsOwnRecords: Story = {
+  args: { projectId: undefined, organizationId: "org-1", recordType: "strategy", filters: "status=draft" },
+  play: async ({ canvasElement, args }) => {
+    await userEvent.click(await within(canvasElement).findByRole("button", { name: "Export" }));
+    await userEvent.click(within(within(document.body).getByRole("dialog", { name: "Export" })).getByRole("button", { name: "Download CSV report" }));
+    await waitFor(() =>
+      expect(args.tables!.exportFile).toHaveBeenCalledWith({ organizationId: "org-1" }, "strategy", "csv", "status=draft"),
+    );
+    await waitFor(() => expect(args.tables!.columns).toHaveBeenCalledWith({ organizationId: "org-1" }, "strategy"));
   },
 };
 
@@ -40,13 +53,13 @@ export const PdfAndWordCarryTheSameFilters: Story = {
     await userEvent.click(await canvas.findByRole("button", { name: "Export" }));
     await userEvent.click(within(within(document.body).getByRole("dialog", { name: "Export" })).getByRole("button", { name: "Download PDF report" }));
     await waitFor(() =>
-      expect(args.tables!.exportFile).toHaveBeenCalledWith("project-1", "requirement", "pdf", "status=draft&tag=safety&tag_mode=any"),
+      expect(args.tables!.exportFile).toHaveBeenCalledWith({ projectId: "project-1" }, "requirement", "pdf", "status=draft&tag=safety&tag_mode=any"),
     );
     await expect(await within(document.body).findByText("Requirements exported as PDF.")).toBeInTheDocument();
     await userEvent.click(await canvas.findByRole("button", { name: "Export" }));
     await userEvent.click(within(within(document.body).getByRole("dialog", { name: "Export" })).getByRole("button", { name: "Download Word report" }));
     await waitFor(() =>
-      expect(args.tables!.exportFile).toHaveBeenCalledWith("project-1", "requirement", "docx", "status=draft&tag=safety&tag_mode=any"),
+      expect(args.tables!.exportFile).toHaveBeenCalledWith({ projectId: "project-1" }, "requirement", "docx", "status=draft&tag=safety&tag_mode=any"),
     );
     await expect(await within(document.body).findByText("Requirements exported as Word file.")).toBeInTheDocument();
   },

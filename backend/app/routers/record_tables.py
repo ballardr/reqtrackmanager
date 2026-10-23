@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.project import Project
 from app.models.user import User
+from app.modules.registry import RecordColumn
 from app.schemas.record_tables import (
     ColumnChangeOut,
     ImportResultOut,
@@ -35,11 +36,12 @@ from app.schemas.record_tables import (
 from app.services.downloads import filename_safe
 from app.services.project_scope import ProjectScope
 from app.services.rbac import require_project_view
-from app.services.record_policy import tag_decisions
+from app.services.record_policy import TagDecision, tag_decisions
 from app.services.record_tables import (
     CODE_COLUMN,
     MAX_IMPORT_BYTES,
     MAX_IMPORT_ROWS,
+    ImportResult,
     audit_export,
     build_table,
     import_capability,
@@ -63,21 +65,14 @@ def _project(db: Session, project_id: UUID) -> Project:
     return project
 
 
-@router.get("/columns", response_model=RecordColumnsOut)
-def record_columns(
-    project_id: UUID, record_type: str, current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+def columns_out(
+    label: str, columns: list[RecordColumn], kept: list[RecordColumn], omitted: list[str], decisions: dict[str, TagDecision],
+    *, reason: str | None, can_import: bool, filter_params: frozenset[str],
 ) -> RecordColumnsOut:
-    """The columns of `record_type`'s table, which of them the policy lets through, and whether it can be imported."""
-    project = _project(db, project_id)
-    provider = provider_for(db, project, record_type)
-    require_view(db, current_user, project, record_type)
-    columns = list(provider.columns(db, project))
-    kept, omitted = resolve_export_columns(db, current_user, project, columns, purpose="export")
+    """The columns listing both tiers answer (`RecordColumnsOut`): every column, which the policy lets through, and the import rules."""
     kept_keys = {c.key for c in kept}
-    decisions = tag_decisions(db, current_user, project)
-    reason = import_capability(provider, record_type)
     return RecordColumnsOut(
-        label=provider.label,
+        label=label,
         columns=[
             RecordColumnOut(key=CODE_COLUMN, label="Code", kind="text", importable=False, editable=False, required=False,
                             sensitivity="none", included=True),
@@ -93,11 +88,47 @@ def record_columns(
         omitted_sensitivity=omitted,
         omitted_reasons={tag: decisions[tag].reason or "" for tag in omitted},
         importable=reason is None,
-        can_import=reason is None and may_import(db, current_user, project, record_type, provider),
+        can_import=reason is None and can_import,
         not_importable_reason=reason,
-        filter_params=sorted(provider.filter_params),
+        filter_params=sorted(filter_params),
         max_rows=MAX_IMPORT_ROWS,
         max_bytes=MAX_IMPORT_BYTES,
+    )
+
+
+def import_result_out(result: ImportResult) -> ImportResultOut:
+    """The API shape of an import's preview or outcome (`ImportResultOut`), shared by both tiers' import routes."""
+    return ImportResultOut(
+        applied=result.applied, created=result.count("create"), updated=result.count("update"),
+        unchanged=result.count("unchanged"), failed=result.count("error"),
+        rows=[
+            RowResultOut(
+                row=r.row, action=r.action, code=r.code, message=r.message,
+                changes=[ColumnChangeOut(column=c.column, label=c.label, before=c.before, after=c.after) for c in r.changes],
+            )
+            for r in result.rows
+        ],
+        ignored_columns=result.ignored_columns, omitted_sensitivity=result.omitted, error_csv=result.error_csv,
+    )
+
+
+@router.get("/columns", response_model=RecordColumnsOut)
+def record_columns(
+    project_id: UUID, record_type: str, current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+) -> RecordColumnsOut:
+    """The columns of `record_type`'s table, which of them the policy lets through, and whether it can be imported."""
+    project = _project(db, project_id)
+    provider = provider_for(db, project, record_type)
+    require_view(db, current_user, project, record_type)
+    columns = list(provider.columns(db, project))
+    kept, omitted = resolve_export_columns(
+        db, current_user, columns, organization_id=project.organization_id, project_id=project.id, purpose="export",
+    )
+    reason = import_capability(provider, record_type)
+    return columns_out(
+        provider.label, columns, kept, omitted, tag_decisions(db, current_user, project.organization_id, project.id),
+        reason=reason, can_import=reason is None and may_import(db, current_user, project, record_type, provider),
+        filter_params=provider.filter_params,
     )
 
 
@@ -159,16 +190,4 @@ async def import_records(
     result = await run_in_threadpool(
         run_import, db, current_user, project, record_type, provider, data, apply=not dry_run,
     )
-    return ImportResultOut(
-        applied=result.applied, created=result.count("create"), updated=result.count("update"),
-        unchanged=result.count("unchanged"), failed=result.count("error"),
-        rows=[
-            RowResultOut(
-                row=r.row, action=r.action, code=r.code, message=r.message,
-                changes=[ColumnChangeOut(column=c.column, label=c.label, before=c.before, after=c.after) for c in r.changes],
-            )
-            for r in result.rows
-        ],
-        ignored_columns=result.ignored_columns, omitted_sensitivity=result.omitted, error_csv=result.error_csv,
-    )
-
+    return import_result_out(result)

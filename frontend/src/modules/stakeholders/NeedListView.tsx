@@ -41,7 +41,7 @@ export function NeedListView({
   /** The page header (title, actions, tabs) this list owns when it is a whole page. */
   page?: RecordListPage;
   /** Offers the shared Export and Import of Needs on a list page: the project, and what to do after an import. */
-  exportRecords?: { projectId: string; onImported?: () => void };
+  exportRecords?: { projectId?: string; organizationId?: string; onImported?: () => void };
   /** Resolves on success; a rejection keeps the modal open and shows its message. Omit when needs are created elsewhere. */
   onCreate?: (values: NeedFieldValues) => Promise<void>;
 }) {

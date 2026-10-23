@@ -11,6 +11,9 @@ Responsibilities:
   `children`, `both`) and tag filter applied generically, cells written for a spreadsheet.
 - Run an import (`run_import`): parse the CSV, match each row to a record by its `code`, and create or update
   it **through the type's own create/update path**, as a preview (rolled back) or an apply (committed).
+- Do the same for the records an **organisation** owns (`org_provider_for`, `build_org_table`, `run_org_import`),
+  through the provider's `OrganizationRecordTable`: one import body serves both tiers, so a rule added to it
+  reaches the organisation lists too.
 - Audit an export or an apply as one event each; counts and keys only, never cell values.
 
 Design decisions:
@@ -26,6 +29,10 @@ Design decisions:
   (`services.csv_safety`); the importer strips exactly that one prefix again so the round trip is lossless.
 - A provider never commits and never skips an authorisation the type's own endpoint makes; this engine only
   decides who may use the table at all.
+- The organisation tier matches only the organisation's own records (a code of a project's record is a row error,
+  as is a code of another organisation) and applies the organisation-level personal-data grant, since there is no
+  project to hold a project grant. Its codes are always qualified by the organisation code (`ACME-PER-001`); the
+  bare form is accepted on the way in.
 - Personal-data columns: every column carries a sensitivity tag set by the provider. `resolve_export_columns`
   is the single place that decides which are kept, and every route (export, import, the record-list report, the
   grid) goes through it, so the rule cannot be bypassed on one of them. A tagged column needs the organisation's
@@ -43,7 +50,7 @@ import io
 import logging
 import uuid
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -57,14 +64,17 @@ from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
 from app.modules.registry import (
+    OrganizationRecordTable,
     RecordCellError,
     RecordColumn,
     RecordFilters,
     RecordImportContext,
     RecordTableProvider,
     artefact_type_enabled_for_project,
+    artefact_type_module,
     get_not_importable_types,
     get_record_table_providers,
+    is_org_module_subcomponent_enabled,
 )
 from app.schemas.principal import PrincipalRef
 from app.services import pubsub
@@ -74,7 +84,7 @@ from app.services.csv_safety import csv_safe
 from app.services.permissions import encode_permission
 from app.services.principals import group_ref_from_text, principal_labels, principal_text, validate_principal
 from app.services.project_scope import ProjectScope, gate_open
-from app.services.rbac import get_effective_permissions, permission_satisfied
+from app.services.rbac import get_effective_org_roles, get_effective_permissions, permission_satisfied
 from app.services.record_policy import REASON_PERMISSION, tag_decisions
 from app.services.tags import TagFilter
 
@@ -130,16 +140,17 @@ def _may(provider_check: Any, db: Session, user: User, project: Project, artefac
     return permission_satisfied(held, encode_permission(artefact_type, level))
 
 
-def import_capability(provider: RecordTableProvider, artefact_type: str) -> str | None:
+def import_capability(provider: RecordTableProvider, artefact_type: str, *, organization: bool = False) -> str | None:
     """Why `artefact_type` cannot be imported, or `None` when it can.
 
-    A type is importable when its provider can create or update and at least one of its columns is importable.
-    The reason a module gave in `not_importable` wins, so the message says what the module intended.
+    A type is importable when its table can create or update. The reason a module gave in `not_importable`
+    wins, so the message says what the module intended. `organization` asks about the organisation tier.
     """
     reason = get_not_importable_types().get(artefact_type)
     if reason:
         return reason
-    if provider.create is None and provider.update is None:
+    table: RecordTableProvider | OrganizationRecordTable | None = provider.organization if organization else provider
+    if table is None or (table.create is None and table.update is None):
         return "This record type cannot be imported."
     return None
 
@@ -169,28 +180,94 @@ def may_import(db: Session, user: User, project: Project, artefact_type: str, pr
     return any(import_rights(db, user, project, artefact_type, provider))
 
 
+def org_import_rights(
+    db: Session, user: User, organization: Organization, artefact_type: str, tier: OrganizationRecordTable
+) -> tuple[bool, bool]:
+    """`import_rights` for the organisation's own records: `(may create, may update)`.
+
+    The type's own organisation-endpoint check wins; without one the fine-grained `propose_create` / `manage`
+    permission at the organisation decides.
+    """
+
+    def may(check: Any, level: str) -> bool:
+        if check is not None:
+            return bool(check(db, user, organization.id))
+        held = get_effective_permissions(db, user.id, organization_id=organization.id)
+        return permission_satisfied(held, encode_permission(artefact_type, level))
+
+    return (
+        tier.create is not None and may(tier.can_create, "propose_create"),
+        tier.update is not None and may(tier.can_update, "manage"),
+    )
+
+
+def org_may_import(db: Session, user: User, organization: Organization, artefact_type: str, tier: OrganizationRecordTable) -> bool:
+    """Whether `user` may create or update the organisation's own records of this type through an import."""
+    return any(org_import_rights(db, user, organization, artefact_type, tier))
+
+
+def org_provider_for(db: Session, organization: Organization, artefact_type: str) -> RecordTableProvider:
+    """The provider for `artefact_type` when it can be owned by `organization` and its module is on there.
+
+    Args:
+        db: Active session (read only).
+        organization: The request organisation.
+        artefact_type: The record type from the URL.
+
+    Raises:
+        HTTPException: 404 when the type has no organisation tier, or its module (or the sub-component the
+            organisation list needs) is off for the organisation (answered the same, so a disabled module's
+            types cannot be listed by probing).
+    """
+    provider = get_record_table_providers().get(artefact_type)
+    if provider is None or provider.organization is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Record type not found.")
+    definition = artefact_type_module(artefact_type)
+    if definition is not None and not is_org_module_subcomponent_enabled(
+        db, organization.id, definition.key, provider.organization.subcomponent
+    ):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Record type not found.")
+    return provider
+
+
+def require_org_member(db: Session, user: User, organization: Organization) -> None:
+    """Raises 404 unless `user` holds a role in `organization` (the gate of the organisation lists; answered as
+    absent so a stranger cannot tell the organisation exists)."""
+    if not get_effective_org_roles(db, user.id, organization.id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+
+
+def _org_tier(provider: RecordTableProvider) -> OrganizationRecordTable:
+    """The provider's organisation tier (callers have already resolved it through `org_provider_for`)."""
+    if provider.organization is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Record type not found.")
+    return provider.organization
+
+
 def resolve_export_columns(
-    db: Session, user: User, project: Project, columns: Sequence[RecordColumn], *, purpose: str
+    db: Session, user: User, columns: Sequence[RecordColumn], *, organization_id: uuid.UUID, project_id: uuid.UUID | None = None,
+    purpose: str,
 ) -> tuple[list[RecordColumn], list[str]]:
     """Which columns may be exported or imported, and which sensitivity tags were left out.
 
     The one function every route uses. A column tagged with a sensitivity (`personal`, `contact`,
     `free_text_people`) is kept only when the organisation's policy allows the tag (its override, else the
-    server default, else excluded) **and** the person holds `export_personal_data` in the project
-    (`services.record_policy.tag_decisions`), so a fresh install lets no personal data leave through a file;
-    an untagged column is always kept.
+    server default, else excluded) **and** the person holds `export_personal_data` in the project, or in the
+    organisation for its own lists (`services.record_policy.tag_decisions`), so a fresh install lets no
+    personal data leave through a file; an untagged column is always kept.
 
     Args:
         db: Active session (read only).
         user: The person asking.
-        project: The request project.
         columns: The provider's columns.
+        organization_id: The organisation whose policy applies.
+        project_id: The request project, or `None` for the organisation's own lists.
         purpose: `"export"` or `"import"` (an import ignores an excluded column the same way an export omits it).
 
     Returns:
         `(kept columns, sorted tags that caused an omission)`.
     """
-    decisions = tag_decisions(db, user, project)
+    decisions = tag_decisions(db, user, organization_id, project_id)
     kept: list[RecordColumn] = []
     omitted: set[str] = set()
     for column in columns:
@@ -279,13 +356,13 @@ def parse_principal_cell(ctx: RecordImportContext, text: str, *, field_name: str
         ref: PrincipalRef | None = PrincipalRef(type=PrincipalType.USER, id=user.id)
     else:
         ref, problem = group_ref_from_text(
-            ctx.db, text, organization_id=ctx.project.organization_id, project_id=ctx.project.id
+            ctx.db, text, organization_id=ctx.organization_id, project_id=ctx.project_id
         )
         if ref is None:
             raise RecordCellError(problem or f"Unknown {field_name} '{text}'.")
     try:
         validate_principal(
-            ctx.db, ref, organization_id=ctx.project.organization_id, project_id=ctx.project.id, field=field_name
+            ctx.db, ref, organization_id=ctx.organization_id, project_id=ctx.project_id, field=field_name
         )
     except HTTPException as exc:
         if "@" in text:
@@ -379,7 +456,9 @@ def build_table(
     Returns:
         The `RecordTable`; rows from a related project are labelled in a trailing `project` column.
     """
-    columns, omitted = resolve_export_columns(db, user, project, provider.columns(db, project), purpose="export")
+    columns, omitted = resolve_export_columns(
+        db, user, provider.columns(db, project), organization_id=project.organization_id, project_id=project.id, purpose="export",
+    )
 
     def rows_for(project_id: uuid.UUID) -> list[Any]:
         found = provider.list_records(db, user, project_id, filters)
@@ -404,7 +483,7 @@ def build_table(
         if project_scope.widened:
             row.append("" if owned_by_organization else owner.code)
         rows.append(row)
-    keys = sorted(k for k, values in filters.values.items() if any(v.strip() for v in values))
+    keys = _applied_filter_keys(filters)
     if tag_filter.active:
         keys.append("tag")
     if project_scope.widened:
@@ -413,6 +492,64 @@ def build_table(
         columns=header, rows=rows, omitted=omitted, filter_keys=sorted(keys), included=_sensitivity_tags(columns),
         tones={c.key: c.tones for c in columns if c.tones},
     )
+
+
+def split_org_params(provider: RecordTableProvider, query: Sequence[tuple[str, str]]) -> RecordFilters:
+    """`split_params` for the organisation lists: the organisation tier's filters only (no project scope or tags).
+
+    Raises:
+        HTTPException: 422 for a parameter the organisation list cannot honour.
+    """
+    tier = _org_tier(provider)
+    allowed = {"format"} | tier.filter_params
+    unknown = sorted({k for k, _ in query if k not in allowed})
+    if unknown:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, f"This list cannot be exported with the filter(s): {', '.join(unknown)}."
+        )
+    values: dict[str, list[str]] = {}
+    for key, value in query:
+        if key in tier.filter_params:
+            values.setdefault(key, []).append(value)
+    return RecordFilters(values=values)
+
+
+def build_org_table(
+    db: Session, user: User, organization: Organization, provider: RecordTableProvider, *, filters: RecordFilters,
+) -> RecordTable:
+    """Builds the table of the organisation's own records of one type with the organisation list's filters.
+
+    Args:
+        db: Active session (read only).
+        user: The caller (authorised by the route).
+        organization: The request organisation.
+        provider: The type's provider (it has an organisation tier).
+        filters: The organisation tier's filters.
+
+    Returns:
+        The `RecordTable`; every code is qualified by the organisation's code, as the organisation's records are
+        always cited.
+    """
+    tier = _org_tier(provider)
+    columns, omitted = resolve_export_columns(
+        db, user, tier.columns(db, organization), organization_id=organization.id, purpose="export",
+    )
+    records = tier.list_records(db, user, organization, filters)
+    prepared = tier.prepare(db, organization, records) if tier.prepare is not None else None
+    header = [(CODE_COLUMN, "Code"), *((c.key, c.label) for c in columns)]
+    rows = [
+        [display_code(provider.code_of(record), organization.code, organization_owned=True), *(c.get(prepared, record) for c in columns)]
+        for record in records
+    ]
+    return RecordTable(
+        columns=header, rows=rows, omitted=omitted, filter_keys=_applied_filter_keys(filters), included=_sensitivity_tags(columns),
+        tones={c.key: c.tones for c in columns if c.tones},
+    )
+
+
+def _applied_filter_keys(filters: RecordFilters) -> list[str]:
+    """The names of the provider filters that carry a value (for the audit event; never the values)."""
+    return sorted(k for k, values in filters.values.items() if any(v.strip() for v in values))
 
 
 def _sensitivity_tags(columns: Sequence[RecordColumn]) -> list[str]:
@@ -430,11 +567,20 @@ def table_csv(table: RecordTable) -> bytes:
     return b"\xef\xbb\xbf" + buffer.getvalue().encode("utf-8")
 
 
-def audit_export(db: Session, user: User, project: Project, artefact_type: str, table: RecordTable, fmt: str) -> None:
-    """Records one `records_exported` event (counts and filter keys only) and commits it."""
+def _audit_owner(owner: Project | Organization) -> dict[str, Any]:
+    """The audit-event fields that name where an export or import happened: a project, or an organisation's own lists."""
+    if isinstance(owner, Organization):
+        return {"entity_type": "organization", "entity_id": owner.id, "organization_id": owner.id}
+    return {"entity_type": "project", "entity_id": owner.id, "project_id": owner.id, "organization_id": owner.organization_id}
+
+
+def audit_export(db: Session, user: User, owner: Project | Organization, artefact_type: str, table: RecordTable, fmt: str) -> None:
+    """Records one `records_exported` event (counts and filter keys only) and commits it.
+
+    `owner` is the project exported from, or the organisation for its own lists.
+    """
     log_event(
-        db, entity_type="project", entity_id=project.id, action="records_exported", actor_id=user.id,
-        project_id=project.id, organization_id=project.organization_id,
+        db, action="records_exported", actor_id=user.id, **_audit_owner(owner),
         detail={
             "record_type": artefact_type, "format": fmt, "rows": len(table.rows),
             "columns": len(table.columns), "filters": table.filter_keys, "omitted_sensitivity": table.omitted,
@@ -550,6 +696,14 @@ def _find_record(db: Session, project: Project, provider: RecordTableProvider, c
     return found
 
 
+def _find_org_record(db: Session, organization: Organization, tier: OrganizationRecordTable, code: str) -> Any | None:
+    """The record among **this organisation's own** for a code as exported: qualified with the organisation code, or bare."""
+    found = tier.find(db, organization, code)
+    if found is None and organization.code and code.upper().startswith(f"{organization.code.upper()}-"):
+        found = tier.find(db, organization, code[len(organization.code) + 1:])
+    return found
+
+
 def _error_csv(header: list[str], failed: list[tuple[dict[str, str], str]]) -> str:
     """The failed rows, as uploaded, plus the reason, so the file can be fixed and uploaded again."""
     buffer = io.StringIO()
@@ -560,10 +714,43 @@ def _error_csv(header: list[str], failed: list[tuple[dict[str, str], str]]) -> s
     return buffer.getvalue()
 
 
+@dataclass(frozen=True)
+class _ImportTarget:
+    """Where an import reads and writes: a project's records, or the organisation's own.
+
+    The two tiers differ only in what is listed here, so `_import_rows` is written once.
+
+    Attributes:
+        organization: The organisation (its policy applies to both tiers).
+        project: The project, or `None` at the organisation tier.
+        columns: The provider's columns for this tier.
+        find: Finds a record of this tier by the code in the file.
+        prepare: Batch lookups for the "before" cells, or `None`.
+        create / update: The provider's write paths, already `None` where the caller lacks the right.
+        code_of / id_of: Read a record's code and id.
+        place: How the tier reads in a message ("project" / "organisation").
+    """
+
+    organization: Organization
+    project: Project | None
+    columns: Sequence[RecordColumn]
+    find: Callable[[str], Any | None]
+    prepare: Callable[[list[Any]], Any] | None
+    create: Callable[[RecordImportContext, Mapping[str, Any]], Any] | None
+    update: Callable[[RecordImportContext, Any, Mapping[str, Any]], None] | None
+    code_of: Callable[[Any], str]
+    id_of: Callable[[Any], Any]
+    place: str
+
+    @property
+    def owner(self) -> Project | Organization:
+        return self.project if self.project is not None else self.organization
+
+
 def run_import(
     db: Session, user: User, project: Project, artefact_type: str, provider: RecordTableProvider, data: bytes, *, apply: bool
 ) -> ImportResult:
-    """Creates and updates records from an exported CSV.
+    """Creates and updates a project's records from an exported CSV.
 
     Each row runs through the provider's own create or update in a savepoint, so a refused row leaves nothing
     behind. A preview (`apply=False`) rolls the whole transaction back at the end; an apply commits the valid
@@ -591,13 +778,62 @@ def run_import(
     may_create, may_update = import_rights(db, user, project, artefact_type, provider)
     if not may_create and not may_update:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to import these records.")
+    target = _ImportTarget(
+        organization=db.get(Organization, project.organization_id), project=project, columns=list(provider.columns(db, project)),
+        find=lambda code: _find_record(db, project, provider, code),
+        prepare=(lambda records: provider.prepare(db, project, records)) if provider.prepare is not None else None,
+        create=provider.create if may_create else None, update=provider.update if may_update else None,
+        code_of=provider.code_of, id_of=provider.id_of, place="project",
+    )
+    return _import_rows(db, user, target, artefact_type, data, apply=apply)
 
+
+def run_org_import(
+    db: Session, user: User, organization: Organization, artefact_type: str, provider: RecordTableProvider, data: bytes, *,
+    apply: bool,
+) -> ImportResult:
+    """`run_import` for the records the **organisation** owns (its Strategies, Personas, ...).
+
+    Only the organisation's own records are matched: a code of a project's record, or of another organisation, is
+    a row error. Create and update need what the organisation endpoints need (`OrganizationRecordTable.can_*`).
+
+    Raises:
+        HTTPException: As `run_import`.
+    """
+    tier = _org_tier(provider)
+    reason = import_capability(provider, artefact_type, organization=True)
+    if reason is not None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, reason)
+    may_create, may_update = org_import_rights(db, user, organization, artefact_type, tier)
+    if not may_create and not may_update:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to import these records.")
+    target = _ImportTarget(
+        organization=organization, project=None, columns=list(tier.columns(db, organization)),
+        find=lambda code: _find_org_record(db, organization, tier, code),
+        prepare=(lambda records: tier.prepare(db, organization, records)) if tier.prepare is not None else None,
+        create=tier.create if may_create else None, update=tier.update if may_update else None,
+        code_of=provider.code_of, id_of=provider.id_of, place="organisation",
+    )
+    return _import_rows(db, user, target, artefact_type, data, apply=apply)
+
+
+def _import_rows(
+    db: Session, user: User, target: _ImportTarget, artefact_type: str, data: bytes, *, apply: bool
+) -> ImportResult:
+    """The import body shared by both tiers: parse, match each row by code, create or update, report.
+
+    A preview rolls the transaction back at the end; an apply commits and records one `records_imported` event.
+    """
+    organization = target.organization
     header, file_rows = _read_rows(data)
-    available, omitted = resolve_export_columns(db, user, project, provider.columns(db, project), purpose="import")
+    project_id = target.project.id if target.project is not None else None
+    available, omitted = resolve_export_columns(
+        db, user, target.columns, organization_id=organization.id, project_id=project_id, purpose="import",
+    )
     by_key = {c.key: c for c in available}
-    all_keys = {c.key: c for c in provider.columns(db, project)}
+    all_keys = {c.key: c for c in target.columns}
     ignored: dict[str, str] = {}
-    decisions = tag_decisions(db, user, project)
+    decisions = tag_decisions(db, user, organization.id, project_id)
     for name in header:
         if not name or name == CODE_COLUMN:
             continue
@@ -611,11 +847,10 @@ def run_import(
             ignored[name] = "Calculated or controlled elsewhere; not imported."
     in_file = [by_key[n] for n in header if n in by_key and by_key[n].importable]
     parsers = {c.key: c.parse for c in in_file if c.parse is not None}
-    create_fn = provider.create if may_create else None
-    update_fn = provider.update if may_update else None
+    create_fn, update_fn = target.create, target.update
     has_code_column = CODE_COLUMN in header
 
-    ctx = RecordImportContext(db=db, project=project, user=user)
+    ctx = RecordImportContext(db=db, project=target.project, user=user, organization=organization)
     prepared_cache: dict[str, Any] = {}
     results: list[RowResult] = []
     failed: list[tuple[dict[str, str], str]] = []
@@ -636,9 +871,9 @@ def run_import(
                 results.append(result)
                 continue
             seen_codes.add(raw_code.upper())
-            record = _find_record(db, project, provider, raw_code)
+            record = target.find(raw_code)
             if record is None:
-                fail(f"No record with the code {raw_code} in this project.")
+                fail(f"No record with the code {raw_code} in this {target.place}.")
                 results.append(result)
                 continue
             if update_fn is None:
@@ -665,16 +900,16 @@ def run_import(
                 result.action = "create"
                 result.code = ""
             else:
-                prepared = prepared_cache.get(str(provider.id_of(record)))
-                if prepared is None and provider.prepare is not None:
-                    prepared = provider.prepare(db, project, [record])
-                    prepared_cache[str(provider.id_of(record))] = prepared
+                prepared = prepared_cache.get(str(target.id_of(record)))
+                if prepared is None and target.prepare is not None:
+                    prepared = target.prepare([record])
+                    prepared_cache[str(target.id_of(record))] = prepared
                 changes = []
                 for column in in_file:
                     before = column.get(prepared, record)
                     if not _same(before, cells[column.key]):
                         changes.append(ColumnChange(column.key, column.label, before, cells[column.key]))
-                result.code = provider.code_of(record)
+                result.code = target.code_of(record)
                 if not changes:
                     result.action = "unchanged"
                 else:
@@ -708,8 +943,7 @@ def run_import(
 
     created_n, updated_n = result_set.count("create"), result_set.count("update")
     log_event(
-        db, entity_type="project", entity_id=project.id, action="records_imported", actor_id=user.id,
-        project_id=project.id, organization_id=project.organization_id,
+        db, action="records_imported", actor_id=user.id, **_audit_owner(target.owner),
         detail={
             "record_type": artefact_type, "created": created_n, "updated": updated_n,
             "unchanged": result_set.count("unchanged"), "failed": result_set.count("error"),
@@ -717,8 +951,8 @@ def run_import(
         },
     )
     db.commit()
-    if created_n or updated_n:
-        pubsub.notify(project.id, {"type": artefact_type, "action": "imported"})
+    if (created_n or updated_n) and target.project is not None:
+        pubsub.notify(target.project.id, {"type": artefact_type, "action": "imported"})
     return result_set
 
 

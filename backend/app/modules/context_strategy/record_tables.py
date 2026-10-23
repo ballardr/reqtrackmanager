@@ -23,8 +23,9 @@ Design decisions:
   carry. Pain Point scores are not columns here; the scoring grid reads them from the scoring service.
 - A Pain Point or Open Question owner is assigned by a manager (the create form has no owner field), so an
   import that names one on a new row needs the manager role and says so otherwise.
-- Only a project's own records are listed (organisation-owned Strategies, Future States and Guiding
-  Principles have no project and appear on the organisation pages).
+- The project tier lists only a project's own records. Organisation-owned Strategies, Future States and Guiding
+  Principles have no project: their `OrganizationRecordTable` lists and writes them for the organisation pages,
+  through the same column definitions and the organisation endpoints' own create / edit functions.
 
 Dependencies: `modules.context_strategy.edits` (queries and write paths), `models`, `labels`, `_shared` (role
 checks), `services.record_tables_core` (cell helpers), `services.tags`.
@@ -40,6 +41,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
 from app.modules.context_strategy import edits
@@ -99,7 +101,14 @@ from app.modules.context_strategy.service import (
     STRATEGY_ARTEFACT_TYPE,
     resolve_effective_pain_point_types,
 )
-from app.modules.registry import RecordCellError, RecordColumn, RecordFilters, RecordImportContext, RecordTableProvider
+from app.modules.registry import (
+    OrganizationRecordTable,
+    RecordCellError,
+    RecordColumn,
+    RecordFilters,
+    RecordImportContext,
+    RecordTableProvider,
+)
 from app.schemas.principal import PrincipalRef
 from app.services import tags as tag_service
 from app.services.client_date import effective_today
@@ -230,8 +239,7 @@ _STRATEGY_TEXT = ("title", "objective", "current_state", "desired_future_state",
                   "constraints", "measures_of_success")
 
 
-def _list_strategies(db: Session, user: User, project_id: uuid.UUID, filters: RecordFilters) -> list[Strategy]:
-    records = edits.project_strategies(db, project_id, _include_archived(filters))
+def _filter_strategies(db: Session, records: list[Strategy], filters: RecordFilters) -> list[Strategy]:
     status, priority = enum_filter(filters, "status", StrategyStatus), enum_filter(filters, "priority", StrategyPriority)
     versions = _current_versions(db, StrategyVersion, "strategy_id", records)
     return [
@@ -239,6 +247,14 @@ def _list_strategies(db: Session, user: User, project_id: uuid.UUID, filters: Re
         if (status is None or versions[r.id].status == status) and (priority is None or versions[r.id].priority == priority)
         and _search_hit(filters, r.unique_code, versions[r.id].title)
     ]
+
+
+def _list_strategies(db: Session, user: User, project_id: uuid.UUID, filters: RecordFilters) -> list[Strategy]:
+    return _filter_strategies(db, edits.project_strategies(db, project_id, _include_archived(filters)), filters)
+
+
+def _list_org_strategies(db: Session, user: User, organization: Organization, filters: RecordFilters) -> list[Strategy]:
+    return _filter_strategies(db, edits.organization_strategies(db, organization.id, _include_archived(filters)), filters)
 
 
 def _strategy_columns(db: Session, project: Project) -> list[RecordColumn]:
@@ -286,6 +302,46 @@ def _may_update_strategy(db: Session, user: User, project_id: uuid.UUID) -> bool
     return user_satisfies_owner_role(db, user, StrategyScope.PROJECT, organization_id=_org_id(db, project_id), project_id=project_id)
 
 
+def _create_org_strategy(ctx: RecordImportContext, values: Mapping[str, Any]) -> Strategy:
+    return edits.create_strategy_record(
+        ctx.db, edits.RecordOwner(ctx.organization.id), ctx.user, title=values["title"], objective=values["objective"],
+        **_updates(values, _STRATEGY_TEXT[2:]),
+        **{k: v for k, v in _updates(values, ("priority", "time_horizon")).items() if v is not None},
+    )
+
+
+def _update_org_strategy(ctx: RecordImportContext, strategy: Strategy, values: Mapping[str, Any]) -> None:
+    edits.edit_strategy_record(
+        ctx.db, edits.RecordOwner(ctx.organization.id), strategy, ctx.user, change_note=IMPORT_NOTE,
+        **_updates(values, _STRATEGY_TEXT + ("priority", "time_horizon")),
+    )
+
+
+def _find_org_scoped(model: Any, scope: Any) -> Any:
+    """A finder of the organisation's own records of `model` (its `scope` column equal to `scope`) by code."""
+
+    def find(db: Session, organization: Organization, code: str) -> Any | None:
+        return db.scalar(select(model).where(
+            model.organization_id == organization.id, model.scope == scope, model.unique_code == code.upper(),
+        ))
+
+    return find
+
+
+def _org_owner_check(check: Any, scope: Any) -> Any:
+    """`(db, user, organization_id) -> bool` for the owner-role check of an organisation-scoped type."""
+
+    def allowed(db: Session, user: User, organization_id: uuid.UUID) -> bool:
+        return check(db, user, scope, organization_id=organization_id, project_id=None)
+
+    return allowed
+
+
+def _all_org_members_may_create(db: Session, user: User, organization_id: uuid.UUID) -> bool:
+    """Any organisation member may create these records: the gate the organisation create endpoints apply."""
+    return True
+
+
 STRATEGY_TABLE = RecordTableProvider(
     label="Strategies",
     columns=_strategy_columns,
@@ -299,6 +355,20 @@ STRATEGY_TABLE = RecordTableProvider(
     can_create=_all_may_create,
     can_update=_may_update_strategy,
     approval_gated=True,
+    organization=OrganizationRecordTable(
+        subcomponent="strategy",
+        columns=lambda db, organization: _strategy_columns(db, None),
+        list_records=_list_org_strategies,
+        find=_find_org_scoped(Strategy, StrategyScope.ORGANIZATION),
+        prepare=lambda db, organization, records: _Prepared(
+            db, records, STRATEGY_ARTEFACT_TYPE, version_model=StrategyVersion, version_fk="strategy_id",
+        ),
+        create=_create_org_strategy,
+        update=_update_org_strategy,
+        filter_params=COMMON_FILTERS,
+        can_create=_all_org_members_may_create,
+        can_update=_org_owner_check(user_satisfies_owner_role, StrategyScope.ORGANIZATION),
+    ),
 )
 
 
@@ -307,8 +377,7 @@ STRATEGY_TABLE = RecordTableProvider(
 _FUTURE_STATE_TEXT = ("title", "current_state", "desired_state", "outcomes", "success_measures", "constraints", "assumptions")
 
 
-def _list_future_states(db: Session, user: User, project_id: uuid.UUID, filters: RecordFilters) -> list[FutureState]:
-    records = edits.project_future_states(db, project_id, _include_archived(filters))
+def _filter_future_states(db: Session, records: list[FutureState], filters: RecordFilters) -> list[FutureState]:
     status = enum_filter(filters, "status", FutureStateStatus)
     roadmap_only, passed_only, no_measures = filters.flag("roadmap_only"), filters.flag("target_passed_only"), filters.flag("no_measures_only")
     today = effective_today()
@@ -325,6 +394,14 @@ def _list_future_states(db: Session, user: User, project_id: uuid.UUID, filters:
         )
 
     return [r for r in records if keep(r)]
+
+
+def _list_future_states(db: Session, user: User, project_id: uuid.UUID, filters: RecordFilters) -> list[FutureState]:
+    return _filter_future_states(db, edits.project_future_states(db, project_id, _include_archived(filters)), filters)
+
+
+def _list_org_future_states(db: Session, user: User, organization: Organization, filters: RecordFilters) -> list[FutureState]:
+    return _filter_future_states(db, edits.organization_future_states(db, organization.id, _include_archived(filters)), filters)
 
 
 def _future_state_columns(db: Session, project: Project) -> list[RecordColumn]:
@@ -374,6 +451,20 @@ def _may_update_future_state(db: Session, user: User, project_id: uuid.UUID) -> 
     )
 
 
+def _create_org_future_state(ctx: RecordImportContext, values: Mapping[str, Any]) -> FutureState:
+    return edits.create_future_state_record(
+        ctx.db, edits.RecordOwner(ctx.organization.id), ctx.user, title=values["title"],
+        **_updates(values, _FUTURE_STATE_TEXT[1:] + ("target_date",)),
+    )
+
+
+def _update_org_future_state(ctx: RecordImportContext, future_state: FutureState, values: Mapping[str, Any]) -> None:
+    edits.edit_future_state_record(
+        ctx.db, edits.RecordOwner(ctx.organization.id), future_state, ctx.user, change_note=IMPORT_NOTE,
+        target_date_explicitly_set="target_date" in values, **_updates(values, _FUTURE_STATE_TEXT + ("target_date",)),
+    )
+
+
 FUTURE_STATE_TABLE = RecordTableProvider(
     label="Future states",
     columns=_future_state_columns,
@@ -389,6 +480,20 @@ FUTURE_STATE_TABLE = RecordTableProvider(
     can_create=_all_may_create,
     can_update=_may_update_future_state,
     approval_gated=True,
+    organization=OrganizationRecordTable(
+        subcomponent="future_state",
+        columns=lambda db, organization: _future_state_columns(db, None),
+        list_records=_list_org_future_states,
+        find=_find_org_scoped(FutureState, FutureStateScope.ORGANIZATION),
+        prepare=lambda db, organization, records: _Prepared(
+            db, records, FUTURE_STATE_ARTEFACT_TYPE, version_model=FutureStateVersion, version_fk="future_state_id",
+        ),
+        create=_create_org_future_state,
+        update=_update_org_future_state,
+        filter_params=frozenset({"include_archived", "status", "search", "roadmap_only", "target_passed_only", "no_measures_only"}),
+        can_create=_all_org_members_may_create,
+        can_update=_org_owner_check(user_satisfies_future_state_owner_role, FutureStateScope.ORGANIZATION),
+    ),
 )
 
 
@@ -397,8 +502,7 @@ FUTURE_STATE_TABLE = RecordTableProvider(
 _GP_PRIORITY_LABELS = label_map(GuidingPrinciplePriority)
 
 
-def _list_guiding_principles(db: Session, user: User, project_id: uuid.UUID, filters: RecordFilters) -> list[GuidingPrinciple]:
-    records = edits.project_guiding_principles(db, project_id, _include_archived(filters))
+def _filter_guiding_principles(db: Session, records: list[GuidingPrinciple], filters: RecordFilters) -> list[GuidingPrinciple]:
     status = enum_filter(filters, "status", GuidingPrincipleStatus)
     priority = enum_filter(filters, "priority", GuidingPrinciplePriority)
     versions = _current_versions(db, GuidingPrincipleVersion, "guiding_principle_id", records)
@@ -407,6 +511,16 @@ def _list_guiding_principles(db: Session, user: User, project_id: uuid.UUID, fil
         if (status is None or versions[r.id].status == status) and (priority is None or versions[r.id].priority == priority)
         and _search_hit(filters, r.unique_code, versions[r.id].name)
     ]
+
+
+def _list_guiding_principles(db: Session, user: User, project_id: uuid.UUID, filters: RecordFilters) -> list[GuidingPrinciple]:
+    return _filter_guiding_principles(db, edits.project_guiding_principles(db, project_id, _include_archived(filters)), filters)
+
+
+def _list_org_guiding_principles(
+    db: Session, user: User, organization: Organization, filters: RecordFilters
+) -> list[GuidingPrinciple]:
+    return _filter_guiding_principles(db, edits.organization_guiding_principles(db, organization.id, _include_archived(filters)), filters)
 
 
 def _guiding_principle_columns(db: Session, project: Project) -> list[RecordColumn]:
@@ -455,6 +569,22 @@ def _may_update_guiding_principle(db: Session, user: User, project_id: uuid.UUID
     )
 
 
+def _create_org_guiding_principle(ctx: RecordImportContext, values: Mapping[str, Any]) -> GuidingPrinciple:
+    return edits.create_guiding_principle_record(
+        ctx.db, edits.RecordOwner(ctx.organization.id), ctx.user, name=values["name"],
+        principle_statement=values["principle_statement"], rationale=values.get("rationale", ""),
+        priority=values.get("priority") or GuidingPrinciplePriority.MEDIUM, owner=values.get("owner"),
+    )
+
+
+def _update_org_guiding_principle(ctx: RecordImportContext, guiding_principle: GuidingPrinciple, values: Mapping[str, Any]) -> None:
+    edits.edit_guiding_principle_record(
+        ctx.db, edits.RecordOwner(ctx.organization.id), guiding_principle, ctx.user, change_note=IMPORT_NOTE,
+        owner_explicitly_set="owner" in values,
+        **_updates(values, ("name", "principle_statement", "rationale", "priority", "owner")),
+    )
+
+
 GUIDING_PRINCIPLE_TABLE = RecordTableProvider(
     label="Guiding principles",
     columns=_guiding_principle_columns,
@@ -471,6 +601,21 @@ GUIDING_PRINCIPLE_TABLE = RecordTableProvider(
     can_create=_all_may_create,
     can_update=_may_update_guiding_principle,
     approval_gated=True,
+    organization=OrganizationRecordTable(
+        subcomponent="guiding_principle",
+        columns=lambda db, organization: _guiding_principle_columns(db, None),
+        list_records=_list_org_guiding_principles,
+        find=_find_org_scoped(GuidingPrinciple, GuidingPrincipleScope.ORGANIZATION),
+        prepare=lambda db, organization, records: _Prepared(
+            db, records, GUIDING_PRINCIPLE_ARTEFACT_TYPE, version_model=GuidingPrincipleVersion,
+            version_fk="guiding_principle_id", owners_on_version=True,
+        ),
+        create=_create_org_guiding_principle,
+        update=_update_org_guiding_principle,
+        filter_params=COMMON_FILTERS,
+        can_create=_all_org_members_may_create,
+        can_update=_org_owner_check(user_satisfies_guiding_principle_owner_role, GuidingPrincipleScope.ORGANIZATION),
+    ),
 )
 
 

@@ -28,6 +28,7 @@ import {
   type RecordColumn,
   type RecordColumns,
   type RecordImportResult,
+  type RecordOwner,
   type RecordTablesApi,
 } from "../api/recordTables";
 import { toErrorMessage, useToast } from "../context/ToastContext";
@@ -61,7 +62,7 @@ function columnHint(column: RecordColumn): string {
 }
 
 /**
- * @param projectId The project whose list is imported into.
+ * @param owner The project (or organisation) whose list is imported into.
  * @param recordType The registered record type.
  * @param columns The type's table definition (`GET .../columns`).
  * @param file The CSV the person picked.
@@ -70,9 +71,9 @@ function columnHint(column: RecordColumn): string {
  * @param tables Injectable calls (stories pass fakes).
  */
 export function CsvImportWizard({
-  projectId, recordType, columns, file, onClose, onApplied, tables = recordTablesApi,
+  owner, recordType, columns, file, onClose, onApplied, tables = recordTablesApi,
 }: {
-  projectId: string;
+  owner: RecordOwner;
   recordType: string;
   columns: RecordColumns;
   file: File;
@@ -136,7 +137,7 @@ export function CsvImportWizard({
     setBusy(true);
     setError(null);
     try {
-      setPreview(await tables.importFile(projectId, recordType, canonicalFile(), true));
+      setPreview(await tables.importFile(owner, recordType, canonicalFile(), true));
       setStep("preview");
     } catch (err) {
       setError(toErrorMessage(err, strings.recordTables.importFailed));
@@ -149,7 +150,7 @@ export function CsvImportWizard({
     setBusy(true);
     setError(null);
     try {
-      const applied = await tables.importFile(projectId, recordType, canonicalFile(), false);
+      const applied = await tables.importFile(owner, recordType, canonicalFile(), false);
       showToast(strings.recordTables.applied(applied.created, applied.updated, applied.failed), applied.failed > 0 ? "error" : "success");
       if (applied.created > 0 || applied.updated > 0) onApplied(applied);
       if (applied.failed > 0) {

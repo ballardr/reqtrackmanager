@@ -1,20 +1,25 @@
 """
 Module: modules.context_strategy.edits
 
-The project-scoped list queries and create / edit paths of Context & Strategy's five record types, shared by
-the HTTP endpoints (`project_router`) and the record-table export and import (`record_tables`) so a filter or
-rule added here reaches both.
+The list queries and create / edit paths of Context & Strategy's five record types, shared by the HTTP
+endpoints (`project_router`, and `router` for the organisation's own records) and the record-table export and
+import (`record_tables`) so a filter or rule added here reaches both.
 
 Responsibilities:
 - Select a project's Strategies, Future States, Guiding Principles, Pain Points or Open Questions the way the
-  list endpoint does (own project, project scope, archived only when asked, oldest first).
-- Create a project-scoped Strategy, Future State, Guiding Principle, Pain Point or Open Question with its
-  principal validation, and record the `created` audit event.
+  list endpoint does (own project, project scope, archived only when asked, oldest first), and the
+  organisation's own Strategies, Future States and Guiding Principles the same way.
+- Create a Strategy, Future State, Guiding Principle (a project's or the organisation's, named by a
+  `RecordOwner`) or a Pain Point or Open Question (a project's) with its principal validation, and record the
+  `created` audit event.
 - Edit one in place with the checks the edit endpoint makes (the content lock past review, the closed
   lifecycle of a Pain Point and an Open Question, the principal check, the version lock row), and record the
   `updated` audit event.
 
 Design decisions:
+- Strategy, Future State and Guiding Principle live at two tiers, so their paths take a `RecordOwner` (the
+  `*_project_*` names are the project wrappers the project endpoints and the import use); the rules about the
+  record's own state are the same at both.
 - Nothing here commits and nothing here checks who may do it: the caller owns the transaction and the role
   gate (the endpoint's `require_*_manage_role`, the import's `can_update`), because the gates differ by caller
   context while the rules about the record's own state do not.
@@ -30,6 +35,7 @@ Dependencies: `modules.context_strategy.service` (the create / version / update 
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
@@ -94,6 +100,33 @@ PAIN_POINT_LOCKED = "This Pain Point has reached a terminal outcome; its content
 OPEN_QUESTION_LOCKED = "This Open Question has reached a terminal outcome; its content can no longer be edited."
 
 
+@dataclass(frozen=True)
+class RecordOwner:
+    """Who owns a record being created or edited: a project, or (without `project_id`) the organisation itself.
+
+    Attributes:
+        organization_id: The owning organisation (also the project's organisation).
+        project_id: The owning project, or `None` for an organisation-owned record.
+    """
+
+    organization_id: uuid.UUID
+    project_id: uuid.UUID | None = None
+
+    @classmethod
+    def of_project(cls, project: Project) -> RecordOwner:
+        """The owner of a project's own record."""
+        return cls(project.organization_id, project.id)
+
+    @property
+    def is_project(self) -> bool:
+        return self.project_id is not None
+
+    @property
+    def audit(self) -> dict[str, uuid.UUID]:
+        """The audit-event field that places the record: its project, or its organisation."""
+        return {"project_id": self.project_id} if self.project_id is not None else {"organization_id": self.organization_id}
+
+
 def _locked(message: str) -> HTTPException:
     return HTTPException(status.HTTP_409_CONFLICT, message)
 
@@ -106,6 +139,31 @@ def _project_rows(db: Session, model: Any, project_id: uuid.UUID, include_archiv
     if not include_archived:
         query = query.where(model.is_archived.is_(False))
     return list(db.scalars(query.order_by(model.created_at)).all())
+
+
+def _organization_rows(db: Session, model: Any, organization_id: uuid.UUID, include_archived: bool, scoped: Any) -> list[Any]:
+    """`model`'s rows the organisation itself owns (`scoped`: the scope criterion), oldest first, archived ones only when asked."""
+    query = select(model).where(model.organization_id == organization_id, scoped)
+    if not include_archived:
+        query = query.where(model.is_archived.is_(False))
+    return list(db.scalars(query.order_by(model.created_at)).all())
+
+
+def organization_strategies(db: Session, organization_id: uuid.UUID, include_archived: bool = False) -> list[Strategy]:
+    """The organisation's own Strategies, as the organisation list endpoint selects them."""
+    return _organization_rows(db, Strategy, organization_id, include_archived, Strategy.scope == StrategyScope.ORGANIZATION)
+
+
+def organization_future_states(db: Session, organization_id: uuid.UUID, include_archived: bool = False) -> list[FutureState]:
+    """The organisation's own Future States, as the organisation list endpoint selects them."""
+    return _organization_rows(db, FutureState, organization_id, include_archived, FutureState.scope == FutureStateScope.ORGANIZATION)
+
+
+def organization_guiding_principles(db: Session, organization_id: uuid.UUID, include_archived: bool = False) -> list[GuidingPrinciple]:
+    """The organisation's own Guiding Principles, as the organisation list endpoint selects them."""
+    return _organization_rows(
+        db, GuidingPrinciple, organization_id, include_archived, GuidingPrinciple.scope == GuidingPrincipleScope.ORGANIZATION
+    )
 
 
 def project_strategies(db: Session, project_id: uuid.UUID, include_archived: bool = False) -> list[Strategy]:
@@ -138,17 +196,17 @@ def project_open_questions(db: Session, project_id: uuid.UUID, include_archived:
 # --- Strategy ----------------------------------------------------------------------------------------------------
 
 
-def create_project_strategy_record(
-    db: Session, project: Project, creator: User, *, title: str, objective: str, current_state: str = "",
+def create_strategy_record(
+    db: Session, holder: RecordOwner, creator: User, *, title: str, objective: str, current_state: str = "",
     desired_future_state: str = "", rationale: str = "", expected_outcomes: str = "", constraints: str = "",
     measures_of_success: str = "", priority: StrategyPriority = StrategyPriority.MEDIUM,
     time_horizon: StrategyTimeHorizon = StrategyTimeHorizon.MEDIUM_TERM,
 ) -> Strategy:
-    """Creates a project-scoped Strategy in `DRAFT` status and records the `created` event.
+    """Creates a Strategy in `DRAFT` status and records the `created` event.
 
     Args:
         db: Active session; the caller commits.
-        project: The owning project.
+        holder: The owning project, or the organisation itself.
         creator: The actor.
         title: Strategy title.
         objective: Strategy objective.
@@ -161,17 +219,18 @@ def create_project_strategy_record(
         The new Strategy (flushed, not committed).
     """
     strategy = create_strategy(
-        db, scope=StrategyScope.PROJECT, organization_id=project.organization_id, project_id=project.id, creator=creator,
+        db, scope=StrategyScope.PROJECT if holder.is_project else StrategyScope.ORGANIZATION,
+        organization_id=holder.organization_id, project_id=holder.project_id, creator=creator,
         title=title, objective=objective, current_state=current_state, desired_future_state=desired_future_state,
         rationale=rationale, expected_outcomes=expected_outcomes, constraints=constraints,
         measures_of_success=measures_of_success, priority=priority, time_horizon=time_horizon,
     )
     log_event(db, entity_type=STRATEGY_ARTEFACT_TYPE, entity_id=strategy.id, action="created",
-              actor_id=creator.id, project_id=project.id, detail={"title": title})
+              actor_id=creator.id, detail={"title": title}, **holder.audit)
     return strategy
 
 
-def edit_project_strategy_record(db: Session, project: Project, strategy: Strategy, actor: User, **fields: Any) -> None:
+def edit_strategy_record(db: Session, holder: RecordOwner, strategy: Strategy, actor: User, **fields: Any) -> None:
     """Writes a new Strategy version with `fields` (any of `apply_new_version`'s content fields and `change_note`).
 
     Raises:
@@ -182,32 +241,41 @@ def edit_project_strategy_record(db: Session, project: Project, strategy: Strate
         raise _locked(STRATEGY_LOCKED)
     apply_new_version(db, strategy, current_version, actor, **fields)
     log_event(db, entity_type=STRATEGY_ARTEFACT_TYPE, entity_id=strategy.id, action="updated",
-              actor_id=actor.id, project_id=project.id)
+              actor_id=actor.id, **holder.audit)
+
+
+def create_project_strategy_record(db: Session, project: Project, creator: User, **fields: Any) -> Strategy:
+    """`create_strategy_record` for a project's own Strategy."""
+    return create_strategy_record(db, RecordOwner.of_project(project), creator, **fields)
+
+
+def edit_project_strategy_record(db: Session, project: Project, strategy: Strategy, actor: User, **fields: Any) -> None:
+    """`edit_strategy_record` for a project's own Strategy."""
+    edit_strategy_record(db, RecordOwner.of_project(project), strategy, actor, **fields)
 
 
 # --- Future State ------------------------------------------------------------------------------------------------
 
 
-def create_project_future_state_record(
-    db: Session, project: Project, creator: User, *, title: str, current_state: str = "", desired_state: str = "",
+def create_future_state_record(
+    db: Session, holder: RecordOwner, creator: User, *, title: str, current_state: str = "", desired_state: str = "",
     target_date: date | None = None, outcomes: str = "", success_measures: str = "", constraints: str = "",
     assumptions: str = "",
 ) -> FutureState:
-    """Creates a project-scoped Future State in `DRAFT` status and records the `created` event."""
+    """Creates a Future State in `DRAFT` status (a project's or the organisation's) and records the `created` event."""
     future_state = create_future_state(
-        db, scope=FutureStateScope.PROJECT, organization_id=project.organization_id, project_id=project.id,
+        db, scope=FutureStateScope.PROJECT if holder.is_project else FutureStateScope.ORGANIZATION,
+        organization_id=holder.organization_id, project_id=holder.project_id,
         creator=creator, title=title, current_state=current_state, desired_state=desired_state,
         target_date=target_date, outcomes=outcomes, success_measures=success_measures, constraints=constraints,
         assumptions=assumptions,
     )
     log_event(db, entity_type=FUTURE_STATE_ARTEFACT_TYPE, entity_id=future_state.id, action="created",
-              actor_id=creator.id, project_id=project.id, detail={"title": title})
+              actor_id=creator.id, detail={"title": title}, **holder.audit)
     return future_state
 
 
-def edit_project_future_state_record(
-    db: Session, project: Project, future_state: FutureState, actor: User, **fields: Any
-) -> None:
+def edit_future_state_record(db: Session, holder: RecordOwner, future_state: FutureState, actor: User, **fields: Any) -> None:
     """Writes a new Future State version with `fields` (see `apply_future_state_new_version`).
 
     Raises:
@@ -218,34 +286,47 @@ def edit_project_future_state_record(
         raise _locked(FUTURE_STATE_LOCKED)
     apply_future_state_new_version(db, future_state, current_version, actor, **fields)
     log_event(db, entity_type=FUTURE_STATE_ARTEFACT_TYPE, entity_id=future_state.id, action="updated",
-              actor_id=actor.id, project_id=project.id)
+              actor_id=actor.id, **holder.audit)
+
+
+def create_project_future_state_record(db: Session, project: Project, creator: User, **fields: Any) -> FutureState:
+    """`create_future_state_record` for a project's own Future State."""
+    return create_future_state_record(db, RecordOwner.of_project(project), creator, **fields)
+
+
+def edit_project_future_state_record(db: Session, project: Project, future_state: FutureState, actor: User, **fields: Any) -> None:
+    """`edit_future_state_record` for a project's own Future State."""
+    edit_future_state_record(db, RecordOwner.of_project(project), future_state, actor, **fields)
 
 
 # --- Guiding Principle -------------------------------------------------------------------------------------------
 
 
-def create_project_guiding_principle_record(
-    db: Session, project: Project, creator: User, *, name: str, principle_statement: str, rationale: str = "",
+def create_guiding_principle_record(
+    db: Session, holder: RecordOwner, creator: User, *, name: str, principle_statement: str, rationale: str = "",
     priority: GuidingPrinciplePriority = GuidingPrinciplePriority.MEDIUM, owner: PrincipalRef | None = None,
 ) -> GuidingPrinciple:
-    """Creates a project-scoped Guiding Principle in `DRAFT` status and records the `created` event.
+    """Creates a Guiding Principle in `DRAFT` status (a project's or the organisation's) and records the `created` event.
+
+    `owner` is the principle's accountable owner (a user or group); `holder` places the record.
 
     Raises:
-        HTTPException: 4xx when `owner` is not a principal this project may use.
+        HTTPException: 4xx when `owner` is not a principal the owner's tier may use.
     """
-    validate_principal(db, owner, organization_id=project.organization_id, project_id=project.id, field="owner")
+    validate_principal(db, owner, organization_id=holder.organization_id, project_id=holder.project_id, field="owner")
     guiding_principle = create_guiding_principle(
-        db, scope=GuidingPrincipleScope.PROJECT, organization_id=project.organization_id, project_id=project.id,
+        db, scope=GuidingPrincipleScope.PROJECT if holder.is_project else GuidingPrincipleScope.ORGANIZATION,
+        organization_id=holder.organization_id, project_id=holder.project_id,
         creator=creator, name=name, principle_statement=principle_statement, rationale=rationale, priority=priority,
         owner=owner,
     )
     log_event(db, entity_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, entity_id=guiding_principle.id, action="created",
-              actor_id=creator.id, project_id=project.id, detail={"name": name})
+              actor_id=creator.id, detail={"name": name}, **holder.audit)
     return guiding_principle
 
 
-def edit_project_guiding_principle_record(
-    db: Session, project: Project, guiding_principle: GuidingPrinciple, actor: User, **fields: Any
+def edit_guiding_principle_record(
+    db: Session, holder: RecordOwner, guiding_principle: GuidingPrinciple, actor: User, **fields: Any
 ) -> None:
     """Writes a new Guiding Principle version with `fields` (see `apply_guiding_principle_new_version`).
 
@@ -256,10 +337,24 @@ def edit_project_guiding_principle_record(
     if is_guiding_principle_locked(current_version):
         raise _locked(GUIDING_PRINCIPLE_LOCKED)
     if fields.get("owner_explicitly_set"):
-        validate_principal(db, fields.get("owner"), organization_id=project.organization_id, project_id=project.id, field="owner")
+        validate_principal(
+            db, fields.get("owner"), organization_id=holder.organization_id, project_id=holder.project_id, field="owner",
+        )
     apply_guiding_principle_new_version(db, guiding_principle, current_version, actor, **fields)
     log_event(db, entity_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, entity_id=guiding_principle.id, action="updated",
-              actor_id=actor.id, project_id=project.id)
+              actor_id=actor.id, **holder.audit)
+
+
+def create_project_guiding_principle_record(db: Session, project: Project, creator: User, **fields: Any) -> GuidingPrinciple:
+    """`create_guiding_principle_record` for a project's own Guiding Principle."""
+    return create_guiding_principle_record(db, RecordOwner.of_project(project), creator, **fields)
+
+
+def edit_project_guiding_principle_record(
+    db: Session, project: Project, guiding_principle: GuidingPrinciple, actor: User, **fields: Any
+) -> None:
+    """`edit_guiding_principle_record` for a project's own Guiding Principle."""
+    edit_guiding_principle_record(db, RecordOwner.of_project(project), guiding_principle, actor, **fields)
 
 
 # --- Pain Point --------------------------------------------------------------------------------------------------

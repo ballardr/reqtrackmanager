@@ -25,7 +25,9 @@ Design decisions:
   lifecycle actions and a file never does. A created record starts as the form starts it (draft).
 - The project's list also shows the organisation's personas, stakeholders and groups. They are exported with the
   organisation-qualified code and never matched by an import here (an import into a project only updates the
-  project's own records); `organization_owned` marks them.
+  project's own records); `organization_owned` marks them. The organisation's own lists have their own
+  `OrganizationRecordTable` (same columns, the organisation endpoints' create / update path, the organisation's
+  type vocabulary).
 - Participants, covered personas, audience groups and group members are links, managed on the record; they are
   not columns. A group's parent is exported as a path and set in the group tree.
 - A research finding belongs to an engagement: the `engagement` column (its code) is required to create and
@@ -47,10 +49,18 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.models.organization import Organization
 from app.models.project import Project
 from app.models.scoring import ScoringLevel
 from app.models.user import User
-from app.modules.registry import RecordCellError, RecordColumn, RecordFilters, RecordImportContext, RecordTableProvider
+from app.modules.registry import (
+    OrganizationRecordTable,
+    RecordCellError,
+    RecordColumn,
+    RecordFilters,
+    RecordImportContext,
+    RecordTableProvider,
+)
 from app.modules.stakeholders import _engagement_shared as engagement_shared
 from app.modules.stakeholders import _group_shared as group_shared
 from app.modules.stakeholders import _need_shared as need_shared
@@ -104,6 +114,8 @@ from app.modules.stakeholders.service import (
     STAKEHOLDER_ARTEFACT_TYPE,
     STAKEHOLDER_TYPES,
     list_project_needs,
+    organization_personas,
+    organization_stakeholders,
     project_personas,
     project_stakeholders,
 )
@@ -222,15 +234,21 @@ def _changed(values: Mapping[str, Any], mapping: Mapping[str, str]) -> dict[str,
 
 
 def _type_ref(vocabulary: Any, kind: str) -> Callable[[RecordImportContext, str], uuid.UUID | None]:
-    """A parser for a type name of this project (or organisation default); blank means no type."""
+    """A parser for a type name of this project (or organisation default), or of the organisation itself at the
+    organisation tier; blank means no type."""
 
     def parse(ctx: RecordImportContext, text: str) -> uuid.UUID | None:
         if not text:
             return None
-        types = cached_lookup(ctx, f"{kind}:types", lambda: {
-            t.name.casefold(): t.id for t in reversed(vocabulary.resolve_effective(ctx.db, ctx.project.id, ctx.project.organization_id))
-        })
-        found = types.get(text.casefold())
+
+        def load() -> dict[str, uuid.UUID]:
+            if ctx.project is None:
+                return {t.name.casefold(): t.id for t in reversed(vocabulary.active_org_types(ctx.db, ctx.organization.id))}
+            return {
+                t.name.casefold(): t.id for t in reversed(vocabulary.resolve_effective(ctx.db, ctx.project.id, ctx.project.organization_id))
+            }
+
+        found = cached_lookup(ctx, f"{kind}:types", load).get(text.casefold())
         if found is None:
             raise RecordCellError(f"Unknown {vocabulary.label.lower()} '{text}'.")
         return found
@@ -240,6 +258,10 @@ def _type_ref(vocabulary: Any, kind: str) -> Callable[[RecordImportContext, str]
 
 def _type_choices(vocabulary: Any, db: Session, project: Project) -> tuple[str, ...]:
     return tuple(t.name for t in vocabulary.resolve_effective(db, project.id, project.organization_id) if t.is_enabled)
+
+
+def _org_type_choices(vocabulary: Any, db: Session, organization: Organization) -> tuple[str, ...]:
+    return tuple(t.name for t in vocabulary.active_org_types(db, organization.id))
 
 
 # --- Persona ------------------------------------------------------------------------------------------------------
@@ -264,12 +286,7 @@ def _prepare_personas(db: Session, project: Project, records: list[Persona]) -> 
     return prepared
 
 
-def _list_personas(db: Session, user: User, project_id: uuid.UUID, filters: RecordFilters) -> list[Persona]:
-    project = _project(db, project_id)
-    records = project_personas(
-        db, project, include_archived=bool(filters.flag("include_archived")),
-        include_org=filters.flag("include_org") is not False, include_hidden=bool(filters.flag("include_hidden")),
-    )
+def _filter_personas(db: Session, records: list[Persona], filters: RecordFilters) -> list[Persona]:
     status, type_name = enum_filter(filters, "status", PersonaStatus), filters.one("type")
     versions = _version_map(db, PersonaVersion, "persona_id", records)
     out = []
@@ -283,7 +300,24 @@ def _list_personas(db: Session, user: User, project_id: uuid.UUID, filters: Reco
     return out
 
 
+def _list_personas(db: Session, user: User, project_id: uuid.UUID, filters: RecordFilters) -> list[Persona]:
+    project = _project(db, project_id)
+    records = project_personas(
+        db, project, include_archived=bool(filters.flag("include_archived")),
+        include_org=filters.flag("include_org") is not False, include_hidden=bool(filters.flag("include_hidden")),
+    )
+    return _filter_personas(db, records, filters)
+
+
+def _list_org_personas(db: Session, user: User, organization: Organization, filters: RecordFilters) -> list[Persona]:
+    return _filter_personas(db, organization_personas(db, organization.id, include_archived=bool(filters.flag("include_archived"))), filters)
+
+
 def _persona_columns(db: Session, project: Project) -> list[RecordColumn]:
+    return _persona_columns_for(_type_choices(PERSONA_TYPES, db, project))
+
+
+def _persona_columns_for(type_choices: tuple[str, ...]) -> list[RecordColumn]:
     def version(t: _Prepared, r: Persona) -> PersonaVersion:
         return t.versions[r.id]
 
@@ -291,7 +325,7 @@ def _persona_columns(db: Session, project: Project) -> list[RecordColumn]:
         _text("name", "Name", lambda t, r: version(t, r).name, required=True),
         RecordColumn(
             "type", "Type", lambda t, r: t.extra["types"].get((version(t, r).org_type_id, version(t, r).project_type_id), ""),
-            _type_ref(PERSONA_TYPES, "persona"), kind="enum", editable=True, choices=_type_choices(PERSONA_TYPES, db, project),
+            _type_ref(PERSONA_TYPES, "persona"), kind="enum", editable=True, choices=type_choices,
         ),
         _text("description", "Description", lambda t, r: version(t, r).description),
         _text("role_title", "Role title", lambda t, r: version(t, r).role_title),
@@ -357,6 +391,30 @@ def _may_manage_personas(db: Session, user: User, project_id: uuid.UUID) -> bool
     )
 
 
+def _create_org_persona(ctx: RecordImportContext, values: Mapping[str, Any]) -> Persona:
+    payload = payload_of(PersonaCreate, _persona_values(values))
+    return persona_shared.stage_persona(
+        ctx.db, PersonaScope.ORGANIZATION, payload, ctx.user, organization_id=ctx.organization.id, project_id=None,
+    )
+
+
+def _update_org_persona(ctx: RecordImportContext, persona: Persona, values: Mapping[str, Any]) -> None:
+    payload = payload_of(PersonaUpdate, {**_persona_values(values), "change_note": "Edited by record import."})
+    persona_shared.stage_persona_update(ctx.db, persona, payload, ctx.user, organization_id=ctx.organization.id, project_id=None)
+
+
+def _find_org_persona(db: Session, organization: Organization, code: str) -> Persona | None:
+    return db.scalar(select(Persona).where(
+        Persona.organization_id == organization.id, Persona.scope == PersonaScope.ORGANIZATION, Persona.unique_code == code.upper()
+    ))
+
+
+def _may_manage_org_personas(db: Session, user: User, organization_id: uuid.UUID) -> bool:
+    return _allowed(
+        persona_shared.require_persona_manage, db, user, PersonaScope.ORGANIZATION, organization_id=organization_id, project_id=None,
+    )
+
+
 PERSONA_TABLE = RecordTableProvider(
     label="Personas",
     columns=_persona_columns,
@@ -370,6 +428,18 @@ PERSONA_TABLE = RecordTableProvider(
     can_create=_may_manage_personas,
     can_update=_may_manage_personas,
     organization_owned=_persona_owned_by_org,
+    organization=OrganizationRecordTable(
+        subcomponent="persona",
+        columns=lambda db, organization: _persona_columns_for(_org_type_choices(PERSONA_TYPES, db, organization)),
+        list_records=_list_org_personas,
+        find=_find_org_persona,
+        prepare=lambda db, organization, records: _prepare_personas(db, None, records),
+        create=_create_org_persona,
+        update=_update_org_persona,
+        filter_params=frozenset({"search", "status", "type", "include_archived"}),
+        can_create=_may_manage_org_personas,
+        can_update=_may_manage_org_personas,
+    ),
 )
 
 
@@ -399,12 +469,9 @@ def _prepare_stakeholders(db: Session, project: Project, records: list[Stakehold
     return prepared
 
 
-def _list_stakeholders(db: Session, user: User, project_id: uuid.UUID, filters: RecordFilters) -> list[Stakeholder]:
-    project = _project(db, project_id)
-    records = project_stakeholders(
-        db, project, include_archived=bool(filters.flag("include_archived")),
-        include_org=filters.flag("include_org") is not False, include_hidden=bool(filters.flag("include_hidden")),
-    )
+def _filter_stakeholders(
+    db: Session, records: list[Stakeholder], filters: RecordFilters, organization_id: uuid.UUID, project_id: uuid.UUID | None,
+) -> list[Stakeholder]:
     status, type_name = enum_filter(filters, "status", StakeholderStatus), filters.one("type")
     group_raw = filters.one("group_id")
     if group_raw is not None:
@@ -413,7 +480,7 @@ def _list_stakeholders(db: Session, user: User, project_id: uuid.UUID, filters: 
         except ValueError:
             raise HTTPException(422, "group_id must be an id.") from None
         records = group_shared.filter_and_sort_stakeholders(
-            db, records, grp.load_groups(db, project.organization_id, project_id), group_id=group_id,
+            db, records, grp.load_groups(db, organization_id, project_id), group_id=group_id,
             direct_only=bool(filters.flag("direct_only")), group_by=None,
         )
     versions = _version_map(db, StakeholderVersion, "stakeholder_id", records)
@@ -428,7 +495,25 @@ def _list_stakeholders(db: Session, user: User, project_id: uuid.UUID, filters: 
     return out
 
 
+def _list_stakeholders(db: Session, user: User, project_id: uuid.UUID, filters: RecordFilters) -> list[Stakeholder]:
+    project = _project(db, project_id)
+    records = project_stakeholders(
+        db, project, include_archived=bool(filters.flag("include_archived")),
+        include_org=filters.flag("include_org") is not False, include_hidden=bool(filters.flag("include_hidden")),
+    )
+    return _filter_stakeholders(db, records, filters, project.organization_id, project.id)
+
+
+def _list_org_stakeholders(db: Session, user: User, organization: Organization, filters: RecordFilters) -> list[Stakeholder]:
+    records = organization_stakeholders(db, organization.id, include_archived=bool(filters.flag("include_archived")))
+    return _filter_stakeholders(db, records, filters, organization.id, None)
+
+
 def _stakeholder_columns(db: Session, project: Project) -> list[RecordColumn]:
+    return _stakeholder_columns_for(_type_choices(STAKEHOLDER_TYPES, db, project))
+
+
+def _stakeholder_columns_for(type_choices: tuple[str, ...]) -> list[RecordColumn]:
     def version(t: _Prepared, r: Stakeholder) -> StakeholderVersion:
         return t.versions[r.id]
 
@@ -437,7 +522,7 @@ def _stakeholder_columns(db: Session, project: Project) -> list[RecordColumn]:
         _text("name", "Name", lambda t, r: version(t, r).name, required=True, sensitivity="personal"),
         RecordColumn(
             "type", "Type", lambda t, r: t.extra["types"].get((version(t, r).org_type_id, version(t, r).project_type_id), ""),
-            _type_ref(STAKEHOLDER_TYPES, "stakeholder"), kind="enum", editable=True, choices=_type_choices(STAKEHOLDER_TYPES, db, project),
+            _type_ref(STAKEHOLDER_TYPES, "stakeholder"), kind="enum", editable=True, choices=type_choices,
         ),
         _text("role", "Role", lambda t, r: version(t, r).role, sensitivity="personal"),
         _text("organisation_group", "Organisation or group", lambda t, r: version(t, r).organisation_group, sensitivity="personal"),
@@ -499,6 +584,34 @@ def _may_manage_stakeholders(db: Session, user: User, project_id: uuid.UUID) -> 
     )
 
 
+def _create_org_stakeholder(ctx: RecordImportContext, values: Mapping[str, Any]) -> Stakeholder:
+    payload = payload_of(StakeholderCreate, _stakeholder_values(values))
+    return stakeholder_shared.stage_stakeholder(
+        ctx.db, StakeholderScope.ORGANIZATION, payload, ctx.user, organization_id=ctx.organization.id, project_id=None,
+    )
+
+
+def _update_org_stakeholder(ctx: RecordImportContext, stakeholder: Stakeholder, values: Mapping[str, Any]) -> None:
+    payload = payload_of(StakeholderUpdate, {**_stakeholder_values(values), "change_note": "Edited by record import."})
+    stakeholder_shared.stage_stakeholder_update(
+        ctx.db, stakeholder, payload, ctx.user, organization_id=ctx.organization.id, project_id=None,
+    )
+
+
+def _find_org_stakeholder(db: Session, organization: Organization, code: str) -> Stakeholder | None:
+    return db.scalar(select(Stakeholder).where(
+        Stakeholder.organization_id == organization.id, Stakeholder.scope == StakeholderScope.ORGANIZATION,
+        Stakeholder.unique_code == code.upper(),
+    ))
+
+
+def _may_manage_org_stakeholders(db: Session, user: User, organization_id: uuid.UUID) -> bool:
+    return _allowed(
+        stakeholder_shared.require_stakeholder_manage, db, user, StakeholderScope.ORGANIZATION,
+        organization_id=organization_id, project_id=None,
+    )
+
+
 STAKEHOLDER_TABLE = RecordTableProvider(
     label="Stakeholders",
     columns=_stakeholder_columns,
@@ -512,6 +625,18 @@ STAKEHOLDER_TABLE = RecordTableProvider(
     can_create=_may_manage_stakeholders,
     can_update=_may_manage_stakeholders,
     organization_owned=_stakeholder_owned_by_org,
+    organization=OrganizationRecordTable(
+        subcomponent="stakeholder",
+        columns=lambda db, organization: _stakeholder_columns_for(_org_type_choices(STAKEHOLDER_TYPES, db, organization)),
+        list_records=_list_org_stakeholders,
+        find=_find_org_stakeholder,
+        prepare=lambda db, organization, records: _prepare_stakeholders(db, None, records),
+        create=_create_org_stakeholder,
+        update=_update_org_stakeholder,
+        filter_params=frozenset({"search", "status", "type", "include_archived", "group_id", "direct_only"}),
+        can_create=_may_manage_org_stakeholders,
+        can_update=_may_manage_org_stakeholders,
+    ),
 )
 
 
@@ -527,9 +652,9 @@ def _group_context(db: Session, project_id: uuid.UUID) -> group_shared.GroupCont
     return group_shared.GroupContext(organization_id=project.organization_id, project=project)
 
 
-def _prepare_groups(db: Session, project: Project, records: list[StakeholderGroup]) -> _Prepared:
+def _prepare_groups(db: Session, project: Project | None, records: list[StakeholderGroup], organization_id: uuid.UUID | None = None) -> _Prepared:
     prepared = _Prepared(db, records, GROUP_ARTEFACT_TYPE)
-    universe = grp.load_groups(db, project.organization_id, project.id)
+    universe = grp.load_groups(db, project.organization_id if project else organization_id, project.id if project else None)
 
     def path(group: StakeholderGroup) -> str:
         names, seen, current = [], set(), group
@@ -554,6 +679,11 @@ def _list_groups(db: Session, user: User, project_id: uuid.UUID, filters: Record
     return [g for g in groups if _search_hit(filters, g.unique_code, g.name)]
 
 
+def _list_org_groups(db: Session, user: User, organization: Organization, filters: RecordFilters) -> list[StakeholderGroup]:
+    groups = group_shared.visible_groups(db, group_shared.GroupContext(organization_id=organization.id))
+    return [g for g in groups if _search_hit(filters, g.unique_code, g.name)]
+
+
 def _group_columns(db: Session, project: Project) -> list[RecordColumn]:
     return [
         _text("name", "Name", lambda t, r: r.name, required=True),
@@ -572,14 +702,19 @@ def _group_columns(db: Session, project: Project) -> list[RecordColumn]:
 _GROUP_FIELDS = {"name": "name", "description": "description", "exclusive_children": "exclusive_children"}
 
 
+def _import_group_context(ctx: RecordImportContext) -> group_shared.GroupContext:
+    """The tier an import writes groups to: the project's, or (without one) the organisation's."""
+    return group_shared.GroupContext(organization_id=ctx.organization_id, project=ctx.project)
+
+
 def _create_group(ctx: RecordImportContext, values: Mapping[str, Any]) -> StakeholderGroup:
     payload = payload_of(StakeholderGroupCreate, _changed(values, _GROUP_FIELDS))
-    return group_shared.stage_group(ctx.db, _group_context(ctx.db, ctx.project.id), payload, ctx.user)
+    return group_shared.stage_group(ctx.db, _import_group_context(ctx), payload, ctx.user)
 
 
 def _update_group(ctx: RecordImportContext, group: StakeholderGroup, values: Mapping[str, Any]) -> None:
     payload = payload_of(StakeholderGroupUpdate, _changed(values, _GROUP_FIELDS))
-    group_shared.stage_group_update(ctx.db, _group_context(ctx.db, ctx.project.id), group, payload, ctx.user)
+    group_shared.stage_group_update(ctx.db, _import_group_context(ctx), group, payload, ctx.user)
 
 
 def _find_group(db: Session, project: Project, code: str) -> StakeholderGroup | None:
@@ -591,6 +726,17 @@ def _find_group(db: Session, project: Project, code: str) -> StakeholderGroup | 
 
 def _may_manage_groups(db: Session, user: User, project_id: uuid.UUID) -> bool:
     return _allowed(group_shared.require_group_manage, db, user, _group_context(db, project_id))
+
+
+def _find_org_group(db: Session, organization: Organization, code: str) -> StakeholderGroup | None:
+    return db.scalar(select(StakeholderGroup).where(
+        StakeholderGroup.organization_id == organization.id, StakeholderGroup.scope == StakeholderScope.ORGANIZATION,
+        StakeholderGroup.unique_code == code.upper(),
+    ))
+
+
+def _may_manage_org_groups(db: Session, user: User, organization_id: uuid.UUID) -> bool:
+    return _allowed(group_shared.require_group_manage, db, user, group_shared.GroupContext(organization_id=organization_id))
 
 
 GROUP_TABLE = RecordTableProvider(
@@ -606,6 +752,18 @@ GROUP_TABLE = RecordTableProvider(
     can_create=_may_manage_groups,
     can_update=_may_manage_groups,
     organization_owned=_group_owned_by_org,
+    organization=OrganizationRecordTable(
+        subcomponent="stakeholder",
+        columns=lambda db, organization: _group_columns(db, None),
+        list_records=_list_org_groups,
+        find=_find_org_group,
+        prepare=lambda db, organization, records: _prepare_groups(db, None, records, organization.id),
+        create=_create_group,
+        update=_update_group,
+        filter_params=frozenset({"search"}),
+        can_create=_may_manage_org_groups,
+        can_update=_may_manage_org_groups,
+    ),
 )
 
 

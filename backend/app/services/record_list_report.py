@@ -131,11 +131,11 @@ def catalogue_entry(db: Session, user: User, project: Project) -> ReportCatalogu
     )
 
 
-def collect(project: Project, label: str, table: RecordTable, *, scope_name: str) -> ReportResult:
+def collect(scope_label: str, label: str, table: RecordTable, *, scope_name: str = "this") -> ReportResult:
     """The report result for a built table.
 
     Args:
-        project: The project reported on (names the scope).
+        scope_label: The name of what is reported on (the project's, or the organisation's for its own lists).
         label: The record type's plural label (`provider.label`), the report's title and table heading.
         table: The filtered table from `build_table`; its tones colour the cells of the columns that declare them.
         scope_name: The `project_scope` that was applied (`this`, `parents`, `children`, `both`).
@@ -160,7 +160,7 @@ def collect(project: Project, label: str, table: RecordTable, *, scope_name: str
         tones=tone_grid if any(tone is not None for row in tone_grid for tone in row) else None,
     )
     return ReportResult(
-        key=REPORT_KEY, title=label, scope_label=project.name, generated_at=datetime.now(UTC), notes=notes,
+        key=REPORT_KEY, title=label, scope_label=scope_label, generated_at=datetime.now(UTC), notes=notes,
         sections=[section], metrics=[ReportMetric("Records", len(table.rows))], eligible_projects=1,
     )
 

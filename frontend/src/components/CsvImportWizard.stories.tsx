@@ -16,7 +16,7 @@ const meta: Meta<typeof CsvImportWizard> = {
   title: "Components/CsvImportWizard",
   component: CsvImportWizard,
   args: {
-    projectId: "project-1",
+    owner: { projectId: "project-1" },
     recordType: "requirement",
     columns: buildRecordColumns(),
     file: csvFile("name,component,category\nReset password,AUTH,LOG\n"),

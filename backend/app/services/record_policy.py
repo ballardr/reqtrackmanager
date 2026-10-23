@@ -7,7 +7,7 @@ Responsibilities:
 - The effective decision per sensitivity tag: the organisation's override if set, else the server
   default, else **excluded** (a fresh install lets no personal data leave through a file).
 - Whether a person may include or import tagged columns at all: the policy must allow the tag **and**
-  the person must hold `export_personal_data` in the project. Both have to say yes.
+  the person must hold `export_personal_data` in the project (or, for the organisation's own lists, in the organisation). Both have to say yes.
 - Setting and clearing the server default and the organisation override, with one audit event each
   (old and new value, never any record data).
 
@@ -28,7 +28,6 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.project import Project
 from app.models.record_policy import OrganizationRecordSensitivityOverride, ServerRecordSensitivityDefault
 from app.models.user import User
 from app.modules.registry import RECORD_SENSITIVITY_TAGS
@@ -101,20 +100,25 @@ def organization_policy(db: Session, organization_id: uuid.UUID) -> list[TagPoli
     return [TagPolicy(tag=tag, server_allowed=defaults[tag], override=overrides.get(tag)) for tag in RECORD_SENSITIVITY_TAGS]
 
 
-def tag_decisions(db: Session, user: User, project: Project) -> dict[str, TagDecision]:
-    """The decision per sensitivity tag for `user` in `project`.
+def tag_decisions(
+    db: Session, user: User, organization_id: uuid.UUID, project_id: uuid.UUID | None = None
+) -> dict[str, TagDecision]:
+    """The decision per sensitivity tag for `user` exporting or importing in a project, or (without
+    `project_id`) the organisation's own lists.
 
     Args:
         db: Active session (read only).
         user: The person exporting or importing.
-        project: The request project (its organisation's policy applies).
+        organization_id: The organisation whose policy applies.
+        project_id: The request project; `None` at the organisation tier, where only the organisation-level
+            grant of `export_personal_data` counts.
 
     Returns:
         A decision for every tag in `RECORD_SENSITIVITY_TAGS`.
     """
-    policy = {item.tag: item for item in organization_policy(db, project.organization_id)}
+    policy = {item.tag: item for item in organization_policy(db, organization_id)}
     holds = EXPORT_PERSONAL_DATA in get_effective_permissions(
-        db, user.id, organization_id=project.organization_id, project_id=project.id
+        db, user.id, organization_id=organization_id, project_id=project_id
     )
     decisions: dict[str, TagDecision] = {}
     for tag in RECORD_SENSITIVITY_TAGS:

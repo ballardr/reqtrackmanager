@@ -20,7 +20,8 @@
  *
  * Export and Import (`exportRecords`): on a list page the layout offers the shared Export and Import of the kind,
  * narrowed by this list's own filters (status, type, search, archived, hidden, tags, scope) plus the `extraParams` the
- * kind adds (a group filter). A list embedded in another page (an organisation panel) offers neither.
+ * kind adds (a group filter). A list embedded in another page (an organisation panel) puts the same controls beside
+ * its New button, acting on the organisation's own records.
  *
  * A kind can add its own filters (`extraFilters`) and narrow `records` before
  * passing them in. A list whose records are created elsewhere (the People page's "New" menu) omits
@@ -40,6 +41,7 @@ import { DirectoryTable, type DirectoryColumn } from "../../components/Directory
 import { FilterBadge } from "../../components/FilterBadge";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ListActions } from "../../components/ListActions";
 import { ListPageLayout } from "../../components/ListPageLayout";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
@@ -54,7 +56,10 @@ import { Badge } from "../../components/Badge";
 
 /** One record kind a list page offers Export and Import for. */
 export interface ExportRecords {
-  projectId: string;
+  /** The project whose list this is; give this or `organizationId`. */
+  projectId?: string;
+  /** The organisation whose own records the list shows (an organisation panel). */
+  organizationId?: string;
   recordType: string;
   onImported?: () => void;
   /** Filters this kind adds beyond the list's own (a group filter). */
@@ -332,10 +337,11 @@ export function RecordListView<R extends ListedRecord, V>({
         </ListPageLayout>
       ) : (
         <>
-          {(canCreate || toolbar) && (
+          {(canCreate || toolbar || exportActions) && (
             <div className="row" style={{ gap: "var(--space-3)", alignSelf: "flex-start" }}>
               {newButton}
               {toolbar}
+              {exportActions?.map((kind) => <ListActions key={kind.recordType} {...kind} />)}
             </div>
           )}
           <div className="side-grid">

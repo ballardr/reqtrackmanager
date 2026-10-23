@@ -10,17 +10,18 @@
  * - **Import** is a file picker that opens `CsvImportWizard`; it is shown only to a person who may create or
  *   update the type's records, and not at all for a type that gives a reason it cannot be imported.
  *
- * It reads the type's columns once (`GET .../records/{type}/columns`) and renders nothing when the type has no
+ * It serves a project's list and an organisation's own (the organisation panels) alike, through the owner it
+ * is given. It reads the type's columns once (`GET .../records/{type}/columns`) and renders nothing when the type has no
  * table or the caller cannot see it. It knows no record type or module.
  *
  * A list that shows several record kinds at once (the People list) renders one `ListActions` per kind, each with a
  * `kindLabel`, so the buttons read "Export personas" and "Export stakeholders" and each acts on its own kind.
  */
 import { Upload } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { ReportDownloadKind } from "../api/reports";
-import { omittedColumnsNote, recordTablesApi, type RecordColumns, type RecordTablesApi } from "../api/recordTables";
+import { omittedColumnsNote, recordOwner, recordTablesApi, type RecordColumns, type RecordTablesApi } from "../api/recordTables";
 import { useRecordTableExport, fileStem } from "../hooks/useRecordTableExport";
 import { t } from "../i18n/strings";
 import { downloadBlob } from "../utils/download";
@@ -36,7 +37,10 @@ const EXPORT_KINDS: readonly ReportDownloadKind[] = ["csv", "pdf", "docx"];
 
 /** What a list page tells `ListPageLayout` so it can offer Export and Import. */
 export interface RecordListActions {
-  projectId: string;
+  /** The project whose list this is; give this or `organizationId`, never both. */
+  projectId?: string;
+  /** The organisation whose own records this list shows (an organisation panel), instead of a project's. */
+  organizationId?: string;
   /** The registered record type string. */
   recordType: string;
   /** The page's filters as a query string without `?` (the same names its list request sends, minus paging and sort). */
@@ -50,26 +54,28 @@ export interface RecordListActions {
 }
 
 /**
- * @param projectId The project whose list this is.
+ * @param projectId The project whose list this is (or `organizationId` for an organisation's own records).
+ * @param organizationId The organisation whose own records the list shows.
  * @param recordType The registered record type.
  * @param filters The page's current filters as a query string.
  * @param kindLabel Names the kind when the list shows several.
  * @param onImported Called after an import wrote records.
  * @param tables Injectable calls.
  */
-export function ListActions({ projectId, recordType, filters = "", kindLabel, onImported, tables = recordTablesApi }: RecordListActions) {
+export function ListActions({ projectId, organizationId, recordType, filters = "", kindLabel, onImported, tables = recordTablesApi }: RecordListActions) {
   const [columns, setColumns] = useState<RecordColumns | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const label = columns?.label ?? "";
-  const { exportList } = useRecordTableExport(projectId, recordType, label, filters, tables);
+  const owner = useMemo(() => recordOwner({ projectId, organizationId }), [projectId, organizationId]);
+  const { exportList } = useRecordTableExport(owner, recordType, label, filters, tables);
 
   useEffect(() => {
     let active = true;
-    tables.columns(projectId, recordType).then((value) => active && setColumns(value)).catch(() => active && setColumns(null));
+    tables.columns(owner, recordType).then((value) => active && setColumns(value)).catch(() => active && setColumns(null));
     return () => {
       active = false;
     };
-  }, [projectId, recordType, tables]);
+  }, [owner, recordType, tables]);
 
   const downloadTemplate = useCallback(() => {
     if (!columns) return;
@@ -95,7 +101,7 @@ export function ListActions({ projectId, recordType, filters = "", kindLabel, on
       )}
       {file && (
         <CsvImportWizard
-          projectId={projectId} recordType={recordType} columns={columns} file={file} tables={tables}
+          owner={owner} recordType={recordType} columns={columns} file={file} tables={tables}
           onClose={() => setFile(null)} onApplied={() => onImported?.()}
         />
       )}

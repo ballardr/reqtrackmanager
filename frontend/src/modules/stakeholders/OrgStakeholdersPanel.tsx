@@ -83,6 +83,7 @@ export function OrgStakeholdersPanel({ orgId }: { orgId: string }) {
       loadHint={(influence, interest) => orgStakeholderApi.cadenceHint(orgId, influence, interest)}
       includeArchived={includeArchived}
       onIncludeArchivedChange={setIncludeArchived}
+      exportRecords={{ organizationId: orgId, onImported: reload }}
       onOpen={(s) => navigate(`/orgs/${orgId}/modules/stakeholders/stakeholders/${s.id}`)}
       onCreate={async (values, groupIds) => {
         const warning = await createStakeholderWithGroups(

@@ -1,10 +1,10 @@
 /**
  * Module: api/recordTables
  *
- * Types and calls for the generic record table routes (`/projects/{id}/records/{type}/columns|export|import`)
- * and the record-list report (`/projects/{id}/reports/record-list`, the PDF and Word of a list), which every
- * record list's Export and Import use. A record type is addressed only by its registered type
- * string; nothing here knows a particular type or module.
+ * Types and calls for the generic record table routes (`/projects/{id}/records/{type}/columns|export|import`,
+ * and `/orgs/{id}/records/{type}/...` for the records an organisation owns) and the record-list report
+ * (`.../reports/record-list`, the PDF and Word of a list), which every record list's Export and Import use. A
+ * record type is addressed only by its registered type string; nothing here knows a particular type or module.
  */
 import { api } from "./client";
 import type { ReportDownloadKind } from "./reports";
@@ -69,30 +69,45 @@ export interface RecordImportResult {
   error_csv: string;
 }
 
+/** Whose records a list shows: a project's, or the ones an organisation owns itself. */
+export type RecordOwner = { projectId: string; organizationId?: undefined } | { organizationId: string; projectId?: undefined };
+
+/**
+ * @param ids Exactly one of the two ids a list page has.
+ * @returns The owner the table calls take.
+ * @throws Error when neither id is given.
+ */
+export function recordOwner(ids: { projectId?: string; organizationId?: string }): RecordOwner {
+  if (ids.projectId) return { projectId: ids.projectId };
+  if (ids.organizationId) return { organizationId: ids.organizationId };
+  throw new Error("A record list needs a project or an organisation.");
+}
+
 /** Injectable calls so stories stay off the network. */
 export interface RecordTablesApi {
-  columns: (projectId: string, recordType: string) => Promise<RecordColumns>;
+  columns: (owner: RecordOwner, recordType: string) => Promise<RecordColumns>;
   /**
    * The list as a file, narrowed by the list's own filters (`filters` is a query string without the leading `?`):
    * the CSV that re-imports, or a PDF or Word document of the same rows (the record-list report).
    */
-  exportFile: (projectId: string, recordType: string, kind: ReportDownloadKind, filters: string) => Promise<Blob>;
+  exportFile: (owner: RecordOwner, recordType: string, kind: ReportDownloadKind, filters: string) => Promise<Blob>;
   /** A preview (`dryRun`) or an apply of the CSV. */
-  importFile: (projectId: string, recordType: string, file: File, dryRun: boolean) => Promise<RecordImportResult>;
+  importFile: (owner: RecordOwner, recordType: string, file: File, dryRun: boolean) => Promise<RecordImportResult>;
 }
 
-const base = (projectId: string, recordType: string) => `/api/v1/projects/${projectId}/records/${recordType}`;
+const ownerRoot = (owner: RecordOwner) => (owner.projectId ? `/api/v1/projects/${owner.projectId}` : `/api/v1/orgs/${owner.organizationId}`);
+const base = (owner: RecordOwner, recordType: string) => `${ownerRoot(owner)}/records/${recordType}`;
 
 export const recordTablesApi: RecordTablesApi = {
-  columns: (projectId, recordType) => api.get<RecordColumns>(`${base(projectId, recordType)}/columns`),
-  exportFile: (projectId, recordType, kind, filters) =>
+  columns: (owner, recordType) => api.get<RecordColumns>(`${base(owner, recordType)}/columns`),
+  exportFile: (owner, recordType, kind, filters) =>
     kind === "csv"
-      ? api.getForBlob(`${base(projectId, recordType)}/export${filters ? `?${filters}` : ""}`)
+      ? api.getForBlob(`${base(owner, recordType)}/export${filters ? `?${filters}` : ""}`)
       : api.getForBlob(
-        `/api/v1/projects/${projectId}/reports/record-list?${new URLSearchParams({ record_type: recordType, format: kind })}${filters ? `&${filters}` : ""}`,
+        `${ownerRoot(owner)}/reports/record-list?${new URLSearchParams({ record_type: recordType, format: kind })}${filters ? `&${filters}` : ""}`,
       ),
-  importFile: (projectId, recordType, file, dryRun) =>
-    api.postFile<RecordImportResult>(`${base(projectId, recordType)}/import?dry_run=${dryRun}`, file),
+  importFile: (owner, recordType, file, dryRun) =>
+    api.postFile<RecordImportResult>(`${base(owner, recordType)}/import?dry_run=${dryRun}`, file),
 };
 
 /** The one-line note for columns the policy left out, or an empty string when none were. */

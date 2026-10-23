@@ -17,6 +17,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { ListActions } from "../../components/ListActions";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
@@ -28,6 +29,7 @@ import { FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE } from "./types";
 import type { FutureState, FutureStateFieldValues, FutureStateStatus } from "./types";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { filterString } from "../../utils/listFilterParams";
 
 export function OrgFutureStatesPanel({ orgId }: { orgId: string }) {
   const navigate = useNavigate();
@@ -58,7 +60,7 @@ export function OrgFutureStatesPanel({ orgId }: { orgId: string }) {
 
   const filtered = futureStates.filter((fs) => {
     if (statusFilter && fs.status !== statusFilter) return false;
-    if (search && !`{fs.unique_code} {fs.title}`.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !`${fs.unique_code} ${fs.title}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
@@ -75,9 +77,14 @@ export function OrgFutureStatesPanel({ orgId }: { orgId: string }) {
 
   return (
     <div className="stack">
-      <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
-        New Future State
-      </button>
+      <div className="row" style={{ gap: "var(--space-3)", alignSelf: "flex-start" }}>
+        <button className="btn btn-primary" onClick={() => setCreating(true)}>
+          New Future State
+        </button>
+        <ListActions
+          organizationId={orgId} recordType="future_state" filters={filterString({ status: statusFilter, search, include_archived: includeArchived })} onImported={reloadFutureStates}
+        />
+      </div>
       <div className="side-grid">
         <DirectoryTable
           ariaLabel="Organisation Future State"

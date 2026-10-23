@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
+import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { withRouter, withToast } from "../../testing/storybook-helpers";
 import { OrgStrategiesPanel } from "./OrgStrategiesPanel";
 import type { Strategy } from "./types";
@@ -22,6 +23,7 @@ function strategy(overrides: Partial<Strategy> = {}): Strategy {
 
 function mockPanelApis(strategies: Strategy[]) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path === `/api/v1/orgs/${ORG_ID}/records/strategy/columns`) return buildRecordColumns({ label: "Strategies" });
     if (path.startsWith(`/api/v1/orgs/${ORG_ID}/modules/context_strategy/strategies`)) return strategies;
     throw new Error(`Unmocked GET: ${path}`);
   });
@@ -42,6 +44,27 @@ export const ListsOrgStrategies: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Lead the regional market")).toBeInTheDocument());
+    await expect(canvas.getByText("Diversify revenue streams")).toBeInTheDocument();
+  },
+};
+
+/** The panel offers the shared Export and Import of the organisation's own Strategies beside New Strategy. */
+export const OffersExportAndImportOfTheOrganisationsStrategies: Story = {
+  beforeEach: () => mockPanelApis([strategy()]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("button", { name: "Export" })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "New Strategy" })).toBeInTheDocument();
+  },
+};
+
+/** The search box matches the code or the title (it once matched a literal placeholder and found nothing). */
+export const SearchMatchesTheTitle: Story = {
+  beforeEach: () => mockPanelApis([strategy(), strategy({ id: "strategy-2", title: "Diversify revenue streams", unique_code: "STR-002" })]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.type(await canvas.findByLabelText("Search organisation Strategy"), "diversify");
+    await waitFor(() => expect(canvas.queryByText("Lead the regional market")).not.toBeInTheDocument());
     await expect(canvas.getByText("Diversify revenue streams")).toBeInTheDocument();
   },
 };

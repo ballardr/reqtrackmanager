@@ -58,6 +58,7 @@ from app.modules.stakeholders.service import (
     grid_quadrant,
     list_represented_personas,
     list_representing_stakeholders,
+    organization_stakeholders,
     suggest_cadence,
     unarchive_record,
 )
@@ -242,10 +243,7 @@ def list_org_stakeholders(
 ):
     """The org's stakeholders. `group_id` keeps a group's members (and its descendants' unless
     `direct_only`); `group_by` orders them by branch under that top-level group."""
-    query = select(Stakeholder).where(Stakeholder.organization_id == organization_id, Stakeholder.scope == _SCOPE)
-    if not include_archived:
-        query = query.where(Stakeholder.is_archived.is_(False))
-    stakeholders = list(db.scalars(query.order_by(Stakeholder.created_at)).all())
+    stakeholders = organization_stakeholders(db, organization_id, include_archived=include_archived)
     if group_id is not None or group_by is not None:
         stakeholders = gsh.filter_and_sort_stakeholders(
             db, stakeholders, load_groups(db, organization_id), group_id=group_id, direct_only=direct_only,

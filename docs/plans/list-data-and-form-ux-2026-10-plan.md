@@ -1,11 +1,11 @@
 # List Data and Form UX (October 2026) — Plan
 
-**Status:** planned 2026-10-22, not started. Built from eight items the user picked up (section 1). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position), 7 (type definition), 7b (module bundles), 8 (record-table extension point), 8b (personal-data policy), 9 (shared list actions), 10 (record-list report), 11 (core types) and 12 (Context & Strategy and Stakeholders) are done; Phase 12b (organisation-level lists, added when Phase 12 showed they need their own route) is next, then Phase 13.
+**Status:** planned 2026-10-22, in progress. Built from nine items the user picked up (section 1; item 9 added 2026-10-23). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position), 7 (type definition), 7b (module bundles), 8 (record-table extension point), 8b (personal-data policy), 9 (shared list actions), 10 (record-list report), 11 (core types), 12 (Context & Strategy and Stakeholders) and 12b (organisation-level lists) are done; Phase 13 is next; Phase 15 (overview total-records chart) and the Phase 16 close-out follow Phase 14.
 **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. Q1–Q4 were answered by the user on 2026-10-22 (section 2). Everything in the "Agent defaults" table is **Decided by: Agent** and open to override before the phase that uses it starts.
 
 ## Status / Resume Here
 
-14 / 18 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–12 done 2026-10-23, Phase 12 uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
+15 / 19 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–12b done 2026-10-23, Phases 12 and 12b uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
 
 | # | Phase | Item | Status |
 |---|-------|------|--------|
@@ -24,10 +24,11 @@
 | 10 | Record-list report in the Reports page (CSV, PDF, Word of any type) | 5 | [x] |
 | 11 | Roll-out A: core types (Requirements, Change Requests, Actions) | 5 | [x] |
 | 12 | Roll-out B: Context & Strategy, Stakeholders (Persona, Stakeholder, Need, Group, Engagement, Research Finding) | 5 | [x] |
-| 12b | Organisation-level export and import: the organisation's own Strategies, Future States, Guiding Principles, Personas, Stakeholders and Groups (generic organisation route, org list pages) | 5 | [ ] |
+| 12b | Organisation-level export and import: the organisation's own Strategies, Future States, Guiding Principles, Personas, Stakeholders and Groups (generic organisation route, org list pages) | 5 | [x] |
 | 13 | Roll-out C: Risk, Decisions, Compliance | 5 | [ ] |
 | 14 | Bulk edit grid (generic) wired to Pain Points; other types register editable columns | 3 | [ ] |
-| 15 | Docs website, seeds, README, close-out and archive this plan | all | [ ] |
+| 15 | Project overview: total-records pie chart by type, replacing the per-module count tiles | 9 | [ ] |
+| 16 | Docs website, seeds, README, close-out and archive this plan | all | [ ] |
 
 ```mermaid
 flowchart LR
@@ -46,23 +47,25 @@ flowchart LR
     P9 --> P12["12 Strategy + Stakeholders"]
     P12 --> P12b["12b Organisation-level lists"]
     P9 --> P13["13 Risk, Decisions, Compliance"]
+    P13 --> P15["15 Overview total records"]
     P8 --> P14["14 Bulk edit grid"]
-    P2 --> P15["15 Close-out"]
-    P3 --> P15
-    P4 --> P15
-    P5 --> P15
-    P6 --> P15
-    P7b --> P15
-    P10 --> P15
-    P11 --> P15
-    P12b --> P15
-    P13 --> P15
-    P14 --> P15
+    P2 --> P16["16 Close-out"]
+    P3 --> P16
+    P4 --> P16
+    P5 --> P16
+    P6 --> P16
+    P7b --> P16
+    P10 --> P16
+    P11 --> P16
+    P12b --> P16
+    P13 --> P16
+    P15 --> P16
+    P14 --> P16
 ```
 
 Read left to right: after the rules in Phase 1, Phases 2–7 stand alone; the export/import work is the chain 8 → 8b → 9/10 → 11–13, and the grid (14) needs only the extension point.
 
-## 1. The eight items
+## 1. The nine items
 
 | # | Item (user's words, condensed) | Phase |
 |---|---|---|
@@ -74,6 +77,7 @@ Read left to right: after the rules in Phase 1, Phases 2–7 stand alone; the ex
 | 6 | Returning to a list after editing an item puts the user back at the top; keep the position; style-guide rule | 6 |
 | 7 | Pain Point types get an optional definition | 7 |
 | 8 | Long forms: Save at the top as well, or a header row with title + Save and a scrollable form; same for edit; style guide | 5 |
+| 9 | Project overview: the glances count requirements only and mean little once other modules are enabled; show total records as a pie chart split by record type (added 2026-10-23) | 15 |
 
 ## 2. Decisions
 
@@ -244,10 +248,24 @@ Each phase, for each type: write the provider (columns, editable flags), wire th
 
 ### Phase 12b — Organisation-level export and import
 
+- **Delivered (2026-10-23):** `OrganizationRecordTable` on the provider, the generic organisation routes (`columns|export|import` and the Record list report as PDF, Word and CSV), one shared import body for both tiers, the organisation Strategy / Future State / Guiding Principle create and edit moved to `edits.py` so page and file share it, organisation-level `export_personal_data`, `ListActions` / `CsvImportWizard` / `useRecordTableExport` taking a project or an organisation, and the controls on the five organisation panels and the organisation group manager. **Carried forward, with reasons in decisions.md:** no organisation Reports page exists, so the Record list report is reached from each panel's Export menu; the organisation Pain Point type vocabulary stays out (a vocabulary, in the organisation bundle).
+
 - **Why:** the engine, `GET .../columns` and the Record list report are project-scoped, but six types can be owned by the organisation (Strategy, Future State, Guiding Principle, Persona, Stakeholder, Stakeholder Group). Their organisation lists have no Export, and "export has no exemptions". Phase 12 made the providers; this phase gives them an organisation route.
 - **Work:** a generic organisation route (`/orgs/{id}/records/{type}/columns|export|import`) gated by the type's organisation-level `organization_subcomponent` and manage role; the provider declares how it lists and finds organisation-scoped rows (a second `list_records` / `find` for the organisation tier, or one that takes an owner), and `organization_owned` rows are then the ones it writes; `ListActions` and `useRecordTableExport` accept an organisation instead of a project; the organisation panels (`OrgStrategiesPanel`, `OrgFutureStatesPanel`, `OrgGuidingPrinciplesPanel`, `OrgPersonasPanel`, `OrgStakeholdersPanel`) get the controls; the Record list report offers organisation-owned types at the organisation level; personal-data policy resolves for the organisation (no project permission context, so the permission is the organisation-level `export_personal_data`).
 - **Decide first (agent default, open to override):** whether the organisation Pain Point type vocabulary is a record list (it is a vocabulary panel, not an artefact type, so it likely stays out and the vocabulary travels in the organisation bundle, which Phase 7b already did).
 - **Tests:** the Phase 8 suite parametrised over the organisation tier for each type; cross-organisation codes rejected; Playwright on one organisation panel; Storybook for the controls on a panel.
+
+### Phase 15 — Project overview: total records by type
+
+- **Why:** the overview's tiles (requirement count, % complete, change request counts) describe one module. With Risk, Decisions, Stakeholders and the rest enabled, "N requirements" says little about the project. A total with its split by type does, and it is the same set of types the export work (Phases 8–13) just made countable.
+- **Work:**
+  - **Backend:** `records_by_type` (`[{type, label, count}]`) and `record_total` on the project metrics, following the overview's project scope (nested projects) exactly as the existing counts do. Counts come from a `count` on the record-table provider (Phase 8), not a hand-written query per type in the router, so a new type appears with no core edit. Only types whose module is enabled for the project and which the caller may read are counted (a count of a type the caller cannot open leaks its existence); the total is the sum of what is shown.
+  - **Frontend:** a "Total records" headline plus a pie (donut) chart on `StatusPieChart`, centre figure = total, one segment per type, legend listing every type with its count (colour is never the only cue). A segment and its legend row open that type's list (`artefactPaths`, scope preserved). Segment colours come from each type's registered `entityAccentColor` (`useEntityAccentColor`), so no core map gains a module entry; the chart is placed in the overview beside the existing status charts.
+  - **Replaces:** the "Requirements" count tile (requirements are now a segment). Whether "% complete", files and the change request tiles stay is the decision below.
+- **Decide first (agent default, open to override):** (a) keep "% complete" and the change request pipeline tiles, since they are workflow signals and not counts; drop only the requirement count; files stay a tile, not a segment (a file is not an artefact type); (b) with more than about eight types, the smallest collapse into one "Other" segment in the chart while the legend still lists each type; (c) a project with no records shows the empty-state text, not an empty ring. **Decided by: Agent.**
+- **Disagreement to weigh:** a pie suits "share of the whole" for a handful of segments; with 15–20 types it gets unreadable, which is why (b) caps it and the legend carries the exact numbers. If the user finds that unsatisfying, a horizontal bar per type is the alternative on the same data.
+- **Tests:** backend: counts per type, disabled module omitted, unreadable type omitted, total equals the sum, nested scope widens it, cross-project isolation; Storybook for the chart (many types, one type, empty, "Other" grouping); Playwright on the overview with two modules' records, clicking a segment opens the filtered list.
+- **Docs:** the website's project overview page; record the decision in `docs/decisions.md`; seeds already carry records of each type from Phases 11–13 (check the demo dataset shows several types).
 
 ### Phase 14 — Bulk edit grid
 
@@ -256,9 +274,9 @@ Each phase, for each type: write the provider (columns, editable flags), wire th
 - **Other modules:** each type's provider already marks editable columns in Phases 11–13; the grid appears for a type once it has at least one editable column. Anything else is listed in decisions.md.
 - **Tests:** stories; Playwright editing three cells and saving, a failing row, and a read-only row.
 
-### Phase 15 — Close-out
+### Phase 16 — Close-out
 
-- **Work:** docs website review (`docs/website/`: lists, export/import, help, forms, Pain Point types); README; `docs/solution-architecture.md` for the extension point; `docs/modules.md` section for `record_tables`; decisions.md entry per phase with `Decided by` tags; confirm the two seed scripts run on a fresh database; `python scripts/check_doc_links.py`; Status table 17/17; `git mv` to `docs/plans/completed/` and rewrite references; update the memory index.
+- **Work:** docs website review (`docs/website/`: lists, export/import, help, forms, Pain Point types); README; `docs/solution-architecture.md` for the extension point; `docs/modules.md` section for `record_tables`; decisions.md entry per phase with `Decided by` tags; confirm the two seed scripts run on a fresh database; `python scripts/check_doc_links.py`; Status table 19/19; `git mv` to `docs/plans/completed/` and rewrite references; update the memory index.
 
 ## 4. Standing checklist per phase
 
@@ -287,4 +305,4 @@ Each phase, for each type: write the provider (columns, editable flags), wire th
 | Tooltip rebuild regresses accessible names that tests rely on | Keep "Help: {label}" naming and the sr-only text pattern; the field-help check stays |
 | Coloured cells unreadable in greyscale or low contrast | Band name stays in the cell text; text colour picked for contrast |
 
-When the table reads 18 / 18: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").
+When the table reads 19 / 19: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").

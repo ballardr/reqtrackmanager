@@ -374,6 +374,14 @@ def project_personas(
     return personas if include_org else [p for p in personas if p.scope == PersonaScope.PROJECT]
 
 
+def organization_personas(db: Session, organization_id: uuid.UUID, *, include_archived: bool = False) -> list[Persona]:
+    """The personas the organisation itself owns, oldest first: the organisation list endpoint and the record table share it."""
+    query = select(Persona).where(Persona.organization_id == organization_id, Persona.scope == PersonaScope.ORGANIZATION)
+    if not include_archived:
+        query = query.where(Persona.is_archived.is_(False))
+    return list(db.scalars(query.order_by(Persona.created_at)).all())
+
+
 def persona_scoring_targets(db: Session, project_id: uuid.UUID) -> list[ScoringTarget]:
     """`ModuleDefinition.scoring_target_providers["persona"]`: the project's
     visible, non-archived personas with their effective weights. Returns
@@ -734,6 +742,16 @@ def project_stakeholders(
     when `include_org` is false. The list endpoint and the record table share it."""
     stakeholders = list_project_visible_stakeholders(db, project, include_archived=include_archived, include_hidden=include_hidden)
     return stakeholders if include_org else [s for s in stakeholders if s.scope == StakeholderScope.PROJECT]
+
+
+def organization_stakeholders(db: Session, organization_id: uuid.UUID, *, include_archived: bool = False) -> list[Stakeholder]:
+    """The stakeholders the organisation itself owns, oldest first: the organisation list endpoint and the record table share it."""
+    query = select(Stakeholder).where(
+        Stakeholder.organization_id == organization_id, Stakeholder.scope == StakeholderScope.ORGANIZATION
+    )
+    if not include_archived:
+        query = query.where(Stakeholder.is_archived.is_(False))
+    return list(db.scalars(query.order_by(Stakeholder.created_at)).all())
 
 
 def find_stakeholder_for_user(

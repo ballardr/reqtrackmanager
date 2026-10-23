@@ -60,8 +60,8 @@ export function PersonaListView({
   projectScope?: ProjectScopeState;
   /** The page header (title, actions, tabs) this list owns when it is a whole page. */
   page?: RecordListPage;
-  /** Offers the shared Export and Import of Personas on a list page: the project, and what to do after an import. */
-  exportRecords?: { projectId: string; onImported?: () => void };
+  /** Offers the shared Export and Import of Personas on a list page, or beside an organisation panel's New button: the project or organisation, and what to do after an import. */
+  exportRecords?: { projectId?: string; organizationId?: string; onImported?: () => void };
   /** Resolves on success; a rejection keeps the modal open and shows its message. Omit when personas are created elsewhere. */
   onCreate?: (values: PersonaFieldValues) => Promise<void>;
 }) {

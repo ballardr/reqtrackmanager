@@ -87,7 +87,7 @@ def record_list_report(
             f"This list has {len(table.rows)} rows, more than a document is laid out for ({MAX_DOCUMENT_ROWS}). "
             "Narrow the filters or download the CSV.",
         )
-    result = collect(project, provider.label, table, scope_name=project_scope.name)
+    result = collect(project.name, provider.label, table, scope_name=project_scope.name)
     if format == "json":
         return to_out(result)
     stem = f"{filename_safe(project.name, fallback='project')}-{filename_safe(provider.label.lower())}"

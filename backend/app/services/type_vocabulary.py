@@ -126,6 +126,13 @@ class TypeVocabulary:
         db.delete(org_type)
         db.flush()
 
+    def active_org_types(self, db: Session, organization_id: uuid.UUID) -> list:
+        """The organisation's active types in their order: what an organisation-owned record may be typed as."""
+        return list(db.scalars(
+            select(self.org_model).where(self.org_model.organization_id == organization_id, self.org_model.is_active.is_(True))
+            .order_by(self.org_model.sort_order)
+        ).all())
+
     def resolve_effective(self, db: Session, project_id: uuid.UUID, organization_id: uuid.UUID) -> list[EffectiveType]:
         """A project's effective list: every active org type the project has
         not hidden (with its override applied) plus every project-local type,

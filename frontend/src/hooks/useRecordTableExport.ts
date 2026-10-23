@@ -8,7 +8,7 @@
 import { useCallback } from "react";
 
 import type { ReportDownloadKind } from "../api/reports";
-import { recordTablesApi, type RecordTablesApi } from "../api/recordTables";
+import { recordTablesApi, type RecordOwner, type RecordTablesApi } from "../api/recordTables";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
 import { downloadBlob } from "../utils/download";
@@ -21,7 +21,7 @@ export function fileStem(label: string): string {
 }
 
 /**
- * @param projectId The project whose list is exported.
+ * @param owner The project (or organisation) whose list is exported.
  * @param recordType The registered record type.
  * @param label The type's plural name (for the file name and messages).
  * @param filters The list's filters as a query string without the leading `?` (`status=draft&tag=a`).
@@ -30,17 +30,17 @@ export function fileStem(label: string): string {
  *   started or failed.
  */
 export function useRecordTableExport(
-  projectId: string, recordType: string, label: string, filters: string, tables: RecordTablesApi = recordTablesApi,
+  owner: RecordOwner, recordType: string, label: string, filters: string, tables: RecordTablesApi = recordTablesApi,
 ): { exportList: (kind: ReportDownloadKind) => Promise<void> } {
   const { showToast } = useToast();
   const exportList = useCallback(async (kind: ReportDownloadKind) => {
     try {
-      const blob = await tables.exportFile(projectId, recordType, kind, filters);
+      const blob = await tables.exportFile(owner, recordType, kind, filters);
       downloadBlob(blob, `${fileStem(label)}-export.${kind}`);
       showToast(strings.recordTables.exported(label, strings.recordTables.formatName[kind]));
     } catch (err) {
       showToast(toErrorMessage(err, strings.recordTables.exportFailed(label)), "error");
     }
-  }, [projectId, recordType, label, filters, tables, showToast]);
+  }, [owner, recordType, label, filters, tables, showToast]);
   return { exportList };
 }
