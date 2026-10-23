@@ -1,0 +1,108 @@
+"""
+Module: schemas.record_tables
+
+Response models for the record table routes (`routers.record_tables`): a record type's columns and the
+preview or result of an import. Requests are a query string (export) and an uploaded CSV (import), so there
+are no request bodies.
+"""
+
+from __future__ import annotations
+
+from pydantic import BaseModel
+
+
+class RecordColumnOut(BaseModel):
+    """One column of a record type's table.
+
+    Attributes:
+        key: The CSV header.
+        label: The name a person sees.
+        kind: `text`, `enum`, `principal`, `date`, `number`, `bool`, `instant` or `list`.
+        importable: Whether an import writes it (otherwise export-only).
+        editable: Whether the bulk edit grid offers it.
+        required: Whether a new record needs a value.
+        sensitivity: `none`, `personal`, `contact` or `free_text_people`.
+        included: Whether the policy lets it leave or enter the app (`false` for an excluded column).
+    """
+
+    key: str
+    label: str
+    kind: str
+    importable: bool
+    editable: bool
+    required: bool
+    sensitivity: str
+    included: bool
+
+
+class RecordColumnsOut(BaseModel):
+    """A record type's table definition for the Export menu and the Import wizard.
+
+    Attributes:
+        label: The plural name of the type.
+        columns: Every column, `code` first.
+        omitted_sensitivity: Sensitivity tags whose columns the policy leaves out.
+        importable: Whether the type can be imported at all.
+        not_importable_reason: Why not, when it cannot.
+        filter_params: The list filters an export understands, besides `tag`, `tag_mode` and `project_scope`.
+        max_rows / max_bytes: The import caps.
+    """
+
+    label: str
+    columns: list[RecordColumnOut]
+    omitted_sensitivity: list[str]
+    importable: bool
+    not_importable_reason: str | None
+    filter_params: list[str]
+    max_rows: int
+    max_bytes: int
+
+
+class ColumnChangeOut(BaseModel):
+    """One cell an update changes: the exported value and the file's."""
+
+    column: str
+    label: str
+    before: str
+    after: str
+
+
+class RowResultOut(BaseModel):
+    """What happened (or, in a preview, would happen) to one row.
+
+    Attributes:
+        row: The line number in the file (the header is row 1).
+        action: `create`, `update`, `unchanged` or `error`.
+        code: The record's code (the file's, for an error).
+        changes: For an update, the cells that change.
+        message: For an error, what was wrong.
+    """
+
+    row: int
+    action: str
+    code: str
+    changes: list[ColumnChangeOut]
+    message: str
+
+
+class ImportResultOut(BaseModel):
+    """The preview or result of an import.
+
+    Attributes:
+        applied: `false` for a preview (nothing was written).
+        created / updated / unchanged / failed: Row counts.
+        rows: One entry per data row.
+        ignored_columns: `{header: reason}` for file columns that were not used.
+        omitted_sensitivity: Sensitivity tags whose columns the policy excluded.
+        error_csv: The failed rows with an `error` column, ready to fix and upload again; empty without errors.
+    """
+
+    applied: bool
+    created: int
+    updated: int
+    unchanged: int
+    failed: int
+    rows: list[RowResultOut]
+    ignored_columns: dict[str, str]
+    omitted_sensitivity: list[str]
+    error_csv: str

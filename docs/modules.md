@@ -369,6 +369,8 @@ class ModuleDefinition:
     search_providers: dict[str, ArtefactSearchProvider] = {}  # records the global search finds (§4j)
     not_searchable: dict[str, str] = {}  # artefact types deliberately outside the search, with the reason (§4j)
     search_scopes: dict[str, SearchScope] = {}  # extra places the search can be scoped to (§4j)
+    record_tables: dict[str, RecordTableProvider] = {}  # a type's list as an exportable, importable table (§4l)
+    not_importable: dict[str, str] = {}  # artefact types whose records import cannot author, with the reason (§4l)
     link_type_seeds: tuple[LinkTypeSeed, ...] = ()  # link types you ship; any artefact links to any by default (§4f-bis)
     reports: tuple[ReportDefinition, ...] = ()  # reports core serves for you (§4g)
     notification_types: tuple[NotificationTypeDefinition, ...] = ()  # notification kinds you send (§4h)
@@ -1183,6 +1185,32 @@ Rules for a hook (reference implementations: `modules/risk_management/export.py`
 - A type vocabulary carries its project overrides, project-only types and the organisation defaults the project has hidden (`ProjectDefinitionSuppression`).
 - An imported status is never an approval by someone else: no approver identity is carried, and project import is limited to organisation admins and project creators.
 - Add the export and import for a new table or column in the same change, with a round-trip test (export, import into a fresh project or organisation, compare).
+
+### 4l. Record tables: export and import of every list (List data and form UX, Phase 8)
+
+Every artefact type's list exports as CSV and, for a type people author, imports from the same file. You declare the table; core owns authorisation, the file, the preview and the audit.
+
+```mermaid
+flowchart LR
+    L["List filters + project scope"] --> E["GET records/{type}/export"]
+    E --> P["RecordTableProvider:\ncolumns + list_records"]
+    P --> F["CSV (code first)"]
+    F -->|"edit in a spreadsheet"| I["POST records/{type}/import\n(dry_run=true: preview)"]
+    I --> A["dry_run=false: apply"]
+    A --> U["the type's own create / update\n(version lock, validation, audit)"]
+```
+
+Read left to right: the same provider defines the columns of the file out and the file in, and the apply step runs the type's **own** create or update, never a raw write. A preview is that same run rolled back.
+
+- `record_tables[artefact_type] = RecordTableProvider(label, columns, list_records, find, prepare, create, update, filter_params, gate, can_create, can_update, approval_gated)` (core types in `services/record_tables_core.py`).
+  - `columns(db, project)` returns `RecordColumn(key, label, get, parse, kind, editable, required, sensitivity)`. `get(prepared, record)` is the cell text (and the "before" an import compares against); `parse(ctx, text)` makes the value `create`/`update` receive and raises `RecordCellError` with a message the person can act on. **No `parse` means export-only** (a status behind an approval gate, a derived value, an instant). `prepare(db, project, records)` does the batch lookups once.
+  - `list_records(db, user, project_id, filters)` **must share its query with the type's list endpoint** (extract a function both call, as `services.requirements.filter_requirements` does), so a filter added to the page reaches the file. `filter_params` names the filters it understands; core refuses any other query parameter rather than ignore it. Tags and the nested-project scope are applied by core (`gate` is the list's own module gate).
+  - `find(db, project, code)` searches **that project only**. `create(ctx, values)` and `update(ctx, record, values)` call the same service functions the type's endpoints call and **never commit** (core owns the transaction: a savepoint per row, one commit on apply). `update` receives only the cells that changed. Write the type's per-record audit event there as the endpoint does.
+  - `can_create` / `can_update` are the same check the type's endpoints make; when omitted the fine-grained `propose_create` / `manage` permission applies.
+- **Format.** First column `code` (core writes it, qualified by the project code outside the request project or where the organisation enforces it). A person is one cell: an email, or `Name (Org group)` (`parse_principal_cell`, `PrincipalCells` for export). Enums by label, dates `YYYY-MM-DD`, instants UTC and export-only. Core adds the `'` formula guard on write and strips it on read; a provider never does.
+- **Approval gates.** A type with an approval gate sets `approval_gated=True` and gives its `status` no `parse`: a file creates drafts and edits content, it never approves (`tests/test_record_tables.py` fails otherwise).
+- **Personal data.** Classify a column with `sensitivity` (`personal`, `contact`, `free_text_people`); core leaves tagged columns out of every export and import unless the organisation allows them. Never expose a Restricted-classified value as a column.
+- **Registration is required.** A type with no provider is listed in `PENDING_RECORD_TABLES` in `backend/tests/test_record_tables.py` (the list only shrinks). A type whose records import cannot author (produced by a workflow) still registers a provider for export and gives a reason in `not_importable`. Do not add per-type export or import code to a core file.
 
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 

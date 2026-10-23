@@ -16,13 +16,12 @@ from __future__ import annotations
 
 import csv
 import io
-from dataclasses import dataclass, field
 from datetime import date
 from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -33,9 +32,7 @@ from app.metrics import (
 )
 from app.models.change_request import ChangeRequest
 from app.models.custom_field import CustomFieldEntityKind, CustomFieldType
-from app.models.engagement import Subscription
 from app.models.enums import (
-    ChangeRequestStatus,
     PrincipalType,
     ProjectRole,
     RequirementLevel,
@@ -47,7 +44,7 @@ from app.models.project import Project, ProjectCategory, ProjectComponent, Proje
 from app.models.requirement import Requirement, RequirementVersion
 from app.models.user import User
 from app.schemas.changes import ChangeEntryOut
-from app.schemas.principal import PrincipalOut, PrincipalRef
+from app.schemas.principal import PrincipalRef
 from app.schemas.project import MoveDirection
 from app.schemas.requirement import (
     RequirementCreate,
@@ -58,7 +55,6 @@ from app.schemas.requirement import (
     RequirementVersionOut,
 )
 from app.services import engagement, pubsub
-from app.services import tags as tag_service
 from app.services.audit import log_event
 from app.services.bundle_common import enforce_upload_size_limit
 from app.services.changes import get_project_changes
@@ -73,14 +69,16 @@ from app.services.requirement_csv import (
     export_requirements_csv,
 )
 from app.services.requirements import (
-    apply_new_version,
+    OPEN_CR_STATUSES,
+    ListPrefetch,
+    RequirementFilters,
     archive_requirement,
     create_requirement,
+    edit_requirement,
+    filter_requirements,
     get_current_version,
-    get_current_version_for_update,
     get_keywords,
     is_locked,
-    set_keywords,
     unarchive_requirement,
     version_people,
 )
@@ -101,7 +99,6 @@ def _require_edit_role(db: Session, user: User, project_id: UUID) -> None:
 
 
 REQUIRES_APPROVAL_STATUSES = {RequirementStatus.DRAFT, RequirementStatus.REVIEWED}
-OPEN_CR_STATUSES = (ChangeRequestStatus.SUBMITTED, ChangeRequestStatus.IN_REVIEW)
 
 
 def _has_open_change_request(db: Session, requirement_id: UUID) -> bool:
@@ -115,71 +112,14 @@ def _has_open_change_request(db: Session, requirement_id: UUID) -> bool:
     )
 
 
-@dataclass
-class _ListPrefetch:
-    """Per-requirement lookups for a whole list, loaded in a fixed number of
-    queries (`_prefetch_for_list`) instead of five per row — the list
-    endpoint was the second-hottest backend path in the e2e suite (99
-    queries for one page of Alpha-1, 2026-10-04 profiling).
-
-    Attributes:
-        versions: Current (`valid_to IS NULL`) version per requirement id.
-        keywords: Keywords per requirement id (absent = none).
-        subscribed: Requirement ids the caller is subscribed to.
-        comment_counts: Comment count per requirement id (absent = 0).
-        open_change_request: Requirement ids with an open change request.
-        people: Resolved owner and reviewer (`services.principals.principal_labels`), keyed by `(type, id)`.
-    """
-
-    versions: dict[UUID, RequirementVersion] = field(default_factory=dict)
-    keywords: dict[UUID, list[str]] = field(default_factory=dict)
-    subscribed: set[UUID] = field(default_factory=set)
-    comment_counts: dict[UUID, int] = field(default_factory=dict)
-    open_change_request: set[UUID] = field(default_factory=set)
-    people: dict[tuple[str, UUID], PrincipalOut] = field(default_factory=dict)
-
-
-def _prefetch_for_list(db: Session, requirement_ids: list[UUID], current_user_id: UUID) -> _ListPrefetch:
-    """Loads every `_ListPrefetch` field for `requirement_ids` — same
-    semantics as `get_current_version`/`get_keywords`/`engagement.
-    is_subscribed`/`engagement.get_comment_count`/`_has_open_change_request`,
-    batched.
-
-    Raises:
-        HTTPException: 500 if a requirement has no current version (the same
-            broken-data signal `get_current_version` raises).
-    """
-    prefetch = _ListPrefetch()
-    if not requirement_ids:
-        return prefetch
-    for version in db.scalars(select(RequirementVersion).where(
-        RequirementVersion.requirement_id.in_(requirement_ids), RequirementVersion.valid_to.is_(None),
-    )).all():
-        prefetch.versions[version.requirement_id] = version
-    if len(prefetch.versions) != len(set(requirement_ids)):
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Requirement has no current version.")
-    prefetch.people = version_people(db, prefetch.versions.values())
-    prefetch.keywords = tag_service.keywords_for_requirements(db, requirement_ids)
-    prefetch.subscribed = set(db.scalars(select(Subscription.entity_id).where(
-        Subscription.subscriber_type == PrincipalType.USER.value, Subscription.subscriber_id == current_user_id,
-        Subscription.entity_type == "requirement",
-        Subscription.entity_id.in_(requirement_ids),
-    )).all())
-    prefetch.comment_counts = engagement.get_comment_counts(db, ReviewTargetType.REQUIREMENT, requirement_ids)
-    prefetch.open_change_request = set(db.scalars(select(ChangeRequest.requirement_id).where(
-        ChangeRequest.requirement_id.in_(requirement_ids), ChangeRequest.status.in_(OPEN_CR_STATUSES),
-    )).all())
-    return prefetch
-
-
 def _to_out(
     db: Session, requirement: Requirement, version: RequirementVersion, current_user_id: UUID,
-    prefetch: _ListPrefetch | None = None,
+    prefetch: ListPrefetch | None = None,
 ) -> RequirementOut:
     """Builds the API response shape for a requirement from its identity row
     plus one version snapshot, including `current_user_id`'s subscription
     state (C-N-01) and derived list-view badge indicators. Pass `prefetch`
-    (from `_prefetch_for_list`) when serialising many rows, so these come
+    (from `prefetch_for_list`) when serialising many rows, so these come
     from batched lookups instead of per-row queries."""
     if prefetch is not None:
         people = prefetch.people
@@ -341,57 +281,18 @@ def list_requirements(
     """
     unfiltered = 0
 
+    filters = RequirementFilters(
+        include_archived=include_archived, is_completed=is_completed, component_id=component_id, category_id=category_id,
+        tag_names=tuple(tag), tag_match_all=tag_mode == "all", keyword=keyword, search=search, status=status_filter,
+        target_stage_id=target_stage_id, has_comments=has_comments, only_watched=only_watched,
+    )
+
     def rows_for(pid: UUID) -> list[RequirementOut]:
         nonlocal unfiltered
-        query = select(Requirement).where(Requirement.project_id == pid)
-        if not include_archived:
-            query = query.where(Requirement.is_archived.is_(False))
-
-        unfiltered += db.scalar(select(func.count()).select_from(query.subquery())) or 0
-
-        if is_completed is not None:
-            query = query.where(Requirement.is_completed.is_(is_completed))
-        if component_id:
-            query = query.where(Requirement.component_id == component_id)
-        if category_id:
-            query = query.where(Requirement.category_id == category_id)
-        if any(t.strip() for t in tag):
-            query = query.where(Requirement.id.in_(
-                tag_service.tagged_ids(
-                    db, project=db.get(Project, pid), artefact_type="requirement", names=tag, match_all=tag_mode == "all",
-                )
-            ))
-        requirements = db.scalars(query).all()
-        prefetch = _prefetch_for_list(db, [r.id for r in requirements], current_user.id)
-
-        rows = []
-        for req in requirements:
-            version = prefetch.versions[req.id]
-            kws = prefetch.keywords.get(req.id, [])
-            if keyword and keyword.casefold() not in {k.casefold() for k in kws}:
-                continue
-            if search:
-                needle = search.lower()
-                if needle not in version.name.lower() and needle not in req.unique_code.lower():
-                    continue
-            if status_filter and version.status != status_filter:
-                continue
-            if target_stage_id and version.target_stage_id != target_stage_id:
-                continue
-            item = _to_out(db, req, version, current_user.id, prefetch)
-            if has_comments and item.comment_count == 0:
-                continue
-            if only_watched and not item.is_subscribed:
-                continue
-            rows.append(item)
-
-        if not sort:
-            comp_order = {c.id: c.sort_order for c in db.scalars(
-                select(ProjectComponent).where(ProjectComponent.project_id == pid)).all()}
-            cat_order = {c.id: c.sort_order for c in db.scalars(
-                select(ProjectCategory).where(ProjectCategory.project_id == pid)).all()}
-            rows.sort(key=lambda r: (comp_order.get(r.component_id, 0), cat_order.get(r.category_id, 0), r.sort_order))
-        return rows
+        found = filter_requirements(db, pid, current_user.id, filters, structural_order=not sort)
+        unfiltered += found.unfiltered
+        prefetch = found.prefetch
+        return [_to_out(db, req, prefetch.versions[req.id], current_user.id, prefetch) for req in found.requirements]
 
     out = project_scope.collect(db, db.get(Project, project_id), current_user.id, "requirement", rows_for)
     response.headers["X-Total-Unfiltered-Count"] = str(unfiltered)
@@ -695,43 +596,22 @@ def update_requirement(
     requirement = db.get(Requirement, requirement_id)
     if requirement is None or requirement.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
-    current_version = get_current_version_for_update(db, requirement.id)
-    if is_locked(current_version):
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            "This requirement is approved; changes must be made via a change request.",
-        )
-    custom_fields = validate_custom_field_values(db, project_id, CustomFieldEntityKind.REQUIREMENT, payload.custom_fields)
     project = db.get(Project, project_id)
-    for person_field in ("owner", "reviewer"):
-        validate_principal(
-            db, getattr(payload, person_field), organization_id=project.organization_id, project_id=project_id,
-            field=person_field,
-        )
-    new_version = apply_new_version(
-        db, requirement, current_version, current_user,
+    new_version = edit_requirement(
+        db, project, requirement, current_user,
         name=payload.name, reasoning=payload.reasoning, clarification=payload.clarification,
         description=payload.description,
         status_value=payload.status, owner=payload.owner,
-        target_stage_id=payload.target_stage_id, target_stage_explicitly_set=payload.target_stage_id is not None,
+        target_stage_id=payload.target_stage_id,
         level=payload.level,
         change_note=payload.change_note or "Direct edit during scoping.",
-        custom_fields=custom_fields,
+        custom_fields=payload.custom_fields,
         review_date=payload.review_date, review_date_explicitly_set=True,
         review_lead_days=payload.review_lead_days, review_lead_days_explicitly_set=True,
         reviewer=payload.reviewer, reviewer_explicitly_set=True,
+        component_id=payload.component_id, category_id=payload.category_id,
+        keywords=payload.keywords,
     )
-    if payload.component_id != requirement.component_id or payload.category_id != requirement.category_id:
-        component = db.get(ProjectComponent, payload.component_id)
-        category = db.get(ProjectCategory, payload.category_id)
-        if component is None or component.project_id != project_id or category is None or category.project_id != project_id:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid component or category.")
-        if category.component_id != component.id:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Category does not belong to the selected component.")
-        requirement.component_id = payload.component_id
-        requirement.category_id = payload.category_id
-    if payload.keywords is not None:
-        set_keywords(db, requirement, payload.keywords, current_user.id)
     log_event(db, entity_type="requirement", entity_id=requirement.id, action="updated",
               actor_id=current_user.id, project_id=project_id, detail={"change_note": payload.change_note})
     requirements_updated_total.inc()

@@ -767,6 +767,7 @@ def test_decision_in_the_parent_cannot_address_a_pain_point_below_it_but_the_rev
 # A new file that queries `ArtefactLink` directly, or asks `services.relationships` for cross-level
 # links, must be reviewed against the "another project's artefact" rule and added here.
 _REVIEWED_LINK_READERS = {
+    "services/bundle_links.py": "same-project links only (source_project_id is null); a cross-level link is not exported",
     "services/link_graph.py": "authorises every end in its own project",
     "services/link_nesting.py": "counts links a type's scope would flag",
     "modules/compliance/export.py": "same-project requirement -> clause links only (source_project_id is null)",

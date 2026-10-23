@@ -1,11 +1,11 @@
 # List Data and Form UX (October 2026) — Plan
 
-**Status:** planned 2026-10-22, not started. Built from eight items the user picked up (section 1). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position), 7 (type definition) and 7b (module bundles) are done; Phase 8 is next.
+**Status:** planned 2026-10-22, not started. Built from eight items the user picked up (section 1). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position), 7 (type definition), 7b (module bundles) and 8 (record-table extension point) are done; Phase 8b is next.
 **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. Q1–Q4 were answered by the user on 2026-10-22 (section 2). Everything in the "Agent defaults" table is **Decided by: Agent** and open to override before the phase that uses it starts.
 
 ## Status / Resume Here
 
-8 / 17 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–7b done 2026-10-23, uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
+9 / 17 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–8 done 2026-10-23, Phase 8 uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
 
 | # | Phase | Item | Status |
 |---|-------|------|--------|
@@ -18,7 +18,7 @@
 | 6 | List scroll position and loaded rows survive a trip to a record and back | 6 | [x] |
 | 7 | Pain Point types get an optional definition | 7 | [x] |
 | 7b | Every module's records travel in the project **and** organisation bundles (Context & Strategy, Decisions; audit of the other modules; enforcement test) | 7 | [x] |
-| 8 | Record-table extension point (backend): columns, list, CSV out, CSV in with update | 5 | [ ] |
+| 8 | Record-table extension point (backend): columns, list, CSV out, CSV in with update | 5 | [x] |
 | 8b | Personal-data policy: column sensitivity, server default, organisation override, new permission | 5 | [ ] |
 | 9 | Shared list actions (frontend): Export menu + Import wizard on `ListPageLayout` pages; Requirements migrated | 5 | [ ] |
 | 10 | Record-list report in the Reports page (CSV, PDF, Word of any type) | 5 | [ ] |
@@ -192,6 +192,7 @@ flowchart LR
   Read left to right: the same provider defines the columns for the file out and the file in, and the apply step goes through the type's own update path, never a raw write.
 - **Work:** `RecordTableProvider` (key, label, columns with `key`, `label`, getter, setter/parser, `editable` flag, `required` on create, enum/principal/date kinds, and a `sensitivity` tag: none, `personal`, `contact` or `free_text_people`; the provider is the only place a column is classified, and a column with no tag is `none`); list function that takes the same filter object as the type's list endpoint and the `ProjectScope`; shared generic routes (`/projects/{id}/records/{type}/export|import`, plus org-level for organisation-owned types) gated by the same module/sub-component gate and permission as the type's list (export) and create/update (import); formula-injection guard (D6); row and size caps (D4); audit events (D7); `ModuleDefinition.record_tables`, `not_importable`; the enforcement test; Requirements' existing importer moved onto the provider (it keeps its mapping/constant-value behaviour, now client-side only).
 - **Security review (identify, verify, remediate, recorded in decisions.md):** authorization on every row of an import (a code from another project or organisation is rejected), tenancy, injection, upload limits, no logging of cell values.
+- **Delivered (2026-10-23):** the engine, routes, registry fields and providers for Requirement and Action; the other 18 types are in `PENDING_RECORD_TABLES` (`backend/tests/test_record_tables.py`) until Phases 11–13. **Carried forward, with reasons in decisions.md:** the legacy Requirements `export`/`import` endpoints go in Phase 9 with the Requirements page; organisation-level routes arrive with the first organisation-owned provider (Phase 12); PDF and Word of a list are Phase 10.
 - **Tests:** a generic suite parametrised over every registered type: export, re-import unchanged (no changes reported), edit one column and re-import (one update), unknown code, wrong-project code, formula prefix round trip, permission denied. Run pytest one invocation at a time.
 
 ### Phase 8b — Personal-data policy
