@@ -1,7 +1,7 @@
 """
 Module: services.record_tables_core
 
-The `RecordTableProvider`s for the core artefact types (requirements and actions), plus the building blocks
+The `RecordTableProvider`s for the core artefact types (requirements, actions and change requests), plus the building blocks
 module providers use to declare a type in a few lines.
 
 Responsibilities:
@@ -19,11 +19,13 @@ Design decisions:
 - `status` of a requirement is export-only: it has an approval gate, and a file must not bypass it. An import
   creates drafts and edits content; an approved requirement refuses the edit (it changes through a change
   request), reported as that row's error.
+- A change request is export-only (`CORE_NOT_IMPORTABLE` gives the reason): its content depends on its kind
+  and it moves through submit and approval, which a file cannot author.
 - A person column is one cell: an email for a user, `Name (Org group)` / `Name (Project group)` for a group.
 - A project's custom fields are columns named `cf_<name>`, built per project.
 
 Dependencies: `modules.registry` (provider shapes), `services.record_tables` (cell helpers, people),
-`services.requirements`, `services.actions`, `services.audit`.
+`services.requirements`, `services.actions`, `services.change_request_list`, `services.audit`.
 """
 
 from __future__ import annotations
@@ -31,7 +33,7 @@ from __future__ import annotations
 import enum
 import uuid
 from collections.abc import Callable, Mapping
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 
 from fastapi import HTTPException
@@ -40,8 +42,16 @@ from sqlalchemy.orm import Session
 
 from app.metrics import requirements_created_total, requirements_updated_total
 from app.models.action_type import ActionTypeDefinition
+from app.models.change_request import ChangeRequest, ChangeRequestVersion
 from app.models.custom_field import CustomFieldDefinition, CustomFieldEntityKind, CustomFieldType
-from app.models.enums import ProjectRole, RequirementActionOutcome, RequirementLevel, RequirementStatus
+from app.models.enums import (
+    ChangeRequestKind,
+    ChangeRequestStatus,
+    ProjectRole,
+    RequirementActionOutcome,
+    RequirementLevel,
+    RequirementStatus,
+)
 from app.models.project import Project, ProjectCategory, ProjectComponent, ProjectStage
 from app.models.requirement import Requirement, RequirementVersion
 from app.models.requirement_action import RequirementAction
@@ -55,11 +65,12 @@ from app.modules.registry import (
 )
 from app.schemas.principal import PrincipalRef
 from app.services import actions as action_service
+from app.services import change_request_list as change_request_service
 from app.services import requirements as requirement_service
 from app.services import tags as tag_service
 from app.services.audit import log_event
 from app.services.custom_fields import validate_custom_field_values
-from app.services.labels import REQUIREMENT_STATUS_TONE
+from app.services.labels import CHANGE_REQUEST_STATUS_TONE, REQUIREMENT_STATUS_TONE
 from app.services.principals import principal_ref, validate_principal
 from app.services.project_hierarchy import resolve_effective_action_types
 from app.services.rbac import get_effective_project_roles
@@ -562,9 +573,159 @@ ACTION_TABLE = RecordTableProvider(
 )
 
 
+# --- change requests -------------------------------------------------------------------------------
+
+#: Field names a change request lists as changed, by the label the form shows (`target_stage_id` -> `Target version`).
+CHANGED_FIELD_LABEL = {
+    "name": "Name", "reasoning": "Reasoning", "clarification": "Clarification", "description": "Description",
+    "target_stage_id": "Target version", "level": "Level", "review_date": "Review date",
+    "review_lead_days": "Reminder lead time", "reviewer_id": "Assigned reviewer", "custom_fields": "Custom fields",
+    "attachments": "Attachments",
+}
+
+
+class _ChangeRequestTable:
+    """Lookups handed to every change request column's `get`: latest versions, target requirements, stages, people, tags."""
+
+    def __init__(self, db: Session, project: Project, change_requests: list[ChangeRequest]) -> None:
+        ids = [cr.id for cr in change_requests]
+        self.versions: dict[uuid.UUID, ChangeRequestVersion] = change_request_service.latest_versions(db, change_requests)
+        requirement_ids = {cr.requirement_id for cr in change_requests if cr.requirement_id}
+        self.requirements: dict[uuid.UUID, tuple[str, str]] = {}
+        if requirement_ids:
+            self.requirements = {
+                requirement_id: (code, name) for requirement_id, code, name in db.execute(
+                    select(Requirement.id, Requirement.unique_code, RequirementVersion.name)
+                    .join(RequirementVersion, RequirementVersion.requirement_id == Requirement.id)
+                    .where(Requirement.id.in_(requirement_ids), RequirementVersion.valid_to.is_(None))
+                ).all()
+            }
+        stage_ids = {v.proposed_target_stage_id for v in self.versions.values() if v.proposed_target_stage_id}
+        self.stages = {s.id: s.name for s in db.scalars(select(ProjectStage).where(ProjectStage.id.in_(stage_ids)))} if stage_ids else {}
+        refs = [principal_ref("user", cr.creator_id) for cr in change_requests]
+        refs += [principal_ref("user", cr.decided_by) for cr in change_requests if cr.decided_by]
+        refs += [principal_ref(v.proposed_reviewer_type, v.proposed_reviewer_id) for v in self.versions.values()]
+        self.people = PrincipalCells.load(db, refs)
+        self.tags = tag_service.tag_names_for_records(db, "change_request", ids) if ids else {}
+
+    def version(self, cr: ChangeRequest) -> ChangeRequestVersion:
+        return self.versions[cr.id]
+
+
+def _list_change_requests(db: Session, user: User, project_id: uuid.UUID, filters: RecordFilters) -> list[ChangeRequest]:
+    found = change_request_service.query_change_requests(
+        db, project_id, cr_status=_enum_param(filters, "cr_status", ChangeRequestStatus), active_only=bool(filters.flag("active_only")),
+    )
+    return [cr for cr, _ in change_request_service.narrow_change_requests(
+        db, found, target_stage_id=_uuid_param(filters, "target_stage_id"), search=filters.one("search"),
+    )]
+
+
+def _find_change_request(db: Session, project: Project, code: str) -> ChangeRequest | None:
+    return db.scalar(select(ChangeRequest).where(ChangeRequest.project_id == project.id, ChangeRequest.unique_code == code.upper()))
+
+
+def _instant(value: datetime | None) -> str:
+    """A past instant as UTC ISO 8601 (empty for none)."""
+    return value.astimezone(UTC).isoformat() if value else ""
+
+
+def _change_request_custom_column(definition: CustomFieldDefinition) -> RecordColumn:
+    """An export-only `cf_<name>` column: the value this request proposes for one custom field."""
+    field_id = str(definition.id)
+
+    def get(t: _ChangeRequestTable, cr: ChangeRequest) -> str:
+        value = t.version(cr).custom_fields.get(field_id)
+        if value is None:
+            return ""
+        return ("true" if value else "false") if definition.field_type == CustomFieldType.CHECKBOX else str(value)
+
+    return RecordColumn(
+        f"{CUSTOM_FIELD_PREFIX}{definition.name}", definition.name, get, kind="bool" if definition.field_type == CustomFieldType.CHECKBOX else "text",
+    )
+
+
+def _change_request_columns(db: Session, project: Project) -> list[RecordColumn]:
+    kinds, statuses, levels = label_map(ChangeRequestKind), label_map(ChangeRequestStatus), label_map(RequirementLevel)
+
+    def target(t: _ChangeRequestTable, cr: ChangeRequest) -> tuple[str, str]:
+        return t.requirements.get(cr.requirement_id, ("", "")) if cr.requirement_id else ("", "")
+
+    columns = [
+        RecordColumn("title", "Title", lambda t, cr: t.version(cr).proposed_name or target(t, cr)[1]),
+        RecordColumn("kind", "Kind", lambda t, cr: kinds[cr.kind.value], kind="enum"),
+        RecordColumn(
+            "status", "Status", lambda t, cr: statuses[cr.status.value], kind="enum",
+            tones={statuses[value]: tone for value, tone in CHANGE_REQUEST_STATUS_TONE.items() if value in statuses},
+        ),
+        RecordColumn("requirement", "Requirement", lambda t, cr: target(t, cr)[0]),
+        RecordColumn("reason", "Reason", lambda t, cr: t.version(cr).reason),
+        RecordColumn(
+            "changed_fields", "Changed fields",
+            lambda t, cr: list_cell([CHANGED_FIELD_LABEL.get(f, f) for f in t.version(cr).changed_fields]), kind="list",
+        ),
+        RecordColumn("proposed_reasoning", "Proposed reasoning", lambda t, cr: t.version(cr).proposed_reasoning or ""),
+        RecordColumn("proposed_clarification", "Proposed clarification", lambda t, cr: t.version(cr).proposed_clarification or ""),
+        RecordColumn("proposed_description", "Proposed description", lambda t, cr: t.version(cr).proposed_description or ""),
+        RecordColumn(
+            "proposed_level", "Proposed level", lambda t, cr: levels[t.version(cr).proposed_level.value] if t.version(cr).proposed_level else "",
+            kind="enum",
+        ),
+        RecordColumn(
+            "proposed_target_version", "Proposed target version", lambda t, cr: t.stages.get(t.version(cr).proposed_target_stage_id, ""), kind="enum",
+        ),
+        RecordColumn(
+            "proposed_reviewer", "Proposed reviewer",
+            lambda t, cr: t.people.text(t.version(cr).proposed_reviewer_type, t.version(cr).proposed_reviewer_id), kind="principal",
+        ),
+        RecordColumn(
+            "proposed_review_date", "Proposed review date",
+            lambda t, cr: t.version(cr).proposed_review_date.isoformat() if t.version(cr).proposed_review_date else "", kind="date",
+        ),
+        RecordColumn(
+            "proposed_review_lead_days", "Proposed review lead days",
+            lambda t, cr: str(t.version(cr).proposed_review_lead_days) if t.version(cr).proposed_review_lead_days is not None else "", kind="number",
+        ),
+        RecordColumn("creator", "Created by", lambda t, cr: t.people.text("user", cr.creator_id), kind="principal"),
+        RecordColumn("keywords", "Tags", lambda t, cr: list_cell(t.tags.get(cr.id, [])), kind="list"),
+        RecordColumn("created_at", "Created at", lambda t, cr: _instant(cr.created_at), kind="instant"),
+        RecordColumn("submitted_at", "Submitted at", lambda t, cr: _instant(cr.submitted_at), kind="instant"),
+        RecordColumn("decided_at", "Decided at", lambda t, cr: _instant(cr.decided_at), kind="instant"),
+        RecordColumn("decided_by", "Decided by", lambda t, cr: t.people.text("user", cr.decided_by) if cr.decided_by else "", kind="principal"),
+        RecordColumn("decision_note", "Decision note", lambda t, cr: cr.decision_note),
+    ]
+    columns.extend(_change_request_custom_column(d) for d in _custom_field_definitions(db, project.id))
+    return columns
+
+
+CHANGE_REQUEST_TABLE = RecordTableProvider(
+    label="Change requests",
+    columns=_change_request_columns,
+    list_records=_list_change_requests,
+    find=_find_change_request,
+    prepare=lambda db, project, records: _ChangeRequestTable(db, project, records),
+    filter_params=frozenset({"cr_status", "active_only", "target_stage_id", "search"}),
+    approval_gated=True,
+)
+
+
 CORE_RECORD_TABLES: dict[str, RecordTableProvider] = {
     "requirement": REQUIREMENT_TABLE,
     "requirement_action": ACTION_TABLE,
+    "change_request": CHANGE_REQUEST_TABLE,
 }
 
-__all__ = ["CORE_RECORD_TABLES", "date_parser", "enum_parser", "int_parser", "label_map", "list_cell", "list_parser", "person_parser", "text_parser"]
+#: `{core artefact type: reason}` for a core type whose table is export-only (a module gives its reason in
+#: `ModuleDefinition.not_importable`).
+CORE_NOT_IMPORTABLE: dict[str, str] = {
+    "change_request": (
+        "A change request is a proposal whose content depends on its kind (which requirement fields change, proposed "
+        "links, attachments, an action to add or remove) and it moves through submit and approval, so it is authored "
+        "in its form, not in a file."
+    ),
+}
+
+__all__ = [
+    "CORE_NOT_IMPORTABLE", "CORE_RECORD_TABLES", "date_parser", "enum_parser", "int_parser", "label_map", "list_cell", "list_parser",
+    "person_parser", "text_parser",
+]

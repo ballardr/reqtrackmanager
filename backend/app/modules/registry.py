@@ -4065,8 +4065,11 @@ def get_record_table_providers() -> dict[str, RecordTableProvider]:
 
 
 def get_not_importable_types() -> dict[str, str]:
-    """`{artefact type: reason}` for every type a module declared not importable."""
-    reasons: dict[str, str] = {}
+    """`{artefact type: reason}` for every type left without import: a core type's
+    (`services.record_tables_core.CORE_NOT_IMPORTABLE`) and each module's `not_importable`."""
+    from app.services.record_tables_core import CORE_NOT_IMPORTABLE
+
+    reasons: dict[str, str] = dict(CORE_NOT_IMPORTABLE)
     for definition in get_module_registry().values():
         reasons.update(definition.not_importable)
     return reasons

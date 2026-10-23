@@ -33,7 +33,7 @@ from tests.link_world import ACTION, REQ, World
 #: Types whose table has not been written yet. Shrinks as the roll-out lands; a type with a provider must not be
 #: listed, and a type not listed must have one.
 PENDING_RECORD_TABLES = {
-    "change_request", "compliance_evidence", "compliance_required_action_assessment", "compliance_requirement", "decision",
+    "compliance_evidence", "compliance_required_action_assessment", "compliance_requirement", "decision",
     "engagement", "future_state", "guiding_principle", "open_question", "pain_point", "persona",
     "project_compliance_requirement", "research_finding", "risk", "stakeholder", "stakeholder_group", "stakeholder_need",
     "strategy",
@@ -628,3 +628,119 @@ def test_actions_keep_working_through_their_own_endpoints_after_the_shared_edit_
         assert db.get(RequirementAction, aid).completed_at is not None
     finally:
         db.close()
+
+
+# --- change requests ----------------------------------------------------------------------------------------------
+
+CR = "change_request"
+
+
+def _change_request(world: World, project: dict, name: str, **extra) -> dict:
+    """Creates a change request through the API: a new-requirement one unless `extra` says otherwise."""
+    body = {"kind": "new_requirement", "proposed_name": name, "reason": f"because {name}", **extra}
+    resp = world.client.post(f"/api/v1/projects/{project['id']}/change-requests", json=body, headers=auth_headers(world.token))
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+def _modify_request(world: World, project: dict, requirement_name: str) -> tuple[dict, dict]:
+    """An approved requirement and a change request proposing to change its reasoning; returns `(requirement, request)`."""
+    rid = world.requirement(project, requirement_name)
+    base = f"/api/v1/projects/{project['id']}"
+    assert world.client.post(f"{base}/requirements/{rid}/approve", headers=auth_headers(world.token)).status_code == 200
+    requirement = world.client.get(f"{base}/requirements/{rid}", headers=auth_headers(world.token)).json()
+    request = _change_request(
+        world, project, "", kind="modify_requirement", requirement_id=str(rid), changed_fields=["reasoning"],
+        proposed_reasoning="Better reasoning", proposed_name=None,
+    )
+    return requirement, request
+
+
+def test_a_change_request_exports_its_kind_status_target_and_proposal_by_label(world):
+    project = world.project()
+    created = _change_request(world, project, "Telemetry uplink")
+    requirement, modify = _modify_request(world, project, "Battery monitor")
+    rows = {r["code"]: r for r in _rows(_export(world, project, CR))}
+    new, changed = rows[created["unique_code"]], rows[modify["unique_code"]]
+    assert (new["title"], new["kind"], new["status"], new["requirement"]) == ("Telemetry uplink", "New requirement", "Draft", "")
+    assert new["reason"] == "because Telemetry uplink"
+    assert (changed["title"], changed["kind"], changed["requirement"]) == ("Battery monitor", "Modify requirement", requirement["unique_code"])
+    assert changed["changed_fields"] == "Reasoning" and changed["proposed_reasoning"] == "Better reasoning"
+    assert "@" in new["creator"]
+    assert new["created_at"].endswith("+00:00") and new["submitted_at"] == "" and new["decided_at"] == ""
+
+
+def test_the_change_request_export_takes_the_lists_filters_and_agrees_with_the_list(world):
+    project = world.project()
+    base = f"/api/v1/projects/{project['id']}/change-requests"
+    open_one = _change_request(world, project, "Still open")
+    gone = _change_request(world, project, "Withdrawn one")
+    assert world.client.post(f"{base}/{gone['id']}/withdraw", headers=auth_headers(world.token)).status_code == 200
+    _, modify = _modify_request(world, project, "Battery monitor")
+
+    def listed(**params) -> set[str]:
+        return {cr["unique_code"] for cr in world.client.get(base, params=params, headers=auth_headers(world.token)).json()}
+
+    def exported(**params) -> set[str]:
+        return {r["code"] for r in _rows(_export(world, project, CR, **params))}
+
+    for params in ({}, {"active_only": "true"}, {"cr_status": "withdrawn"}, {"search": "battery"}, {"search": "because still"}):
+        assert exported(**params) == listed(**params), params
+    assert exported(active_only="true") == {open_one["unique_code"], modify["unique_code"]}
+    assert exported(cr_status="withdrawn") == {gone["unique_code"]}
+    assert _export(world, project, CR, cr_status="bogus").status_code == 422
+    assert _export(world, project, CR, sort="status").status_code == 422
+
+
+def test_the_change_request_export_takes_the_tag_filter(world):
+    project = world.project()
+    tagged = _change_request(world, project, "Tagged")
+    _change_request(world, project, "Plain")
+    resp = world.client.post(
+        f"/api/v1/projects/{project['id']}/artefacts/change_request/{tagged['id']}/tags", json={"name": "safety"}, headers=auth_headers(world.token),
+    )
+    assert resp.status_code == 201, resp.text
+    rows = _rows(_export(world, project, CR, tag="safety"))
+    assert [(r["title"], r["keywords"]) for r in rows] == [("Tagged", "safety")]
+
+
+def test_the_change_request_export_carries_proposed_custom_field_values(world):
+    project = world.project()
+    base = f"/api/v1/projects/{project['id']}"
+    field = world.client.post(
+        f"{base}/custom-fields", json={"entity_kind": "requirement", "name": "Impact", "field_type": "short_text", "required": False},
+        headers=auth_headers(world.token),
+    )
+    assert field.status_code == 201, field.text
+    _change_request(world, project, "With impact", custom_fields={field.json()["id"]: "High"})
+    row = _rows(_export(world, project, CR))[0]
+    assert row["cf_Impact"] == "High"
+
+
+def test_a_change_request_cannot_be_imported_and_says_why(world):
+    project = world.project()
+    created = _change_request(world, project, "Draft")
+    columns = world.client.get(f"{_base(project, CR)}/columns", headers=auth_headers(world.token)).json()
+    assert columns["importable"] is False and columns["can_import"] is False
+    assert "authored in its form" in columns["not_importable_reason"]
+    assert not any(c["importable"] for c in columns["columns"])
+    refused = _import(world, project, _csv(["code", "title"], [created["unique_code"], "Changed"]), CR, apply=True)
+    assert refused.status_code == 422
+    assert _rows(_export(world, project, CR))[0]["title"] == "Draft"
+
+
+def test_a_reader_may_export_change_requests_and_a_person_with_no_role_may_not(world):
+    project = world.project()
+    _change_request(world, project, "Visible")
+    reader = _member(world, project, "member")
+    assert len(_rows(_export(world, project, CR, token=reader))) == 1
+    email = f"outsider-{uuid.uuid4().hex[:6]}@example.com"
+    create_org_user(world.client, world.token, world.org["id"], email)
+    assert _export(world, project, CR, token=login(world.client, email, "Password123!")).status_code == 403
+
+
+def test_the_change_request_changed_field_labels_cover_every_changeable_field():
+    from app.schemas.change_request import CHANGEABLE_REQUIREMENT_FIELDS
+    from app.services.record_tables_core import CHANGED_FIELD_LABEL
+
+    assert set(CHANGED_FIELD_LABEL) == set(CHANGEABLE_REQUIREMENT_FIELDS)

@@ -184,8 +184,9 @@ export function ChangeRequestsPage() {
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
 
-  function listParams(offset: number): URLSearchParams {
-    const params = new URLSearchParams({ limit: String(limitFor(offset)), offset: String(offset) });
+  /** The list's filters, by the names its list request and the shared export both take (no paging or sort). */
+  function filterParams(): URLSearchParams {
+    const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (statusFilter === "active") params.set("active_only", "true");
     else if (statusFilter) params.set("cr_status", statusFilter);
@@ -193,6 +194,12 @@ export function ChangeRequestsPage() {
     for (const tag of tagFilter.tags) params.append("tag", tag);
     if (tagFilter.active) params.set("tag_mode", tagFilter.mode);
     if (projectScope.widened) params.set("project_scope", projectScope.scope);
+    return params;
+  }
+
+  function listParams(offset: number): URLSearchParams {
+    const params = new URLSearchParams({ limit: String(limitFor(offset)), offset: String(offset) });
+    filterParams().forEach((value, key) => params.append(key, value));
     if (sort) {
       params.set("sort", sort.key);
       params.set("order", sort.direction);
@@ -577,6 +584,7 @@ export function ChangeRequestsPage() {
             <Plus /> {strings.changeRequests.newChangeRequest}
           </button>
         }
+        records={{ projectId: projectId ?? "", recordType: "change_request", filters: filterParams().toString(), onImported: reload }}
         filter={
           <FilterPanel
             sectionKey="changeRequestsFilters"

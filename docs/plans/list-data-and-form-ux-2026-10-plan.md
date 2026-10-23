@@ -1,11 +1,11 @@
 # List Data and Form UX (October 2026) — Plan
 
-**Status:** planned 2026-10-22, not started. Built from eight items the user picked up (section 1). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position), 7 (type definition), 7b (module bundles), 8 (record-table extension point), 8b (personal-data policy), 9 (shared list actions) and 10 (record-list report) are done; Phase 11 is next.
+**Status:** planned 2026-10-22, not started. Built from eight items the user picked up (section 1). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position), 7 (type definition), 7b (module bundles), 8 (record-table extension point), 8b (personal-data policy), 9 (shared list actions), 10 (record-list report) and 11 (core types) are done; Phase 12 is next.
 **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. Q1–Q4 were answered by the user on 2026-10-22 (section 2). Everything in the "Agent defaults" table is **Decided by: Agent** and open to override before the phase that uses it starts.
 
 ## Status / Resume Here
 
-12 / 17 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–10 done 2026-10-23, Phase 10 uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
+13 / 17 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–11 done 2026-10-23, Phase 11 uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
 
 | # | Phase | Item | Status |
 |---|-------|------|--------|
@@ -22,7 +22,7 @@
 | 8b | Personal-data policy: column sensitivity, server default, organisation override, new permission | 5 | [x] |
 | 9 | Shared list actions (frontend): Export menu + Import wizard on `ListPageLayout` pages; Requirements migrated | 5 | [x] |
 | 10 | Record-list report in the Reports page (CSV, PDF, Word of any type) | 5 | [x] |
-| 11 | Roll-out A: core types (Requirements, Change Requests, Actions) | 5 | [ ] |
+| 11 | Roll-out A: core types (Requirements, Change Requests, Actions) | 5 | [x] |
 | 12 | Roll-out B: Context & Strategy, Stakeholders (Persona, Stakeholder, Need, Group, Engagement, Research Finding) | 5 | [ ] |
 | 13 | Roll-out C: Risk, Decisions, Compliance | 5 | [ ] |
 | 14 | Bulk edit grid (generic) wired to Pain Points; other types register editable columns | 3 | [ ] |
@@ -225,6 +225,8 @@ flowchart LR
 - **Delivered (2026-10-23):** a platform report (not a module `ReportDefinition`: the framework is module-shaped and this report belongs to no module) at `GET /projects/{id}/reports/record-list`, in the catalogue as "Platform: Record list", built on `build_table`; PDF and Word join every list's Export menu with the page's filters; `RecordColumn.tones`; one core MCP tool `get_record_list_report`; a 5,000-row limit on documents. **Carried forward, with reasons in decisions.md:** the Reports page offers type, project scope and tag (status/open filters are per type, so they come from the list's Export menu); Playwright drives Requirements because Pain Points has no provider until Phase 12; `test_report_record_codes.py` does not apply to a non-`ReportDefinition` report.
 
 ### Phases 11–13 — Roll-out
+
+- **Delivered, Phase 11 (2026-10-23):** the Change request table (export-only; reason in `CORE_NOT_IMPORTABLE`), the shared change request list query, and Export/Import on the Actions list and Export on the Change requests list. Requirement and Action providers were already in place from Phases 8–9. Change requests are not importable (**Decided by: User**, 2026-10-23: import the requirements instead; a request imported alone is hard to link to its requirement).
 
 Each phase, for each type: write the provider (columns, editable flags), wire the list page to `ListActions`, add the import behaviour (update by code), add a seed row where a new field needs one, and decide import exemptions with a stated reason in `docs/decisions.md` and `not_importable` (likely candidates: Engagement, Compliance evidence, and Compliance assessment records, whose rows are produced by a workflow rather than authored). Export has no exemption.
 

@@ -256,7 +256,7 @@ def test_backend_badge_tones_match_the_frontends():
     from app.modules.decisions.labels import DECISION_STATUS_TONE
     from app.modules.risk_management.labels import RISK_STATUS_TONE, TREATMENT_ASSESSMENT_STATUS_TONE
     from app.modules.stakeholders.labels import RECORD_STATUS_TONE
-    from app.services.labels import REQUIREMENT_STATUS_TONE
+    from app.services.labels import CHANGE_REQUEST_STATUS_TONE, REQUIREMENT_STATUS_TONE
 
     src = THEME.parents[1]
     if not src.is_dir():
@@ -269,6 +269,7 @@ def test_backend_badge_tones_match_the_frontends():
 
     pairs = [
         ("api/types.ts", "REQUIREMENT_STATUS_TONE", REQUIREMENT_STATUS_TONE),
+        ("api/types.ts", "CHANGE_REQUEST_STATUS_TONE", CHANGE_REQUEST_STATUS_TONE),
         ("modules/context_strategy/types.ts", "STRATEGY_STATUS_TONE", LIFECYCLE_STATUS_TONE),
         (
             "modules/context_strategy/types.ts", "GUIDING_PRINCIPLE_STATUS_TONE",

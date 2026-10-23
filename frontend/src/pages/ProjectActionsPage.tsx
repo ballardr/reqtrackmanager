@@ -86,7 +86,8 @@ export function ProjectActionsPage() {
   const [newDueDate, setNewDueDate] = useState("");
   const [newQuickLinks, setNewQuickLinks] = useState<CollectedLink[]>([]);
 
-  function listParams(): string {
+  /** The list's filters, by the names its list request and the shared export both take. */
+  function filterParams(): URLSearchParams {
     const params = new URLSearchParams();
     if (outcomeFilter) params.set("outcome_status", outcomeFilter);
     if (typeFilter) params.set("action_type_id", typeFilter);
@@ -94,7 +95,11 @@ export function ProjectActionsPage() {
     for (const tag of tagFilter.tags) params.append("tag", tag);
     if (tagFilter.active) params.set("tag_mode", tagFilter.mode);
     if (projectScope.widened) params.set("project_scope", projectScope.scope);
-    const qs = params.toString();
+    return params;
+  }
+
+  function listParams(): string {
+    const qs = filterParams().toString();
     return qs ? `?${qs}` : "";
   }
 
@@ -196,6 +201,7 @@ export function ProjectActionsPage() {
             <Plus /> {strings.actions.newAction}
           </button>
         }
+        records={{ projectId: projectId ?? "", recordType: "requirement_action", filters: filterParams().toString(), onImported: reload }}
         filter={
           <FilterPanel sectionKey="projectActionsFilters">
             <FilterField label={strings.actions.actionType}>

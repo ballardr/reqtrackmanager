@@ -40,6 +40,13 @@ From a project's **Requirements** page, click **Import** and choose a file:
 
 An import goes through the same rules as editing by hand, so an approved requirement still has to change through a change request, and a requirement's status is never set from a file. **Export → Download import template** gives a CSV with the right column names for the project.
 
+## Actions and change requests
+
+The **Actions** and **Change requests** lists have the same **Export** menu, and it downloads the list as filtered on screen (the change request list's default "Active" view exports the active requests; pick **All statuses** to export them all).
+
+- **Actions** also have **Import**, in the same file format: a row with a code updates that action (title, description, outcome, due date), a row without one creates it. An action's type is required for a new action and must match an existing action type by name.
+- **Change requests** are export-only. The file carries each request's kind, status, target requirement, reason, the values it proposes, who created and decided it, and its dates. There is no import: a change request is a proposal whose content depends on its kind, and it is submitted and approved in the application, so it is written in its form.
+
 ## Where this fits
 
 See [Core Features → Reports and export](../core-features/reports-and-export.md) for report-content editing (Markdown/WYSIWYG, image inserts, organisation defaults), and [Authoring and reviewing requirements](./authoring-and-reviewing-requirements.md) for creating requirements one at a time instead of in bulk.
