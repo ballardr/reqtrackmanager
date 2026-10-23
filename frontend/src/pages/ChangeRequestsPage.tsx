@@ -31,6 +31,7 @@ import {
   REQUIREMENT_LEVEL_LABEL,
   savedPrincipalDisplay,
 } from "../api/types";
+import { AutoGrowTextarea } from "../components/AutoGrowTextarea";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterField, FilterPanel } from "../components/FilterPanel";
@@ -474,29 +475,26 @@ export function ChangeRequestsPage() {
         );
       case "reasoning":
         return (
-          <textarea
-            className="input"
+          <AutoGrowTextarea
             rows={2}
             value={proposed.reasoning}
-            onChange={(e) => setProposed((p) => ({ ...p, reasoning: e.target.value }))}
+            onChange={(value) => setProposed((p) => ({ ...p, reasoning: value }))}
           />
         );
       case "clarification":
         return (
-          <textarea
-            className="input"
+          <AutoGrowTextarea
             rows={2}
             value={proposed.clarification}
-            onChange={(e) => setProposed((p) => ({ ...p, clarification: e.target.value }))}
+            onChange={(value) => setProposed((p) => ({ ...p, clarification: value }))}
           />
         );
       case "description":
         return (
-          <textarea
-            className="input"
+          <AutoGrowTextarea
             rows={2}
             value={proposed.description}
-            onChange={(e) => setProposed((p) => ({ ...p, description: e.target.value }))}
+            onChange={(value) => setProposed((p) => ({ ...p, description: value }))}
           />
         );
       case "target_stage_id":

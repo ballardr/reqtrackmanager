@@ -11544,3 +11544,14 @@ Closes the open question left by the Pain Points default. **Decided by: User** (
 - **Bubble stays put.** The bubble is `position: fixed`, so `Tooltip` now also re-measures on scroll (capture), otherwise a pinned bubble would be left behind by a scrolling dialog body. `width: max-content` with a `max-width` keeps the wrapped size independent of where the bubble sits.
 - **Test updates.** The Persona field-help spec and four stories found the text inside the dialog; it now lives in the portalled `role="tooltip"` on `document.body`. New stories assert hover, pin, keyboard, outside press, Escape inside a `Modal`, no layout shift and a bounded long text; the Playwright spec asserts the sibling field's bounding box is unchanged while the help is open.
 - **Security / SOC 2 / modules / parity / time / nested projects:** presentation only; no data, permission, enum or core map touched.
+
+## List data and form UX (October 2026) Phase 4: long text grows (2026-10-23)
+
+**Decided by: User** (long free-text fields always grow, as a style guide rule); **Decided by: Agent** (the mechanism and the sweep outcome below).
+
+- **Grow is the default, not an opt-in.** `TextAreaField` renders `AutoGrowTextarea` unless it is given `fixedHeight="<reason>"`; the old `autoGrow` prop is removed, so a new field cannot forget it. `rows` is now the minimum height (it was ignored when growing). A create form and its edit form share one field group, so the Pain Point description (and source, impact, evidence), the Decision, Risk, Persona, Stakeholder, Engagement, Compliance and Context & Strategy forms grow in both.
+- **Sweep (75 textareas).** Every `TextAreaField` now grows; none needed `fixedHeight`, so the opt-out has no users today. The raw `<textarea>`s moved to `AutoGrowTextarea`: the comment edit boxes (`CommentThread`, `ArtefactCommentsSection`), the three proposed-value editors in the change request page, and the Markdown mode of `RichTextEditor` (`AutoGrowTextarea` gained a `textareaRef` through `useImperativeHandle`, so the toolbar still inserts at the cursor).
+- **Check.** `scripts/check_textarea_autogrow.py` (pinned by `backend/tests/test_textarea_autogrow.py`, empty baseline) fails a raw `<textarea>` outside the two implementing components and a `fixedHeight` with no reason.
+- **Tests.** Stories: default growth with a 40-line value and its cap, `rows` as the minimum, the fixed-height opt-out. Playwright `pain-point-text-grows.spec.ts` pastes 40 lines into the create form, saves, and checks the edit form opens already grown.
+- **Docs website.** No change: no user-visible concept or workflow changed beyond the box height.
+- **Security / SOC 2 / modules / parity / time / nested projects:** presentation only; no data, permission, enum or core map touched.

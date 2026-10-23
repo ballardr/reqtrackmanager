@@ -156,7 +156,6 @@ export function VersionWorkspace({ orgId, standard, version, versions, actionTyp
           label="Version summary"
           value={summary}
           onChange={setSummary}
-          autoGrow
           inputProps={{ placeholder: "This version's current standing — e.g. note that a retired version is deprecated." }}
         />
         <div className="row" style={{ justifyContent: "flex-end" }}>

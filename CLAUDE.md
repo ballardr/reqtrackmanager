@@ -199,7 +199,7 @@ def calculate_total(items: list[Item]) -> Decimal:
 
 ## Long Text Fields Grow
 
-- A free-text field where more than a couple of lines is a realistic case (description, rationale, notes, evidence) is `autoGrow` (`AutoGrowTextarea`) in create forms, edit forms and detail pages alike, never a fixed-row textarea. A deliberately short field keeps a fixed height and says why in a comment. A check script (`scripts/check_textarea_autogrow.py`, empty baseline) fails a `<textarea>`/`TextAreaField` that neither grows nor opts out; it lands with the textarea sweep in [docs/plans/list-data-and-form-ux-2026-10-plan.md](docs/plans/list-data-and-form-ux-2026-10-plan.md).
+- A free-text field where more than a couple of lines is a realistic case (description, rationale, notes, evidence) grows in create forms, edit forms and detail pages alike, never a fixed-row textarea: `TextAreaField` (`AutoGrowTextarea`) grows by default, with `rows` as its minimum. A deliberately short field passes `fixedHeight="<reason>"`. A check script (`scripts/check_textarea_autogrow.py`, empty baseline) fails a raw `<textarea>` and a `fixedHeight` with no reason.
 - Reason: a fixed box hides what was typed and makes the author scroll inside a field to check it. See the style guide's "Pattern: auto-growing textarea".
 
 ## Form Header

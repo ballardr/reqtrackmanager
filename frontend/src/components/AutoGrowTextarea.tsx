@@ -20,11 +20,16 @@
  * call) rather than once on mount, since content growing past the cap is
  * exactly the case this component exists to catch.
  *
+ * `rows` is the *minimum* height (an empty field still shows that many lines);
+ * growth starts from it. Every long free-text field is one of these
+ * (docs/ux-style-guide.md, "Pattern: auto-growing textarea"); the shared
+ * `TextAreaField` renders it by default.
+ *
  * Responsibilities: sizes itself (`element.style.height`); does not own
  * the field's value — the caller remains the source of truth via
  * `value`/`onChange`, same contract as a plain controlled `<textarea>`.
  */
-import { useLayoutEffect, useRef, type TextareaHTMLAttributes } from "react";
+import { useImperativeHandle, useLayoutEffect, useRef, type Ref, type TextareaHTMLAttributes } from "react";
 
 const DEFAULT_MAX_VISIBLE_LINES = 8;
 
@@ -34,6 +39,7 @@ export function AutoGrowTextarea({
   maxVisibleLines = DEFAULT_MAX_VISIBLE_LINES,
   className = "input",
   style,
+  textareaRef,
   ...rest
 }: {
   value: string;
@@ -42,8 +48,11 @@ export function AutoGrowTextarea({
    * line-height — see the module doc above for why this isn't a fixed
    * pixel number. */
   maxVisibleLines?: number;
-} & Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange" | "rows">) {
+  /** The underlying element, for a caller that needs the selection (a toolbar inserting at the cursor). */
+  textareaRef?: Ref<HTMLTextAreaElement>;
+} & Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange">) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  useImperativeHandle(textareaRef, () => ref.current as HTMLTextAreaElement, []);
 
   useLayoutEffect(() => {
     const el = ref.current;

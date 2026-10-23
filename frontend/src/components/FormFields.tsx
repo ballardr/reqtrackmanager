@@ -80,21 +80,24 @@ export function InlineTextInput({
 
 /**
  * A labelled multi-line input; `ariaLabel` overrides the label as the accessible name when they differ.
- * `autoGrow` swaps the fixed `rows` for a box that grows with its content (see `AutoGrowTextarea`); `rows`
- * is then ignored.
+ * It grows with its content (see `AutoGrowTextarea`), with `rows` as its minimum height. A field meant to
+ * stay short passes `fixedHeight` with the reason, which keeps a plain `rows`-high box
+ * (`scripts/check_textarea_autogrow.py` fails an empty reason).
  */
 export function TextAreaField({
-  label, value, onChange, rows = 2, hint, ariaLabel, disabled, inputProps, autoGrow, labelExtra, help, required,
+  label, value, onChange, rows = 2, hint, ariaLabel, disabled, inputProps, fixedHeight, labelExtra, help, required,
 }: FieldHelpProps & {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  /** Minimum visible lines (default 2); the box grows past it. */
   rows?: number;
   hint?: ReactNode;
   ariaLabel?: string;
   disabled?: boolean;
   inputProps?: TextAreaExtras;
-  autoGrow?: boolean;
+  /** Opts out of growing: why this field stays a fixed `rows`-high box (never empty). */
+  fixedHeight?: string;
   /** A control beside the label (an `OverridePill`); the label is then a sibling of the control, not its wrapper. */
   labelExtra?: ReactNode;
 }) {
@@ -102,8 +105,8 @@ export function TextAreaField({
   const controlId = inputProps?.id ?? id;
   return (
     <FieldShell label={label} controlId={controlId} help={help} extra={labelExtra} hint={hint} required={required}>
-      {autoGrow ? (
-        <AutoGrowTextarea {...inputProps} required={required ?? inputProps?.required} aria-required={required || undefined} id={controlId} value={value} onChange={onChange} aria-label={ariaLabel ?? label} disabled={disabled} />
+      {!fixedHeight ? (
+        <AutoGrowTextarea {...inputProps} rows={rows} required={required ?? inputProps?.required} aria-required={required || undefined} id={controlId} value={value} onChange={onChange} aria-label={ariaLabel ?? label} disabled={disabled} />
       ) : (
         <textarea
           {...inputProps} required={required ?? inputProps?.required} aria-required={required || undefined} id={controlId} className="input" rows={rows} value={value} onChange={(e) => onChange(e.target.value)}
