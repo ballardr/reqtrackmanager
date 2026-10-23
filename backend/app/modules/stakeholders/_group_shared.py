@@ -173,30 +173,39 @@ def groups_out(db: Session, ctx: GroupContext, groups: list[StakeholderGroup]) -
     ]
 
 
-def list_groups(db: Session, ctx: GroupContext) -> list[StakeholderGroupOut]:
+def visible_groups(db: Session, ctx: GroupContext) -> list[StakeholderGroup]:
     """Every group the context can see, org groups first then the project's, each in sort order."""
-    ordered = sorted(
+    return sorted(
         _universe(db, ctx).values(),
         key=lambda g: (g.scope != StakeholderScope.ORGANIZATION, g.sort_order, g.name.lower()),
     )
-    return groups_out(db, ctx, ordered)
 
 
-def create_group(db: Session, ctx: GroupContext, payload: StakeholderGroupCreate, actor: User) -> StakeholderGroupOut:
+def list_groups(db: Session, ctx: GroupContext) -> list[StakeholderGroupOut]:
+    """`visible_groups` as API shapes."""
+    return groups_out(db, ctx, visible_groups(db, ctx))
+
+
+def stage_group(db: Session, ctx: GroupContext, payload: StakeholderGroupCreate, actor: User) -> StakeholderGroup:
+    """Creates a group and audit-logs, without committing (the caller owns the transaction)."""
     group = as_http(
         grp.create_group, db, scope=ctx.scope, organization_id=ctx.organization_id, project_id=ctx.project_id,
         name=payload.name, description=payload.description, parent_group_id=payload.parent_group_id,
         exclusive_children=payload.exclusive_children,
     )
     _log(db, ctx, actor, group.id, "created", parent_group_id=group.parent_group_id)
+    return group
+
+
+def create_group(db: Session, ctx: GroupContext, payload: StakeholderGroupCreate, actor: User) -> StakeholderGroupOut:
+    """`stage_group`, then commits and returns the API shape."""
+    group = stage_group(db, ctx, payload, actor)
     db.commit()
     return groups_out(db, ctx, [group])[0]
 
 
-def update_group(
-    db: Session, ctx: GroupContext, group_id: uuid.UUID, payload: StakeholderGroupUpdate, actor: User
-) -> StakeholderGroupOut:
-    group = _get_group(db, ctx, group_id)
+def stage_group_update(db: Session, ctx: GroupContext, group: StakeholderGroup, payload: StakeholderGroupUpdate, actor: User) -> None:
+    """Applies a partial update to a group and audit-logs, without committing."""
     changes = payload.model_dump(exclude_unset=True)
     if changes.get("name") is None:
         changes.pop("name", None)
@@ -204,6 +213,14 @@ def update_group(
         changes.pop("exclusive_children", None)
     as_http(grp.update_group, db, group, ctx.organization_id, ctx.project_id, changes)
     _log(db, ctx, actor, group.id, "moved" if "parent_group_id" in changes else "updated", fields=",".join(sorted(changes)))
+
+
+def update_group(
+    db: Session, ctx: GroupContext, group_id: uuid.UUID, payload: StakeholderGroupUpdate, actor: User
+) -> StakeholderGroupOut:
+    """`stage_group_update`, then commits and returns the API shape."""
+    group = _get_group(db, ctx, group_id)
+    stage_group_update(db, ctx, group, payload, actor)
     db.commit()
     return groups_out(db, ctx, [group])[0]
 

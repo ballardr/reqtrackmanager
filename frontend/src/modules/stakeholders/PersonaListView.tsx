@@ -34,6 +34,7 @@ export function PersonaListView({
   tagFilter,
   projectScope,
   page,
+  exportRecords,
   onCreate,
 }: {
   personas: Persona[];
@@ -59,6 +60,8 @@ export function PersonaListView({
   projectScope?: ProjectScopeState;
   /** The page header (title, actions, tabs) this list owns when it is a whole page. */
   page?: RecordListPage;
+  /** Offers the shared Export and Import of Personas on a list page: the project, and what to do after an import. */
+  exportRecords?: { projectId: string; onImported?: () => void };
   /** Resolves on success; a rejection keeps the modal open and shows its message. Omit when personas are created elsewhere. */
   onCreate?: (values: PersonaFieldValues) => Promise<void>;
 }) {
@@ -96,6 +99,7 @@ export function PersonaListView({
       tagFilter={tagFilter}
       projectScope={projectScope}
       page={page}
+      exportRecords={exportRecords && { ...exportRecords, recordType: "persona" }}
       onCreate={onCreate}
       renderCreateModal={onCreate ? (props) => <PersonaFormModal {...props} typeOptions={typeOptions} /> : undefined}
     />

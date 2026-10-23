@@ -365,6 +365,15 @@ def list_project_visible_personas(
     return [p for p in personas if p.id not in hidden]
 
 
+def project_personas(
+    db: Session, project: Project, *, include_archived: bool = False, include_org: bool = True, include_hidden: bool = False
+) -> list[Persona]:
+    """The personas the project's list shows: `list_project_visible_personas`, without the organisation's when
+    `include_org` is false. The list endpoint and the record table share it."""
+    personas = list_project_visible_personas(db, project, include_archived=include_archived, include_hidden=include_hidden)
+    return personas if include_org else [p for p in personas if p.scope == PersonaScope.PROJECT]
+
+
 def persona_scoring_targets(db: Session, project_id: uuid.UUID) -> list[ScoringTarget]:
     """`ModuleDefinition.scoring_target_providers["persona"]`: the project's
     visible, non-archived personas with their effective weights. Returns
@@ -716,6 +725,15 @@ def list_project_visible_stakeholders(
         return stakeholders
     hidden = hidden_stakeholder_ids(db, project.id)
     return [s for s in stakeholders if s.id not in hidden]
+
+
+def project_stakeholders(
+    db: Session, project: Project, *, include_archived: bool = False, include_org: bool = True, include_hidden: bool = False
+) -> list[Stakeholder]:
+    """The stakeholders the project's list shows: `list_project_visible_stakeholders`, without the organisation's
+    when `include_org` is false. The list endpoint and the record table share it."""
+    stakeholders = list_project_visible_stakeholders(db, project, include_archived=include_archived, include_hidden=include_hidden)
+    return stakeholders if include_org else [s for s in stakeholders if s.scope == StakeholderScope.PROJECT]
 
 
 def find_stakeholder_for_user(

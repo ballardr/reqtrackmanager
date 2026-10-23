@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
+import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { buildProject, withRouter, withToast } from "../../testing/storybook-helpers";
 import { ProjectFutureStatesPage } from "./ProjectFutureStatesPage";
 import type { FutureState } from "./types";
@@ -22,6 +23,7 @@ function futureState(overrides: Partial<FutureState> = {}): FutureState {
 
 function mockPageApis(states: FutureState[]) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.endsWith("/records/future_state/columns")) return buildRecordColumns({ label: "Future states" });
     if (path === `/api/v1/projects/${PROJECT_ID}`) return buildProject({ id: PROJECT_ID, organization_id: "org-1" });
     if (path.startsWith(`/api/v1/projects/${PROJECT_ID}/modules/context_strategy/future-states`)) return states;
     throw new Error(`Unmocked GET: ${path}`);
@@ -85,5 +87,22 @@ export const OpensWithoutSuccessMeasuresFromAReportFigure: Story = {
     await expect(canvas.queryByText("On track")).not.toBeInTheDocument();
     await expect(canvas.queryByText("Retired vision")).not.toBeInTheDocument();
     await expect(canvas.getByRole("checkbox", { name: "Without success measures" })).toBeChecked();
+  },
+};
+
+/** Export and Import are on the title row; Export carries the page's filters (the server applies the same rules). */
+export const ExportCarriesThePageFilters: Story = {
+  parameters: { query: "?roadmap=1&target_passed=1" },
+  beforeEach: () => {
+    mockPageApis(STATES);
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["code\n"], { type: "text/csv" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Missed target")).toBeInTheDocument());
+    await expect(await canvas.findByText("Import")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
+    await userEvent.click(within(within(document.body).getByRole("dialog", { name: "Export" })).getByRole("button", { name: "Download CSV report" }));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/future_state/export?roadmap_only=true&target_passed_only=true"));
   },
 };

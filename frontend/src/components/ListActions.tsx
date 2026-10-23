@@ -12,6 +12,9 @@
  *
  * It reads the type's columns once (`GET .../records/{type}/columns`) and renders nothing when the type has no
  * table or the caller cannot see it. It knows no record type or module.
+ *
+ * A list that shows several record kinds at once (the People list) renders one `ListActions` per kind, each with a
+ * `kindLabel`, so the buttons read "Export personas" and "Export stakeholders" and each acts on its own kind.
  */
 import { Upload } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -38,6 +41,8 @@ export interface RecordListActions {
   recordType: string;
   /** The page's filters as a query string without `?` (the same names its list request sends, minus paging and sort). */
   filters?: string;
+  /** Names the kind when a list shows several (`personas`): the buttons then read "Export personas". */
+  kindLabel?: string;
   /** Called after an import wrote records, so the page reloads its list. */
   onImported?: () => void;
   /** Injectable calls (stories pass fakes). */
@@ -48,10 +53,11 @@ export interface RecordListActions {
  * @param projectId The project whose list this is.
  * @param recordType The registered record type.
  * @param filters The page's current filters as a query string.
+ * @param kindLabel Names the kind when the list shows several.
  * @param onImported Called after an import wrote records.
  * @param tables Injectable calls.
  */
-export function ListActions({ projectId, recordType, filters = "", onImported, tables = recordTablesApi }: RecordListActions) {
+export function ListActions({ projectId, recordType, filters = "", kindLabel, onImported, tables = recordTablesApi }: RecordListActions) {
   const [columns, setColumns] = useState<RecordColumns | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const label = columns?.label ?? "";
@@ -76,6 +82,7 @@ export function ListActions({ projectId, recordType, filters = "", onImported, t
   return (
     <>
       <ReportExportButton
+        label={kindLabel ? `${strings.recordTables.exportLabel} ${kindLabel}` : undefined}
         kinds={EXPORT_KINDS}
         onDownload={exportList}
         extras={canImport ? [{ key: "template", label: strings.recordTables.downloadTemplate, onSelect: downloadTemplate }] : []}
@@ -83,7 +90,7 @@ export function ListActions({ projectId, recordType, filters = "", onImported, t
       />
       {canImport && (
         <FileUploadTrigger accept=".csv,text/csv" onSelect={setFile}>
-          <Upload size={16} /> {strings.recordTables.import}
+          <Upload size={16} /> {kindLabel ? `${strings.recordTables.import} ${kindLabel}` : strings.recordTables.import}
         </FileUploadTrigger>
       )}
       {file && (

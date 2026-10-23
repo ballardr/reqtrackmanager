@@ -13,7 +13,7 @@ import { PeopleKindIcon } from "./PeopleKindIcon";
 import { PEOPLE_KIND_LABEL, type PeopleRow } from "./peopleRows";
 import type { TagFilterState } from "../../hooks/useTagFilter";
 import type { ProjectScopeState } from "../../hooks/useProjectScope";
-import { RecordListView, type RecordListPage } from "./RecordListView";
+import { RecordListView, type ExportRecords, type RecordListPage } from "./RecordListView";
 import { PERSONA_SCOPE_LABEL, PERSONA_STATUS_LABEL, PERSONA_STATUS_TONE } from "./types";
 
 export function PeopleListView({
@@ -27,6 +27,7 @@ export function PeopleListView({
   tagFilter,
   projectScope,
   page,
+  exportRecords,
 }: {
   rows: PeopleRow[];
   includeArchived: boolean;
@@ -42,6 +43,8 @@ export function PeopleListView({
   projectScope?: ProjectScopeState;
   /** The page header (title, actions, tabs) this list owns when it is a whole page. */
   page?: RecordListPage;
+  /** The kinds listed, each offered its own Export and Import on a list page. */
+  exportRecords?: ExportRecords[];
 }) {
   return (
     <RecordListView<PeopleRow, never>
@@ -73,6 +76,7 @@ export function PeopleListView({
       tagFilter={tagFilter}
       projectScope={projectScope}
       page={page}
+      exportRecords={exportRecords}
     />
   );
 }

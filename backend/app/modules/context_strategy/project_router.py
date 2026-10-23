@@ -136,6 +136,24 @@ from app.modules.context_strategy._shared import (
     require_pain_point_manage_role,
     strategy_to_out,
 )
+from app.modules.context_strategy.edits import (
+    create_project_future_state_record,
+    create_project_guiding_principle_record,
+    create_project_open_question_record,
+    create_project_pain_point_record,
+    create_project_strategy_record,
+    edit_project_future_state_record,
+    edit_project_guiding_principle_record,
+    edit_project_open_question_record,
+    edit_project_pain_point_record,
+    edit_project_strategy_record,
+    project_future_states,
+    project_guiding_principles,
+    project_open_questions,
+    project_pain_points,
+    project_strategies,
+    resolve_usable_pain_point_type,
+)
 from app.modules.context_strategy.enums import FutureStateScope, GuidingPrincipleScope, StrategyScope
 from app.modules.context_strategy.models import (
     FutureState,
@@ -242,9 +260,6 @@ from app.modules.context_strategy.service import (
     activate_guiding_principle,
     activate_strategy,
     address_pain_point,
-    apply_future_state_new_version,
-    apply_guiding_principle_new_version,
-    apply_new_version,
     approve_future_state,
     approve_guiding_principle,
     approve_strategy,
@@ -254,18 +269,13 @@ from app.modules.context_strategy.service import (
     archive_pain_point,
     archive_strategy,
     close_pain_point,
-    create_future_state,
     create_future_state_link,
     create_future_state_supersession,
-    create_guiding_principle,
     create_guiding_principle_link,
     create_guiding_principle_supersession,
-    create_open_question,
     create_open_question_link,
-    create_pain_point,
     create_pain_point_link,
     create_project_local_pain_point_type,
-    create_strategy,
     create_strategy_link,
     create_strategy_supersession,
     get_current_future_state_version,
@@ -307,15 +317,12 @@ from app.modules.context_strategy.service import (
     unarchive_open_question,
     unarchive_pain_point,
     unarchive_strategy,
-    update_open_question,
-    update_pain_point,
     withdraw_open_question,
 )
 from app.schemas.file import FileAssetOut
 from app.schemas.type_vocabulary import HiddenTypeOut, RestoreTypesOut, RestoreTypesRequest
 from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
-from app.services.principals import validate_principal
 from app.services.project_scope import ProjectScope
 from app.services.rbac import require_ai_approvals_enabled, require_project_subcomponent_enabled
 from app.services.relationships import get_all_links
@@ -362,15 +369,13 @@ def create_project_strategy(
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
-    strategy = create_strategy(
-        db, scope=_SCOPE, organization_id=project.organization_id, project_id=project_id, creator=current_user,
+    strategy = create_project_strategy_record(
+        db, project, current_user,
         title=payload.title, objective=payload.objective, current_state=payload.current_state,
         desired_future_state=payload.desired_future_state, rationale=payload.rationale,
         expected_outcomes=payload.expected_outcomes, constraints=payload.constraints,
         measures_of_success=payload.measures_of_success, priority=payload.priority, time_horizon=payload.time_horizon,
     )
-    log_event(db, entity_type=STRATEGY_ARTEFACT_TYPE, entity_id=strategy.id, action="created",
-              actor_id=current_user.id, project_id=project_id, detail={"title": payload.title})
     db.commit()
     db.refresh(strategy)
     return strategy_to_out(strategy, get_current_version(db, strategy.id))
@@ -385,10 +390,7 @@ def list_project_strategies(
 ):
     def rows_for(pid: UUID) -> list:
         """This endpoint's rows for one project of the scope."""
-        query = select(Strategy).where(Strategy.project_id == pid, Strategy.scope == _SCOPE)
-        if not include_archived:
-            query = query.where(Strategy.is_archived.is_(False))
-        strategies = db.scalars(query.order_by(Strategy.created_at)).all()
+        strategies = project_strategies(db, pid, include_archived)
         strategies = tag_filter.keep(db, pid, STRATEGY_ARTEFACT_TYPE, strategies)
         return [strategy_to_out(s, get_current_version(db, s.id)) for s in strategies]
 
@@ -418,21 +420,14 @@ def update_project_strategy(
     project = db.get(Project, project_id)
     strategy = _get_strategy(db, project_id, strategy_id)
     require_manage_role(db, current_user, _SCOPE, organization_id=project.organization_id, project_id=project_id)
-    current_version = get_current_version_for_update(db, strategy.id)
-    if is_locked(current_version):
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, "This Strategy is past review; its content can no longer be edited in place.",
-        )
-    apply_new_version(
-        db, strategy, current_version, current_user,
+    edit_project_strategy_record(
+        db, project, strategy, current_user,
         title=payload.title, objective=payload.objective, current_state=payload.current_state,
         desired_future_state=payload.desired_future_state, rationale=payload.rationale,
         expected_outcomes=payload.expected_outcomes, constraints=payload.constraints,
         measures_of_success=payload.measures_of_success, priority=payload.priority, time_horizon=payload.time_horizon,
         change_note=payload.change_note,
     )
-    log_event(db, entity_type=STRATEGY_ARTEFACT_TYPE, entity_id=strategy.id, action="updated",
-              actor_id=current_user.id, project_id=project_id)
     db.commit()
     return strategy_to_out(strategy, get_current_version(db, strategy.id))
 
@@ -832,14 +827,12 @@ def create_project_future_state(
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
-    future_state = create_future_state(
-        db, scope=_FS_SCOPE, organization_id=project.organization_id, project_id=project_id, creator=current_user,
+    future_state = create_project_future_state_record(
+        db, project, current_user,
         title=payload.title, current_state=payload.current_state, desired_state=payload.desired_state,
         target_date=payload.target_date, outcomes=payload.outcomes, success_measures=payload.success_measures,
         constraints=payload.constraints, assumptions=payload.assumptions,
     )
-    log_event(db, entity_type=FUTURE_STATE_ARTEFACT_TYPE, entity_id=future_state.id, action="created",
-              actor_id=current_user.id, project_id=project_id, detail={"title": payload.title})
     db.commit()
     db.refresh(future_state)
     return future_state_to_out(future_state, get_current_future_state_version(db, future_state.id))
@@ -854,10 +847,7 @@ def list_project_future_states(
 ):
     def rows_for(pid: UUID) -> list:
         """This endpoint's rows for one project of the scope."""
-        query = select(FutureState).where(FutureState.project_id == pid, FutureState.scope == _FS_SCOPE)
-        if not include_archived:
-            query = query.where(FutureState.is_archived.is_(False))
-        future_states = db.scalars(query.order_by(FutureState.created_at)).all()
+        future_states = project_future_states(db, pid, include_archived)
         future_states = tag_filter.keep(db, pid, FUTURE_STATE_ARTEFACT_TYPE, future_states)
         return [future_state_to_out(fs, get_current_future_state_version(db, fs.id)) for fs in future_states]
 
@@ -888,20 +878,13 @@ def update_project_future_state(
     require_future_state_manage_role(
         db, current_user, _FS_SCOPE, organization_id=project.organization_id, project_id=project_id,
     )
-    current_version = get_current_future_state_version_for_update(db, future_state.id)
-    if is_future_state_locked(current_version):
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, "This Future State is past review; its content can no longer be edited in place.",
-        )
-    apply_future_state_new_version(
-        db, future_state, current_version, current_user,
+    edit_project_future_state_record(
+        db, project, future_state, current_user,
         title=payload.title, current_state=payload.current_state, desired_state=payload.desired_state,
         target_date=payload.target_date, target_date_explicitly_set=True, outcomes=payload.outcomes,
         success_measures=payload.success_measures, constraints=payload.constraints, assumptions=payload.assumptions,
         change_note=payload.change_note,
     )
-    log_event(db, entity_type=FUTURE_STATE_ARTEFACT_TYPE, entity_id=future_state.id, action="updated",
-              actor_id=current_user.id, project_id=project_id)
     db.commit()
     return future_state_to_out(future_state, get_current_future_state_version(db, future_state.id))
 
@@ -1438,21 +1421,14 @@ def create_project_pain_point(
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
-    try:
-        pain_point_type = get_or_create_project_pain_point_type(
-            db, project_id, project.organization_id, payload.pain_point_type_id,
-        )
-    except ValueError as exc:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
-    if not pain_point_type.is_enabled:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This Pain Point type is disabled for this project.")
+    pain_point_type = resolve_usable_pain_point_type(db, project, payload.pain_point_type_id)
     scoring_ctx = None
     if payload.scores:
         # Scoring is triage-tier (as on `PUT .../scores`): creating needs no grant, scoring does.
         require_pain_point_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
         scoring_ctx = load_scoring_context(db, project)
-    pain_point = create_pain_point(
-        db, project=project, pain_point_type=pain_point_type, creator=current_user, title=payload.title,
+    pain_point = create_project_pain_point_record(
+        db, project, current_user, pain_point_type, title=payload.title,
         description=payload.description, source=payload.source, impact=payload.impact, evidence=payload.evidence,
         priority=payload.priority, date_identified=payload.date_identified,
         is_intentional=payload.is_intentional,
@@ -1465,8 +1441,6 @@ def create_project_pain_point(
              for e in payload.scores],
             current_user,
         )
-    log_event(db, entity_type=PAIN_POINT_ARTEFACT_TYPE, entity_id=pain_point.id, action="created",
-              actor_id=current_user.id, project_id=project_id, detail={"title": payload.title})
     db.commit()
     db.refresh(pain_point)
     return pain_point_to_out(db, pain_point)
@@ -1481,10 +1455,7 @@ def list_project_pain_points(
 ):
     def rows_for(pid: UUID) -> list:
         """This endpoint's rows for one project of the scope."""
-        query = select(PainPoint).where(PainPoint.project_id == pid)
-        if not include_archived:
-            query = query.where(PainPoint.is_archived.is_(False))
-        pain_points = db.scalars(query.order_by(PainPoint.created_at)).all()
+        pain_points = project_pain_points(db, pid, include_archived)
         pain_points = tag_filter.keep(db, pid, PAIN_POINT_ARTEFACT_TYPE, pain_points)
         labels = owner_labels(db, pain_points)
         return [pain_point_to_out(db, p, labels) for p in pain_points]
@@ -1519,27 +1490,12 @@ def update_project_pain_point(
     project = db.get(Project, project_id)
     pain_point = _get_pain_point(db, project_id, pain_point_id)
     require_pain_point_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
-    if is_pain_point_locked(pain_point):
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, "This Pain Point has reached a terminal outcome; its content can no longer be edited.",
-        )
-    try:
-        pain_point_type = get_or_create_project_pain_point_type(
-            db, project_id, project.organization_id, payload.pain_point_type_id,
-        )
-    except ValueError as exc:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
-    validate_principal(
-        db, payload.owner, organization_id=project.organization_id, project_id=project_id, field="owner",
+    edit_project_pain_point_record(
+        db, project, pain_point, current_user, type_ref_id=payload.pain_point_type_id, title=payload.title,
+        description=payload.description, source=payload.source, impact=payload.impact, evidence=payload.evidence,
+        priority=payload.priority, owner=payload.owner, owner_explicitly_set=True,
+        date_identified=payload.date_identified, is_intentional=payload.is_intentional,
     )
-    update_pain_point(
-        db, pain_point, pain_point_type=pain_point_type, title=payload.title, description=payload.description,
-        source=payload.source, impact=payload.impact, evidence=payload.evidence, priority=payload.priority,
-        owner=payload.owner, owner_explicitly_set=True, date_identified=payload.date_identified,
-        is_intentional=payload.is_intentional,
-    )
-    log_event(db, entity_type=PAIN_POINT_ARTEFACT_TYPE, entity_id=pain_point.id, action="updated",
-              actor_id=current_user.id, project_id=project_id)
     db.commit()
     return pain_point_to_out(db, pain_point)
 
@@ -2045,16 +2001,11 @@ def create_project_guiding_principle(
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
-    validate_principal(
-        db, payload.owner, organization_id=project.organization_id, project_id=project_id, field="owner",
-    )
-    guiding_principle = create_guiding_principle(
-        db, scope=_GP_SCOPE, organization_id=project.organization_id, project_id=project_id, creator=current_user,
+    guiding_principle = create_project_guiding_principle_record(
+        db, project, current_user,
         name=payload.name, principle_statement=payload.principle_statement, rationale=payload.rationale,
         priority=payload.priority, owner=payload.owner,
     )
-    log_event(db, entity_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, entity_id=guiding_principle.id, action="created",
-              actor_id=current_user.id, project_id=project_id, detail={"name": payload.name})
     db.commit()
     db.refresh(guiding_principle)
     return guiding_principle_to_out(db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id))
@@ -2069,12 +2020,7 @@ def list_project_guiding_principles(
 ):
     def rows_for(pid: UUID) -> list:
         """This endpoint's rows for one project of the scope."""
-        query = select(GuidingPrinciple).where(
-            GuidingPrinciple.project_id == pid, GuidingPrinciple.scope == _GP_SCOPE,
-        )
-        if not include_archived:
-            query = query.where(GuidingPrinciple.is_archived.is_(False))
-        guiding_principles = db.scalars(query.order_by(GuidingPrinciple.created_at)).all()
+        guiding_principles = project_guiding_principles(db, pid, include_archived)
         guiding_principles = tag_filter.keep(db, pid, GUIDING_PRINCIPLE_ARTEFACT_TYPE, guiding_principles)
         return guiding_principles_to_out(db, guiding_principles)
 
@@ -2108,23 +2054,12 @@ def update_project_guiding_principle(
     require_guiding_principle_manage_role(
         db, current_user, _GP_SCOPE, organization_id=project.organization_id, project_id=project_id,
     )
-    current_version = get_current_guiding_principle_version_for_update(db, guiding_principle.id)
-    if is_guiding_principle_locked(current_version):
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            "This Guiding Principle is past review; its content can no longer be edited in place.",
-        )
-    validate_principal(
-        db, payload.owner, organization_id=project.organization_id, project_id=project_id, field="owner",
-    )
-    apply_guiding_principle_new_version(
-        db, guiding_principle, current_version, current_user,
+    edit_project_guiding_principle_record(
+        db, project, guiding_principle, current_user,
         name=payload.name, principle_statement=payload.principle_statement, rationale=payload.rationale,
         priority=payload.priority, owner=payload.owner, owner_explicitly_set=True,
         change_note=payload.change_note,
     )
-    log_event(db, entity_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, entity_id=guiding_principle.id, action="updated",
-              actor_id=current_user.id, project_id=project_id)
     db.commit()
     return guiding_principle_to_out(
         db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)
@@ -2567,12 +2502,10 @@ def create_project_open_question(
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
-    open_question = create_open_question(
-        db, project=project, creator=current_user, question=payload.question, context=payload.context,
+    open_question = create_project_open_question_record(
+        db, project, current_user, question=payload.question, context=payload.context,
         evidence=payload.evidence, priority=payload.priority, due_date=payload.due_date,
     )
-    log_event(db, entity_type=OPEN_QUESTION_ARTEFACT_TYPE, entity_id=open_question.id, action="created",
-              actor_id=current_user.id, project_id=project_id, detail={"question": payload.question})
     db.commit()
     db.refresh(open_question)
     return open_question_to_out(db, open_question)
@@ -2587,10 +2520,7 @@ def list_project_open_questions(
 ):
     def rows_for(pid: UUID) -> list:
         """This endpoint's rows for one project of the scope."""
-        query = select(OpenQuestion).where(OpenQuestion.project_id == pid)
-        if not include_archived:
-            query = query.where(OpenQuestion.is_archived.is_(False))
-        open_questions = db.scalars(query.order_by(OpenQuestion.created_at)).all()
+        open_questions = project_open_questions(db, pid, include_archived)
         open_questions = tag_filter.keep(db, pid, OPEN_QUESTION_ARTEFACT_TYPE, open_questions)
         labels = owner_labels(db, open_questions)
         return [open_question_to_out(db, oq, labels) for oq in open_questions]
@@ -2624,21 +2554,11 @@ def update_project_open_question(
     project = db.get(Project, project_id)
     open_question = _get_open_question(db, project_id, open_question_id)
     require_open_question_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
-    if is_open_question_locked(open_question):
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            "This Open Question has reached a terminal outcome; its content can no longer be edited.",
-        )
-    validate_principal(
-        db, payload.owner, organization_id=project.organization_id, project_id=project_id, field="owner",
-    )
-    update_open_question(
-        db, open_question, question=payload.question, context=payload.context, evidence=payload.evidence,
-        priority=payload.priority, owner=payload.owner, owner_explicitly_set=True,
+    edit_project_open_question_record(
+        db, project, open_question, current_user, question=payload.question, context=payload.context,
+        evidence=payload.evidence, priority=payload.priority, owner=payload.owner, owner_explicitly_set=True,
         due_date=payload.due_date, due_date_explicitly_set=True,
     )
-    log_event(db, entity_type=OPEN_QUESTION_ARTEFACT_TYPE, entity_id=open_question.id, action="updated",
-              actor_id=current_user.id, project_id=project_id)
     db.commit()
     return open_question_to_out(db, open_question)
 

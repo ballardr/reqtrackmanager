@@ -26,7 +26,8 @@ import { ListActions, type RecordListActions } from "./ListActions";
 /**
  * @param title The page heading (text or node); rendered as the page's `h1`.
  * @param actions Page-level actions beside the title (a New button).
- * @param records The record type and filters of the list: adds the shared Export and Import controls.
+ * @param records The record type and filters of the list: adds the shared Export and Import controls (an array when
+ *   the list shows several kinds at once, each with a `kindLabel`).
  * @param tabs A tab strip (`Tabs`) shown under the title and actions; the list column is then its panel.
  * @param filter The `FilterPanel` (side layout) for the list.
  * @param ready False while the list's rows are loading (default true): the position is saved and restored only once rows exist.
@@ -39,7 +40,7 @@ export function ListPageLayout({
 }: {
   title: ReactNode;
   actions?: ReactNode;
-  records?: RecordListActions;
+  records?: RecordListActions | RecordListActions[];
   tabs?: ReactNode;
   filter: ReactNode;
   ready?: boolean;
@@ -56,7 +57,7 @@ export function ListPageLayout({
           {records ? (
             <div className="row" style={{ alignItems: "center" }}>
               {actions}
-              <ListActions {...records} />
+              {[records].flat().map((one) => <ListActions key={one.recordType} {...one} />)}
             </div>
           ) : actions}
         </div>

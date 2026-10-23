@@ -24,6 +24,7 @@ export function NeedListView({
   tagFilter,
   projectScope,
   page,
+  exportRecords,
   onCreate,
 }: {
   needs: Need[];
@@ -39,6 +40,8 @@ export function NeedListView({
   projectScope?: ProjectScopeState;
   /** The page header (title, actions, tabs) this list owns when it is a whole page. */
   page?: RecordListPage;
+  /** Offers the shared Export and Import of Needs on a list page: the project, and what to do after an import. */
+  exportRecords?: { projectId: string; onImported?: () => void };
   /** Resolves on success; a rejection keeps the modal open and shows its message. Omit when needs are created elsewhere. */
   onCreate?: (values: NeedFieldValues) => Promise<void>;
 }) {
@@ -62,6 +65,7 @@ export function NeedListView({
       tagFilter={tagFilter}
       projectScope={projectScope}
       page={page}
+      exportRecords={exportRecords && { ...exportRecords, recordType: "stakeholder_need" }}
       onCreate={onCreate}
       renderCreateModal={
         onCreate ? (props) => <NeedFormModal error={props.error} onCancel={props.onCancel} onSave={props.onSave} /> : undefined

@@ -257,12 +257,12 @@ def _validate_refs(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
 
-def create_stakeholder_from_payload(
+def stage_stakeholder(
     db: Session, scope: StakeholderScope, payload: StakeholderCreate, creator: User, *, organization_id: uuid.UUID,
     project_id: uuid.UUID | None,
-) -> StakeholderOut:
-    """Validates a create payload, creates the stakeholder, audit-logs (no
-    personal data), commits and returns the API shape.
+) -> Stakeholder:
+    """Validates a create payload, creates the stakeholder and audit-logs (no personal data), without
+    committing (the caller owns the transaction).
 
     With `payload.activate` the stakeholder is also moved to `ACTIVE` before the single commit (both audit
     events, same actor, all or nothing). Activation has the same gate as creation, checked by every caller."""
@@ -286,6 +286,15 @@ def create_stakeholder_from_payload(
             db, stakeholder, get_current_stakeholder_version(db, stakeholder.id), StakeholderStatus.ACTIVE, creator,
             action="activated",
         )
+    return stakeholder
+
+
+def create_stakeholder_from_payload(
+    db: Session, scope: StakeholderScope, payload: StakeholderCreate, creator: User, *, organization_id: uuid.UUID,
+    project_id: uuid.UUID | None,
+) -> StakeholderOut:
+    """`stage_stakeholder`, then commits and returns the API shape."""
+    stakeholder = stage_stakeholder(db, scope, payload, creator, organization_id=organization_id, project_id=project_id)
     db.commit()
     db.refresh(stakeholder)
     return stakeholder_to_out(db, stakeholder, get_current_stakeholder_version(db, stakeholder.id))
@@ -321,12 +330,12 @@ def create_stakeholder_from_user(
     )
 
 
-def update_stakeholder_from_payload(
+def stage_stakeholder_update(
     db: Session, stakeholder: Stakeholder, payload: StakeholderUpdate, actor: User, *, organization_id: uuid.UUID,
     project_id: uuid.UUID | None,
-) -> StakeholderOut:
-    """Applies a partial update as a new version (only fields present in the
-    request body change), audit-logs, commits and returns the API shape."""
+) -> None:
+    """Applies a partial update as a new version (only fields present in the request body change) and
+    audit-logs, without committing."""
     sent = payload.model_dump(exclude_unset=True, exclude={"change_note"})
     if "name" in sent and sent["name"] is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "A Stakeholder name cannot be null.")
@@ -348,6 +357,14 @@ def update_stakeholder_from_payload(
     apply_stakeholder_new_version(db, stakeholder, current, actor, changes=sent, change_note=payload.change_note)
     log_event(db, entity_type=STAKEHOLDER_ARTEFACT_TYPE, entity_id=stakeholder.id, action="updated",
               actor_id=actor.id, organization_id=stakeholder.organization_id, project_id=stakeholder.project_id)
+
+
+def update_stakeholder_from_payload(
+    db: Session, stakeholder: Stakeholder, payload: StakeholderUpdate, actor: User, *, organization_id: uuid.UUID,
+    project_id: uuid.UUID | None,
+) -> StakeholderOut:
+    """`stage_stakeholder_update`, then commits and returns the API shape."""
+    stage_stakeholder_update(db, stakeholder, payload, actor, organization_id=organization_id, project_id=project_id)
     db.commit()
     return stakeholder_to_out(db, stakeholder, get_current_stakeholder_version(db, stakeholder.id))
 

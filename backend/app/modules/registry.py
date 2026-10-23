@@ -1635,6 +1635,11 @@ class RecordTableProvider:
         code_of: Reads a record's `unique_code`.
         approval_gated: The type has an approval gate, so import never writes its status (a test asserts no
             importable column is named `status`).
+        organization_owned: `(record) -> bool` for a type whose list also shows records the organisation owns
+            (a persona shared by every project): such a row is exported with the organisation-qualified code
+            (`ACME-PER-001`, always qualified, since its bare code could equal a project record's), and is
+            never matched by an import into a project, whose `find` searches the project's own records only.
+            `None` for a type that has no organisation-owned records.
     """
 
     label: str
@@ -1651,6 +1656,7 @@ class RecordTableProvider:
     id_of: Callable[[Any], Any] = lambda record: record.id
     code_of: Callable[[Any], str] = lambda record: record.unique_code
     approval_gated: bool = False
+    organization_owned: Callable[[Any], bool] | None = None
 
 
 @dataclass(frozen=True)

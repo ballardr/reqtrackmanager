@@ -40,6 +40,7 @@ import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
 import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
+import { addSharedListFilters } from "../../utils/listFilterParams";
 
 export function ProjectStrategiesPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -79,6 +80,17 @@ export function ProjectStrategiesPage() {
 
   useLoadOnChange(reloadStrategies, [projectId, includeArchived, tagFilter.query, projectScope.scope]);
 
+  /** The list's filters by the names its export takes; the server applies the same rules the page does. */
+  function filterParams(): URLSearchParams {
+    const params = new URLSearchParams();
+    if (statusFilter) params.set("status", statusFilter);
+    if (priorityFilter) params.set("priority", priorityFilter);
+    if (search) params.set("search", search);
+    if (includeArchived) params.set("include_archived", "true");
+    addSharedListFilters(params, tagFilter, projectScope);
+    return params;
+  }
+
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (strategies === null || project === null) return <Spinner />;
@@ -86,7 +98,7 @@ export function ProjectStrategiesPage() {
   const filtered = strategies.filter((s) => {
     if (statusFilter && s.status !== statusFilter) return false;
     if (priorityFilter && s.priority !== priorityFilter) return false;
-    if (search && !`{s.unique_code} {s.title}`.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !`${s.unique_code} ${s.title}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
@@ -105,6 +117,7 @@ export function ProjectStrategiesPage() {
     <div className="container stack">
       <ListPageLayout
         title="Strategy"
+        records={{ projectId, recordType: "strategy", filters: filterParams().toString(), onImported: reloadStrategies }}
         actions={
           <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
             New Strategy

@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
+import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { buildProject, buildScoringScheme, withRouter, withToast } from "../../testing/storybook-helpers";
 import { scoreValue, scoringSummary } from "./painPointScoringFixtures";
 import { ProjectPainPointsPage } from "./ProjectPainPointsPage";
@@ -27,6 +28,7 @@ function painPoint(overrides: Partial<PainPoint> = {}): PainPoint {
 
 function mockPageApis(painPoints: PainPoint[], scoring: PainPointScoringSummary[] = []) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.endsWith("/records/pain_point/columns")) return buildRecordColumns({ label: "Pain points" });
     if (path === `/api/v1/projects/${PROJECT_ID}`) return buildProject({ id: PROJECT_ID, organization_id: "org-1" });
     if (path === `/api/v1/projects/${PROJECT_ID}/scoring-schemes/pain_point`) return buildScoringScheme();
     if (path.startsWith(`/api/v1/projects/${PROJECT_ID}/modules/context_strategy/pain-point-scores`)) {
@@ -276,5 +278,22 @@ export const IgnoresUnknownFilterValues: Story = {
   beforeEach: () => mockPageApis([painPoint({ title: "Still listed" })]),
   play: async ({ canvasElement }) => {
     await waitFor(() => expect(within(canvasElement).getByText("Still listed")).toBeInTheDocument());
+  },
+};
+
+/** Export and Import are on the title row; Export carries the page's filters (the server applies the same rules). */
+export const ExportCarriesThePageFilters: Story = {
+  parameters: { query: "?status=triaged&intentional=hide&q=pric" },
+  beforeEach: () => {
+    mockPageApis([painPoint({ title: "Competitive pricing pressure", status: "triaged" })]);
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["code\n"], { type: "text/csv" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Competitive pricing pressure")).toBeInTheDocument());
+    await expect(await canvas.findByText("Import")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
+    await userEvent.click(within(within(document.body).getByRole("dialog", { name: "Export" })).getByRole("button", { name: "Download CSV report" }));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/pain_point/export?status=triaged&search=pric&hide_intentional=true"));
   },
 };

@@ -38,6 +38,7 @@ import { useRequestSequence } from "../hooks/useRequestSequence";
 import { Badge } from "../components/Badge";
 import { ActionFields } from "../components/ActionFields";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { addSharedListFilters } from "../utils/listFilterParams";
 
 const strings = t();
 
@@ -92,9 +93,7 @@ export function ProjectActionsPage() {
     if (outcomeFilter) params.set("outcome_status", outcomeFilter);
     if (typeFilter) params.set("action_type_id", typeFilter);
     if (includeArchived) params.set("include_archived", "true");
-    for (const tag of tagFilter.tags) params.append("tag", tag);
-    if (tagFilter.active) params.set("tag_mode", tagFilter.mode);
-    if (projectScope.widened) params.set("project_scope", projectScope.scope);
+    addSharedListFilters(params, tagFilter, projectScope);
     return params;
   }
 

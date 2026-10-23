@@ -48,10 +48,12 @@ import { rowProjectId } from "../../api/projectScope";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
 import { useProjectScope } from "../../hooks/useProjectScope";
+import { localToday } from "../../utils/localDate";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
+import { addSharedListFilters } from "../../utils/listFilterParams";
 
 export function ProjectOpenQuestionsPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -95,11 +97,25 @@ export function ProjectOpenQuestionsPage() {
 
   useLoadOnChange(reloadOpenQuestions, [projectId, includeArchived, tagFilter.query, projectScope.scope]);
 
+  /** The list's filters by the names its export takes; the server applies the same rules the page does. */
+  function filterParams(): URLSearchParams {
+    const params = new URLSearchParams();
+    if (statusFilter) params.set("status", statusFilter);
+    if (priorityFilter) params.set("priority", priorityFilter);
+    if (search) params.set("search", search);
+    if (includeArchived) params.set("include_archived", "true");
+    if (openOnly) params.set("open_only", "true");
+    if (overdueOnly) params.set("overdue_only", "true");
+    if (unownedOnly) params.set("unowned_only", "true");
+    addSharedListFilters(params, tagFilter, projectScope);
+    return params;
+  }
+
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (openQuestions === null || project === null) return <Spinner />;
 
-  const today = new Date().toISOString().slice(0, 10); // UTC, like the report's reference date
+  const today = localToday(); // the person's own day, as the export's filter reads it
   const matches = (q: OpenQuestion, applyOpenOnly: boolean) => {
     if (applyOpenOnly && !OPEN_QUESTION_OPEN_STATUSES.includes(q.status)) return false;
     if (overdueOnly && !(q.due_date !== null && q.due_date < today)) return false;
@@ -128,6 +144,7 @@ export function ProjectOpenQuestionsPage() {
     <div className="container stack">
       <ListPageLayout
         title="Open Question"
+        records={{ projectId, recordType: "open_question", filters: filterParams().toString(), onImported: reloadOpenQuestions }}
         actions={
           <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
             New Open Question

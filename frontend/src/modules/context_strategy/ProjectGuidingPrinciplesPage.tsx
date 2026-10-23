@@ -36,6 +36,7 @@ import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
 import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
+import { addSharedListFilters } from "../../utils/listFilterParams";
 
 export function ProjectGuidingPrinciplesPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -75,6 +76,17 @@ export function ProjectGuidingPrinciplesPage() {
 
   useLoadOnChange(reloadGuidingPrinciples, [projectId, includeArchived, tagFilter.query, projectScope.scope]);
 
+  /** The list's filters by the names its export takes; the server applies the same rules the page does. */
+  function filterParams(): URLSearchParams {
+    const params = new URLSearchParams();
+    if (statusFilter) params.set("status", statusFilter);
+    if (priorityFilter) params.set("priority", priorityFilter);
+    if (search) params.set("search", search);
+    if (includeArchived) params.set("include_archived", "true");
+    addSharedListFilters(params, tagFilter, projectScope);
+    return params;
+  }
+
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (guidingPrinciples === null || project === null) return <Spinner />;
@@ -82,7 +94,7 @@ export function ProjectGuidingPrinciplesPage() {
   const filtered = guidingPrinciples.filter((g) => {
     if (statusFilter && g.status !== statusFilter) return false;
     if (priorityFilter && g.priority !== priorityFilter) return false;
-    if (search && !`{g.unique_code} {g.name}`.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !`${g.unique_code} ${g.name}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
@@ -101,6 +113,7 @@ export function ProjectGuidingPrinciplesPage() {
     <div className="container stack">
       <ListPageLayout
         title="Guiding Principle"
+        records={{ projectId, recordType: "guiding_principle", filters: filterParams().toString(), onImported: reloadGuidingPrinciples }}
         actions={
           <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
             New Guiding Principle

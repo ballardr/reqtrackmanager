@@ -65,6 +65,7 @@ import { rowProjectId } from "../api/projectScope";
 import { useResetOnChange } from "../hooks/useResetOnChange";
 import { useRestoredRowCount } from "../hooks/useListPosition";
 import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../hooks/useUrlFilter";
+import { addSharedListFilters } from "../utils/listFilterParams";
 
 const PAGE_SIZE = 30;
 
@@ -179,9 +180,7 @@ export function RequirementsPage() {
     if (hasCommentsOnly) params.set("has_comments", "true");
     if (onlyWatched) params.set("only_watched", "true");
     if (includeArchived) params.set("include_archived", "true");
-    for (const tag of tagFilter.tags) params.append("tag", tag);
-    if (tagFilter.active) params.set("tag_mode", tagFilter.mode);
-    if (projectScope.widened) params.set("project_scope", projectScope.scope);
+    addSharedListFilters(params, tagFilter, projectScope);
     return params;
   }
 

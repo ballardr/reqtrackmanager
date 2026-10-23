@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
+import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { buildProject, withRouter, withToast } from "../../testing/storybook-helpers";
 import { ProjectStrategiesPage } from "./ProjectStrategiesPage";
 import type { Strategy } from "./types";
@@ -22,6 +23,7 @@ function strategy(overrides: Partial<Strategy> = {}): Strategy {
 
 function mockPageApis(strategies: Strategy[]) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.endsWith("/records/strategy/columns")) return buildRecordColumns({ label: "Strategies" });
     if (path === `/api/v1/projects/${PROJECT_ID}`) return buildProject({ id: PROJECT_ID, organization_id: "org-1" });
     if (path.startsWith(`/api/v1/projects/${PROJECT_ID}/modules/context_strategy/strategies`)) return strategies;
     throw new Error(`Unmocked GET: ${path}`);
@@ -70,3 +72,19 @@ export const OpenCreateModal: Story = {
 
 export const LightTheme: Story = { ...ListsStrategies };
 export const DarkTheme: Story = { ...ListsStrategies, globals: { theme: "dark" } };
+
+/** Export and Import are on the title row; Export carries the page's filters (the server applies the same rules). */
+export const ExportCarriesThePageFilters: Story = {
+  beforeEach: () => {
+    mockPageApis([strategy()]);
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["code\n"], { type: "text/csv" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Lead the regional market")).toBeInTheDocument());
+    await expect(await canvas.findByText("Import")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
+    await userEvent.click(within(within(document.body).getByRole("dialog", { name: "Export" })).getByRole("button", { name: "Download CSV report" }));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/strategy/export"));
+  },
+};

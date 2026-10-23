@@ -49,7 +49,7 @@ from typing import Any
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.enums import PrincipalType
@@ -73,7 +73,7 @@ from app.services.codes import display_code
 from app.services.csv_safety import csv_safe
 from app.services.permissions import encode_permission
 from app.services.principals import group_ref_from_text, principal_labels, principal_text, validate_principal
-from app.services.project_scope import ProjectScope
+from app.services.project_scope import ProjectScope, gate_open
 from app.services.rbac import get_effective_permissions, permission_satisfied
 from app.services.record_policy import REASON_PERMISSION, tag_decisions
 from app.services.tags import TagFilter
@@ -103,11 +103,14 @@ def provider_for(db: Session, project: Project, artefact_type: str) -> RecordTab
         artefact_type: The record type from the URL.
 
     Raises:
-        HTTPException: 404 when the type has no table or its module is off for the project (answered
-            the same, so a disabled module's types cannot be listed by probing).
+        HTTPException: 404 when the type has no table, or its module (or the sub-component its list needs, the
+            provider's `gate`) is off for the project (answered the same, so a disabled module's types cannot be
+            listed by probing).
     """
     provider = get_record_table_providers().get(artefact_type)
     if provider is None or not artefact_type_enabled_for_project(db, artefact_type, project.id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Record type not found.")
+    if provider.gate is not None and not gate_open(db, project.id, provider.gate):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Record type not found.")
     return provider
 
@@ -344,8 +347,13 @@ def split_params(
     return RecordFilters(values=values)
 
 
-def _qualified(project: Project, organization: Organization | None, unique_code: str, owner: Project) -> str:
-    """The code as an export writes it: bare in this project, qualified elsewhere or when the organisation enforces it."""
+def _qualified(
+    project: Project, organization: Organization | None, unique_code: str, owner: Project, *, organization_owned: bool = False,
+) -> str:
+    """The code as an export writes it: bare in this project, qualified elsewhere or when the organisation enforces it,
+    and always qualified by the organisation's code for a record the organisation owns."""
+    if organization_owned and organization is not None:
+        return display_code(unique_code, organization.code, organization_owned=True)
     return display_code(
         unique_code, owner.code, own_project_code=project.code,
         enforced=bool(organization and organization.enforce_code_everywhere),
@@ -390,10 +398,11 @@ def build_table(
         if owner_id not in owners:
             owners[owner_id] = db.get(Project, owner_id) or project
         owner = owners[owner_id]
-        row = [_qualified(project, organization, provider.code_of(record), owner)]
+        owned_by_organization = provider.organization_owned is not None and provider.organization_owned(record)
+        row = [_qualified(project, organization, provider.code_of(record), owner, organization_owned=owned_by_organization)]
         row += [column.get(prepared, record) for column in columns]
         if project_scope.widened:
-            row.append(owner.code)
+            row.append("" if owned_by_organization else owner.code)
         rows.append(row)
     keys = sorted(k for k, values in filters.values.items() if any(v.strip() for v in values))
     if tag_filter.active:
@@ -679,6 +688,10 @@ def run_import(
             fail(str(exc))
         except HTTPException as exc:
             fail(str(exc.detail))
+        except DataError:
+            # A value the column cannot hold (too long); the message would quote it, so it is not logged.
+            logger.warning("Import row %s of %s has a value the database cannot store", line, artefact_type)
+            fail("A value in this row is too long or not storable.")
         except IntegrityError:
             # No traceback: a database error message quotes the row's values, and cell values are never logged.
             logger.warning("Import row %s of %s refused by the database", line, artefact_type)

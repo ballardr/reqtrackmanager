@@ -107,8 +107,18 @@ export function ProjectEngagementsPage() {
 
   return (
     <div className="container stack">
-      <h1 style={{ margin: 0 }}>Engagements</h1>
       <RecordListView<EngagementRow, EngagementFieldValues>
+        page={{ title: "Engagements" }}
+        exportRecords={{
+          projectId, recordType: "engagement", onImported: reload,
+          extraParams: {
+            ...(filters.stakeholder_id ? { stakeholder_id: filters.stakeholder_id } : {}),
+            ...(filters.persona_id ? { persona_id: filters.persona_id } : {}),
+            ...(filters.date_from ? { date_from: filters.date_from } : {}),
+            ...(filters.date_to ? { date_to: filters.date_to } : {}),
+            ...(filters.retention_due ? { retention_due: "true" } : {}),
+          },
+        }}
         records={engagements}
         ariaLabel="Engagements"
         sectionKey="stakeholders.engagements.list"

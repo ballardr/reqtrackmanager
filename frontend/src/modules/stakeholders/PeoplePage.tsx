@@ -20,6 +20,7 @@ import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-
 
 import { api } from "../../api/client";
 import type { OrgUser, Project } from "../../api/types";
+import { ListActions } from "../../components/ListActions";
 import { MenuButton } from "../../components/MenuButton";
 import { Spinner } from "../../components/Spinner";
 import { ToggleChips } from "../../components/ToggleChips";
@@ -277,6 +278,7 @@ export function PeoplePage() {
           tagFilter={tagFilterProp}
           projectScope={projectScope}
           page={page}
+          exportRecords={{ projectId, onImported: reload }}
         />
       )}
       {only === "stakeholder" && (
@@ -303,6 +305,7 @@ export function PeoplePage() {
           tagFilter={tagFilterProp}
           projectScope={projectScope}
           page={page}
+          exportRecords={{ projectId, onImported: reload }}
         />
       )}
       {only === "group" && (
@@ -310,7 +313,10 @@ export function PeoplePage() {
         <div className="stack">
           <div className="row" style={{ justifyContent: "space-between" }}>
             <h1 style={{ margin: 0 }}>People</h1>
-            {newMenu}
+            <div className="row" style={{ alignItems: "center" }}>
+              {newMenu}
+              <ListActions projectId={projectId} recordType="stakeholder_group" onImported={reload} />
+            </div>
           </div>
           {tabsStrip}
           <div className="stack" {...peoplePanelProps("people", true, hasNeeds)}>
@@ -333,6 +339,13 @@ export function PeoplePage() {
           tagFilter={tagFilterProp}
           projectScope={projectScope}
           page={page}
+          exportRecords={[
+            ...(selected.includes("persona") ? [{ projectId, recordType: "persona", kindLabel: "personas", onImported: reload }] : []),
+            ...(selected.includes("stakeholder") ? [{ projectId, recordType: "stakeholder", kindLabel: "stakeholders", onImported: reload }] : []),
+            ...(selected.includes("group")
+              ? [{ projectId, recordType: "stakeholder_group", kindLabel: "groups", onImported: reload, without: ["status" as const, "type" as const] }]
+              : []),
+          ]}
         />
       )}
 

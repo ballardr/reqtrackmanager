@@ -63,6 +63,7 @@ import { rowProjectId } from "../api/projectScope";
 import { useResetOnChange } from "../hooks/useResetOnChange";
 import { useRestoredRowCount } from "../hooks/useListPosition";
 import { useUrlChoice, useUrlSort, useUrlText } from "../hooks/useUrlFilter";
+import { addSharedListFilters } from "../utils/listFilterParams";
 
 const PAGE_SIZE = 30;
 const SORT_KEYS = ["proposed_name", "status", "created_at"] as const;
@@ -191,9 +192,7 @@ export function ChangeRequestsPage() {
     if (statusFilter === "active") params.set("active_only", "true");
     else if (statusFilter) params.set("cr_status", statusFilter);
     if (targetStageFilter) params.set("target_stage_id", targetStageFilter);
-    for (const tag of tagFilter.tags) params.append("tag", tag);
-    if (tagFilter.active) params.set("tag_mode", tagFilter.mode);
-    if (projectScope.widened) params.set("project_scope", projectScope.scope);
+    addSharedListFilters(params, tagFilter, projectScope);
     return params;
   }
 

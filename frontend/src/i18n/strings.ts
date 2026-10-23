@@ -2296,6 +2296,7 @@ const en = {
   },
   recordTables: {
     import: "Import",
+    exportLabel: "Export",
     downloadTemplate: "Download import template",
     exported: (label: string, format: string) => `${label} exported as ${format}.`,
     formatName: { csv: "CSV", pdf: "PDF", docx: "Word file" },

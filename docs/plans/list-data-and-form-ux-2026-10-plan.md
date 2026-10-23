@@ -1,11 +1,11 @@
 # List Data and Form UX (October 2026) — Plan
 
-**Status:** planned 2026-10-22, not started. Built from eight items the user picked up (section 1). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position), 7 (type definition), 7b (module bundles), 8 (record-table extension point), 8b (personal-data policy), 9 (shared list actions), 10 (record-list report) and 11 (core types) are done; Phase 12 is next.
+**Status:** planned 2026-10-22, not started. Built from eight items the user picked up (section 1). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position), 7 (type definition), 7b (module bundles), 8 (record-table extension point), 8b (personal-data policy), 9 (shared list actions), 10 (record-list report), 11 (core types) and 12 (Context & Strategy and Stakeholders) are done; Phase 12b (organisation-level lists, added when Phase 12 showed they need their own route) is next, then Phase 13.
 **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. Q1–Q4 were answered by the user on 2026-10-22 (section 2). Everything in the "Agent defaults" table is **Decided by: Agent** and open to override before the phase that uses it starts.
 
 ## Status / Resume Here
 
-13 / 17 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–11 done 2026-10-23, Phase 11 uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
+14 / 18 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–12 done 2026-10-23, Phase 12 uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
 
 | # | Phase | Item | Status |
 |---|-------|------|--------|
@@ -23,7 +23,8 @@
 | 9 | Shared list actions (frontend): Export menu + Import wizard on `ListPageLayout` pages; Requirements migrated | 5 | [x] |
 | 10 | Record-list report in the Reports page (CSV, PDF, Word of any type) | 5 | [x] |
 | 11 | Roll-out A: core types (Requirements, Change Requests, Actions) | 5 | [x] |
-| 12 | Roll-out B: Context & Strategy, Stakeholders (Persona, Stakeholder, Need, Group, Engagement, Research Finding) | 5 | [ ] |
+| 12 | Roll-out B: Context & Strategy, Stakeholders (Persona, Stakeholder, Need, Group, Engagement, Research Finding) | 5 | [x] |
+| 12b | Organisation-level export and import: the organisation's own Strategies, Future States, Guiding Principles, Personas, Stakeholders and Groups (generic organisation route, org list pages) | 5 | [ ] |
 | 13 | Roll-out C: Risk, Decisions, Compliance | 5 | [ ] |
 | 14 | Bulk edit grid (generic) wired to Pain Points; other types register editable columns | 3 | [ ] |
 | 15 | Docs website, seeds, README, close-out and archive this plan | all | [ ] |
@@ -43,6 +44,7 @@ flowchart LR
     P8b --> P10["10 Reports page"]
     P9 --> P11["11 Core"]
     P9 --> P12["12 Strategy + Stakeholders"]
+    P12 --> P12b["12b Organisation-level lists"]
     P9 --> P13["13 Risk, Decisions, Compliance"]
     P8 --> P14["14 Bulk edit grid"]
     P2 --> P15["15 Close-out"]
@@ -53,7 +55,7 @@ flowchart LR
     P7b --> P15
     P10 --> P15
     P11 --> P15
-    P12 --> P15
+    P12b --> P15
     P13 --> P15
     P14 --> P15
 ```
@@ -228,6 +230,8 @@ flowchart LR
 
 - **Delivered, Phase 11 (2026-10-23):** the Change request table (export-only; reason in `CORE_NOT_IMPORTABLE`), the shared change request list query, and Export/Import on the Actions list and Export on the Change requests list. Requirement and Action providers were already in place from Phases 8–9. Change requests are not importable (**Decided by: User**, 2026-10-23: import the requirements instead; a request imported alone is hard to link to its requirement).
 
+- **Delivered, Phase 12 (2026-10-23):** providers for Strategy, Future State, Guiding Principle, Pain Point, Open Question, Persona, Stakeholder, Stakeholder Group, Stakeholder Need, Engagement and Research Finding, registered by their two modules; the Context & Strategy create and edit logic extracted into `edits.py` and the Stakeholders `*_from_payload` functions split into `stage_*` plus a committing wrapper, so page and file share one path; the page filters of those lists reach the export server-side; the Stakeholder, Persona and Group lists also export the organisation's shared records with an organisation-qualified code (read-only in a project's file); Stakeholder and Engagement personal data is tagged and governed by Phase 8b. Engagement is importable (the guess that it would be exempt was wrong). Research findings have no list page of their own: they export from the Reports page's Record list. **Carried forward, with reasons in decisions.md:** the organisation-level lists, to Phase 12b (below); Pain Point scores are not file columns (Phase 14's grid owns them).
+
 Each phase, for each type: write the provider (columns, editable flags), wire the list page to `ListActions`, add the import behaviour (update by code), add a seed row where a new field needs one, and decide import exemptions with a stated reason in `docs/decisions.md` and `not_importable` (likely candidates: Engagement, Compliance evidence, and Compliance assessment records, whose rows are produced by a workflow rather than authored). Export has no exemption.
 
 | Phase | Types | Notes |
@@ -237,6 +241,13 @@ Each phase, for each type: write the provider (columns, editable flags), wire th
 | 13 | Risk, Decision, Compliance requirement / project requirement / evidence / required-action assessment | Decision approval gate under D5; Compliance exemptions likely |
 
 - **Tests:** the Phase 8 suite runs against each type; one Playwright spec per phase covers a representative type; the all-types enforcement test must pass at the end of 13.
+
+### Phase 12b — Organisation-level export and import
+
+- **Why:** the engine, `GET .../columns` and the Record list report are project-scoped, but six types can be owned by the organisation (Strategy, Future State, Guiding Principle, Persona, Stakeholder, Stakeholder Group). Their organisation lists have no Export, and "export has no exemptions". Phase 12 made the providers; this phase gives them an organisation route.
+- **Work:** a generic organisation route (`/orgs/{id}/records/{type}/columns|export|import`) gated by the type's organisation-level `organization_subcomponent` and manage role; the provider declares how it lists and finds organisation-scoped rows (a second `list_records` / `find` for the organisation tier, or one that takes an owner), and `organization_owned` rows are then the ones it writes; `ListActions` and `useRecordTableExport` accept an organisation instead of a project; the organisation panels (`OrgStrategiesPanel`, `OrgFutureStatesPanel`, `OrgGuidingPrinciplesPanel`, `OrgPersonasPanel`, `OrgStakeholdersPanel`) get the controls; the Record list report offers organisation-owned types at the organisation level; personal-data policy resolves for the organisation (no project permission context, so the permission is the organisation-level `export_personal_data`).
+- **Decide first (agent default, open to override):** whether the organisation Pain Point type vocabulary is a record list (it is a vocabulary panel, not an artefact type, so it likely stays out and the vocabulary travels in the organisation bundle, which Phase 7b already did).
+- **Tests:** the Phase 8 suite parametrised over the organisation tier for each type; cross-organisation codes rejected; Playwright on one organisation panel; Storybook for the controls on a panel.
 
 ### Phase 14 — Bulk edit grid
 
@@ -276,4 +287,4 @@ Each phase, for each type: write the provider (columns, editable flags), wire th
 | Tooltip rebuild regresses accessible names that tests rely on | Keep "Help: {label}" naming and the sr-only text pattern; the field-help check stays |
 | Coloured cells unreadable in greyscale or low contrast | Band name stays in the cell text; text colour picked for contrast |
 
-When the table reads 17 / 17: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").
+When the table reads 18 / 18: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").

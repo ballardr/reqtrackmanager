@@ -34,9 +34,7 @@ from tests.link_world import ACTION, REQ, World
 #: listed, and a type not listed must have one.
 PENDING_RECORD_TABLES = {
     "compliance_evidence", "compliance_required_action_assessment", "compliance_requirement", "decision",
-    "engagement", "future_state", "guiding_principle", "open_question", "pain_point", "persona",
-    "project_compliance_requirement", "research_finding", "risk", "stakeholder", "stakeholder_group", "stakeholder_need",
-    "strategy",
+    "project_compliance_requirement", "risk",
 }
 
 

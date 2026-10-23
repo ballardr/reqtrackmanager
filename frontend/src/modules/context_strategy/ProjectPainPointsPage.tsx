@@ -72,6 +72,7 @@ import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
 import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
+import { addSharedListFilters } from "../../utils/listFilterParams";
 
 const SCHEME_KEY = "pain_point";
 const DEFAULT_ROLLUP: PainPointRollup = "weighted_average";
@@ -154,6 +155,26 @@ export function ProjectPainPointsPage() {
       .catch(() => setScoring(null));
   }, [projectId, modelParam, rollup, includeArchived]);
   const model = modelParam || scoring?.model_key || null;
+
+  /** The list's filters by the names its export takes; the server applies the same rules the page does. */
+  function filterParams(): URLSearchParams {
+    const params = new URLSearchParams();
+    if (statusFilter) params.set("status", statusFilter);
+    if (priorityFilter) params.set("priority", priorityFilter);
+    if (search) params.set("search", search);
+    if (includeArchived) params.set("include_archived", "true");
+    if (openOnly) params.set("open_only", "true");
+    if (hideIntentional) params.set("hide_intentional", "true");
+    if (onlyIntentional) params.set("only_intentional", "true");
+    if (blockersOnly) params.set("blockers_only", "true");
+    if (scoredFilter) params.set("scored", scoredFilter);
+    if (blockersOnly || scoredFilter) {
+      if (modelParam) params.set("model_key", modelParam);
+      params.set("rollup", rollup);
+    }
+    addSharedListFilters(params, tagFilter, projectScope);
+    return params;
+  }
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -243,6 +264,7 @@ export function ProjectPainPointsPage() {
     <div className="container stack">
       <ListPageLayout
         title="Pain Point"
+        records={{ projectId, recordType: "pain_point", filters: filterParams().toString(), onImported: reloadPainPoints }}
         actions={
           <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
             New Pain Point

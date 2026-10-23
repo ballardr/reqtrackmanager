@@ -118,6 +118,7 @@ from app.modules.context_strategy._shared import OPEN_QUESTION_RESOLVE_PERMISSIO
 from app.modules.context_strategy._shared import PAIN_POINT_DECIDE_PERMISSION as _PAIN_POINT_DECIDE_PERMISSION
 from app.modules.context_strategy._shared import STRATEGY_APPROVE_PERMISSION as _STRATEGY_APPROVE_PERMISSION
 from app.modules.context_strategy.models import GuidingPrincipleVersion, OpenQuestion, PainPoint
+from app.modules.context_strategy.record_tables import RECORD_TABLES
 from app.modules.context_strategy.reports import REPORT_DEFINITIONS
 from app.modules.context_strategy.scoring import PAIN_POINT_SCORING_SCHEME
 from app.modules.context_strategy.search import SEARCH_PROVIDERS
@@ -844,6 +845,7 @@ MODULE_DEFINITION = ModuleDefinition(
     reports=REPORT_DEFINITIONS,
     artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
     search_providers=SEARCH_PROVIDERS,
+    record_tables=RECORD_TABLES,
     artefact_type_labels=ARTEFACT_TYPE_LABELS,
     link_type_seeds=LINK_TYPE_SEEDS,
     # Each of Context & Strategy's five artefacts declares its own

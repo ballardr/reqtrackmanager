@@ -136,7 +136,7 @@ class ProjectScope:
             if related.relation is ProjectRelation.SAME:
                 continue
             other = related.project
-            if gate is not None and not _gate_open(db, other.id, gate):
+            if gate is not None and not gate_open(db, other.id, gate):
                 continue
             if not permission_satisfied(get_effective_permissions(db, user_id, project_id=other.id), view):
                 continue
@@ -154,7 +154,7 @@ class ProjectScope:
         return rows
 
 
-def _gate_open(db: Session, project_id: uuid.UUID, gate: tuple[str, str | None]) -> bool:
+def gate_open(db: Session, project_id: uuid.UUID, gate: tuple[str, str | None]) -> bool:
     """Whether a list's module (and sub-component, where it names one) is enabled for the project."""
     module_key, sub_key = gate
     if sub_key is None:

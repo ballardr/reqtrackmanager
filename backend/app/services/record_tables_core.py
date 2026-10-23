@@ -10,7 +10,8 @@ Responsibilities:
   `services.actions.list_actions_filtered`) and the create/update logic with its edit endpoints
   (`create_requirement`, `edit_requirement`, `create_action`, `edit_action`), so a filter, rule or audit event
   added there reaches the file too.
-- Offer `text_parser`, `date_parser`, `enum_parser`, `label_map` and `list_cell`, so a module's provider is
+- Offer `text_parser`, `date_parser`, `int_parser`, `bool_parser`, `enum_parser`, `person_parser`, `list_parser`, `label_map`,
+  `list_cell`, `bool_cell`, `cached_lookup` and the filter readers (`enum_filter`, `uuid_filter`), so a module's provider is
   declarations only.
 
 Design decisions:
@@ -126,6 +127,27 @@ def int_parser(field_name: str) -> Callable[[RecordImportContext, str], int | No
     return parse
 
 
+def bool_cell(value: bool) -> str:
+    """A yes/no value as a cell (`true` / `false`, as a custom checkbox writes it)."""
+    return "true" if value else "false"
+
+
+def bool_parser(field_name: str) -> Callable[[RecordImportContext, str], bool | None]:
+    """A parser for a yes/no cell (`true`/`false`/`yes`/`no`/`1`/`0`); an empty cell means no."""
+
+    def parse(ctx: RecordImportContext, text: str) -> bool:
+        if not text:
+            return False
+        lowered = text.casefold()
+        if lowered in {"true", "yes", "1", "y"}:
+            return True
+        if lowered in {"false", "no", "0", "n"}:
+            return False
+        raise RecordCellError(f"{field_name} '{text}' is not true or false.")
+
+    return parse
+
+
 def enum_parser(enum_class: type[enum.Enum], field_name: str, *, blank: Any = None) -> Callable[[RecordImportContext, str], Any]:
     """A parser for an enum cell written by its label (`In review`); the raw value is accepted too.
 
@@ -167,14 +189,14 @@ def person_parser(field_name: str) -> Callable[[RecordImportContext, str], Princ
     return parse
 
 
-def _cached(ctx: RecordImportContext, key: str, load: Callable[[], Any]) -> Any:
+def cached_lookup(ctx: RecordImportContext, key: str, load: Callable[[], Any]) -> Any:
     """`load()` once per import, kept in the context's cache."""
     if key not in ctx.cache:
         ctx.cache[key] = load()
     return ctx.cache[key]
 
 
-def _uuid_param(filters: RecordFilters, key: str) -> uuid.UUID | None:
+def uuid_filter(filters: RecordFilters, key: str) -> uuid.UUID | None:
     """A UUID filter, or a 422 naming the parameter."""
     raw = filters.one(key)
     if raw is None:
@@ -185,7 +207,7 @@ def _uuid_param(filters: RecordFilters, key: str) -> uuid.UUID | None:
         raise HTTPException(422, f"{key} must be an id.") from None
 
 
-def _enum_param(filters: RecordFilters, key: str, enum_class: type[enum.Enum]) -> Any:
+def enum_filter(filters: RecordFilters, key: str, enum_class: type[enum.Enum]) -> Any:
     """An enum filter by its stored value, or a 422 naming the parameter."""
     raw = filters.one(key)
     if raw is None:
@@ -240,9 +262,9 @@ def _list_requirements(db: Session, user: User, project_id: uuid.UUID, filters: 
         db, project_id, user.id,
         requirement_service.RequirementFilters(
             include_archived=bool(filters.flag("include_archived")), is_completed=filters.flag("is_completed"),
-            component_id=_uuid_param(filters, "component_id"), category_id=_uuid_param(filters, "category_id"),
+            component_id=uuid_filter(filters, "component_id"), category_id=uuid_filter(filters, "category_id"),
             keyword=filters.one("keyword"), search=filters.one("search"),
-            status=_enum_param(filters, "status", RequirementStatus), target_stage_id=_uuid_param(filters, "target_stage_id"),
+            status=enum_filter(filters, "status", RequirementStatus), target_stage_id=uuid_filter(filters, "target_stage_id"),
             has_comments=filters.flag("has_comments"), only_watched=filters.flag("only_watched"),
         ),
         structural_order=True,
@@ -349,13 +371,13 @@ def _requirement_lookups(
     ctx: RecordImportContext,
 ) -> tuple[dict[str, ProjectComponent], dict[tuple[uuid.UUID, str], ProjectCategory], dict[str, ProjectStage]]:
     """The project's components by prefix, categories by (component, prefix) and stages by name, loaded once per import."""
-    components = _cached(ctx, "req:components", lambda: {
+    components = cached_lookup(ctx, "req:components", lambda: {
         c.prefix: c for c in ctx.db.scalars(select(ProjectComponent).where(ProjectComponent.project_id == ctx.project.id))
     })
-    categories = _cached(ctx, "req:categories", lambda: {
+    categories = cached_lookup(ctx, "req:categories", lambda: {
         (c.component_id, c.prefix): c for c in ctx.db.scalars(select(ProjectCategory).where(ProjectCategory.project_id == ctx.project.id))
     })
-    stages = _cached(ctx, "req:stages", lambda: {
+    stages = cached_lookup(ctx, "req:stages", lambda: {
         s.name: s for s in ctx.db.scalars(select(ProjectStage).where(ProjectStage.project_id == ctx.project.id))
     })
     return components, categories, stages
@@ -382,7 +404,7 @@ def _stage(ctx: RecordImportContext, name: str) -> ProjectStage:
 def _custom_values_in(ctx: RecordImportContext, values: Mapping[str, Any]) -> dict[str, Any]:
     """The custom field values in `values`, keyed by definition id (blank text and list cells are absent)."""
     definitions = {
-        f"{CUSTOM_FIELD_PREFIX}{d.name}": d for d in _cached(ctx, "req:cf", lambda: _custom_field_definitions(ctx.db, ctx.project.id))
+        f"{CUSTOM_FIELD_PREFIX}{d.name}": d for d in cached_lookup(ctx, "req:cf", lambda: _custom_field_definitions(ctx.db, ctx.project.id))
     }
     return {str(definitions[key].id): value for key, value in values.items() if key in definitions and value is not None}
 
@@ -439,7 +461,7 @@ def _update_requirement(ctx: RecordImportContext, requirement: Requirement, valu
     custom_fields = None
     changed_custom = _custom_values_in(ctx, values)
     cleared = {
-        str(d.id) for d in _cached(ctx, "req:cf", lambda: _custom_field_definitions(ctx.db, ctx.project.id))
+        str(d.id) for d in cached_lookup(ctx, "req:cf", lambda: _custom_field_definitions(ctx.db, ctx.project.id))
         if f"{CUSTOM_FIELD_PREFIX}{d.name}" in values and values[f"{CUSTOM_FIELD_PREFIX}{d.name}"] is None
     }
     if changed_custom or cleared:
@@ -493,13 +515,13 @@ class _ActionTable:
 
 def _list_actions(db: Session, user: User, project_id: uuid.UUID, filters: RecordFilters) -> list[RequirementAction]:
     return action_service.list_actions_filtered(
-        db, project_id, outcome_status=_enum_param(filters, "outcome_status", RequirementActionOutcome),
-        action_type_id=_uuid_param(filters, "action_type_id"), include_archived=bool(filters.flag("include_archived")),
+        db, project_id, outcome_status=enum_filter(filters, "outcome_status", RequirementActionOutcome),
+        action_type_id=uuid_filter(filters, "action_type_id"), include_archived=bool(filters.flag("include_archived")),
     )
 
 
 def _action_type(ctx: RecordImportContext, name: str) -> uuid.UUID:
-    types = _cached(ctx, "act:types", lambda: {t.name.casefold(): t.id for t in resolve_effective_action_types(ctx.db, ctx.project.id)})
+    types = cached_lookup(ctx, "act:types", lambda: {t.name.casefold(): t.id for t in resolve_effective_action_types(ctx.db, ctx.project.id)})
     found = types.get(name.casefold())
     if found is None:
         raise RecordCellError(f"Unknown action type '{name}'.")
@@ -614,10 +636,10 @@ class _ChangeRequestTable:
 
 def _list_change_requests(db: Session, user: User, project_id: uuid.UUID, filters: RecordFilters) -> list[ChangeRequest]:
     found = change_request_service.query_change_requests(
-        db, project_id, cr_status=_enum_param(filters, "cr_status", ChangeRequestStatus), active_only=bool(filters.flag("active_only")),
+        db, project_id, cr_status=enum_filter(filters, "cr_status", ChangeRequestStatus), active_only=bool(filters.flag("active_only")),
     )
     return [cr for cr, _ in change_request_service.narrow_change_requests(
-        db, found, target_stage_id=_uuid_param(filters, "target_stage_id"), search=filters.one("search"),
+        db, found, target_stage_id=uuid_filter(filters, "target_stage_id"), search=filters.one("search"),
     )]
 
 
@@ -625,7 +647,7 @@ def _find_change_request(db: Session, project: Project, code: str) -> ChangeRequ
     return db.scalar(select(ChangeRequest).where(ChangeRequest.project_id == project.id, ChangeRequest.unique_code == code.upper()))
 
 
-def _instant(value: datetime | None) -> str:
+def instant_cell(value: datetime | None) -> str:
     """A past instant as UTC ISO 8601 (empty for none)."""
     return value.astimezone(UTC).isoformat() if value else ""
 
@@ -688,9 +710,9 @@ def _change_request_columns(db: Session, project: Project) -> list[RecordColumn]
         ),
         RecordColumn("creator", "Created by", lambda t, cr: t.people.text("user", cr.creator_id), kind="principal"),
         RecordColumn("keywords", "Tags", lambda t, cr: list_cell(t.tags.get(cr.id, [])), kind="list"),
-        RecordColumn("created_at", "Created at", lambda t, cr: _instant(cr.created_at), kind="instant"),
-        RecordColumn("submitted_at", "Submitted at", lambda t, cr: _instant(cr.submitted_at), kind="instant"),
-        RecordColumn("decided_at", "Decided at", lambda t, cr: _instant(cr.decided_at), kind="instant"),
+        RecordColumn("created_at", "Created at", lambda t, cr: instant_cell(cr.created_at), kind="instant"),
+        RecordColumn("submitted_at", "Submitted at", lambda t, cr: instant_cell(cr.submitted_at), kind="instant"),
+        RecordColumn("decided_at", "Decided at", lambda t, cr: instant_cell(cr.decided_at), kind="instant"),
         RecordColumn("decided_by", "Decided by", lambda t, cr: t.people.text("user", cr.decided_by) if cr.decided_by else "", kind="principal"),
         RecordColumn("decision_note", "Decision note", lambda t, cr: cr.decision_note),
     ]
@@ -726,6 +748,7 @@ CORE_NOT_IMPORTABLE: dict[str, str] = {
 }
 
 __all__ = [
-    "CORE_NOT_IMPORTABLE", "CORE_RECORD_TABLES", "date_parser", "enum_parser", "int_parser", "label_map", "list_cell", "list_parser",
-    "person_parser", "text_parser",
+    "CORE_NOT_IMPORTABLE", "CORE_RECORD_TABLES", "bool_cell", "bool_parser", "cached_lookup", "date_parser", "enum_filter",
+    "enum_parser", "instant_cell", "int_parser", "label_map", "list_cell", "list_parser", "person_parser", "text_parser",
+    "uuid_filter",
 ]

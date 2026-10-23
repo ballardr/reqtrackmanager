@@ -147,9 +147,9 @@ def require_need_manage(db: Session, current_user: User, project: Project) -> No
     raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a Stakeholder Need Owner (or admin/manager) may do this.")
 
 
-def create_need_from_payload(db: Session, payload: NeedCreate, creator: User, project: Project) -> NeedOut:
-    """Validates a create payload, creates the need, audit-logs, commits and
-    returns the API shape.
+def stage_need(db: Session, payload: NeedCreate, creator: User, project: Project) -> StakeholderNeed:
+    """Validates a create payload, creates the need and audit-logs, without committing (the caller owns the
+    transaction).
 
     With `payload.activate` the need is also moved to `ACTIVE` before the single commit (both audit events,
     same actor, all or nothing). Activation has the same gate as creation, checked by the caller."""
@@ -161,16 +161,20 @@ def create_need_from_payload(db: Session, payload: NeedCreate, creator: User, pr
               project_id=project.id, detail={"name": payload.name})
     if payload.activate:
         transition_need(db, need, get_current_need_version(db, need.id), NeedStatus.ACTIVE, creator, action="activated")
+    return need
+
+
+def create_need_from_payload(db: Session, payload: NeedCreate, creator: User, project: Project) -> NeedOut:
+    """`stage_need`, then commits and returns the API shape."""
+    need = stage_need(db, payload, creator, project)
     db.commit()
     db.refresh(need)
     return need_to_out(db, need, get_current_need_version(db, need.id))
 
 
-def update_need_from_payload(
-    db: Session, need: StakeholderNeed, payload: NeedUpdate, actor: User, project: Project
-) -> NeedOut:
-    """Applies a partial update as a new version (only fields present in the
-    request body change), audit-logs, commits and returns the API shape."""
+def stage_need_update(db: Session, need: StakeholderNeed, payload: NeedUpdate, actor: User, project: Project) -> None:
+    """Applies a partial update as a new version (only fields present in the request body change) and
+    audit-logs, without committing."""
     sent = payload.model_dump(exclude_unset=True, exclude={"change_note"})
     if "name" in sent and sent["name"] is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "A Stakeholder Need name cannot be null.")
@@ -185,6 +189,13 @@ def update_need_from_payload(
     apply_need_new_version(db, need, current, actor, changes=sent, change_note=payload.change_note)
     log_event(db, entity_type=NEED_ARTEFACT_TYPE, entity_id=need.id, action="updated", actor_id=actor.id,
               project_id=need.project_id)
+
+
+def update_need_from_payload(
+    db: Session, need: StakeholderNeed, payload: NeedUpdate, actor: User, project: Project
+) -> NeedOut:
+    """`stage_need_update`, then commits and returns the API shape."""
+    stage_need_update(db, need, payload, actor, project)
     db.commit()
     return need_to_out(db, need, get_current_need_version(db, need.id))
 

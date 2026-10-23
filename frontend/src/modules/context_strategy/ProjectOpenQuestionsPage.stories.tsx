@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
+import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { buildProject, withRouter, withToast } from "../../testing/storybook-helpers";
 import { ProjectOpenQuestionsPage } from "./ProjectOpenQuestionsPage";
 import type { OpenQuestion } from "./types";
@@ -20,6 +21,7 @@ function question(overrides: Partial<OpenQuestion> = {}): OpenQuestion {
 
 function mockPageApis(questions: OpenQuestion[]) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.endsWith("/records/open_question/columns")) return buildRecordColumns({ label: "Open questions" });
     if (path === `/api/v1/projects/${PROJECT_ID}`) return buildProject({ id: PROJECT_ID, organization_id: "org-1" });
     if (path.startsWith(`/api/v1/projects/${PROJECT_ID}/modules/context_strategy/open-questions`)) return questions;
     throw new Error(`Unmocked GET: ${path}`);
@@ -138,5 +140,21 @@ export const OpensUnownedFromAReportFigure: Story = {
     await expect(canvas.getByText("Overdue and unowned")).toBeInTheDocument();
     await expect(canvas.queryByText("Overdue but owned")).not.toBeInTheDocument();
     await expect(canvas.getByRole("checkbox", { name: "Unowned only" })).toBeChecked();
+  },
+};
+
+/** Export and Import are on the title row; Export carries the page's filters (the server applies the same rules). */
+export const ExportCarriesThePageFilters: Story = {
+  beforeEach: () => {
+    mockPageApis(QUESTIONS);
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["code\n"], { type: "text/csv" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Overdue and unowned")).toBeInTheDocument());
+    await expect(await canvas.findByText("Import")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
+    await userEvent.click(within(within(document.body).getByRole("dialog", { name: "Export" })).getByRole("button", { name: "Download CSV report" }));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/open_question/export?open_only=true"));
   },
 };

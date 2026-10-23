@@ -40,8 +40,10 @@ import { rowProjectId } from "../../api/projectScope";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
 import { useProjectScope } from "../../hooks/useProjectScope";
+import { localToday } from "../../utils/localDate";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
+import { addSharedListFilters } from "../../utils/listFilterParams";
 
 export function ProjectFutureStatesPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -83,17 +85,30 @@ export function ProjectFutureStatesPage() {
 
   useLoadOnChange(reloadFutureStates, [projectId, includeArchived, tagFilter.query, projectScope.scope]);
 
+  /** The list's filters by the names its export takes; the server applies the same rules the page does. */
+  function filterParams(): URLSearchParams {
+    const params = new URLSearchParams();
+    if (statusFilter) params.set("status", statusFilter);
+    if (search) params.set("search", search);
+    if (includeArchived) params.set("include_archived", "true");
+    if (roadmapOnly) params.set("roadmap_only", "true");
+    if (targetPassedOnly) params.set("target_passed_only", "true");
+    if (noMeasuresOnly) params.set("no_measures_only", "true");
+    addSharedListFilters(params, tagFilter, projectScope);
+    return params;
+  }
+
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (futureStates === null || project === null) return <Spinner />;
 
-  const today = new Date().toISOString().slice(0, 10); // UTC, like the report's reference date
+  const today = localToday(); // the person's own day, as the export's filter reads it
   const filtered = futureStates.filter((fs) => {
     if (roadmapOnly && !FUTURE_STATE_ROADMAP_STATUSES.includes(fs.status)) return false;
     if (targetPassedOnly && !(fs.target_date !== null && fs.target_date < today && fs.status !== "active")) return false;
     if (noMeasuresOnly && fs.success_measures.trim() !== "") return false;
     if (statusFilter && fs.status !== statusFilter) return false;
-    if (search && !`{fs.unique_code} {fs.title}`.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !`${fs.unique_code} ${fs.title}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
@@ -112,6 +127,7 @@ export function ProjectFutureStatesPage() {
     <div className="container stack">
       <ListPageLayout
         title="Future State"
+        records={{ projectId, recordType: "future_state", filters: filterParams().toString(), onImported: reloadFutureStates }}
         actions={
           <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
             New Future State
