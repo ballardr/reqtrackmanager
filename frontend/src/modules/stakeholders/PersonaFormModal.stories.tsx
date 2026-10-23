@@ -116,7 +116,7 @@ export const ImportanceWeightHasHelp: Story = {
   play: async () => {
     await userEvent.type(dialog().getByLabelText("Importance weight"), "2");
     await userEvent.click(dialog().getByRole("button", { name: "Help: Importance weight" }));
-    await expect(dialog().getByText(/How much this persona counts when scores are rolled up/)).toBeVisible();
+    await expect(await within(document.body).findByRole("tooltip", { hidden: true })).toHaveTextContent(/How much this persona counts when scores are rolled up/);
     await expect(dialog().getByLabelText("Importance weight")).toHaveValue(2);
   },
 };

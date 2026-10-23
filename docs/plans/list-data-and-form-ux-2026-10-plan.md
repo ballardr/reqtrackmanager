@@ -1,18 +1,18 @@
 # List Data and Form UX (October 2026) — Plan
 
-**Status:** planned 2026-10-22, not started. Built from eight items the user picked up (section 1). Phases 1 (rules) and 2 (coloured cells) are done; Phase 3 is next.
+**Status:** planned 2026-10-22, not started. Built from eight items the user picked up (section 1). Phases 1 (rules), 2 (coloured cells) and 3 (help tooltip) are done; Phase 4 is next.
 **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. Q1–Q4 were answered by the user on 2026-10-22 (section 2). Everything in the "Agent defaults" table is **Decided by: Agent** and open to override before the phase that uses it starts.
 
 ## Status / Resume Here
 
-2 / 16 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1 and 2 done 2026-10-23, uncommitted). Phases 3–7 are independent small fixes and can start now. Phases 8–14 are one chain: the extension point, then everything that uses it.
+3 / 16 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–3 done 2026-10-23, uncommitted). Phases 4–7 are independent small fixes and can start now. Phases 8–14 are one chain: the extension point, then everything that uses it.
 
 | # | Phase | Item | Status |
 |---|-------|------|--------|
 | 0 | Sign-off on Q1–Q4 | all | [x] |
 | 1 | Agent instructions and style guide rules written first | 4, 5, 6, 7, 8 | [x] |
 | 2 | Coloured report cells and matrices keep their colour in PDF and Word (inventory of every coloured on-screen table, incl. the Risk matrix) | 1 | [x] |
-| 3 | Field help `(?)` becomes a tooltip | 2 | [ ] |
+| 3 | Field help `(?)` becomes a tooltip | 2 | [x] |
 | 4 | Long text fields grow with their content (Pain Point description first, then a sweep) | 4 | [ ] |
 | 5 | Form header: title and Save/Cancel pinned, body scrolls (shared `Modal`, then every form) | 8 | [ ] |
 | 6 | List scroll position and loaded rows survive a trip to a record and back | 6 | [ ] |

@@ -23,7 +23,7 @@ A field with a **\*** after its name must be filled in before you can save; the 
 
 ## The (?) help button
 
-A **(?)** after a field's name explains what the field is, what it changes and a typical value, for example how a persona's importance weight alters a Pain Point's score. Select it to read the text under the name; select it again to hide it. Self-explanatory fields (a title, a comment) have no button.
+A **(?)** after a field's name explains what the field is, what it changes and a typical value, for example how a persona's importance weight alters a Pain Point's score. Hover over it, tab to it, or select it to read the text in a small bubble that never moves the fields around it; select it again, press Escape, or click elsewhere to close it. Self-explanatory fields (a title, a comment) have no button.
 
 ## Tags and Link to
 

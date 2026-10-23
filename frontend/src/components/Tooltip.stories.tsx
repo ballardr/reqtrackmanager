@@ -140,3 +140,37 @@ export const FollowingFallsBackToTheTriggerOnKeyboardFocus: Story = {
     await waitFor(() => expect(Math.abs(centreX(bubbleOf()) - centreX(trigger))).toBeLessThanOrEqual(2));
   },
 };
+
+const pinnable = (args: { label: string }) => (
+  <Tooltip {...args} pinnable wrap bubbleId="pinned-tip">
+    <button className="btn" aria-describedby="pinned-tip">Details</button>
+  </Tooltip>
+);
+
+/** `pinnable`: a click pins the bubble past mouse-leave, Escape closes it and keeps focus on the trigger. */
+export const PinnableStaysOpenUntilDismissed: Story = {
+  args: { label: "A sentence or two the person needs to read before they decide what to enter." },
+  render: pinnable,
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("button");
+    await userEvent.click(trigger);
+    await userEvent.unhover(trigger);
+    await expect(await within(document.body).findByRole("tooltip", { hidden: true })).toHaveAttribute("id", "pinned-tip");
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(within(document.body).queryByRole("tooltip", { hidden: true })).not.toBeInTheDocument());
+    await expect(trigger).toHaveFocus();
+  },
+};
+
+/** `wrap`: a long label wraps inside a bounded bubble instead of running off one long line. */
+export const WrapBoundsALongLabel: Story = {
+  args: { label: "word ".repeat(80).trim() },
+  render: pinnable,
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button"));
+    const bubble = await within(document.body).findByRole("tooltip", { hidden: true });
+    await waitFor(() => expect(bubble).toHaveStyle({ opacity: "1" }));
+    await expect(bubble.getBoundingClientRect().width).toBeLessThanOrEqual(22 * 16 + 1);
+    await expect(bubble.getBoundingClientRect().right).toBeLessThanOrEqual(window.innerWidth);
+  },
+};

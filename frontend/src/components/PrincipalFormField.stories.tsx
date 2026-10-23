@@ -45,6 +45,6 @@ export const WithHelp: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "Help: Owner" }));
-    await expect(canvas.getByText("Who is accountable for this record. A group can own it too.")).toBeVisible();
+    await expect(await within(document.body).findByRole("tooltip", { hidden: true })).toHaveTextContent("Who is accountable for this record. A group can own it too.");
   },
 };
