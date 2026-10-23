@@ -1338,7 +1338,7 @@ def create_project_local_pain_point_type_endpoint(
     require_pain_point_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
     try:
         local_type = create_project_local_pain_point_type(
-            db, project_id, payload.name, display_order=payload.display_order,
+            db, project_id, payload.name, display_order=payload.display_order, definition=payload.definition,
         )
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
@@ -1370,6 +1370,7 @@ def override_project_pain_point_type(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     set_project_pain_point_type_override(
         db, row, name=payload.name, display_order=payload.display_order, is_enabled=payload.is_enabled,
+        definition=payload.definition,
     )
     log_event(db, entity_type="project_pain_point_type", entity_id=row.id, action="updated",
               actor_id=current_user.id, project_id=project_id)

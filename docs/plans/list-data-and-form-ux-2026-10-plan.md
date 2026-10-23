@@ -1,11 +1,11 @@
 # List Data and Form UX (October 2026) — Plan
 
-**Status:** planned 2026-10-22, not started. Built from eight items the user picked up (section 1). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header) and 6 (list position) are done; Phase 7 is next.
+**Status:** planned 2026-10-22, not started. Built from eight items the user picked up (section 1). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position) and 7 (type definition) are done; Phase 7b (bundle gap found in Phase 7) and Phase 8 are next.
 **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. Q1–Q4 were answered by the user on 2026-10-22 (section 2). Everything in the "Agent defaults" table is **Decided by: Agent** and open to override before the phase that uses it starts.
 
 ## Status / Resume Here
 
-6 / 16 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–6 done 2026-10-23, uncommitted). Phase 7 is an independent small fix and can start now. Phases 8–14 are one chain: the extension point, then everything that uses it.
+7 / 17 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–7 done 2026-10-23, uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
 
 | # | Phase | Item | Status |
 |---|-------|------|--------|
@@ -16,7 +16,8 @@
 | 4 | Long text fields grow with their content (Pain Point description first, then a sweep) | 4 | [x] |
 | 5 | Form header: title and Save/Cancel pinned, body scrolls (shared `Modal`, then every form) | 8 | [x] |
 | 6 | List scroll position and loaded rows survive a trip to a record and back | 6 | [x] |
-| 7 | Pain Point types get an optional definition | 7 | [ ] |
+| 7 | Pain Point types get an optional definition | 7 | [x] |
+| 7b | Every module's records travel in the project **and** organisation bundles (Context & Strategy, Decisions; audit of the other modules; enforcement test) | 7 | [ ] |
 | 8 | Record-table extension point (backend): columns, list, CSV out, CSV in with update | 5 | [ ] |
 | 8b | Personal-data policy: column sensitivity, server default, organisation override, new permission | 5 | [ ] |
 | 9 | Shared list actions (frontend): Export menu + Import wizard on `ListPageLayout` pages; Requirements migrated | 5 | [ ] |
@@ -35,6 +36,7 @@ flowchart LR
     P1 --> P5["5 Form header"]
     P1 --> P6["6 Scroll"]
     P1 --> P7["7 Type definition"]
+    P7 --> P7b["7b Module bundles"]
     P1 --> P8["8 Extension point"]
     P8 --> P8b["8b Personal-data policy"]
     P8b --> P9["9 List actions"]
@@ -48,7 +50,7 @@ flowchart LR
     P4 --> P15
     P5 --> P15
     P6 --> P15
-    P7 --> P15
+    P7b --> P15
     P10 --> P15
     P11 --> P15
     P12 --> P15
@@ -158,6 +160,20 @@ Each phase follows the checklist in section 4. Every requirement states why it e
 - **Checks recorded in decisions.md:** no new project-scoped table, so the nested-project fallback check does not apply; no new core enum value; no person field.
 - **Tests:** backend (create/update/bundle round trip, org-to-project hide still works); stories; Playwright editing a definition and seeing it in the picker.
 
+### Phase 7b — Every module's records travel in the project and organisation bundles
+
+- **Why:** found in Phase 7. A project bundle should carry everything a project owns, but only Compliance, Risk Management and Stakeholders register `ModuleDefinition.project_bundle_hooks`. **Context & Strategy** (Pain Points, their type vocabulary and scores, Strategies, Future States, Guiding Principles, Open Questions) and **Decisions** (decisions, decision types, templates) register none, so exporting and importing a project silently drops that data. Raised by the user 2026-10-23 (**Decided by: User**: all modules must export their project components with the project bundle, the organisation bundle must carry every module's organisation-level components too, and both are standing agent instructions).
+- **Risk:** data loss on project move or restore; a bundle that looks complete and is not; the same gap repeating for every future module.
+- **Outcome:** each of those two modules contributes `ModuleProjectBundleHooks` **and** `ModuleOrgBundleHooks` (organisation-owned Strategies, Future States and Guiding Principles, the organisation Pain Point type vocabulary, Decision templates and types, and any other organisation-level rows), following Risk and Stakeholders as the reference. A test fails for a registered module that lacks hooks or a stated reason at either level (new `ModuleDefinition` fields, same shape as `not_searchable`), so a new module cannot ship without them.
+- **Work:**
+  1. **Inventory first**, recorded in `docs/decisions.md`: every project-scoped and organisation-scoped table of **every** module (not only the two known gaps: Compliance, Risk and Stakeholders have hooks but may still omit tables or newer columns), and for each whether it travels (it should, unless there is a stated reason). Fix any further gap found in the same phase.
+  2. Write the hooks: portable keys for cross-references, users and groups through `principal_to_bundle`/`UserResolver`, versions and approval state as the existing core sections do, attachments through the bundle file mechanism, the human code (information only; an import numbers afresh), tags and links as the other modules carry them. Type vocabularies carry their hidden organisation defaults (`ProjectDefinitionSuppression`) and the Phase 7 `definition` / `definition_override`.
+  3. The enforcement test at both levels, plus `docs/modules.md`. The standing rule is already in `CLAUDE.md` (**Every Module Travels in the Project and Organisation Bundles**, written 2026-10-23); update it if the work changes the extension points' names.
+  4. Check whether Decisions/Context & Strategy already export through another path (Reports, org export) so the gap is described accurately.
+- **Security review (identify, verify, remediate, recorded in decisions.md):** tenancy (an import never references another project's or organisation's row), restricted fields are not bundled, an imported approval state cannot bypass an approval gate (compare how the core sections treat it), file size limits.
+- **Tests:** round trip per module at both levels (export a seeded project or organisation, import into a fresh one, compare), cross-organisation import, a record with an owner that is a group, the hidden-default and definition round trip, the enforcement test.
+- **Docs website:** the project and organisation export/import pages list what travels.
+
 ### Phase 8 — Record-table extension point (backend)
 
 - **Why:** only Requirements can export or import CSV. 19 other registered types cannot, and the Reports page cannot produce a basic table of Pain Points. Per-type endpoints would repeat the same code 20 times.
@@ -225,7 +241,7 @@ Each phase, for each type: write the provider (columns, editable flags), wire th
 
 ### Phase 15 — Close-out
 
-- **Work:** docs website review (`docs/website/`: lists, export/import, help, forms, Pain Point types); README; `docs/solution-architecture.md` for the extension point; `docs/modules.md` section for `record_tables`; decisions.md entry per phase with `Decided by` tags; confirm the two seed scripts run on a fresh database; `python scripts/check_doc_links.py`; Status table 16/16; `git mv` to `docs/plans/completed/` and rewrite references; update the memory index.
+- **Work:** docs website review (`docs/website/`: lists, export/import, help, forms, Pain Point types); README; `docs/solution-architecture.md` for the extension point; `docs/modules.md` section for `record_tables`; decisions.md entry per phase with `Decided by` tags; confirm the two seed scripts run on a fresh database; `python scripts/check_doc_links.py`; Status table 17/17; `git mv` to `docs/plans/completed/` and rewrite references; update the memory index.
 
 ## 4. Standing checklist per phase
 
@@ -254,4 +270,4 @@ Each phase, for each type: write the provider (columns, editable flags), wire th
 | Tooltip rebuild regresses accessible names that tests rely on | Keep "Help: {label}" naming and the sr-only text pattern; the field-help check stays |
 | Coloured cells unreadable in greyscale or low contrast | Band name stays in the cell text; text colour picked for contrast |
 
-When the table reads 16 / 16: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").
+When the table reads 17 / 17: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").

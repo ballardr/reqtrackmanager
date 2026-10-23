@@ -152,6 +152,7 @@ from app.modules.context_strategy.service import (
     archive_future_state,
     archive_guiding_principle,
     archive_strategy,
+    clean_type_definition,
     create_future_state,
     create_future_state_link,
     create_future_state_supersession,
@@ -1114,7 +1115,7 @@ def create_pain_point_type(
     """Creates a new organisation-scoped Pain Point type (§6.2 "Add types")."""
     require_pain_point_type_admin_role(db, current_user, organization_id=organization_id)
     try:
-        pain_point_type = create_org_pain_point_type(db, organization_id, payload.name)
+        pain_point_type = create_org_pain_point_type(db, organization_id, payload.name, payload.definition)
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     log_event(db, entity_type="pain_point_type_definition", entity_id=pain_point_type.id, action="created",
@@ -1181,6 +1182,8 @@ def update_pain_point_type(
         pain_point_type.name = payload.name
     if payload.is_active is not None:
         pain_point_type.is_active = payload.is_active
+    if payload.definition is not None:
+        pain_point_type.definition = clean_type_definition(payload.definition)
     log_event(db, entity_type="pain_point_type_definition", entity_id=pain_point_type.id, action="updated",
               actor_id=current_user.id, organization_id=organization_id)
     db.commit()

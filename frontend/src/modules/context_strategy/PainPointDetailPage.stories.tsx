@@ -13,7 +13,7 @@ const PROJECT_ID = "project-1";
 const PAIN_POINT_ID = "pain-point-1";
 
 const TYPES: EffectivePainPointType[] = [
-  { id: "type-operator", name: "Operator", display_order: 0, is_enabled: true, source: "org" },
+  { id: "type-operator", name: "Operator", display_order: 0, is_enabled: true, source: "org", definition: null },
 ];
 
 const ORG_USERS: OrgUser[] = [

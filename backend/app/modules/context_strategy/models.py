@@ -550,6 +550,8 @@ class PainPointTypeDefinition(UUIDPKMixin, TimestampMixin, Base):
             every project's effective type list (`service.
             resolve_effective_pain_point_types`) without deleting it
             outright (org history/audit references remain intact).
+        definition: Optional explanation of what belongs under this type,
+            shown beside the type picker. `NULL` when none was written.
     """
 
     __tablename__ = "pain_point_type_definitions"
@@ -563,6 +565,7 @@ class PainPointTypeDefinition(UUIDPKMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(100))
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    definition: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class ProjectPainPointType(UUIDPKMixin, TimestampMixin, Base):
@@ -594,6 +597,10 @@ class ProjectPainPointType(UUIDPKMixin, TimestampMixin, Base):
             Point in this project. Defaults `True` — an org type is
             included in a project's effective list until a project admin
             explicitly disables it (§6.2's "Disable types").
+        definition_override: Overrides the org type's `definition` for this
+            project alone when `org_type_id` is set (`NULL` = use the
+            organisation's); the type's own definition when `org_type_id`
+            is `NULL`.
     """
 
     __tablename__ = "project_pain_point_types"
@@ -612,6 +619,7 @@ class ProjectPainPointType(UUIDPKMixin, TimestampMixin, Base):
     name_override: Mapped[str | None] = mapped_column(String(100), nullable=True)
     display_order_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    definition_override: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class PainPoint(UUIDPKMixin, TimestampMixin, Base):

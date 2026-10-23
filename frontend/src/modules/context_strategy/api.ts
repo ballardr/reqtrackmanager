@@ -356,15 +356,17 @@ export const orgPainPointTypeApi = {
   list(organizationId: string) {
     return api.get<PainPointTypeDefinition[]>(`${orgBase(organizationId)}/pain-point-types`);
   },
-  create(organizationId: string, name: string) {
-    return api.post<PainPointTypeDefinition>(`${orgBase(organizationId)}/pain-point-types`, { name });
+  create(organizationId: string, name: string, definition?: string) {
+    return api.post<PainPointTypeDefinition>(`${orgBase(organizationId)}/pain-point-types`, {
+      name, definition: definition ?? null,
+    });
   },
   move(organizationId: string, painPointTypeId: string, direction: "up" | "down") {
     return api.post<PainPointTypeDefinition>(
       `${orgBase(organizationId)}/pain-point-types/${painPointTypeId}/move`, { direction }
     );
   },
-  update(organizationId: string, painPointTypeId: string, values: { name?: string; is_active?: boolean }) {
+  update(organizationId: string, painPointTypeId: string, values: { name?: string; is_active?: boolean; definition?: string }) {
     return api.patch<PainPointTypeDefinition>(`${orgBase(organizationId)}/pain-point-types/${painPointTypeId}`, values);
   },
   delete(organizationId: string, painPointTypeId: string) {
@@ -380,14 +382,14 @@ export const projectPainPointApi = {
   listTypes(projectId: string) {
     return api.get<EffectivePainPointType[]>(`${projectBase(projectId)}/pain-point-types`);
   },
-  createLocalType(projectId: string, name: string, displayOrder?: number) {
+  createLocalType(projectId: string, name: string, displayOrder?: number, definition?: string) {
     return api.post<ProjectPainPointType>(`${projectBase(projectId)}/pain-point-types`, {
-      name, display_order: displayOrder ?? null,
+      name, display_order: displayOrder ?? null, definition: definition ?? null,
     });
   },
   overrideType(
     projectId: string, typeRefId: string,
-    values: { name?: string | null; display_order?: number | null; is_enabled?: boolean | null },
+    values: { name?: string | null; display_order?: number | null; is_enabled?: boolean | null; definition?: string | null },
   ) {
     return api.put<ProjectPainPointType>(`${projectBase(projectId)}/pain-point-types/${typeRefId}`, values);
   },

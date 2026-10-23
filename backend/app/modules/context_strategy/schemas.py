@@ -345,8 +345,13 @@ class FutureStateCommentOut(BaseModel):
 # --- Pain Points ---------------------------------------------------
 
 
+# A type definition is a sentence or two; the cap keeps the picker hint readable.
+PAIN_POINT_TYPE_DEFINITION_MAX = 2000
+
+
 class PainPointTypeCreate(BaseModel):
     name: str
+    definition: str | None = Field(default=None, max_length=PAIN_POINT_TYPE_DEFINITION_MAX)
 
 
 class PainPointTypeOut(BaseModel):
@@ -359,11 +364,15 @@ class PainPointTypeOut(BaseModel):
     name: str
     sort_order: int
     is_active: bool
+    definition: str | None = None
 
 
 class PainPointTypeUpdate(BaseModel):
+    """`definition` of `""` clears it; `None` leaves it unchanged."""
+
     name: str | None = None
     is_active: bool | None = None
+    definition: str | None = Field(default=None, max_length=PAIN_POINT_TYPE_DEFINITION_MAX)
 
 
 class EffectivePainPointTypeOut(BaseModel):
@@ -382,6 +391,7 @@ class EffectivePainPointTypeOut(BaseModel):
     display_order: int
     is_enabled: bool
     source: str
+    definition: str | None = None
 
 
 class ProjectPainPointTypeCreate(BaseModel):
@@ -389,6 +399,7 @@ class ProjectPainPointTypeCreate(BaseModel):
 
     name: str
     display_order: int | None = None
+    definition: str | None = Field(default=None, max_length=PAIN_POINT_TYPE_DEFINITION_MAX)
 
 
 class ProjectPainPointTypeOverrideUpdate(BaseModel):
@@ -400,6 +411,10 @@ class ProjectPainPointTypeOverrideUpdate(BaseModel):
     name: str | None = None
     display_order: int | None = None
     is_enabled: bool | None = None
+    definition: str | None = Field(
+        default=None, max_length=PAIN_POINT_TYPE_DEFINITION_MAX,
+        description='`""` clears the project override of an organisation type (the organisation\'s text shows again).',
+    )
 
 
 class ProjectPainPointTypeOut(BaseModel):
@@ -413,6 +428,7 @@ class ProjectPainPointTypeOut(BaseModel):
     name_override: str | None
     display_order_override: int | None
     is_enabled: bool
+    definition_override: str | None = None
 
 
 class PainPointScoreEntryIn(BaseModel):

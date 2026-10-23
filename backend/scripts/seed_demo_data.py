@@ -1220,6 +1220,25 @@ def list_effective_pain_point_types(headers: dict, project_id: str) -> dict[str,
     return {t["name"]: t for t in r.json()}
 
 
+# What belongs under each default Pain Point type; shown under the Type picker on a new Pain Point.
+PAIN_POINT_TYPE_DEFINITIONS: dict[str, str] = {
+    "Market": "A problem in how the product competes or sells: pricing, positioning, the competitors' offer, buyers' expectations.",
+    "User": "A problem for the people who use the product directly: tasks that are slow, confusing or error-prone.",
+    "Operator": "A problem for the people who run, deploy or maintain the product: setup, monitoring, support, upgrades.",
+}
+
+
+def set_pain_point_type_definitions(headers: dict, org_id: str, types_by_name: dict[str, dict], definitions: dict[str, str]) -> None:
+    """Writes the organisation-level definition of each named default Pain Point type. `types_by_name` is a project's
+    effective list; an organisation type with no override has the organisation type's own id."""
+    for name, definition in definitions.items():
+        r = httpx.patch(
+            f"{BASE}/orgs/{org_id}/modules/context_strategy/pain-point-types/{types_by_name[name]['id']}",
+            json={"definition": definition}, headers=headers, timeout=30,
+        )
+        r.raise_for_status()
+
+
 def create_pain_point(headers: dict, project_id: str, **fields) -> dict:
     r = httpx.post(
         f"{BASE}/projects/{project_id}/modules/context_strategy/pain-points", json=fields, headers=headers, timeout=30
@@ -2600,6 +2619,8 @@ def main() -> None:
     # `default_enabled` sub-components mean no
     # separate enable-subcomponent call is needed beyond the whole-module
     # `enable_module` call already made above for Strategy/Future State.
+    drone_pain_point_types = list_effective_pain_point_types(h_pm, drone["id"])
+    set_pain_point_type_definitions(h_pm, org["id"], drone_pain_point_types, PAIN_POINT_TYPE_DEFINITIONS)
     drone_pain_point_types = list_effective_pain_point_types(h_pm, drone["id"])
     pp_accepted = create_pain_point(
         h_pm, drone["id"], pain_point_type_id=drone_pain_point_types["Operator"]["id"],

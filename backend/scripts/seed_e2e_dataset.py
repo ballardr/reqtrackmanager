@@ -830,6 +830,11 @@ def main() -> None:
         f"{BASE}/projects/{gamma3['id']}/modules/context_strategy/pain-point-types", headers=h_g, timeout=30,
     ).json()
     pp_type_id = next(t["id"] for t in pp_types if t["name"] == "Operator")
+    # The Operator type carries a definition so the Type picker's hint is exercised against seeded data.
+    httpx.patch(
+        f"{BASE}/orgs/{gamma['id']}/modules/context_strategy/pain-point-types/{pp_type_id}",
+        json={"definition": "People who run, deploy or maintain the product."}, headers=h_g, timeout=30,
+    ).raise_for_status()
     pp_levels = pain_point_levels(h_g, gamma3["id"])
     multi = create_pain_point(
         h_g, gamma3["id"], pp_type_id, PAIN_POINT_MULTI_PERSONA_NAME, description="Hits personas differently.",

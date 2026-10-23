@@ -417,6 +417,8 @@ export interface PainPointTypeDefinition {
   name: string;
   sort_order: number;
   is_active: boolean;
+  /** What belongs under this type; `null` when none was written. */
+  definition: string | null;
 }
 
 /** One row of a project's *effective* Pain Point type list — every active
@@ -431,6 +433,8 @@ export interface EffectivePainPointType {
   display_order: number;
   is_enabled: boolean;
   source: "org" | "project_override" | "project_local";
+  /** The project's own definition, else the organisation's; `null` when neither wrote one. */
+  definition: string | null;
 }
 
 /** A raw `ProjectPainPointType` row (override or project-local) — returned
@@ -442,6 +446,7 @@ export interface ProjectPainPointType {
   name_override: string | null;
   display_order_override: number | null;
   is_enabled: boolean;
+  definition_override: string | null;
 }
 
 // --- Pain Points -------------------------------------------------------------

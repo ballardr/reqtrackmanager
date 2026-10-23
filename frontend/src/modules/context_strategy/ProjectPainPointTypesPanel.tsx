@@ -17,8 +17,8 @@ import { projectPainPointApi } from "./api";
 
 const api = {
   list: (projectId: string) => projectPainPointApi.listTypes(projectId),
-  createLocal: (projectId: string, name: string, displayOrder?: number) =>
-    projectPainPointApi.createLocalType(projectId, name, displayOrder),
+  createLocal: (projectId: string, name: string, displayOrder?: number, definition?: string) =>
+    projectPainPointApi.createLocalType(projectId, name, displayOrder, definition),
   override: projectPainPointApi.overrideType,
   delete: projectPainPointApi.deleteType,
   listHidden: projectPainPointApi.listHiddenTypes,
@@ -31,11 +31,13 @@ export function ProjectPainPointTypesPanel({ projectId }: { projectId: string })
       projectId={projectId}
       noun="Pain Point"
       api={api}
+      withDefinition
       description={
         <>
           This project's effective Pain Point type list — every active organisation type (with this project's own
           override, if any) plus any type added directly for this project only. Disabling or hiding a type here only affects
-          this project; the organisation's own list (Org Management) is unaffected.
+          this project; the organisation's own list (Org Management) is unaffected. A definition written here replaces the
+          organisation's for this project; clear it to show the organisation's again.
         </>
       }
     />

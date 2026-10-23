@@ -10,7 +10,7 @@ import type { EffectivePainPointType, PainPoint, PainPointScoringSummary } from 
 const PROJECT_ID = "project-1";
 
 const TYPES: EffectivePainPointType[] = [
-  { id: "type-operator", name: "Operator", display_order: 0, is_enabled: true, source: "org" },
+  { id: "type-operator", name: "Operator", display_order: 0, is_enabled: true, source: "org", definition: null },
 ];
 
 function painPoint(overrides: Partial<PainPoint> = {}): PainPoint {

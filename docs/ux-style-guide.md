@@ -205,6 +205,8 @@ flowchart LR
 
 **"Not set" is never zero.** An optional rating input offers an explicit "Not scored" option (`ScoringLevelPicker`), and a result missing an input reads "not scored under this model" — never 0, and never silently dropped from a ranking.
 
+**A long text value in a row is `multiline`.** A `DefinitionListField` holding prose (a type's definition) sets `multiline: true`: the row and the add form show a growing text area, not a one-line input.
+
 **Derived order hides reorder controls.** When a list's order is computed (scoring levels are ordered by weight), omit `DefinitionList`'s `onMove` so no up/down buttons appear; when a list has a floor (an axis keeps two levels), set `minItems` so delete is disabled with a reason.
 
 **Thresholds are percentages of a maximum.** Rating-band boundaries are entered as a percentage of the model's maximum score (`ScoringBandsEditor`), never as raw scores, so they survive re-weighting and read the same across models.
