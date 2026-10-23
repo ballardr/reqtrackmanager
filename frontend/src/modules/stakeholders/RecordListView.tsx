@@ -42,6 +42,7 @@ import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
 import { TagFilterField } from "../../components/TagFilterField";
 import type { ProjectScopeState } from "../../hooks/useProjectScope";
 import type { TagFilterState } from "../../hooks/useTagFilter";
+import { useUrlText } from "../../hooks/useUrlFilter";
 import { toErrorMessage } from "../../context/ToastContext";
 import { HIDDEN_SOURCE_LABEL, type HiddenSource } from "./types";
 import { Badge } from "../../components/Badge";
@@ -160,9 +161,11 @@ export function RecordListView<R extends ListedRecord, V>({
   /** Renders the create form; `onSave` is already wired to `onCreate` and the error state. */
   renderCreateModal?: (props: { scopeLabel: string; error: string | null; onCancel: () => void; onSave: (values: V, quickLinks?: CollectedLink[], tags?: string[]) => void }) => ReactNode;
 }) {
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
+  // On a list page the filters live in the URL, so it comes back as it was left after a visit to a record;
+  // embedded in another page (an organisation panel) they stay local, leaving that page's own parameters alone.
+  const [search, setSearch] = useUrlText("q", !!page);
+  const [statusFilter, setStatusFilter] = useUrlText("status", !!page);
+  const [typeFilter, setTypeFilter] = useUrlText("type", !!page);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const canCreate = !!onCreate && !!renderCreateModal;

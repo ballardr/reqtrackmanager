@@ -194,7 +194,7 @@ def calculate_total(items: list[Item]) -> Decimal:
 
 ## List Position Is Kept
 
-- A list page keeps its place: after opening a record and going back, the list shows the same rows at the same scroll offset, including rows loaded with "Show more". Use the shared hook through `ListPageLayout`; a list does not hand-roll scroll restoration. Restore on back navigation only, never on a fresh visit or when the filters in the URL differ, so a list's filter state lives in the URL, not component state.
+- A list page keeps its place: after opening a record and going back, the list shows the same rows at the same scroll offset, including rows loaded with "Show more". Use the shared hook through `ListPageLayout`; a list does not hand-roll scroll restoration. Restore on back navigation only, never on a fresh visit or when the filters in the URL differ, so a list's filter state lives in the URL, not component state: use `hooks/useUrlFilter.ts` (`useUrlText`, `useUrlFlag`, `useUrlChoice`, `useUrlList`, `useUrlSort`; `useTagFilter` and `useOpenOnly` already do), pass `ready` (and `loadedRows` when paginated) to `ListPageLayout` and size a paginated first load with `useRestoredRowCount`. A record's back link is `RecordHeader`'s `back`, never a hand-written `Link` to the bare list path.
 - Reason: editing down a list is the working pattern, and a reset to the top after every edit makes the user find their place again each time. See the style guide's "Pattern: list position".
 
 ## Long Text Fields Grow

@@ -109,7 +109,7 @@ test.describe("Context & Strategy: create -> propose -> approve -> activate a St
     // name).
     await page.goto(`/projects/${project.id}`);
     await page.getByRole("link", { name: "Strategy", exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/strategies$`));
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/strategies(?:\\?.*)?$`));
 
     // --- Create the Strategy and open its detail page.
     await page.getByRole("button", { name: "New Strategy" }).click();
@@ -148,7 +148,7 @@ test.describe("Context & Strategy: create -> propose -> approve -> activate a St
 
     // --- Back on the list, the Strategy shows its final status.
     await page.getByRole("link", { name: "← Strategy", exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/strategies$`));
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/strategies(?:\\?.*)?$`));
     const row = page.locator("tr", { hasText: strategyTitle });
     await expect(row.getByText("Active", { exact: true })).toBeVisible();
   });

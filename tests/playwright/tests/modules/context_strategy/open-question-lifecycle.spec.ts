@@ -104,7 +104,7 @@ test.describe("Context & Strategy: create -> investigate -> mark ready -> resolv
     // `pain-point-lifecycle.spec.ts` needs for its own persona name).
     await page.goto(`/projects/${project.id}`);
     await page.getByRole("link", { name: "Open Question", exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/open-questions$`));
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/open-questions(?:\\?.*)?$`));
 
     // --- Create the first Open Question and open its detail page.
     await page.getByRole("button", { name: "New Open Question" }).click();
@@ -140,7 +140,7 @@ test.describe("Context & Strategy: create -> investigate -> mark ready -> resolv
 
     // --- Back on the list, the first Open Question shows its final status.
     await page.getByRole("link", { name: "← Open Question", exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/open-questions$`));
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/open-questions(?:\\?.*)?$`));
     // The list opens on unresolved questions only, so the resolved one appears once that filter is cleared.
     await expect(page.getByRole("checkbox", { name: "Open only" })).toBeChecked();
     await expect(page.locator("tr", { hasText: questionText })).toHaveCount(0);

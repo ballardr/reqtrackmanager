@@ -19,6 +19,7 @@ import { FormActions } from "../components/FormActions";
 import { FormGrid } from "../components/FormGrid";
 import { FileField, TextField, CheckboxField } from "../components/FormFields";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { useUrlChoice, useUrlText } from "../hooks/useUrlFilter";
 
 /**
  * Server-admin console listing every organisation on the deployment
@@ -35,6 +36,7 @@ import { useLoadOnChange } from "../hooks/useLoadOnChange";
  *   disable and hard delete" section for the full design.
  */
 type StatusFilter = "active" | "disabled" | "all";
+const STATUS_PARAMS: readonly StatusFilter[] = ["disabled", "all"];
 
 export function ServerOrganisationsPage() {
   const strings = useStrings();
@@ -43,11 +45,14 @@ export function ServerOrganisationsPage() {
   const orgLabelCap = useOrgLabelCapitalized();
   const orgLabelPlural = useOrgLabelPlural();
   const [orgs, setOrgs] = useState<Organization[] | null>(null);
-  const [search, setSearch] = useState("");
+  // Search and the status filter live in the URL so the list comes back as it was left after a visit to an organisation.
+  const [search, setSearch] = useUrlText("q");
   // Defaults to "active" (C-A-13-adjacent hygiene): a deployment that's
   // been running a while accumulates disabled orgs (non-payment, offboarded
   // customers, ...) that would otherwise dominate a plain, unfiltered list.
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
+  const [statusParam, setStatusParam] = useUrlChoice("status", STATUS_PARAMS);
+  const statusFilter: StatusFilter = statusParam || "active";
+  const setStatusFilter = (next: StatusFilter) => setStatusParam(next === "active" ? "" : next);
   const [showNewForm, setShowNewForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [importFile, setImportFile] = useState<File | null>(null);

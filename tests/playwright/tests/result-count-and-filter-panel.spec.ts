@@ -26,7 +26,7 @@ async function loginAsDemoAdminAndOpenRequirements(page: import("@playwright/tes
   // locators, e.g. "Requirements", stop matching).
   await page.getByRole("link", { name: "Solstice Cloud Platform" }).first().click();
   await page.getByRole("link", { name: "Requirements", exact: true }).click();
-  await page.waitForURL(/\/requirements$/);
+  await page.waitForURL(/\/requirements(?:\?.*)?$/);
   // `total`/`totalUnfiltered` both start at 0 before the first fetch
   // resolves, and "0 total" matches `resultCountLocator`'s own `/total$/`
   // pattern just as validly as any real count — waiting for the page's own
@@ -242,7 +242,7 @@ test.describe("FilterPanel renders first on narrow viewports, unaffected on desk
     await page.goto("/projects");
     await page.getByRole("link", { name: "Solstice Cloud Platform" }).first().click();
     await page.getByRole("link", { name: "Change requests", exact: true }).click();
-    await page.waitForURL(/\/change-requests$/);
+    await page.waitForURL(/\/change-requests(?:\?.*)?$/);
     await expect(page.getByText("Loading…")).toBeHidden();
 
     const mainColumn = page.locator(".list-page__content");

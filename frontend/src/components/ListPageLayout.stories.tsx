@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { MemoryRouter } from "react-router-dom";
 import { expect, within } from "storybook/test";
 
 import { FilterField, FilterPanel } from "./FilterPanel";
@@ -8,7 +9,7 @@ const meta: Meta<typeof ListPageLayout> = {
   title: "Components/ListPageLayout",
   component: ListPageLayout,
   parameters: { layout: "fullscreen" },
-  decorators: [(Story) => <div style={{ maxWidth: 1100, padding: 16 }}><Story /></div>],
+  decorators: [(Story) => <MemoryRouter><div style={{ maxWidth: 1100, padding: 16 }}><Story /></div></MemoryRouter>],
 };
 export default meta;
 

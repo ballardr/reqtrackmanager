@@ -30,8 +30,9 @@
  * Filters can be pre-set from the URL (a report figure links here, e.g.
  * `?open=1&blocker=1`): `status`, `priority`, `open=1|0` (still being worked; the default),
  * `intentional=hide|only`, `blocker=1`, `scored=yes|no`, and `model` /
- * `rollup` (the scoring the report ran with). They only seed the state; each
- * is a visible control in the filter panel, so it can be changed or cleared.
+ * `rollup` (the scoring the report ran with). They are the page's filter state (the URL is kept up to
+ * date as they change), so the list comes back as it was left after a visit to a record; each is a
+ * visible control in the filter panel, so it can be changed or cleared.
  */
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -45,9 +46,9 @@ import { ListPageLayout } from "../../components/ListPageLayout";
 import { ScoringModelSwitcher } from "../../components/ScoringModelSwitcher";
 import { SettingsPopoverButton } from "../../components/SettingsPopoverButton";
 import { Spinner } from "../../components/Spinner";
-import { cycleSort, type SortState } from "../../components/sortState";
+import { cycleSort } from "../../components/sortState";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
-import { oneOf, useInitialSearchParams } from "../../hooks/useInitialSearchParams";
+import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
 import { projectPainPointApi } from "./api";
 import { PainPointFormModal } from "./PainPointFormModal";
@@ -64,6 +65,7 @@ import { RecordCode } from "../../components/RecordCode";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
 import { rowProjectId } from "../../api/projectScope";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
@@ -73,6 +75,9 @@ import { TagFilterField } from "../../components/TagFilterField";
 
 const SCHEME_KEY = "pain_point";
 const DEFAULT_ROLLUP: PainPointRollup = "weighted_average";
+const INTENTIONAL_FILTERS = ["hide", "only"] as const;
+const SCORED_FILTERS = ["yes", "no"] as const;
+const SORT_KEYS = ["score"] as const;
 
 export function ProjectPainPointsPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -86,29 +91,30 @@ export function ProjectPainPointsPage() {
   const [types, setTypes] = useState<EffectivePainPointType[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<PainPointStatus | "">(() => oneOf(initial.get("status"), Object.keys(PAIN_POINT_STATUS_LABEL) as PainPointStatus[]));
-  const [priorityFilter, setPriorityFilter] = useState<PainPointPriority | "">(() => oneOf(initial.get("priority"), Object.keys(PAIN_POINT_PRIORITY_LABEL) as PainPointPriority[]));
-  const [includeArchived, setIncludeArchived] = useState(false);
+  const [search, setSearch] = useUrlText("q");
+  const [statusFilter, setStatusFilter] = useUrlChoice("status", Object.keys(PAIN_POINT_STATUS_LABEL) as PainPointStatus[]);
+  const [priorityFilter, setPriorityFilter] = useUrlChoice("priority", Object.keys(PAIN_POINT_PRIORITY_LABEL) as PainPointPriority[]);
+  const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
-  const [hideIntentional, setHideIntentional] = useState(initial.get("intentional") === "hide");
-  const [onlyIntentional, setOnlyIntentional] = useState(initial.get("intentional") === "only");
+  const [intentional, setIntentional] = useUrlChoice("intentional", INTENTIONAL_FILTERS);
+  const hideIntentional = intentional === "hide";
+  const onlyIntentional = intentional === "only";
   const [openOnly, setOpenOnly] = useOpenOnly(
     initial, Object.keys(PAIN_POINT_STATUS_LABEL),
     ["yes", "no"].includes(initial.get("scored") ?? "") || initial.get("blocker") === "1" || initial.get("intentional") === "only",
   );
-  const [blockersOnly, setBlockersOnly] = useState(initial.get("blocker") === "1");
-  const [scoredFilter, setScoredFilter] = useState<"" | "yes" | "no">(() => oneOf(initial.get("scored"), ["yes", "no"] as const));
+  const [blockersOnly, setBlockersOnly] = useUrlFlag("blocker");
+  const [scoredFilter, setScoredFilter] = useUrlChoice("scored", SCORED_FILTERS);
 
   const [scheme, setScheme] = useState<ScoringScheme | null>(null);
   const [scoringTargets, setScoringTargets] = useState<PainPointScoringTargets | null>(null);
-  const [model, setModel] = useState<string | null>(initial.get("model"));
-  const [rollup, setRollup] = useState<PainPointRollup>(
-    () => oneOf(initial.get("rollup"), Object.keys(PAIN_POINT_ROLLUP_LABEL) as PainPointRollup[]) || DEFAULT_ROLLUP,
-  );
+  // The scoring model and roll-up shown in this view; no `model` parameter means the scheme's default.
+  const [modelParam, setModelParam] = useUrlText("model");
+  const [rollupParam, setRollupParam] = useUrlChoice("rollup", Object.keys(PAIN_POINT_ROLLUP_LABEL) as PainPointRollup[]);
+  const rollup = rollupParam || DEFAULT_ROLLUP;
   const [scoring, setScoring] = useState<PainPointScoringList | null>(null);
-  const [sort, setSort] = useState<SortState | null>(null);
+  const [sort, setSort] = useUrlSort<string>(SORT_KEYS);
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -143,10 +149,11 @@ export function ProjectPainPointsPage() {
   useEffect(() => {
     if (!projectId) return;
     projectPainPointApi
-      .listScores(projectId, { model_key: model ?? undefined, rollup, include_archived: includeArchived })
-      .then((loaded) => { setScoring(loaded); setModel((current) => current ?? loaded.model_key); })
+      .listScores(projectId, { model_key: modelParam || undefined, rollup, include_archived: includeArchived })
+      .then(setScoring)
       .catch(() => setScoring(null));
-  }, [projectId, model, rollup, includeArchived]);
+  }, [projectId, modelParam, rollup, includeArchived]);
+  const model = modelParam || scoring?.model_key || null;
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -213,10 +220,10 @@ export function ProjectPainPointsPage() {
             <ScoringModelSwitcher
               models={scheme.models.map((m) => ({ value: m.key, label: m.label }))}
               model={model}
-              onModelChange={setModel}
+              onModelChange={(next) => setModelParam(next === scheme.default_model_key ? "" : next)}
               rollups={Object.entries(PAIN_POINT_ROLLUP_LABEL).map(([value, label]) => ({ value, label }))}
               rollup={rollup}
-              onRollupChange={(next) => setRollup(next as PainPointRollup)}
+              onRollupChange={(next) => setRollupParam(next === DEFAULT_ROLLUP ? "" : (next as PainPointRollup))}
             />
             <span className="text-muted" style={{ fontSize: "0.8rem" }}>
               Applies to this view only; it is not saved.
@@ -273,11 +280,11 @@ export function ProjectPainPointsPage() {
             <FilterCheckbox label="Blockers only" checked={blockersOnly} onChange={setBlockersOnly} />
             <FilterCheckbox
               label="Hide intentional limitations" checked={hideIntentional}
-              onChange={(next) => { setHideIntentional(next); if (next) setOnlyIntentional(false); }}
+              onChange={(next) => setIntentional(next ? "hide" : "")}
             />
             <FilterCheckbox
               label="Only intentional limitations" checked={onlyIntentional}
-              onChange={(next) => { setOnlyIntentional(next); if (next) setHideIntentional(false); }}
+              onChange={(next) => setIntentional(next ? "only" : "")}
             />
             <ProjectScopeFilter scope={projectScope} />
             {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}

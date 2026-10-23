@@ -33,6 +33,7 @@ import { Badge } from "../../components/Badge";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
 import { rowProjectId } from "../../api/projectScope";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
@@ -50,10 +51,11 @@ export function ProjectStrategiesPage() {
   const [strategies, setStrategies] = useState<Strategy[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StrategyStatus | "">("");
-  const [priorityFilter, setPriorityFilter] = useState<StrategyPriority | "">("");
-  const [includeArchived, setIncludeArchived] = useState(false);
+  // Filters live in the URL so the list comes back as it was left after a visit to a record.
+  const [search, setSearch] = useUrlText("q");
+  const [statusFilter, setStatusFilter] = useUrlChoice("status", Object.keys(STRATEGY_STATUS_LABEL) as StrategyStatus[]);
+  const [priorityFilter, setPriorityFilter] = useUrlChoice("priority", Object.keys(STRATEGY_PRIORITY_LABEL) as StrategyPriority[]);
+  const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
 

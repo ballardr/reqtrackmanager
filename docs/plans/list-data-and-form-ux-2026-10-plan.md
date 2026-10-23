@@ -1,11 +1,11 @@
 # List Data and Form UX (October 2026) — Plan
 
-**Status:** planned 2026-10-22, not started. Built from eight items the user picked up (section 1). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows) and 5 (form header) are done; Phase 6 is next.
+**Status:** planned 2026-10-22, not started. Built from eight items the user picked up (section 1). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header) and 6 (list position) are done; Phase 7 is next.
 **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. Q1–Q4 were answered by the user on 2026-10-22 (section 2). Everything in the "Agent defaults" table is **Decided by: Agent** and open to override before the phase that uses it starts.
 
 ## Status / Resume Here
 
-5 / 16 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–5 done 2026-10-23, uncommitted). Phases 6–7 are independent small fixes and can start now. Phases 8–14 are one chain: the extension point, then everything that uses it.
+6 / 16 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–6 done 2026-10-23, uncommitted). Phase 7 is an independent small fix and can start now. Phases 8–14 are one chain: the extension point, then everything that uses it.
 
 | # | Phase | Item | Status |
 |---|-------|------|--------|
@@ -15,7 +15,7 @@
 | 3 | Field help `(?)` becomes a tooltip | 2 | [x] |
 | 4 | Long text fields grow with their content (Pain Point description first, then a sweep) | 4 | [x] |
 | 5 | Form header: title and Save/Cancel pinned, body scrolls (shared `Modal`, then every form) | 8 | [x] |
-| 6 | List scroll position and loaded rows survive a trip to a record and back | 6 | [ ] |
+| 6 | List scroll position and loaded rows survive a trip to a record and back | 6 | [x] |
 | 7 | Pain Point types get an optional definition | 7 | [ ] |
 | 8 | Record-table extension point (backend): columns, list, CSV out, CSV in with update | 5 | [ ] |
 | 8b | Personal-data policy: column sensitivity, server default, organisation override, new permission | 5 | [ ] |

@@ -34,7 +34,7 @@ import { FilterCheckbox, FilterField, FilterPanel } from "../../components/Filte
 import { ListPageLayout } from "../../components/ListPageLayout";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
-import { oneOf, useInitialSearchParams } from "../../hooks/useInitialSearchParams";
+import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
 import { projectOpenQuestionApi } from "./api";
 import { OpenQuestionFormModal } from "./OpenQuestionFormModal";
@@ -43,6 +43,7 @@ import type { OpenQuestion, OpenQuestionFieldValues, OpenQuestionPriority, OpenQ
 import { Badge } from "../../components/Badge";
 import { RecordCode } from "../../components/RecordCode";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
 import { rowProjectId } from "../../api/projectScope";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
@@ -63,15 +64,16 @@ export function ProjectOpenQuestionsPage() {
   const [openQuestions, setOpenQuestions] = useState<OpenQuestion[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<OpenQuestionStatus | "">(() => oneOf(initial.get("status"), Object.keys(OPEN_QUESTION_STATUS_LABEL) as OpenQuestionStatus[]));
-  const [priorityFilter, setPriorityFilter] = useState<OpenQuestionPriority | "">(() => oneOf(initial.get("priority"), Object.keys(OPEN_QUESTION_PRIORITY_LABEL) as OpenQuestionPriority[]));
-  const [includeArchived, setIncludeArchived] = useState(false);
+  // Filters live in the URL so the list comes back as it was left after a visit to a record.
+  const [search, setSearch] = useUrlText("q");
+  const [statusFilter, setStatusFilter] = useUrlChoice("status", Object.keys(OPEN_QUESTION_STATUS_LABEL) as OpenQuestionStatus[]);
+  const [priorityFilter, setPriorityFilter] = useUrlChoice("priority", Object.keys(OPEN_QUESTION_PRIORITY_LABEL) as OpenQuestionPriority[]);
+  const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
   const [openOnly, setOpenOnly] = useOpenOnly(initial, Object.keys(OPEN_QUESTION_STATUS_LABEL));
-  const [overdueOnly, setOverdueOnly] = useState(initial.get("overdue") === "1");
-  const [unownedOnly, setUnownedOnly] = useState(initial.get("unowned") === "1");
+  const [overdueOnly, setOverdueOnly] = useUrlFlag("overdue");
+  const [unownedOnly, setUnownedOnly] = useUrlFlag("unowned");
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);

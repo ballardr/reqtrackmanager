@@ -31,7 +31,7 @@ test("dashboard glance tile navigates to the requirements list", async ({ page }
 
   const tiles = page.locator(".grid-metrics");
   await tiles.getByRole("link", { name: "Requirements" }).click();
-  await page.waitForURL(/\/requirements$/);
+  await page.waitForURL(/\/requirements(?:\?.*)?$/);
   await expect(page.getByLabel("Status")).toHaveValue("");
 });
 
@@ -44,12 +44,9 @@ test("dashboard status chart segment navigates to the requirements list filtered
   const segmentLabel = (await firstSegmentButton.textContent())?.trim();
   await firstSegmentButton.click();
 
-  // The `?status=` param is consumed and stripped by RequirementsPage's own
-  // deep-link effect immediately on arrival (same pattern as the pre-
-  // existing `?new=1` deep link) — assert the resulting filter *state*
-  // (the Status select's value), not that the query param is still in the
-  // URL by the time this polls.
-  await page.waitForURL(/\/requirements$/);
+  // The `?status=` param stays in the URL: the list's filters live there, so the filter state is the
+  // Status select's value and the URL carries the same status.
+  await page.waitForURL(/\/requirements(?:\?.*)?$/);
   const statusSelect = page.getByLabel("Status");
   await expect(statusSelect).not.toHaveValue("");
   // The requirements list's status option text should match the clicked segment's label.
@@ -62,9 +59,8 @@ test("dashboard change-request tile navigates to the change requests list filter
 
   const tiles = page.locator(".grid-metrics");
   await tiles.getByRole("link", { name: "Change requests approved" }).click();
-  // Same param-stripped-on-arrival behaviour as above — assert the landing
-  // page and the resulting filter state, not a lingering query string.
-  await page.waitForURL(/\/change-requests$/);
+  // The status stays in the URL as the list's own filter state, as above.
+  await page.waitForURL(/\/change-requests(?:\?.*)?$/);
   await expect(page.getByLabel("Status")).toHaveValue("approved");
 });
 
@@ -120,15 +116,8 @@ test("dashboard glance tile with a non-default filter renders the correctly-filt
   expect(segmentLabel).toBeTruthy();
   await firstSegmentButton.click();
 
-  // `/\/requirements$/`, not a pattern including `?status=` — same
-  // reasoning as the sibling chart-segment test above: the query param is
-  // consumed and stripped by `RequirementsPage`'s own deep-link effect
-  // (`setSearchParams(..., { replace: true })`) essentially immediately on
-  // arrival, so a `waitForURL` pattern that requires the query string
-  // still being present can lose the race and hang past the test timeout
-  // waiting for a URL shape that already came and went before this line
-  // even started polling.
-  await page.waitForURL(/\/requirements$/);
+  // The status is part of the list's URL, so the landing pattern allows a query string.
+  await page.waitForURL(/\/requirements(?:\?.*)?$/);
   const statusSelect = page.getByLabel("Status");
   await expect(statusSelect).not.toHaveValue("");
   const selectedOptionText = await statusSelect.locator("option:checked").textContent();

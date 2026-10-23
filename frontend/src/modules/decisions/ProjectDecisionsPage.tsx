@@ -51,9 +51,10 @@ import { DecisionQuickViewPanel } from "./DecisionQuickViewPanel";
 import { DECISION_OPEN_STATUSES, DECISION_STATUS_LABEL, DECISION_STATUS_TONE } from "./types";
 import type { Decision, DecisionFieldValues, DecisionStatus, DecisionTemplate, DecisionTypeDefinition } from "./types";
 import { Badge } from "../../components/Badge";
-import { oneOf, useInitialSearchParams } from "../../hooks/useInitialSearchParams";
+import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { rowProjectId } from "../../api/projectScope";
@@ -77,12 +78,13 @@ export function ProjectDecisionsPage() {
   const [decisions, setDecisions] = useState<Decision[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<DecisionStatus | "">(() => oneOf(initial.get("status"), Object.keys(DECISION_STATUS_LABEL) as DecisionStatus[]));
+  // Filters live in the URL so the list comes back as it was left after a visit to a record.
+  const [search, setSearch] = useUrlText("q");
+  const [statusFilter, setStatusFilter] = useUrlChoice("status", Object.keys(DECISION_STATUS_LABEL) as DecisionStatus[]);
   const [openOnly, setOpenOnly] = useOpenOnly(initial, Object.keys(DECISION_STATUS_LABEL));
-  const [decisionTypeFilter, setDecisionTypeFilter] = useState("");
-  const [includeArchived, setIncludeArchived] = useState(false);
-  const [ownedByMe, setOwnedByMe] = useState(false);
+  const [decisionTypeFilter, setDecisionTypeFilter] = useUrlText("type");
+  const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
+  const [ownedByMe, setOwnedByMe] = useUrlFlag("mine");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
 

@@ -15,6 +15,17 @@ The **Projects** list is searchable by name/summary and filterable by active/arc
 | Favourites, role/stage filters, and a choice of tile, list, or tree view |
 | ![Projects dashboard with filters and a tile-view layout](../../static/img/screenshots/projects-page.png) |
 
+## Coming back to a list
+
+A list keeps its place. Open a record from a list and come back (the browser's **Back**, or the record's own back link) and the list shows the same rows at the same scroll position, with the same search and filters, including rows you had loaded with **Load more**. The filters are part of the page address, so you can also copy a filtered list's link to share it or bookmark it. Opening a list from the navigation starts at the top with no filters, as before.
+
+```mermaid
+flowchart LR
+    A["List: filtered, scrolled"] -->|"open a record"| B["Record"]
+    B -->|"Back or back link"| C["Same filters, rows and position"]
+    D["Open the list from the navigation"] --> E["Top of the list, default filters"]
+```
+
 ## Listing records from parent and child projects
 
 In a project that has a parent or child project you can open, every record list (requirements, change requests, actions, files, and each module's lists such as risks, decisions, engagements and people) and the project **Overview** has a **Show records from** filter: *This project*, *This + parent projects*, *This + child projects*, or *This + parent and child projects*. It is not shown when the project has no relatives you can open. On the project **Overview** it is a compact select in the title row beside **New requirement**; hover or focus it to read what it covers (it is outlined while widened).

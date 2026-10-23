@@ -159,7 +159,13 @@ export function PeoplePage() {
 
   function setKinds(next: PeopleKind[]) {
     const query = kindQuery(next, enabled);
-    setParams(query ? { kind: query } : {}, { replace: true });
+    // Keep the list's other parameters (search, filters, tags): they are part of the list's state.
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      if (query) next.set("kind", query);
+      else next.delete("kind");
+      return next;
+    }, { replace: true });
   }
 
   function toggleKind(kind: PeopleKind) {

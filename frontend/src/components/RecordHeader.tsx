@@ -23,6 +23,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 
 import { ActionMenu, type ActionMenuItem } from "./ActionMenu";
+import { listBackTarget } from "../hooks/useListPosition";
 import { ItemRow } from "./ItemRow";
 
 /**
@@ -35,7 +36,7 @@ import { ItemRow } from "./ItemRow";
  * @param badges Status and scope pills, shown on the line under the title.
  * @param version The record's version number, for a versioned record; shown as "Version n" after the badges, never as its own line.
  * @param tags The record's tags (`RecordTags`), shown under the badges.
- * @param back Link back to the list: `{ to, label }`, or `{ onClick, label }` inside a page that switches views itself.
+ * @param back Link back to the list: `{ to, label }` (it lands on the list as it was left, filters and scroll position kept), or `{ onClick, label }` inside a page that switches views itself.
  * @param headingLevel `h1` (default) for a page; `h2` for a record opened inside a page that already has an `h1`.
  * @param onEdit Opens the edit form; omit when the user cannot edit.
  * @param transitions Visible workflow buttons (Submit, Approve, Retire...).
@@ -78,7 +79,7 @@ export function RecordHeader({
   return (
     <header className="stack record-header" style={{ gap: "var(--space-3)" }}>
       {back && ("to" in back ? (
-        <Link to={back.to}>{back.label}</Link>
+        <Link {...listBackTarget(back.to)}>{back.label}</Link>
       ) : (
         <div><button type="button" className="btn" onClick={back.onClick}>{back.label}</button></div>
       ))}

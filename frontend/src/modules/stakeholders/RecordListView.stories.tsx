@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { MemoryRouter } from "react-router-dom";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import { ProjectContext } from "../../context/ProjectContextValue";
@@ -20,6 +21,8 @@ const WIDGETS: Widget[] = [
 ];
 
 const meta: Meta<typeof RecordListView<Widget, string>> = {
+  // The list keeps its filters in the URL, so it needs a router.
+  decorators: [(Story) => <MemoryRouter><Story /></MemoryRouter>],
   title: "Modules/Stakeholders/RecordListView",
   component: RecordListView<Widget, string>,
   args: {

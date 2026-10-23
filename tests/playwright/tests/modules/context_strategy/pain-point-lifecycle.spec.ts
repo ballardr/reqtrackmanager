@@ -129,7 +129,7 @@ test.describe("Context & Strategy: Pain Point lifecycle and type vocabulary", ()
     // --- Navigate into the project's own new "Pain Point" nav entry.
     await page.goto(`/projects/${project.id}`);
     await page.getByRole("link", { name: "Pain Point", exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/pain-points$`));
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/pain-points(?:\\?.*)?$`));
 
     // --- Create the Pain Point (using the project-locally-overridden type)
     // and open its detail page.
@@ -174,7 +174,7 @@ test.describe("Context & Strategy: Pain Point lifecycle and type vocabulary", ()
 
     // --- Back on the list, the Pain Point shows its final status.
     await page.getByRole("link", { name: "← Pain Point", exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/pain-points$`));
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/pain-points(?:\\?.*)?$`));
     // The list opens on open Pain Points only, so a closed one appears once that filter is cleared.
     await expect(page.getByRole("checkbox", { name: "Open only" })).toBeChecked();
     await expect(page.locator("tr", { hasText: painPointTitle })).toHaveCount(0);

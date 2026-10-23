@@ -20,7 +20,8 @@ import { ListPageLayout } from "../components/ListPageLayout";
 import { PrincipalBadge } from "../components/PrincipalBadge";
 import { QuickLinkField } from "../components/QuickLinkField";
 import { SortableHeader } from "../components/SortableHeader";
-import { cycleSort, type SortState } from "../components/sortState";
+import { cycleSort } from "../components/sortState";
+import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../hooks/useUrlFilter";
 import { Spinner } from "../components/Spinner";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
@@ -41,6 +42,9 @@ import { useLoadOnChange } from "../hooks/useLoadOnChange";
 const strings = t();
 
 const OUTCOME_OPTIONS: RequirementActionOutcome[] = ["pending", "completed", "failed"];
+
+const ACTION_SORT_KEYS = ["unique_code", "title", "outcome_status", "due_date"] as const;
+type ActionSortKey = (typeof ACTION_SORT_KEYS)[number];
 
 /**
  * Project-wide list of requirement actions (review/test/etc.) — a
@@ -63,16 +67,16 @@ export function ProjectActionsPage() {
   const [actionTypes, setActionTypes] = useState<ActionTypeDefinition[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [organizationId, setOrganizationId] = useState<string | undefined>(undefined);
-  const [outcomeFilter, setOutcomeFilter] = useState<RequirementActionOutcome | "">("");
-  const [typeFilter, setTypeFilter] = useState("");
-  const [includeArchived, setIncludeArchived] = useState(false);
+  // Filters and sort live in the URL so the list comes back as it was left after a visit to a record.
+  const [outcomeFilter, setOutcomeFilter] = useUrlChoice("outcome", Object.keys(REQUIREMENT_ACTION_OUTCOME_LABEL) as RequirementActionOutcome[]);
+  const [typeFilter, setTypeFilter] = useUrlText("type");
+  const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
   // Column-header sorting — this list has no
   // backend pagination at all (`routers/actions.py::list_actions` always
   // returns every match), so sorting the already-loaded array client-side
   // is safe: unlike `RequirementsPage`/`ChangeRequestsPage`, there's no
   // partially-loaded page to misrepresent by sorting only what's visible.
-  type ActionSortKey = "unique_code" | "title" | "outcome_status" | "due_date";
-  const [sort, setSort] = useState<SortState<ActionSortKey> | null>(null);
+  const [sort, setSort] = useUrlSort(ACTION_SORT_KEYS);
 
   const [showNewForm, setShowNewForm] = useState(false);
   const [newTitle, setNewTitle] = useState("");
@@ -177,7 +181,6 @@ export function ProjectActionsPage() {
     if (!actions || !sort) return actions;
     const sorted = [...actions].sort((a, b) => compareActions(a, b, sort.key));
     return sort.direction === "desc" ? sorted.reverse() : sorted;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actions, sort]);
 
   function actionTypeName(id: string) {

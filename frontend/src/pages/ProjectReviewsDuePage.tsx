@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+
+import { useUrlFlag, useUrlText } from "../hooks/useUrlFilter";
 import { RecordCode } from "../components/RecordCode";
 import { Link, useParams } from "react-router-dom";
 
@@ -19,10 +21,11 @@ export function ProjectReviewsDuePage() {
   const { projectId } = useParams<{ projectId: string }>();
   const [items, setItems] = useState<RequirementDueForReview[] | null>(null);
   const [components, setComponents] = useState<Component[]>([]);
-  const [componentId, setComponentId] = useState("");
+  // Filters live in the URL so the list comes back as it was left after a visit to a requirement.
+  const [componentId, setComponentId] = useUrlText("component");
   // "<type>:<id>" of the chosen reviewer (a user or a group), or "".
-  const [reviewerKey, setReviewerKey] = useState("");
-  const [mineOnly, setMineOnly] = useState(false);
+  const [reviewerKey, setReviewerKey] = useUrlText("reviewer");
+  const [mineOnly, setMineOnly] = useUrlFlag("mine");
 
   useEffect(() => {
     if (!projectId) return;

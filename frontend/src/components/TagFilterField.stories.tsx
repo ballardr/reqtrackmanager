@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { MemoryRouter } from "react-router-dom";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import { useTagFilter } from "../hooks/useTagFilter";
@@ -22,6 +23,8 @@ function Harness({ api }: { api: React.ComponentProps<typeof TagFilterField>["ap
 const meta: Meta<typeof Harness> = {
   title: "Components/TagFilterField",
   component: Harness,
+  // The tag filter lives in the URL, so it needs a router.
+  decorators: [(Story) => <MemoryRouter><Story /></MemoryRouter>],
 };
 export default meta;
 

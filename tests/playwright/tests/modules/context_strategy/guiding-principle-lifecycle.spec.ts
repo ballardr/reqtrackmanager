@@ -104,7 +104,7 @@ test.describe("Context & Strategy: create -> propose -> send back -> re-propose 
     // `strategy-lifecycle.spec.ts` needs for its own persona name).
     await page.goto(`/projects/${project.id}`);
     await page.getByRole("link", { name: "Guiding Principle", exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/guiding-principles$`));
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/guiding-principles(?:\\?.*)?$`));
 
     // --- Create the Guiding Principle and open its detail page.
     await page.getByRole("button", { name: "New Guiding Principle" }).click();
@@ -154,7 +154,7 @@ test.describe("Context & Strategy: create -> propose -> send back -> re-propose 
 
     // --- Back on the list, the Guiding Principle shows its final status.
     await page.getByRole("link", { name: "← Guiding Principle", exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/guiding-principles$`));
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/guiding-principles(?:\\?.*)?$`));
     const row = page.locator("tr", { hasText: guidingPrincipleName });
     await expect(row.getByText("Active", { exact: true })).toBeVisible();
   });

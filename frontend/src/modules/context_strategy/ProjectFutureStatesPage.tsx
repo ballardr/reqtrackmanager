@@ -27,7 +27,6 @@ import { ListPageLayout } from "../../components/ListPageLayout";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
-import { oneOf, useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { projectFutureStateApi } from "./api";
 import { FutureStateFormModal } from "./FutureStateFormModal";
 import { FUTURE_STATE_ROADMAP_STATUSES, FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE } from "./types";
@@ -36,6 +35,7 @@ import { Badge } from "../../components/Badge";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
 import { rowProjectId } from "../../api/projectScope";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
@@ -49,19 +49,19 @@ export function ProjectFutureStatesPage() {
   const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "future_state");
   const commitTags = useCommitTags(projectId ?? "", "future_state");
-  const initial = useInitialSearchParams();
   const [project, setProject] = useState<Project | null>(null);
   const [futureStates, setFutureStates] = useState<FutureState[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<FutureStateStatus | "">(() => oneOf(initial.get("status"), Object.keys(FUTURE_STATE_STATUS_LABEL) as FutureStateStatus[]));
-  const [includeArchived, setIncludeArchived] = useState(false);
+  // Filters live in the URL so the list comes back as it was left after a visit to a record.
+  const [search, setSearch] = useUrlText("q");
+  const [statusFilter, setStatusFilter] = useUrlChoice("status", Object.keys(FUTURE_STATE_STATUS_LABEL) as FutureStateStatus[]);
+  const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
-  const [roadmapOnly, setRoadmapOnly] = useState(initial.get("roadmap") === "1");
-  const [targetPassedOnly, setTargetPassedOnly] = useState(initial.get("target_passed") === "1");
-  const [noMeasuresOnly, setNoMeasuresOnly] = useState(initial.get("no_measures") === "1");
+  const [roadmapOnly, setRoadmapOnly] = useUrlFlag("roadmap");
+  const [targetPassedOnly, setTargetPassedOnly] = useUrlFlag("target_passed");
+  const [noMeasuresOnly, setNoMeasuresOnly] = useUrlFlag("no_measures");
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);

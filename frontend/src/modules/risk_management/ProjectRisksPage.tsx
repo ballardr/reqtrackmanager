@@ -16,8 +16,8 @@
  *
  * The register opens on open risks only (the "Open only" filter is ticked and
  * stays visible); a link with a valid `status`, or `open=0`, starts with it
- * off (`hooks/useOpenOnly.ts`). Both are read once from the URL and only seed
- * the filters.
+ * off (`hooks/useOpenOnly.ts`). The view, matrix cell and filters are kept in
+ * the URL (`hooks/useUrlFilter.ts`), so the register comes back as it was left.
  *
  * Status and type render through their label maps; the rating is derived by the
  * backend. The project, org users, types, scheme and risks are fetched here
@@ -48,8 +48,9 @@ import { CONSEQUENCE_AXIS, LIKELIHOOD_AXIS, levelName, useRiskScheme } from "./u
 import { RISK_OPEN_STATUSES, RISK_STATUS_LABEL, RISK_STATUS_TONE } from "./types";
 import type { Risk, RiskFieldValues, RiskStatus } from "./types";
 import { Badge } from "../../components/Badge";
-import { oneOf, useInitialSearchParams } from "../../hooks/useInitialSearchParams";
+import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { rowProjectId } from "../../api/projectScope";
@@ -73,6 +74,21 @@ interface CellFilter {
   consequenceLevelId: string;
 }
 
+const VIEW_PARAMS: readonly View[] = ["matrix"];
+const BASIS_PARAMS: readonly RiskMatrixBasis[] = ["residual"];
+
+/** The matrix cell as one URL value, `basis~likelihoodLevelId~consequenceLevelId`. */
+function formatCell(cell: CellFilter): string {
+  return [cell.basis, cell.likelihoodLevelId, cell.consequenceLevelId].join("~");
+}
+
+/** Reads `formatCell`'s value back; anything malformed is no cell filter. */
+function parseCell(value: string): CellFilter | null {
+  const [basis, likelihoodLevelId, consequenceLevelId, ...rest] = value.split("~");
+  if ((basis !== "inherent" && basis !== "residual") || !likelihoodLevelId || !consequenceLevelId || rest.length > 0) return null;
+  return { basis, likelihoodLevelId, consequenceLevelId };
+}
+
 function inCell(risk: Risk, cell: CellFilter): boolean {
   const likelihood = cell.basis === "inherent" ? risk.inherent_likelihood_level_id : risk.residual_likelihood_level_id;
   const consequence = cell.basis === "inherent" ? risk.inherent_consequence_level_id : risk.residual_consequence_level_id;
@@ -93,16 +109,24 @@ export function ProjectRisksPage() {
   const [risks, setRisks] = useState<Risk[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [view, setView] = useState<View>("register");
-  const [basis, setBasis] = useState<RiskMatrixBasis>("inherent");
-  const [cell, setCell] = useState<CellFilter | null>(null);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<RiskStatus | "">(() => oneOf(initial.get("status"), Object.keys(RISK_STATUS_LABEL) as RiskStatus[]));
+  // The view, matrix basis, matrix cell and filters live in the URL so the register comes back as it was
+  // left after a visit to a record.
+  const [viewParam, setViewParam] = useUrlChoice("view", VIEW_PARAMS);
+  const view: View = viewParam || "register";
+  const setView = (next: View) => setViewParam(next === "matrix" ? "matrix" : "");
+  const [basisParam, setBasisParam] = useUrlChoice("basis", BASIS_PARAMS);
+  const basis: RiskMatrixBasis = basisParam || "inherent";
+  const setBasis = (next: RiskMatrixBasis) => setBasisParam(next === "residual" ? "residual" : "");
+  const [cellParam, setCellParam] = useUrlText("cell");
+  const cell = useMemo(() => parseCell(cellParam), [cellParam]);
+  const setCell = (next: CellFilter | null) => setCellParam(next ? formatCell(next) : "");
+  const [search, setSearch] = useUrlText("q");
+  const [statusFilter, setStatusFilter] = useUrlChoice("status", Object.keys(RISK_STATUS_LABEL) as RiskStatus[]);
   const [openOnly, setOpenOnly] = useOpenOnly(initial, Object.keys(RISK_STATUS_LABEL));
-  const [typeFilter, setTypeFilter] = useState("");
-  const [overdueOnly, setOverdueOnly] = useState(false);
-  const [untreatedOnly, setUntreatedOnly] = useState(false);
-  const [includeArchived, setIncludeArchived] = useState(false);
+  const [typeFilter, setTypeFilter] = useUrlText("type");
+  const [overdueOnly, setOverdueOnly] = useUrlFlag("overdue");
+  const [untreatedOnly, setUntreatedOnly] = useUrlFlag("untreated");
+  const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
 
