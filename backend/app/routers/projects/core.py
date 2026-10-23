@@ -61,6 +61,7 @@ from app.schemas.project import (
     ProjectOut,
     ProjectTreeNodeOut,
     ProjectUpdate,
+    RecordTypeCountOut,
     StageProgressOut,
     TerminologyUpdate,
 )
@@ -87,6 +88,7 @@ from app.services.rbac import (
     require_project_view,
     require_project_view_or_manage,
 )
+from app.services.record_counts import count_records_by_type
 from app.services.templates import clone_project
 
 router = APIRouter(tags=["projects-core"])
@@ -1171,6 +1173,7 @@ def get_project_metrics(
         for key, value in c.by_status.items():
             requirements_by_status[key] = requirements_by_status.get(key, 0) + value
     own_requirement_count = own.requirements
+    record_counts = count_records_by_type(db, current_user, db.get(Project, project_id), project_scope)
 
     # Per-stage progress (dashboard "Stage Progress" chart): a stage that has
     # been baselined (C-G-10) shows completion across the requirements
@@ -1220,4 +1223,6 @@ def get_project_metrics(
         requirements_by_status=requirements_by_status,
         stage_progress=stage_progress,
         scope_project_count=len(per_project),
+        records_by_type=[RecordTypeCountOut(type=c.type, label=c.label, count=c.count) for c in record_counts],
+        record_total=sum(c.count for c in record_counts),
     )

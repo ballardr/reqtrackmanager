@@ -10,6 +10,8 @@ import { MetricTile } from "../components/MetricTile";
 import { ProjectHierarchyLabels } from "../components/ProjectHierarchyLabels";
 import { Spinner } from "../components/Spinner";
 import { StatusPieChart } from "../components/StatusPieChart";
+import { getArtefactListPath } from "../modules/artefactPaths";
+import { buildRecordTotalsChart, RECORD_SLICE_COLORS } from "../utils/recordTotals";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
 import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
@@ -21,11 +23,13 @@ import { ActivityNote } from "../components/ActivityNote";
 import { Badge } from "../components/Badge";
 import { useResetOnChange } from "../hooks/useResetOnChange";
 
-/** Project overview dashboard (U-P-05): key metrics, status/outcome charts,
- * per-stage progress, and a recent activity feed at a glance. Every
- * tile/chart-segment/stage-bar navigates to the requirements or change
- * requests list pre-filtered to match what was clicked (UX review) — see
- * the `to` path built alongside each metric below. */
+/** Project overview dashboard (U-P-05): key metrics, a total-records chart
+ * split by record type, status/outcome charts, per-stage progress, and a
+ * recent activity feed at a glance. Every tile/chart-segment/stage-bar
+ * navigates to the list it summarises, pre-filtered to match what was
+ * clicked (UX review) — see the `to` path built alongside each metric below.
+ * The total-records chart is fed by the record-table providers, so a module's
+ * records appear in it with no edit here. */
 export function ProjectOverviewPage() {
   const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
@@ -93,7 +97,6 @@ export function ProjectOverviewPage() {
   const changeRequestsPath = (status: string) => `/projects/${projectId}/change-requests?status=${status}`;
 
   const tiles: Array<[string, string | number, string]> = [
-    [strings.overview.requirementCount, metrics.requirement_count, requirementsPath()],
     // C-G-11: completion is `Requirement.is_completed`, an independent
     // overlay marker, not a `status` value — links to the requirements
     // list's own "Completed" filter checkbox rather than a status filter
@@ -108,6 +111,20 @@ export function ProjectOverviewPage() {
     [strings.overview.crApproved, metrics.change_requests_approved, changeRequestsPath("approved")],
     [strings.overview.crRejected, metrics.change_requests_rejected, changeRequestsPath("rejected")],
   ];
+
+  // The requirement and change request names follow the project's terminology; other types use the label the API sends.
+  const recordTypeLabels: Record<string, string> = {
+    requirement: strings.requirements.title,
+    change_request: strings.overview.changeRequestsChart,
+  };
+  const recordTotals = buildRecordTotalsChart(
+    metrics.records_by_type.map((c) => ({ ...c, label: recordTypeLabels[c.type] ?? c.label })),
+    strings.overview.otherRecords,
+  );
+  const openRecordType = (type: string | null) => {
+    const to = type && projectId ? getArtefactListPath(type, projectId) : null;
+    if (to) navigate(to);
+  };
 
   const statusEntries = Object.entries(metrics.requirements_by_status) as Array<[RequirementStatus, number]>;
   const crStatusEntries: Array<[string, number]> = [
@@ -171,6 +188,22 @@ export function ProjectOverviewPage() {
       </div>
 
       <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
+        {metrics.record_total > 0 ? (
+          <StatusPieChart
+            title={strings.overview.totalRecords}
+            segments={recordTotals.segments}
+            colors={RECORD_SLICE_COLORS}
+            legend={recordTotals.legend.map((row) => ({
+              label: row.label, value: row.count, segment: row.segment, onClick: () => openRecordType(row.type),
+            }))}
+            onSegmentClick={(_, idx) => openRecordType(recordTotals.segmentTypes[idx])}
+          />
+        ) : (
+          <div className="card stack">
+            <div className="text-muted">{strings.overview.totalRecords}</div>
+            <p className="text-muted">{strings.overview.noRecords}</p>
+          </div>
+        )}
         <StatusPieChart
           title={strings.overview.requirementsByStatus}
           segments={statusEntries.map(([status, count]) => [REQUIREMENT_STATUS_LABEL[status] ?? status, count])}

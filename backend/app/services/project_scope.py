@@ -12,6 +12,7 @@ Responsibilities:
 - Fan an endpoint's own single-project list logic out over those projects
   (`ProjectScope.collect`), keeping only what the caller may see there, and label every row
   that comes from another project.
+- Sum a per-project count the same way (`ProjectScope.total`), so an overview count and the list agree.
 - Say which scope choices a project offers (`scope_options`).
 
 Design decisions:
@@ -131,15 +132,7 @@ class ProjectScope:
         if not self.widened:
             return rows
         seen = {id_of(row) for row in rows}
-        view = encode_permission(artefact_type, "view")
-        for related in self.projects(db, project, user_id):
-            if related.relation is ProjectRelation.SAME:
-                continue
-            other = related.project
-            if gate is not None and not gate_open(db, other.id, gate):
-                continue
-            if not permission_satisfied(get_effective_permissions(db, user_id, project_id=other.id), view):
-                continue
+        for other in self._other_projects(db, project, user_id, artefact_type, gate):
             for row in rows_for(other.id):
                 # An organisation-owned record belongs to no project: the request project shows it.
                 if getattr(row, "project_id", other.id) is None or id_of(row) in seen:
@@ -152,6 +145,52 @@ class ProjectScope:
                     setattr(row, field, value)
                 rows.append(row)
         return rows
+
+    def total(
+        self,
+        db: Session,
+        project: Project,
+        user_id: uuid.UUID,
+        artefact_type: str,
+        count_for: Callable[[uuid.UUID], int],
+        *,
+        gate: tuple[str, str | None] | None = None,
+    ) -> int:
+        """The sum of `count_for` over the request project and every other project in scope the
+        caller may see, with the same visibility rules as `collect` (so a count never includes what
+        the list would omit).
+
+        Args:
+            db: Active session (read only).
+            project: The request project.
+            user_id: The caller.
+            artefact_type: The counted record type, for the `view` check.
+            count_for: How many of the type one project holds; counts that project's own records only
+                (an organisation-owned record is not any project's, so it is never counted here).
+            gate: The type's module gate, as for `collect`.
+        """
+        total = count_for(project.id)
+        if self.widened:
+            total += sum(count_for(other.id) for other in self._other_projects(db, project, user_id, artefact_type, gate))
+        return total
+
+    def _other_projects(
+        self, db: Session, project: Project, user_id: uuid.UUID, artefact_type: str, gate: tuple[str, str | None] | None,
+    ) -> list[Project]:
+        """The projects in scope other than the request project that the caller can read `artefact_type` in:
+        openable, the type's module (and sub-component) on there, and the type's `view` permission held there."""
+        view = encode_permission(artefact_type, "view")
+        found: list[Project] = []
+        for related in self.projects(db, project, user_id):
+            if related.relation is ProjectRelation.SAME:
+                continue
+            other = related.project
+            if gate is not None and not gate_open(db, other.id, gate):
+                continue
+            if not permission_satisfied(get_effective_permissions(db, user_id, project_id=other.id), view):
+                continue
+            found.append(other)
+        return found
 
 
 def gate_open(db: Session, project_id: uuid.UUID, gate: tuple[str, str | None]) -> bool:

@@ -1341,6 +1341,13 @@ export interface StageProgress {
   completed_percent: number;
 }
 
+/** One record type's count in the overview's total (largest first; types with no records are absent). */
+export interface RecordTypeCount {
+  type: string;
+  label: string;
+  count: number;
+}
+
 export interface ProjectMetrics {
   requirement_count: number;
   requirement_completed_percent: number;
@@ -1352,6 +1359,9 @@ export interface ProjectMetrics {
   stage_progress: StageProgress[];
   /** How many projects the counts cover (1 unless the overview is widened to related projects). */
   scope_project_count: number;
+  /** Every record type the caller can read, with its count; the total is their sum. */
+  records_by_type: RecordTypeCount[];
+  record_total: number;
 }
 
 export interface Requirement extends ProjectScopedRow {

@@ -36,6 +36,9 @@ export const moduleDefinition: TierAModuleDefinition = {
   artefactPaths: {
     risk: (projectId, id) => `/projects/${projectId}/modules/risk_management/risks/${id}`,
   },
+  artefactListPaths: {
+    risk: (projectId) => `/projects/${projectId}/modules/risk_management/risks`,
+  },
   artefactStatusLabels: { risk: RISK_STATUS_LABEL },
   artefactInactiveStatuses: { risk: ["closed", "rejected"] },
   routes: [

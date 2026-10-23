@@ -38,7 +38,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.metrics import requirements_created_total, requirements_updated_total
@@ -483,6 +483,14 @@ def _update_requirement(ctx: RecordImportContext, requirement: Requirement, valu
     requirements_updated_total.inc()
 
 
+def _count_rows(db: Session, model: Any, project_id: uuid.UUID, *, live_only: bool) -> int:
+    """How many rows of `model` the project holds (archived ones left out when `live_only`): the overview's count."""
+    query = select(func.count()).select_from(model).where(model.project_id == project_id)
+    if live_only:
+        query = query.where(model.is_archived.is_(False))
+    return int(db.scalar(query) or 0)
+
+
 REQUIREMENT_TABLE = RecordTableProvider(
     label="Requirements",
     columns=_requirement_columns,
@@ -497,6 +505,7 @@ REQUIREMENT_TABLE = RecordTableProvider(
     }),
     can_create=_may_edit,
     can_update=_may_edit,
+    count=lambda db, user, project_id: _count_rows(db, Requirement, project_id, live_only=True),
     approval_gated=True,
     read_only_reason=lambda t, r: (
         "This requirement is approved; changes must be made via a change request."
@@ -596,6 +605,7 @@ ACTION_TABLE = RecordTableProvider(
     filter_params=frozenset({"include_archived", "outcome_status", "action_type_id"}),
     can_create=_may_edit,
     can_update=_may_edit,
+    count=lambda db, user, project_id: _count_rows(db, RequirementAction, project_id, live_only=True),
 )
 
 
@@ -731,6 +741,7 @@ CHANGE_REQUEST_TABLE = RecordTableProvider(
     find=_find_change_request,
     prepare=lambda db, project, records: _ChangeRequestTable(db, project, records),
     filter_params=frozenset({"cr_status", "active_only", "target_stage_id", "search"}),
+    count=lambda db, user, project_id: _count_rows(db, ChangeRequest, project_id, live_only=False),
     approval_gated=True,
 )
 

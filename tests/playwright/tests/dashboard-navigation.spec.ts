@@ -30,9 +30,17 @@ test("dashboard glance tile navigates to the requirements list", async ({ page }
   await loginAsDemoAdminAndOpenProject(page);
 
   const tiles = page.locator(".grid-metrics");
-  await tiles.getByRole("link", { name: "Requirements" }).click();
+  await tiles.getByRole("link", { name: "% Completed" }).click();
   await page.waitForURL(/\/requirements(?:\?.*)?$/);
   await expect(page.getByLabel("Status")).toHaveValue("");
+});
+
+test("dashboard total-records legend row navigates to that type's list", async ({ page }) => {
+  await loginAsDemoAdminAndOpenProject(page);
+
+  const chartCard = page.locator(".card", { hasText: "Total records" });
+  await chartCard.getByRole("button", { name: /Requirements/ }).click();
+  await page.waitForURL(/\/requirements(?:\?.*)?$/);
 });
 
 test("dashboard status chart segment navigates to the requirements list filtered to that status", async ({ page }) => {

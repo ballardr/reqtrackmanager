@@ -34,6 +34,19 @@ export function getArtefactPath(artefactType: string, projectId: string, id: str
   return getModuleArtefactPath(artefactType, projectId, id);
 }
 
+/** The list page of `artefactType` in `projectId` (core's three types, then every installed module's
+ * `artefactListPaths`), or `null` when none is declared. */
+export function getArtefactListPath(artefactType: string, projectId: string): string | null {
+  if (artefactType === "requirement") return `/projects/${projectId}/requirements`;
+  if (artefactType === "requirement_action") return `/projects/${projectId}/actions`;
+  if (artefactType === "change_request") return `/projects/${projectId}/change-requests`;
+  for (const module of installedModules) {
+    const path = module.artefactListPaths?.[artefactType];
+    if (path) return path(projectId);
+  }
+  return null;
+}
+
 /**
  * Where a global-search result opens: a project's own page, or the page of the record the server
  * says to open (`open_*`: a research finding opens its engagement) in the project it was found through, or

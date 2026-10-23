@@ -126,6 +126,9 @@ export const moduleDefinition: TierAModuleDefinition = {
     project_compliance_requirement: (projectId) => projectCompliancePath(projectId),
     compliance_required_action_assessment: (projectId) => projectCompliancePath(projectId),
   },
+  artefactListPaths: {
+    compliance_evidence: (projectId) => projectCompliancePath(projectId, "evidence"),
+  },
   artefactStatusLabels: {
     compliance_requirement: COMPLIANCE_STANDARD_VERSION_STATUS_LABEL,
     project_compliance_requirement: COMPLIANCE_STATUS_LABEL,

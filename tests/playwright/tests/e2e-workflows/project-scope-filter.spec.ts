@@ -184,7 +184,7 @@ test.describe("list scope filter across nested projects", () => {
     });
 
     await test.step("the overview counts only this project until widened, then says how many projects they cover", async () => {
-      await expect(page.locator(".grid-metrics").getByText("Requirements", { exact: true }).locator("xpath=preceding-sibling::*[1]")).toHaveText("1");
+      await expect(page.locator(".card", { hasText: "Total records" })).toContainText(/Requirements\s*1(?!\d)/);
       const saved = page.waitForResponse((r) => r.url().endsWith("/api/v1/auth/me/preferences") && r.request().method() === "PATCH");
       await scope.selectOption({ label: "This + parent projects" });
       expect((await saved).ok()).toBeTruthy();
@@ -196,7 +196,7 @@ test.describe("list scope filter across nested projects", () => {
       await page.mouse.move(0, 0);
       await scope.focus();
       await expect(page.getByRole("tooltip")).toContainText("Counts cover 2 projects");
-      await expect(page.locator(".grid-metrics").getByText("Requirements", { exact: true }).locator("xpath=preceding-sibling::*[1]")).toHaveText("2");
+      await expect(page.locator(".card", { hasText: "Total records" })).toContainText(/Requirements\s*2(?!\d)/);
     });
 
     await test.step("the files list shows the parent's file, labelled, once widened", async () => {

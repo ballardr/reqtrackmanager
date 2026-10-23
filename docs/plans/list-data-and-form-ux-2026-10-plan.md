@@ -1,11 +1,11 @@
 # List Data and Form UX (October 2026) — Plan
 
-**Status:** planned 2026-10-22, in progress. Built from nine items the user picked up (section 1; item 9 added 2026-10-23). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position), 7 (type definition), 7b (module bundles), 8 (record-table extension point), 8b (personal-data policy), 9 (shared list actions), 10 (record-list report), 11 (core types), 12 (Context & Strategy and Stakeholders), 12b (organisation-level lists), 13 (Risk, Decisions, Compliance) and 14 (bulk edit grid) are done; Phase 15 (overview total-records chart) is next, then the Phase 16 close-out.
+**Status:** planned 2026-10-22, in progress. Built from nine items the user picked up (section 1; item 9 added 2026-10-23). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position), 7 (type definition), 7b (module bundles), 8 (record-table extension point), 8b (personal-data policy), 9 (shared list actions), 10 (record-list report), 11 (core types), 12 (Context & Strategy and Stakeholders), 12b (organisation-level lists), 13 (Risk, Decisions, Compliance) and 14 (bulk edit grid) and 15 (overview total-records chart) are done; the Phase 16 close-out is next.
 **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. Q1–Q4 were answered by the user on 2026-10-22 (section 2). Everything in the "Agent defaults" table is **Decided by: Agent** and open to override before the phase that uses it starts.
 
 ## Status / Resume Here
 
-17 / 19 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–14 done 2026-10-23, Phases 12, 12b, 13 and 14 uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
+18 / 19 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–14 done 2026-10-23, Phase 15 done 2026-10-24; Phases 12, 12b, 13, 14 and 15 uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
 
 | # | Phase | Item | Status |
 |---|-------|------|--------|
@@ -27,7 +27,7 @@
 | 12b | Organisation-level export and import: the organisation's own Strategies, Future States, Guiding Principles, Personas, Stakeholders and Groups (generic organisation route, org list pages) | 5 | [x] |
 | 13 | Roll-out C: Risk, Decisions, Compliance | 5 | [x] |
 | 14 | Bulk edit grid (generic) wired to Pain Points; other types register editable columns | 3 | [x] |
-| 15 | Project overview: total-records pie chart by type, replacing the per-module count tiles | 9 | [ ] |
+| 15 | Project overview: total-records pie chart by type, replacing the per-module count tiles | 9 | [x] |
 | 16 | Docs website, seeds, README, close-out and archive this plan | all | [ ] |
 
 ```mermaid
@@ -266,6 +266,7 @@ Each phase, for each type: write the provider (columns, editable flags), wire th
   - **Replaces:** the "Requirements" count tile (requirements are now a segment). Whether "% complete", files and the change request tiles stay is the decision below.
 - **Decide first (agent default, open to override):** (a) keep "% complete" and the change request pipeline tiles, since they are workflow signals and not counts; drop only the requirement count; files stay a tile, not a segment (a file is not an artefact type); (b) with more than about eight types, the smallest collapse into one "Other" segment in the chart while the legend still lists each type; (c) a project with no records shows the empty-state text, not an empty ring. **Decided by: Agent.**
 - **Disagreement to weigh:** a pie suits "share of the whole" for a handful of segments; with 15–20 types it gets unreadable, which is why (b) caps it and the legend carries the exact numbers. If the user finds that unsatisfying, a horizontal bar per type is the alternative on the same data.
+- **Delivered (2026-10-24):** `services/record_counts.py`, `RecordTableProvider.count` / `in_overview`, `ProjectScope.total`, `records_by_type` / `record_total` on the metrics, the *Total records* donut on `StatusPieChart` (custom `colors` and `legend`), `utils/recordTotals.ts` (seven named slices, the rest folded into "Other"), a generic `TierAModuleDefinition.artefactListPaths` with `getArtefactListPath`, and the Requirements count tile removed. **Changes from the spec, with reasons in decisions.md:** slice colours come from a categorical palette, not `entityAccentColor` (one colour per module, so a module's types would share a slice colour); the three Compliance types derived from an assigned standard are not counted; the list click goes through a new list-path extension point because none existed.
 - **Tests:** backend: counts per type, disabled module omitted, unreadable type omitted, total equals the sum, nested scope widens it, cross-project isolation; Storybook for the chart (many types, one type, empty, "Other" grouping); Playwright on the overview with two modules' records, clicking a segment opens the filtered list.
 - **Docs:** the website's project overview page; record the decision in `docs/decisions.md`; seeds already carry records of each type from Phases 11–13 (check the demo dataset shows several types).
 

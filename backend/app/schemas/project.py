@@ -554,6 +554,14 @@ class StageProgressOut(BaseModel):
     completed_percent: float
 
 
+class RecordTypeCountOut(BaseModel):
+    """One record type's share of the overview's total (`services.record_counts`)."""
+
+    type: str
+    label: str
+    count: int
+
+
 class ProjectMetricsOut(BaseModel):
     """Project overview dashboard metrics (U-P-05).
 
@@ -580,3 +588,6 @@ class ProjectMetricsOut(BaseModel):
     stage_progress: list[StageProgressOut] = []
     # How many projects the counts cover (1 unless the request widened the scope; stage progress is always the project's own).
     scope_project_count: int = 1
+    # Every readable record type's count (largest first) and their sum; types the caller cannot read are absent.
+    records_by_type: list[RecordTypeCountOut] = []
+    record_total: int = 0

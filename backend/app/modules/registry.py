@@ -1703,6 +1703,13 @@ class RecordTableProvider:
             (a Pain Point at a terminal outcome), or `None` when it can be edited. The grid greys such a row and
             says the reason; a save of it is refused with the type's own message either way, so this is a courtesy
             to the person, not the gate. `None` for a type whose rows are always editable in principle.
+        count: `(db, user, project_id) -> int`: how many records of this type the project itself holds, as its
+            default list shows them (archived rows left out), **excluding** organisation-owned rows. The project
+            overview's record total calls it for every type, so a type with a cheap query supplies one; `None`
+            counts the rows of `list_records` with no filters.
+        in_overview: Whether the type is a record a person authored in the project and so counts in the overview's
+            total. `False` for rows derived from something else (a project's assessment of each clause of an
+            assigned standard, the standard's own clauses): a count of them describes the standard, not the work.
     """
 
     label: str
@@ -1722,6 +1729,8 @@ class RecordTableProvider:
     organization_owned: Callable[[Any], bool] | None = None
     organization: OrganizationRecordTable | None = None
     read_only_reason: Callable[[Any, Any], str | None] | None = None
+    count: Callable[[Session, Any, uuid.UUID], int] | None = None
+    in_overview: bool = True
 
 
 @dataclass(frozen=True)

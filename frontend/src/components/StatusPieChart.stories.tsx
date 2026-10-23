@@ -58,5 +58,28 @@ export const Clickable: Story = {
   },
 };
 
+/** A legend that lists more items than there are slices: the folded "Other" slice keeps one row per item. */
+export const FoldedLegend: Story = {
+  args: {
+    title: "Total records",
+    segments: [
+      ["Requirements", 10],
+      ["Other", 5],
+    ],
+    legend: [
+      { label: "Requirements", value: 10, segment: 0 },
+      { label: "Risks", value: 3, segment: 1 },
+      { label: "Decisions", value: 2, segment: 1 },
+    ],
+    colors: ["var(--color-primary)", "var(--color-text-muted)"],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("15")).toBeInTheDocument();
+    await expect(canvas.getByText("Risks")).toBeInTheDocument();
+    await expect(canvas.getByText("Decisions")).toBeInTheDocument();
+  },
+};
+
 export const LightTheme: Story = { ...RequirementsByStatus, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...RequirementsByStatus, globals: { theme: "dark" } };

@@ -380,6 +380,7 @@ ASSESSMENT_TABLE = RecordTableProvider(
     gate=(COMPLIANCE_MODULE_KEY, None),
     code_of=lambda row: row.unique_code,
     approval_gated=True,
+    in_overview=False,
 )
 
 
@@ -457,6 +458,7 @@ ACTION_ASSESSMENT_TABLE = RecordTableProvider(
     filter_params=ASSESSMENT_FILTERS | {"outstanding", "overdue"},
     gate=(COMPLIANCE_MODULE_KEY, None),
     code_of=lambda row: row.unique_code,
+    in_overview=False,
 )
 
 
@@ -531,6 +533,7 @@ REQUIREMENT_TABLE = RecordTableProvider(
     gate=(COMPLIANCE_MODULE_KEY, None),
     code_of=lambda row: row.unique_code,
     organization_owned=lambda record: True,
+    in_overview=False,
     organization=OrganizationRecordTable(
         subcomponent=None,
         columns=_requirement_columns,
