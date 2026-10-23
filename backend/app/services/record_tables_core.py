@@ -244,25 +244,37 @@ def _find_requirement(db: Session, project: Project, code: str) -> Requirement |
 
 def _requirement_columns(db: Session, project: Project) -> list[RecordColumn]:
     levels, statuses = label_map(RequirementLevel), label_map(RequirementStatus)
+    components = db.scalars(select(ProjectComponent).where(ProjectComponent.project_id == project.id).order_by(ProjectComponent.sort_order)).all()
+    category_prefixes = sorted({
+        c.prefix for c in db.scalars(select(ProjectCategory).where(ProjectCategory.project_id == project.id))
+    })
+    stages = db.scalars(select(ProjectStage).where(ProjectStage.project_id == project.id).order_by(ProjectStage.sort_order)).all()
 
     def version(t: _RequirementTable, r: Requirement) -> RequirementVersion:
         return t.versions[r.id]
 
     columns = [
         RecordColumn("name", "Name", lambda t, r: version(t, r).name, text_parser, editable=True, required=True),
-        RecordColumn("component", "Component", lambda t, r: t.components[r.component_id].prefix, text_parser, kind="enum", required=True),
-        RecordColumn("category", "Category", lambda t, r: t.categories[r.category_id].prefix, text_parser, kind="enum", required=True),
+        RecordColumn(
+            "component", "Component", lambda t, r: t.components[r.component_id].prefix, text_parser, kind="enum", required=True,
+            choices=tuple(c.prefix for c in components),
+        ),
+        RecordColumn(
+            "category", "Category", lambda t, r: t.categories[r.category_id].prefix, text_parser, kind="enum", required=True,
+            choices=tuple(category_prefixes),
+        ),
         RecordColumn("reasoning", "Reasoning", lambda t, r: version(t, r).reasoning, text_parser, editable=True),
         RecordColumn("clarification", "Clarification", lambda t, r: version(t, r).clarification, text_parser, editable=True),
         RecordColumn("description", "Description", lambda t, r: version(t, r).description, text_parser, editable=True),
         RecordColumn(
             "level", "Level", lambda t, r: levels[version(t, r).level.value],
             enum_parser(RequirementLevel, "Level", blank=RequirementLevel.REQUIREMENT), kind="enum", editable=True,
+            choices=tuple(levels.values()),
         ),
         RecordColumn(
             "target_version", "Target version",
             lambda t, r: t.stages[version(t, r).target_stage_id].name if version(t, r).target_stage_id in t.stages else "",
-            text_parser, kind="enum",
+            text_parser, kind="enum", choices=tuple(s.name for s in stages),
         ),
         RecordColumn(
             "owner", "Owner", lambda t, r: t.people.text(version(t, r).owner_type, version(t, r).owner_id),
@@ -481,15 +493,18 @@ def _action_type(ctx: RecordImportContext, name: str) -> uuid.UUID:
 
 def _action_columns(db: Session, project: Project) -> list[RecordColumn]:
     outcomes = label_map(RequirementActionOutcome)
+    type_names = tuple(t.name for t in resolve_effective_action_types(db, project.id))
     return [
         RecordColumn("title", "Title", lambda t, a: a.title, text_parser, editable=True, required=True),
         RecordColumn("description", "Description", lambda t, a: a.description, text_parser, editable=True),
         RecordColumn(
             "action_type", "Action type", lambda t, a: t.types.get(a.action_type_id, ""), text_parser, kind="enum", required=True,
+            choices=type_names,
         ),
         RecordColumn(
             "outcome", "Outcome", lambda t, a: outcomes[a.outcome_status.value],
             enum_parser(RequirementActionOutcome, "Outcome", blank=RequirementActionOutcome.PENDING), kind="enum", editable=True,
+            choices=tuple(outcomes.values()),
         ),
         RecordColumn(
             "assignee", "Assignee", lambda t, a: t.people.text(a.assignee_type, a.assignee_id), person_parser("assignee"), kind="principal",

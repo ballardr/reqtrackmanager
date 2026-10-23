@@ -2,6 +2,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { MemoryRouter } from "react-router-dom";
 import { expect, within } from "storybook/test";
 
+import { fakeRecordTables } from "../testing/recordTablesFixtures";
+
 import { FilterField, FilterPanel } from "./FilterPanel";
 import { ListPageLayout } from "./ListPageLayout";
 
@@ -54,5 +56,28 @@ export const LongTitleStaysInItsColumn: Story = {
     const heading = canvasElement.querySelector("h1")!.getBoundingClientRect();
     await expect(heading.right).toBeLessThanOrEqual(panel.left);
     await expect(Math.abs(panel.top - heading.top)).toBeLessThanOrEqual(2);
+  },
+};
+
+/** A list of records passes `records`: Export and Import sit beside the page's own action, on the title's row. */
+export const RecordsAddExportAndImportBesideTheActions: Story = {
+  args: {
+    title: "Requirements",
+    actions: <button className="btn btn-primary">New requirement</button>,
+    records: { projectId: "project-1", recordType: "requirement", filters: "status=draft", tables: fakeRecordTables() },
+    filter,
+    children: <p>List</p>,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const exportButton = await canvas.findByRole("button", { name: "Export" });
+    const importButton = canvas.getByText("Import");
+    const title = canvas.getByRole("heading", { name: "Requirements" }).getBoundingClientRect();
+    const newButton = canvas.getByRole("button", { name: "New requirement" }).getBoundingClientRect();
+    // One row: the new button, Export and Import share the title's line and stay left of the filter panel.
+    await expect(Math.abs(exportButton.getBoundingClientRect().top - newButton.top)).toBeLessThanOrEqual(2);
+    await expect(Math.abs(importButton.getBoundingClientRect().top - newButton.top)).toBeLessThanOrEqual(8);
+    await expect(newButton.top).toBeLessThanOrEqual(title.bottom);
+    await expect(importButton.getBoundingClientRect().right).toBeLessThanOrEqual(canvasElement.querySelector(".filter-panel")!.getBoundingClientRect().right);
   },
 };

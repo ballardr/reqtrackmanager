@@ -23,6 +23,7 @@ class RecordColumnOut(BaseModel):
         required: Whether a new record needs a value.
         sensitivity: `none`, `personal`, `contact` or `free_text_people`.
         included: Whether the policy lets it leave or enter the app (`false` for an excluded column).
+        choices: The accepted cell texts when they are a closed list, else `null` (free text).
     """
 
     key: str
@@ -33,6 +34,7 @@ class RecordColumnOut(BaseModel):
     required: bool
     sensitivity: str
     included: bool
+    choices: list[str] | None = None
 
 
 class RecordColumnsOut(BaseModel):
@@ -45,6 +47,7 @@ class RecordColumnsOut(BaseModel):
         omitted_reasons: Why each omitted tag is left out: `policy` (the organisation or server excludes it) or
             `permission` (the policy allows it but the caller lacks `export_personal_data`).
         importable: Whether the type can be imported at all.
+        can_import: Whether the caller may import it (importable, and they may create or update the records).
         not_importable_reason: Why not, when it cannot.
         filter_params: The list filters an export understands, besides `tag`, `tag_mode` and `project_scope`.
         max_rows / max_bytes: The import caps.
@@ -55,6 +58,7 @@ class RecordColumnsOut(BaseModel):
     omitted_sensitivity: list[str]
     omitted_reasons: dict[str, str]
     importable: bool
+    can_import: bool
     not_importable_reason: str | None
     filter_params: list[str]
     max_rows: int

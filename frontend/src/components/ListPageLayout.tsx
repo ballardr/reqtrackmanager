@@ -7,6 +7,9 @@
  * page. Anything a page used to put above the list (a scoring-model switcher, a view tab strip, a banner)
  * is part of `children`, in the list column, so it can never push the filter panel down.
  *
+ * A list of records passes `records` and the layout adds the shared Export and Import controls beside the page's
+ * own actions (docs/ux-style-guide.md, "Pattern: list actions (export and import)").
+ *
  * The layout also keeps the list's place (docs/ux-style-guide.md, "Pattern: list position"): it saves the scroll
  * offset and the loaded row count when the page unmounts and restores them on return, so a page passes only
  * `ready` and, if paginated, `loadedRows`.
@@ -18,10 +21,12 @@
 import type { HTMLAttributes, ReactNode } from "react";
 
 import { useListPosition } from "../hooks/useListPosition";
+import { ListActions, type RecordListActions } from "./ListActions";
 
 /**
  * @param title The page heading (text or node); rendered as the page's `h1`.
- * @param actions Page-level actions beside the title (a New button, an import menu).
+ * @param actions Page-level actions beside the title (a New button).
+ * @param records The record type and filters of the list: adds the shared Export and Import controls.
  * @param tabs A tab strip (`Tabs`) shown under the title and actions; the list column is then its panel.
  * @param filter The `FilterPanel` (side layout) for the list.
  * @param ready False while the list's rows are loading (default true): the position is saved and restored only once rows exist.
@@ -30,10 +35,11 @@ import { useListPosition } from "../hooks/useListPosition";
  * @param children Everything else in the list column: switchers, chips, the list itself.
  */
 export function ListPageLayout({
-  title, actions, tabs, filter, ready = true, loadedRows, contentProps, children,
+  title, actions, records, tabs, filter, ready = true, loadedRows, contentProps, children,
 }: {
   title: ReactNode;
   actions?: ReactNode;
+  records?: RecordListActions;
   tabs?: ReactNode;
   filter: ReactNode;
   ready?: boolean;
@@ -47,7 +53,12 @@ export function ListPageLayout({
       <div className="stack list-page__header">
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
           <h1 style={{ margin: 0 }}>{title}</h1>
-          {actions}
+          {records ? (
+            <div className="row" style={{ alignItems: "center" }}>
+              {actions}
+              <ListActions {...records} />
+            </div>
+          ) : actions}
         </div>
         {tabs}
       </div>

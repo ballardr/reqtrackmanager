@@ -107,15 +107,16 @@ def test_csv_import_resolves_category_within_the_named_component(client, admin_t
     _create_category(client, admin_token, project["id"], core["id"], "General", "GEN")
     _create_category(client, admin_token, project["id"], other["id"], "General", "GEN")
 
-    csv_content = "name,reasoning,component_prefix,category_prefix,level,target_version\nFrom Other,,OTH,GEN,requirement,\n"
+    csv_content = "name,reasoning,component,category,level,target_version\nFrom Other,,OTH,GEN,Requirement,\n"
     resp = client.post(
-        f"/api/v1/projects/{project['id']}/requirements/import",
+        f"/api/v1/projects/{project['id']}/records/requirement/import",
+        params={"dry_run": "false"},
         files={"file": ("import.csv", csv_content, "text/csv")},
         headers=auth_headers(admin_token),
     )
-    assert resp.status_code == 201, resp.text
+    assert resp.status_code == 200, resp.text
     assert resp.json()["created"] == 1
-    assert resp.json()["errors"] == []
+    assert resp.json()["failed"] == 0
 
     requirements = client.get(f"/api/v1/projects/{project['id']}/requirements", headers=auth_headers(admin_token)).json()
     imported = next(r for r in requirements if r["name"] == "From Other")

@@ -123,6 +123,25 @@ def test_export_starts_with_the_code_and_lists_the_records(world):
     assert rows[0]["code"].startswith("SW-")
 
 
+def test_columns_list_the_accepted_values_of_a_closed_column_and_none_for_free_text(world):
+    project = world.project()
+    resp = world.client.get(f"{_base(project, REQ)}/columns", headers=auth_headers(world.token))
+    assert resp.status_code == 200, resp.text
+    columns = {c["key"]: c for c in resp.json()["columns"]}
+    assert columns["level"]["choices"] == ["Requirement", "Recommended", "Optional"]
+    assert "SW" in columns["component"]["choices"]
+    assert columns["category"]["choices"] and columns["target_version"]["choices"]
+    assert columns["name"]["choices"] is None and columns["owner"]["choices"] is None
+
+
+def test_columns_say_whether_the_caller_may_import(world):
+    project = world.project()
+    mine = world.client.get(f"{_base(project, REQ)}/columns", headers=auth_headers(world.token)).json()
+    assert mine["importable"] is True and mine["can_import"] is True
+    reader = world.client.get(f"{_base(project, REQ)}/columns", headers=auth_headers(_member(world, project, "member"))).json()
+    assert reader["importable"] is True and reader["can_import"] is False
+
+
 def test_a_cell_that_would_run_as_a_formula_is_prefixed_and_the_prefix_is_removed_on_import(world):
     project = world.project()
     rid = world.requirement(project, "=HYPERLINK(\"http://x\")")

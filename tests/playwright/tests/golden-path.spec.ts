@@ -206,7 +206,7 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
     const downloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "Export", exact: true }).click();
-    await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download template" }).click();
+    await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download import template" }).click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toBe("requirements-import-template.csv");
   });
@@ -214,9 +214,9 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
   await test.step("export requirements as a full-fidelity CSV", async () => {
     const downloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "Export", exact: true }).click();
-    await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Export CSV" }).click();
+    await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download CSV report" }).click();
     const download = await downloadPromise;
-    expect(download.suggestedFilename()).toMatch(/-requirements-export\.csv$/);
+    expect(download.suggestedFilename()).toBe("requirements-export.csv");
   });
 
   await test.step("toggle theme", async () => {

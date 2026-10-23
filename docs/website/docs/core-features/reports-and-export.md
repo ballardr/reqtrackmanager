@@ -99,7 +99,7 @@ Anything else in double braces is printed as written. Placeholders are plain tex
 
 ## CSV export and import
 
-The same Reports page exports requirements as CSV — every field, including custom field values and target stage — and the Requirements page's **Import CSV** wizard reverses the trip, mapping a spreadsheet's columns back onto a project's fields. See [Requirements management](./requirements-management.md#csv-import-and-export) for the import side.
+The same Reports page exports requirements as CSV — every field, including custom field values and target stage — and the Requirements page's **Export** and **Import** buttons (CSV that re-imports and updates records by code) reverse the trip, mapping a spreadsheet's columns back onto a project's fields. See [Requirements management](./requirements-management.md#csv-import-and-export) for the import side.
 
 ## Where this fits
 

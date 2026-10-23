@@ -29,6 +29,7 @@
  */
 import { Download } from "lucide-react";
 import { useRef, useState } from "react";
+import type { ReactNode } from "react";
 
 import type { ReportDownloadKind } from "../api/reports";
 import { Popover } from "./Popover";
@@ -42,16 +43,23 @@ const OPTION_LABEL: Record<ReportDownloadKind, string> = {
 /**
  * `kinds` lists the formats on offer (default PDF and CSV, what the compliance
  * callers have); `label` renames the trigger when it sits beside a primary
- * download button ("More formats") rather than standing alone.
+ * download button ("More formats") rather than standing alone. `extras` adds
+ * related downloads that are not a format of the report (a list's import
+ * template) under the formats, and `note` is one muted line under them (columns
+ * the personal-data policy left out).
  */
 export function ReportExportButton<K extends ReportDownloadKind = "pdf" | "csv">({
   onDownload,
   kinds = ["pdf", "csv"] as K[],
   label = "Export",
+  extras = [],
+  note,
 }: {
   onDownload: (kind: K) => Promise<void>;
   kinds?: readonly K[];
   label?: string;
+  extras?: readonly { key: string; label: string; onSelect: () => void | Promise<void> }[];
+  note?: ReactNode;
 }) {
   const [downloading, setDownloading] = useState<K | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -83,6 +91,18 @@ export function ReportExportButton<K extends ReportDownloadKind = "pdf" | "csv">
                 <Download /> {downloading === kind ? "…" : OPTION_LABEL[kind]}
               </button>
             ))}
+            {extras.map((extra) => (
+              <button
+                key={extra.key} type="button" className="btn" style={{ justifyContent: "flex-start" }} disabled={downloading !== null}
+                onClick={() => {
+                  setMenuOpen(false);
+                  void extra.onSelect();
+                }}
+              >
+                <Download /> {extra.label}
+              </button>
+            ))}
+            {note && <span className="text-muted" style={{ maxWidth: 260 }}>{note}</span>}
           </div>
         </Popover>
       )}

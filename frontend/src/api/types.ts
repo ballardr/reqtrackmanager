@@ -1758,11 +1758,6 @@ export function notificationLink(n: Notification): string | null {
   return null;
 }
 
-export interface RequirementImportResult {
-  created: number;
-  errors: { row: number; message: string }[];
-}
-
 export interface ReportChapter {
   title: string;
   body: string;

@@ -1,11 +1,11 @@
 # List Data and Form UX (October 2026) — Plan
 
-**Status:** planned 2026-10-22, not started. Built from eight items the user picked up (section 1). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position), 7 (type definition), 7b (module bundles), 8 (record-table extension point) and 8b (personal-data policy) are done; Phase 9 is next.
+**Status:** planned 2026-10-22, not started. Built from eight items the user picked up (section 1). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position), 7 (type definition), 7b (module bundles), 8 (record-table extension point), 8b (personal-data policy) and 9 (shared list actions) are done; Phase 10 is next.
 **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. Q1–Q4 were answered by the user on 2026-10-22 (section 2). Everything in the "Agent defaults" table is **Decided by: Agent** and open to override before the phase that uses it starts.
 
 ## Status / Resume Here
 
-10 / 17 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–8b done 2026-10-23, Phase 8b uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
+11 / 17 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–9 done 2026-10-23, Phase 9 uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
 
 | # | Phase | Item | Status |
 |---|-------|------|--------|
@@ -20,7 +20,7 @@
 | 7b | Every module's records travel in the project **and** organisation bundles (Context & Strategy, Decisions; audit of the other modules; enforcement test) | 7 | [x] |
 | 8 | Record-table extension point (backend): columns, list, CSV out, CSV in with update | 5 | [x] |
 | 8b | Personal-data policy: column sensitivity, server default, organisation override, new permission | 5 | [x] |
-| 9 | Shared list actions (frontend): Export menu + Import wizard on `ListPageLayout` pages; Requirements migrated | 5 | [ ] |
+| 9 | Shared list actions (frontend): Export menu + Import wizard on `ListPageLayout` pages; Requirements migrated | 5 | [x] |
 | 10 | Record-list report in the Reports page (CSV, PDF, Word of any type) | 5 | [ ] |
 | 11 | Roll-out A: core types (Requirements, Change Requests, Actions) | 5 | [ ] |
 | 12 | Roll-out B: Context & Strategy, Stakeholders (Persona, Stakeholder, Need, Group, Engagement, Research Finding) | 5 | [ ] |
@@ -215,6 +215,7 @@ flowchart LR
 - **Why:** each list would otherwise hand-build its Export and Import controls.
 - **Work:** `ListActions` (an action menu entry group or a `ReportExportButton` + "Import" pair, per the existing action-menu and one-door patterns) rendered from `ListPageLayout` given a record type and the page's filter state; `CsvImportWizard` generalised from the provider's columns (column mapping, constant-value, preview step, error CSV download), then `RequirementsPage` migrated onto it in the same change; the shared `useRecordTableExport` hook; Toast on every mutation.
 - **Tests:** stories for the menu and each wizard step; Playwright for Requirements and Pain Points export download and a create+update import.
+- **Delivered (2026-10-23):** `ListActions` (via `ListPageLayout`'s `records` prop), `CsvImportWizard` rebuilt on the provider's columns (map, fixed value for a column with `choices`, preview, apply, error file), `useRecordTableExport`, `api/recordTables.ts`; `GET .../columns` gained `choices` and `can_import`; `RequirementsPage` migrated and the legacy Requirements `export`/`import` endpoints, `requirement_csv.py` and the old wizard deleted, their tests moved to the shared routes. **Carried forward, with reasons in decisions.md:** PDF and Word join the Export menu with the record-list report (Phase 10); Playwright drives Requirements (Pain Points has no provider until Phase 12; generic behaviour is in stories with a fake provider); Actions joins in Phase 11.
 
 ### Phase 10 — Record list in the Reports page
 

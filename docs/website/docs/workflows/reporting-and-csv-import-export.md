@@ -19,24 +19,24 @@ Open a project's **Reports** page:
 
 ## Exporting requirements to CSV
 
-The same Reports page exports requirements as CSV — every field, including custom field values and target stage — a full round-trip counterpart to CSV import, below.
+Two doors lead to the same data. The Reports page exports requirements as a formatted CSV. The **Requirements** page's own **Export** button downloads the list *as it is filtered on screen* as a CSV that you can edit and import back: every field, including custom field values and target stage, with the record's code in the first column. Columns that your organisation's policy keeps out of exports (personal data) are left out, and the Export menu says so.
 
 ## Importing requirements from a CSV file
 
-From a project's **Requirements** page, click **Import CSV**:
+From a project's **Requirements** page, click **Import** and choose a file:
 
-1. Choose a file. A **mapping** screen appears, listing every requirement field (Name, Component, Category required; Reasoning, Description, Level, Target version, and more optional) alongside a dropdown to pick which column in your file supplies it — or, for several fields, a fixed value applied to every row instead of a per-row column.
-2. Component and Category must match an existing component/category prefix exactly (case-sensitive) — set as a fixed value if every row in the file belongs to the same one.
-3. A live **preview** of the first rows updates as you map columns, so you can confirm the mapping looks right before importing anything.
+1. A **mapping** screen lists every field the import can set (Name, Component and Category are required for a new requirement; Reasoning, Description, Level, Target version, Owner, Reviewer, Tags, review fields and custom fields are optional) alongside a dropdown to pick which column in your file supplies it. For Component, Category, Level and Target version you can instead choose **Same value for every row**. A field you leave unmapped is left alone.
+2. A row with a **Code** (`SW-PERF-014`) updates that requirement; a row without one creates a new requirement. Component and Category must match an existing prefix exactly (case-sensitive).
 
 | CSV column mapping |
 | --- |
-| Mapping a CSV file's columns onto requirement fields, with a live preview |
-| ![CSV import mapping dialog with columns mapped and a populated preview](../../static/img/screenshots/csv-import-mapping.png) |
+| Mapping a CSV file's columns onto requirement fields |
+| ![CSV import mapping dialog with columns mapped](../../static/img/screenshots/csv-import-mapping.png) |
 
-4. Click **Import** once every required field is mapped. Each row is validated independently — one row succeeding and another failing (an unrecognised component prefix, say) is reported per-row, not as a whole-import failure.
+3. Click **Preview**. Nothing is written yet: the preview shows how many requirements would be created, updated or left unchanged, the before and after of every changed field, and any row that has an error.
+4. Click **Apply**. Valid rows are applied and a message reads "N created, N updated, N failed". Rows that failed (an unrecognised component prefix, say) are listed, and **Download error file** gives you just those rows to fix and import again.
 
-Click **Download template** on the Requirements page for a starter CSV pre-filled with the project's own component/category prefixes. Rows that omit a target version default to the project's first stage, the same as creating a requirement directly.
+An import goes through the same rules as editing by hand, so an approved requirement still has to change through a change request, and a requirement's status is never set from a file. **Export → Download import template** gives a CSV with the right column names for the project.
 
 ## Where this fits
 

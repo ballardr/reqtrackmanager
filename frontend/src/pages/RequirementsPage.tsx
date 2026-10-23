@@ -14,7 +14,6 @@ import type {
   Project,
   ProjectStage,
   Requirement,
-  RequirementImportResult,
   RequirementStatus,
 } from "../api/types";
 import type { CollectedLink } from "../api/artefactLinks";
@@ -26,7 +25,6 @@ import {
   principalRef,
 } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { CsvImportWizard, type CsvImportWizardHandle } from "../components/CsvImportWizard";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
 import { RequirementFields } from "../components/RequirementFields";
 import { EMPTY_REQUIREMENT_FIELDS, requirementPeopleAndReviewPayload, type RequirementFieldValues } from "../components/requirementFieldValues";
@@ -42,7 +40,6 @@ import { TagField } from "../components/TagField";
 import { BulkTagDialog } from "../components/BulkTagDialog";
 import { projectTagAdminApi } from "../api/tags";
 import { TagFilterField } from "../components/TagFilterField";
-import { SplitButtonTrigger } from "../components/SplitButtonTrigger";
 import { SortableHeader } from "../components/SortableHeader";
 import { cycleSort } from "../components/sortState";
 import { Spinner } from "../components/Spinner";
@@ -135,7 +132,6 @@ export function RequirementsPage() {
   const [sort, setSort] = useUrlSort(SORT_KEYS);
   const limitFor = useRestoredRowCount(PAGE_SIZE);
   const [showNewForm, setShowNewForm] = useState(false);
-  const csvWizardRef = useRef<CsvImportWizardHandle>(null);
   const [newFields, setNewFields] = useState<RequirementFieldValues>(EMPTY_REQUIREMENT_FIELDS);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [newComponentId, setNewComponentId] = useState("");
@@ -143,8 +139,6 @@ export function RequirementsPage() {
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>([]);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [viewMode, setViewMode] = useViewMode("requirements");
-  const [importResult, setImportResult] = useState<RequirementImportResult | null>(null);
-  const [importing, setImporting] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
 
   // --- Create-modal step 2: attach files to the just-created requirement
@@ -174,8 +168,9 @@ export function RequirementsPage() {
   const bulkMoveTriggerRef = useRef<HTMLButtonElement>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
 
-  function listParams(offset: number): URLSearchParams {
-    const params = new URLSearchParams({ limit: String(limitFor(offset)), offset: String(offset) });
+  /** The list's filters, by the names its list request and the shared export both take (no paging or sort). */
+  function filterParams(): URLSearchParams {
+    const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (statusFilter) params.set("status", statusFilter);
     if (completedFilter) params.set("is_completed", "true");
@@ -187,6 +182,12 @@ export function RequirementsPage() {
     for (const tag of tagFilter.tags) params.append("tag", tag);
     if (tagFilter.active) params.set("tag_mode", tagFilter.mode);
     if (projectScope.widened) params.set("project_scope", projectScope.scope);
+    return params;
+  }
+
+  function listParams(offset: number): URLSearchParams {
+    const params = new URLSearchParams({ limit: String(limitFor(offset)), offset: String(offset) });
+    filterParams().forEach((value, key) => params.append(key, value));
     if (sort) {
       params.set("sort", sort.key);
       params.set("order", sort.direction);
@@ -390,22 +391,6 @@ export function RequirementsPage() {
     reload();
   }
 
-  async function importCsv(file: File) {
-    if (!projectId) return;
-    setImporting(true);
-    try {
-      const result = await api.postFile<RequirementImportResult>(
-        `/api/v1/projects/${projectId}/requirements/import`, file
-      );
-      setImportResult(result);
-      reload();
-    } catch (err) {
-      showToast(toErrorMessage(err, strings.common.error), "error");
-    } finally {
-      setImporting(false);
-    }
-  }
-
   async function move(id: string, direction: "up" | "down") {
     try {
       await api.post(`/api/v1/projects/${projectId}/requirements/${id}/move`, { direction });
@@ -552,17 +537,11 @@ export function RequirementsPage() {
         ready={requirements !== null}
         loadedRows={requirements?.length}
         actions={
-          <SplitButtonTrigger
-            icon={<Plus size={16} />}
-            label={strings.requirements.newRequirement}
-            onDefaultAction={() => setShowNewForm(true)}
-            menuTitle={strings.requirements.newRequirement}
-            moreOptionsLabel={strings.common.moreOptions}
-            alternatives={[
-              { label: strings.requirements.importFromCsv, onSelect: () => csvWizardRef.current?.openFilePicker() },
-            ]}
-          />
+          <button className="btn btn-primary" onClick={() => setShowNewForm(true)}>
+            <Plus size={16} /> {strings.requirements.newRequirement}
+          </button>
         }
+        records={{ projectId: projectId ?? "", recordType: "requirement", filters: filterParams().toString(), onImported: reload }}
         filter={
           <FilterPanel
             sectionKey="requirementsFilters"
@@ -614,35 +593,6 @@ export function RequirementsPage() {
           </FilterPanel>
         }
       >
-        <CsvImportWizard
-          ref={csvWizardRef}
-          showImportTrigger={false}
-          projectId={projectId ?? ""} projectName={project?.name ?? ""}
-          components={components} categories={categories} stages={stages} customFields={customFieldDefs}
-          importing={importing} onImport={importCsv}
-        />
-
-        {importResult && (
-          <div className="card stack" style={{ gap: "var(--space-2)" }}>
-            <div className="row" style={{ justifyContent: "space-between" }}>
-              <strong>
-                Import complete: {importResult.created} created, {importResult.errors.length} error(s)
-              </strong>
-              <button className="btn" onClick={() => setImportResult(null)}>
-                Dismiss
-              </button>
-            </div>
-            {importResult.errors.length > 0 && (
-              <ul style={{ margin: 0 }}>
-                {importResult.errors.map((e, i) => (
-                  <li key={i} className="text-muted">
-                    Row {e.row}: {e.message}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
 
         {showNewForm && metaLoaded && (
           // Style guide "Pattern: modal dialog for entity create/rename" —

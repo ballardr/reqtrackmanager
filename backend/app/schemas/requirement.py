@@ -156,16 +156,6 @@ class RequirementLinkOut(BaseModel):
     other_requirement_name: str
 
 
-class RequirementImportError(BaseModel):
-    row: int
-    message: str
-
-
-class RequirementImportResult(BaseModel):
-    created: int
-    errors: list[RequirementImportError] = []
-
-
 class CommentCreate(BaseModel):
     body: str
 

@@ -139,6 +139,31 @@ def import_capability(provider: RecordTableProvider, artefact_type: str) -> str 
     return None
 
 
+def import_rights(
+    db: Session, user: User, project: Project, artefact_type: str, provider: RecordTableProvider
+) -> tuple[bool, bool]:
+    """Whether `user` may create and whether they may update this type's records through an import.
+
+    Args:
+        db: Active session (read only).
+        user: The person asking.
+        project: The request project.
+        artefact_type: The record type.
+        provider: The type's table.
+
+    Returns:
+        `(may create, may update)`: each needs the provider to offer the operation and the user to hold its permission.
+    """
+    may_create = provider.create is not None and _may(provider.can_create, db, user, project, artefact_type, "propose_create")
+    may_update = provider.update is not None and _may(provider.can_update, db, user, project, artefact_type, "manage")
+    return may_create, may_update
+
+
+def may_import(db: Session, user: User, project: Project, artefact_type: str, provider: RecordTableProvider) -> bool:
+    """Whether `user` may create or update this type's records, the permission an import needs."""
+    return any(import_rights(db, user, project, artefact_type, provider))
+
+
 def resolve_export_columns(
     db: Session, user: User, project: Project, columns: Sequence[RecordColumn], *, purpose: str
 ) -> tuple[list[RecordColumn], list[str]]:
@@ -542,8 +567,7 @@ def run_import(
     reason = import_capability(provider, artefact_type)
     if reason is not None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, reason)
-    may_create = provider.create is not None and _may(provider.can_create, db, user, project, artefact_type, "propose_create")
-    may_update = provider.update is not None and _may(provider.can_update, db, user, project, artefact_type, "manage")
+    may_create, may_update = import_rights(db, user, project, artefact_type, provider)
     if not may_create and not may_update:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to import these records.")
 

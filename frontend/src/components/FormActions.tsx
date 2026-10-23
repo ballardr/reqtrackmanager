@@ -24,6 +24,7 @@ const strings = t();
  * @param saveLabel The primary button's text (default "Save"; callers with a verb such as "Create" pass it).
  * @param saveTone "danger" styles the primary button as destructive (a reject or delete that needs a note).
  * @param cancelDisabled Disables Cancel, normally while a request is in flight.
+ * @param cancelLabel Cancel's text (default "Cancel"); a step that has already written something passes "Close".
  * @param saveDisabled Disables the primary button, normally while the form is invalid.
  * @param onSaveAndActivate Offers "Save and activate" beside Save: creates the record already active. Pass it only
  *   on a create form for a type whose activation has no gate beyond creating it (docs/ux-style-guide.md, "Pattern:
@@ -32,7 +33,8 @@ const strings = t();
  * @param children Extra controls placed before Cancel (e.g. a secondary action).
  */
 export function FormActions({
-  error, onCancel, onSave, saveLabel = strings.common.save, saveDisabled, saveTone, cancelDisabled, onSaveAndActivate, leading, children,
+  error, onCancel, onSave, saveLabel = strings.common.save, saveDisabled, saveTone, cancelDisabled, cancelLabel = strings.common.cancel,
+  onSaveAndActivate, leading, children,
 }: {
   error?: string | null;
   onCancel: () => void;
@@ -41,6 +43,7 @@ export function FormActions({
   saveDisabled?: boolean;
   saveTone?: "danger";
   cancelDisabled?: boolean;
+  cancelLabel?: string;
   onSaveAndActivate?: () => void;
   leading?: ReactNode;
   children?: ReactNode;
@@ -52,7 +55,7 @@ export function FormActions({
       {leading}
       <div className="row">
         {children}
-        <button className="btn" disabled={cancelDisabled} onClick={onCancel}>{strings.common.cancel}</button>
+        <button className="btn" disabled={cancelDisabled} onClick={onCancel}>{cancelLabel}</button>
         {onSave && onSaveAndActivate && (
           <button className="btn" disabled={saveDisabled} onClick={onSaveAndActivate}>{strings.common.saveAndActivate}</button>
         )}

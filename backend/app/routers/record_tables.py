@@ -43,6 +43,7 @@ from app.services.record_tables import (
     audit_export,
     build_table,
     import_capability,
+    may_import,
     provider_for,
     require_view,
     resolve_export_columns,
@@ -84,6 +85,7 @@ def record_columns(
                 RecordColumnOut(
                     key=c.key, label=c.label, kind=c.kind, importable=c.importable, editable=c.editable, required=c.required,
                     sensitivity=c.sensitivity, included=c.key in kept_keys,
+                    choices=list(c.choices) if c.choices is not None else None,
                 )
                 for c in columns
             ),
@@ -91,6 +93,7 @@ def record_columns(
         omitted_sensitivity=omitted,
         omitted_reasons={tag: decisions[tag].reason or "" for tag in omitted},
         importable=reason is None,
+        can_import=reason is None and may_import(db, current_user, project, record_type, provider),
         not_importable_reason=reason,
         filter_params=sorted(provider.filter_params),
         max_rows=MAX_IMPORT_ROWS,

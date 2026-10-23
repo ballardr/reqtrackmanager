@@ -1576,6 +1576,9 @@ class RecordColumn:
         editable: Whether the bulk edit grid may offer it; only an importable column can be editable.
         required: Whether a create needs a value (the form's `*`); a column that is present must not be blank.
         sensitivity: `"none"` or one of `RECORD_SENSITIVITY_TAGS`.
+        choices: The cell texts the column accepts when they are a closed list (enum labels, the project's
+            stage names), so the import wizard offers a pick list for "same value for every row".
+            `None` for free text and for values that are not a short closed list (a person, a date).
     """
 
     key: str
@@ -1586,6 +1589,7 @@ class RecordColumn:
     editable: bool = False
     required: bool = False
     sensitivity: str = "none"
+    choices: tuple[str, ...] | None = None
 
     @property
     def importable(self) -> bool:

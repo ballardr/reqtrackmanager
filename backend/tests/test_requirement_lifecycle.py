@@ -440,24 +440,25 @@ def test_import_creates_valid_rows_and_reports_errors_for_invalid_ones(client, a
     stage_name = stages[0]["name"]
 
     csv_content = (
-        "name,reasoning,component_prefix,category_prefix,level,target_version\n"
-        f"Ship the widget,Because it must,SW,PERF,recommended,{stage_name}\n"
-        ",Missing name,SW,PERF,requirement,\n"
-        "Bad component,Oops,ZZ,PERF,requirement,\n"
-        "Bad category,Oops,SW,ZZ,requirement,\n"
+        "name,reasoning,component,category,level,target_version\n"
+        f"Ship the widget,Because it must,SW,PERF,Recommended,{stage_name}\n"
+        ",Missing name,SW,PERF,Requirement,\n"
+        "Bad component,Oops,ZZ,PERF,Requirement,\n"
+        "Bad category,Oops,SW,ZZ,Requirement,\n"
         "Bad level,Oops,SW,PERF,not_a_level,\n"
-        "Bad stage,Oops,SW,PERF,requirement,Nonexistent Stage\n"
-        "Second valid row,Also fine,SW,PERF,requirement,\n"
+        "Bad stage,Oops,SW,PERF,Requirement,Nonexistent Stage\n"
+        "Second valid row,Also fine,SW,PERF,Requirement,\n"
     )
     resp = client.post(
-        f"/api/v1/projects/{project['id']}/requirements/import",
+        f"/api/v1/projects/{project['id']}/records/requirement/import",
+        params={"dry_run": "false"},
         files={"file": ("import.csv", csv_content, "text/csv")},
         headers=auth_headers(admin_token),
     )
-    assert resp.status_code == 201
+    assert resp.status_code == 200
     body = resp.json()
     assert body["created"] == 2
-    assert len(body["errors"]) == 5
+    assert body["failed"] == 5
 
     listed = client.get(f"/api/v1/projects/{project['id']}/requirements", headers=auth_headers(admin_token)).json()
     names = {r["name"] for r in listed}

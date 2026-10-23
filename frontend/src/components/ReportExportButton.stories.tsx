@@ -76,3 +76,16 @@ export const DisablesBothOptionsMidDownload: Story = {
 
 export const LightTheme: Story = { globals: { theme: "light" } };
 export const DarkTheme: Story = { globals: { theme: "dark" } };
+
+/** `extras` adds a related download under the formats, and `note` a muted line; both close the menu as a format does. */
+export const ExtrasAndANoteSitUnderTheFormats: Story = {
+  args: { kinds: ["csv"], note: "Some columns are left out.", extras: [{ key: "template", label: "Download import template", onSelect: fn() }] },
+  play: async ({ canvasElement, args }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Export" }));
+    const menu = within(within(document.body).getByRole("dialog", { name: "Export" }));
+    await expect(menu.getByText("Some columns are left out.")).toBeInTheDocument();
+    await userEvent.click(menu.getByRole("button", { name: "Download import template" }));
+    await waitFor(() => expect(args.extras![0].onSelect).toHaveBeenCalledOnce());
+    await expect(within(document.body).queryByRole("dialog", { name: "Export" })).not.toBeInTheDocument();
+  },
+};
