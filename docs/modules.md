@@ -1162,6 +1162,28 @@ flowchart LR
   names no module's scope.
 - Never log, audit or trace the query text; core already does not.
 
+### 4k. Project and organisation bundles: hooks every module provides
+
+Everything a module stores for a project travels in the project bundle (`services/project_export.py`), and everything it stores for an organisation travels in the organisation bundle (`services/org_export.py`). A module does this through `ModuleDefinition.project_bundle_hooks` and `org_bundle_hooks`, never a per-module edit to a core export file. A module with nothing to carry at a level says why in `no_project_bundle` / `no_org_bundle`; `backend/tests/test_module_bundle_hooks.py` fails for a module with neither, and for sections whose JSON keys collide with another module's or a core section (the sections are merged into one object, so a collision would overwrite data silently).
+
+```mermaid
+flowchart LR
+    Core["Core sections\n(requirements, groups, ...)"] --> M1["Each module: import_ hooks\n(registration order)"]
+    M1 --> M2["Each module: import_late hooks"]
+    M2 --> Audit["Audit trail replay"]
+```
+
+Read left to right: core sections import first, then every module's `import_` in registry order, then every `import_late`. Use `import_late` only for content that refers to another module's records, which may not exist yet (Pain Point scores refer to Personas).
+
+Rules for a hook (reference implementations: `modules/risk_management/export.py`, `modules/context_strategy/export.py`):
+
+- Cross-references use portable keys (type names, level axis and name, codes, labels, emails), never database ids. People and groups go through `principal_to_bundle` / `principal_columns_from_bundle`; a reference the target cannot match is left unset (or falls back to the importer for a mandatory owner) with a warning.
+- A record travels as its current content and status; history and comments do not. An import numbers records afresh with `generate_unique_code` and keeps the exported code only as a bundle `ref`.
+- Links between the module's own records and Requirements use `services.bundle_links.export_artefact_links` / `import_artefact_links`; attachments use `bundle_common.export_file_links` / `import_file_links`; tags use `record_tag_names` / `restore_record_tags`.
+- A type vocabulary carries its project overrides, project-only types and the organisation defaults the project has hidden (`ProjectDefinitionSuppression`).
+- An imported status is never an approval by someone else: no approver identity is carried, and project import is limited to organisation admins and project creators.
+- Add the export and import for a new table or column in the same change, with a round-trip test (export, import into a fresh project or organisation, compare).
+
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 
 A module that reports on its records declares a `ReportDefinition` per report on

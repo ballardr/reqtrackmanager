@@ -1,11 +1,11 @@
 # List Data and Form UX (October 2026) — Plan
 
-**Status:** planned 2026-10-22, not started. Built from eight items the user picked up (section 1). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position) and 7 (type definition) are done; Phase 7b (bundle gap found in Phase 7) and Phase 8 are next.
+**Status:** planned 2026-10-22, not started. Built from eight items the user picked up (section 1). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position), 7 (type definition) and 7b (module bundles) are done; Phase 8 is next.
 **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. Q1–Q4 were answered by the user on 2026-10-22 (section 2). Everything in the "Agent defaults" table is **Decided by: Agent** and open to override before the phase that uses it starts.
 
 ## Status / Resume Here
 
-7 / 17 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–7 done 2026-10-23, uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
+8 / 17 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–7b done 2026-10-23, uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
 
 | # | Phase | Item | Status |
 |---|-------|------|--------|
@@ -17,7 +17,7 @@
 | 5 | Form header: title and Save/Cancel pinned, body scrolls (shared `Modal`, then every form) | 8 | [x] |
 | 6 | List scroll position and loaded rows survive a trip to a record and back | 6 | [x] |
 | 7 | Pain Point types get an optional definition | 7 | [x] |
-| 7b | Every module's records travel in the project **and** organisation bundles (Context & Strategy, Decisions; audit of the other modules; enforcement test) | 7 | [ ] |
+| 7b | Every module's records travel in the project **and** organisation bundles (Context & Strategy, Decisions; audit of the other modules; enforcement test) | 7 | [x] |
 | 8 | Record-table extension point (backend): columns, list, CSV out, CSV in with update | 5 | [ ] |
 | 8b | Personal-data policy: column sensitivity, server default, organisation override, new permission | 5 | [ ] |
 | 9 | Shared list actions (frontend): Export menu + Import wizard on `ListPageLayout` pages; Requirements migrated | 5 | [ ] |

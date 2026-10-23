@@ -1009,6 +1009,9 @@ def apply_project_data(
 
     for _module_key, hooks in get_all_module_project_bundle_hooks():
         hooks.import_(db, project, data, file_bytes_by_ref, current_user, users, warnings)
+    for _module_key, hooks in get_all_module_project_bundle_hooks():
+        if hooks.import_late is not None:
+            hooks.import_late(db, project, data, file_bytes_by_ref, current_user, users, warnings)
 
     # Replays the source project's structural audit trail as its own
     # events (rather than trying to preserve original ids/timestamps

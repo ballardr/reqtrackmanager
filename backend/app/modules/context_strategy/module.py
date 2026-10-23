@@ -109,6 +109,7 @@ from uuid import UUID
 from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
+from app.modules.context_strategy import export as bundle_export
 from app.modules.context_strategy._shared import FUTURE_STATE_APPROVE_PERMISSION as _FUTURE_STATE_APPROVE_PERMISSION
 from app.modules.context_strategy._shared import (
     GUIDING_PRINCIPLE_APPROVE_PERMISSION as _GUIDING_PRINCIPLE_APPROVE_PERMISSION,
@@ -134,6 +135,8 @@ from app.modules.registry import (
     ModuleDefinition,
     ModuleFrontendManifest,
     ModuleNavEntry,
+    ModuleOrgBundleHooks,
+    ModuleProjectBundleHooks,
     ModuleRoleDefinition,
     ModuleSubComponentDefinition,
     PrincipalReference,
@@ -782,6 +785,11 @@ MODULE_DEFINITION = ModuleDefinition(
     get_project_router=get_project_router,
     resolve_file_owner_project_id=resolve_file_owner_project_id,
     on_org_created=_seed_org_defaults,
+    org_bundle_hooks=ModuleOrgBundleHooks(export=bundle_export.export_org_data, import_=bundle_export.import_org_data),
+    project_bundle_hooks=ModuleProjectBundleHooks(
+        export=bundle_export.export_project_data, import_=bundle_export.import_project_data,
+        import_late=bundle_export.import_late_project_data,
+    ),
     models_import_path="app.modules.context_strategy.models",
     migrations_dir="app/modules/context_strategy/migrations",
     # Five separate top-level nav-rail entries, one per artefact type, not one

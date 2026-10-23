@@ -847,12 +847,22 @@ class ModuleProjectBundleHooks:
             (`app.services.bundle_common.UserResolver`), called from
             `project_export.apply_project_data` after every core section
             has already run.
+        import_late: Optional callable with `import_`'s signature, run for
+            every module once *all* modules' `import_` have finished. For
+            content that refers to another module's records, which do not
+            exist yet while this module's own `import_` runs (Context &
+            Strategy's per-persona Pain Point scores refer to Personas, which
+            a later-registered module creates). `None` when `import_` alone
+            suffices.
     """
 
     export: Callable[[Session, Project], tuple[dict[str, Any], dict[uuid.UUID, FileAsset]]]
     import_: Callable[
         [Session, Project, dict[str, Any], dict[str, bytes], User, UserResolver, BundleImportWarnings], None
     ]
+    import_late: (
+        Callable[[Session, Project, dict[str, Any], dict[str, bytes], User, UserResolver, BundleImportWarnings], None] | None
+    ) = None
 
 
 #: `openapi_extra` key a route's own author sets to mark it as an
@@ -1949,12 +1959,18 @@ class ModuleDefinition:
         org_bundle_hooks: Optional `ModuleOrgBundleHooks` — this module's
             contribution to `app.services.org_export`'s organisation bundle
             export/import, read via `get_all_module_org_bundle_hooks`.
-            `None` for a module with no org-level bundle content of its own.
+            `None` for a module with no org-level bundle content of its own;
+            such a module then states why in `no_org_bundle`.
+        no_org_bundle: Reason this module has no `org_bundle_hooks` (it owns nothing at
+            organisation level). A backend test fails for a module with neither.
         project_bundle_hooks: Optional `ModuleProjectBundleHooks` — this
             module's contribution to `app.services.project_export`'s
             project bundle export/import, read via `get_all_module_
             project_bundle_hooks`. `None` for a module with no project-level
-            bundle content of its own.
+            bundle content of its own; such a module then states why in
+            `no_project_bundle`.
+        no_project_bundle: Reason this module has no `project_bundle_hooks` (it stores nothing
+            per project). A backend test fails for a module with neither.
         on_org_created: Optional hook (module boundary cleanup, 2026-09-08 —
             see `docs/decisions.md`'s "Module system follow-up: on_org_created
             / project_nav_visible hooks" entry) called once, synchronously,
@@ -2216,7 +2232,9 @@ class ModuleDefinition:
     resolve_file_owner_project_id: Callable[[Session, uuid.UUID], uuid.UUID | None] | None = None
     scheduled_jobs: tuple[ModuleScheduledJob, ...] = field(default=())
     org_bundle_hooks: ModuleOrgBundleHooks | None = None
+    no_org_bundle: str | None = None
     project_bundle_hooks: ModuleProjectBundleHooks | None = None
+    no_project_bundle: str | None = None
     on_org_created: Callable[[Session, uuid.UUID], None] | None = None
     org_creation_choices: tuple[OrgCreationChoiceOption, ...] = field(default=())
     on_org_created_with_choices: Callable[[Session, uuid.UUID, frozenset[str]], None] | None = None

@@ -69,12 +69,9 @@ def test_project_export_import_round_trips_engagements(client, admin_token):
         files={"file": ("bundle.zip", export.content, "application/zip")}, headers=h,
     )
     assert imported.status_code == 201, imported.text
-    # Pain Points and Open Questions are Context & Strategy's records and do not travel in a project bundle yet,
-    # so links to them are skipped with a warning (as the Stakeholder relationships are); a Need travels.
-    warnings = imported.json()["warnings"]
-    assert len(warnings) == 3 and all("not found or ambiguous" in w for w in warnings), warnings
-    assert sum("pain_point 'Round trip pain'" in w for w in warnings) == 2
-    assert sum("open_question 'Round trip question?'" in w for w in warnings) == 1
+    # Pain Points and Open Questions travel in the project bundle (Context & Strategy's hooks run before this
+    # module's), so every outcome link is recreated against the copies.
+    assert imported.json()["warnings"] == []
     new_id = imported.json()["project"]["id"]
 
     engagements = client.get(_engagements(new_id), headers=h).json()
@@ -92,7 +89,10 @@ def test_project_export_import_round_trips_engagements(client, admin_token):
     assert [p["name"] for p in client.get(new_url + "/personas", headers=h).json()] == ["Shared persona"]
     assert [a["name"] for a in client.get(new_url + "/audiences", headers=h).json()] == ["Acme"]
     outcomes = client.get(new_url + "/outcomes", headers=h).json()
-    assert [(o["kind"], o["target_type"], o["label"]) for o in outcomes] == [("raised", "stakeholder_need", "NEED-001 Round trip need")]
+    assert sorted((o["kind"], o["target_type"], o["label"].split(" ", 1)[1]) for o in outcomes) == [
+        ("answered", "open_question", "Round trip question?"), ("raised", "pain_point", "Round trip pain"),
+        ("raised", "stakeholder_need", "Round trip need"),
+    ]
     prompts = client.get(new_url + "/prompts", headers=h).json()
     assert [(p["prompt"], p["response_notes"]) for p in prompts] == [("What slows you down?", "Forms"), ("Anything else?", "")]
     anonymous = client.get(new_url + "/anonymous-participants", headers=h).json()
@@ -102,7 +102,7 @@ def test_project_export_import_round_trips_engagements(client, admin_token):
     finding_outcomes = client.get(
         f"/api/v1/projects/{new_id}/modules/{MODULE_KEY}/findings/{findings[0]['id']}/outcomes", headers=h
     ).json()
-    assert finding_outcomes == []  # its only link was to a Pain Point, which did not travel
+    assert [(o["kind"], o["target_type"]) for o in finding_outcomes] == [("raised", "pain_point")]
     assert [f["filename"] for f in client.get(new_url + "/files", headers=h).json()] == ["export.eml"]
 
 

@@ -92,6 +92,7 @@ from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
+from app.modules.decisions import export as bundle_export
 from app.modules.decisions.models import Decision
 from app.modules.decisions.reports import REPORT_DEFINITIONS
 from app.modules.decisions.search import SEARCH_PROVIDERS
@@ -108,6 +109,8 @@ from app.modules.registry import (
     McpToolDefinition,
     ModuleDefinition,
     ModuleFrontendManifest,
+    ModuleOrgBundleHooks,
+    ModuleProjectBundleHooks,
     ModuleRoleDefinition,
     OrgCreationChoiceOption,
     PrincipalReference,
@@ -288,6 +291,10 @@ MODULE_DEFINITION = ModuleDefinition(
     models_import_path="app.modules.decisions.models",
     migrations_dir="app/modules/decisions/migrations",
     on_project_created=_seed_new_project,
+    org_bundle_hooks=ModuleOrgBundleHooks(export=bundle_export.export_org_data, import_=bundle_export.import_org_data),
+    project_bundle_hooks=ModuleProjectBundleHooks(
+        export=bundle_export.export_project_data, import_=bundle_export.import_project_data,
+    ),
     org_creation_choices=_ORG_CREATION_CHOICES,
     on_org_created_with_choices=_seed_org_templates,
     frontend_manifest=ModuleFrontendManifest(

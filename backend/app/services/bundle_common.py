@@ -13,6 +13,8 @@ or read, so they live here rather than being duplicated per bundle type.
 from __future__ import annotations
 
 import zipfile
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -152,3 +154,60 @@ def import_bundled_file(
     )
     db.flush()
     return asset
+
+
+def export_file_links(
+    db: Session, file_model: type, fk: str, record_id: UUID, assets: dict[UUID, FileAsset],
+) -> list[dict[str, Any]]:
+    """A record's direct attachments as bundle entries, collecting the assets to embed.
+
+    Args:
+        db: Active session (read only).
+        file_model: The module's file-link table (`file_id`, `linked_by`, and `fk`).
+        fk: Name of the file-link column that points at the record.
+        record_id: The record exported.
+        assets: Filled with each attached `FileAsset`, by id, so the bundle embeds its bytes.
+
+    Returns:
+        One `{"file_ref", "filename", "content_type", "linked_by_email"}` entry per attachment.
+    """
+    out = []
+    for asset, linked_by in db.execute(
+        select(FileAsset, User).join(file_model, file_model.file_id == FileAsset.id)
+        .join(User, User.id == file_model.linked_by).where(getattr(file_model, fk) == record_id)
+    ).all():
+        assets[asset.id] = asset
+        out.append({
+            "file_ref": f"{asset.id}_{asset.filename}", "filename": asset.filename,
+            "content_type": asset.content_type, "linked_by_email": linked_by.email,
+        })
+    return out
+
+
+def import_file_links(
+    db: Session, *, organization_id: UUID, file_model: type, fk: str, record_id: UUID, entries: list[dict[str, Any]],
+    file_bytes_by_ref: dict[str, bytes], current_user: User, users: UserResolver, context: str,
+) -> None:
+    """Recreates a record's attachments from the bundle's embedded bytes; one whose bytes are missing is skipped.
+
+    Args:
+        db: Active session; rows are added, not committed.
+        organization_id: The importing organisation (owns the new files).
+        file_model / fk / record_id: The file-link table, its record column and the new record.
+        entries: `export_file_links` output.
+        file_bytes_by_ref: Every embedded file's bytes, by `file_ref`.
+        current_user: Uploader when the original cannot be matched.
+        users: The import's user resolver.
+        context: Prefix for warnings.
+    """
+    now = datetime.now(UTC)
+    for att in entries:
+        att_bytes = file_bytes_by_ref.get(att["file_ref"])
+        if att_bytes is None:
+            continue
+        uploader = users.resolve(att.get("linked_by_email"), required=False, context=f"{context} attachment uploader")
+        asset = import_bundled_file(
+            db, organization_id=organization_id, uploaded_by=uploader or current_user.id, filename=att["filename"],
+            content_type=att.get("content_type") or "application/octet-stream", data=att_bytes,
+        )
+        db.add(file_model(**{fk: record_id}, file_id=asset.id, linked_by=uploader or current_user.id, created_at=now))
