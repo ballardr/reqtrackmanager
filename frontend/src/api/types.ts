@@ -1936,6 +1936,30 @@ export const MODULE_ENTITLEMENT_POLICY_LABEL: Record<ModuleEntitlementPolicy, st
   closed: "Closed — only organisations granted a module may use it",
 };
 
+/** A sensitivity tag a record-table column can carry (`RECORD_SENSITIVITY_TAGS` on the backend). */
+export type RecordSensitivityTag = "personal" | "contact" | "free_text_people";
+
+export const RECORD_SENSITIVITY_TAG_LABEL: Record<RecordSensitivityTag, string> = {
+  personal: "Names and identifiers",
+  contact: "Contact details",
+  free_text_people: "Free text that can quote people",
+};
+
+/** One tag's server default — `GET/PUT /system/record-sensitivity-policy[/{tag}]`. */
+export interface ServerRecordSensitivity {
+  tag: RecordSensitivityTag;
+  allowed: boolean;
+}
+
+/** One tag as an organisation sees it — `GET/PUT /orgs/{id}/record-sensitivity-policy[/{tag}]`.
+ * `override` is `null` while the organisation follows the server default. */
+export interface OrgRecordSensitivity {
+  tag: RecordSensitivityTag;
+  server_allowed: boolean;
+  override: boolean | null;
+  effective: boolean;
+}
+
 /** One module's server-wide default — `GET/PUT /system/module-defaults[/{module_key}]`. A
  * fresh install has every module available (`org_enabled` and `project_default_enabled` both
  * true); `has_override` is false while the registry's own default decides. */

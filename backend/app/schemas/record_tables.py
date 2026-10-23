@@ -42,6 +42,8 @@ class RecordColumnsOut(BaseModel):
         label: The plural name of the type.
         columns: Every column, `code` first.
         omitted_sensitivity: Sensitivity tags whose columns the policy leaves out.
+        omitted_reasons: Why each omitted tag is left out: `policy` (the organisation or server excludes it) or
+            `permission` (the policy allows it but the caller lacks `export_personal_data`).
         importable: Whether the type can be imported at all.
         not_importable_reason: Why not, when it cannot.
         filter_params: The list filters an export understands, besides `tag`, `tag_mode` and `project_scope`.
@@ -51,6 +53,7 @@ class RecordColumnsOut(BaseModel):
     label: str
     columns: list[RecordColumnOut]
     omitted_sensitivity: list[str]
+    omitted_reasons: dict[str, str]
     importable: bool
     not_importable_reason: str | None
     filter_params: list[str]

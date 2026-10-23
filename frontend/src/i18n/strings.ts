@@ -952,6 +952,31 @@ const en = {
     overridden: "overridden here",
     loadError: "Could not load the module settings.",
   },
+  personalDataPolicy: {
+    groupTitle: "Data policy",
+    title: "Personal data in exports and imports",
+    serverHint:
+      "Whether record columns that hold personal data may leave the application in an export, or be written by an import. Everything is excluded until you allow it. Where an organisation has set its own rule, that rule applies there. A person also needs the \"Export personal data\" permission (organisation and project administrators hold it).",
+    orgHint: (org: string) =>
+      `Whether record columns that hold personal data may leave the application in an export, or be written by an import, for this ${org}. Without a setting of its own it follows the server. A person also needs the "Export personal data" permission (${org} and project administrators hold it).`,
+    tagDescription: {
+      personal: "Names and identifiers of people, such as a stakeholder's name or a participant label.",
+      contact: "Ways to reach a person: email address, phone number, and the people named as owners or assignees.",
+      free_text_people: "Notes and descriptions that can quote or describe people, such as an engagement's notes.",
+    },
+    allowedLabel: (tag: string) => `Allow ${tag} in exports and imports`,
+    serverStateHint: (allowed: boolean) => (allowed ? "Allowed on this server." : "Excluded on this server."),
+    orgStateHint: (serverAllowed: boolean, effective: boolean) =>
+      `Server default: ${serverAllowed ? "allowed" : "excluded"}. Here: ${effective ? "allowed" : "excluded"}.`,
+    followsServer: "Follows the server",
+    resetToServer: "Follow the server again",
+    saved: (tag: string, allowed: boolean) => `${tag} ${allowed ? "allowed" : "excluded"}.`,
+    widenTitle: (tag: string) => `Allow ${tag.toLowerCase()} to leave the application?`,
+    widenMessage: (tag: string) =>
+      `People who may export personal data will be able to download ${tag.toLowerCase()} in record lists, and import files can write them. The change is recorded in the audit log.`,
+    widenConfirm: "Allow",
+    loadError: "Could not load the personal data policy.",
+  },
   signupSettings: {
     title: "Public sign-up",
     hint: "Controls whether anyone can create their own account without an admin or invite.",

@@ -28,8 +28,9 @@ Design decisions:
   decides who may use the table at all.
 - Personal-data columns: every column carries a sensitivity tag set by the provider. `resolve_export_columns`
   is the single place that decides which are kept, and every route (export, import, the record-list report, the
-  grid) goes through it, so the rule cannot be bypassed on one of them. Until an organisation policy exists the
-  secure default applies: a tagged column is left out and the response says so.
+  grid) goes through it, so the rule cannot be bypassed on one of them. A tagged column needs the organisation's
+  policy (`services.record_policy`) to allow its tag and the person to hold `export_personal_data`; otherwise it
+  is left out and the response says so.
 
 Dependencies: `modules.registry` (the provider shapes), `services.rbac` and `services.permissions` (access),
 `services.project_scope` and `services.tags` (the shared list filters), `services.codes`, `services.audit`.
@@ -74,6 +75,7 @@ from app.services.permissions import encode_permission
 from app.services.principals import group_ref_from_text, principal_labels, principal_text, validate_principal
 from app.services.project_scope import ProjectScope
 from app.services.rbac import get_effective_permissions, permission_satisfied
+from app.services.record_policy import REASON_PERMISSION, tag_decisions
 from app.services.tags import TagFilter
 
 logger = logging.getLogger(__name__)
@@ -143,8 +145,10 @@ def resolve_export_columns(
     """Which columns may be exported or imported, and which sensitivity tags were left out.
 
     The one function every route uses. A column tagged with a sensitivity (`personal`, `contact`,
-    `free_text_people`) is **excluded** until an administrator allows it, so a fresh install lets no personal
-    data leave through a file; an untagged column is always kept.
+    `free_text_people`) is kept only when the organisation's policy allows the tag (its override, else the
+    server default, else excluded) **and** the person holds `export_personal_data` in the project
+    (`services.record_policy.tag_decisions`), so a fresh install lets no personal data leave through a file;
+    an untagged column is always kept.
 
     Args:
         db: Active session (read only).
@@ -156,10 +160,11 @@ def resolve_export_columns(
     Returns:
         `(kept columns, sorted tags that caused an omission)`.
     """
+    decisions = tag_decisions(db, user, project)
     kept: list[RecordColumn] = []
     omitted: set[str] = set()
     for column in columns:
-        if column.sensitivity == "none":
+        if column.sensitivity == "none" or decisions[column.sensitivity].allowed:
             kept.append(column)
         else:
             omitted.add(column.sensitivity)
@@ -272,12 +277,14 @@ class RecordTable:
         rows: One list of cell texts per record, in column order, **before** the formula guard (`write_cell`).
         omitted: Sensitivity tags whose columns were left out by the policy.
         filter_keys: The names of the filters that were applied (for the audit event; never their values).
+        included: Sensitivity tags whose columns were written (for the audit event).
     """
 
     columns: list[tuple[str, str]]
     rows: list[list[str]]
     omitted: list[str]
     filter_keys: list[str]
+    included: list[str] = field(default_factory=list)
 
 
 def split_params(provider: RecordTableProvider, query: Sequence[tuple[str, str]]) -> RecordFilters:
@@ -357,7 +364,14 @@ def build_table(
         keys.append("tag")
     if project_scope.widened:
         keys.append("project_scope")
-    return RecordTable(columns=header, rows=rows, omitted=omitted, filter_keys=sorted(keys))
+    return RecordTable(
+        columns=header, rows=rows, omitted=omitted, filter_keys=sorted(keys), included=_sensitivity_tags(columns),
+    )
+
+
+def _sensitivity_tags(columns: Sequence[RecordColumn]) -> list[str]:
+    """The sorted sensitivity tags carried by `columns` (untagged columns carry none)."""
+    return sorted({c.sensitivity for c in columns if c.sensitivity != "none"})
 
 
 def table_csv(table: RecordTable) -> bytes:
@@ -378,6 +392,7 @@ def audit_export(db: Session, user: User, project: Project, artefact_type: str, 
         detail={
             "record_type": artefact_type, "format": fmt, "rows": len(table.rows),
             "columns": len(table.columns), "filters": table.filter_keys, "omitted_sensitivity": table.omitted,
+            "included_sensitivity": table.included,
         },
     )
     db.commit()
@@ -424,6 +439,7 @@ class ImportResult:
         rows: One `RowResult` per data row.
         ignored_columns: `{header: reason}` for file columns that were not used.
         omitted: Sensitivity tags whose columns the policy excluded.
+        included: Sensitivity tags of the file columns that were used (for the audit event).
         error_csv: The failed rows with an `error` column, ready to fix and re-upload; empty without errors.
     """
 
@@ -431,6 +447,7 @@ class ImportResult:
     rows: list[RowResult]
     ignored_columns: dict[str, str]
     omitted: list[str]
+    included: list[str] = field(default_factory=list)
     error_csv: str = ""
 
     def count(self, action: str) -> int:
@@ -535,13 +552,14 @@ def run_import(
     by_key = {c.key: c for c in available}
     all_keys = {c.key: c for c in provider.columns(db, project)}
     ignored: dict[str, str] = {}
+    decisions = tag_decisions(db, user, project)
     for name in header:
         if not name or name == CODE_COLUMN:
             continue
         column = by_key.get(name)
         if column is None:
             ignored[name] = (
-                "Excluded by your organisation's policy." if name in all_keys
+                _omission_reason(decisions[all_keys[name].sensitivity].reason) if name in all_keys
                 else "Calculated from other data." if name == PROJECT_COLUMN else "Not a column of this record type."
             )
         elif not column.importable:
@@ -633,7 +651,7 @@ def run_import(
 
     result_set = ImportResult(
         applied=apply, rows=results, ignored_columns=ignored, omitted=omitted,
-        error_csv=_error_csv(header, failed) if failed else "",
+        included=_sensitivity_tags(in_file), error_csv=_error_csv(header, failed) if failed else "",
     )
     if not apply:
         db.rollback()
@@ -646,13 +664,20 @@ def run_import(
         detail={
             "record_type": artefact_type, "created": created_n, "updated": updated_n,
             "unchanged": result_set.count("unchanged"), "failed": result_set.count("error"),
-            "omitted_sensitivity": omitted,
+            "omitted_sensitivity": omitted, "included_sensitivity": result_set.included,
         },
     )
     db.commit()
     if created_n or updated_n:
         pubsub.notify(project.id, {"type": artefact_type, "action": "imported"})
     return result_set
+
+
+def _omission_reason(reason: str | None) -> str:
+    """The row-level wording for a file column that the personal-data rule left out."""
+    if reason == REASON_PERMISSION:
+        return "Excluded: you do not have permission to import personal data."
+    return "Excluded by your organisation's policy."
 
 
 def _validate_required(

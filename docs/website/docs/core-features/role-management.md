@@ -50,6 +50,10 @@ Every new organisation starts with a project-level custom role called **Link edi
 
 Granting an existing role — fixed, module, or custom — to a user or an organisation group is a separate, more widely delegable action, covered by the **Grant roles** section on the same page. This page is named "Role Management," not "Custom Roles," precisely because it covers both.
 
+## The Export personal data permission
+
+`export_personal_data` is a permission atom in the same list as `grant_roles`. It lets its holder include or import the columns that hold personal data in a record export or import, but only where the organisation's [personal data setting](../workflows/administering-an-organisation.md#personal-data-in-exports-and-imports) also allows them, so it grants no read access by itself. Organisation admins hold it, project administrators and managers hold it in their project, and a custom role can grant it to a user or a group.
+
 ## What `grant_roles` lets a delegate do
 
 `grant_roles` is itself a permission atom, so an org admin can grant it to someone else without making them a full org admin. A holder of `grant_roles` can assign **any** existing role — fixed, module, or custom — to any user or group, with two deliberate exceptions that stay admin-only regardless: **Organisation Admin** and **Module Administrator** can never be granted this way, only by an existing holder of that same role (or a server admin).

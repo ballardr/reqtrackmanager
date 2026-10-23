@@ -29,6 +29,7 @@ ADMINISTRATIVE_PERMISSIONS: tuple[str, ...] = (
     "manage_settings",
     "manage_integrations",
     "grant_roles",
+    "export_personal_data",
 )
 """Short, explicit list of non-artefact administrative permissions — hand-maintained here rather than derived from any registry, since
 these describe fixed organisational admin actions, not a per-artefact-type
@@ -39,6 +40,11 @@ new, arbitrarily powerful role" escalation path entirely. `grant_roles`
  is the one atom here whose holder can affect role assignment
 at all, and even it cannot grant `ORG_ADMIN`/`MODULE_ADMINISTRATOR` — own residual-risk
 note for that atom's full, deliberately documented scope.
+
+`export_personal_data` lets its holder include or import the personal-data columns of a record
+table (`services.record_policy`) when the organisation's policy also allows them; it grants no
+read access by itself. Held by organisation admins, and in a project by project administrators
+and managers.
 """
 
 

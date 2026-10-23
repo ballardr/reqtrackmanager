@@ -7,12 +7,14 @@ import type { BulkRevokeResult, ServerRole, ServerSettings, SignupConfig, Signup
 import { SERVER_ROLE_LABEL } from "../api/types";
 import { ActionMenu } from "../components/ActionMenu";
 import { AddUserMenu } from "../components/AddUserMenu";
+import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
 import { FileUploadTrigger } from "../components/FileUploadTrigger";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { Modal } from "../components/Modal";
+import { PersonalDataPolicyPanel } from "../components/PersonalDataPolicyPanel";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { ResourceMenu } from "../components/ResourceMenu";
 import { cycleSort, type SortState } from "../components/sortState";
@@ -856,9 +858,9 @@ function SignupModeTab() {
  * ResourceMenu call, since this page never exceeded 5 tabs on its own.
  * See `docs/ux-style-guide.md` Principle 1 and `docs/decisions.md`.
  */
-type ServerManagementGroupKey = "accessReview" | "branding" | "signup" | "email" | "modules";
+type ServerManagementGroupKey = "accessReview" | "branding" | "signup" | "email" | "modules" | "dataPolicy";
 
-const SERVER_MANAGEMENT_GROUP_KEYS: ServerManagementGroupKey[] = ["accessReview", "branding", "signup", "email", "modules"];
+const SERVER_MANAGEMENT_GROUP_KEYS: ServerManagementGroupKey[] = ["accessReview", "branding", "signup", "email", "modules", "dataPolicy"];
 
 /**
  * Server-admin console: access review (C-A-13), platform-wide branding
@@ -884,6 +886,7 @@ export function ServerManagementPage() {
     { key: "signup", label: strings.signupSettings.title, href: "/server/management/signup" },
     { key: "email", label: strings.system.emailTab, href: "/server/management/email" },
     { key: "modules", label: strings.serverModules.title, href: "/server/management/modules" },
+    { key: "dataPolicy", label: strings.personalDataPolicy.groupTitle, href: "/server/management/dataPolicy" },
   ];
 
   return (
@@ -899,6 +902,11 @@ export function ServerManagementPage() {
         {activeGroup === "signup" && <SignupModeTab />}
         {activeGroup === "email" && <TestEmailTab />}
         {activeGroup === "modules" && <ServerModulesTab />}
+        {activeGroup === "dataPolicy" && (
+          <CollapsibleSection sectionKey="serverManagement.personalData" title={strings.personalDataPolicy.title}>
+            <PersonalDataPolicyPanel scope={{ kind: "server" }} />
+          </CollapsibleSection>
+        )}
       </ResourceMenu>
     </div>
   );

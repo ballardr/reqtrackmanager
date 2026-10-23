@@ -1,11 +1,11 @@
 # List Data and Form UX (October 2026) — Plan
 
-**Status:** planned 2026-10-22, not started. Built from eight items the user picked up (section 1). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position), 7 (type definition), 7b (module bundles) and 8 (record-table extension point) are done; Phase 8b is next.
+**Status:** planned 2026-10-22, not started. Built from eight items the user picked up (section 1). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position), 7 (type definition), 7b (module bundles), 8 (record-table extension point) and 8b (personal-data policy) are done; Phase 9 is next.
 **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. Q1–Q4 were answered by the user on 2026-10-22 (section 2). Everything in the "Agent defaults" table is **Decided by: Agent** and open to override before the phase that uses it starts.
 
 ## Status / Resume Here
 
-9 / 17 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–8 done 2026-10-23, Phase 8 uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
+10 / 17 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–8b done 2026-10-23, Phase 8b uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
 
 | # | Phase | Item | Status |
 |---|-------|------|--------|
@@ -19,7 +19,7 @@
 | 7 | Pain Point types get an optional definition | 7 | [x] |
 | 7b | Every module's records travel in the project **and** organisation bundles (Context & Strategy, Decisions; audit of the other modules; enforcement test) | 7 | [x] |
 | 8 | Record-table extension point (backend): columns, list, CSV out, CSV in with update | 5 | [x] |
-| 8b | Personal-data policy: column sensitivity, server default, organisation override, new permission | 5 | [ ] |
+| 8b | Personal-data policy: column sensitivity, server default, organisation override, new permission | 5 | [x] |
 | 9 | Shared list actions (frontend): Export menu + Import wizard on `ListPageLayout` pages; Requirements migrated | 5 | [ ] |
 | 10 | Record-list report in the Reports page (CSV, PDF, Word of any type) | 5 | [ ] |
 | 11 | Roll-out A: core types (Requirements, Change Requests, Actions) | 5 | [ ] |
@@ -207,7 +207,8 @@ flowchart LR
   - Audit events for a policy change (old/new value, never data) and for an export that included tagged columns.
   - Update the data classification policy and the control matrix; record the identify, verify, remediate pass in decisions.md.
 - **Module boundary:** tags live on the provider (a module classifies its own columns); core holds only the tag vocabulary, as a closed list that is an intentional core concept, not a per-module value.
-- **Tests:** backend matrix of (server default × org override × permission) for export, import, report and grid; a test that fails if a provider column named like a known personal field has no tag in the Stakeholders and Engagement providers; Storybook for both panels; Playwright toggling the org override and seeing the column appear in the export.
+- **Tests:** backend matrix of (server default × org override × permission) for export, import, report and grid; a test that fails if a provider column named like a known personal field has no tag in the Stakeholders and Engagement providers; Storybook for both panels; Playwright toggling the org override and seeing the column appear in the export (no real provider column is tagged until Phase 12, so the spec drives the panels and the API and the backend suite tags a real column).
+- **Delivered (2026-10-23):** `services/record_policy.py`, the two override tables (migration 0105), the `export_personal_data` permission, `resolve_export_columns` built on them, admin APIs and the shared `PersonalDataPolicyPanel` (Server Management → Data policy; Org Admin → Security). **Carried forward, with reasons in decisions.md:** the one-line "columns were left out" note belongs to the list actions (Phase 9; the API already returns `omitted_reasons`); the Stakeholders and Engagement tagging test ships with those providers (Phase 12); the Record-list report and the grid call the same resolver when built (Phases 10, 14). Per tag only, not per type (**Decided by: Agent**).
 
 ### Phase 9 — Shared list actions (frontend)
 

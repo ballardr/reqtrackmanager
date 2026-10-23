@@ -35,6 +35,7 @@ from app.schemas.record_tables import (
 from app.services.downloads import filename_safe
 from app.services.project_scope import ProjectScope
 from app.services.rbac import require_project_view
+from app.services.record_policy import tag_decisions
 from app.services.record_tables import (
     CODE_COLUMN,
     MAX_IMPORT_BYTES,
@@ -72,6 +73,7 @@ def record_columns(
     columns = list(provider.columns(db, project))
     kept, omitted = resolve_export_columns(db, current_user, project, columns, purpose="export")
     kept_keys = {c.key for c in kept}
+    decisions = tag_decisions(db, current_user, project)
     reason = import_capability(provider, record_type)
     return RecordColumnsOut(
         label=provider.label,
@@ -87,6 +89,7 @@ def record_columns(
             ),
         ],
         omitted_sensitivity=omitted,
+        omitted_reasons={tag: decisions[tag].reason or "" for tag in omitted},
         importable=reason is None,
         not_importable_reason=reason,
         filter_params=sorted(provider.filter_params),
