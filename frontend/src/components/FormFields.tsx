@@ -56,7 +56,7 @@ export function TextField({
  * unnamed. A field in a form is a `TextField`.
  *
  * @param ariaLabel The input's accessible name.
- * @param type The HTML input type (`text`, `number`, `datetime-local`).
+ * @param type The HTML input type (`text`, `number`, `date`, `datetime-local`).
  * @param maxWidth Optional width cap in pixels.
  */
 export function InlineTextInput({
@@ -65,7 +65,7 @@ export function InlineTextInput({
   ariaLabel: string;
   value: string;
   onChange: (value: string) => void;
-  type?: "text" | "number" | "datetime-local";
+  type?: "text" | "number" | "date" | "datetime-local";
   maxWidth?: number;
   placeholder?: string;
   disabled?: boolean;
@@ -76,6 +76,24 @@ export function InlineTextInput({
       placeholder={placeholder} disabled={disabled} onChange={(e) => onChange(e.target.value)}
     />
   );
+}
+
+/**
+ * A checkbox with no visible caption, for a cell of a table (the bulk edit grid) where the column heading and the
+ * row are the caption. The accessible name is required, so it cannot be left unnamed. A field in a form is a
+ * `CheckboxField`.
+ *
+ * @param ariaLabel The checkbox's accessible name.
+ */
+export function InlineCheckbox({
+  ariaLabel, checked, onChange, disabled,
+}: {
+  ariaLabel: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+}) {
+  return <input type="checkbox" checked={checked} aria-label={ariaLabel} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />;
 }
 
 /**

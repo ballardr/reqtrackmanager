@@ -2008,6 +2008,32 @@ td:has(> .disclosure-toggle) {
   cursor: pointer;
 }
 
+/* Bulk edit grid (components/RecordGrid): compact cells so a row of controls stays on one line; a changed cell is
+   tinted and marked on its left edge (the tint alone would be the only cue), a locked value reads as plain text. */
+.record-grid td {
+  padding: var(--space-1) 0.4rem;
+  vertical-align: middle;
+}
+.record-grid td .input {
+  min-width: 7rem;
+  padding-block: var(--space-1);
+}
+.record-grid__cell--changed {
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-warning);
+}
+.record-grid__row--read-only td {
+  color: var(--color-text-muted);
+}
+.record-grid__locked {
+  cursor: help;
+  border-bottom: 1px dotted currentColor;
+}
+.record-grid__error {
+  color: var(--color-danger);
+  border-bottom: 1px solid var(--color-border);
+}
+
 /* Below 860px there isn't room for a full-width nav rail, a content
    column, and a 240px filter/activity sidebar side by side (confirmed:
    the page overflows past the viewport at 600px without this) — force the

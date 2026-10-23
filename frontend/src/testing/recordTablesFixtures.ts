@@ -7,7 +7,10 @@
 import { fn, type Mock } from "storybook/test";
 
 import type {
+  GridColumn,
+  GridRow,
   RecordColumn,
+  RecordGridData,
   RecordColumns,
   RecordImportResult,
   RecordTablesApi,
@@ -77,6 +80,42 @@ export function fakeRecordTables(overrides: Partial<RecordTablesApi> = {}, colum
     columns: fn(async () => columns),
     exportFile: fn(async () => new Blob(["code,name\n"], { type: "text/csv" })),
     importFile: fn(async () => buildImportResult()),
+    grid: fn(async () => buildGrid()),
+    saveRow: fn(async (_projectId: string, _recordType: string, code: string, cells: Record<string, string>) => {
+      const row = buildGrid().rows.find((r) => r.code === code) ?? buildGrid().rows[0];
+      return { ...row, cells: { ...row.cells, ...cells } };
+    }),
     ...overrides,
+  };
+}
+
+const gridColumn = (partial: Partial<GridColumn> & Pick<GridColumn, "key" | "label">): GridColumn => ({
+  kind: "text", editable: false, required: false, choices: null, ...partial,
+});
+
+/** A Pain-Point-shaped grid: a title for context, then a closed priority, three score levels, a flag and a date. */
+export function buildGrid(overrides: Partial<RecordGridData> = {}): RecordGridData {
+  const rows: GridRow[] = [
+    { id: "r1", code: "PNP-001", read_only: null, locks: {}, project_id: "project-1", cells: { title: "Slow reports", priority: "Medium", severity: "", frequency: "", confidence: "", is_intentional: "false", date_identified: "2026-10-01" } },
+    { id: "r2", code: "PNP-002", read_only: null, locks: {}, project_id: "project-1", cells: { title: "Lost sessions", priority: "High", severity: "Major", frequency: "Frequent", confidence: "Medium", is_intentional: "true", date_identified: "" } },
+    {
+      id: "r3", code: "PNP-003", read_only: null, project_id: "project-1", cells: { title: "Per persona", priority: "Low", severity: "", frequency: "", confidence: "", is_intentional: "false", date_identified: "" },
+      locks: { severity: "This Pain Point is scored per persona; edit its scores on the Pain Point page.", frequency: "Scored per persona.", confidence: "Scored per persona." },
+    },
+    { id: "r4", code: "PNP-004", project_id: "project-1", read_only: "This Pain Point has reached a terminal outcome; its content can no longer be edited.", locks: {}, cells: { title: "Closed one", priority: "Low", severity: "Minor", frequency: "Rare", confidence: "Low", is_intentional: "false", date_identified: "" } },
+  ];
+  return {
+    label: "Pain points",
+    columns: [
+      gridColumn({ key: "title", label: "Title", required: true }),
+      gridColumn({ key: "priority", label: "Priority", kind: "enum", editable: true, required: true, choices: ["Low", "Medium", "High"] }),
+      gridColumn({ key: "severity", label: "Severity", kind: "enum", editable: true, choices: ["Cosmetic", "Minor", "Moderate", "Major", "Blocker"] }),
+      gridColumn({ key: "frequency", label: "Frequency", kind: "enum", editable: true, choices: ["Rare", "Occasional", "Frequent", "Constant"] }),
+      gridColumn({ key: "confidence", label: "Confidence", kind: "enum", editable: true, choices: ["Low", "Medium", "High"] }),
+      gridColumn({ key: "is_intentional", label: "Intentional", kind: "bool", editable: true }),
+      gridColumn({ key: "date_identified", label: "Date identified", kind: "date", editable: true }),
+      gridColumn({ key: "status", label: "Status", kind: "enum" }),
+    ],
+    rows, total: rows.length, truncated: false, max_rows: 500, can_edit: true, omitted_sensitivity: [], ...overrides,
   };
 }

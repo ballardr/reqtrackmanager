@@ -14,6 +14,9 @@ Responsibilities:
 - Do the same for the records an **organisation** owns (`org_provider_for`, `build_org_table`, `run_org_import`),
   through the provider's `OrganizationRecordTable`: one import body serves both tiers, so a rule added to it
   reaches the organisation lists too.
+- Serve the **bulk edit grid** of a project list (`build_grid`, `update_row`): the same rows, filters, scope and
+  column policy as the export, with the editable columns as cells, saved one record at a time through the type's
+  own update path.
 - Audit an export or an apply as one event each; counts and keys only, never cell values.
 
 Design decisions:
@@ -33,6 +36,11 @@ Design decisions:
   as is a code of another organisation) and applies the organisation-level personal-data grant, since there is no
   project to hold a project grant. Its codes are always qualified by the organisation code (`ACME-PER-001`); the
   bare form is accepted on the way in.
+- A grid save is one record per request (so one failure never blocks the others) and is audited by the type's own
+  update path, with no second event. It changes only the cells that differ from the value the person loaded
+  (`expected`): a cell someone else changed meanwhile is refused with the current value instead of being
+  overwritten, which is the version lock for types whose update path has none.
+  Only closed-value columns (`GRID_KINDS`) are edited in the grid; free text is edited in the record's form.
 - Personal-data columns: every column carries a sensitivity tag set by the provider. `resolve_export_columns`
   is the single place that decides which are kept, and every route (export, import, the record-list report, the
   grid) goes through it, so the rule cannot be bypassed on one of them. A tagged column needs the organisation's
@@ -99,6 +107,10 @@ GENERIC_PARAMS = frozenset({"format", "project_scope", "tag", "tag_mode"})
 #: Further query parameters the record-list report takes (its own, never a provider's filter).
 REPORT_PARAMS = frozenset({"record_type", "report_template_id"})
 _FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
+#: The column kinds the bulk edit grid edits (a closed set of values or a single value); free text is not.
+GRID_KINDS = frozenset({"enum", "number", "date", "bool"})
+#: The most rows the grid loads; a longer list says so and asks for a narrower filter.
+MAX_GRID_ROWS = 500
 
 
 # --- access ----------------------------------------------------------------------------------------
@@ -387,6 +399,13 @@ class RecordTable:
         filter_keys: The names of the filters that were applied (for the audit event; never their values).
         included: Sensitivity tags whose columns were written (for the audit event).
         tones: Cell-text-to-tone map by column key, for the columns that colour their cells in a report.
+        kept: The provider's columns that survived the personal-data policy, in `columns` order after `code`.
+        ids: Each row's record id (the grid addresses and opens a record by it).
+        project_ids: Each row's owning project id (a related project's row differs from the request project), or
+            `None` for a record the organisation owns.
+        read_only: Each row's reason the grid shows it read-only (another project's or the organisation's record, or
+            the provider's `read_only_reason`), or `None` when it can be edited.
+        cell_locks: Per row, the reason each single cell cannot be edited (`RecordColumn.cell_lock`), by column key.
     """
 
     columns: list[tuple[str, str]]
@@ -395,6 +414,11 @@ class RecordTable:
     filter_keys: list[str]
     included: list[str] = field(default_factory=list)
     tones: dict[str, Mapping[str, str]] = field(default_factory=dict)
+    kept: list[RecordColumn] = field(default_factory=list)
+    ids: list[str] = field(default_factory=list)
+    project_ids: list[str | None] = field(default_factory=list)
+    read_only: list[str | None] = field(default_factory=list)
+    cell_locks: list[dict[str, str]] = field(default_factory=list)
 
 
 def split_params(
@@ -473,6 +497,11 @@ def build_table(
     if project_scope.widened:
         header.append((PROJECT_COLUMN, "Project"))
     rows: list[list[str]] = []
+    ids: list[str] = []
+    project_ids: list[str | None] = []
+    read_only: list[str | None] = []
+    cell_locks: list[dict[str, str]] = []
+    lockable = [c for c in columns if c.cell_lock is not None]
     for record in records:
         owner_id = getattr(record, "from_project_id", None) or project.id
         if owner_id not in owners:
@@ -484,6 +513,10 @@ def build_table(
         if project_scope.widened:
             row.append("" if owned_by_organization else owner.code)
         rows.append(row)
+        ids.append(str(provider.id_of(record)))
+        project_ids.append(None if owned_by_organization else str(owner.id))
+        read_only.append(_read_only_reason(provider, prepared, record, owner, project, owned_by_organization))
+        cell_locks.append({c.key: reason for c in lockable if (reason := c.cell_lock(prepared, record))})
     keys = _applied_filter_keys(filters)
     if tag_filter.active:
         keys.append("tag")
@@ -491,8 +524,21 @@ def build_table(
         keys.append("project_scope")
     return RecordTable(
         columns=header, rows=rows, omitted=omitted, filter_keys=sorted(keys), included=_sensitivity_tags(columns),
-        tones={c.key: c.tones for c in columns if c.tones},
+        tones={c.key: c.tones for c in columns if c.tones}, kept=list(columns), ids=ids, project_ids=project_ids, read_only=read_only,
+        cell_locks=cell_locks,
     )
+
+
+def _read_only_reason(
+    provider: RecordTableProvider, prepared: Any, record: Any, owner: Project, project: Project, owned_by_organization: bool,
+) -> str | None:
+    """Why the grid shows `record` read-only, or `None`: it belongs to the organisation or to another project (the
+    widened scope lists related projects' rows read-only), or the provider says its state forbids an edit."""
+    if owned_by_organization:
+        return "This record belongs to the organisation; edit it in the organisation's settings."
+    if owner.id != project.id:
+        return f"This record belongs to project {owner.code}; open it there to edit it."
+    return provider.read_only_reason(prepared, record) if provider.read_only_reason is not None else None
 
 
 def split_org_params(provider: RecordTableProvider, query: Sequence[tuple[str, str]]) -> RecordFilters:
@@ -589,6 +635,192 @@ def audit_export(db: Session, user: User, owner: Project | Organization, artefac
         },
     )
     db.commit()
+
+
+# --- bulk edit grid --------------------------------------------------------------------------------
+
+
+def grid_editable(column: RecordColumn) -> bool:
+    """Whether the bulk edit grid edits `column`: the provider marked it editable, an import can write it, and it is
+    a closed-value kind (`GRID_KINDS`)."""
+    return column.editable and column.importable and column.kind in GRID_KINDS
+
+
+@dataclass
+class GridRow:
+    """One record of the grid.
+
+    Attributes:
+        id: The record's id (to open it).
+        code: The code as an export writes it.
+        cells: Cell text by column key (unprefixed; the grid is not a spreadsheet, so no formula guard).
+        read_only: Why the row cannot be edited, or `None`.
+        locks: Why a single cell cannot be edited, by column key (only the locked cells).
+        project_id: The project that owns the record, or `None` for one the organisation owns.
+    """
+
+    id: str
+    code: str
+    cells: dict[str, str]
+    read_only: str | None = None
+    locks: dict[str, str] = field(default_factory=dict)
+    project_id: str | None = None
+
+
+@dataclass
+class RecordGrid:
+    """A list prepared for the bulk edit grid.
+
+    Attributes:
+        columns: The columns the policy lets through, in the provider's order (the page decides which to show).
+        rows: At most `MAX_GRID_ROWS` rows.
+        total: How many rows the filters matched.
+        omitted: Sensitivity tags whose columns the policy left out.
+        can_edit: Whether the caller may update this type's records at all.
+    """
+
+    columns: list[RecordColumn]
+    rows: list[GridRow]
+    total: int
+    omitted: list[str]
+    can_edit: bool
+
+    @property
+    def truncated(self) -> bool:
+        """Whether more rows matched than the grid loaded."""
+        return self.total > len(self.rows)
+
+
+def build_grid(
+    db: Session, user: User, project: Project, artefact_type: str, provider: RecordTableProvider, *,
+    filters: RecordFilters, tag_filter: TagFilter, project_scope: ProjectScope,
+) -> RecordGrid:
+    """The rows and columns of the grid for a list, narrowed exactly as its export is.
+
+    Args:
+        db: Active session (read only).
+        user: The caller (authorised to view by the route).
+        project: The request project.
+        artefact_type: The record type.
+        provider: Its provider.
+        filters: The provider's own filters.
+        tag_filter: The shared tag filter.
+        project_scope: The shared nested-project scope.
+
+    Returns:
+        The `RecordGrid`; `can_edit` is false (and the page offers no grid) for a type the caller cannot update or
+        that has no grid-editable column.
+    """
+    table = build_table(
+        db, user, project, artefact_type, provider, filters=filters, tag_filter=tag_filter, project_scope=project_scope,
+    )
+    keys = [c.key for c in table.kept]
+    rows = [
+        GridRow(id=table.ids[i], code=cells[0], cells=dict(zip(keys, cells[1:1 + len(keys)], strict=True)),
+            read_only=table.read_only[i], locks=table.cell_locks[i], project_id=table.project_ids[i],
+        )
+        for i, cells in enumerate(table.rows[:MAX_GRID_ROWS])
+    ]
+    _, may_update = import_rights(db, user, project, artefact_type, provider)
+    can_edit = import_capability(provider, artefact_type) is None and may_update and any(grid_editable(c) for c in table.kept)
+    return RecordGrid(columns=table.kept, rows=rows, total=len(table.rows), omitted=table.omitted, can_edit=can_edit)
+
+
+def update_row(
+    db: Session, user: User, project: Project, artefact_type: str, provider: RecordTableProvider, code: str,
+    cells: Mapping[str, str], expected: Mapping[str, str],
+) -> GridRow:
+    """Saves the changed cells of one record through the type's own update path and returns the refreshed row.
+
+    Args:
+        db: Active session. Committed on success, rolled back on any failure.
+        user: The editor (authorised to view by the route; update rights are checked here).
+        project: The request project (a record of any other project is never matched).
+        artefact_type: The record type.
+        provider: Its provider.
+        code: The record's code.
+        cells: The new cell text by column key (only grid-editable columns).
+        expected: The text each cell had when the grid loaded it; a cell that has changed since is refused.
+
+    Returns:
+        The record as the grid shows it after the save.
+
+    Raises:
+        HTTPException: 422 when the type cannot be edited, a column is not grid-editable or a value is refused;
+            403 without the update right; 404 for an unknown code; 409 when a cell changed since it was loaded or
+            the type's own path refuses (a locked record).
+    """
+    reason = import_capability(provider, artefact_type)
+    if reason is not None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, reason)
+    _, may_update = import_rights(db, user, project, artefact_type, provider)
+    if not may_update:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to update these records.")
+    available, _ = resolve_export_columns(
+        db, user, provider.columns(db, project), organization_id=project.organization_id, project_id=project.id, purpose="import",
+    )
+    by_key = {c.key: c for c in available}
+    for key in cells:
+        column = by_key.get(key)
+        if column is None or not grid_editable(column):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "That column cannot be edited here.")
+    record = _find_record(db, project, provider, code)
+    if record is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"No record with the code {code} in this project.")
+    prepared = provider.prepare(db, project, [record]) if provider.prepare is not None else None
+    blocked = provider.read_only_reason(prepared, record) if provider.read_only_reason is not None else None
+    if blocked:
+        raise HTTPException(status.HTTP_409_CONFLICT, blocked)
+
+    ctx = RecordImportContext(db=db, project=project, user=user, organization=db.get(Organization, project.organization_id))
+    values: dict[str, Any] = {}
+    try:
+        for key, raw in cells.items():
+            column = by_key[key]
+            text = read_cell(raw)
+            locked = column.cell_lock(prepared, record) if column.cell_lock is not None else None
+            if locked:
+                raise HTTPException(status.HTTP_409_CONFLICT, locked)
+            before = column.get(prepared, record)
+            if key in expected and not _same(before, read_cell(expected[key])):
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    f"{column.label} was changed by someone else (now '{before}'); reload before editing it again.",
+                )
+            if _same(before, text):
+                continue
+            if column.required and not text:
+                raise RecordCellError(f"{column.label} is required.")
+            values[key] = column.parse(ctx, text)
+        if values:
+            with db.begin_nested():
+                provider.update(ctx, record, values)
+                db.flush()
+            db.commit()
+            pubsub.notify(project.id, {"type": artefact_type, "action": "updated"})
+    except RecordCellError as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
+    except HTTPException:
+        db.rollback()
+        raise
+    except DataError:
+        db.rollback()
+        logger.warning("Grid edit of %s has a value the database cannot store", artefact_type)
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "A value is too long or not storable.") from None
+    except IntegrityError:
+        db.rollback()
+        logger.warning("Grid edit of %s refused by the database", artefact_type)
+        raise HTTPException(status.HTTP_409_CONFLICT, "This change conflicts with an existing record.") from None
+
+    db.refresh(record)
+    prepared = provider.prepare(db, project, [record]) if provider.prepare is not None else None
+    return GridRow(
+        id=str(provider.id_of(record)), code=provider.code_of(record), project_id=str(project.id),
+        cells={c.key: c.get(prepared, record) for c in available},
+        read_only=provider.read_only_reason(prepared, record) if provider.read_only_reason is not None else None,
+        locks={c.key: reason for c in available if c.cell_lock is not None and (reason := c.cell_lock(prepared, record))},
+    )
 
 
 # --- import ----------------------------------------------------------------------------------------

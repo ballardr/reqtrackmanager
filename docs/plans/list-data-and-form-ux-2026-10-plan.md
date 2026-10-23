@@ -1,11 +1,11 @@
 # List Data and Form UX (October 2026) — Plan
 
-**Status:** planned 2026-10-22, in progress. Built from nine items the user picked up (section 1; item 9 added 2026-10-23). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position), 7 (type definition), 7b (module bundles), 8 (record-table extension point), 8b (personal-data policy), 9 (shared list actions), 10 (record-list report), 11 (core types), 12 (Context & Strategy and Stakeholders), 12b (organisation-level lists) and 13 (Risk, Decisions, Compliance) are done; Phase 14 is next; Phase 15 (overview total-records chart) and the Phase 16 close-out follow Phase 14.
+**Status:** planned 2026-10-22, in progress. Built from nine items the user picked up (section 1; item 9 added 2026-10-23). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position), 7 (type definition), 7b (module bundles), 8 (record-table extension point), 8b (personal-data policy), 9 (shared list actions), 10 (record-list report), 11 (core types), 12 (Context & Strategy and Stakeholders), 12b (organisation-level lists), 13 (Risk, Decisions, Compliance) and 14 (bulk edit grid) are done; Phase 15 (overview total-records chart) is next, then the Phase 16 close-out.
 **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. Q1–Q4 were answered by the user on 2026-10-22 (section 2). Everything in the "Agent defaults" table is **Decided by: Agent** and open to override before the phase that uses it starts.
 
 ## Status / Resume Here
 
-16 / 19 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–13 done 2026-10-23, Phases 12, 12b and 13 uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
+17 / 19 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–14 done 2026-10-23, Phases 12, 12b, 13 and 14 uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
 
 | # | Phase | Item | Status |
 |---|-------|------|--------|
@@ -26,7 +26,7 @@
 | 12 | Roll-out B: Context & Strategy, Stakeholders (Persona, Stakeholder, Need, Group, Engagement, Research Finding) | 5 | [x] |
 | 12b | Organisation-level export and import: the organisation's own Strategies, Future States, Guiding Principles, Personas, Stakeholders and Groups (generic organisation route, org list pages) | 5 | [x] |
 | 13 | Roll-out C: Risk, Decisions, Compliance | 5 | [x] |
-| 14 | Bulk edit grid (generic) wired to Pain Points; other types register editable columns | 3 | [ ] |
+| 14 | Bulk edit grid (generic) wired to Pain Points; other types register editable columns | 3 | [x] |
 | 15 | Project overview: total-records pie chart by type, replacing the per-module count tiles | 9 | [ ] |
 | 16 | Docs website, seeds, README, close-out and archive this plan | all | [ ] |
 
@@ -275,6 +275,7 @@ Each phase, for each type: write the provider (columns, editable flags), wire th
 - **Work:** `RecordGrid` (shared): rows from the same provider list and filters as the page, columns marked `editable`, cell editors from the shared field components (select for enums, number, text), arrow/Tab/Enter navigation, dirty-cell highlight, "Save N changes" with per-row results in a toast, a row that fails stays dirty with its error; rows in a state that forbids edits (or the user lacks permission for) render read-only with the reason in a tooltip; saves use the type's own update path with the version lock, one request per row so one failure doesn't block others (a bulk endpoint only if measured slow, per the bulk-operations pattern). Pain Point columns: severity, frequency, confidence, with the scoring scheme's allowed levels; entry point is a "Grid" view toggle on the list (view toggle pattern).
 - **Other modules:** each type's provider already marks editable columns in Phases 11–13; the grid appears for a type once it has at least one editable column. Anything else is listed in decisions.md.
 - **Tests:** stories; Playwright editing three cells and saving, a failing row, and a read-only row.
+- **Delivered (2026-10-23):** `GET .../records/{type}/grid` and `PATCH .../records/{type}/rows/{code}` (generic, in the record-table engine), `RecordGrid` and the Grid option of `ViewToggle`, `RecordTableProvider.read_only_reason` and `RecordColumn.cell_lock`, the Pain Point score columns, and the Pain Point list wired. **Changes from the spec, with reasons in decisions.md:** grid cells are closed-value kinds only (free text stays in the form); a save carries the values the cells had when loaded so a stale cell is refused; Pain Point scores became ordinary file columns (the Phase 12 carry-forward is reversed); **carried forward:** the Grid toggle on the other lists (their editable columns are declared; each is a page change of the same size) and an organisation-level grid.
 
 ### Phase 16 — Close-out
 

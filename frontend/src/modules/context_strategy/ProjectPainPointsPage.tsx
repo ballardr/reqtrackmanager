@@ -21,6 +21,11 @@
  * filters in the link are the ones applied and a link never lands on an empty
  * list.
  *
+ * A person who may score (the manager tier) also gets a Grid view of the same rows and filters
+ * (`RecordGrid`, "Pattern: bulk edit grid"): Type, Priority, the Intentional flag and the three score
+ * levels as cells, saved one Pain Point at a time. A Pain Point scored per persona shows its score cells
+ * locked, since one level cannot stand for several personas.
+ *
  * Also loads this project's effective Pain Point type list
  * (`projectPainPointApi.listTypes`) once, up front — both the type filter
  * dropdown and `PainPointFormModal`'s own type picker need it, and loading
@@ -43,9 +48,11 @@ import { projectScoringApi, type ScoringScheme } from "../../api/scoring";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
 import { ListPageLayout } from "../../components/ListPageLayout";
+import { RecordGrid } from "../../components/RecordGrid";
 import { ScoringModelSwitcher } from "../../components/ScoringModelSwitcher";
 import { SettingsPopoverButton } from "../../components/SettingsPopoverButton";
 import { Spinner } from "../../components/Spinner";
+import { ViewToggle, useViewMode } from "../../components/ViewToggle";
 import { cycleSort } from "../../components/sortState";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
@@ -119,6 +126,9 @@ export function ProjectPainPointsPage() {
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useViewMode("context_strategy.pain_points", "list");
+  // Bumped after the grid saves, so the list view's scores are read again when the person switches back.
+  const [scoresVersion, setScoresVersion] = useState(0);
 
   async function reloadPainPoints() {
     if (!projectId) return;
@@ -153,7 +163,7 @@ export function ProjectPainPointsPage() {
       .listScores(projectId, { model_key: modelParam || undefined, rollup, include_archived: includeArchived })
       .then(setScoring)
       .catch(() => setScoring(null));
-  }, [projectId, modelParam, rollup, includeArchived]);
+  }, [projectId, modelParam, rollup, includeArchived, scoresVersion]);
   const model = modelParam || scoring?.model_key || null;
 
   /** The list's filters by the names its export takes; the server applies the same rules the page does. */
@@ -207,6 +217,8 @@ export function ProjectPainPointsPage() {
       })
     : filtered;
 
+  // Scoring is the manager tier, and so is editing a Pain Point: the same grant opens the grid.
+  const canScore = scoringTargets?.can_score === true;
   const scoreSettingsLabel = scheme && model
     ? `Score settings: ${scheme.models.find((m) => m.key === model)?.label ?? model}, combined by ${PAIN_POINT_ROLLUP_LABEL[rollup]}`
     : "Score settings";
@@ -314,6 +326,18 @@ export function ProjectPainPointsPage() {
           </FilterPanel>
         }
       >
+          {canScore && (
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <ViewToggle mode={viewMode} onChange={setViewMode} showTilesOption={false} showGridOption />
+            </div>
+          )}
+          {canScore && viewMode === "grid" ? (
+            <RecordGrid
+              projectId={projectId} recordType="pain_point" filters={filterParams().toString()} contextKeys={["title"]}
+              recordHref={(row) => `/projects/${row.project_id ?? projectId}/modules/context_strategy/pain-points/${row.id}`}
+              onSaved={() => { setScoresVersion((n) => n + 1); void reloadPainPoints(); }}
+            />
+          ) : (
           <DirectoryTable
             ariaLabel="Pain Points"
             columns={columns}
@@ -332,6 +356,7 @@ export function ProjectPainPointsPage() {
               </p>
             }
           />
+          )}
       </ListPageLayout>
 
       {creating && (

@@ -498,6 +498,10 @@ REQUIREMENT_TABLE = RecordTableProvider(
     can_create=_may_edit,
     can_update=_may_edit,
     approval_gated=True,
+    read_only_reason=lambda t, r: (
+        "This requirement is approved; changes must be made via a change request."
+        if r.id in t.versions and requirement_service.is_locked(t.versions[r.id]) else None
+    ),
 )
 
 

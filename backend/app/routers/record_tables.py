@@ -7,6 +7,10 @@ The generic table routes of every record type, one set for all of them:
 - `GET  /api/v1/projects/{project_id}/records/{record_type}/export`: the list as CSV, with the list's own filters.
 - `POST /api/v1/projects/{project_id}/records/{record_type}/import`: create and update records from the CSV an
   export writes; a preview unless `dry_run=false`.
+- `GET  /api/v1/projects/{project_id}/records/{record_type}/grid`: the list's rows and columns for the bulk edit
+  grid, with the list's own filters.
+- `PATCH /api/v1/projects/{project_id}/records/{record_type}/rows/{code}`: saves the changed cells of one grid row
+  through the type's own update path.
 
 Access: a project member holding the type's `view` permission, with the type's module on for the project.
 An import additionally needs what the type's own create and update endpoints need (checked per row kind in
@@ -28,9 +32,13 @@ from app.models.user import User
 from app.modules.registry import RecordColumn
 from app.schemas.record_tables import (
     ColumnChangeOut,
+    GridColumnOut,
+    GridRowOut,
+    GridRowUpdate,
     ImportResultOut,
     RecordColumnOut,
     RecordColumnsOut,
+    RecordGridOut,
     RowResultOut,
 )
 from app.services.downloads import filename_safe
@@ -39,11 +47,15 @@ from app.services.rbac import require_project_view
 from app.services.record_policy import TagDecision, tag_decisions
 from app.services.record_tables import (
     CODE_COLUMN,
+    MAX_GRID_ROWS,
     MAX_IMPORT_BYTES,
     MAX_IMPORT_ROWS,
+    GridRow,
     ImportResult,
     audit_export,
+    build_grid,
     build_table,
+    grid_editable,
     import_capability,
     may_import,
     provider_for,
@@ -52,6 +64,7 @@ from app.services.record_tables import (
     run_import,
     split_params,
     table_csv,
+    update_row,
 )
 from app.services.tags import TagFilter
 
@@ -191,3 +204,62 @@ async def import_records(
         run_import, db, current_user, project, record_type, provider, data, apply=not dry_run,
     )
     return import_result_out(result)
+
+
+def _grid_row_out(row: GridRow) -> GridRowOut:
+    return GridRowOut(id=row.id, code=row.code, cells=row.cells, read_only=row.read_only, locks=row.locks, project_id=row.project_id)
+
+
+@router.get("/grid", response_model=RecordGridOut)
+def record_grid(
+    project_id: UUID, record_type: str, request: Request,
+    tag_filter: TagFilter = Depends(), project_scope: ProjectScope = Depends(),
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+) -> RecordGridOut:
+    """The list as rows of cells for the bulk edit grid, narrowed by the list's own filters (as `.../export` is).
+
+    The columns the personal-data policy leaves out are absent, as in the export. At most 500 rows are returned;
+    `truncated` says when the filters matched more.
+
+    Raises:
+        HTTPException: 404 the type or project is not found or the module is off; 403 no `view` permission;
+            422 an unsupported filter.
+    """
+    project = _project(db, project_id)
+    provider = provider_for(db, project, record_type)
+    require_view(db, current_user, project, record_type)
+    filters = split_params(provider, request.query_params.multi_items())
+    grid = build_grid(
+        db, current_user, project, record_type, provider, filters=filters, tag_filter=tag_filter, project_scope=project_scope,
+    )
+    return RecordGridOut(
+        label=provider.label,
+        columns=[
+            GridColumnOut(
+                key=c.key, label=c.label, kind=c.kind, editable=grid_editable(c), required=c.required,
+                choices=list(c.choices) if c.choices is not None else None,
+            )
+            for c in grid.columns
+        ],
+        rows=[_grid_row_out(r) for r in grid.rows], total=grid.total, truncated=grid.truncated, max_rows=MAX_GRID_ROWS,
+        can_edit=grid.can_edit, omitted_sensitivity=grid.omitted,
+    )
+
+
+@router.patch("/rows/{code}", response_model=GridRowOut)
+def save_grid_row(
+    project_id: UUID, record_type: str, code: str, payload: GridRowUpdate,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+) -> GridRowOut:
+    """Saves the changed cells of one record through the type's own update path (version lock, validation, approval
+    gate and audit event) and returns the row as the grid shows it. A cell someone else changed since the grid
+    loaded it (`expected`) is refused, not overwritten.
+
+    Raises:
+        HTTPException: 404 the type, project or record is not found; 403 no `view` or update permission;
+            409 a cell changed meanwhile, or the record is locked; 422 a refused value or a column the grid cannot edit.
+    """
+    project = _project(db, project_id)
+    provider = provider_for(db, project, record_type)
+    require_view(db, current_user, project, record_type)
+    return _grid_row_out(update_row(db, current_user, project, record_type, provider, code, payload.cells, payload.expected))

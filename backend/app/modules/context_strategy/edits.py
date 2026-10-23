@@ -35,6 +35,7 @@ Dependencies: `modules.context_strategy.service` (the create / version / update 
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
@@ -62,6 +63,12 @@ from app.modules.context_strategy.models import (
     PainPoint,
     ProjectPainPointType,
     Strategy,
+)
+from app.modules.context_strategy.pain_point_scores import (
+    ScoreEntryInput,
+    ScoringContext,
+    list_pain_point_scores,
+    set_pain_point_scores,
 )
 from app.modules.context_strategy.service import (
     FUTURE_STATE_ARTEFACT_TYPE,
@@ -97,6 +104,8 @@ STRATEGY_LOCKED = "This Strategy is past review; its content can no longer be ed
 FUTURE_STATE_LOCKED = "This Future State is past review; its content can no longer be edited in place."
 GUIDING_PRINCIPLE_LOCKED = "This Guiding Principle is past review; its content can no longer be edited in place."
 PAIN_POINT_LOCKED = "This Pain Point has reached a terminal outcome; its content can no longer be edited."
+PAIN_POINT_SCORES_LOCKED = "This Pain Point has reached a terminal outcome; its scores can no longer be edited."
+PAIN_POINT_SCORED_PER_PERSONA = "This Pain Point is scored per persona; edit its scores on the Pain Point page."
 OPEN_QUESTION_LOCKED = "This Open Question has reached a terminal outcome; its content can no longer be edited."
 
 
@@ -416,6 +425,39 @@ def edit_project_pain_point_record(
     update_pain_point(db, pain_point, pain_point_type=pain_point_type, **fields)
     log_event(db, entity_type=PAIN_POINT_ARTEFACT_TYPE, entity_id=pain_point.id, action="updated",
               actor_id=actor.id, project_id=project.id)
+
+
+def edit_project_pain_point_scores(
+    db: Session, scoring: ScoringContext, pain_point: PainPoint, actor: User, levels: Mapping[str, uuid.UUID | None],
+) -> None:
+    """Changes the "all personas" Severity / Frequency / Confidence of a Pain Point (the scores endpoint's rules).
+
+    Only the axes named in `levels` change (`None` clears one); the others keep their level. The caller has
+    checked the manager role, as the scores endpoint does.
+
+    Args:
+        db: Active session (nothing is committed).
+        scoring: The project's scoring context (`load_scoring_context`).
+        pain_point: The Pain Point.
+        actor: The person scoring.
+        levels: `{"severity" | "frequency" | "confidence": level id or None}`.
+
+    Raises:
+        HTTPException: 409 at a terminal outcome, or when the Pain Point is scored per persona (a single level
+            cannot stand for several); 400 for a level that is not this organisation's for the axis.
+    """
+    if is_pain_point_locked(pain_point):
+        raise _locked(PAIN_POINT_SCORES_LOCKED)
+    rows = list_pain_point_scores(db, pain_point.id)
+    if any(row.target_id is not None for row in rows):
+        raise _locked(PAIN_POINT_SCORED_PER_PERSONA)
+    current = rows[0] if rows else None
+    merged = {axis: getattr(current, f"{axis}_level_id", None) for axis in ("severity", "frequency", "confidence")}
+    merged.update(levels)
+    set_pain_point_scores(
+        db, scoring, pain_point,
+        [ScoreEntryInput(None, merged["severity"], merged["frequency"], merged["confidence"])], actor,
+    )
 
 
 # --- Open Question -----------------------------------------------------------------------------------------------

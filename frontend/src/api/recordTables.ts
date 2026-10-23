@@ -3,7 +3,8 @@
  *
  * Types and calls for the generic record table routes (`/projects/{id}/records/{type}/columns|export|import`,
  * and `/orgs/{id}/records/{type}/...` for the records an organisation owns) and the record-list report
- * (`.../reports/record-list`, the PDF and Word of a list), which every record list's Export and Import use. A
+ * (`.../reports/record-list`, the PDF and Word of a list), which every record list's Export and Import use, and the
+ * bulk edit grid's `.../records/{type}/grid` and `.../rows/{code}` (a project's lists only). A
  * record type is addressed only by its registered type string; nothing here knows a particular type or module.
  */
 import { api } from "./client";
@@ -69,6 +70,46 @@ export interface RecordImportResult {
   error_csv: string;
 }
 
+/** One column of the bulk edit grid (`GridColumnOut`). */
+export interface GridColumn {
+  key: string;
+  label: string;
+  kind: RecordColumn["kind"];
+  /** True when the grid edits it: an importable, closed-value column the provider marked editable. */
+  editable: boolean;
+  required: boolean;
+  choices: string[] | null;
+}
+
+/** One record of the grid (`GridRowOut`). */
+export interface GridRow {
+  id: string;
+  /** The code as an export writes it (qualified for another project's record). */
+  code: string;
+  /** Cell text by column key. */
+  cells: Record<string, string>;
+  /** Why the whole row cannot be edited (a locked record, another project's), or null. */
+  read_only: string | null;
+  /** Why a single cell cannot be edited, by column key. */
+  locks: Record<string, string>;
+  /** The project that owns the record (a related project's row differs from the list's), or null for one the organisation owns. */
+  project_id: string | null;
+}
+
+/** A list prepared for the bulk edit grid (`RecordGridOut`). */
+export interface RecordGridData {
+  label: string;
+  columns: GridColumn[];
+  rows: GridRow[];
+  total: number;
+  /** True when the filters matched more records than the grid loaded. */
+  truncated: boolean;
+  max_rows: number;
+  /** False when the caller may not update this type's records. */
+  can_edit: boolean;
+  omitted_sensitivity: string[];
+}
+
 /** Whose records a list shows: a project's, or the ones an organisation owns itself. */
 export type RecordOwner = { projectId: string; organizationId?: undefined } | { organizationId: string; projectId?: undefined };
 
@@ -93,6 +134,13 @@ export interface RecordTablesApi {
   exportFile: (owner: RecordOwner, recordType: string, kind: ReportDownloadKind, filters: string) => Promise<Blob>;
   /** A preview (`dryRun`) or an apply of the CSV. */
   importFile: (owner: RecordOwner, recordType: string, file: File, dryRun: boolean) => Promise<RecordImportResult>;
+  /** The list's rows for the bulk edit grid, narrowed by the list's own filters (`filters`: a query string without `?`). */
+  grid: (projectId: string, recordType: string, filters: string) => Promise<RecordGridData>;
+  /**
+   * Saves the changed cells of one record. `expected` is what each cell held when the grid loaded it, so a cell
+   * someone else changed since is refused (409) instead of overwritten. Resolves to the row as it is now.
+   */
+  saveRow: (projectId: string, recordType: string, code: string, cells: Record<string, string>, expected: Record<string, string>) => Promise<GridRow>;
 }
 
 const ownerRoot = (owner: RecordOwner) => (owner.projectId ? `/api/v1/projects/${owner.projectId}` : `/api/v1/orgs/${owner.organizationId}`);
@@ -108,6 +156,10 @@ export const recordTablesApi: RecordTablesApi = {
       ),
   importFile: (owner, recordType, file, dryRun) =>
     api.postFile<RecordImportResult>(`${base(owner, recordType)}/import?dry_run=${dryRun}`, file),
+  grid: (projectId, recordType, filters) =>
+    api.get<RecordGridData>(`${base({ projectId }, recordType)}/grid${filters ? `?${filters}` : ""}`),
+  saveRow: (projectId, recordType, code, cells, expected) =>
+    api.patch<GridRow>(`${base({ projectId }, recordType)}/rows/${encodeURIComponent(code)}`, { cells, expected }),
 };
 
 /** The one-line note for columns the policy left out, or an empty string when none were. */

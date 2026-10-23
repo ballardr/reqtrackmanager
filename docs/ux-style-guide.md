@@ -1104,11 +1104,24 @@ A form in a `Modal` or `SidePanel` has a **header row** with the title and the f
 
 ## Pattern: bulk edit grid
 
-A type with at least one fast-edit column offers a **Grid** view on its list ([view toggle](#pattern-view-toggle-tile-vs-list)): the same rows and filters as the list, with the editable columns as cells, so many records can be adjusted without opening each one (first use: severity, frequency and confidence on Pain Points). A type declares which columns are editable on its record-table provider; the grid is generic (`RecordGrid`).
+A type with at least one closed-value editable column offers a **Grid** view on its list ([view toggle](#pattern-view-toggle-tile-vs-list), `ViewToggle showGridOption`): the same rows and filters as the list, with the editable columns as cells, so many records can be adjusted without opening each one (first use: severity, frequency and confidence on Pain Points). A type declares its editable columns on its record-table provider (`RecordColumn.editable`); the grid is generic (`RecordGrid`, fed by `GET .../records/{type}/grid`).
 
-- Cells use the shared field components (a select for an enum, a number, text); arrow keys, Tab and Enter move between cells; a changed cell is highlighted; "Save N changes" saves one request per row through the type's own update path (version lock, audit), so one failure does not block the others.
-- A row that fails stays dirty with its error. A row that cannot be edited (an approval-gated state, or no permission) is read-only with the reason in a tooltip.
-- Result feedback is one `Toast`: "N saved, M failed".
+```mermaid
+flowchart LR
+    G["Grid: rows + filters of the list"] --> C["Change cells (marked, counted)"]
+    C --> S["Save N changes"]
+    S --> R["PATCH one row at a time:\nchanged cells + the values they had"]
+    R -->|"type's own update path"| OK["Row replaced by the server's answer"]
+    R -->|"refused / changed elsewhere"| ER["Row stays changed, message under it"]
+```
+
+Read left to right: each changed row is its own request, so one refusal never blocks the rest, and a cell someone else changed since it loaded is refused, not overwritten.
+
+- Cells use the shared inline controls (`InlineSelect` for an enum, `InlineTextInput` for a date or number, `InlineCheckbox`); only closed-value kinds (`enum`, `number`, `date`, `bool`) are grid cells. Free text is edited in the record's form, where a long text has room to grow ([auto-growing textarea](#pattern-auto-growing-textarea)).
+- Tab moves between cells; Enter (Shift+Enter) moves down (up) the column, and so do the arrows in a date or number cell. A changed cell is tinted and marked on its left edge, and the Save button counts the changed rows.
+- A row that cannot be edited (a locked record, another project's, or no permission) and a single cell that cannot (`RecordColumn.cell_lock`, e.g. a score on a Pain Point scored per persona) show their value as text with the reason in a tooltip that keyboard focus reaches.
+- Result feedback is one `Toast`: "N saved, M failed". A failed row keeps its changes and shows its message in place. **Discard changes** restores the saved values; **Reload** reads them again and asks first when there are unsaved changes.
+- The list is cut at 500 rows and says so; narrow the filters to reach the rest. The grid is offered only to a person who may update the type's records.
 
 ## Tokens
 

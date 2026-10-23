@@ -1586,12 +1586,17 @@ class RecordColumn:
         parse: `(ctx, text) -> value`: the cell text (whitespace stripped, may be empty) to the value
             `create`/`update` receive; raises `RecordCellError`. `None` for an export-only column.
         kind: `text`, `enum`, `principal`, `date`, `number`, `bool`, `instant` or `list`, for the UI.
-        editable: Whether the bulk edit grid may offer it; only an importable column can be editable.
+        editable: Whether the bulk edit grid may offer it; only an importable column can be editable. The grid
+            edits the closed-value kinds (`enum`, `number`, `date`, `bool`); a free-text column is edited in the
+            record's form, where a long text has room to grow.
         required: Whether a create needs a value (the form's `*`); a column that is present must not be blank.
         sensitivity: `"none"` or one of `RECORD_SENSITIVITY_TAGS`.
         choices: The cell texts the column accepts when they are a closed list (enum labels, the project's
             stage names), so the import wizard offers a pick list for "same value for every row".
             `None` for free text and for values that are not a short closed list (a person, a date).
+        cell_lock: `(prepared, record) -> str | None`: why the bulk edit grid cannot edit this one cell of this row (a
+            Pain Point scored per persona has no single severity to set), or `None`. The grid shows the cell disabled
+            with the reason, and a save of it is refused with the same reason. Does not affect export or import.
         tones: Badge tone per cell text (`{"Approved": "accent"}`, tone names as `report_model.TONE_FILL`), so the
             record-list report's PDF and Word fill the cell as the screen's badge does. A cell text not listed is
             left plain; the text itself still names the value, so a greyscale print reads.
@@ -1606,6 +1611,7 @@ class RecordColumn:
     required: bool = False
     sensitivity: str = "none"
     choices: tuple[str, ...] | None = None
+    cell_lock: Callable[[Any, Any], str | None] | None = field(default=None, compare=False)
     tones: Mapping[str, str] = field(default_factory=dict, compare=False)
 
     @property
@@ -1693,6 +1699,10 @@ class RecordTableProvider:
             `None` for a type that has no organisation-owned records.
         organization: The type's table at the organisation tier (`OrganizationRecordTable`): the organisation's own
             records on the organisation-level lists. `None` for a type the organisation cannot own.
+        read_only_reason: `(prepared, record) -> str | None`: why the bulk edit grid shows this row read-only
+            (a Pain Point at a terminal outcome), or `None` when it can be edited. The grid greys such a row and
+            says the reason; a save of it is refused with the type's own message either way, so this is a courtesy
+            to the person, not the gate. `None` for a type whose rows are always editable in principle.
     """
 
     label: str
@@ -1711,6 +1721,7 @@ class RecordTableProvider:
     approval_gated: bool = False
     organization_owned: Callable[[Any], bool] | None = None
     organization: OrganizationRecordTable | None = None
+    read_only_reason: Callable[[Any, Any], str | None] | None = None
 
 
 @dataclass(frozen=True)

@@ -113,3 +113,79 @@ class ImportResultOut(BaseModel):
     ignored_columns: dict[str, str]
     omitted_sensitivity: list[str]
     error_csv: str
+
+
+class GridColumnOut(BaseModel):
+    """One column of the bulk edit grid.
+
+    Attributes:
+        key / label / kind: As `RecordColumnOut`.
+        editable: Whether the grid edits it (provider-editable, importable and a closed-value kind).
+        required: Whether the cell may not be blank.
+        choices: The accepted texts for an enum column, else `null`.
+    """
+
+    key: str
+    label: str
+    kind: str
+    editable: bool
+    required: bool
+    choices: list[str] | None = None
+
+
+class GridRowOut(BaseModel):
+    """One record of the grid: its cells by column key, and why it cannot be edited when it cannot.
+
+    Attributes:
+        id: The record's id.
+        code: Its code as an export writes it.
+        cells: Cell text by column key.
+        read_only: The reason the row is read-only, or `null`.
+        locks: Why a single cell cannot be edited, by column key (only the locked cells).
+        project_id: The project that owns the record (differs from the list's project for a related project's row),
+            or `null` for a record the organisation owns.
+    """
+
+    id: str
+    code: str
+    cells: dict[str, str]
+    read_only: str | None = None
+    locks: dict[str, str] = {}
+    project_id: str | None = None
+
+
+class RecordGridOut(BaseModel):
+    """A list prepared for the bulk edit grid.
+
+    Attributes:
+        label: The plural name of the type.
+        columns: Every column the personal-data policy lets through, `code` excluded.
+        rows: At most `max_rows` records.
+        total: How many records the filters matched.
+        truncated: Whether `total` exceeds the rows loaded.
+        max_rows: The row cap.
+        can_edit: Whether the caller may update this type's records and it has an editable column.
+        omitted_sensitivity: Sensitivity tags whose columns the policy left out.
+    """
+
+    label: str
+    columns: list[GridColumnOut]
+    rows: list[GridRowOut]
+    total: int
+    truncated: bool
+    max_rows: int
+    can_edit: bool
+    omitted_sensitivity: list[str]
+
+
+class GridRowUpdate(BaseModel):
+    """The cells of one grid row to save.
+
+    Attributes:
+        cells: The new text by column key (only the cells that changed).
+        expected: The text each of those cells had when the grid loaded it, so a cell changed since by someone
+            else is refused instead of overwritten.
+    """
+
+    cells: dict[str, str]
+    expected: dict[str, str] = {}
