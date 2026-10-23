@@ -30,11 +30,11 @@ from app.deps import get_current_user_or_module_frame
 from app.models.file import FileAsset
 from app.models.project import Project
 from app.models.user import User
+from app.modules.compliance.evidence_edits import EDITABLE_FIELDS, stage_evidence, stage_evidence_update
 from app.modules.compliance.models import (
     ARTEFACT_TYPE_EVIDENCE,
     ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT,
     ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT,
-    EVIDENCE_CODE_PREFIX,
     ComplianceEvidence,
     ComplianceEvidenceFile,
     ComplianceEvidenceRevalidation,
@@ -69,7 +69,6 @@ from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
 from app.services.project_scope import ProjectScope
 from app.services.rbac import require_permission
-from app.services.sequences import generate_unique_code
 from app.services.tags import TagFilter
 
 router = APIRouter(tags=["compliance-project-evidence"])
@@ -157,17 +156,11 @@ def create_evidence(
     for assessment_id in payload.required_action_assessment_ids:
         _get_assessment_for_project_or_404(db, project_id, assessment_id)
 
-    now = datetime.now(UTC)
-    project = db.get(Project, project_id)
-    evidence = ComplianceEvidence(
-        project_id=project_id,
-        unique_code=generate_unique_code(db, project, ARTEFACT_TYPE_EVIDENCE, EVIDENCE_CODE_PREFIX),
-        title=payload.title, description=payload.description,
+    evidence = stage_evidence(
+        db, db.get(Project, project_id), current_user, title=payload.title, description=payload.description,
         issuing_organisation=payload.issuing_organisation, issued_date=payload.issued_date,
-        expiry_date=payload.expiry_date, provided_by=current_user.id, provided_at=now, notes=payload.notes,
+        expiry_date=payload.expiry_date, notes=payload.notes,
     )
-    db.add(evidence)
-    db.flush()
     for pcr_id in payload.project_compliance_requirement_ids:
         relationships.create_link(
             db, source_type=ARTEFACT_TYPE_EVIDENCE, source_id=evidence.id,
@@ -180,8 +173,6 @@ def create_evidence(
             target_type=ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT, target_id=assessment_id,
             link_type_id=None, created_by=current_user.id,
         )
-    log_event(db, entity_type="compliance_evidence", entity_id=evidence.id, action="created",
-              actor_id=current_user.id, project_id=project_id, detail={"title": evidence.title})
     db.commit()
     db.refresh(evidence)
     return build_evidence_out(db, evidence)
@@ -238,13 +229,7 @@ def update_evidence(
     see `ComplianceEvidenceUpdate`'s own docstring for §15's
     revalidation-only rule."""
     evidence = _get_evidence_or_404(db, project_id, evidence_id)
-    evidence.title = payload.title
-    evidence.description = payload.description
-    evidence.issuing_organisation = payload.issuing_organisation
-    evidence.issued_date = payload.issued_date
-    evidence.notes = payload.notes
-    log_event(db, entity_type="compliance_evidence", entity_id=evidence.id, action="updated",
-              actor_id=current_user.id, project_id=project_id)
+    stage_evidence_update(db, evidence, current_user, {name: getattr(payload, name) for name in EDITABLE_FIELDS})
     db.commit()
     db.refresh(evidence)
     return build_evidence_out(db, evidence)

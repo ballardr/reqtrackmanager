@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
+import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { buildRisk, buildRiskScheme, ORG_USERS, PROJECT_ID, RISK_TYPES } from "./riskFixtures";
 import { ProjectRisksPage } from "./ProjectRisksPage";
@@ -21,6 +22,7 @@ const RISKS: Risk[] = [
 
 function mockApis(risks: Risk[] = RISKS) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.endsWith("/records/risk/columns")) return buildRecordColumns({ label: "Risks" });
     if (path.includes("/scoring-schemes/risk")) return buildRiskScheme();
     if (path.includes("/risk-types")) return RISK_TYPES;
     if (path.split("?")[0].endsWith("/modules/risk_management/risks")) return risks;
@@ -230,6 +232,27 @@ export const NewRiskPostsTheForm: Story = {
       expect(api.post).toHaveBeenCalledWith(
         `/api/v1/projects/${PROJECT_ID}/modules/risk_management/risks`,
         expect.objectContaining({ title: "Vendor lock-in", owner: { type: "user", id: "user-1" } }),
+      ),
+    );
+  },
+};
+
+/** Export and Import are on the title row; Export carries the register's filters (the server applies the same rules). */
+export const ExportCarriesTheRegistersFilters: Story = {
+  parameters: { query: "?overdue=1&status=mitigated" },
+  beforeEach: () => {
+    mockApis();
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["code\n"], { type: "text/csv" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("table", { name: "Risks" });
+    await expect(await canvas.findByText("Import")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
+    await userEvent.click(within(within(document.body).getByRole("dialog", { name: "Export" })).getByRole("button", { name: "Download CSV report" }));
+    await waitFor(() =>
+      expect(api.getForBlob).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/records/risk/export?status=mitigated&review_overdue=true`,
       ),
     );
   },

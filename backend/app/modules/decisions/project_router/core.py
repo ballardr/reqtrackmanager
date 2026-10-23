@@ -14,23 +14,21 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.enums import PrincipalType
 from app.models.project import Project
 from app.models.user import User
+from app.modules.decisions import edits
 from app.modules.decisions.enums import DecisionStatus
 from app.modules.decisions.models import Decision
 from app.modules.decisions.project_router._shared import _get_decision_in_project, _is_locked, _require_edit_role, _require_view
 from app.modules.decisions.schemas import DecisionCreate, DecisionOut, DecisionUpdate
-from app.modules.decisions.service import DECISION_ARTEFACT_TYPE, resolve_effective_decision_types
-from app.schemas.principal import PrincipalRef
+from app.modules.decisions.service import DECISION_ARTEFACT_TYPE
 from app.services.audit import log_event
-from app.services.principals import principal_filter_clause, principal_labels, principal_ref, validate_principal
+from app.services.principals import principal_labels, principal_ref
 from app.services.project_scope import ProjectScope
-from app.services.sequences import generate_unique_code
 from app.services.tags import TagFilter
 
 router = APIRouter(tags=["decisions-core"])
@@ -62,35 +60,6 @@ def _decision_to_out(db: Session, decision: Decision) -> DecisionOut:
     return _decisions_to_out(db, [decision])[0]
 
 
-def _validate_effective_decision_type(db: Session, project_id: UUID, decision_type_id: UUID) -> None:
-    """400s unless `decision_type_id` is one of `project_id`'s *effective*
-    decision types — its own, or (hierarchical projects, always on) a fallback inherited from its nearest ancestor
-    (`service.resolve_effective_decision_types`). This is what lets a
-    Decision in a child project reference a decision type defined on the
-    parent directly — the same cross-project FK reference `actions.py`'s
-    own `_validate_action_type` already allows for `ActionTypeDefinition`.
-    Used for `Decision.decision_type_id` validation only; rename/move/
-    delete still go through `decision_types._get_decision_type_in_project`,
-    which stays scoped to rows this project actually owns."""
-    effective_ids = {t.id for t in resolve_effective_decision_types(db, project_id)}
-    if decision_type_id not in effective_ids:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "decision_type_id must be a decision type defined in this project, or inherited from a parent project.",
-        )
-
-
-def _validate_people(
-    db: Session, project: Project, owner: PrincipalRef | None, decision_maker: PrincipalRef | None
-) -> None:
-    """400s unless the owner and decision maker (each optional here) are valid principals for this
-    project: a member of its organisation, a group of the organisation, or a group of this project
-    (`services.principals.validate_principal`). A Decision Maker overseeing several projects need not
-    hold a formal `ProjectRole` on this specific one."""
-    for ref, field in ((owner, "owner"), (decision_maker, "decision_maker")):
-        validate_principal(db, ref, organization_id=project.organization_id, project_id=project.id, field=field)
-
-
 @router.post("", response_model=DecisionOut, status_code=status.HTTP_201_CREATED)
 def create_decision(
     project_id: UUID, payload: DecisionCreate,
@@ -102,27 +71,11 @@ def create_decision(
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
-    _validate_effective_decision_type(db, project_id, payload.decision_type_id)
-    owner = payload.owner or PrincipalRef(type=PrincipalType.USER, id=current_user.id)
-    _validate_people(db, project, owner, payload.decision_maker)
-
-    unique_code = generate_unique_code(db, project, DECISION_ARTEFACT_TYPE, "DEC")
-    decision = Decision(
-        project_id=project_id, unique_code=unique_code, title=payload.title,
-        decision_statement=payload.decision_statement, decision_type_id=payload.decision_type_id,
-        status=DecisionStatus.DRAFT, decision_date=payload.decision_date,
-        decision_maker_type=payload.decision_maker.type.value if payload.decision_maker else None,
-        decision_maker_id=payload.decision_maker.id if payload.decision_maker else None,
-        owner_type=owner.type.value, owner_id=owner.id,
-        context=payload.context, options_considered=payload.options_considered,
-        chosen_option=payload.chosen_option, rationale=payload.rationale, consequences=payload.consequences,
-        assumptions=payload.assumptions, constraints=payload.constraints, creator_id=current_user.id,
-    )
-    db.add(decision)
-    db.flush()
-    log_event(
-        db, entity_type=DECISION_ARTEFACT_TYPE, entity_id=decision.id, action="created",
-        actor_id=current_user.id, project_id=project_id, detail={"title": decision.title},
+    decision = edits.stage_decision(
+        db, project, current_user, title=payload.title, decision_statement=payload.decision_statement,
+        decision_type_id=payload.decision_type_id, decision_date=payload.decision_date,
+        decision_maker=payload.decision_maker, owner=payload.owner,
+        **payload.model_dump(include=set(edits.TEXT_FIELDS) - {"title", "decision_statement"}),
     )
     db.commit()
     db.refresh(decision)
@@ -159,32 +112,13 @@ def list_decisions(
 
     def rows_for(pid: UUID) -> list:
         """This endpoint's rows for one project of the scope."""
-        query = select(Decision).where(Decision.project_id == pid)
-        if not include_archived:
-            query = query.where(Decision.is_archived.is_(False))
-        if decision_type_id:
-            query = query.where(Decision.decision_type_id == decision_type_id)
-        if status_filter:
-            query = query.where(Decision.status == status_filter)
-        if owner_id:
-            query = query.where(Decision.owner_type == owner_type.value, Decision.owner_id == owner_id)
-        if owner_mine:
-            query = query.where(principal_filter_clause(db, current_user.id, Decision.owner_type, Decision.owner_id, project_id=pid))
-        if decision_maker_id:
-            query = query.where(Decision.decision_maker_type == decision_maker_type.value, Decision.decision_maker_id == decision_maker_id)
-        if decision_maker_mine:
-            query = query.where(principal_filter_clause(
-                db, current_user.id, Decision.decision_maker_type, Decision.decision_maker_id, project_id=pid,
-            ))
-        decisions = db.scalars(query.order_by(Decision.created_at)).all()
-        decisions = tag_filter.keep(db, pid, DECISION_ARTEFACT_TYPE, decisions)
-
-        if search:
-            needle = search.lower()
-            decisions = [
-                d for d in decisions
-                if needle in d.title.lower() or needle in d.decision_statement.lower() or needle in d.unique_code.lower()
-            ]
+        decisions = edits.filter_decisions(
+            db, current_user, pid, include_archived=include_archived, decision_type_id=decision_type_id,
+            status_filter=status_filter, owner_type=owner_type, owner_id=owner_id, owner_mine=owner_mine,
+            decision_maker_type=decision_maker_type, decision_maker_id=decision_maker_id,
+            decision_maker_mine=decision_maker_mine,
+        )
+        decisions = edits.search_decisions(tag_filter.keep(db, pid, DECISION_ARTEFACT_TYPE, decisions), search)
         return _decisions_to_out(db, decisions)
 
     return project_scope.collect(
@@ -211,31 +145,7 @@ def update_decision(
     project = db.get(Project, project_id)
     decision = _get_decision_in_project(db, project_id, decision_id)
     _require_edit_role(db, current_user, project)
-    if _is_locked(decision):
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            "This Decision is approved or superseded; its content can no longer be edited in place.",
-        )
-    _validate_effective_decision_type(db, project_id, payload.decision_type_id)
-    _validate_people(db, project, payload.owner, payload.decision_maker)
-
-    decision.title = payload.title
-    decision.decision_statement = payload.decision_statement
-    decision.decision_type_id = payload.decision_type_id
-    decision.decision_date = payload.decision_date
-    decision.decision_maker_type = payload.decision_maker.type.value if payload.decision_maker else None
-    decision.decision_maker_id = payload.decision_maker.id if payload.decision_maker else None
-    decision.owner_type = payload.owner.type.value
-    decision.owner_id = payload.owner.id
-    decision.context = payload.context
-    decision.options_considered = payload.options_considered
-    decision.chosen_option = payload.chosen_option
-    decision.rationale = payload.rationale
-    decision.consequences = payload.consequences
-    decision.assumptions = payload.assumptions
-    decision.constraints = payload.constraints
-    log_event(db, entity_type=DECISION_ARTEFACT_TYPE, entity_id=decision.id, action="updated",
-              actor_id=current_user.id, project_id=project_id)
+    edits.stage_decision_update(db, project, decision, current_user, {name: getattr(payload, name) for name in DecisionUpdate.model_fields})
     db.commit()
     db.refresh(decision)
     return _decision_to_out(db, decision)

@@ -65,6 +65,15 @@ The organisation overview lists the records the organisation owns itself, and ea
 
 Who may import follows the panel: any member may create a Strategy, Future State or Guiding Principle, the matching owner role may change one, and creating or changing a Persona, Stakeholder or Stakeholder Group needs that type's owner role. Personal data is governed by the same organisation policy as in a project, but the permission to export it is the organisation-level one (organisation administrators by default).
 
+## Risks, Decisions and Compliance
+
+The **Risk** register, the **Decisions** list and Compliance **Evidence** have the same **Export** and **Import**, following the list's filters and previewing before they apply.
+
+- **Risks.** The six scoring levels are written by the level's name on its axis in your organisation's scheme (`Likely`, `Major`); the inherent and residual ratings are in the file for reference and recalculated from the levels. A file never changes a risk's status, and an accepted risk's assessment cannot be edited by a file any more than in the form. Creating a risk is open to any project member; changing one needs the Risk Manager role.
+- **Decisions.** The type is a name of the project's decision types (a child project may use its parent's). A new row is a draft owned by whoever imports it; an approved or superseded decision refuses an edit. Changing one needs the Decision Owner role.
+- **Evidence.** The expiry date can be given when evidence is created from a file; afterwards it changes only by revalidating the evidence, which keeps the previous date. Creating or changing evidence needs the Compliance Officer role.
+- **Read-only compliance lists.** A project's compliance assessments, its required-action assessments (including the outstanding ones on the **Outstanding** tab) and a standard version's requirements export but have no import: assessments move through the justification and approval workflow, and a standard's requirements are authored in a draft version's tree. These records have no code of their own, so the **Code** column holds the requirement's clause reference and the standard, version and requirement columns identify the row.
+
 ## Where this fits
 
 See [Core Features → Reports and export](../core-features/reports-and-export.md) for report-content editing (Markdown/WYSIWYG, image inserts, organisation defaults), and [Authoring and reviewing requirements](./authoring-and-reviewing-requirements.md) for creating requirements one at a time instead of in bulk.

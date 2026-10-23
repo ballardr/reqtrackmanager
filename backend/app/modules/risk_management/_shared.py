@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
-from datetime import date
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
@@ -68,6 +67,7 @@ from app.modules.risk_management.treatment import effective_treatment_counts
 from app.schemas.principal import PrincipalOut
 from app.services import module_attachments as att
 from app.services.audit import log_event
+from app.services.client_date import effective_today
 from app.services.permissions import encode_permission
 from app.services.principals import (
     is_principal_member,
@@ -159,7 +159,7 @@ def risk_to_out(
         owner=_owner_of(labels, version), review_date=version.review_date, version_number=version.version_number,
         effective_treatment_count=effective_treatments, is_effectively_treated=effective_treatments > 0,
         is_review_overdue=(
-            version.review_date is not None and version.review_date < date.today()
+            version.review_date is not None and version.review_date < effective_today()
             and version.status != RiskStatus.CLOSED and not risk.is_archived
         ),
         created_at=risk.created_at, updated_at=risk.updated_at,
@@ -278,23 +278,38 @@ def _owner_columns(db: Session, project: Project, payload: RiskCreate | RiskUpda
     return principal_columns("owner", payload.owner)
 
 
-def create_risk_from_payload(db: Session, payload: RiskCreate, creator: User, project: Project) -> RiskOut:
-    """Validates a create payload, creates the risk, audit-logs, commits and
-    returns the API shape."""
+def stage_risk(db: Session, payload: RiskCreate, creator: User, project: Project) -> Risk:
+    """Validates a create payload, creates the risk (`IDENTIFIED`) and audit-logs it. Does not commit: the
+    endpoint and the record-table import each own their transaction.
+
+    Raises:
+        HTTPException: 400 for an invalid level, type or owner.
+    """
     content = payload.model_dump(exclude={"owner"})
     _resolve_references(db, project, content)
     content.update(_owner_columns(db, project, payload))
     risk = create_risk(db, project=project, creator=creator, **content)
     log_event(db, entity_type=RISK_ARTEFACT_TYPE, entity_id=risk.id, action="created", actor_id=creator.id,
               project_id=project.id, detail={"title": payload.title, "unique_code": risk.unique_code})
+    return risk
+
+
+def create_risk_from_payload(db: Session, payload: RiskCreate, creator: User, project: Project) -> RiskOut:
+    """`stage_risk`, then commits and returns the API shape."""
+    risk = stage_risk(db, payload, creator, project)
     db.commit()
     db.refresh(risk)
     return current_risk_out(db, risk, project)
 
 
-def update_risk_from_payload(db: Session, risk: Risk, payload: RiskUpdate, actor: User, project: Project) -> RiskOut:
-    """Applies a partial update as a new version (only fields present in the
-    request body change), audit-logs, commits and returns the API shape."""
+def stage_risk_update(db: Session, risk: Risk, payload: RiskUpdate, actor: User, project: Project) -> None:
+    """Applies a partial update as a new version (only fields present in the request body change) and
+    audit-logs it. Does not commit. The caller has checked the actor may manage risks.
+
+    Raises:
+        HTTPException: 422 for a null title, 400 for an invalid reference, 409 when the change would alter an
+            accepted risk's signed-off assessment.
+    """
     sent = payload.model_dump(exclude_unset=True, exclude={"change_note", "owner"})
     if "title" in sent and sent["title"] is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "A Risk title cannot be null.")
@@ -309,6 +324,11 @@ def update_risk_from_payload(db: Session, risk: Risk, payload: RiskUpdate, actor
     apply_new_version(db, risk, current, actor, changes=sent, change_note=payload.change_note)
     log_event(db, entity_type=RISK_ARTEFACT_TYPE, entity_id=risk.id, action="updated", actor_id=actor.id,
               project_id=risk.project_id)
+
+
+def update_risk_from_payload(db: Session, risk: Risk, payload: RiskUpdate, actor: User, project: Project) -> RiskOut:
+    """`stage_risk_update`, then commits and returns the API shape."""
+    stage_risk_update(db, risk, payload, actor, project)
     db.commit()
     return current_risk_out(db, risk, project)
 

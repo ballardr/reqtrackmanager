@@ -21,23 +21,18 @@ from sqlalchemy.orm import Session
 
 from app.models.project import Project
 from app.models.user import User
-from app.modules.decisions.enums import DecisionStatus
+from app.modules.decisions.edits import is_locked, user_is_decision_owner
 from app.modules.decisions.models import Decision
-from app.services.rbac import require_project_module_enabled, user_satisfies_module_role
+from app.services.rbac import require_project_module_enabled
 
 # Factory called once, at router-definition time — same convention as
 # every other module router in this codebase (`modules.compliance.
 # project_router`'s own comment on this).
 _require_view = require_project_module_enabled("decisions")
 
-# A Decision's content fields become immutable once it reaches either of
-# these statuses (§13/10.6) — see the package's own
-# `__init__.py` docstring.
-_LOCKED_STATUSES = frozenset({DecisionStatus.APPROVED, DecisionStatus.SUPERSEDED})
-
-
-def _is_locked(decision: Decision) -> bool:
-    return decision.status in _LOCKED_STATUSES
+# A Decision's content fields become immutable once approved or superseded (§13/10.6); the rule lives in
+# `edits` so the record-table import applies the same one.
+_is_locked = is_locked
 
 
 def _get_decision_in_project(db: Session, project_id: UUID, decision_id: UUID) -> Decision:
@@ -47,11 +42,7 @@ def _get_decision_in_project(db: Session, project_id: UUID, decision_id: UUID) -
     return decision
 
 
-def _user_satisfies_decision_owner(db: Session, current_user: User, project: Project) -> bool:
-    return user_satisfies_module_role(
-        db, current_user, "decisions", "decision_owner",
-        organization_id=project.organization_id, project_id=project.id,
-    )
+_user_satisfies_decision_owner = user_is_decision_owner
 
 
 def _require_edit_role(db: Session, current_user: User, project: Project) -> None:

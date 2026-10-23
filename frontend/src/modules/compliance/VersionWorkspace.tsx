@@ -34,6 +34,7 @@ import { useState } from "react";
 
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { EntitySwitcher, type EntitySwitcherOption } from "../../components/EntitySwitcher";
+import { ListActions } from "../../components/ListActions";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import { RequirementTree } from "./RequirementTree";
@@ -128,6 +129,10 @@ export function VersionWorkspace({ orgId, standard, version, versions, actionTyp
           <span className="text-muted">{COMPLIANCE_STANDARD_VERSION_STATUS_LABEL[version.status]}</span>
         </div>
         <div className="row">
+          <ListActions
+            organizationId={orgId} recordType="compliance_requirement" kindLabel="requirements"
+            filters={new URLSearchParams({ standard: standard.id, version: version.id }).toString()}
+          />
           <button className="btn" disabled={versions.length < 2} onClick={() => setShowDiff(true)}>
             Compare versions
           </button>

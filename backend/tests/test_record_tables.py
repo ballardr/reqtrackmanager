@@ -30,13 +30,6 @@ from app.modules.registry import (
 from tests.conftest import auth_headers, create_org_user, create_project_group, login
 from tests.link_world import ACTION, REQ, World
 
-#: Types whose table has not been written yet. Shrinks as the roll-out lands; a type with a provider must not be
-#: listed, and a type not listed must have one.
-PENDING_RECORD_TABLES = {
-    "compliance_evidence", "compliance_required_action_assessment", "compliance_requirement", "decision",
-    "project_compliance_requirement", "risk",
-}
-
 
 @pytest.fixture
 def world(client, admin_token) -> World:
@@ -561,11 +554,11 @@ def test_a_column_tagged_as_personal_data_is_left_out_of_export_and_import_by_de
 # --- the registry -------------------------------------------------------------------------------------------------
 
 
-def test_every_registered_artefact_type_has_a_record_table_or_is_pending():
+def test_every_registered_artefact_type_has_a_record_table():
     providers = get_record_table_providers()
     registered = get_all_registered_artefact_types()
     missing = {t for t in registered if t not in providers}
-    assert missing == PENDING_RECORD_TABLES, "update PENDING_RECORD_TABLES: it lists exactly the types without a table"
+    assert not missing, f"every registered type exports from its list; no table for: {sorted(missing)}"
     assert not set(providers) - registered, "a provider names a type that is not registered"
 
 

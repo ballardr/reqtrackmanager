@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
+import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { VersionWorkspace } from "./VersionWorkspace";
 import type { ComplianceActionType, ComplianceStandard, ComplianceStandardVersion, StandardVersionDiff } from "./types";
@@ -43,6 +44,9 @@ const EMPTY_DIFF: StandardVersionDiff = {
  */
 function mockWorkspaceApis() {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.endsWith("/records/compliance_requirement/columns")) {
+      return buildRecordColumns({ label: "Standard requirements", importable: false, can_import: false, not_importable_reason: "Import the standard instead." });
+    }
     if (path.includes("/requirements") && !path.includes("required-actions")) return [];
     if (path.includes("/required-actions")) return [];
     if (path.includes("/diff/")) return EMPTY_DIFF;
@@ -211,6 +215,24 @@ export const EditSummaryOnRetiredVersion: Story = {
       { summary: "Deprecated — superseded by v2.0." }
     ));
     await waitFor(() => expect(args.onVersionChanged).toHaveBeenCalledOnce());
+  },
+};
+
+/** The version's requirements export from the organisation tier, narrowed to this standard and version; no import is offered. */
+export const RequirementsExportForThisVersion: Story = {
+  args: { version: version({ status: "published" }), versions: [version({ status: "published" })] },
+  beforeEach: () => {
+    mockWorkspaceApis();
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["code\n"], { type: "text/csv" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Export requirements" }));
+    await userEvent.click(within(within(document.body).getByRole("dialog", { name: "Export" })).getByRole("button", { name: "Download CSV report" }));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(
+      `/api/v1/orgs/${ORG_ID}/records/compliance_requirement/export?standard=std-1&version=ver-1`
+    ));
+    await expect(canvas.queryByText("Import requirements")).not.toBeInTheDocument();
   },
 };
 

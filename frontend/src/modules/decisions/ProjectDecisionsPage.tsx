@@ -63,6 +63,7 @@ import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
 import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
+import { addSharedListFilters } from "../../utils/listFilterParams";
 
 export function ProjectDecisionsPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -123,6 +124,19 @@ export function ProjectDecisionsPage() {
 
   useLoadOnChange(reloadDecisions, [projectId, search, statusFilter, decisionTypeFilter, includeArchived, ownedByMe, tagFilter.query, projectScope.scope]);
 
+  /** The list's filters by the names its export takes; the server applies the same rules the page does. */
+  function filterParams(): URLSearchParams {
+    const params = new URLSearchParams();
+    if (statusFilter) params.set("status", statusFilter);
+    if (decisionTypeFilter) params.set("type", decisionTypeFilter);
+    if (search) params.set("search", search);
+    if (includeArchived) params.set("include_archived", "true");
+    if (ownedByMe) params.set("mine", "true");
+    if (openOnly) params.set("open_only", "true");
+    addSharedListFilters(params, tagFilter, projectScope);
+    return params;
+  }
+
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (decisions === null || project === null) return <Spinner />;
@@ -152,6 +166,7 @@ export function ProjectDecisionsPage() {
     <div className="container stack">
       <ListPageLayout
         title="Decisions"
+        records={{ projectId, recordType: "decision", filters: filterParams().toString(), onImported: reloadDecisions }}
         actions={
           <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
             New decision

@@ -26,7 +26,7 @@ from app.modules.context_strategy.tests.test_context_strategy_relationships_api 
 from app.modules.context_strategy.tests.test_context_strategy_relationships_api import (
     _enable_module as _enable_context_strategy,
 )
-from app.modules.registry import get_record_table_providers
+from app.modules.registry import artefact_type_module, get_not_importable_types, get_record_table_providers
 from app.modules.stakeholders.tests.test_persona_api import (
     _create_org_persona,
     _create_project_persona,
@@ -40,6 +40,8 @@ STRATEGY, FUTURE_STATE, GUIDING_PRINCIPLE, PERSONA, STAKEHOLDER, GROUP = (
     "strategy", "future_state", "guiding_principle", "persona", "stakeholder", "stakeholder_group",
 )
 ORG_TYPES = (STRATEGY, FUTURE_STATE, GUIDING_PRINCIPLE, PERSONA, STAKEHOLDER, GROUP)
+#: Organisation-owned types whose organisation list only exports (they give a reason in `not_importable`).
+EXPORT_ONLY_ORG_TYPES = ("compliance_requirement",)
 CS = "/api/v1/orgs/{oid}/modules/context_strategy"
 SH = "/api/v1/orgs/{oid}/modules/stakeholders"
 
@@ -342,7 +344,7 @@ def test_exactly_the_types_the_organisation_can_own_have_an_organisation_tier():
     owned = {key for key, p in providers.items() if p.organization_owned is not None}
     with_tier = {key for key, p in providers.items() if p.organization is not None}
     assert owned <= with_tier
-    assert with_tier == set(ORG_TYPES)
+    assert with_tier == set(ORG_TYPES) | set(EXPORT_ONLY_ORG_TYPES)
 
 
 def test_every_organisation_tier_declares_its_gate_and_columns_with_the_same_keys_as_the_project_tier():
@@ -350,6 +352,7 @@ def test_every_organisation_tier_declares_its_gate_and_columns_with_the_same_key
         tier = provider.organization
         if tier is None:
             continue
-        assert tier.subcomponent
-        assert tier.create is not None and tier.update is not None, key
+        definition = artefact_type_module(key)
+        assert tier.subcomponent or not definition.sub_components, f"{key} needs the sub-component its module declares"
+        assert (tier.create is not None and tier.update is not None) or key in get_not_importable_types(), key
         assert tier.filter_params <= provider.filter_params | {"include_archived"}, key

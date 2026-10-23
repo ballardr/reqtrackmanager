@@ -58,6 +58,7 @@ import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
 import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
+import { addSharedListFilters } from "../../utils/listFilterParams";
 import { TagFilterField } from "../../components/TagFilterField";
 
 type View = "register" | "matrix";
@@ -164,6 +165,21 @@ export function ProjectRisksPage() {
     };
   }, [projectId, includeArchived, refreshKey, tagFilter.tags, tagFilter.mode, projectScope.scope]);
 
+  /** The register's filters by the names its export takes; the server applies the same rules the page does. */
+  function filterParams(): URLSearchParams {
+    const params = new URLSearchParams();
+    if (statusFilter) params.set("status", statusFilter);
+    if (typeFilter) params.set("type", typeFilter);
+    if (search.trim()) params.set("search", search.trim());
+    if (includeArchived) params.set("include_archived", "true");
+    if (openOnly) params.set("open_only", "true");
+    if (overdueOnly) params.set("review_overdue", "true");
+    if (untreatedOnly) params.set("untreated", "true");
+    if (cell) params.set("cell", formatCell(cell));
+    addSharedListFilters(params, tagFilter, projectScope);
+    return params;
+  }
+
   const matches = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return (r: Risk, applyOpenOnly: boolean) => {
@@ -218,6 +234,7 @@ export function ProjectRisksPage() {
     <div className="container stack">
       <ListPageLayout
         title="Risks"
+        records={{ projectId, recordType: "risk", filters: filterParams().toString(), onImported: () => setRefreshKey((k) => k + 1) }}
         actions={
           <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
             New risk

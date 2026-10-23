@@ -23,6 +23,7 @@ import { useState } from "react";
 import { RecordCode } from "../../components/RecordCode";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
+import { ListActions } from "../../components/ListActions";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
@@ -55,6 +56,14 @@ export function EvidencePanel({ projectId }: { projectId: string }) {
 
   useLoadOnChange(reload, [projectId]);
 
+  /** The list's filters by the names its export takes; the server applies the same rules the page does. */
+  function filterParams(): URLSearchParams {
+    const params = new URLSearchParams();
+    if (search) params.set("search", search);
+    if (includeArchived) params.set("include_archived", "true");
+    return params;
+  }
+
   if (loadError) return <div style={{ color: "var(--color-danger)" }}>{loadError}</div>;
   if (evidence === null) return <Spinner />;
 
@@ -73,9 +82,12 @@ export function EvidencePanel({ projectId }: { projectId: string }) {
 
   return (
     <div className="stack">
-      <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
-        Add evidence
-      </button>
+      <div className="row" style={{ gap: "var(--space-3)", alignSelf: "flex-start" }}>
+        <button className="btn btn-primary" onClick={() => setCreating(true)}>
+          Add evidence
+        </button>
+        <ListActions projectId={projectId} recordType="compliance_evidence" filters={filterParams().toString()} onImported={reload} />
+      </div>
       <div className="side-grid">
         <DirectoryTable
           ariaLabel="Compliance evidence"

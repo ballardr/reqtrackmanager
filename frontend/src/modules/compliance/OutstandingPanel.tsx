@@ -38,6 +38,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ListActions } from "../../components/ListActions";
 import { ReportExportButton } from "../../components/ReportExportButton";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -150,6 +151,15 @@ export function OutstandingPanel({ projectId, orgId }: { projectId: string; orgI
     return top !== null && top.id === subSectionFilter;
   }
 
+  /** The outstanding required actions list's filters by the names its export takes. */
+  function actionFilterParams(): URLSearchParams {
+    const params = new URLSearchParams({ outstanding: "true" });
+    if (standardFilter) params.set("standard", standardFilter);
+    if (versionFilter) params.set("version", versionFilter);
+    if (subSectionFilter) params.set("section", subSectionFilter);
+    return params;
+  }
+
   async function downloadReport(kind: "pdf" | "csv") {
     try {
       // Scoped to this panel's own current Standard/Standard version/Sub-
@@ -183,7 +193,11 @@ export function OutstandingPanel({ projectId, orgId }: { projectId: string; orgI
   return (
     <div className="side-grid">
       <div className="stack">
-        <div className="row" style={{ justifyContent: "flex-end" }}>
+        <div className="row" style={{ justifyContent: "flex-end", gap: "var(--space-3)" }}>
+          <ListActions
+            projectId={projectId} recordType="compliance_required_action_assessment" kindLabel="outstanding required actions"
+            filters={actionFilterParams().toString()}
+          />
           <ReportExportButton onDownload={downloadReport} />
         </div>
         <section className="card stack">

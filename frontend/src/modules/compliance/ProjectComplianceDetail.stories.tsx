@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
+import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { withToast } from "../../testing/storybook-helpers";
 import { ProjectComplianceDetail } from "./ProjectComplianceDetail";
 import type { ProjectCompliance, ProjectComplianceStatus } from "./types";
@@ -43,6 +44,8 @@ function status(overrides: Partial<ProjectComplianceStatus> = {}): ProjectCompli
  */
 function mockApis() {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.endsWith("/records/project_compliance_requirement/columns")) return buildRecordColumns({ label: "Compliance assessments", importable: false, can_import: false, not_importable_reason: "Assess it on its page." });
+    if (path.endsWith("/records/compliance_required_action_assessment/columns")) return buildRecordColumns({ label: "Required action assessments", importable: false, can_import: false, not_importable_reason: "Complete it on its page." });
     if (path.includes("/standards?")) return [{ id: "std-1", organization_id: ORG_ID, reference: "ISO-27001", name: "ISO 27001", description: "", issuing_organisation: null, owner: { type: "user", id: "u1", label: "Demo User", member_count: null, exists: true }, creator_id: "u1", is_archived: false, archived_at: null, archived_by: null, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" }];
     if (path.includes("/versions")) return [{ id: "ver-1", standard_id: "std-1", version_number: 1, version_label: "v1.0", status: "published", effective_date: null, change_note: "", created_by: "u1", published_at: "2026-01-01T00:00:00Z", published_by: "u1", retired_at: null, retired_by: null, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" }];
     if (path.includes("/requirements")) return [];
@@ -138,6 +141,28 @@ export const NotYetAssessedAssignment: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.getByText("Not yet assessed")).toBeInTheDocument();
     expect(canvas.queryByText("Contains non-compliant requirements")).not.toBeInTheDocument();
+  },
+};
+
+/** The assignment's assessments and required actions each export, narrowed to this assignment. */
+export const AssessmentsAndRequiredActionsExportForThisAssignment: Story = {
+  beforeEach: () => {
+    mockApis();
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["code\n"], { type: "text/csv" }));
+  },
+  args: {
+    orgId: ORG_ID, projectId: PROJECT_ID, assignment: assignment(), status: status(), orgUsers: [],
+    onBack: () => {}, onArchiveToggled: () => {},
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Export assessments" }));
+    await userEvent.click(within(within(document.body).getByRole("dialog", { name: "Export" })).getByRole("button", { name: "Download CSV report" }));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/records/project_compliance_requirement/export?assignment=pc-1`
+    ));
+    await expect(await canvas.findByRole("button", { name: "Export required actions" })).toBeInTheDocument();
+    await expect(canvas.queryByText("Import assessments")).not.toBeInTheDocument();
   },
 };
 

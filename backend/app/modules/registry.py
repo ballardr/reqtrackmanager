@@ -1625,7 +1625,8 @@ class OrganizationRecordTable:
 
     Attributes:
         subcomponent: The owning module's sub-component whose organisation-level state gates the list (the same
-            one the organisation list endpoint requires); the route answers 404 while it is off.
+            one the organisation list endpoint requires); the route answers 404 while it is off. `None` for a module
+            that declares no sub-components: the module being enabled for the organisation is then the whole gate.
         columns: `(db, organization) -> columns` (first column excluded; the engine adds `code`).
         list_records: `(db, user, organization, filters) -> records`: the organisation's own records, with the
             filters of the organisation list (the endpoint and the provider share one query).
@@ -1639,7 +1640,7 @@ class OrganizationRecordTable:
             endpoint's create / update. `None` falls back to the fine-grained `propose_create` / `manage` permission.
     """
 
-    subcomponent: str
+    subcomponent: str | None
     columns: Callable[[Session, Any], Sequence[RecordColumn]]
     list_records: Callable[[Session, Any, Any, RecordFilters], list[Any]]
     find: Callable[[Session, Any, str], Any | None]

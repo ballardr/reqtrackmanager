@@ -3,6 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures";
+import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { buildFileAsset, withRouter, withToast } from "../../testing/storybook-helpers";
 import { EvidencePanel } from "./EvidencePanel";
 import type { ComplianceEvidence } from "./types";
@@ -28,6 +29,7 @@ function evidence(overrides: Partial<ComplianceEvidence> = {}): ComplianceEviden
 function mockApis(initial: ComplianceEvidence[]) {
   let items = initial;
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.endsWith("/records/compliance_evidence/columns")) return buildRecordColumns({ label: "Evidence" });
     if (path.includes("/link-graph")) {
       return buildGraph([[buildGraphNode({ type: "requirement", id: "r-9", type_label: "Requirement", label: "SW-SEC-014 Encrypt at rest", status: null })]]);
     }
@@ -164,6 +166,26 @@ export const RowsLinkToTheDetailPage: Story = {
     await expect(link).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/compliance/evidence/ev-1`);
     // No side panel opens in place any more.
     await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
+  },
+};
+
+/** Export and Import sit beside Add evidence; Export carries the list's search and archived filters. */
+export const ExportCarriesTheListsFilters: Story = {
+  beforeEach: () => {
+    mockApis([evidence()]);
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["code\n"], { type: "text/csv" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("link", { name: "IPX6 Test Certificate" });
+    await userEvent.type(canvas.getByLabelText("Search evidence"), "IPX");
+    await userEvent.click(canvas.getByRole("checkbox", { name: "Show archived" }));
+    await expect(await canvas.findByText("Import")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
+    await userEvent.click(within(within(document.body).getByRole("dialog", { name: "Export" })).getByRole("button", { name: "Download CSV report" }));
+    await waitFor(() =>
+      expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/compliance_evidence/export?search=IPX&include_archived=true`),
+    );
   },
 };
 

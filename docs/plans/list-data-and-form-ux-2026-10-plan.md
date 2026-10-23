@@ -1,11 +1,11 @@
 # List Data and Form UX (October 2026) — Plan
 
-**Status:** planned 2026-10-22, in progress. Built from nine items the user picked up (section 1; item 9 added 2026-10-23). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position), 7 (type definition), 7b (module bundles), 8 (record-table extension point), 8b (personal-data policy), 9 (shared list actions), 10 (record-list report), 11 (core types), 12 (Context & Strategy and Stakeholders) and 12b (organisation-level lists) are done; Phase 13 is next; Phase 15 (overview total-records chart) and the Phase 16 close-out follow Phase 14.
+**Status:** planned 2026-10-22, in progress. Built from nine items the user picked up (section 1; item 9 added 2026-10-23). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position), 7 (type definition), 7b (module bundles), 8 (record-table extension point), 8b (personal-data policy), 9 (shared list actions), 10 (record-list report), 11 (core types), 12 (Context & Strategy and Stakeholders), 12b (organisation-level lists) and 13 (Risk, Decisions, Compliance) are done; Phase 14 is next; Phase 15 (overview total-records chart) and the Phase 16 close-out follow Phase 14.
 **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. Q1–Q4 were answered by the user on 2026-10-22 (section 2). Everything in the "Agent defaults" table is **Decided by: Agent** and open to override before the phase that uses it starts.
 
 ## Status / Resume Here
 
-15 / 19 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–12b done 2026-10-23, Phases 12 and 12b uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
+16 / 19 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–13 done 2026-10-23, Phases 12, 12b and 13 uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
 
 | # | Phase | Item | Status |
 |---|-------|------|--------|
@@ -25,7 +25,7 @@
 | 11 | Roll-out A: core types (Requirements, Change Requests, Actions) | 5 | [x] |
 | 12 | Roll-out B: Context & Strategy, Stakeholders (Persona, Stakeholder, Need, Group, Engagement, Research Finding) | 5 | [x] |
 | 12b | Organisation-level export and import: the organisation's own Strategies, Future States, Guiding Principles, Personas, Stakeholders and Groups (generic organisation route, org list pages) | 5 | [x] |
-| 13 | Roll-out C: Risk, Decisions, Compliance | 5 | [ ] |
+| 13 | Roll-out C: Risk, Decisions, Compliance | 5 | [x] |
 | 14 | Bulk edit grid (generic) wired to Pain Points; other types register editable columns | 3 | [ ] |
 | 15 | Project overview: total-records pie chart by type, replacing the per-module count tiles | 9 | [ ] |
 | 16 | Docs website, seeds, README, close-out and archive this plan | all | [ ] |
@@ -245,6 +245,8 @@ Each phase, for each type: write the provider (columns, editable flags), wire th
 | 13 | Risk, Decision, Compliance requirement / project requirement / evidence / required-action assessment | Decision approval gate under D5; Compliance exemptions likely |
 
 - **Tests:** the Phase 8 suite runs against each type; one Playwright spec per phase covers a representative type; the all-types enforcement test must pass at the end of 13.
+
+- **Delivered, Phase 13 (2026-10-23):** providers for Risk, Decision, Compliance Evidence (importable) and the Standard Requirement, a project's assessment of it and the assessment of a required action (export-only, each with its reason in `not_importable`); Decision and Evidence create/edit extracted into `edits.py` / `evidence_edits.py`, Risk's into `stage_risk` / `stage_risk_update`; Export/Import on the Risk and Decisions lists, the Evidence tab, an assignment's requirements, the Outstanding tab and (organisation tier) a standard version. The three codeless Compliance types export their clause reference as the Code column (**Decided by: Agent**; giving them real codes remains the recorded gap). `OrganizationRecordTable.subcomponent` may be `None` and a tier may be export-only. The all-types enforcement test now has no pending set.
 
 ### Phase 12b — Organisation-level export and import
 

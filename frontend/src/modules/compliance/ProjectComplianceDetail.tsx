@@ -23,6 +23,7 @@
 import { useEffect, useState } from "react";
 
 import type { OrgUser } from "../../api/types";
+import { ListActions } from "../../components/ListActions";
 import { RecordHeader } from "../../components/RecordHeader";
 import { Tabs, tabPanelProps } from "../../components/Tabs";
 import { useConfirmedAction } from "../../components/useConfirmedAction";
@@ -182,6 +183,16 @@ export function ProjectComplianceDetail({
       />
       {tab === "requirements" && (
         <div {...tabPanelProps("project-compliance-detail", "requirements")}>
+          <div className="row" style={{ gap: "var(--space-3)", justifyContent: "flex-end" }}>
+            <ListActions
+              projectId={projectId} recordType="project_compliance_requirement" kindLabel="assessments"
+              filters={`assignment=${assignment.id}`}
+            />
+            <ListActions
+              projectId={projectId} recordType="compliance_required_action_assessment" kindLabel="required actions"
+              filters={`assignment=${assignment.id}`}
+            />
+          </div>
           {resolvedStandardId === null ? (
             <p className="text-muted">Loading…</p>
           ) : (

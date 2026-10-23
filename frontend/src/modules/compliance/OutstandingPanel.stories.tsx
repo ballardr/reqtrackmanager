@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
+import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { withToast } from "../../testing/storybook-helpers";
 import { OutstandingPanel } from "./OutstandingPanel";
 import type {
@@ -39,6 +40,7 @@ function mockApis(
   requirementsByVersion: Record<string, ComplianceRequirement[]> = {}
 ) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.endsWith("/records/compliance_required_action_assessment/columns")) return buildRecordColumns({ label: "Required action assessments" });
     if (path.endsWith("/non-compliant-requirements")) return nonCompliant;
     if (path.endsWith("/pending-approvals")) return pending;
     if (path.endsWith("/outstanding-required-actions")) return outstandingActions;
@@ -162,6 +164,27 @@ export const ExportPassesActiveFiltersAsQueryParams: Story = {
     await userEvent.click(within(menu).getByRole("button", { name: "Download CSV report" }));
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/compliance/reports?format=csv&standard_id=std-1&requirement_id=sec-5`
+    ));
+  },
+};
+
+/** The outstanding required actions also export as a record list, narrowed by the same Standard and Sub-section filters. */
+export const OutstandingActionsExportAsARecordList: Story = {
+  beforeEach: () => {
+    mockApis(NON_COMPLIANT, PENDING, OUTSTANDING_ACTIONS, REVIEWS_DUE, [VER_1], { "ver-1": REQUIREMENTS_VER_1 });
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["code\n"], { type: "text/csv" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText(/Missing MFA on admin accounts/)).toBeInTheDocument());
+    await userEvent.selectOptions(canvas.getByLabelText("Standard"), "std-1");
+    await waitFor(() => expect(canvas.getByLabelText("Sub-section")).toBeInTheDocument());
+    await userEvent.selectOptions(canvas.getByLabelText("Sub-section"), "sec-5");
+
+    await userEvent.click(await canvas.findByRole("button", { name: "Export outstanding required actions" }));
+    await userEvent.click(within(within(document.body).getByRole("dialog", { name: "Export" })).getByRole("button", { name: "Download CSV report" }));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/records/compliance_required_action_assessment/export?outstanding=true&standard=std-1&section=sec-5`
     ));
   },
 };

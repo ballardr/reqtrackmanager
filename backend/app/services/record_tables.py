@@ -223,8 +223,9 @@ def org_provider_for(db: Session, organization: Organization, artefact_type: str
     if provider is None or provider.organization is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Record type not found.")
     definition = artefact_type_module(artefact_type)
-    if definition is not None and not is_org_module_subcomponent_enabled(
-        db, organization.id, definition.key, provider.organization.subcomponent
+    if (
+        definition is not None and provider.organization.subcomponent is not None
+        and not is_org_module_subcomponent_enabled(db, organization.id, definition.key, provider.organization.subcomponent)
     ):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Record type not found.")
     return provider
