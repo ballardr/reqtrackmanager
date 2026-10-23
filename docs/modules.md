@@ -1254,9 +1254,28 @@ REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
   `report_document.safe` and DOCX cells through `report_docx.clean_text`. Do not put Restricted data (secrets, file content) in
   a result: report reads are not audit-logged, on the basis that every field is
   already returned to the same caller elsewhere.
-- **Not built yet:** rich cells (Compliance's multi-line narrative), richer
-  section kinds (matrices) and row caps; add them when a second consumer needs
-  them.
+- **A cell the screen colours keeps its colour in PDF and Word.** `ReportSection.tones` is a grid shaped
+  like `rows` (`None` = no tone) naming a tone (`muted`, `info`, `accent`, `warning`, `danger`: the screen's
+  `BadgeTone`, so a rating band's `tone` goes straight in). A section whose `tones` are the wrong shape or
+  name an unknown tone raises when it is built. `report_model.TONE_FILL` is the one print colour per tone
+  (pinned to the stylesheet's `.scoring-cell--<tone>` tints by `backend/tests/test_report_tones.py`); CSV and
+  JSON carry the text only, so a toned cell's text also names the band ("2 (High ×2) · Critical"), which keeps
+  a greyscale print readable. A matrix is an ordinary table whose cells are toned (Pain Point R1's
+  Severity × Frequency, Risk RK2's Likelihood × Consequence).
+- **Status badges: declare, don't loop.** `ReportDefinition.cell_tones` maps a column heading to
+  `{label: tone}` (`{"Status": tones_by_label((RISK_STATUS_LABEL, RISK_STATUS_TONE))}`), and the framework tones
+  every matching cell in every section of the report, so a collector needs no change. Keep a `*_TONE` map beside
+  the `*_LABEL` map in the module's `labels.py`, the hand-kept twin of the frontend's (`test_report_tones.py`
+  fails when they drift); `tones_by_label` rejects a label that two enums tone differently. A collector's own
+  `tones` (a rating) wins over a declared one.
+- **Text colour is chosen by contrast, never fixed.** `report_model.text_on(fill)` returns black or white by the
+  WCAG rule the screen uses for the accent colour (`branding.contrast_text_hex`). Tone cells, and the table
+  header on an organisation's accent colour, use it, so a dark fill gets white text and a light one black. A
+  new renderer or a module's own PDF table must use `report_document.toned_paragraph` / `header_text_color`,
+  not a literal `colors.white`. The accent used *as text* on white paper (the cover title) goes through
+  `branding.readable_on_white`, which darkens a light accent until it reads.
+- **Not built yet:** rich cells (Compliance's multi-line narrative) and row caps; add them when a second
+  consumer needs them.
 - **On-screen UI is core too (Phase 13).** The project Reports page and Org
   Overview's "Reports" group list whatever the catalogue returns and run it with
   the shared `ReportRunner` (parameter form from the declaration, `ReportViewer`,

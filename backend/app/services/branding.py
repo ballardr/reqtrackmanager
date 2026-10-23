@@ -17,6 +17,8 @@ and the model's own docstring for the full incident.
 
 from __future__ import annotations
 
+import colorsys
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -57,19 +59,52 @@ def get_server_settings(db: Session) -> ServerSettings:
     return settings
 
 
+def _luminance(hex_value: str) -> float:
+    """WCAG relative luminance of `#RRGGBB` (or `RRGGBB`), 0 (black) to 1 (white)."""
+    value = hex_value.lstrip("#")
+    r, g, b = (int(value[i : i + 2], 16) / 255 for i in (0, 2, 4))
+
+    def linearize(channel: float) -> float:
+        return channel / 12.92 if channel <= 0.03928 else ((channel + 0.055) / 1.055) ** 2.4
+
+    return 0.2126 * linearize(r) + 0.7152 * linearize(g) + 0.0722 * linearize(b)
+
+
+def contrast_ratio(hex_a: str, hex_b: str) -> float:
+    """WCAG contrast ratio between two colours, 1 (identical) to 21 (black on white)."""
+    lighter, darker = sorted((_luminance(hex_a), _luminance(hex_b)), reverse=True)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
 def contrast_text_hex(background_hex: str) -> str:
     """Picks black or white text, whichever gives better contrast against
     `background_hex` (per the WCAG relative-luminance formula), so an admin
     picking one accent colour never has to also pick a matching text colour
     or risk an unreadable combination."""
-    hex_value = background_hex.lstrip("#")
-    r, g, b = (int(hex_value[i : i + 2], 16) / 255 for i in (0, 2, 4))
-
-    def linearize(channel: float) -> float:
-        return channel / 12.92 if channel <= 0.03928 else ((channel + 0.055) / 1.055) ** 2.4
-
-    luminance = 0.2126 * linearize(r) + 0.7152 * linearize(g) + 0.0722 * linearize(b)
     # Contrast against white (luminance 1.0) vs. black (luminance 0.0).
-    contrast_with_white = (1.0 + 0.05) / (luminance + 0.05)
-    contrast_with_black = (luminance + 0.05) / (0.0 + 0.05)
+    contrast_with_white = (1.0 + 0.05) / (_luminance(background_hex) + 0.05)
+    contrast_with_black = (_luminance(background_hex) + 0.05) / (0.0 + 0.05)
     return "#ffffff" if contrast_with_white >= contrast_with_black else "#000000"
+
+
+def readable_on_white(colour_hex: str, min_ratio: float = 4.5) -> str:
+    """The accent colour as text on a white page: itself when it already contrasts enough, otherwise darkened
+    (same hue and saturation, lightness lowered in steps), mirroring the frontend's `ensureContrast`, so a light
+    brand colour does not make a faint title on paper.
+
+    Args:
+        colour_hex: The colour, `#RRGGBB` or `RRGGBB`.
+        min_ratio: Least WCAG contrast against white (4.5 is AA for normal text).
+
+    Returns:
+        `#RRGGBB`, lower case.
+    """
+    value = colour_hex.lstrip("#")
+    r, g, b = (int(value[i : i + 2], 16) / 255 for i in (0, 2, 4))
+    h, lightness, s = colorsys.rgb_to_hls(r, g, b)
+    for _ in range(34):  # 0.03 steps cover the whole lightness range
+        candidate = "#" + "".join(f"{round(c * 255):02x}" for c in colorsys.hls_to_rgb(h, lightness, s))
+        if contrast_ratio(candidate, "#ffffff") >= min_ratio:
+            return candidate
+        lightness = max(0.0, lightness - 0.03)
+    return "#000000"

@@ -31,10 +31,12 @@ from app.services.report_document import (
     STYLES,
     ReportBranding,
     build_pdf,
+    header_text_color,
     image_flowable,
     safe,
     styled_table,
     title_flowables,
+    toned_paragraph,
 )
 from app.services.report_model import (
     BulletList,
@@ -50,7 +52,7 @@ from app.services.report_model import (
 
 _NOTE = ParagraphStyle("report_note", parent=STYLES["BodyText"], fontSize=8.5, leading=11, textColor=colors.HexColor("#555555"))
 _CELL = ParagraphStyle("report_cell", parent=STYLES["BodyText"], fontSize=7.5, leading=9.5)
-_HEAD = ParagraphStyle("report_head", parent=_CELL, textColor=colors.white, fontName="Helvetica-Bold")
+_HEAD = ParagraphStyle("report_head", parent=_CELL, fontName="Helvetica-Bold")
 _PLAIN_CELL = ParagraphStyle("cell", parent=STYLES["BodyText"], fontSize=8, leading=10)
 _CELL_FONT_SIZE = 7.5
 _MAX_CELL_POINTS = 70.0
@@ -100,12 +102,13 @@ def _table(block: Table, accent, usable_width: float):
         widths = _content_widths(block, usable_width)
     else:
         widths = [usable_width / len(block.columns)] * len(block.columns)
-    if block.compact:
-        data = [[RlParagraph(safe(c), _HEAD) for c in block.columns]]
-        data += [[RlParagraph(safe(cell), _CELL) for cell in row] for row in block.rows]
-    else:
-        data = [list(block.columns)]
-        data += [[RlParagraph(safe(cell), _PLAIN_CELL) for cell in row] for row in block.rows]
+    body_style = _CELL if block.compact else _PLAIN_CELL
+    head_style = ParagraphStyle("report_head_text", parent=_HEAD, textColor=header_text_color(accent))
+    data = [[RlParagraph(safe(c), head_style) for c in block.columns]] if block.compact else [list(block.columns)]
+    data += [
+        [toned_paragraph(cell, body_style, block.tone_at(r, c)) for c, cell in enumerate(row)]
+        for r, row in enumerate(block.rows)
+    ]
     return styled_table(data, col_widths=widths, accent_color=accent, compact=block.compact)
 
 

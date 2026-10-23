@@ -1,10 +1,10 @@
 # Resource Profiling (Memory / CPU) — Plan
 
-**Status:** planned 2026-10-12, not started. **Decided by: User** (2026-10-12): wants the ability to profile the stack, scheduled for when no feature is in flight. Everything below about *which tools* and *phase order* is **Decided by: Agent** until the user signs off. **Decided by: User** (2026-10-12): the primary host is Docker Desktop on the user's Mac, and results are about *relative* performance; the same tests must also run on a Linux VM and probably a Raspberry Pi via a script, with outputs stored in the project so reports can be built from all hosts together.
+**Status:** planned 2026-10-12, not started. **Decided by: User** (2026-10-12): wants the ability to profile the stack, scheduled for when no feature is in flight. Everything below about *which tools* and *phase order* is **Decided by: Agent** until the user signs off. **Decided by: User** (2026-10-12): the primary host is Docker Desktop on the user's Mac, and results are about *relative* performance; the same tests must also run on a Linux VM and probably a Raspberry Pi via a script, with outputs stored in the project so reports can be built from all hosts together. **Decided by: User** (2026-10-23): (a) profiling must run at varying data volumes, not only the seed set, including projects with hundreds to thousands of requirements; (b) the results must be used to find scaling problems and drive fixes, not only be recorded; (c) the whole process must be cheap to repeat later so numbers can be refreshed as the product grows. **Decided by: User** (2026-10-23, follow-up): tiers must also scale other record types (pain points, decisions and so on) and link density; test multiple organisations and nested projects (which multiply the volume a parent reads); many projects per organisation matters most; 20,000 requirements is the ceiling for now; CI does not run these performance tests. The dataset tiers, Phase 4b and the re-run process below implement this; their specific mechanisms are **Decided by: Agent** until signed off.
 
 ## Status / Resume Here
 
-0 / 7 phases complete (Phase 0 is a prerequisite for the Raspberry Pi runs, not for the rest). Phases 2–4 each save their results under `perf/results/<host-label>/<date>-<commit>/` (summarised CSV/JSON) so Phase 6 can plot them; each phase is independently useful, so stopping after any one is fine.
+0 / 8 phases complete (Phase 0 is a prerequisite for the Raspberry Pi runs, not for the rest). Phases 2–4 each save their results under `perf/results/<host-label>/<date>-<commit>/` (summarised CSV/JSON) so Phase 6 can plot them; each phase is independently useful, so stopping after any one is fine. Every scenario runs at every dataset tier (see "Dataset tiers"), so results are keyed by data volume as well as host.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -13,6 +13,7 @@
 | 2 | Load generator and baseline scenarios | [ ] |
 | 3 | In-process profiling of the backend (memory + CPU) | [ ] |
 | 4 | PostgreSQL profiling | [ ] |
+| 4b | Scaling findings and fixes | [ ] |
 | 5 | Record baselines, set limits, document sizing | [ ] |
 | 6 | Docs website: results, plots, test-method diagrams | [ ] |
 
@@ -22,8 +23,9 @@ flowchart LR
     P1["1 Container metrics"] --> P2["2 Load + baselines"]
     P2 --> P3["3 Backend profiling"]
     P2 --> P4["4 Postgres profiling"]
-    P3 --> P5["5 Limits + sizing"]
-    P4 --> P5
+    P3 --> P4b["4b Scaling findings + fixes"]
+    P4 --> P4b
+    P4b --> P5["5 Limits + sizing"]
     P5 --> P6["6 Docs website"]
 ```
 
@@ -65,21 +67,61 @@ What exists: the `observability` compose profile (Prometheus, Loki, Tempo, Alloy
 
 **Why:** idle numbers say little; leaks and per-request cost only show under traffic. **Risk:** measuring against an empty database understates real usage. **Outcome:** repeatable scenarios producing comparable numbers across commits.
 
-- Use **Locust** (Python, same language and auth helpers as the backend tests) under `perf/`, not in the app image. Scenarios run against the seeded `seed_e2e_dataset.py` data, plus a larger generated dataset (e.g. 10k requirements) to expose list/report/export cost.
-- Scenarios: browse (project/requirement lists, search), edit (create/update with versioning + audit), heavy (report generation, bundle export/import, attachment upload), and a 30–60 min **soak** at steady request rate to detect leaks (memory slope after warm-up).
+- Use **Locust** (Python, same language and auth helpers as the backend tests) under `perf/`, not in the app image. Every scenario runs at each **dataset tier** below (the seeded `seed_e2e_dataset.py` data is tier 0 only), so the output is a scaling curve per endpoint, not a single number.
+- Scenarios: browse (project/requirement lists, search), edit (create/update with versioning + audit), heavy (report generation, bundle export/import, attachment upload), and a 30–60 min **soak** at steady request rate to detect leaks (memory slope after warm-up). Scale-sensitive scenarios are listed under "Dataset tiers".
 - Login is bcrypt-heavy (see the login timeout exemption); authenticate once per simulated user and reuse the token so the test measures the API, not password hashing.
 - Record: p50/p95/p99 latency, throughput, memory slope per container, error rate. Save summarised results through the portable runner below (CSV/JSON, no raw request logs) in the format Phase 6's plotting script reads.
 - Never point it at anything but the local/test stack.
+
+### Dataset tiers (varying data volume)
+
+**Why:** a seed set of tens of records hides every cost that grows with data (unpaged lists, per-row queries, report rendering, audit-table growth). **Risk addressed:** a deployment with thousands of requirements in one project is slow or OOMs while every profiling number looked healthy. **Outcome:** each endpoint has a measured scaling curve, and "fine at 50 rows" can never be mistaken for "fine".
+
+| Tier | Requirements (one project) | Purpose |
+|------|----------------------------|---------|
+| T0 | seed set (tens) | Regression baseline and smoke; what the e2e suite sees |
+| T1 | 100 | Typical small project |
+| T2 | 1,000 | Large project; where per-row costs first show |
+| T3 | 5,000 | Very large project; where O(n²) and memory spikes show |
+| T4 | 20,000 | Stress ceiling (optional on a Pi; a host that cannot finish T4 records that as a result) |
+
+Requirement count is not the only axis. Every tier scales **all record types and the links between them**, not just requirements, because cross-type features (global search, links finder, trace, reports, list-scope widening, dashboards) cost more as both row counts and link density rise. Ratios per requirement live in one versioned file (`perf/datasets/profiles.yaml`, so they are a recorded input, not a code constant).
+
+| Content | Scaled with the tier | Why it matters |
+|---------|----------------------|----------------|
+| Other record types | Pain points (with their scores), decisions, risks, findings, actions, personas, stakeholders, engagements and every other registered type, each in a stated ratio to requirements (e.g. 0.5 pain points, 0.2 decisions, 0.3 risks per requirement) | Search, reports and the links finder read across all of them; per-type scoring and ranking views are only slow with real volume |
+| **Link density** | Links per record (mean and a long tail, e.g. mean 3 with a few records at 100+), across types and across projects, including proposed links | Trace, impact views and the links panel are graph traversals: cost depends on degree and depth, not on row count alone, and a hub record with hundreds of links is where it breaks |
+| History | Versions and audit events per record (the fastest-growing tables, since every edit adds rows) | Audit and history reads scan these |
+| Satellites | Comments, tags, actions, small attachments | Per-row joins on every list |
+
+The generator takes the link degree distribution as a parameter and records the realised histogram in the bundle, so "links per record" is a measured fact of each run, not an intent.
+
+**Breadth profiles** vary shape instead of depth. Priority order (**Decided by: User**, 2026-10-23: many projects per organisation matters most):
+
+1. **Many projects per organisation** (primary): e.g. 10, 50, 200 projects × 200 requirements each, with the same per-project content ratios above. Exercises the project list, organisation-level lists and reports, organisation admin pages, global search across projects, per-user project-visibility resolution, and cross-project links.
+2. **Multiple organisations**: e.g. 1, 5, 25 organisations, each with its own users, groups, projects and org-owned records, loaded at once. Tests that one organisation's size does not slow another's (tenant isolation must hold for performance as well as access: an unscoped query or a global scan shows up as latency that grows with the *other* organisations' data) and that organisation-scoped counters, codes and module state resolve without scanning other tenants. A scenario logs in as a small organisation's user while the others are large and compares against the same user in a one-organisation dataset.
+3. **Nested projects**: a tree (e.g. depth 3, fan-out 5) where a parent's widened list, trace and reports aggregate over all descendants, so a root effectively multiplies the volume it reads: a root over 5 children of 5,000 requirements each reads 25,000. Includes `link_nesting` checks and the nearest-ancestor fallbacks for type vocabularies. Reported as effective rows read, not only the tier label.
+4. **Many users and groups per project** (RBAC and effective-membership resolution), lower priority.
+
+Breadth profiles combine with a tier (for example 50 projects at T1 each, or a nested tree whose leaves are T2); the bundle records the profile and the per-project tier so the effective volume is explicit.
+
+- **Generator:** `perf/generate_dataset.py --tier T2 [--profile breadth]`, deterministic from a seed so the same tier is byte-for-byte comparable across hosts and commits. Text fields use varied lengths (short titles to multi-paragraph descriptions) because search, report layout and payload size depend on them; uniform filler gives false results.
+- **Bulk insert, not the API.** 20,000 requirements plus their links and history through HTTP would take hours and would measure the API, not the data. The generator writes through the ORM/SQL inside the backend container, but must set what the application would: `unique_code` and the `ProjectSequenceCounter` moved past the generated rows, versions and audit events in realistic proportion, search index rows, tags. **Risk:** a bulk path drifts from the real create path and produces rows no user could have (the same drift the seed-script rule in `CLAUDE.md` guards against). **Mitigation:** a backend test creates one record per type through the API and one through the generator and asserts the same set of populated columns, and an integrity check (codes unique, counters ahead of max code, links resolve) runs after every generation.
+- **Module types without a hand-edit of a core file:** per-type generators register through a generic hook on `ModuleDefinition`, the same convention as `search_providers`/`record_tables`; a test fails for a registered artefact type with neither a generator nor a stated reason. Phase 2 ships requirements, links, comments, tags, actions and audit; the remaining types are added through the hook and listed as a tracked gap until they are.
+- **Snapshots:** each tier is generated once per host and kept as a `pg_dump` snapshot outside the repo (large, regenerable, never committed); each run restores it, so every run starts from identical state and generation time is not in the measurement. The bundle records tier, profile, seed, row counts per table and database size.
+- **Scale-sensitive scenarios** (run at every tier, in addition to the Phase 2 list): unpaged list (the current default returns every row) and paged list; filter and sort combinations; global search; project-scope widened list over nested projects; links finder, trace and dashboard counts; create and update at size (counter allocation, version and audit write); CSV export and import; bundle export and import; report generation as PDF and Word (peak memory is the risk); attachment-heavy requirement; backup-style full-table reads; and applying the latest migrations to the tier snapshot (migration time at scale). **Frontend:** payload size and a Playwright-driven page load and scroll of the requirement list at T2/T3 (time to interactive, DOM node count), because the browser rendering thousands of rows is a scaling limit the API numbers cannot show.
+- **Scaling classification:** for each endpoint, `perf/analyse.py` fits latency and peak memory against row count across tiers (log-log slope) and labels it flat / linear / superlinear. Linear is expected for a full unpaged list, but an endpoint that is linear when it returns a fixed-size page, or superlinear anywhere, is a finding by construction. The same script records query count per request per tier (from the Phase 3 SQLAlchemy hook): a count that grows with rows is an N+1.
+- **Budgets:** `perf/budgets.yaml` holds the target p95 latency and peak memory per scenario and tier, so "scaling issue" is a defined threshold, not an impression. Initial values need user input (open question below); until set, only the shape classification and relative regressions flag findings.
 
 ### Portable runner and results store (multi-host)
 
 **Why:** the user wants the same tests on Docker Desktop (Mac), a Linux VM and probably a Raspberry Pi, compared relatively. **Risk addressed:** hand-run, differently-configured runs that cannot be compared. **Outcome:** one command per host produces a self-describing results bundle that is dropped into the repo and merged into reports.
 
-- `perf/run_profile.sh <host-label>` (POSIX sh + Python only; needs just Docker, Compose and Python 3, so it works on a bare Pi): preflight (Docker/Compose versions, CPU arch and cores, RAM, Docker VM allocation if any, free disk, storage type if detectable), build and start the plain stack (no observability profile; the Pi cannot afford Grafana/Loki/Tempo), seed the fixed dataset, run each scenario N times (default 3, for variance), sample per-container memory and CPU with its own `docker stats` sampler (so results never depend on Phase 1's cAdvisor), then write the bundle and a `.tar.gz` to copy back.
-- Bundle layout, committed under `perf/results/<host-label>/<date>-<commit>/`: `host.json` (arch, cores, RAM, VM allocation, OS, Docker version, storage type, CPU governor/throttle notes), `run.json` (commit, scenario set, dataset size, `BACKEND_WORKERS`, repeat count, schema version), `samples.csv` (container, timestamp, memory, CPU), `latency.csv` (scenario, percentile, rate, run), `pgstat.csv`. A schema version field lets the reporter reject or migrate old bundles.
+- `perf/run_profile.sh <host-label>` (POSIX sh + Python only; needs just Docker, Compose and Python 3, so it works on a bare Pi): preflight (Docker/Compose versions, CPU arch and cores, RAM, Docker VM allocation if any, free disk, storage type if detectable), build and start the plain stack (no observability profile; the Pi cannot afford Grafana/Loki/Tempo), restore the requested dataset tier(s), run each scenario at each tier N times (default 3, for variance), sample per-container memory and CPU with its own `docker stats` sampler (so results never depend on Phase 1's cAdvisor), then write the bundle and a `.tar.gz` to copy back.
+- Bundle layout, committed under `perf/results/<host-label>/<date>-<commit>/`: `host.json` (arch, cores, RAM, VM allocation, OS, Docker version, storage type, CPU governor/throttle notes), `run.json` (commit, scenario set, dataset tier/profile/seed and row counts, `BACKEND_WORKERS`, repeat count, schema version), `samples.csv` (container, timestamp, memory, CPU), `latency.csv` (scenario, tier, percentile, rate, run), `queries.csv` (scenario, tier, queries per request), `pgstat.csv`. A schema version field lets the reporter reject or migrate old bundles.
 - `<host-label>` is free text but must be stable (e.g. `mac-docker-desktop`, `linux-vm-4c8g`, `rpi5-8g`); `perf/results/README.md` lists known labels and what each host is.
 - Hosts differ in ways that can make the comparison wrong, so the runner records and the reports state them: **Mac** (Docker Desktop VM allocation fixed and recorded; do not change it between runs; close other heavy apps), **Linux VM** (record vCPU/RAM and that it is virtualised), **Raspberry Pi** (arm64: once Phase 0 lands the images are pulled, otherwise they are built locally from source, which is slow and itself memory-hungry; SD card vs SSD I/O is a large factor; record thermal throttling by sampling `vcgencmd get_throttled`, and use active cooling or discard throttled runs).
-- Same commit, same dataset, same scenarios and same `BACKEND_WORKERS` across hosts, or the runner flags the bundle as non-comparable. Do not compare absolute latency across hosts of different CPU architecture without saying so; the headline comparison is each host's numbers relative to the others, plus absolute memory per service.
+- Same commit, same dataset tier and seed, same scenarios and same `BACKEND_WORKERS` across hosts, or the runner flags the bundle as non-comparable. Do not compare absolute latency across hosts of different CPU architecture without saying so; the headline comparison is each host's numbers relative to the others, plus absolute memory per service.
 - `perf/results/` stays small (summarised CSV/JSON, no raw request logs, no real data); large artefacts such as flamegraphs go in as SVG only.
 
 ### Anonymised outputs (binding for every bundle)
@@ -123,15 +165,48 @@ What exists: the `observability` compose profile (Prometheus, Loki, Tempo, Alloy
 - `EXPLAIN (ANALYZE, BUFFERS)` on the worst few; add indexes via normal migrations if justified (migration ids are one global sequence across core and module directories).
 - Review `shared_buffers`/`work_mem` against the measured working set; do not tune blindly.
 
+## 5a. Phase 4b — Scaling findings and fixes
+
+**Why:** profiling that ends in a table changes nothing; the point is to find what breaks as data grows and fix it. **Risk addressed:** findings recorded and then left (the project rule is to fix what is found, not defer it), or fixes made on a hunch without a before/after. **Outcome:** a findings register, each finding either fixed with a measured improvement and a regression guard, or carried as its own planned change with a stated reason.
+
+```mermaid
+flowchart LR
+    A["Phases 2-4: tier runs<br/>+ profiles"] --> B["analyse.py: over budget,<br/>superlinear, N+1, memory/row"]
+    B --> C["Finding recorded<br/>(evidence, cause)"]
+    C --> D["Fix + regression guard"]
+    D --> E["Re-run same tier:<br/>before/after"]
+    E -->|"still over budget"| C
+    E -->|"within budget"| F["Close finding;<br/>baseline recorded in Phase 5"]
+```
+
+- **Findings register:** a "Findings" section of `docs/performance.md` (created here, extended in Phase 5), one entry per finding: symptom (scenario, tier, metric vs budget), evidence (bundle path, flamegraph, `EXPLAIN`, query count), root cause, fix, before/after numbers at the same tier and host, and **Decided by**. Entries are the latest state; closed ones stay as a short record of what was learnt.
+- **Triage rule:** a finding that breaks a budget at T1–T3, or shows superlinear growth anywhere, is fixed in this phase. A finding that needs a design change (for example a pre-fork worker model, a new index strategy across many tables, or server-side pagination of an endpoint that currently returns everything) becomes its own change with tests, recorded here with its reason, never silently dropped.
+- **Likely candidates to verify, not conclusions:** list endpoints that load every row and then slice in Python (`routers/requirements/core.py` applies `limit`/`offset` after building the full result, so a page request still pays for the whole project); unpaged defaults that return thousands of rows to the browser; per-row queries in list serialisation (the existing N+1 note in that file shows this has happened before); report and export generation holding the whole document in memory; audit/version history reads that scan unindexed columns; missing composite indexes on project-scoped filters; connection pool × worker budget. Each is confirmed or refuted by the tier runs first.
+- **Every fix gets a guard that outlives the profiling run:** (1) a backend **scaling-shape test** that builds the same list at two sizes (for example 200 and 800 rows) and asserts the query count and response size do not grow with rows beyond what the endpoint's contract allows; these are deterministic, unlike wall-clock timings, so they belong in the ordinary backend test suite (they are correctness-style tests, not performance runs, and are not timed); (2) the usual behaviour test pinning the endpoint's output unchanged. Index changes go through normal migrations (one global revision sequence across core and module directories).
+- **Fixes that change an API** (adding server-side paging, changing a default) follow the product's own rules: the frontend list must call it (a capability nothing calls is not done), list position and filters in the URL keep working, MCP/skill docs update if a tool's behaviour changes, and the change is recorded in `docs/decisions.md`.
+- **Verification:** each closed finding shows the same tier and host before and after in the register; the tier runs are repeated after all fixes, and those later numbers (not the pre-fix ones) become Phase 5's baseline.
+
 ## 6. Phase 5 — Baselines, limits, documentation
 
 **Why:** without recording the results and acting on them, profiling is a one-off. **Risk:** limits set from guesses either OOM-kill a healthy service or protect nothing. **Outcome:** published sizing and enforced headroom.
 
 - New `docs/performance.md`: how to run Phases 1–4 (with a Mermaid diagram of the tooling), recorded baseline table (idle / load / soak per service, date, commit, dataset size), and interpretation notes.
 - Set `mem_limit` (or `deploy.resources`) per service in `docker-compose.yml` at roughly measured peak + 30–50 % headroom, with `BACKEND_WORKERS` guidance tied to RAM (e.g. MB per extra worker).
+- Sizing is expressed against dataset tiers, not only users: for each tier, the measured peak memory per service and the p95 for the headline scenarios, so a reader with "about 3,000 requirements in my largest project" reads the T2–T3 rows. Where a tier needs more RAM than a host class offers (for example T4 on an 4 GB Pi), say so as a limit rather than omitting it.
 - Add a "Sizing" section to the README and the deployment docs. The website pages are built in Phase 6.
-- Optional follow-up (propose, don't assume): a CI smoke check that fails if idle backend RSS grows more than a set percentage over the recorded baseline. CI currently has no performance gate, so this is a new control, not a fix.
 - Record the outcome and any worker-model change in [docs/decisions.md](../decisions.md) with a **Decided by** tag.
+
+### Re-running as the product grows
+
+**Why:** the first measurement goes stale with every new module, record type and feature, and a process that is a chore does not get repeated. **Risk addressed:** sizing guidance and limits that quietly stop matching the product, and regressions found by users instead of by a run. **Outcome:** a refresh is one command with a defined cost, comparable to the last run, with a short list of when to do it.
+
+- **Two modes of one runner:** `perf/run_profile.sh <host-label> --quick` (T0–T1, one repeat, no soak; minutes; for "did my change move anything?") and `--full` (all tiers, repeats, soak; the figures that get published). Same bundle format, so a quick run can be compared with the last full one on the tiers they share.
+- **Compare, don't eyeball:** `perf/compare.py [bundle]` diffs a run against the latest comparable bundle for the same host label (same tier, seed and scenario), prints regressions beyond the noise band measured from the repeated runs, and flags any new superlinear or over-budget endpoint. Exit status is non-zero on a regression, so it can be used by hand or later in a scheduled job.
+- **Deterministic by default:** fixed seeds and per-tier snapshots mean a difference between two runs is the code or the host, not the data. Anything that is not (a different Docker VM size, a different `BACKEND_WORKERS`, an uncommitted tree) is recorded and makes the bundle non-comparable rather than silently skewing the diff.
+- **New record types come along automatically:** the generator hook and the per-type scenario list are driven by the module registry, so a module added later is profiled when it registers a generator; a missing one fails the registry test above rather than being forgotten.
+- **Re-measure triggers** (also placed in `docs/performance.md`, the website page and `CLAUDE.md`'s docs-website check): a new module or artefact type, a change to a list/report/export/search path, a migration touching a large table, a Python, PostgreSQL or uvicorn major bump, a change to worker model or pool settings, and in any case before each release that changes either. Anything that changes a measured number also reruns the affected scenario at T2.
+- **CI does not run performance tests** (**Decided by: User**, 2026-10-23): no timed profiling, soak, load or RSS gate in CI, and no CI performance baseline. Profiling is run by hand, on the hosts that matter, using the quick/full modes above. The only CI-visible artefacts are the ordinary backend tests (the generator parity test, the registry test for generators and the scaling-shape guards from Phase 4b, which count queries and bytes rather than time); if those prove unwelcome in the main suite they can be moved to a manually-run marker instead.
+- **Cost and effort stay visible:** `docs/performance.md` states the expected wall time of each mode per host class (measured during Phase 2) so a refresh can be planned; a full run on the Pi is expected to be overnight.
 
 ## 7. Phase 6 — Docs website: results, plots, test-method diagrams
 
@@ -156,7 +231,7 @@ What exists: the `observability` compose profile (Prometheus, Loki, Tempo, Alloy
 - Raw results are committed as CSV/JSON under `perf/results/<host-label>/<date>-<commit>/` (see Phase 2's runner; small, summarised time series; never raw request logs or anything containing data from a real tenant).
 - `perf/plot_results.py` (matplotlib) reads every host's latest comparable bundle (same commit and dataset; it refuses to mix incomparable ones and says why) and turns them into SVGs in `docs/website/static/img/performance/`, so figures regenerate with one command and diff cleanly. Mermaid is for structure and flow; its `xychart` is not used for measured time series because it cannot carry hundreds of points or confidence bands.
 - Load the `dataviz` skill before writing the plotting code: colour-blind-safe palette, light and dark variants (the site themes both; a figure must be legible in each, so emit two SVGs or use `currentColor`/CSS variables), labelled axes with units, and alt text on every image.
-- Plots are per host, side by side, with a relative view (each host normalised to the Mac baseline) as well as absolute values, error bars from the repeated runs, and each host's spec in the caption: (1) stacked memory per service at idle vs load vs soak; (2) backend memory vs time during the soak, with the post-warm-up slope annotated; (3) memory vs `BACKEND_WORKERS` (1, 2, 4, 8) with the duplicated-imports result; (4) p50/p95/p99 latency vs request rate per scenario; (5) top Postgres queries by total time; (6) one `py-spy`/`memray` flamegraph per finding, as a static SVG.
+- Plots are per host, side by side, with a relative view (each host normalised to the Mac baseline) as well as absolute values, error bars from the repeated runs, and each host's spec in the caption: (1) stacked memory per service at idle vs load vs soak; (2) backend memory vs time during the soak, with the post-warm-up slope annotated; (3) memory vs `BACKEND_WORKERS` (1, 2, 4, 8) with the duplicated-imports result; (4) p50/p95/p99 latency vs request rate per scenario, and latency and peak memory **vs dataset size** (the scaling curves per endpoint, log-log, with the budget line and the flat/linear/superlinear label); (5) top Postgres queries by total time; (6) one `py-spy`/`memray` flamegraph per finding, as a static SVG.
 - Each plot carries a one-line caption stating what it shows and the conclusion drawn from it (README screenshots are exempt from this, plots are not, because they convey data).
 
 **Keeping it honest and current:**
@@ -171,4 +246,6 @@ What exists: the `observability` compose profile (Prometheus, Loki, Tempo, Alloy
 
 - **Docker Desktop vs Linux vs Pi:** Docker Desktop numbers describe the Linux VM it runs, not the Mac. Memory per service is still valid; CPU, latency and disk I/O depend on the VM and host. This is why the comparison is relative and every result states its host. A Linux VM run is still the closest to a typical server deployment, so the sizing table's recommended figures should cite it.
 - **Moving to a pre-fork server** (if the hypothesis holds) touches startup coordination and Prometheus multi-process setup — treat as its own change with tests, not a profiling side effect.
-- **Open (needs user input before Phase 2):** target scale (users, projects, requirements) the baseline dataset should represent, and whether CI should ever gate on performance.
+- **Resolved (2026-10-23, Decided by: User):** the baseline must span hundreds to thousands of requirements per project; 20,000 is the top tier for now; CI does not run performance tests; many projects per organisation is the priority breadth shape, then multiple organisations and nested projects; tiers scale all record types and link density, not only requirements.
+- **Open (needs user input before Phase 2):** initial latency and memory budgets per tier for `perf/budgets.yaml` (or accept measured-then-set, which risks blessing a bad baseline), and the realistic link degree distribution to model (mean and tail), ideally taken from a real deployment's shape.
+- **Synthetic data is not production data:** real text, link graphs and edit histories are clumpier than generated ones. The tiers bound the cost; they do not predict a specific deployment, and the sizing page must say so.

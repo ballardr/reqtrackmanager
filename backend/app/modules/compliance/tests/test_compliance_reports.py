@@ -537,3 +537,14 @@ def test_report_evidence_carries_its_code_and_tags_and_follows_the_project_code_
     assert [e.code for e in own.evidence_rows] == [f"{project['code']}-EVD-001"]
     csv_text = client.get(f"{_project_base(project['id'])}/reports", params={"format": "csv"}, headers=auth_headers(admin_token)).text
     assert f"{project['code']}-EVD-001 {evidence['title']}" in csv_text
+
+
+def test_evidence_validity_cell_is_filled_in_the_badge_tone_with_readable_text():
+    from app.modules.compliance.reports import _validity_cell
+    from app.services.report_model import TONE_FILL, text_on
+
+    for state, tone in (("expired", "danger"), ("expiring_soon", "warning"), ("valid", "accent"), ("no_expiry", "muted")):
+        cell = _validity_cell(state)
+        assert cell.tone_fill.hexval()[2:].upper() == TONE_FILL[tone]
+        assert cell.style.textColor.hexval()[2:].upper() == text_on(TONE_FILL[tone])
+    assert not hasattr(_validity_cell("unknown_state"), "tone_fill")  # an unmapped state stays plain

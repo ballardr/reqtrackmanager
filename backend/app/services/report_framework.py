@@ -61,7 +61,7 @@ import io
 import re
 import uuid
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 from typing import Any, Literal, NamedTuple
 from uuid import UUID
@@ -105,7 +105,7 @@ from app.services.rbac import (
 from app.services.report_content import build_placeholders, content_blocks, report_key_for, resolve_report_content
 from app.services.report_document import ReportBranding, load_report_template, resolve_branding
 from app.services.report_docx import render_docx_document
-from app.services.report_model import Block, Gap, Heading, Note, ReportDocument, Table
+from app.services.report_model import TONE_FILL, Block, Gap, Heading, Note, ReportDocument, Table
 from app.services.report_pdf import render_pdf_document
 from app.services.tags import tag_names_for_records
 
@@ -130,6 +130,15 @@ class ReportSection:
         screen: Whether the on-screen view shows this table. `False` keeps a
             table that only exists for the exports (a flat form of figures the
             screen already shows as tiles); PDF and CSV always include it.
+        tones: Optional tone per cell, shaped exactly like `rows` (`None` = no
+            tone), for a cell the screen colours (a rating band, a matrix
+            cell). PDF and Word fill the cell; CSV and JSON carry the text
+            only, so the cell text must name the band too.
+
+    Raises:
+        ValueError: If `tones` is not shaped like `rows` or names a tone
+            outside `report_model.TONE_FILL`, so a collector mistake fails
+            loudly instead of being silently dropped by a renderer.
     """
 
     key: str
@@ -139,6 +148,16 @@ class ReportSection:
     note: str = ""
     gap: bool = False
     screen: bool = True
+    tones: list[list[str | None]] | None = None
+
+    def __post_init__(self) -> None:
+        if self.tones is None:
+            return
+        if len(self.tones) != len(self.rows) or any(len(t) != len(r) for t, r in zip(self.tones, self.rows, strict=True)):
+            raise ValueError(f"Report section '{self.key}': tones must have the same shape as rows.")
+        unknown = {t for row in self.tones for t in row if t is not None and t not in TONE_FILL}
+        if unknown:
+            raise ValueError(f"Report section '{self.key}': unknown tone(s) {sorted(unknown)}.")
 
 
 @dataclass(frozen=True)
@@ -415,6 +434,62 @@ def render_csv(result: ReportResult) -> bytes:
     return buffer.getvalue().encode("utf-8")
 
 
+def tones_by_label(*pairs: tuple[Mapping[str, str], Mapping[str, str]]) -> dict[str, str]:
+    """A label-to-tone map for `ReportDefinition.cell_tones`, from each enum's `(labels, tones)`.
+
+    Args:
+        *pairs: `(value -> label, value -> tone)` for each status enum the column can hold, e.g.
+            `(RISK_STATUS_LABEL, RISK_STATUS_TONE)`. A value without a tone is left plain.
+
+    Returns:
+        `{label: tone}`.
+
+    Raises:
+        ValueError: If two enums give one label different tones, since a cell showing that label could not
+            say which it is; or a tone is outside `report_model.TONE_FILL`.
+    """
+    out: dict[str, str] = {}
+    for labels, tones in pairs:
+        for value, tone in tones.items():
+            if tone not in TONE_FILL:
+                raise ValueError(f"Unknown tone '{tone}' for '{value}'.")
+            label = labels.get(value)
+            if label is None:
+                continue
+            if out.setdefault(label, tone) != tone:
+                raise ValueError(f"The label '{label}' has two different tones ({out[label]}, {tone}).")
+    return out
+
+
+def apply_cell_tones(result: ReportResult, cell_tones: Mapping[str, Mapping[str, str]]) -> ReportResult:
+    """Tones every cell under a declared column heading whose text is a declared label.
+
+    Args:
+        result: The collected report; its sections are replaced, never mutated in place.
+        cell_tones: `ReportDefinition.cell_tones`.
+
+    Returns:
+        `result`, with `tones` filled in. A cell a collector already toned keeps the collector's tone.
+    """
+    if not cell_tones:
+        return result
+    sections = []
+    for section in result.sections:
+        grid = [list(row) for row in section.tones] if section.tones else [[None] * len(row) for row in section.rows]
+        changed = False
+        for column, heading in enumerate(section.columns):
+            lookup = cell_tones.get(heading)
+            if not lookup:
+                continue
+            for r, row in enumerate(section.rows):
+                if column < len(row) and grid[r][column] is None and row[column] in lookup:
+                    grid[r][column] = lookup[row[column]]
+                    changed = True
+        sections.append(replace(section, tones=grid) if changed else section)
+    result.sections = sections
+    return result
+
+
 def build_result_document(
     result: ReportResult, *, branding: ReportBranding | None = None,
     before: Sequence[Block] = (), after: Sequence[Block] = (),
@@ -445,7 +520,7 @@ def build_result_document(
         if section.note:
             blocks.append(Note(section.note))
         if section.rows and section.columns:
-            blocks.append(Table(section.columns, section.rows, compact=True))
+            blocks.append(Table(section.columns, section.rows, compact=True, tones=section.tones))
         else:
             blocks.append(Note("None."))
     blocks += after
@@ -761,7 +836,7 @@ def _build_project_route(module_key: str, definition: ReportDefinition) -> Calla
                 include_children=kw["include_children"],
             ),
         )
-        result = live.collector(db, ctx)
+        result = apply_cell_tones(live.collector(db, ctx), live.cell_tones)
         before, after = _content_blocks_for(db, kw["format"], module_key, live, result, organization, project, template)
         return _respond(
             result, live, kw["format"], project.name, resolve_branding(db, organization, template), before, after,
@@ -804,7 +879,7 @@ def _build_org_route(module_key: str, definition: ReportDefinition) -> Callable[
             all_org_projects=live.org_scope == "all_org_projects",
             projects=projects,
         )
-        result = live.collector(db, ctx)
+        result = apply_cell_tones(live.collector(db, ctx), live.cell_tones)
         before, after = _content_blocks_for(db, kw["format"], module_key, live, result, organization, None, template)
         return _respond(
             result, live, kw["format"], organization.name, resolve_branding(db, organization, template), before, after,

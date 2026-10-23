@@ -43,6 +43,14 @@ RECORD_STATUS_LABEL: dict[str, str] = {
     "retired": "Retired",
 }
 
+# Badge tone for a Persona, Stakeholder or Need status, mirroring `PERSONA_STATUS_TONE` and its two siblings in
+# `frontend/src/modules/stakeholders/types.ts` by hand (a test pins them).
+RECORD_STATUS_TONE: dict[str, str] = {
+    "draft": "muted",
+    "active": "accent",
+    "retired": "muted",
+}
+
 REQUIREMENT_STATUS_LABEL: dict[str, str] = {
     "draft": "Draft",
     "reviewed": "Reviewed",

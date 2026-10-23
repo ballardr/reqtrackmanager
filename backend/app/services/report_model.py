@@ -10,6 +10,9 @@ Responsibilities:
 - Block types: `Heading`, `Paragraph`, `Note`, `BulletList`, `Image`, `Table`,
   `Gap`, `PageBreak`, and the `ReportDocument` that holds them with the
   title, branding and page orientation.
+- Cell tones: `Table.tones` marks cells the screen colours (a rating band, a
+  matrix cell) and `TONE_FILL` is the one tone-to-colour table both renderers use;
+  `text_on` picks black or white text for any fill by contrast.
 - `markdown_to_blocks`: the restricted Markdown reader (headings, paragraphs,
   bullet lists, images on their own line) that turns author-written intro,
   chapter and appendix content into blocks.
@@ -26,6 +29,10 @@ Design decisions:
 - Images arrive pre-resolved as bytes (`report_document.resolve_report_images`
   does the tenant check), so this module and the renderers never fetch
   anything.
+- A tone is a name (the same five as the on-screen `BadgeTone`), never a colour,
+  so a collector cannot put an arbitrary value into PDF or Word XML. The text of
+  a toned cell still carries its meaning (the band name), so a greyscale print
+  reads the same.
 - `Gap` is a vertical-whitespace hint kept so the PDF layout is exactly what it
   was before the model existed; the DOCX renderer ignores it and relies on
   paragraph spacing.
@@ -42,10 +49,47 @@ from typing import TYPE_CHECKING
 
 from markdown_it import MarkdownIt
 
+from app.services.branding import contrast_text_hex
+
 if TYPE_CHECKING:
     from app.services.report_document import ReportBranding
 
 _md = MarkdownIt()
+
+# Cell tones. Each is the on-screen `.scoring-cell--<tone>` tint (theme.css): the tone's base colour
+# mixed into white (the light-theme surface) at the percentage the stylesheet uses. A print has no
+# dark theme, so the light values are the only ones needed.
+_TONE_BASE: dict[str, tuple[str, float]] = {
+    "muted": ("#5a6472", 0.15),
+    "info": ("#0e7490", 0.22),
+    "accent": ("#2f855a", 0.22),
+    "warning": ("#b7791f", 0.28),
+    "danger": ("#c53030", 0.28),
+}
+
+
+def _tint(base: str, share: float) -> str:
+    """`base` (`#RRGGBB`) mixed into white; returns six upper-case hex digits."""
+    channels = (int(base[i:i + 2], 16) for i in (1, 3, 5))
+    return "".join(f"{round(c * share + 255 * (1 - share)):02X}" for c in channels)
+
+
+#: Cell fill by tone, six hex digits.
+TONE_FILL: dict[str, str] = {tone: _tint(base, share) for tone, (base, share) in _TONE_BASE.items()}
+
+
+def text_on(fill_hex: str) -> str:
+    """The text colour that reads best on `fill_hex`: black or white by WCAG contrast (the rule the screen
+    applies to the accent colour, `services.branding.contrast_text_hex`), so a dark fill gets white text and a
+    light one black, whatever colour an organisation chose.
+
+    Args:
+        fill_hex: The background, `RRGGBB` or `#RRGGBB`.
+
+    Returns:
+        Six upper-case hex digits (`000000` or `FFFFFF`).
+    """
+    return contrast_text_hex(fill_hex).lstrip("#").upper()
 
 # The fixed allow-list of `{{name}}` placeholders content may use. Not a
 # template engine: a name is replaced by plain string substitution and anything
@@ -124,12 +168,22 @@ class Table:
         compact: `True` for the light-grid, zebra-striped, small-text style
             module reports use; `False` for the requirement report's heavier
             grid.
+        tones: Optional tone per body cell, shaped like `rows` (`None` = no
+            tone; a name outside `TONE_FILL` is ignored by the renderers).
     """
 
     columns: list[str]
     rows: list[list[str]]
     col_widths_cm: list[float] | None = None
     compact: bool = False
+    tones: list[list[str | None]] | None = None
+
+    def tone_at(self, row: int, column: int) -> str | None:
+        """The known tone of a body cell, or `None` (no tones, out of range, or an unknown name)."""
+        if not self.tones or row >= len(self.tones) or column >= len(self.tones[row]):
+            return None
+        tone = self.tones[row][column]
+        return tone if tone in TONE_FILL else None
 
 
 @dataclass(frozen=True)

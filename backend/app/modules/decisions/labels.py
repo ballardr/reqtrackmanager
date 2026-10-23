@@ -19,6 +19,16 @@ DECISION_STATUS_LABEL: dict[str, str] = {
     "superseded": "Superseded",
 }
 
+# Badge tone per status, mirroring `DECISION_STATUS_TONE` in `frontend/src/modules/decisions/types.ts` by hand (a test pins the two).
+DECISION_STATUS_TONE: dict[str, str] = {
+    "draft": "muted",
+    "proposed": "info",
+    "under_review": "info",
+    "approved": "accent",
+    "rejected": "danger",
+    "superseded": "muted",
+}
+
 
 def decision_status_label(value: str) -> str:
     """Returns the display label for a `DecisionStatus` value (the raw value if unmapped)."""

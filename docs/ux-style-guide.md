@@ -410,6 +410,8 @@ For a primary action that has exactly one common case and one (or a small number
 
 Use this for any free-text field where more than a couple of lines is a realistic, common case (a reasoning/description/notes field) — not for a field that's genuinely meant to stay short (a name, a title), where growth would just be visual noise. `theme.css`'s global `box-sizing: border-box` matters to any future edit of this component: `scrollHeight` never includes border width (a universal DOM behaviour, not box-sizing-dependent), so the border has to be added back before being assigned to `style.height` — missed once during this component's own build, caught by a Storybook interaction test rather than manual inspection (see `docs/decisions.md`).
 
+**The rule (long prose always grows).** Every long free-text field is `autoGrow`, wherever it appears: create forms, edit forms and detail pages (a record's description, rationale, source, impact, evidence, notes). A fixed-row textarea is only for a field meant to stay short, and says so in a comment. A create form and the matching edit form use the same field group, so they cannot disagree. A check script (`scripts/check_textarea_autogrow.py`, empty baseline) fails a textarea that neither grows nor opts out. Reason: a fixed box hides what was typed and makes the author scroll inside a field to review it (the Pain Point description was the case that exposed this).
+
 ## Pattern: view toggle (tile vs. list)
 
 *(New 2026-08-24, documenting an existing, working component that was never written up as a rule — the same story `FilterBadge` had before Principle 10. See [Favourites](plans/completed/ux-audit-2026-08.md#favourites-no-filter-nav-rail-lag-no-view-toggle).)*
@@ -554,6 +556,8 @@ Two different "download a report" shapes exist in this app, built independently 
 **A third surface, same pattern (Module 1 Phase 13):** the dedicated Reports page is also the one destination for module reports. A `ReportCatalogue` "Report" picker (linkable via `?report=`) lists the requirements report first and every catalogue report after it; module reports use the inline `ReportExportButton` shape (their options are on-screen parameters, not a pre-generation configuration story), and the Org Overview "Reports" group reuses the same component. Do not add a per-module report page.
 
 **The rule:** if a page would need to ask the user anything before generating the file beyond "which format" (a template, custom sections, which appendices), it needs the dedicated-page shape. If the page already has its own filters and "export" just means "as CSV/PDF, please," it needs `ReportExportButton` — and that export must respect the page's current filter state, not silently widen to an unfiltered full dataset (a filtered-looking screen producing an unfiltered download is a worse defect than no export button at all, since it looks correct until read closely). Don't build a fourth shape for a new export need without checking whether one of these fits.
+
+**A fourth door, now the default for record lists:** a list of records offers Export and Import itself, through the shared list actions ([Pattern: list actions](#pattern-list-actions-export-and-import)); the Reports page's "Record list" report is the second door to the same data, not a replacement. The "Don't build a fourth shape" rule above is why the list actions reuse `ReportExportButton`'s popover shape rather than a new one.
 
 ## Missing components identified this pass
 
@@ -1047,13 +1051,59 @@ A required field is marked with a `*` after its caption; an optional field says 
 
 ## Pattern: field help
 
-Every form field that is not self-explanatory carries a `(?)` help button after its caption. Reason: some fields have no context on their own (a persona's importance weight, a scoring model, a review reminder lead time), and a guessed value leaves inconsistent data that nobody can later explain.
+Every form field that is not self-explanatory carries a `(?)` help button after its caption. Opening it must not shift the layout. Reason: some fields have no context on their own (a persona's importance weight, a scoring model, a review reminder lead time), and a guessed value leaves inconsistent data that nobody can later explain.
 
-- **How:** give the shared field component `help={strings.help.<key>}` (`TextField`, `TextAreaField`, `DateField`, `LabeledSelect`, `CheckboxField`, `ToggleField`, `ColorField`, `FileField`, `UploadField`, `PrincipalFormField`, `RecordFieldGroup`). `ColorField` also takes `presets` (named swatches), `emptyLabel` (a "no colour" button) and has a colour picker plus a hex box that accepts `#rgb` or `#rrggbb`. `FieldCaption`/`FieldHelp` (`components/FieldHelp.tsx`) render the button, named "Help: {label}", and reveal the text **in place under the caption**, not in a floating `Popover`: forms are built inside dialogs and popovers, and a popover opened from a popover is not allowed. The button is keyboard-focusable, Escape closes the text (and not the dialog around it), and a tap works like a click.
+- **How:** give the shared field component `help={strings.help.<key>}` (`TextField`, `TextAreaField`, `DateField`, `LabeledSelect`, `CheckboxField`, `ToggleField`, `ColorField`, `FileField`, `UploadField`, `PrincipalFormField`, `RecordFieldGroup`). `ColorField` also takes `presets` (named swatches), `emptyLabel` (a "no colour" button) and has a colour picker plus a hex box that accepts `#rgb` or `#rrggbb`. `FieldCaption`/`FieldHelp` (`components/FieldHelp.tsx`) render the button, named "Help: {label}", and reveal the text as a **tooltip**: it opens on hover and on keyboard focus, toggles on click or tap (touch has no hover), and closes on Escape (which does not close the dialog around it) or an outside click. It is portalled to `document.body` (the `Tooltip` mechanism), so opening it never moves a field below the caption and it works inside a `Modal`, `SidePanel` or `Popover` without being a popover opened from a popover. The button keeps the name "Help: {label}" and is keyboard-focusable. Status: the in-place disclosure the component still uses is being replaced by this.
 - **Copy:** the text lives in `strings.help` in `frontend/src/i18n/strings.ts`, written for the end user in one or two sentences: what the field is, what it affects, a typical value. Terminology tokens (`{requirement}`, `{project}`) are filled in per organisation, so help follows the renamed terms.
 - **Opt out:** a self-explanatory field (a name, a title, a comment, an email) passes `helpNotNeeded` instead, which keeps the decision greppable. A field whose visible `hint` already explains it opts out too; do not show the same sentence twice. Never pass both.
 - **Enforced:** `scripts/check_field_help.py` (a pytest, `backend/tests/test_field_help.py`) fails on a field with neither prop. Its baseline (`scripts/field_help_baseline.json`) is empty: a new field decides when it is written.
 - **Definition-driven fields** (a custom field's label comes from its definition, a list of text areas from a field table) opt out: the label is data, not a place to hard-code copy.
+
+## Pattern: list actions (export and import)
+
+Every record list offers **Export** and **Import** from the list's own action area (`ListActions`, rendered by `ListPageLayout` given the record type and the page's filter state), and the person never has to visit the Reports page to get a table out. Reason: a list that cannot be exported forces a screenshot or a re-key; per-page hand-built controls drift.
+
+- **Export** is `ReportExportButton`'s popover shape with CSV, PDF and Word. It exports what the page shows: the current filters, the nested-project scope and "Open only" are applied, never widened to the full set. When columns were left out by the personal-data policy, a one-line note says so.
+- **One file, both directions.** The CSV is the import file. Its first column is `code`; people are an email or a group name; dates are `YYYY-MM-DD`; enums use the label the user sees. PDF and Word share the same columns (a coloured cell keeps its colour and also says its value in text).
+- **Import** is `CsvImportWizard`: upload, map columns, **preview**, apply. The preview lists creates, updates (before and after for each changed field) and row errors; apply runs valid rows, reports `N created, N updated, N failed` in a `Toast`, and offers the failed rows as a downloadable error CSV. A row with a code updates that record; a blank code creates; an unknown code is an error.
+- **Import never bypasses the type.** Updates use the type's own update path (version lock, audit, validation). A type with an approval gate imports drafts and content, not status. A type that cannot be imported hides the Import entry and says why in its provider.
+
+```mermaid
+flowchart LR
+    A["Export from a list<br/>(filters applied)"] --> B["Edit the CSV in a spreadsheet"]
+    B --> C["Import: upload + map columns"]
+    C --> D["Preview: creates, updates, errors"]
+    D -->|"Apply"| E["Type's own create/update path"]
+    E --> F["Toast: N created, N updated, N failed"]
+    D -->|"Cancel"| G["Nothing written"]
+    F -->|"failures"| H["Download error CSV"]
+```
+
+Read left to right: the preview is the only gate before anything is written, and apply goes through the type's own path, so an import cannot do what the same person could not do by hand.
+
+## Pattern: list position
+
+A list page keeps its place. After opening a record and returning (Back, or the record's own "back to list" link), the list shows the same rows at the same scroll offset, including rows loaded by "Show more". Reason: editing down a list is the working pattern, and starting from the top each time makes the person find their place again.
+
+- **How:** the shared hook, applied by `ListPageLayout`, stores the scroll offset and the number of rows loaded per list location in `sessionStorage` and restores them after the rows have rendered. A page passes only its loaded-row count and setter; it never writes scroll code.
+- **When:** back navigation only. A fresh visit starts at the top, and so does a list whose filters in the URL differ from the saved ones, because restoring a position in a different list would be wrong.
+- **Prerequisite:** a list's filters are in the URL, not component state; otherwise the restored position would show a different list.
+
+## Pattern: form header
+
+A form in a `Modal` or `SidePanel` has a **header row** with the title and the form's actions (Cancel, Save, and Save and activate where [allowed](#pattern-save-and-activate)), and a **scrollable body**. Reason: Save below the fold on a long form means scrolling to the end to commit, and the foot of a different form is a different place every time.
+
+- Create and edit forms are the same in this; there is no short-form exception. Close (x) and Escape behave as today.
+- The actions are `FormActions` rendered into the dialog's header slot and submit the form through the `form` attribute, so Enter-to-submit, validation errors and focus on the first invalid field still work with Save outside the `<form>` element. A save error is shown in the header area, under the title, so it is seen without scrolling.
+- Do not render Save at the foot as well, and do not hand-write a header row.
+
+## Pattern: bulk edit grid
+
+A type with at least one fast-edit column offers a **Grid** view on its list ([view toggle](#pattern-view-toggle-tile-vs-list)): the same rows and filters as the list, with the editable columns as cells, so many records can be adjusted without opening each one (first use: severity, frequency and confidence on Pain Points). A type declares which columns are editable on its record-table provider; the grid is generic (`RecordGrid`).
+
+- Cells use the shared field components (a select for an enum, a number, text); arrow keys, Tab and Enter move between cells; a changed cell is highlighted; "Save N changes" saves one request per row through the type's own update path (version lock, audit), so one failure does not block the others.
+- A row that fails stays dirty with its error. A row that cannot be edited (an approval-gated state, or no permission) is read-only with the reason in a tooltip.
+- Result feedback is one `Toast`: "N saved, M failed".
 
 ## Tokens
 

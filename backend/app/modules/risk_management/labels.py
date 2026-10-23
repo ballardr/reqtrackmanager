@@ -24,6 +24,21 @@ RISK_STATUS_LABEL: dict[str, str] = {
     "closed": "Closed",
 }
 
+# Badge tones, mirroring the `*_TONE` maps in `frontend/src/modules/risk_management/types.ts` by hand (a test pins them).
+RISK_STATUS_TONE: dict[str, str] = {
+    "identified": "muted",
+    "assessed": "info",
+    "treatment_planned": "info",
+    "treatment_in_progress": "info",
+    "mitigated": "accent",
+    "accepted": "warning",
+    "transferred": "accent",
+    "avoided": "accent",
+    "realised": "danger",
+    "rejected": "muted",
+    "closed": "muted",
+}
+
 TREATMENT_STRATEGY_LABEL: dict[str, str] = {
     "mitigate": "Mitigate",
     "transfer": "Transfer",
@@ -36,6 +51,13 @@ TREATMENT_ASSESSMENT_STATUS_LABEL: dict[str, str] = {
     "effective": "Effective",
     "ineffective": "Ineffective",
     "needs_reassessment": "Needs reassessment",
+}
+
+TREATMENT_ASSESSMENT_STATUS_TONE: dict[str, str] = {
+    "proposed": "muted",
+    "effective": "accent",
+    "ineffective": "danger",
+    "needs_reassessment": "warning",
 }
 
 RISK_REVIEW_OUTCOME_LABEL: dict[str, str] = {

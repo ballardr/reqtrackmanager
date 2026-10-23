@@ -146,6 +146,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.modules.compliance.enums import ComplianceApplicability
 from app.modules.compliance.labels import (
+    COMPLIANCE_EVIDENCE_VALIDITY_STATE_TONE,
     compliance_applicability_label,
     compliance_applicability_source_label,
     compliance_approval_state_label,
@@ -184,7 +185,7 @@ from app.services import relationships
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX
 from app.services.codes import display_code
 from app.services.csv_safety import csv_safe
-from app.services.report_document import STYLES, build_pdf, safe, styled_table, title_flowables
+from app.services.report_document import STYLES, build_pdf, safe, styled_table, title_flowables, toned_paragraph
 from app.services.tags import tag_names_for_records
 
 _styles = STYLES
@@ -715,6 +716,16 @@ def _p(text: str) -> Paragraph:
     return Paragraph(_safe(text), _TABLE_CELL_STYLE)
 
 
+def _pt(text: str | None, tone: str | None) -> Paragraph:
+    """A table cell filled in a badge tone (`toned_paragraph`), as the screen's badge colours it."""
+    return toned_paragraph(text or "", _TABLE_CELL_STYLE, tone)
+
+
+def _validity_cell(state: str) -> Paragraph:
+    """An evidence validity state ("expiring_soon") as the screen's coloured badge."""
+    return _pt(state.replace("_", " ").title(), COMPLIANCE_EVIDENCE_VALIDITY_STATE_TONE.get(state))
+
+
 def _styled_table(data: list[list], col_widths: list[float]) -> Table:
     return styled_table(data, col_widths=col_widths, accent_color=_ACCENT)
 
@@ -839,7 +850,7 @@ def generate_project_compliance_pdf(project_name: str, data: ProjectComplianceRe
         for e in data.evidence_rows:
             rows.append([
                 _p(e.code), _p(e.title), _p(e.issuing_organisation), _p(e.issued_date), _p(e.expiry_date),
-                _p(e.validity_state.replace("_", " ").title()), _p(e.provided_by_email), _p(str(e.linked_requirement_count)),
+                _validity_cell(e.validity_state), _p(e.provided_by_email), _p(str(e.linked_requirement_count)),
                 _p("Yes" if e.is_archived else "No"), _p(e.tags),
             ])
         story.append(_styled_table(rows, [1.8 * cm, 2.6 * cm, 2.2 * cm, 1.6 * cm, 1.6 * cm, 1.6 * cm, 2.4 * cm, 1.2 * cm, 1.4 * cm, 1.6 * cm]))
@@ -1153,7 +1164,7 @@ def generate_org_compliance_pdf(org_name: str, data: OrgComplianceReportData) ->
     _appendix(
         "Expiring/Expired Evidence", data.expiring_evidence_rows, ["Project", "Code", "Title", "Expiry", "Validity", "Tags"],
         lambda project_name, e: [
-            _p(project_name), _p(e.code), _p(e.title), _p(e.expiry_date), _p(e.validity_state.replace("_", " ").title()),
+            _p(project_name), _p(e.code), _p(e.title), _p(e.expiry_date), _validity_cell(e.validity_state),
             _p(e.tags),
         ],
         [3 * cm, 2.4 * cm, 4.6 * cm, 2.2 * cm, 2.2 * cm, 2.6 * cm],
