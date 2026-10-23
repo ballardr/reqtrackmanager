@@ -43,6 +43,19 @@ test("the overview totals the records of every enabled module by type and each r
     await expect(chart).toContainText(/Risks\s*1(?!\d)/);
   });
 
+  await test.step("hovering a slice names it and the box stays until the pointer leaves", async () => {
+    const ring = await chart.locator(".recharts-wrapper").boundingBox();
+    // The first slice (Requirements, 2 of 3) runs clockwise from the top: a point a quarter turn round, mid-band.
+    const centre = { x: ring!.x + ring!.width / 2, y: ring!.y + ring!.height / 2 };
+    await page.mouse.move(centre.x + 48, centre.y);
+    await expect(page.getByRole("tooltip")).toContainText(/Requirements: 2 \(67%\)/);
+    await page.mouse.move(centre.x + 49, centre.y + 1);
+    await page.waitForTimeout(1000);
+    await expect(page.getByRole("tooltip")).toHaveCount(1);
+    await page.mouse.move(centre.x, centre.y);
+    await expect(page.getByRole("tooltip")).toHaveCount(0);
+  });
+
   await test.step("the Requirements tile is gone: requirements are a slice of the total", async () => {
     await expect(page.locator(".grid-metrics").getByRole("link", { name: "Requirements", exact: true })).toHaveCount(0);
   });
