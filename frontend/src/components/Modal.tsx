@@ -1,11 +1,8 @@
-import { X } from "lucide-react";
 import { useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
-import { t } from "../i18n/strings";
 import { useDialogA11y } from "./dialogA11y";
-
-const strings = t();
+import { DialogFrame } from "./DialogHeader";
 
 /** `size="md"` (the default, 560px) is the original fixed width, sized for
  * this component's first use — a small read-only vote-comment viewer.
@@ -24,6 +21,10 @@ const MODAL_MAX_WIDTH_PX: Record<"md" | "lg", number> = { md: 560, lg: 900 };
  * reasoning as `Tooltip`). Closes on Escape or a click on the backdrop;
  * the dialog itself stops propagation so clicks inside it don't bubble to
  * the backdrop's close handler.
+ *
+ * The title, the form's actions (`FormActions` portals into the header) and the close button are
+ * a pinned header row; only the body scrolls, so Save is reachable on a long form (see
+ * `DialogHeader.tsx`, style guide "Pattern: form header").
  *
  * Traps Tab/Shift+Tab focus within the dialog while open, and restores
  * focus to whatever triggered it on close (style guide Principle 8 —
@@ -69,21 +70,17 @@ export function Modal({
     >
       <div
         ref={dialogRef}
-        className="card stack"
+        className="card dialog-card"
         role="dialog"
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: MODAL_MAX_WIDTH_PX[size], width: "100%", maxHeight: "80vh", overflowY: "auto" }}
+        style={{ maxWidth: MODAL_MAX_WIDTH_PX[size], width: "100%", maxHeight: "80vh" }}
       >
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{title}</h2>
-          <button className="btn" onClick={onClose} aria-label={strings.common.close} title={strings.common.close}>
-            <X />
-          </button>
-        </div>
-        {children}
+        <DialogFrame title={title} onClose={onClose}>
+          {children}
+        </DialogFrame>
       </div>
     </div>,
     document.body

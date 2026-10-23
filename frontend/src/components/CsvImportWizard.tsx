@@ -10,6 +10,7 @@ import { downloadBlob } from "../utils/download";
 import { RequiredMark } from "./FieldHelp";
 import { FileUploadTrigger } from "./FileUploadTrigger";
 import { InlineSelect } from "./LabeledSelect";
+import { FormActions } from "./FormActions";
 import { Modal } from "./Modal";
 import { Popover } from "./Popover";
 
@@ -493,15 +494,11 @@ export const CsvImportWizard = forwardRef<CsvImportWizardHandle, {
             </p>
           )}
 
-          <div className="row">
-            <button
-              className="btn btn-primary" disabled={missingRequired.length > 0 || importing}
-              onClick={confirmImport}
-            >
-              {importing ? "Importing…" : `Import ${rows.length} row(s)`}
-            </button>
-            <button className="btn" onClick={cancel} disabled={importing}>Cancel</button>
-          </div>
+          <FormActions
+            onCancel={cancel} cancelDisabled={importing}
+            onSave={confirmImport} saveDisabled={missingRequired.length > 0 || importing}
+            saveLabel={importing ? "Importing…" : `Import ${rows.length} row(s)`}
+          />
           </div>
         </Modal>
       )}

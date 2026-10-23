@@ -1094,7 +1094,8 @@ A list page keeps its place. After opening a record and returning (Back, or the 
 A form in a `Modal` or `SidePanel` has a **header row** with the title and the form's actions (Cancel, Save, and Save and activate where [allowed](#pattern-save-and-activate)), and a **scrollable body**. Reason: Save below the fold on a long form means scrolling to the end to commit, and the foot of a different form is a different place every time.
 
 - Create and edit forms are the same in this; there is no short-form exception. Close (x) and Escape behave as today.
-- The actions are `FormActions` rendered into the dialog's header slot and submit the form through the `form` attribute, so Enter-to-submit, validation errors and focus on the first invalid field still work with Save outside the `<form>` element. A save error is shown in the header area, under the title, so it is seen without scrolling.
+- The actions are `FormActions`, written where the form always put them: inside a `Modal` or `SidePanel` it portals its buttons into the dialog's header (and a save error under the title, so it is seen without scrolling) through `DialogFrame`; handlers and state stay in the form. A form that is a real `<form>` element submits with Enter as usual. Inside a `Popover`, or outside any dialog, it renders inline.
+- A dialog that is a form never hand-writes its own Cancel/primary row; `FormActions` takes `saveTone="danger"`, `cancelDisabled` and an optional `onSave` for the variations. A confirmation dialog (`ConfirmDialog`) is not a form and keeps its short footer.
 - Do not render Save at the foot as well, and do not hand-write a header row.
 
 ## Pattern: bulk edit grid

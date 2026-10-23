@@ -1,11 +1,8 @@
-import { X } from "lucide-react";
 import { useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
-import { t } from "../i18n/strings";
 import { useDialogA11y } from "./dialogA11y";
-
-const strings = t();
+import { DialogFrame } from "./DialogHeader";
 
 /**
  * A right-anchored sliding-in panel for a multi-field create/edit flow —
@@ -45,7 +42,7 @@ export function SidePanel({
     >
       <div
         ref={dialogRef}
-        className="card stack"
+        className="card dialog-card"
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -56,18 +53,13 @@ export function SidePanel({
           maxWidth: 420,
           height: "100%",
           maxHeight: "100vh",
-          overflowY: "auto",
           borderRadius: 0,
           margin: 0,
         }}
       >
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{title}</h2>
-          <button className="btn" onClick={onClose} aria-label={strings.common.close} title={strings.common.close}>
-            <X />
-          </button>
-        </div>
-        {children}
+        <DialogFrame title={title} onClose={onClose}>
+          {children}
+        </DialogFrame>
       </div>
     </div>,
     document.body

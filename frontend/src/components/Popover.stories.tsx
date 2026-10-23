@@ -136,5 +136,55 @@ export const RestoresFocusOnClose: Story = {
   },
 };
 
+function TallPopoverNearTheBottom({ anchorTop }: { anchorTop: string }) {
+  const anchorRef = useRef<HTMLButtonElement>(null);
+  return (
+    <div id="popover-scroller" style={{ height: "100vh", overflowY: "auto" }}>
+      <div style={{ height: "300vh", paddingTop: anchorTop }}>
+        <button ref={anchorRef}>Open the tall list</button>
+        <Popover anchorRef={anchorRef} title="Tall list" onClose={fn()}>
+          {Array.from({ length: 40 }, (_, i) => (
+            <label key={i} className="row">
+              <input type="checkbox" aria-label={`Option ${i + 1}`} />
+              Option {i + 1}
+            </label>
+          ))}
+        </Popover>
+      </div>
+    </div>
+  );
+}
+
+/** Content taller than the room on either side is capped to the roomier side and scrolls inside, so the
+ * last option is reachable by scrolling the popover rather than lying below the fold. */
+export const TallContentIsCappedToTheViewportAndScrolls: Story = {
+  render: () => <TallPopoverNearTheBottom anchorTop="calc(100vh - 6rem)" />,
+  play: async () => {
+    const bubble = within(document.body).getByRole("dialog", { name: "Tall list" });
+    const rect = bubble.getBoundingClientRect();
+    await expect(rect.top).toBeGreaterThanOrEqual(0);
+    await expect(rect.bottom).toBeLessThanOrEqual(window.innerHeight);
+    await expect(bubble.scrollHeight).toBeGreaterThan(bubble.clientHeight);
+    const last = within(bubble).getByLabelText("Option 40");
+    last.scrollIntoView();
+    const lastRect = last.getBoundingClientRect();
+    await expect(lastRect.bottom).toBeLessThanOrEqual(window.innerHeight);
+  },
+};
+
+/** The popover is `position: fixed`; when the page scrolls inside a container it follows its anchor. */
+export const FollowsItsAnchorWhenAnAncestorScrolls: Story = {
+  render: () => <TallPopoverNearTheBottom anchorTop="10rem" />,
+  play: async () => {
+    const bubble = within(document.body).getByRole("dialog", { name: "Tall list" });
+    const anchor = within(document.body).getByRole("button", { name: "Open the tall list" });
+    const gapBefore = bubble.getBoundingClientRect().top - anchor.getBoundingClientRect().bottom;
+    document.getElementById("popover-scroller")!.scrollTop = 40;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const gapAfter = bubble.getBoundingClientRect().top - anchor.getBoundingClientRect().bottom;
+    await expect(Math.abs(gapAfter - gapBefore)).toBeLessThan(2);
+  },
+};
+
 export const LightTheme: Story = { globals: { theme: "light" } };
 export const DarkTheme: Story = { globals: { theme: "dark" } };

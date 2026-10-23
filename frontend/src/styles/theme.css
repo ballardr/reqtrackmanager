@@ -2168,6 +2168,60 @@ td:has(> .disclosure-toggle) {
    bulk" / Principle 3). Fixed width in Popover.tsx's own inline style is
    the common case; this caps it on viewports narrower than that width so
    it can't get pushed past the screen edge on a phone. */
+/* Modal / SidePanel frame: pinned header (title, form actions, close, save error) over a scrolling body. */
+.dialog-card {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.dialog-header {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dialog-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.dialog-title {
+  margin: 0;
+  font-size: 1.1rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dialog-header-controls {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-left: auto;
+}
+
+.dialog-header-actions:empty {
+  display: none;
+}
+
+.dialog-header-actions > .row {
+  justify-content: flex-end;
+}
+
+.dialog-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-5);
+}
+
 .popover-bubble {
   max-width: calc(100vw - 1rem);
 }

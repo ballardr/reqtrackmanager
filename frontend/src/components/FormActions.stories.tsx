@@ -54,4 +54,22 @@ export const InvalidFormDisablesSaveAndActivateToo: Story = {
   },
 };
 
+export const CancelOnlyHasNoPrimaryButton: Story = {
+  args: { onCancel: fn() },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("button", { name: "Cancel" })).toBeEnabled();
+    await expect(canvas.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+  },
+};
+
+export const DangerToneAndDisabledCancelWhileBusy: Story = {
+  args: { onCancel: fn(), onSave: fn(), saveLabel: "Reject", saveTone: "danger", cancelDisabled: true },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("button", { name: "Reject" })).toHaveClass("btn-danger");
+    await expect(canvas.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  },
+};
+
 export const DarkTheme: Story = { ...ShowsTheSaveErrorAndACustomLabel, globals: { theme: "dark" } };

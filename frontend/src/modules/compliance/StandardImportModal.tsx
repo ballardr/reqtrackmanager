@@ -22,6 +22,7 @@
 import { useState } from "react";
 
 import { ApiError } from "../../api/client";
+import { FormActions } from "../../components/FormActions";
 import { Modal } from "../../components/Modal";
 import { toErrorMessage } from "../../context/ToastContext";
 import * as complianceApi from "./api";
@@ -116,16 +117,11 @@ export function StandardImportModal({
             </div>
           </div>
         )}
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          {!conflictMessage && (
-            <button className="btn btn-primary" disabled={!canImport} onClick={() => doImport()}>
-              {importing ? "Importing…" : "Import"}
-            </button>
-          )}
-        </div>
+        <FormActions
+          error={error} onCancel={onCancel}
+          onSave={conflictMessage ? undefined : () => doImport()} saveDisabled={!canImport}
+          saveLabel={importing ? "Importing…" : "Import"}
+        />
       </div>
     </Modal>
   );
