@@ -7,7 +7,7 @@
  * page. Anything a page used to put above the list (a scoring-model switcher, a view tab strip, a banner)
  * is part of `children`, in the list column, so it can never push the filter panel down.
  *
- * A list of records passes `records` and the layout adds the shared Export and Import controls beside the page's
+ * A list of records passes `records` and the layout adds the shared Export and Import menu beside the page's
  * own actions (docs/ux-style-guide.md, "Pattern: list actions (export and import)").
  *
  * The layout also keeps the list's place (docs/ux-style-guide.md, "Pattern: list position"): it saves the scroll
@@ -21,7 +21,7 @@
 import type { HTMLAttributes, ReactNode } from "react";
 
 import { useListPosition } from "../hooks/useListPosition";
-import { ListActions, type RecordListActions } from "./ListActions";
+import { ListActions, ListActionsMenu, type RecordListActions } from "./ListActions";
 
 /**
  * @param title The page heading (text or node); rendered as the page's `h1`.
@@ -57,7 +57,9 @@ export function ListPageLayout({
           {records ? (
             <div className="row" style={{ alignItems: "center" }}>
               {actions}
-              {[records].flat().map((one) => <ListActions key={one.recordType} {...one} />)}
+              <ListActionsMenu>
+                {[records].flat().map((one) => <ListActions key={one.recordType} {...one} />)}
+              </ListActionsMenu>
             </div>
           ) : actions}
         </div>

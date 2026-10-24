@@ -4,6 +4,7 @@ import { expect, type Page, test } from "@playwright/test";
 
 import { installCleanupHook, selectOrgOverviewGroup } from "./helpers";
 import { API_BASE_URL, setUpOrg } from "../modules/stakeholders/helpers";
+import { chooseListAction } from "../listActions";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -37,8 +38,7 @@ test("the organisation's Personas export, an edited goal re-imports as an update
   await expect(page.getByText(orgPersona)).toBeVisible();
 
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export", exact: true }).click();
-  await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download CSV report" }).click();
+  await chooseListAction(page, "Export as CSV");
   const csv = fs.readFileSync((await (await downloadPromise).path())!, "utf-8");
   expect(csv).toContain(orgPersona);
   expect(csv).toContain(created.unique_code);
@@ -69,8 +69,7 @@ test("the organisation's Personas also download as a Word document", async ({ pa
   await openOrgPersonas(page);
   await expect(page.getByText(name)).toBeVisible();
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export", exact: true }).click();
-  await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download Word report" }).click();
+  await chooseListAction(page, "Export as Word file");
   const file = await downloadPromise;
   expect(file.suggestedFilename()).toMatch(/\.docx$/);
   expect(fs.readFileSync((await file.path())!).subarray(0, 2).toString()).toBe("PK");

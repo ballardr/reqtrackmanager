@@ -6,6 +6,7 @@ import { FormGrid } from "./FormGrid";
 import { LabeledSelect } from "./LabeledSelect";
 import { Modal } from "./Modal";
 import { RecordFieldGroup } from "./RecordDetailParts";
+import { SidePanel } from "./SidePanel";
 
 const HELP = "How much this persona counts when scores are rolled up across personas. A positive number; leave blank to weight every persona equally.";
 
@@ -179,6 +180,38 @@ export const EscapeClosesHelpBeforeTheDialog: Story = {
     await userEvent.keyboard("{Escape}");
     await waitFor(() => expect(tip()).not.toBeInTheDocument());
     await expect(body().getByRole("dialog")).toBeVisible();
+  },
+};
+
+/** The z-index of the fixed overlay that contains `element` (a dialog's backdrop or a panel's root). */
+function overlayZIndex(element: HTMLElement): number {
+  for (let node: HTMLElement | null = element; node; node = node.parentElement) {
+    const style = getComputedStyle(node);
+    if (style.position === "fixed" && style.zIndex !== "auto") return Number(style.zIndex);
+  }
+  throw new Error("No fixed overlay around the dialog.");
+}
+
+/** Help opened inside a dialog or side panel is drawn above it, never behind it (the bubble's layer is above both overlays). */
+export const HelpShowsAboveAModalAndASidePanel: Story = {
+  render: () => (
+    <>
+      <Modal title="New pain point" onClose={fn()}>
+        <TextField label="Scoring model" help={HELP} value="" onChange={fn()} />
+      </Modal>
+      <SidePanel title="Edit persona" onClose={fn()}>
+        <TextField label="Importance weight" help={HELP} value="" onChange={fn()} />
+      </SidePanel>
+    </>
+  ),
+  play: async () => {
+    for (const [dialog, field] of [["New pain point", "Scoring model"], ["Edit persona", "Importance weight"]]) {
+      await userEvent.hover(body().getByRole("button", { name: `Help: ${field}` }));
+      const bubble = await body().findByRole("tooltip", { hidden: true });
+      await expect(Number(getComputedStyle(bubble).zIndex)).toBeGreaterThan(overlayZIndex(body().getByRole("dialog", { name: dialog })));
+      await userEvent.unhover(body().getByRole("button", { name: `Help: ${field}` }));
+      await waitFor(() => expect(tip()).not.toBeInTheDocument());
+    }
   },
 };
 

@@ -8,6 +8,7 @@ import { withToast } from "../../testing/storybook-helpers";
 import { buildEngagement, buildFinding, buildPersona, buildStakeholder } from "./fixtures";
 import { ProjectEngagementsPage } from "./ProjectEngagementsPage";
 import type { Engagement } from "./types";
+import { chooseListAction, openListMenu } from "../../testing/listActionsMenu";
 
 const PROJECT_ID = "project-1";
 const BASE = `/api/v1/projects/${PROJECT_ID}/modules/stakeholders`;
@@ -118,9 +119,9 @@ export const ExportCarriesTheFilters: Story = {
     await waitFor(() => canvas.getByText("Evidence follow-up"));
     await userEvent.click(canvas.getByLabelText("Retention review due"));
     await userEvent.click(canvas.getByRole("button", { name: "Email" }));
-    await expect(await canvas.findByText("Import")).toBeInTheDocument();
-    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    await userEvent.click(within(within(document.body).getByRole("dialog", { name: "Export" })).getByRole("button", { name: "Download CSV report" }));
+    await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await chooseListAction(canvas, "Export as CSV");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/engagement/export?retention_due=true&type=Email`));
   },
 };

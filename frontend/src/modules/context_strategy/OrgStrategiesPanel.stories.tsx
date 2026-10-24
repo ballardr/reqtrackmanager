@@ -53,7 +53,7 @@ export const OffersExportAndImportOfTheOrganisationsStrategies: Story = {
   beforeEach: () => mockPanelApis([strategy()]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(await canvas.findByRole("button", { name: "Export" })).toBeInTheDocument();
+    await expect(await canvas.findByRole("button", { name: "List actions" })).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "New Strategy" })).toBeInTheDocument();
   },
 };

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { loginAs, openProject, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { expectListAction } from "../listActions";
 
 /**
  * Job to be done: two pieces of the requirement list's creation and bulk flow that the rest of the suite
@@ -19,8 +20,8 @@ test.describe("New Requirement trigger and the list's Export and Import", () => 
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
 
     await test.step("Export and Import are on the title row, with no hidden alternatives menu", async () => {
-      await expect(page.getByRole("button", { name: "Export", exact: true })).toBeVisible();
-      await expect(page.getByText("Import", { exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "List actions", exact: true })).toBeVisible();
+      await expectListAction(page, "Import from CSV");
       await expect(page.getByRole("button", { name: "More options" })).toHaveCount(0);
     });
 
@@ -75,7 +76,7 @@ test.describe("CSV import wizard: Modal-hosted mapping step and per-column fixed
     await test.step("the wizard is a real Modal dialog on top of the page, not an inline block", async () => {
       await expect(modal).toBeVisible();
       await expect(modal.getByLabel("Map Name")).toHaveValue("name");
-      await expect(page.getByRole("button", { name: "Export", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "List actions", exact: true })).toBeVisible();
     });
 
     const previewButton = modal.getByRole("button", { name: "Preview" });

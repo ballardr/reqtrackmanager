@@ -4,6 +4,7 @@ import { expect, type Page, test } from "@playwright/test";
 
 import { installCleanupHook } from "./helpers";
 import { API_BASE_URL, setUpOrg } from "../modules/stakeholders/helpers";
+import { chooseListAction, expectListAction } from "../listActions";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -16,11 +17,10 @@ installCleanupHook();
  * another test, and it can be repeated against the same database.
  */
 
-/** Downloads the open list's CSV through the shared Export menu and returns its text. `name` is the button's accessible name. */
-async function exportCsv(page: Page, name = "Export"): Promise<string> {
+/** Downloads the open list's CSV through the shared List actions menu and returns its text. `kind` is the heading of the record kind when the list shows several. */
+async function exportCsv(page: Page, kind?: string): Promise<string> {
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name, exact: true }).click();
-  await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download CSV report" }).click();
+  await chooseListAction(page, "Export as CSV", kind);
   return fs.readFileSync((await (await downloadPromise).path())!, "utf-8");
 }
 
@@ -49,7 +49,7 @@ test("a Risk register exports, an edited cause re-imports as an update of the sa
 
   await page.goto(`/projects/${project.id}/modules/risk_management/risks`);
   await expect(page.getByRole("link", { name: created.unique_code })).toBeVisible();
-  await expect(page.getByText("Import", { exact: true })).toBeVisible();
+  await expectListAction(page, "Import from CSV");
 
   const csv = await exportCsv(page);
   expect(csv).toContain(title);
@@ -76,7 +76,7 @@ test("a Decisions list exports, an edited rationale re-imports as an update and 
 
   await page.goto(`/projects/${project.id}/modules/decisions`);
   await expect(page.getByRole("link", { name: created.unique_code })).toBeVisible();
-  await expect(page.getByText("Import", { exact: true })).toBeVisible();
+  await expectListAction(page, "Import from CSV");
 
   const csv = await exportCsv(page);
   expect(csv).toContain(title);
@@ -99,7 +99,7 @@ test("Compliance evidence exports and re-imports, while the outstanding required
 
   await page.goto(`/projects/${project.id}/modules/compliance?tab=evidence`);
   await expect(page.getByRole("link", { name: title })).toBeVisible();
-  await expect(page.getByText("Import", { exact: true })).toBeVisible();
+  await expectListAction(page, "Import from CSV");
 
   const csv = await exportCsv(page);
   expect(csv).toContain(title);
@@ -112,6 +112,6 @@ test("Compliance evidence exports and re-imports, while the outstanding required
     .toBe("Lab report v2");
 
   await page.goto(`/projects/${project.id}/modules/compliance?tab=outstanding`);
-  await expect(page.getByRole("button", { name: "Export outstanding required actions", exact: true })).toBeVisible();
-  await expect(page.getByText("Import outstanding required actions", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "List actions", exact: true })).toBeVisible();
+  await expectListAction(page, "Import from CSV", false);
 });

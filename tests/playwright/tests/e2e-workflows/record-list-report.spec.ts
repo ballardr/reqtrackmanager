@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { expect, test } from "@playwright/test";
 
 import { createDisposableProject, installCleanupHook, loginAs, PERSONAS } from "./helpers";
+import { chooseListAction } from "../listActions";
 
 /**
  * Job to be done: get a plain table of a kind of record — as a screen, a PDF or a Word file — from the Reports page
@@ -59,11 +60,10 @@ test.describe("Record list report", () => {
     const project = await projectWithRequirement(page, "E2E Record List Menu");
     await page.goto(`/projects/${project.projectId}`);
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
-    await page.getByRole("button", { name: "Export", exact: true }).click();
 
     const request = page.waitForRequest((r) => r.url().includes("/reports/record-list"));
     const download = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Download PDF report" }).click();
+    await chooseListAction(page, "Export as PDF");
     const sent = new URL((await request).url());
     expect(sent.searchParams.get("record_type")).toBe("requirement");
     expect(sent.searchParams.get("format")).toBe("pdf");

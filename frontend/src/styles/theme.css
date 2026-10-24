@@ -684,7 +684,9 @@ select.input[size] {
   padding: 0.3rem 0.55rem;
   border-radius: var(--radius-md);
   white-space: nowrap;
-  z-index: 1000;
+  /* Above every overlay a control can sit in (Modal and SidePanel 1100, Popover 1150) so field help opened
+     inside a dialog is not hidden behind it; below the toast stack (1200). */
+  z-index: 1175;
   pointer-events: none;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
 }
@@ -2258,6 +2260,21 @@ td:has(> .disclosure-toggle) {
   justify-content: flex-start;
   text-align: left;
   white-space: normal;
+}
+
+/* A heading over a run of related menu items (`ActionMenuItem.group`), e.g. the record kind in a list's
+   export and import menu. */
+.menu-group-label {
+  padding: var(--space-2) var(--space-3) 0;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.menu-footer {
+  padding: var(--space-2) var(--space-3) 0;
+  max-width: 260px;
+  font-size: 0.8rem;
 }
 
 /* Field help (`FieldCaption`/`FieldHelp`, style guide "Pattern: field help"): the caption line of a

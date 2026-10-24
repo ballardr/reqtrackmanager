@@ -12,6 +12,7 @@ import { buildCandidate, buildOption } from "../testing/artefactLinksFixtures";
 import { buildRecordColumns } from "../testing/recordTablesFixtures";
 import { buildVocabulary } from "../testing/tagsFixtures";
 import { RequirementsPage } from "./RequirementsPage";
+import { chooseListAction, openListMenu } from "../testing/listActionsMenu";
 
 const PROJECT_ID = "project-1";
 
@@ -130,9 +131,9 @@ export const ExportAndImportAreOnTheTitleRow: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
-    await expect(await canvas.findByText("Import")).toBeInTheDocument();
-    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    await userEvent.click(within(within(document.body).getByRole("dialog", { name: "Export" })).getByRole("button", { name: "Download CSV report" }));
+    await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await chooseListAction(canvas, "Export as CSV");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/requirement/export"));
   },
 };

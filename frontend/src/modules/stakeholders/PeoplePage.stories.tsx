@@ -8,6 +8,7 @@ import { buildProject, withRouter, withToast } from "../../testing/storybook-hel
 import { buildPersona, buildStakeholder, buildStakeholderGroup, buildStakeholderScheme } from "./fixtures";
 import { PeoplePage } from "./PeoplePage";
 import type { EffectivePersonaType, Persona, Stakeholder, StakeholderGroup } from "./types";
+import { chooseListAction, openListMenu } from "../../testing/listActionsMenu";
 
 const PROJECT_ID = "project-1";
 const BASE = `/api/v1/projects/${PROJECT_ID}/modules/stakeholders`;
@@ -393,13 +394,12 @@ export const PersonasOnlyOffersTheirOwnExportWithTheFilters: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Field Technician")).toBeInTheDocument());
     await userEvent.selectOptions(canvas.getByLabelText("Status"), "draft");
-    await userEvent.click(await canvas.findByRole("button", { name: "Export" }));
-    await userEvent.click(within(within(document.body).getByRole("dialog", { name: "Export" })).getByRole("button", { name: "Download CSV report" }));
+    await chooseListAction(canvas, "Export as CSV");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/persona/export?status=draft`));
   },
 };
 
-/** Several kinds: one Export and one Import per kind, each named, each acting on its own kind. */
+/** Several kinds: one menu with an Export and Import group per kind, each named, each acting on its own kind. */
 export const SeveralKindsOfferAnExportEach: Story = {
   beforeEach: () => {
     mockApis();
@@ -408,11 +408,12 @@ export const SeveralKindsOfferAnExportEach: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Field Technician")).toBeInTheDocument());
-    for (const name of ["Export personas", "Export stakeholders", "Export groups"]) {
-      await expect(await canvas.findByRole("button", { name })).toBeInTheDocument();
+    const menu = await openListMenu(canvas);
+    for (const heading of ["Personas", "Stakeholders", "Groups"]) {
+      await expect(await menu.findByText(heading)).toBeInTheDocument();
     }
-    await userEvent.click(canvas.getByRole("button", { name: "Export stakeholders" }));
-    await userEvent.click(within(within(document.body).getByRole("dialog", { name: "Export" })).getByRole("button", { name: "Download CSV report" }));
+    await userEvent.keyboard("{Escape}");
+    await chooseListAction(canvas, "Export as CSV", "Stakeholders");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/stakeholder/export`));
   },
 };
@@ -423,9 +424,11 @@ export const AGroupExportIsNotOfferedWhileAStatusFilterExcludesEveryGroup: Story
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Field Technician")).toBeInTheDocument());
-    await expect(await canvas.findByRole("button", { name: "Export groups" })).toBeInTheDocument();
+    await expect(await (await openListMenu(canvas)).findByText("Groups")).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
     await userEvent.selectOptions(canvas.getByLabelText("Status"), "draft");
-    await waitFor(() => expect(canvas.queryByRole("button", { name: "Export groups" })).not.toBeInTheDocument());
-    await expect(canvas.getByRole("button", { name: "Export personas" })).toBeInTheDocument();
+    const menu = await openListMenu(canvas);
+    await waitFor(() => expect(menu.queryByText("Groups")).not.toBeInTheDocument());
+    await expect(menu.getByText("Personas")).toBeInTheDocument();
   },
 };

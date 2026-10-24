@@ -6,6 +6,7 @@ import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { withToast } from "../../testing/storybook-helpers";
 import { ProjectComplianceDetail } from "./ProjectComplianceDetail";
 import type { ProjectCompliance, ProjectComplianceStatus } from "./types";
+import { chooseListAction, openListMenu } from "../../testing/listActionsMenu";
 
 const PROJECT_ID = "proj-1";
 const ORG_ID = "org-1";
@@ -156,13 +157,14 @@ export const AssessmentsAndRequiredActionsExportForThisAssignment: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Export assessments" }));
-    await userEvent.click(within(within(document.body).getByRole("dialog", { name: "Export" })).getByRole("button", { name: "Download CSV report" }));
+    await chooseListAction(canvas, "Export as CSV", "Assessments");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/records/project_compliance_requirement/export?assignment=pc-1`
     ));
-    await expect(await canvas.findByRole("button", { name: "Export required actions" })).toBeInTheDocument();
-    await expect(canvas.queryByText("Import assessments")).not.toBeInTheDocument();
+    // Both kinds share one menu, each under its own heading, and neither offers an import.
+    const menu = await openListMenu(canvas);
+    await expect(menu.getByText("Required actions")).toBeInTheDocument();
+    await expect(menu.queryByRole("menuitem", { name: "Import from CSV" })).not.toBeInTheDocument();
   },
 };
 

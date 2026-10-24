@@ -41,7 +41,7 @@ import { DirectoryTable, type DirectoryColumn } from "../../components/Directory
 import { FilterBadge } from "../../components/FilterBadge";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
-import { ListActions } from "../../components/ListActions";
+import { ListActions, ListActionsMenu } from "../../components/ListActions";
 import { ListPageLayout } from "../../components/ListPageLayout";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
@@ -341,7 +341,11 @@ export function RecordListView<R extends ListedRecord, V>({
             <div className="row" style={{ gap: "var(--space-3)", alignSelf: "flex-start" }}>
               {newButton}
               {toolbar}
-              {exportActions?.map((kind) => <ListActions key={kind.recordType} {...kind} />)}
+              {exportActions && (
+                <ListActionsMenu>
+                  {exportActions.map((kind) => <ListActions key={kind.recordType} {...kind} />)}
+                </ListActionsMenu>
+              )}
             </div>
           )}
           <div className="side-grid">

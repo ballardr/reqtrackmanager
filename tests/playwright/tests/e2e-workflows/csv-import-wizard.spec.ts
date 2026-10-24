@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 
 import { createDisposableProject, installCleanupHook, loginAs, PERSONAS } from "./helpers";
+import { chooseListAction } from "../listActions";
 
 /**
  * Job to be done: bulk-importing requirements from a CSV whose headers don't match the server's column names
@@ -21,7 +22,7 @@ test.describe("CSV import wizard", () => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await page.goto(`/projects/${project.projectId}`);
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Export", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "List actions", exact: true })).toBeVisible();
     return project;
   }
 
@@ -98,8 +99,7 @@ test.describe("CSV import wizard", () => {
     await page.reload();
     await expect(page.getByText(reqName, { exact: true })).toBeVisible();
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Export", exact: true }).click();
-    await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download CSV report" }).click();
+    await chooseListAction(page, "Export as CSV");
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toBe("requirements-export.csv");
     const exportedCsv = fs.readFileSync((await download.path())!, "utf-8");

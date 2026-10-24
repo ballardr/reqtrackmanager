@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { clickAndAwaitSave, selectProjectAdminGroup } from "./e2e-workflows/helpers";
+import { chooseListAction } from "./listActions";
 
 /**
  * End-to-end golden path against the running tests/container/docker-compose.yml stack:
@@ -205,16 +206,14 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
   await test.step("download the CSV import template", async () => {
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Export", exact: true }).click();
-    await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download import template" }).click();
+    await chooseListAction(page, "Download import template");
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toBe("requirements-import-template.csv");
   });
 
   await test.step("export requirements as a full-fidelity CSV", async () => {
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Export", exact: true }).click();
-    await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download CSV report" }).click();
+    await chooseListAction(page, "Export as CSV");
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toBe("requirements-export.csv");
   });

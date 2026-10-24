@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 
 import { createDisposableProject, installCleanupHook, loginAs, PERSONAS } from "./helpers";
+import { chooseListAction, expectListAction } from "../listActions";
 
 /**
  * Job to be done: take a list of actions out as a file, edit a cell in a spreadsheet and bring it back so the same
@@ -19,8 +20,7 @@ test.describe("Export and import on the Actions and Change requests lists", () =
   /** Downloads the open list's CSV through the shared Export menu and returns its text. */
   async function exportCsv(page: Page): Promise<string> {
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Export", exact: true }).click();
-    await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download CSV report" }).click();
+    await chooseListAction(page, "Export as CSV");
     return fs.readFileSync((await (await downloadPromise).path())!, "utf-8");
   }
 
@@ -38,7 +38,7 @@ test.describe("Export and import on the Actions and Change requests lists", () =
     await page.goto(`/projects/${projectId}`);
     await page.getByRole("link", { name: "Actions", exact: true }).click();
     await expect(page.getByText(title, { exact: true })).toBeVisible();
-    await expect(page.getByText("Import", { exact: true })).toBeVisible();
+    await expectListAction(page, "Import from CSV");
 
     const csv = await exportCsv(page);
     expect(csv).toContain(title);
@@ -76,8 +76,8 @@ test.describe("Export and import on the Actions and Change requests lists", () =
     await page.goto(`/projects/${projectId}`);
     await page.getByRole("link", { name: "Change requests", exact: true }).click();
     await expect(page.getByRole("link", { name })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Export", exact: true })).toBeVisible();
-    await expect(page.getByText("Import", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "List actions", exact: true })).toBeVisible();
+    await expectListAction(page, "Import from CSV", false);
 
     // The default view is "Active", so the file holds what the page shows: the draft, not the withdrawn request.
     const csv = await exportCsv(page);

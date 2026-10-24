@@ -7,6 +7,7 @@ import { withRouter, withToast } from "../../testing/storybook-helpers";
 import { buildNeed, buildPersona } from "./fixtures";
 import { NeedsPage } from "./NeedsPage";
 import type { Need } from "./types";
+import { chooseListAction, openListMenu } from "../../testing/listActionsMenu";
 
 const PROJECT_ID = "project-1";
 const BASE = `/api/v1/projects/${PROJECT_ID}/modules/stakeholders`;
@@ -105,9 +106,9 @@ export const ExportAndImportAreOnTheTitleRow: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Diagnose faults quickly")).toBeInTheDocument());
-    await expect(await canvas.findByText("Import")).toBeInTheDocument();
-    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    await userEvent.click(within(within(document.body).getByRole("dialog", { name: "Export" })).getByRole("button", { name: "Download CSV report" }));
+    await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await chooseListAction(canvas, "Export as CSV");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/stakeholder_need/export`));
   },
 };

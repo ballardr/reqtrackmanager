@@ -39,7 +39,7 @@
  */
 import type { ReactNode } from "react";
 import { MoreVertical } from "lucide-react";
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 
 import { Popover } from "./Popover";
 
@@ -55,6 +55,8 @@ export interface ActionMenuItem {
    * string label. Never relies on position, since the item list can change
    * while the menu is open. */
   key?: string;
+  /** A heading shown above this item when it starts a run of items with the same group (items of one group sit together). */
+  group?: string;
 }
 
 /**
@@ -77,10 +79,13 @@ export function ActionMenu({
   triggerLabel,
   items,
   disabled,
+  footer,
 }: {
   triggerLabel: string;
   items: ActionMenuItem[];
   disabled?: boolean;
+  /** Muted text under the items (a note that applies to the whole menu). */
+  footer?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -102,7 +107,7 @@ export function ActionMenu({
       </button>
       {open && (
         <Popover anchorRef={triggerRef} fit title={triggerLabel} onClose={() => setOpen(false)}>
-          <ActionMenuList label={triggerLabel} items={items} onSelect={() => setOpen(false)} />
+          <ActionMenuList label={triggerLabel} items={items} footer={footer} onSelect={() => setOpen(false)} />
         </Popover>
       )}
     </>
@@ -117,37 +122,43 @@ export function ActionMenu({
  * @param label - The menu's accessible name.
  * @param items - The rows, in display order.
  * @param onSelect - Called first when any item is chosen.
+ * @param footer - Muted text under the items.
  */
 export function ActionMenuList({
   label,
   items,
   onSelect,
+  footer,
 }: {
   label: string;
   items: ActionMenuItem[];
   onSelect: () => void;
+  footer?: ReactNode;
 }) {
   return (
     <div role="menu" aria-label={label} className="stack" style={{ gap: "0.15rem", minWidth: 180 }}>
       {items.map((item, i) => (
-        <button
-          // Keyed by label, not index: a caller's item list can change
-          // while the menu is open (Org Admin adds "Rename" once its
-          // settings load), and an index key made React hand one item's
-          // button — and click handler — to another, so clicking
-          // "Export" opened Rename (found 2026-10-04 via the e2e suite).
-          key={item.key ?? (typeof item.label === "string" ? item.label : i)}
-          type="button"
-          role="menuitem"
-          className={item.danger ? "btn btn-danger menu-item" : "btn menu-item"}
-          onClick={() => {
-            onSelect();
-            item.onSelect();
-          }}
-        >
-          {item.icon} {item.label}
-        </button>
+        // Keyed by label, not index: a caller's item list can change while the menu is open (Org Admin adds
+        // "Rename" once its settings load), and an index key made React hand one item's button — and click
+        // handler — to another, so clicking "Export" opened Rename (found 2026-10-04 via the e2e suite).
+        <Fragment key={item.key ?? (typeof item.label === "string" ? item.label : i)}>
+          {item.group && item.group !== items[i - 1]?.group && (
+            <span role="presentation" className="menu-group-label">{item.group}</span>
+          )}
+          <button
+            type="button"
+            role="menuitem"
+            className={item.danger ? "btn btn-danger menu-item" : "btn menu-item"}
+            onClick={() => {
+              onSelect();
+              item.onSelect();
+            }}
+          >
+            {item.icon} {item.label}
+          </button>
+        </Fragment>
       ))}
+      {footer && <span role="presentation" className="menu-footer text-muted">{footer}</span>}
     </div>
   );
 }

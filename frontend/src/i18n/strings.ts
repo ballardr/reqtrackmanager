@@ -2297,8 +2297,9 @@ const en = {
     failure: (verb: string, noun: string) => `Could not ${verb} the ${noun}.`,
   },
   recordTables: {
-    import: "Import",
-    exportLabel: "Export",
+    menuLabel: "List actions",
+    exportAs: (format: string) => `Export as ${format}`,
+    importFromCsv: "Import from CSV",
     downloadTemplate: "Download import template",
     exported: (label: string, format: string) => `${label} exported as ${format}.`,
     formatName: { csv: "CSV", pdf: "PDF", docx: "Word file" },

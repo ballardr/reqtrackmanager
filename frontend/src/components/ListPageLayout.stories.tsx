@@ -59,7 +59,7 @@ export const LongTitleStaysInItsColumn: Story = {
   },
 };
 
-/** A list of records passes `records`: Export and Import sit beside the page's own action, on the title's row. */
+/** A list of records passes `records`: one List actions menu sits beside the page's own action, on the title's row. */
 export const RecordsAddExportAndImportBesideTheActions: Story = {
   args: {
     title: "Requirements",
@@ -70,14 +70,13 @@ export const RecordsAddExportAndImportBesideTheActions: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const exportButton = await canvas.findByRole("button", { name: "Export" });
-    const importButton = canvas.getByText("Import");
+    const menuButton = await canvas.findByRole("button", { name: "List actions" });
     const title = canvas.getByRole("heading", { name: "Requirements" }).getBoundingClientRect();
     const newButton = canvas.getByRole("button", { name: "New requirement" }).getBoundingClientRect();
-    // One row: the new button, Export and Import share the title's line and stay left of the filter panel.
-    await expect(Math.abs(exportButton.getBoundingClientRect().top - newButton.top)).toBeLessThanOrEqual(2);
-    await expect(Math.abs(importButton.getBoundingClientRect().top - newButton.top)).toBeLessThanOrEqual(8);
+    // One row: the new button and the menu share the title's line, the menu right after the button, and stay left of the filter panel.
+    await expect(Math.abs(menuButton.getBoundingClientRect().top - newButton.top)).toBeLessThanOrEqual(8);
+    await expect(menuButton.getBoundingClientRect().left).toBeGreaterThanOrEqual(newButton.right);
     await expect(newButton.top).toBeLessThanOrEqual(title.bottom);
-    await expect(importButton.getBoundingClientRect().right).toBeLessThanOrEqual(canvasElement.querySelector(".filter-panel")!.getBoundingClientRect().right);
+    await expect(menuButton.getBoundingClientRect().right).toBeLessThanOrEqual(canvasElement.querySelector(".filter-panel")!.getBoundingClientRect().right);
   },
 };

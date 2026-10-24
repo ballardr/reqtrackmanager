@@ -4,6 +4,7 @@ import { expect, type Page, test } from "@playwright/test";
 
 import { installCleanupHook } from "./helpers";
 import { API_BASE_URL, setUpOrg } from "../modules/stakeholders/helpers";
+import { chooseListAction, expectListAction } from "../listActions";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -17,11 +18,10 @@ installCleanupHook();
  * another test, and it can be repeated against the same database.
  */
 
-/** Downloads the open list's CSV through the shared Export menu and returns its text. `name` is the button's accessible name. */
-async function exportCsv(page: Page, name = "Export"): Promise<string> {
+/** Downloads the open list's CSV through the shared List actions menu and returns its text. `kind` is the heading of the record kind when the list shows several. */
+async function exportCsv(page: Page, kind?: string): Promise<string> {
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name, exact: true }).click();
-  await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download CSV report" }).click();
+  await chooseListAction(page, "Export as CSV", kind);
   return fs.readFileSync((await (await downloadPromise).path())!, "utf-8");
 }
 
@@ -40,7 +40,7 @@ test("a Pain Point list exports, an edited title re-imports as an update of the 
 
   await page.goto(`/projects/${project.id}/modules/context_strategy/pain-points`);
   await expect(page.getByRole("button", { name: title })).toBeVisible();
-  await expect(page.getByText("Import", { exact: true })).toBeVisible();
+  await expectListAction(page, "Import from CSV");
 
   const csv = await exportCsv(page);
   expect(csv).toContain(title);
@@ -91,8 +91,8 @@ test("a Stakeholder's personal data is left out of the export until the organisa
 
   // Both kinds listed together: each kind has its own named Export, and a kind's file holds only that kind.
   await page.goto(`/projects/${project.id}/modules/stakeholders/people`);
-  await expect(page.getByRole("button", { name: "Export stakeholders", exact: true })).toBeVisible();
-  const personas = await exportCsv(page, "Export personas");
+  await expect(page.getByRole("button", { name: "List actions", exact: true })).toBeVisible();
+  const personas = await exportCsv(page, "Personas");
   expect(personas).toContain(persona);
   expect(personas).not.toContain(name);
 });

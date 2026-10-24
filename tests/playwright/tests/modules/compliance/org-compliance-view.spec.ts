@@ -127,7 +127,7 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
     // --- download the organisation-wide compliance report,
     //     now behind the "Export" popover trigger (Principle 11).
     await selectOrgOverviewGroup(page, "Compliance dashboard");
-    await page.getByRole("button", { name: "Export" }).click();
+    await page.getByRole("button", { name: "Export", exact: true }).click();
     const pdfDownloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "Download PDF report" }).click();
     const pdfDownload = await pdfDownloadPromise;
@@ -145,7 +145,7 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
     const standardsReportRequestPromise = page.waitForRequest(
       (req) => req.url().includes("/modules/compliance/reports") && req.url().includes("format=csv") && req.url().includes("standard_id=")
     );
-    await page.getByRole("button", { name: "Export" }).click();
+    await page.getByRole("button", { name: "Export", exact: true }).click();
     await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download CSV report" }).click();
     await standardsReportRequestPromise;
     await selectFilterOption(page, "Standard", "All standards");
@@ -374,7 +374,7 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
         req.url().includes("standard_id=") &&
         req.url().includes("requirement_id=")
     );
-    await page.getByRole("button", { name: "Export" }).click();
+    await page.getByRole("button", { name: "Export", exact: true }).click();
     await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download CSV report" }).click();
     await reportRequestPromise;
   });
