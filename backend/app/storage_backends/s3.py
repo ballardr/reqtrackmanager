@@ -51,3 +51,17 @@ class S3CompatibleFileStorageBackend:
 
     def delete(self, key: str) -> None:
         self._client.delete_object(Bucket=self._bucket, Key=key)
+
+    def exists(self, key: str) -> bool:
+        """Whether an object is stored under `key` (a HEAD request, no body transferred).
+
+        Raises:
+            ClientError: On any failure other than "not found" (a denied or unreachable store is not "absent").
+        """
+        try:
+            self._client.head_object(Bucket=self._bucket, Key=key)
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
+                return False
+            raise
+        return True

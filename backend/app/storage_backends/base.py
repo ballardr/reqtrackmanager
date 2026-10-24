@@ -33,3 +33,7 @@ class FileStorageBackend(Protocol):
     def delete(self, key: str) -> None:
         """Deletes the data stored under `key`, if present (no-op otherwise)."""
         ...
+
+    def exists(self, key: str) -> bool:
+        """Whether data is stored under `key`, without transferring it (disaster-recovery integrity probes)."""
+        ...

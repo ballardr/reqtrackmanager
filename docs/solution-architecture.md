@@ -451,6 +451,34 @@ Files such as supporting documents and uploaded attachments are stored in a conf
 
 **Implementation note (Pelion v2):** `backend/app/storage_backends/` defines a small `FileStorageBackend` protocol with two real implementations — `LocalFileStorageBackend` (filesystem) and `S3CompatibleFileStorageBackend` (boto3, works against any S3-compatible server or real S3) — selected via `STORAGE_BACKEND=local|s3`. The default Docker Compose stack runs the bundled SeaweedFS S3 gateway (formerly MinIO — see [decisions.md](decisions.md)'s "Storage backend: MinIO images no longer pullable, replaced with SeaweedFS" entry) and defaults to the `s3` backend so the object-storage path is exercised for real rather than only implemented in the abstract. The bundled gateway accepts a single S3 identity that may act on the application bucket only (the backend's credential), and everything except the S3 gateway listens on loopback because SeaweedFS's filer and master APIs are unauthenticated; both are plain compose configuration (see [deployment.md](deployment.md) §Storage credential scope and its hardening guide).
 
+### Stateful Components and Backup Verification
+
+Everything a disaster recovery must restore lives in exactly three Compose volumes plus the operator's `.env`; every other service is rebuilt from its image.
+
+| Component | State | Where | In a backup set |
+|-----------|-------|-------|-----------------|
+| `db` (PostgreSQL) | All records, users, hashes, encrypted secrets, audit | volume `reqtrack_db_data` | `pg_dump` |
+| `storage` (SeaweedFS) | Uploaded files when `STORAGE_BACKEND=s3` (default) | volume `reqtrack_storage_data` | object mirror |
+| `backend` local files | Uploaded files when `STORAGE_BACKEND=local` | volume `reqtrack_local_files` | tar |
+| Operator `.env` | `APP_SECRET_ENCRYPTION_KEY`, `JWT_SECRET`, credentials | host | optional, separate key |
+| `frontend`, `mcp-server`, `docs` | None (no volumes, no files written) | n/a | no |
+| `prometheus`, `loki`, `tempo`, `grafana`, `alloy` | Telemetry only, optional profile | container filesystem | no |
+
+A backup records a manifest (`manifest.json`, schema in [schemas/backup-manifest.schema.json](schemas/backup-manifest.schema.json)) that embeds a statistics document produced by `backend/app/services/dr_stats.py`. The same code recomputes it on a restored stack, so "the restore matches the source" has one definition.
+
+```mermaid
+flowchart LR
+    DB[("db")] -->|"REPEATABLE READ snapshot"| D["pg_dump"]
+    DB -->|"same snapshot"| S["dr_stats"]
+    ST[("storage")] -->|"exists per file record"| S
+    S --> M["manifest.json"]
+    D --> M
+    M --> V["restored stack: dr_stats again"]
+    V --> C{"compare_stats equal and probes clean?"}
+```
+
+The document holds the Alembic revision, an exact row count of every table found in the database catalogue (a table added by a module needs no edit), business counts (records per registered artefact type, users, projects, groups, links, file records), and two integrity probes: every file record has a stored object, and every `EncryptedString` column decrypts with the configured key. It contains counts and ids only, never row content.
+
 ### Observability Layer
 The architecture includes observability services for metrics, logs, and traces:
 - Prometheus for metrics collection

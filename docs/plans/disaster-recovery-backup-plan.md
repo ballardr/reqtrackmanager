@@ -1,15 +1,15 @@
 # Disaster Recovery: Backup, Restore and Restore-Test — Plan
 
-**Status:** planned 2026-10-20; Phase 0 decisions signed off 2026-10-24, spike B open. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. **Decided by: User** (2026-10-20): wants documentation and scripts for a whole-platform backup that suits disaster recovery, runs from cron, has matching recovery instructions and scripts, and can be tested by restoring to a temporary system and checking the platform is stable and its statistics (users, projects, records) are correct. Everything below about *how* is **Decided by: Agent** until the user signs off the open decisions in §2.
+**Status:** planned 2026-10-20; Phase 0 decisions signed off 2026-10-24, spike B open; Phase 1 done 2026-10-24. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. **Decided by: User** (2026-10-20): wants documentation and scripts for a whole-platform backup that suits disaster recovery, runs from cron, has matching recovery instructions and scripts, and can be tested by restoring to a temporary system and checking the platform is stable and its statistics (users, projects, records) are correct. Everything below about *how* is **Decided by: Agent** until the user signs off the open decisions in §2.
 
 ## Status / Resume Here
 
-0 / 9 phases complete. Phases 1–4 are the tooling and are each useful alone; 5–7 wrap it for operators and auditors.
+1 / 9 phases complete (Phase 0 partly: spike B open, it gates only Phase 2's object mirror). Phases 1–4 are the tooling and are each useful alone; 5–7 wrap it for operators and auditors.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 0 | Sign-off on open decisions and spikes | [~] decisions signed off, spikes A, C, D done, B blocked (see §2) |
-| 1 | Backup-set format, manifest and `dr_stats` | [ ] |
+| 1 | Backup-set format, manifest and `dr_stats` | [x] done 2026-10-24: `services/dr_stats.py`, `services/dr_manifest.py`, `scripts/dr_stats.py`, `docs/schemas/backup-manifest.schema.json`, 18 tests in `tests/test_dr_stats.py` |
 | 2 | Backup tool (DB, objects, config, encryption, retention, off-site) | [ ] |
 | 3 | Restore tool (fresh host, in place, scratch) | [ ] |
 | 4 | Restore-test harness and CI job | [ ] |
