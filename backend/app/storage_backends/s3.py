@@ -20,7 +20,16 @@ class S3CompatibleFileStorageBackend:
 
     name = "s3"
 
-    def __init__(self, bucket: str, endpoint_url: str, access_key: str, secret_key: str, region: str) -> None:
+    def __init__(self, bucket: str, endpoint_url: str, access_key: str, secret_key: str, region: str, create_bucket: bool = True) -> None:
+        """Connects to the bucket.
+
+        Args:
+            bucket: Bucket name.
+            endpoint_url: S3 endpoint.
+            access_key / secret_key / region: Credentials and region.
+            create_bucket: Create the bucket if it is missing (the application's own behaviour). A read-only
+                client, such as the backup tool's, passes False: it must never create anything.
+        """
         self._bucket = bucket
         self._client = boto3.client(
             "s3",
@@ -30,7 +39,8 @@ class S3CompatibleFileStorageBackend:
             region_name=region,
             config=Config(signature_version="s3v4"),
         )
-        self._ensure_bucket()
+        if create_bucket:
+            self._ensure_bucket()
 
     def _ensure_bucket(self) -> None:
         """Creates the configured bucket if it doesn't already exist."""

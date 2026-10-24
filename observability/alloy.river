@@ -1,6 +1,7 @@
-// Grafana Alloy config: ships container logs to Loki. Metrics are scraped
-// directly by Prometheus (see observability/prometheus.yml) since the
-// backend already exposes a Prometheus-compatible /metrics endpoint.
+// Grafana Alloy config: ships container logs to Loki and the backup/restore-test
+// metrics to Prometheus. The backend's own metrics are scraped directly by
+// Prometheus (see observability/prometheus.yml) since it already exposes a
+// Prometheus-compatible /metrics endpoint.
 //
 // An OTLP receiver is included so the backend can start exporting traces to
 // Tempo the moment OpenTelemetry instrumentation is added to the FastAPI
@@ -39,5 +40,40 @@ otelcol.exporter.otlp "tempo" {
     tls {
       insecure = true
     }
+  }
+}
+
+// Disaster-recovery metrics. The backup, its scheduler and the restore-test write
+// Prometheus textfiles (reqtrack-*.prom) into the backup status directory; the
+// textfile collector below reads them and Alloy forwards them to Prometheus, whose
+// alert rules (observability/alerts/) watch them. Only the textfile collector is
+// enabled, so no host metrics are produced.
+prometheus.exporter.unix "backup" {
+  set_collectors = ["textfile"]
+
+  textfile {
+    directory = "/backup/status"
+  }
+}
+
+// The exporter labels its targets job="integrations/unix"; name them for what they are.
+discovery.relabel "backup" {
+  targets = prometheus.exporter.unix.backup.targets
+
+  rule {
+    target_label = "job"
+    replacement  = "reqtrack-backup"
+  }
+}
+
+prometheus.scrape "backup" {
+  targets         = discovery.relabel.backup.output
+  scrape_interval = "30s"
+  forward_to      = [prometheus.remote_write.default.receiver]
+}
+
+prometheus.remote_write "default" {
+  endpoint {
+    url = "http://prometheus:9090/api/v1/write"
   }
 }

@@ -169,6 +169,57 @@ def _set_dir(restored: Path) -> Path:
     return found[0].parent
 
 
+# --- the backup only reads the object store ------------------------------------------------------------
+
+
+class _ReadOnlyS3(FakeS3):
+    """A fake store that refuses every call a read-only identity could not make, and records the rest."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.calls: list[str] = []
+
+    def get_paginator(self, name: str) -> FakeS3:
+        self.calls.append(name)
+        return super().get_paginator(name)
+
+    def get_object(self, Bucket: str, Key: str) -> dict[str, Any]:
+        self.calls.append("get_object")
+        return super().get_object(Bucket, Key)
+
+    def __getattr__(self, name: str) -> Any:
+        raise ClientError({"Error": {"Code": "AccessDenied", "Message": f"{name} is not allowed"}}, name)
+
+
+@needs_restic
+def test_a_backup_makes_only_read_calls_so_a_read_only_identity_is_enough(tmp_path: Path):
+    s3 = _ReadOnlyS3({"a/one": b"1", "a/two": b"22"})
+    config = _config(tmp_path)
+    report = run_backup(config, _deps(config, s3))
+    assert report.result == "ok", report.error
+    assert set(s3.calls) == {"list_objects_v2", "get_object"}
+
+
+def test_the_probe_backend_never_creates_a_bucket(monkeypatch: pytest.MonkeyPatch):
+    created: list[str] = []
+
+    class Client:
+        def head_bucket(self, Bucket: str) -> None:
+            raise ClientError({"Error": {"Code": "403", "Message": "denied"}}, "HeadBucket")
+
+        def create_bucket(self, Bucket: str) -> None:
+            created.append(Bucket)
+
+    monkeypatch.setattr("app.storage_backends.s3.boto3.client", lambda *a, **k: Client())
+    settings = get_settings().model_copy(update={"storage_backend": "s3", "storage_s3_bucket": "reqtrackmanager"})
+    dr_backup.storage_probe_backend(settings)
+    assert created == []
+    from app.storage_backends import S3CompatibleFileStorageBackend
+
+    S3CompatibleFileStorageBackend("b", "http://x", "k", "s", "us-east-1")  # the application's own default still creates it
+    assert created == ["b"]
+
+
 # --- redaction ---------------------------------------------------------------------------------------
 
 

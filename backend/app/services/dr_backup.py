@@ -110,6 +110,8 @@ class BackupConfig(BaseSettings):
             period, so a schedule more often than daily needs `keep_hourly` to retain the extra sets).
         check_subset: Share of repository data read by the integrity check (`5%`; empty to skip).
         status_dir: Where `status.json` and `reqtrack-backup.prom` are written.
+        expected_interval_hours: How often backups are meant to run; published as a metric so the staleness alert
+            follows the schedule instead of a number copied into the alert rules (the scheduler derives it).
         local_files_dir: The local file store, archived when `STORAGE_BACKEND=local`.
         pg_dump: The `pg_dump` executable (must be the server's major version or newer, within reason).
         restic_timeout_seconds: Longest one restic command may run before the step fails.
@@ -132,10 +134,17 @@ class BackupConfig(BaseSettings):
     keep_monthly: int = Field(default=12, ge=0)
     check_subset: str = "5%"
     status_dir: Path = Path("/backup/status")
+    expected_interval_hours: float = Field(default=24.0, gt=0)
     local_files_dir: Path = Path("/source/local_files")
     pg_dump: str = "pg_dump"
     restic_timeout_seconds: float = Field(default=4 * 3600, gt=0)
     repository_read_only: bool = False
+
+    @field_validator("expected_interval_hours", mode="before")
+    @classmethod
+    def _interval_blank(cls, value: object) -> object:
+        """Treats an empty value (Compose passes `BACKUP_EXPECTED_INTERVAL_HOURS=` when unset) as the default."""
+        return 24.0 if isinstance(value, str) and not value.strip() else value
 
     @field_validator("check_subset")
     @classmethod
@@ -344,6 +353,40 @@ class BackupDeps:
     probe_encryption: bool = True
 
 
+def storage_probe_backend(settings: Any) -> Any:
+    """The storage backend the statistics probe checks file records against, without ever creating a bucket.
+
+    Args:
+        settings: The application `Settings` (storage selection and credentials).
+
+    Returns:
+        An `S3CompatibleFileStorageBackend` that does not create the bucket (the backup's credentials may be
+        read-only, and a backup must not create anything), or the local-file backend.
+    """
+    from app.storage_backends import LocalFileStorageBackend, S3CompatibleFileStorageBackend
+
+    if settings.storage_backend == "s3":
+        return S3CompatibleFileStorageBackend(
+            bucket=settings.storage_s3_bucket,
+            endpoint_url=settings.storage_s3_endpoint_url,
+            access_key=settings.storage_s3_access_key,
+            secret_key=settings.storage_s3_secret_key,
+            region=settings.storage_s3_region,
+            create_bucket=False,
+        )
+    return LocalFileStorageBackend(settings.storage_local_dir)
+
+
+def restic_from_environment(config: BackupConfig) -> Restic:
+    """The restic wrapper for this configuration, needing neither the database nor the object store.
+
+    Args:
+        config: Tool settings.
+    """
+    redact = Redactor(secret_values(config.env_file if config.secrets_mode is SecretsMode.CONFIG else None))
+    return Restic(config.password_file, redactor=redact, timeout=config.restic_timeout_seconds, no_lock=config.repository_read_only)
+
+
 def deps_from_environment(config: BackupConfig) -> BackupDeps:
     """Builds the dependencies from the same environment the backend reads (`DATABASE_URL`, `STORAGE_*`).
 
@@ -359,10 +402,8 @@ def deps_from_environment(config: BackupConfig) -> BackupDeps:
 
     from app.config import get_settings
     from app.database import engine
-    from app.services.files import get_storage_backend
 
     settings = get_settings()
-    redact = Redactor(secret_values(config.env_file if config.secrets_mode is SecretsMode.CONFIG else None))
     client = None
     if settings.storage_backend == "s3":
         client = boto3.client(
@@ -377,10 +418,10 @@ def deps_from_environment(config: BackupConfig) -> BackupDeps:
         engine=engine,
         db_url=settings.database_url,
         storage_backend=settings.storage_backend,
-        restic=Restic(config.password_file, redactor=redact, timeout=config.restic_timeout_seconds, no_lock=config.repository_read_only),
+        restic=restic_from_environment(config),
         storage_client=client,
         storage_bucket=settings.storage_s3_bucket,
-        storage_for_probe=get_storage_backend(),
+        storage_for_probe=storage_probe_backend(settings),
         probe_encryption=bool(os.environ.get("APP_SECRET_ENCRYPTION_KEY")),
     )
 
@@ -429,13 +470,14 @@ def write_atomic(path: Path, content: str) -> None:
     os.replace(tmp, path)
 
 
-def write_status(status_dir: Path, report: RunReport, previous_success: float | None) -> None:
+def write_status(status_dir: Path, report: RunReport, previous_success: float | None, expected_interval_seconds: float = 86400.0) -> None:
     """Writes `status.json` and the Prometheus textfile for a finished run.
 
     Args:
         status_dir: Output directory.
         report: The finished run.
         previous_success: Unix time of the last successful run before this one (carried forward on failure).
+        expected_interval_seconds: How often runs are meant to happen, published for the staleness alert.
     """
     finished = report.finished_at or datetime.now(UTC)
     success = report.result == "ok"
@@ -473,6 +515,9 @@ def write_status(status_dir: Path, report: RunReport, previous_success: float | 
         "# HELP reqtrack_backup_set_bytes Size of the last backup set before deduplication.",
         "# TYPE reqtrack_backup_set_bytes gauge",
         f"reqtrack_backup_set_bytes {report.set_bytes}",
+        "# HELP reqtrack_backup_expected_interval_seconds How often backups are meant to run (BACKUP_EXPECTED_INTERVAL_HOURS).",
+        "# TYPE reqtrack_backup_expected_interval_seconds gauge",
+        f"reqtrack_backup_expected_interval_seconds {expected_interval_seconds:.0f}",
         "# HELP reqtrack_backup_destination_up 1 if the last copy to the destination succeeded.",
         "# TYPE reqtrack_backup_destination_up gauge",
     ]
@@ -481,7 +526,7 @@ def write_status(status_dir: Path, report: RunReport, previous_success: float | 
     write_atomic(status_dir / "reqtrack-backup.prom", "\n".join(lines) + "\n")
 
 
-def _previous_success(status_dir: Path) -> float | None:
+def previous_success(status_dir: Path) -> float | None:
     """Reads the last-success time from the previous `status.json`, tolerating its absence or damage."""
     try:
         value = json.loads((status_dir / "status.json").read_text()).get("last_success_timestamp")
@@ -520,7 +565,7 @@ def run_backup(config: BackupConfig, deps: BackupDeps) -> RunReport:
     report = RunReport(set_id=set_id, started_at=started, secrets_mode=config.secrets_mode.value)
 
     with run_lock(config.staging_dir):
-        previous = _previous_success(config.status_dir)
+        previous = previous_success(config.status_dir)
         set_dir = config.staging_dir / "sets" / set_id
         previous_umask = os.umask(0o077)
         try:
@@ -542,8 +587,44 @@ def run_backup(config: BackupConfig, deps: BackupDeps) -> RunReport:
             os.umask(previous_umask)
             shutil.rmtree(set_dir, ignore_errors=True)
             report.finished_at = deps.now()
-            write_status(config.status_dir, report, previous)
+            write_status(config.status_dir, report, previous, config.expected_interval_hours * 3600)
     return report
+
+
+def run_backup_from_environment(config: BackupConfig, build_deps: Callable[[BackupConfig], BackupDeps] = deps_from_environment) -> RunReport:
+    """Builds the dependencies and runs one backup, recording a failure to build them as a failed run.
+
+    Building the dependencies already talks to the object store (the storage backend checks its bucket), so an
+    unreachable store fails before `run_backup` could write its status. Without this, a backup that could not
+    even start left no `status.json` and kept reporting the previous run's success.
+
+    Args:
+        config: Tool settings.
+        build_deps: Builds the dependencies (replaceable in tests).
+
+    Returns:
+        The report (also written to `status.json`), `result == "failed"` and `step == "start"` if the
+        dependencies could not be built.
+
+    Raises:
+        AlreadyRunning: If another run holds the lock (nothing is written).
+    """
+    started = datetime.now(UTC)
+    try:
+        deps = build_deps(config)
+    except Exception as exc:  # the class names the cause; the message may carry an endpoint or a credential
+        with run_lock(config.staging_dir):
+            report = RunReport(
+                set_id=new_set_id(started),
+                started_at=started,
+                finished_at=datetime.now(UTC),
+                step="start",
+                error=f"could not start: {type(exc).__name__} (is the database or object store reachable?)",
+                secrets_mode=config.secrets_mode.value,
+            )
+            write_status(config.status_dir, report, previous_success(config.status_dir), config.expected_interval_hours * 3600)
+        return report
+    return run_backup(config, deps)
 
 
 def _run_steps(config: BackupConfig, deps: BackupDeps, report: RunReport, set_dir: Path) -> None:

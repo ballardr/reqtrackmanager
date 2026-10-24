@@ -494,6 +494,17 @@ flowchart LR
     H -->|"down -v"| P
 ```
 
+**Scheduling and monitoring.** Backups run from one of three schedulers, all calling the same tools: the optional `backup-scheduler` Compose service (`dr_backup.py schedule`, `backend/app/services/dr_schedule.py`: a daily wall-clock time in an IANA zone, or `every Nh`; catches up once at start; no Docker socket), systemd timers, or cron (`scripts/schedule/`, via `scripts/dr-scheduled.sh`). The restore-test is scheduled from the host only, because it drives Docker. Each tool writes `status.json` and Prometheus textfiles (`reqtrack-*.prom`) atomically to one status directory (`BACKUP_STATUS_VOLUME`); Grafana Alloy's textfile collector forwards them to Prometheus (remote write), whose alert rules (`observability/alerts/`, unit-tested with `promtool` in CI) read the intervals the tools publish, so a schedule change needs no rule edit. A backup that cannot even start (database or object store unreachable) is recorded as a failed run, not left silent.
+
+```mermaid
+flowchart LR
+    SCH["backup-scheduler, systemd timer or cron"] --> B["Backup / restore-test"]
+    B -->|"status.json, reqtrack-*.prom"| D[("Status directory")]
+    D -->|"textfile collector"| A["Grafana Alloy"]
+    A -->|"remote write"| P["Prometheus"]
+    P --> R["Alert rules"]
+```
+
 ### Observability Layer
 The architecture includes observability services for metrics, logs, and traces:
 - Prometheus for metrics collection

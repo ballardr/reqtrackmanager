@@ -176,8 +176,12 @@ services:
       STORAGE_BACKEND: ${STORAGE_BACKEND:-s3}
       STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-reqtrackmanager}
       STORAGE_S3_ENDPOINT_URL: ${STORAGE_S3_ENDPOINT_URL:-http://storage:9000}
-      STORAGE_S3_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-${STORAGE_ROOT_USER:-minioadmin}}
-      STORAGE_S3_SECRET_KEY: ${STORAGE_SECRET_KEY:-${STORAGE_ROOT_PASSWORD:?Set STORAGE_SECRET_KEY in production}}
+      # The backup only lists and reads the store, so it may use a read-only identity: set
+      # BACKUP_STORAGE_ACCESS_KEY / BACKUP_STORAGE_SECRET_KEY for an external S3 service (a read-only IAM user).
+      # The bundled SeaweedFS 3.97 cannot express a read-only identity (see docs/disaster-recovery.md), so the
+      # default is the application's pair there.
+      STORAGE_S3_ACCESS_KEY: ${BACKUP_STORAGE_ACCESS_KEY:-${STORAGE_ACCESS_KEY:-${STORAGE_ROOT_USER:-minioadmin}}}
+      STORAGE_S3_SECRET_KEY: ${BACKUP_STORAGE_SECRET_KEY:-${STORAGE_SECRET_KEY:-${STORAGE_ROOT_PASSWORD:?Set STORAGE_SECRET_KEY in production}}}
       BACKUP_PASSWORD_FILE: /run/secrets/backup_repo_password
       BACKUP_SECRETS_MODE: ${BACKUP_SECRETS_MODE:-config}
       BACKUP_CONFIG_AGE_RECIPIENT: ${BACKUP_CONFIG_AGE_RECIPIENT:-}
@@ -188,6 +192,14 @@ services:
       BACKUP_KEEP_WEEKLY: ${BACKUP_KEEP_WEEKLY:-4}
       BACKUP_KEEP_MONTHLY: ${BACKUP_KEEP_MONTHLY:-12}
       BACKUP_CHECK_SUBSET: ${BACKUP_CHECK_SUBSET-5%}
+      # Schedule for the backup-scheduler service (HH:MM daily in the zone, or `every 6h`); unused by `run`.
+      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-}
+      BACKUP_SCHEDULE_TIMEZONE: ${BACKUP_SCHEDULE_TIMEZONE:-UTC}
+      BACKUP_SCHEDULE_RETRIES: ${BACKUP_SCHEDULE_RETRIES:-1}
+      BACKUP_SCHEDULE_RETRY_MINUTES: ${BACKUP_SCHEDULE_RETRY_MINUTES:-30}
+      # How often backups are meant to run, published for the staleness alert. Empty: 24 for `run` (set it when
+      # cron runs more or less often), the schedule's own period for the scheduler.
+      BACKUP_EXPECTED_INTERVAL_HOURS: ${BACKUP_EXPECTED_INTERVAL_HOURS:-}
       # Set by the restore-test, which mounts the repository read-only: read commands then take no lock.
       BACKUP_REPOSITORY_READ_ONLY: ${BACKUP_REPOSITORY_READ_ONLY:-false}
       # Credentials for the restic destinations (S3-compatible, Azure Blob); leave empty for others.
@@ -201,7 +213,9 @@ services:
       - ${BACKUP_REPO_VOLUME:-reqtrack_backup_repo}:/backup/repo
       # Holds the object mirror and, briefly, the unencrypted dump: Confidential, keep it on an encrypted disk.
       - reqtrack_backup_staging:/backup/staging
-      - reqtrack_backup_status:/backup/status
+      # status.json and the Prometheus textfiles. BACKUP_STATUS_VOLUME may be a host path, so a host scheduler's
+      # restore-test (--status-dir) writes beside them and Alloy reads one directory.
+      - ${BACKUP_STATUS_VOLUME:-reqtrack_backup_status}:/backup/status
       # Read-only view of the local file store (only used when STORAGE_BACKEND=local).
       - reqtrack_local_files:/source/local_files:ro
       # The operator's .env, read only when BACKUP_SECRETS_MODE=config; set BACKUP_ENV_FILE=./.env.
@@ -229,8 +243,33 @@ services:
     profiles: ["restore"]
     entrypoint: ["python", "scripts/dr_restore.py"]
     command: ["--help"]
+    # A restore writes objects back, so it always uses the application's identity, never a read-only backup one.
+    environment:
+      STORAGE_S3_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-${STORAGE_ROOT_USER:-minioadmin}}
+      STORAGE_S3_SECRET_KEY: ${STORAGE_SECRET_KEY:-${STORAGE_ROOT_PASSWORD:?Set STORAGE_SECRET_KEY in production}}
     volumes:
       - reqtrack_local_files:/source/local_files
+
+  # In-container backup schedule (docs/disaster-recovery.md, "Scheduling and monitoring"): the backup image
+  # running `dr_backup.py schedule`, so it takes a backup at each time in BACKUP_SCHEDULE with the same
+  # settings, credentials and status files as a hand-run `backup`. Not started by default; use
+  # `docker compose --profile backup-schedule up -d backup-scheduler`. Needs no Docker socket. A host with cron
+  # or systemd can use those instead (scripts/schedule/); do not run both. The restore-test is scheduled from
+  # the host only, because it drives Docker.
+  backup-scheduler:
+    extends:
+      service: backup
+    profiles: ["backup-schedule"]
+    command: ["schedule"]
+    restart: unless-stopped
+    # A backup in progress is allowed to finish after SIGTERM; this is how long Compose waits before killing it.
+    stop_grace_period: 2m
+    healthcheck:
+      test: ["CMD", "python", "scripts/dr_backup.py", "health"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   frontend:
     image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-frontend:${IMAGE_TAG:-latest}
@@ -332,8 +371,14 @@ services:
   prometheus:
     image: prom/prometheus:v2.54.1
     profiles: ["observability"]
+    # The remote-write receiver is how Alloy delivers the backup textfile metrics (observability/alloy.river).
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-remote-write-receiver
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/alerts:/etc/prometheus/alerts:ro
     ports:
       - "9090:9090"
 
@@ -360,6 +405,8 @@ services:
     volumes:
       - ./observability/alloy.river:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Backup and restore-test metric textfiles (read only).
+      - ${BACKUP_STATUS_VOLUME:-reqtrack_backup_status}:/backup/status:ro
     command: run --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
     ports:
       - "12345:12345"

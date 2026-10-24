@@ -150,6 +150,7 @@ class Options:
         image_tag: Image tag for the scratch stack; None uses the tag recorded in the set's manifest.
         output_dir: Where the report is written.
         status_dir: Where the status file and Prometheus textfile are written; None writes none.
+        expected_interval_hours: How often the restore-test is meant to run (published for the staleness alert).
         keep: Leave the scratch project running afterwards, for inspection.
         inject: A fault to inject (self-test), or None.
         login_email / login_password_file: An account whose sign-in is exercised.
@@ -170,6 +171,7 @@ class Options:
     image_tag: Optional[str] = None
     output_dir: Path = Path("restore-test-reports")
     status_dir: Optional[Path] = None
+    expected_interval_hours: float = 168.0
     keep: bool = False
     inject: Optional[str] = None
     login_email: Optional[str] = None
@@ -319,12 +321,23 @@ def render_repository_override(source: str, *, named_volume: bool) -> str:
     return text
 
 
-def prometheus_text(report: Report, previous_success: float) -> str:
+def write_atomic(path: Path, content: str) -> None:
+    """Writes a file through a temp file and a rename (mode 0644), so a scraper never reads half of it."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}-")
+    with os.fdopen(fd, "w") as handle:
+        handle.write(content)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, path)
+
+
+def prometheus_text(report: Report, previous_success: float, expected_interval_hours: float = 168.0) -> str:
     """The Prometheus textfile for a finished, non-injected run.
 
     Args:
         report: The finished report.
         previous_success: Unix time of the last passing run (carried forward when this one failed).
+        expected_interval_hours: How often runs are meant to happen, published for the staleness alert.
     """
     finished = datetime.fromisoformat(report.finished_at).timestamp()
     ok = report.result == "ok"
@@ -344,6 +357,9 @@ def prometheus_text(report: Report, previous_success: float) -> str:
             "# HELP reqtrack_restore_test_duration_seconds Duration of the last restore-test.",
             "# TYPE reqtrack_restore_test_duration_seconds gauge",
             f"reqtrack_restore_test_duration_seconds {report.duration_seconds:.1f}",
+            "# HELP reqtrack_restore_test_expected_interval_seconds How often the restore-test is meant to run.",
+            "# TYPE reqtrack_restore_test_expected_interval_seconds gauge",
+            f"reqtrack_restore_test_expected_interval_seconds {expected_interval_hours * 3600:.0f}",
             "# HELP reqtrack_restore_test_failed_checks Checks and steps that failed in the last restore-test.",
             "# TYPE reqtrack_restore_test_failed_checks gauge",
             f"reqtrack_restore_test_failed_checks {failed_checks}",
@@ -911,8 +927,8 @@ class RestoreTest:
             "failed": self.report.failed,
             "last_success_timestamp": last_success,
         }
-        (opts.status_dir / "restore-test-status.json").write_text(json.dumps(status, indent=2) + "\n")
-        (opts.status_dir / "reqtrack-restore-test.prom").write_text(prometheus_text(self.report, previous))
+        write_atomic(opts.status_dir / "restore-test-status.json", json.dumps(status, indent=2) + "\n")
+        write_atomic(opts.status_dir / "reqtrack-restore-test.prom", prometheus_text(self.report, previous, opts.expected_interval_hours))
 
 
 def redact_error(docker: Docker, document: dict, proc: "subprocess.CompletedProcess[str]") -> str:
@@ -937,6 +953,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--image-tag", help="image tag for the scratch stack (default: the tag recorded in the set)")
     parser.add_argument("--output", type=Path, default=Path("restore-test-reports"), help="directory for the report")
     parser.add_argument("--status-dir", type=Path, help="directory for restore-test-status.json and the Prometheus textfile (real runs only)")
+    parser.add_argument("--expected-interval-hours", type=float, default=float(os.environ.get("RESTORE_TEST_EXPECTED_INTERVAL_HOURS", "168")), help="how often the restore-test is scheduled, published as a metric so its staleness alert follows it (default weekly)")
     parser.add_argument("--keep", action="store_true", help="leave the scratch project running afterwards")
     parser.add_argument("--inject", choices=FAULTS, help="self-test: damage the restored copy and pass only if the harness catches it")
     parser.add_argument("--login-email", help="an account whose sign-in is exercised (proves the password hashes verify)")
@@ -972,6 +989,7 @@ def main(argv: Optional[Sequence] = None) -> int:
         image_tag=args.image_tag,
         output_dir=args.output,
         status_dir=args.status_dir,
+        expected_interval_hours=args.expected_interval_hours,
         keep=args.keep,
         inject=args.inject,
         login_email=args.login_email,

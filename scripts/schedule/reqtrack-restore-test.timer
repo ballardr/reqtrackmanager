@@ -1,0 +1,13 @@
+# Runs reqtrack-restore-test.service weekly, a little after the nightly backup. The alert rules expect a pass at
+# least every 8 days; if you change this, set RESTORE_TEST_EXPECTED_INTERVAL_HOURS in /etc/reqtrack/dr.env.
+[Unit]
+Description=Weekly ReqTrackManager restore test
+
+[Timer]
+OnCalendar=Sun *-*-* 04:00:00
+RandomizedDelaySec=15min
+Persistent=true
+Unit=reqtrack-restore-test.service
+
+[Install]
+WantedBy=timers.target

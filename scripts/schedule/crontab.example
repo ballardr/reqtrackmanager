@@ -1,0 +1,15 @@
+# Cron schedule for the disaster-recovery jobs (docs/disaster-recovery.md, "Scheduling and monitoring").
+# Install as the user that runs Docker:   crontab -e   (or copy to /etc/cron.d/reqtrack-dr and add a user column).
+# Settings live in /etc/reqtrack/dr.env (see scripts/dr-scheduled.sh). Use this OR the systemd timers OR the
+# in-container backup-scheduler service: not more than one. Times are the host's local time.
+#
+# Adjust /opt/reqtrackmanager to where the repository is checked out.
+MAILTO=ops@example.com
+PATH=/usr/local/bin:/usr/bin:/bin
+
+# Backup every night at 02:30. If you change the frequency, set BACKUP_EXPECTED_INTERVAL_HOURS in dr.env to match
+# (6 for every six hours), so the "backup is stale" alert follows it. Exit 75 means a backup was already running.
+30 2 * * * cd /opt/reqtrackmanager && ./scripts/dr-scheduled.sh backup >> /var/log/reqtrack/backup.log 2>&1
+
+# Restore-test every Sunday at 04:00, after the nightly backup has finished. Weekly is the default the alert expects.
+0 4 * * 0 cd /opt/reqtrackmanager && nice -n 10 ./scripts/dr-scheduled.sh restore-test >> /var/log/reqtrack/restore-test.log 2>&1
