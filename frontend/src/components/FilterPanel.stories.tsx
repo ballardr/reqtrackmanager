@@ -129,6 +129,7 @@ export const NoFilterFieldsDesktop: Story = {
     await waitFor(() => expect(canvas.getByText("57 total")).toBeInTheDocument());
     await expect(canvas.getByPlaceholderText("Search")).toBeInTheDocument();
     await expect(canvas.queryByRole("heading", { name: "Filters" })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("heading", { name: "Search" })).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Filters section" })).not.toBeInTheDocument();
   },
 };
@@ -143,6 +144,7 @@ export const NoFilterFieldsMobile: Story = {
     await waitFor(() => expect(canvas.getByText("57 total")).toBeInTheDocument());
     await expect(canvas.getByPlaceholderText("Search")).toBeInTheDocument();
     await expect(canvas.queryByRole("heading", { name: "Filters" })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("heading", { name: "Search" })).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Filters section" })).not.toBeInTheDocument();
   },
 };

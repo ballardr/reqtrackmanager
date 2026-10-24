@@ -14,14 +14,25 @@
  * offset and the loaded row count when the page unmounts and restores them on return, so a page passes only
  * `ready` and, if paginated, `loadedRows`.
  *
+ * The filter panel collapses with the round toggle in its own header (`FilterPanel` reads it from `FilterCollapseContext`):
+ * the panel is hidden, the list has the full width and a "Filters" button with the panel icon appears beside the list
+ * actions on the title row to expand it (docs/ux-style-guide.md, "Pattern: filter panel placement"). The choice is the page's
+ * own state and survives a change of view (list, grid). Collapsing never clears a filter, so the list is still narrowed by what was set.
+ *
  * Narrow viewports collapse to one column in the order title, filter, list (the filter is a collapsed
  * accordion there). Pages whose table is too wide for a side panel keep `FilterPanel layout="top"` and do
  * not use this component.
  */
-import type { HTMLAttributes, ReactNode } from "react";
+import { PanelTopOpen } from "lucide-react";
+import { useMemo, useState, type HTMLAttributes, type ReactNode } from "react";
+
+import { FilterCollapseContext } from "../context/FilterCollapseContext";
+import { t } from "../i18n/strings";
 
 import { useListPosition } from "../hooks/useListPosition";
 import { ListActions, ListActionsMenu, type RecordListActions } from "./ListActions";
+
+const strings = t();
 
 /**
  * @param title The page heading (text or node); rendered as the page's `h1`.
@@ -49,25 +60,35 @@ export function ListPageLayout({
   children: ReactNode;
 }) {
   useListPosition({ ready, loaded: loadedRows });
+  const [filterHidden, setFilterHidden] = useState(false);
+  const collapse = useMemo(() => ({ collapsed: filterHidden, toggle: () => setFilterHidden((hidden) => !hidden) }), [filterHidden]);
   return (
-    <div className="list-page">
+    <div className={filterHidden ? "list-page list-page--filter-collapsed" : "list-page"}>
       <div className="stack list-page__header">
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
           <h1 style={{ margin: 0 }}>{title}</h1>
-          {records ? (
-            <div className="row" style={{ alignItems: "center" }}>
-              {actions}
+          <div className="row" style={{ alignItems: "center" }}>
+            {actions}
+            {records && (
               <ListActionsMenu>
                 {[records].flat().map((one) => <ListActions key={one.recordType} {...one} />)}
               </ListActionsMenu>
-            </div>
-          ) : actions}
+            )}
+            {filterHidden && (
+              <button type="button" className="btn row" aria-expanded={false} onClick={collapse.toggle} style={{ flexWrap: "nowrap" }}>
+                <PanelTopOpen size={16} aria-hidden="true" />
+                {strings.common.filters}
+              </button>
+            )}
+          </div>
         </div>
         {tabs}
       </div>
       <div {...contentProps} className="stack list-page__content">{children}</div>
       {/* After the list in the DOM (the list comes first for keyboard and screen-reader users); the grid areas place it. */}
-      <div className="list-page__filter">{filter}</div>
+      <div className="list-page__filter" hidden={filterHidden}>
+        <FilterCollapseContext.Provider value={collapse}>{filter}</FilterCollapseContext.Provider>
+      </div>
     </div>
   );
 }

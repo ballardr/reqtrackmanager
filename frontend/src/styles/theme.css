@@ -1119,7 +1119,8 @@ a.figure-projects-link:hover {
   transition: left 0.15s ease;
 }
 
-.nav-rail-toggle {
+.nav-rail-toggle,
+.filter-panel-toggle {
   width: 28px;
   height: 28px;
   padding: 0;
@@ -2027,9 +2028,26 @@ td:has(> .disclosure-toggle) {
 .record-grid__row--read-only td {
   color: var(--color-text-muted);
 }
+/* Vertical rule between two groups of controls on one toolbar row. */
+.toolbar-divider {
+  align-self: stretch;
+  width: 1px;
+  margin-inline: var(--space-2);
+  background: var(--color-border);
+}
+/* A locked value sits where the same column's select or input text sits (`.input`: 1px border + 0.6rem padding), so a
+   column reads as one list whether or not a row can be edited. */
+.record-grid td .tooltip-trigger {
+  display: flex;
+}
 .record-grid__locked {
+  flex: 1;
+  min-width: 7rem;
+  box-sizing: border-box;
+  padding: var(--space-1) calc(0.6rem + 1px);
   cursor: help;
-  border-bottom: 1px dotted currentColor;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
 }
 .record-grid__error {
   color: var(--color-danger);
@@ -2699,6 +2717,15 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
       "content";
     grid-template-rows: auto;
   }
+}
+
+/* Filter panel collapsed by its toggle: it is hidden and the list takes the full width. */
+.list-page--filter-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "header"
+    "content";
+  grid-template-rows: auto;
 }
 
 /* A required field's `*` (`RequiredMark`) and the form's one-line legend, shown only while the form has a mark. */

@@ -1,8 +1,12 @@
-import type { ReactNode } from "react";
+import { PanelTopClose } from "lucide-react";
+import { useContext, type ReactNode } from "react";
+
+import { FilterCollapseContext } from "../context/FilterCollapseContext";
 
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { t } from "../i18n/strings";
 import { CollapsibleSection } from "./CollapsibleSection";
+import { Tooltip } from "./Tooltip";
 import { ResultCount } from "./ResultCount";
 import { CheckboxField } from "./FormFields";
 
@@ -53,6 +57,10 @@ const MOBILE_BREAKPOINT_PX = 860;
  *    visible search box and fields already read as a filter bar without one,
  *    and a redundant heading above a single-row toolbar reads oddly.
  *
+ * The side layout has a title row ("Filters", like the other cards) holding the collapse toggle when the panel sits in
+ * a `ListPageLayout` (`FilterCollapseContext`): the layout then hides the panel and shows a "Filters" button beside the
+ * list actions to bring it back. The toggle is the nav rail's style (round, icon only, tooltip).
+ *
  * `sectionKey` must be unique per page — it's `CollapsibleSection`'s own
  * per-user, cross-device persisted collapsed/expanded key, so two pages
  * sharing one key would also share the same stored preference.
@@ -80,10 +88,12 @@ export function FilterPanel({
 }) {
   const isNarrow = useNarrowViewport(MOBILE_BREAKPOINT_PX);
   const isTop = layout === "top";
+  const collapse = useContext(FilterCollapseContext);
   // Callers with no dedicated filter fields beyond the header's search box
   // (e.g. `OrgListPage`) pass `{null}` as children — same reasoning as
   // `layout="top"`'s own "no heading" rule above: a "Filters" heading over
-  // an empty body reads as broken, not as an empty section.
+  // an empty body reads as broken, not as an empty section, so the title
+  // then says "Search".
   const hasFilterFields = children != null;
   const body = isTop ? (
     <div className="row" style={{ gap: "var(--space-4)", rowGap: "var(--space-3)", flexWrap: "wrap", alignItems: "flex-end" }}>
@@ -97,7 +107,22 @@ export function FilterPanel({
       className={isTop ? "card stack filter-panel filter-panel-top" : "card stack filter-panel"}
       style={isTop ? undefined : { alignSelf: "flex-start", minWidth: 220 }}
     >
-      <div
+      {!isTop && (
+        <div className="row" style={{ alignItems: "center", flexWrap: "nowrap", gap: "var(--space-4)" }}>
+          <h2 style={{ margin: 0, fontSize: "1rem" }}>{hasFilterFields ? strings.common.filters : strings.common.searchTitle}</h2>
+          {collapse && (
+            <Tooltip label={strings.common.hideFilters} style={{ marginLeft: "auto" }}>
+              <button
+                type="button" className="btn filter-panel-toggle" aria-expanded
+                aria-label={strings.common.hideFilters} onClick={collapse.toggle}
+              >
+                <PanelTopClose />
+              </button>
+            </Tooltip>
+          )}
+        </div>
+      )}
+      {<div
         className={isTop ? "row" : "stack"}
         style={isTop ? { gap: "var(--space-4)", rowGap: "var(--space-3)", flexWrap: "wrap", alignItems: "center" } : { gap: "var(--space-3)" }}
       >
@@ -112,7 +137,7 @@ export function FilterPanel({
             style={isTop ? { maxWidth: 280 } : undefined}
           />
         )}
-      </div>
+      </div>}
       {!hasFilterFields ? null : isNarrow ? (
         <CollapsibleSection sectionKey={sectionKey} title={strings.common.filters} defaultCollapsed>
           {body}
@@ -120,10 +145,7 @@ export function FilterPanel({
       ) : isTop ? (
         body
       ) : (
-        <div className="stack">
-          <h2 style={{ margin: 0, fontSize: "1rem" }}>{strings.common.filters}</h2>
-          {children}
-        </div>
+        <div className="stack">{children}</div>
       )}
     </div>
   );

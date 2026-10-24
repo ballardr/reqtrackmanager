@@ -134,4 +134,53 @@ test("a pain point at a terminal outcome is read-only in the grid and says why",
   await expect(grid.getByRole("combobox", { name: `Severity for ${open.unique_code}` })).toBeEnabled();
   await expect(grid.getByRole("combobox", { name: `Severity for ${closed.unique_code}` })).toHaveCount(0);
   await expect(grid.locator("tr", { hasText: closed.unique_code })).toContainText("terminal outcome");
+  // The Editing column states every row's state, beside the status.
+  await expect(grid.locator("tr", { hasText: closed.unique_code }).getByText("Read-only")).toBeVisible();
+  await expect(grid.locator("tr", { hasText: closed.unique_code })).toContainText("Rejected");
+  await expect(grid.locator("tr", { hasText: open.unique_code }).getByText("Editable")).toBeVisible();
+});
+
+test("the filter panel keeps its state when switching to the grid, and the grid's columns can be chosen", async ({ page, request }) => {
+  const { project, painPoints } = await setUpPainPoints(page, request, "GridColumns", 2);
+  const [a] = painPoints;
+
+  await page.goto(`/projects/${project.id}/modules/context_strategy/pain-points`);
+  await expect(page.getByLabel("Search Pain Points")).toBeVisible();
+  await page.getByRole("button", { name: "Collapse filters" }).click();
+  await expect(page.getByLabel("Search Pain Points")).toBeHidden();
+  await page.getByRole("button", { name: "Filters", exact: true }).click();
+  await expect(page.getByLabel("Search Pain Points")).toBeVisible();
+
+  // The panel is left as it was when the view changes, in both states.
+  await page.getByRole("button", { name: "Grid view" }).click();
+  const grid = page.getByRole("table", { name: "Pain points grid" });
+  await expect(grid).toBeVisible();
+  await expect(page.getByLabel("Search Pain Points")).toBeVisible();
+  await page.getByRole("button", { name: "Collapse filters" }).click();
+  await page.getByRole("button", { name: "List view" }).click();
+  await expect(page.getByLabel("Search Pain Points")).toBeHidden();
+  await page.getByRole("button", { name: "Grid view" }).click();
+  await expect(page.getByLabel("Search Pain Points")).toBeHidden();
+  await page.getByRole("button", { name: "Filters", exact: true }).click();
+  await expect(page.getByLabel("Search Pain Points")).toBeVisible();
+
+  // Columns, Discard and Save share the view toggle's row, before it.
+  const box = async (name: string) => (await page.getByRole("button", { name, exact: true }).boundingBox())!;
+  const [columnsBox, discardBox, saveBox, listBox, gridBox] = [await box("Columns"), await box("Discard changes"), await box("Save changes"), await box("List view"), await box("Grid view")];
+  expect(columnsBox.x).toBeLessThan(discardBox.x);
+  expect(discardBox.x).toBeLessThan(saveBox.x);
+  expect(saveBox.x).toBeLessThan(listBox.x);
+  expect(listBox.x).toBeLessThan(gridBox.x);
+  expect(Math.abs(columnsBox.y - listBox.y)).toBeLessThanOrEqual(8);
+
+  await page.getByRole("button", { name: "Columns" }).click();
+  await page.getByRole("checkbox", { name: "Show Frequency" }).uncheck();
+  await page.getByRole("checkbox", { name: "Show Source" }).check();
+  await page.keyboard.press("Escape");
+  await expect(grid.getByRole("columnheader", { name: "Frequency" })).toHaveCount(0);
+  await expect(grid.getByRole("columnheader", { name: "Source" })).toBeVisible();
+  await expect(grid.getByRole("combobox", { name: `Severity for ${a.unique_code}` })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByRole("table", { name: "Pain points grid" }).getByRole("columnheader", { name: "Frequency" })).toHaveCount(0);
 });

@@ -96,13 +96,13 @@ const gridColumn = (partial: Partial<GridColumn> & Pick<GridColumn, "key" | "lab
 /** A Pain-Point-shaped grid: a title for context, then a closed priority, three score levels, a flag and a date. */
 export function buildGrid(overrides: Partial<RecordGridData> = {}): RecordGridData {
   const rows: GridRow[] = [
-    { id: "r1", code: "PNP-001", read_only: null, locks: {}, project_id: "project-1", cells: { title: "Slow reports", priority: "Medium", severity: "", frequency: "", confidence: "", is_intentional: "false", date_identified: "2026-10-01" } },
-    { id: "r2", code: "PNP-002", read_only: null, locks: {}, project_id: "project-1", cells: { title: "Lost sessions", priority: "High", severity: "Major", frequency: "Frequent", confidence: "Medium", is_intentional: "true", date_identified: "" } },
+    { id: "r1", code: "PNP-001", read_only: null, locks: {}, project_id: "project-1", cells: { status: "Submitted", title: "Slow reports", priority: "Medium", severity: "", frequency: "", confidence: "", is_intentional: "false", date_identified: "2026-10-01" } },
+    { id: "r2", code: "PNP-002", read_only: null, locks: {}, project_id: "project-1", cells: { status: "Accepted", title: "Lost sessions", priority: "High", severity: "Major", frequency: "Frequent", confidence: "Medium", is_intentional: "true", date_identified: "" } },
     {
-      id: "r3", code: "PNP-003", read_only: null, project_id: "project-1", cells: { title: "Per persona", priority: "Low", severity: "", frequency: "", confidence: "", is_intentional: "false", date_identified: "" },
+      id: "r3", code: "PNP-003", read_only: null, project_id: "project-1", cells: { status: "Triaged", title: "Per persona", priority: "Low", severity: "", frequency: "", confidence: "", is_intentional: "false", date_identified: "" },
       locks: { severity: "This Pain Point is scored per persona; edit its scores on the Pain Point page.", frequency: "Scored per persona.", confidence: "Scored per persona." },
     },
-    { id: "r4", code: "PNP-004", project_id: "project-1", read_only: "This Pain Point has reached a terminal outcome; its content can no longer be edited.", locks: {}, cells: { title: "Closed one", priority: "Low", severity: "Minor", frequency: "Rare", confidence: "Low", is_intentional: "false", date_identified: "" } },
+    { id: "r4", code: "PNP-004", project_id: "project-1", read_only: "This Pain Point has reached a terminal outcome; its content can no longer be edited.", locks: {}, cells: { status: "Closed", title: "Closed one", priority: "Low", severity: "Minor", frequency: "Rare", confidence: "Low", is_intentional: "false", date_identified: "" } },
   ];
   return {
     label: "Pain points",

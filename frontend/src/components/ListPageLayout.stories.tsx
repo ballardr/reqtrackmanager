@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { MemoryRouter } from "react-router-dom";
-import { expect, within } from "storybook/test";
+import { expect, userEvent, within } from "storybook/test";
 
 import { fakeRecordTables } from "../testing/recordTablesFixtures";
 
@@ -78,5 +78,33 @@ export const RecordsAddExportAndImportBesideTheActions: Story = {
     await expect(menuButton.getBoundingClientRect().left).toBeGreaterThanOrEqual(newButton.right);
     await expect(newButton.top).toBeLessThanOrEqual(title.bottom);
     await expect(menuButton.getBoundingClientRect().right).toBeLessThanOrEqual(canvasElement.querySelector(".filter-panel")!.getBoundingClientRect().right);
+  },
+};
+
+/** Collapsing hides the panel (the list takes the full width) and puts a "Filters" button beside the actions to bring it back. */
+export const FilterPanelCanBeCollapsed: Story = {
+  args: {
+    title: "Pain Point", actions: <button className="btn btn-primary">New Pain Point</button>,
+    records: { projectId: "project-1", recordType: "pain_point", filters: "", tables: fakeRecordTables() },
+    filter, children: <table aria-label="Rows"><tbody><tr><td>A pain point</td></tr></tbody></table>,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const list = () => canvasElement.querySelector(".list-page__content")!.getBoundingClientRect();
+    const withPanel = list().width;
+    await expect(canvas.queryByRole("button", { name: "Filters" })).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Collapse filters" }));
+    await expect(canvas.queryByPlaceholderText("Search…")).not.toBeVisible();
+    await expect(list().width).toBeGreaterThan(withPanel);
+    const restore = await canvas.findByRole("button", { name: "Filters" });
+    await expect(restore).toHaveAttribute("aria-expanded", "false");
+    // Beside the list actions menu, on the title's row.
+    const menu = canvas.getByRole("button", { name: "List actions" }).getBoundingClientRect();
+    await expect(restore.getBoundingClientRect().left).toBeGreaterThanOrEqual(menu.right);
+    await expect(Math.abs(restore.getBoundingClientRect().top - menu.top)).toBeLessThanOrEqual(8);
+    await userEvent.click(restore);
+    await expect(canvas.getByPlaceholderText("Search…")).toBeVisible();
+    await expect(list().width).toBe(withPanel);
+    await expect(canvas.queryByRole("button", { name: "Filters" })).not.toBeInTheDocument();
   },
 };

@@ -70,7 +70,9 @@ flowchart LR
 
 Read left to right: each changed Pain Point is saved on its own, so one refusal never stops the others.
 
-- Changed cells are tinted and counted on the **Save N changes** button. **Discard changes** puts the saved values back; **Reload** reads them again.
+- Changed cells are tinted and counted on the **Save N changes** button. The undo button discards the changes and puts the saved values back. The grid has no Reload button; refresh the page to read the list again.
+- Switching to the grid leaves the filter panel as it was. Collapse it to give the table the full width; the **Filters** button beside the list actions menu brings it back, and collapsing never clears a filter. Every list page's filter panel has a round collapse button in its header.
+- The **Editing** column says whether each row can be edited (**Editable**, **Partly editable** or **Read-only**) with the reason on hover, next to the Pain Point's **Status**. The **Columns** button (table icon), the undo button and **Save** sit on the same row as the List and Grid buttons, before them. The **Columns** button opens a menu that chooses which columns show, including read-only ones such as Source or Impact; your choice is remembered.
 - The grid edits the **all personas** scores. A Pain Point scored per persona shows those cells as plain text with the reason on hover; score it on the Pain Point. A Pain Point at a terminal outcome is read-only the same way.
 - If someone else changed a cell after you loaded the grid, that row is not saved: its message says what the value is now, and your change stays in place until you reload or discard it.
 - **Enter** moves to the same column in the next row (**Shift+Enter** goes back); **Tab** moves along the row. After saving, a result such as "3 saved, 1 failed" appears.

@@ -2386,6 +2386,9 @@ const en = {
     // `FilterPanel`'s collapsible filter body —
     // below the mobile breakpoint it's a `CollapsibleSection` titled this.
     filters: "Filters",
+    // Title of a `FilterPanel` with a search box but no filter fields.
+    searchTitle: "Search",
+    hideFilters: "Collapse filters",
     showMore: "More",
     showLess: "Less",
     // `ModuleSettingsList`'s collapsed sub-component disclosure.

@@ -95,6 +95,8 @@ export function ProjectPainPointsPage() {
   const commitTags = useCommitTags(projectId ?? "", "pain_point");
   const initial = useInitialSearchParams();
   const [project, setProject] = useState<Project | null>(null);
+  // Where the grid puts its Columns / Discard / Save controls: the row of the view toggle.
+  const [toolbarHost, setToolbarHost] = useState<HTMLElement | null>(null);
   const [painPoints, setPainPoints] = useState<PainPoint[] | null>(null);
   const [types, setTypes] = useState<EffectivePainPointType[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -327,13 +329,14 @@ export function ProjectPainPointsPage() {
         }
       >
           {canScore && (
-            <div className="row" style={{ justifyContent: "flex-end" }}>
+            <div className="row" style={{ justifyContent: "flex-end", alignItems: "center" }}>
+              <div ref={setToolbarHost} className="row" style={{ alignItems: "center" }} />
               <ViewToggle mode={viewMode} onChange={setViewMode} showTilesOption={false} showGridOption />
             </div>
           )}
           {canScore && viewMode === "grid" ? (
             <RecordGrid
-              projectId={projectId} recordType="pain_point" filters={filterParams().toString()} contextKeys={["title"]}
+              projectId={projectId} toolbarHost={toolbarHost} recordType="pain_point" filters={filterParams().toString()} contextKeys={["title"]}
               recordHref={(row) => `/projects/${row.project_id ?? projectId}/modules/context_strategy/pain-points/${row.id}`}
               onSaved={() => { setScoresVersion((n) => n + 1); void reloadPainPoints(); }}
             />
