@@ -2143,6 +2143,18 @@ export interface OrgPersonalAccessToken {
   created_at: string;
 }
 
+/** What `POST /system/credentials/force-reset` did (counts only). */
+export interface ForceResetResult {
+  accounts: number;
+  marked: number;
+  sessions_ended: number;
+  tokens_revoked: number;
+  two_factor_cleared: number;
+  without_local_credential: number;
+  emailed: number;
+  email_failed: number;
+}
+
 export interface BulkRevokeResult {
   revoked_count: number;
 }

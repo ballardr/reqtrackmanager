@@ -7,6 +7,7 @@ import { useAuth } from "../context/AuthContext";
 import { useOrgLabelPlural } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
 import { resolveLandingPath } from "./LoginPage";
+import { AuthCard } from "../components/AuthCard";
 import { TextField } from "../components/FormFields";
 
 const strings = t();
@@ -60,52 +61,48 @@ export function SignupPage() {
   const signupUsable = inviteToken || config.signup_mode !== "disabled";
   if (!signupUsable) {
     return (
-      <div className="container" style={{ maxWidth: 380, paddingTop: "4rem" }}>
-        <div className="card stack">
-          <p>{strings.signup.unavailable}</p>
-          <a className="btn" href="/login">
-            {strings.signup.backToLogin}
-          </a>
-        </div>
-      </div>
+      <AuthCard>
+        <p>{strings.signup.unavailable}</p>
+        <a className="btn" href="/login">
+          {strings.signup.backToLogin}
+        </a>
+      </AuthCard>
     );
   }
 
   return (
-    <div className="container" style={{ maxWidth: 380, paddingTop: "4rem" }}>
-      <form className="card stack" onSubmit={handleSubmit}>
-        <h1 style={{ margin: 0, fontSize: "1.4rem" }}>{strings.signup.title}</h1>
-        {inviteToken ? (
-          <p className="text-muted">{strings.signup.invitePrompt}</p>
-        ) : (
-          config.signup_mode === "org_specified" && <p className="text-muted">{strings.signup.orgSpecifiedHint(orgLabelPlural)}</p>
-        )}
-        <TextField helpNotNeeded required
-          label={strings.signup.displayName}
-          value={displayName}
-          onChange={setDisplayName}
-          inputProps={{ autoFocus: true }}
-        />
-        <TextField helpNotNeeded required
-          label={strings.signup.email}
-          value={email}
-          onChange={setEmail}
-          inputProps={{ type: "email" }}
-        />
-        <TextField helpNotNeeded required
-          label={strings.signup.password}
-          value={password}
-          onChange={setPassword}
-          inputProps={{ minLength: 8, type: "password" }}
-        />
-        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-        <button className="btn btn-primary" type="submit" disabled={submitting}>
-          {submitting ? "…" : strings.signup.submit}
-        </button>
-        <a className="text-muted" href="/login">
-          {strings.signup.backToLogin}
-        </a>
-      </form>
-    </div>
+    <AuthCard onSubmit={handleSubmit}>
+      <h1 style={{ margin: 0, fontSize: "1.4rem" }}>{strings.signup.title}</h1>
+      {inviteToken ? (
+        <p className="text-muted">{strings.signup.invitePrompt}</p>
+      ) : (
+        config.signup_mode === "org_specified" && <p className="text-muted">{strings.signup.orgSpecifiedHint(orgLabelPlural)}</p>
+      )}
+      <TextField helpNotNeeded required
+        label={strings.signup.displayName}
+        value={displayName}
+        onChange={setDisplayName}
+        inputProps={{ autoFocus: true }}
+      />
+      <TextField helpNotNeeded required
+        label={strings.signup.email}
+        value={email}
+        onChange={setEmail}
+        inputProps={{ type: "email" }}
+      />
+      <TextField helpNotNeeded required
+        label={strings.signup.password}
+        value={password}
+        onChange={setPassword}
+        inputProps={{ minLength: 8, type: "password" }}
+      />
+      {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
+      <button className="btn btn-primary" type="submit" disabled={submitting}>
+        {submitting ? "…" : strings.signup.submit}
+      </button>
+      <a className="text-muted" href="/login">
+        {strings.signup.backToLogin}
+      </a>
+    </AuthCard>
   );
 }

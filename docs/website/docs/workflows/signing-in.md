@@ -10,6 +10,8 @@ sidebar_position: 1
 2. If your account has [two-factor authentication](./two-factor-authentication.md) enabled, you're prompted for a code from your authenticator app after the password is accepted — a second step, not a replacement for it.
 3. If your organisation requires 2FA for every member and you haven't set it up yet, you can still sign in, but nothing else works until you enrol from **Preferences → Security**.
 
+If you cannot remember your password, choose **Forgot your password?** below the form, enter your email address, and follow the link you are sent. See [Password resets and credential recovery](./password-reset-and-credential-recovery.md). If an administrator has forced a reset (for example after a security incident), your correct old password is refused with a message saying so; use the same link.
+
 | Sign-in page |
 | --- |
 | Email/password form; a "Sign up" link appears here when public sign-up is enabled |

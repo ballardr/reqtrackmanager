@@ -74,6 +74,7 @@ const sidebars: SidebarsConfig = {
       label: 'Workflows',
       items: [
         'workflows/signing-in',
+        'workflows/password-reset-and-credential-recovery',
         'workflows/preferences-and-help',
         'workflows/organisations-and-projects',
         'workflows/authoring-and-reviewing-requirements',

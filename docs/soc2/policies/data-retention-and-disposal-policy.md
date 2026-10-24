@@ -25,6 +25,7 @@ Covers retention and disposal of customer data, account data, audit/login histor
    | Audit events / login history | 1 year | Needed as SOC 2 operating evidence and for incident investigation |
    | Customer content (requirements, change requests, attachments) | Retained for the life of the customer relationship; **[Company must define post-termination retention/export window]** | Customer-owned data |
    | Database backups | **[Company must define, e.g. 30–90 days rolling]** | Balances recovery capability against storage/exposure cost |
+   | Password-reset link records (`credential_reset_tokens`) | 7 days after use or expiry, removed by a daily job | The hash of a dead secret has no further use; only recent rows help troubleshooting. The audit events of the request and the reset follow the audit retention above |
    | Deactivated user accounts | **[Company must define]** | See disposal mechanism below — currently deactivation, not deletion |
 
 2. **Disposal must be complete, not merely a visibility change**, when a retention period expires or a customer requests deletion — soft-deletion/deactivation alone does not satisfy a disposal obligation if the underlying data remains fully intact and queryable by design.

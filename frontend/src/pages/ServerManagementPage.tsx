@@ -1,4 +1,4 @@
-import { Ban, Eye, ShieldCheck, Upload, UserCheck, UserX } from "lucide-react";
+import { Ban, Eye, KeyRound, ShieldCheck, Upload, UserCheck, UserX } from "lucide-react";
 import { useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
@@ -11,12 +11,14 @@ import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
+import { ForceCredentialResetModal } from "../components/ForceCredentialResetModal";
 import { FileUploadTrigger } from "../components/FileUploadTrigger";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { Modal } from "../components/Modal";
 import { PersonalDataPolicyPanel } from "../components/PersonalDataPolicyPanel";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { ResourceMenu } from "../components/ResourceMenu";
+import { SendPasswordResetDialog } from "../components/SendPasswordResetDialog";
 import { cycleSort, type SortState } from "../components/sortState";
 import { Spinner } from "../components/Spinner";
 import { useOrgLabel, useOrgLabelPlural } from "../context/BrandingContext";
@@ -39,6 +41,7 @@ type ReviewView = "orphaned" | "server_admins" | "all";
 type AccessReviewConfirmKind =
   | "deactivate"
   | "ban"
+  | "forceReset"
   | "grantServerAdmin"
   | "revokeServerAdmin"
   | "grantModuleAdministrator"
@@ -70,6 +73,9 @@ function AccessReviewTab() {
   const [confirmAction, setConfirmAction] = useState<{ kind: AccessReviewConfirmKind; userId: string } | null>(null);
   const [revokeAllPatsOpen, setRevokeAllPatsOpen] = useState(false);
   const [addUserMode, setAddUserMode] = useState<AddUserMode | null>(null);
+  // Password reset: one person's emailed link (Tier 1 dialog) and the wide "force a credential reset" dialog.
+  const [resetLinkUser, setResetLinkUser] = useState<SystemUser | null>(null);
+  const [forceResetOpen, setForceResetOpen] = useState(false);
   // The full groups list and the server-
   // roles toggles both moved off the row (an unbounded joined string and an
   // always-visible dropdown respectively) into modals opened from the row's
@@ -179,6 +185,10 @@ function AccessReviewTab() {
     runAction(() => api.post(`/api/v1/system/users/${userId}/status`, { action: "unban" }), strings.system.unbannedToast);
   }
 
+  function forceReset(userId: string) {
+    setConfirmAction({ kind: "forceReset", userId });
+  }
+
   function grantServerAdmin(userId: string) {
     setConfirmAction({ kind: "grantServerAdmin", userId });
   }
@@ -208,6 +218,12 @@ function AccessReviewTab() {
         break;
       case "ban":
         runAction(() => api.post(`/api/v1/system/users/${userId}/status`, { action: "ban" }), strings.system.bannedToast);
+        break;
+      case "forceReset":
+        runAction(
+          () => api.post("/api/v1/system/credentials/force-reset", { scope: "user", user_id: userId, reset_2fa: false, send_links: true }),
+          strings.passwordReset.forceActionToast
+        );
         break;
       case "grantServerAdmin":
         runAction(
@@ -249,6 +265,11 @@ function AccessReviewTab() {
   const confirmActionCopy: Record<AccessReviewConfirmKind, { title: string; message: string; confirmLabel: string }> = {
     deactivate: { title: strings.system.deactivateTitle, message: strings.system.deactivateConfirm, confirmLabel: strings.system.deactivate },
     ban: { title: strings.system.banTitle, message: strings.system.banConfirm(orgLabel), confirmLabel: strings.system.ban },
+    forceReset: {
+      title: strings.passwordReset.forceActionTitle,
+      message: strings.passwordReset.forceActionMessage,
+      confirmLabel: strings.passwordReset.forceActionConfirm,
+    },
     grantServerAdmin: {
       title: strings.system.grantServerAdminTitle,
       message: strings.system.grantServerAdminConfirm(orgLabelPlural),
@@ -363,6 +384,8 @@ function AccessReviewTab() {
             triggerLabel={strings.system.usersActionsFor(u.display_name)}
             items={[
               { label: strings.system.assignServerRoles, icon: <ShieldCheck size={14} />, onSelect: () => setAssignRolesUserId(u.user_id) },
+              { label: strings.passwordReset.sendLinkAction, icon: <KeyRound size={14} />, onSelect: () => setResetLinkUser(u) },
+              { label: strings.passwordReset.forceActionConfirm, icon: <KeyRound size={14} />, onSelect: () => forceReset(u.user_id) },
               ...(u.group_names.length > 0
                 ? [{ label: strings.system.viewGroups, icon: <Eye size={14} />, onSelect: () => setViewGroupsUserId(u.user_id) }]
                 : []),
@@ -391,7 +414,10 @@ function AccessReviewTab() {
       <div className="card stack">
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "var(--space-3)" }}>
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.system.users}</h2>
-          <AddUserMenu onInvite={() => setAddUserMode("invite")} onNewUser={() => setAddUserMode("password")} />
+          <div className="row">
+            <button className="btn" onClick={() => setForceResetOpen(true)}>{strings.passwordReset.forceOpen}</button>
+            <AddUserMenu onInvite={() => setAddUserMode("invite")} onNewUser={() => setAddUserMode("password")} />
+          </div>
         </div>
         <p className="text-muted" style={{ margin: 0 }}>{strings.system.usersHint(orgLabel)}</p>
 
@@ -453,6 +479,14 @@ function AccessReviewTab() {
       </div>
 
       {addUserMode && <AddUserModal mode={addUserMode} onClose={() => setAddUserMode(null)} onCreated={userAdded} />}
+      {resetLinkUser && (
+        <SendPasswordResetDialog
+          userName={resetLinkUser.display_name}
+          endpoint={`/api/v1/system/users/${resetLinkUser.user_id}/password-reset`}
+          onClose={() => setResetLinkUser(null)}
+        />
+      )}
+      {forceResetOpen && <ForceCredentialResetModal onClose={() => setForceResetOpen(false)} onDone={() => void reload()} />}
       {confirmAction && (
         <ConfirmDialog
           title={confirmActionCopy[confirmAction.kind].title}

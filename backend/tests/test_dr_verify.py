@@ -277,6 +277,64 @@ def test_login_check_accepts_a_good_password_and_refuses_a_bad_one(client):
     assert not check.ok and "401" in check.detail and "not-the-password" not in check.detail
 
 
+# --- credential recovery ------------------------------------------------------------------------------
+
+
+def _force_reset_everyone() -> None:
+    from app.services import credential_reset
+
+    with SessionLocal() as db:
+        scope = credential_reset.ResetScope("all")
+        credential_reset.force_reset(
+            db, credential_reset.resolve_scope(db, scope), scope=scope, reset_2fa=False, actor_id=None, actor_label="cli:test"
+        )
+        db.commit()
+
+
+def test_credential_recovery_lets_a_locked_out_administrator_back_in_once(client):
+    _force_reset_everyone()
+    with SessionLocal() as db:
+        check = dr_verify.check_credential_recovery(db, client)
+    assert check.ok, check.detail
+    assert check.data["local_accounts"] == 1 and "server administrator" in check.detail
+    with SessionLocal() as db:
+        assert db.query(User).filter(User.email == "admin@example.com").one().must_reset_credentials is False
+
+
+def test_credential_recovery_fails_when_an_account_was_not_marked(client):
+    _force_reset_everyone()
+    with SessionLocal() as db:
+        db.query(User).filter(User.email == "admin@example.com").update({"must_reset_credentials": False})
+        db.commit()
+        check = dr_verify.check_credential_recovery(db, client)
+    assert not check.ok and "not marked" in check.detail
+
+
+def test_credential_recovery_fails_when_a_pre_reset_session_still_works(client, monkeypatch):
+    _force_reset_everyone()
+    real = dr_verify.create_access_token  # a "stale" token that carries the current epoch is accepted: the check must notice
+    monkeypatch.setattr(dr_verify, "create_access_token", lambda subject, token_version=0: real(subject, token_version=token_version + 1))
+    with SessionLocal() as db:
+        check = dr_verify.check_credential_recovery(db, client)
+    assert not check.ok and "still accepted" in check.detail
+
+
+def test_credential_recovery_with_no_local_accounts_is_a_stated_skip(client):
+    with SessionLocal() as db:
+        db.query(User).update({"password_hash": None})
+        db.commit()
+        check = dr_verify.check_credential_recovery(db, client)
+    assert check.ok and check.data == {"skipped": True}
+
+
+def test_credential_recovery_reports_neither_the_link_nor_the_password(client):
+    _force_reset_everyone()
+    with SessionLocal() as db:
+        check = dr_verify.check_credential_recovery(db, client)
+    text = json.dumps(check.__dict__, default=str)
+    assert "reset-password" not in text and "#token" not in text
+
+
 # --- the whole run ------------------------------------------------------------------------------------
 
 

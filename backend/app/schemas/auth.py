@@ -119,6 +119,19 @@ class ChangePasswordRequest(BaseModel):
     new_password: str = Field(min_length=MIN_PASSWORD_LENGTH)
 
 
+class ForgotPasswordRequest(BaseModel):
+    """Asks for a password-reset link to be emailed (`POST /auth/forgot-password`)."""
+
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    """Chooses a new password with a reset link's secret (`POST /auth/reset-password`)."""
+
+    token: str = Field(min_length=20, max_length=200)
+    new_password: str = Field(min_length=MIN_PASSWORD_LENGTH)
+
+
 class UserPreferencesUpdate(BaseModel):
     """User-editable preferences and profile fields (U-U-01, U-U-03, C-U-18).
 

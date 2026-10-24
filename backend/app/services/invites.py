@@ -177,7 +177,7 @@ def provision_sso_invite(
     Only valid for `organization.sso_only == True`. There is no working
     native-signup path to redeem a token against for such an org (native
     login is rejected outright for an account whose only organisation
-    requires SSO, `auth_backends.native._all_orgs_sso_only`), so instead of
+    requires SSO, `auth_backends.native.all_orgs_sso_only`), so instead of
     a `PendingInvite`, this grants access up front — the invitee shows up as
     a real (if not-yet-logged-in) member right away, same as any
     `create_org_user`-provisioned account.

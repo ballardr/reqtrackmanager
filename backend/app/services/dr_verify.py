@@ -19,6 +19,10 @@ Responsibilities:
 - `api-smoke`: the API answers as a real user of a project the restore holds: health, identity, the
   organisation and project lists, a record, a project search and a project export. `login` (optional) checks
   that a supplied account can sign in, which proves the stored password hashes verify.
+- `credential-recovery` (only after a forced credential reset): every local account is marked as needing a
+  new password; a session from before the reset is dead; the real command line (`python -m
+  app.cli.credentials issue-link`) prints a link for a server administrator while every administrator is
+  locked out; the link sets a new password exactly once; the new password then signs in.
 - Always return one machine-readable report; a check that cannot run says so instead of passing.
 
 Design decisions:
@@ -39,10 +43,15 @@ from __future__ import annotations
 
 import io
 import random
+import re
+import secrets
+import subprocess
+import sys
 import zipfile
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -55,6 +64,7 @@ from app.models.project import Project, UserProjectRole
 from app.models.requirement import Requirement, RequirementVersion
 from app.models.user import User
 from app.security import create_access_token
+from app.services.credential_reset import has_local_credential
 from app.services.dr_manifest import BackupManifest
 from app.services.dr_stats import DrStats, collect_stats, compare_stats
 from app.storage_backends import FileStorageBackend
@@ -351,6 +361,67 @@ def check_login(client: httpx.Client, credentials: LoginCredentials) -> Check:
     return Check("login", False, "sign-in answered 200 without a token or a challenge")
 
 
+_LINK_TOKEN = re.compile(r"/reset-password#token=([\w-]+)")
+_CLI_TIMEOUT_SECONDS = 120
+
+
+def check_credential_recovery(db: Session, client: httpx.Client) -> Check:
+    """After a forced reset, a locked-out server administrator is let back in from the command line.
+
+    The new password is generated for the check and goes nowhere but the request; the link and the password
+    are never reported. The scratch stack is thrown away afterwards, so changing the account is harmless.
+
+    Args:
+        db: A session on the restored database.
+        client: An HTTP client whose base URL is the stack's own backend.
+    """
+    users = list(db.scalars(select(User).where(User.auth_backend == "native")))
+    local = [u for u in users if has_local_credential(u)]
+    unmarked = [u for u in local if not u.must_reset_credentials]
+    if not local:
+        return Check("credential-recovery", True, "the platform holds no account with a local password (nothing to reset)", {"skipped": True})
+    if unmarked:
+        return Check("credential-recovery", False, f"{len(unmarked)} of {len(local)} local accounts are not marked as needing a new password")
+    candidates = [u for u in local if u.is_server_admin and u.is_active and not u.is_banned] or [u for u in local if u.is_active and not u.is_banned]
+    if not candidates:
+        return Check("credential-recovery", False, "no active local account to recover")
+    user = candidates[0]
+    email, was_admin, version = user.email, user.is_server_admin, user.token_version
+    db.rollback()
+
+    stale = create_access_token(str(user.id), token_version=version - 1)
+    if client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {stale}"}).status_code != 401:
+        return Check("credential-recovery", False, "a session from before the reset was still accepted")
+
+    proc = subprocess.run(  # noqa: S603 - fixed argv; the address is a database value passed as one argument
+        [sys.executable, "-m", "app.cli.credentials", "issue-link", "--user", email, "--ttl-minutes", "10"],
+        capture_output=True, text=True, timeout=_CLI_TIMEOUT_SECONDS, check=False, cwd=Path(__file__).resolve().parents[2],
+    )
+    match = _LINK_TOKEN.search(proc.stdout)
+    if proc.returncode != 0 or match is None:
+        return Check("credential-recovery", False, f"the command line issued no link (exit {proc.returncode})")
+    if match.group(1) in proc.stderr:
+        return Check("credential-recovery", False, "the command line wrote the link to its diagnostics stream")
+
+    password = secrets.token_urlsafe(18)
+    first = client.post("/api/v1/auth/reset-password", json={"token": match.group(1), "new_password": password})
+    if first.status_code != 204:
+        return Check("credential-recovery", False, f"the link did not set a password (answered {first.status_code})")
+    second = client.post("/api/v1/auth/reset-password", json={"token": match.group(1), "new_password": secrets.token_urlsafe(18)})
+    if second.status_code != 400:
+        return Check("credential-recovery", False, f"the link worked a second time (answered {second.status_code})")
+    signed_in = client.post("/api/v1/auth/login", json={"email": email, "password": password})
+    if signed_in.status_code != 200 or not ({"access_token", "challenge_token"} & set(signed_in.json())):
+        return Check("credential-recovery", False, f"the new password did not sign in (answered {signed_in.status_code})")
+    return Check(
+        "credential-recovery",
+        True,
+        f"{len(local)} local accounts need a new password; a {'server administrator' if was_admin else 'user'} was let back in with a "
+        "single-use link from the command line",
+        {"local_accounts": len(local)},
+    )
+
+
 def run_verification(
     manifest: BackupManifest,
     db: Session,
@@ -362,6 +433,7 @@ def run_verification(
     allow_unreadable_secrets: bool = False,
     extra_rows: Mapping[str, int] | None = None,
     login: LoginCredentials | None = None,
+    expect_credential_reset: bool = False,
     sample_size: int = DEFAULT_SAMPLE_SIZE,
     rng: random.Random | None = None,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
@@ -378,6 +450,7 @@ def run_verification(
         allow_unreadable_secrets: The restore was run with `--clear-unreadable-secrets` (wording only).
         extra_rows: Rows the restore wrote itself, `{table: count}`, allowed on top of the manifest's counts.
         login: An account to sign in with (optional).
+        expect_credential_reset: The restore applied a forced credential reset, so also run `credential-recovery`.
         sample_size: Objects read back in full.
         rng: Source of the object sample.
         now: Clock (UTC).
@@ -402,6 +475,8 @@ def run_verification(
     report.checks.append(_check("api-smoke", lambda: check_api(db, client)))
     if login is not None:
         report.checks.append(_check("login", lambda: check_login(client, login)))
+    if expect_credential_reset:
+        report.checks.append(_check("credential-recovery", lambda: check_credential_recovery(db, client)))
     report.result = "ok" if all(c.ok for c in report.checks) else "failed"
     report.finished_at = now()
     return report

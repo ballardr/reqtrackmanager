@@ -16,7 +16,9 @@ Usage (configuration comes from `BACKUP_*`, `DATABASE_URL` and `STORAGE_*` envir
 
 `restore` options: `--set` (`latest`, a set id or a snapshot id prefix), `--repository` (read an off-site copy
 instead of the primary), `--clear-unreadable-secrets` (remove encrypted values the configured key cannot read),
-`--report FILE` (always write the JSON report there).
+`--force-reset [all|server_admins]` (with `--reset-2fa`: end every session, revoke access tokens and require a new
+password on the restored copy before it goes live; no email is sent, so issue links afterwards with
+`python -m app.cli.credentials issue-link`), `--report FILE` (always write the JSON report there).
 
 Exit status: 0 success, 1 the restore failed or was refused (see `restore-report.json`; nothing live was
 changed unless the report says `swap` completed), 2 unusable configuration, 75 a backup or another restore is
@@ -65,6 +67,11 @@ def _parser() -> argparse.ArgumentParser:
     restore.add_argument("--dry-run", action="store_true", help="plan and check only; change nothing")
     restore.add_argument("--yes", action="store_true", help="confirm replacing the live database (in-place)")
     restore.add_argument("--clear-unreadable-secrets", action="store_true", help="remove encrypted values the configured key cannot decrypt")
+    restore.add_argument(
+        "--force-reset", nargs="?", const="all", choices=["all", "server_admins"], metavar="SCOPE",
+        help="force a credential reset on the restored copy before it goes live (all, or server_admins; default all)",
+    )
+    restore.add_argument("--reset-2fa", action="store_true", help="with --force-reset, also clear two-factor enrolment")
     restore.add_argument("--report", type=Path, help="always write the JSON report here (default: the status directory, for real restores only)")
     restore.add_argument("--maintenance-db", default="postgres", help="database used to create, rename and drop databases")
 
@@ -144,6 +151,8 @@ def main(argv: list[str] | None = None) -> int:
         dry_run=args.dry_run,
         confirmed=args.yes,
         clear_unreadable_secrets=args.clear_unreadable_secrets,
+        force_reset=args.force_reset,
+        reset_2fa=args.reset_2fa,
         maintenance_db=args.maintenance_db,
         report_path=args.report,
     )
@@ -161,6 +170,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if report.result == "ok":
         print(f"restore of {report.set_id} ok: verified against the manifest, {report.objects_restored} objects restored")
+        if report.credentials_reset:
+            counts = report.credentials_reset
+            print(
+                f"credentials reset on the restored copy: {counts['marked']} account(s) must choose a new password, "
+                f"{counts['tokens_revoked']} access token(s) revoked, {counts['two_factor_cleared']} two-factor enrolment(s) cleared; "
+                "issue links with: python -m app.cli.credentials issue-link --server-admins"
+            )
         if report.previous_database:
             print(f"the replaced database is kept as '{report.previous_database}'; drop it when you no longer need it")
         return 0

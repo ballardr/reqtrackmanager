@@ -520,6 +520,33 @@ export const UsersActionsMenuConsolidatesViewAndLock: Story = {
   },
 };
 
+/** "Send password reset link": offered on other people's rows only (the caller uses the sign-in page's
+ * "Forgot your password?"), behind a Tier 1 confirmation; the link is emailed to the person, never shown. */
+export const UsersActionsMenuSendsAPasswordResetLink: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({ users: [orgUser, secondOrgUser] });
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const body = within(document.body);
+    await userEvent.click(canvas.getByRole("link", { name: "Users" }));
+    await waitFor(() => expect(canvas.getByText("jordan@example.com")).toBeInTheDocument());
+
+    await userEvent.click(canvas.getByRole("button", { name: "Alex Morgan's actions" }));
+    await expect(body.queryByRole("menuitem", { name: "Send password reset link" })).not.toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+
+    await userEvent.click(canvas.getByRole("button", { name: "Jordan Lee's actions" }));
+    await userEvent.click(body.getByRole("menuitem", { name: "Send password reset link" }));
+    const dialog = body.getByRole("dialog", { name: "Send a password reset link to Jordan Lee?" });
+    await expect(api.post).not.toHaveBeenCalled();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Send link" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/users/user-2/password-reset`));
+    await expect(await body.findByText("Password reset link sent to Jordan Lee")).toBeInTheDocument();
+  },
+};
+
 /** Locking a display name saves, toasts, and updates just that row in
  * place — reopening the menu offers "Unlock" (2026-10-04: it used to
  * reload the whole page, which could close a menu reopened meanwhile). */

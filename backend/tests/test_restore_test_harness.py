@@ -83,6 +83,7 @@ class FakeDocker:
         self.check_rc, self.fault_ok = check_rc, fault_ok
         self.calls: list[list[str]] = []
         self.env_files: list[str] = []
+        self.verify_requests: list[dict] = []
 
     def __call__(self, argv, **kwargs):
         argv = list(argv)
@@ -108,10 +109,13 @@ class FakeDocker:
                 if sub[0] == "restore":
                     return done(rc=self.restore_rc, err="")
             if verb == "exec" and any("dr_verify.py" in arg for arg in rest):
+                self.verify_requests.append(json.loads(kwargs.get("input") or "{}"))
                 return done(rc=0 if self.verify["result"] == "ok" else 1, out=json.dumps(self.verify))
             if verb == "exec":  # psql
                 if "ON_ERROR_STOP=1" in rest and "pg_class" in " ".join(rest):
                     return done(out="audit_events\nusers\nalembic_version\n")
+                if "must_reset_credentials" in " ".join(rest):
+                    return done(out="UPDATE 1\n")
                 return done()
             return done()
         return done()
@@ -292,6 +296,62 @@ def test_cleared_secrets_allow_exactly_one_audit_event_in_the_statistics(tmp_pat
     plain = FakeDocker(_manifest())
     _run(plain, _options(tmp_path / "b", password_file), monkeypatch)
     assert "--extra-rows" not in next(call for call in plain.calls if any("dr_verify.py" in arg for arg in call))
+
+
+def test_a_forced_reset_run_restores_with_the_flag_and_asks_for_the_recovery_check(tmp_path, password_file, monkeypatch):
+    login_file = tmp_path / "login-password"
+    login_file.write_text("a-password")
+    fake = FakeDocker(
+        _manifest(),
+        restore_report={"result": "ok", "step": "done", "objects_restored": 3, "credentials_reset": {"marked": 2}},
+    )
+    _run(
+        fake,
+        _options(tmp_path, password_file, force_reset="all", reset_2fa=True, login_email="a@example.com", login_password_file=login_file),
+        monkeypatch,
+    )
+    restore = next(call for call in fake.calls if "restore" in call and "fresh" in call)
+    assert restore[restore.index("--force-reset") + 1] == "all" and "--reset-2fa" in restore
+    request = fake.verify_requests[0]
+    assert request["credential_reset"] is True and "login" not in request, "restored passwords are unusable by design"
+    verify = next(call for call in fake.calls if any("dr_verify.py" in arg for arg in call))
+    assert verify[verify.index("--extra-rows") + 1] == "audit_events=1"
+
+
+def test_clearing_and_a_forced_reset_each_allow_their_own_audit_event(tmp_path, password_file, monkeypatch):
+    fake = FakeDocker(
+        _manifest(),
+        restore_report={
+            "result": "ok", "step": "done", "objects_restored": 3,
+            "secrets_cleared": {"users.totp_secret": 2}, "credentials_reset": {"marked": 2},
+        },
+    )
+    _run(fake, _options(tmp_path, password_file, clear_unreadable_secrets=True, force_reset="all"), monkeypatch)
+    verify = next(call for call in fake.calls if any("dr_verify.py" in arg for arg in call))
+    assert verify[verify.index("--extra-rows") + 1] == "audit_events=2"
+
+
+def test_a_plain_run_does_not_ask_for_the_recovery_check(tmp_path, password_file, monkeypatch):
+    fake = FakeDocker(_manifest())
+    _run(fake, _options(tmp_path, password_file), monkeypatch)
+    assert "credential_reset" not in fake.verify_requests[0]
+
+
+def test_an_unmarked_account_that_the_recovery_check_catches_passes_the_self_test(tmp_path, password_file, monkeypatch):
+    verify = _verify_report()
+    verify["checks"].append({"name": "credential-recovery", "ok": False, "detail": "1 of 2 local accounts are not marked", "data": {}})
+    verify["result"] = "failed"
+    fake = FakeDocker(_manifest(), verify=verify)
+    _, code = _run(fake, _options(tmp_path, password_file, inject="unmarked-account"), monkeypatch)
+    assert code == 0 and _report(tmp_path)["fault_detected"] is True
+    restore = next(call for call in fake.calls if "restore" in call and "fresh" in call)
+    assert "--force-reset" in restore, "the fault damages a forced reset, so one is applied"
+    assert any("must_reset_credentials" in " ".join(call) for call in fake.calls)
+
+
+def test_an_unmarked_account_that_nothing_notices_fails_the_self_test(tmp_path, password_file, monkeypatch):
+    _, code = _run(FakeDocker(_manifest()), _options(tmp_path, password_file, inject="unmarked-account"), monkeypatch)
+    assert code == 1 and _report(tmp_path)["fault_detected"] is False
 
 
 def test_a_failed_check_fails_the_run_and_keeps_the_last_success_time(tmp_path, password_file, monkeypatch):

@@ -32,6 +32,7 @@ from app.models.organization import Organization, OrgGroup, UserOrgRole
 from app.models.server_role import UserServerRole
 from app.models.user import User
 from app.schemas.pat import BulkRevokeResult
+from app.services import credential_reset
 from app.services.audit import log_event
 from app.services.pats import revoke_matching
 from app.services.rate_limit import RateLimiter
@@ -149,6 +150,37 @@ class SystemUserCreated(BaseModel):
     invite_id: UUID | None = None
 
 
+class ForceResetRequest(BaseModel):
+    """Payload for `POST /credentials/force-reset`.
+
+    Attributes:
+        scope: `all` accounts, one `organization` (members), one `user`, or the `server_admins`.
+        organization_id: For `organization`.
+        user_id: For `user`.
+        reset_2fa: Also clear two-factor enrolment, so people enrol again.
+        send_links: Email each account that can use one a fresh reset link.
+    """
+
+    scope: Literal["all", "organization", "user", "server_admins"]
+    organization_id: UUID | None = None
+    user_id: UUID | None = None
+    reset_2fa: bool = False
+    send_links: bool = True
+
+
+class ForceResetOut(BaseModel):
+    """What a forced reset did (counts only; no emails, secrets or links)."""
+
+    accounts: int
+    marked: int
+    sessions_ended: int
+    tokens_revoked: int
+    two_factor_cleared: int
+    without_local_credential: int
+    emailed: int
+    email_failed: int
+
+
 _create_limiters: dict[tuple[int, int], RateLimiter] = {}
 
 
@@ -169,6 +201,72 @@ def _enforce_create_rate_limit(user: User) -> None:
             f"You are adding users too fast. Wait {seconds} second{'s' if seconds != 1 else ''} and try again.",
             headers={"Retry-After": str(seconds)},
         )
+
+
+@router.post("/users/{user_id}/password-reset", status_code=status.HTTP_204_NO_CONTENT)
+def send_user_password_reset(
+    user_id: UUID,
+    current_user: User = Depends(require_server_admin),
+    db: Session = Depends(get_db),
+):
+    """Emails any account a password-reset link, for a server administrator helping someone locked out.
+
+    The link goes to the account's own address; the administrator never sees it. Nothing changes until the
+    person uses it.
+
+    Raises:
+        HTTPException: 404 if the account does not exist; 400/409/429/502 as
+            `credential_reset.send_link_for_administrator`.
+    """
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found.")
+    credential_reset.send_link_for_administrator(db, user, admin=current_user, organization_id=None)
+
+
+@router.post("/credentials/force-reset", response_model=ForceResetOut)
+def force_credential_reset(
+    payload: ForceResetRequest,
+    current_user: User = Depends(require_server_admin),
+    db: Session = Depends(get_db),
+):
+    """Forces a credential reset for a group of accounts, after an incident or a restore of suspect data.
+
+    Ends every session in scope, revokes their personal access tokens, and blocks native sign-in until each
+    person has chosen a new password (optionally also clearing two-factor enrolment). The calling
+    administrator is part of the scope when it covers everyone, and is signed out too. The same operation is
+    available from the command line when no administrator can sign in
+    (`python -m app.cli.credentials`).
+
+    Raises:
+        HTTPException: 400 when the scope is missing its target; 404 when the organisation or account does
+            not exist.
+    """
+    if payload.scope == "organization" and payload.organization_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Choose an organisation.")
+    if payload.scope == "user" and payload.user_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Choose a person.")
+    email = None
+    if payload.scope == "user":
+        target = db.get(User, payload.user_id)
+        if target is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found.")
+        email = target.email
+    scope = credential_reset.ResetScope(payload.scope, organization_id=payload.organization_id, email=email)
+    try:
+        users = credential_reset.resolve_scope(db, scope)
+    except LookupError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc).capitalize() + ".") from None
+    result = credential_reset.force_reset(
+        db, users, scope=scope, reset_2fa=payload.reset_2fa, actor_id=current_user.id,
+        actor_label=f"user:{current_user.id}", send_links=payload.send_links,
+    )
+    db.commit()
+    return ForceResetOut(
+        accounts=result.accounts, marked=result.marked, sessions_ended=result.sessions_ended,
+        tokens_revoked=result.tokens_revoked, two_factor_cleared=result.two_factor_cleared,
+        without_local_credential=len(result.sso_only), emailed=result.emailed, email_failed=result.email_failed,
+    )
 
 
 @router.post("/users", response_model=SystemUserCreated, status_code=status.HTTP_201_CREATED)

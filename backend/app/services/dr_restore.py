@@ -61,6 +61,7 @@ from sqlalchemy.pool import NullPool
 
 from app.database import Base
 from app.models.encrypted_type import decrypts_with_current_key
+from app.services import credential_reset
 from app.services.audit import log_event
 from app.services.dr_backup import (
     AlreadyRunning,
@@ -143,6 +144,9 @@ class RestoreOptions:
         dry_run: Plan and check only; change nothing.
         confirmed: The operator passed `--yes` (required to replace a live database).
         clear_unreadable_secrets: Remove encrypted values the configured key cannot decrypt instead of failing.
+        force_reset: Scope of a forced credential reset applied to the restored copy before it goes live
+            (`all` or `server_admins`), or None. Use it when the set or its host may be exposed.
+        reset_2fa: With `force_reset`, also clear two-factor enrolment.
         maintenance_db: Database used for `CREATE`/`ALTER DATABASE` (not the one being restored).
         report_path: Where to always write the report (a dry run or a refusal included); None writes the status
             directory's `restore-report.json` only for a run that got far enough to change something, so a
@@ -155,6 +159,8 @@ class RestoreOptions:
     dry_run: bool = False
     confirmed: bool = False
     clear_unreadable_secrets: bool = False
+    force_reset: str | None = None
+    reset_2fa: bool = False
     maintenance_db: str = "postgres"
     report_path: Path | None = None
 
@@ -178,6 +184,7 @@ class RestoreReport:
     previous_database: str | None = None
     objects_restored: int = 0
     secrets_cleared: dict[str, int] = field(default_factory=dict)
+    credentials_reset: dict[str, int] = field(default_factory=dict)
 
     def to_json_dict(self) -> dict[str, Any]:
         """The report as JSON-ready data (instants as ISO 8601 with offset)."""
@@ -566,6 +573,47 @@ def clear_unreadable_secrets(engine: Engine, *, set_id: str, actor: str) -> dict
     return cleared
 
 
+def force_reset_credentials(db_url: str, *, scope: str, reset_2fa: bool, actor: str) -> dict[str, int]:
+    """Applies a forced credential reset to the restored copy, before it replaces anything.
+
+    Ends every session in scope, revokes personal access tokens, requires a new password for each local
+    account and optionally clears two-factor enrolment (`services.credential_reset.force_reset`, the same
+    code as `python -m app.cli.credentials force-reset`). No link is emailed: the restored host may have no
+    mail; the operator issues links afterwards with `python -m app.cli.credentials issue-link`.
+
+    Args:
+        db_url: URL of the restored scratch database.
+        scope: `all` or `server_admins`.
+        reset_2fa: Also clear two-factor enrolment.
+        actor: Who ran it (`cli:<os user>`), recorded in the audit event.
+
+    Returns:
+        Counts: accounts, marked, sessions ended, tokens revoked, two-factor enrolments cleared, accounts
+        without a local password.
+
+    Raises:
+        RestoreError: If `scope` is not one of the two supported values.
+    """
+    if scope not in ("all", "server_admins"):
+        raise RestoreError("credentials", f"unknown reset scope {scope!r}; use all or server_admins")
+    engine = _engine(db_url)
+    try:
+        with Session(engine) as db:
+            reset_scope = credential_reset.ResetScope(scope)  # type: ignore[arg-type]
+            result = credential_reset.force_reset(
+                db, credential_reset.resolve_scope(db, reset_scope), scope=reset_scope, reset_2fa=reset_2fa,
+                actor_id=None, actor_label=actor,
+            )
+            db.commit()
+    finally:
+        engine.dispose()
+    return {
+        "accounts": result.accounts, "marked": result.marked, "sessions_ended": result.sessions_ended,
+        "tokens_revoked": result.tokens_revoked, "two_factor_cleared": result.two_factor_cleared,
+        "without_local_credential": len(result.sso_only),
+    }
+
+
 # --- files -----------------------------------------------------------------------------------------------
 
 
@@ -862,6 +910,12 @@ def _restore(config: BackupConfig, deps: RestoreDeps, options: RestoreOptions, r
                     report.secrets_cleared = clear_unreadable_secrets(scratch_engine, set_id=info.set_id, actor=deps.actor)
                 finally:
                     scratch_engine.dispose()
+
+            if options.force_reset:
+                report.step = "credentials"
+                report.credentials_reset = force_reset_credentials(
+                    scratch_url, scope=options.force_reset, reset_2fa=options.reset_2fa, actor=deps.actor
+                )
 
             report.step = "swap"
             keep_old = previous_database_name(live, deps.now()) if has_data else None

@@ -6,7 +6,9 @@ self-signup (gated by `ServerSettings.signup_mode`, see `signup` below),
 current-user profile/preferences (C-U-16, C-U-18, C-N-05), password change,
 and TOTP enrollment/disable endpoints. Login attempts (including a
 successful signup, which logs the new user in immediately) are always
-logged (C-A-07) and counted (metrics) regardless of outcome.
+logged (C-A-07) and counted (metrics) regardless of outcome. Also the
+unauthenticated "forgot password" / "reset password" pair, whose logic lives in
+`services/credential_reset.py`.
 """
 
 from __future__ import annotations
@@ -20,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.auth_backends.native import NativeAuthBackend
 from app.config import get_settings
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.deps import get_client_ip, get_current_user
 from app.metrics import login_attempts_total
 from app.models.enums import OrgRole, SignupMode
@@ -30,11 +32,13 @@ from app.models.project import Project
 from app.models.user import User
 from app.schemas.auth import (
     ChangePasswordRequest,
+    ForgotPasswordRequest,
     LoginRequest,
     MyMembershipsOut,
     MyOrgGroupOut,
     MyOrgMembershipOut,
     MyProjectMembershipOut,
+    ResetPasswordRequest,
     SignupRequest,
     TokenResponse,
     TwoFactorChallengeResponse,
@@ -45,7 +49,7 @@ from app.schemas.auth import (
     UserPreferencesUpdate,
 )
 from app.security import create_2fa_challenge_token, create_access_token, decode_access_token, hash_password, verify_password
-from app.services import notifications, totp
+from app.services import credential_reset, notifications, totp
 from app.services.audit import log_event, log_login
 from app.services.branding import get_server_settings
 from app.services.files import upload_file
@@ -92,6 +96,8 @@ def login(
     login_attempts_total.labels(result="success" if result.success else "failure").inc()
     db.commit()
     background_tasks.add_task(resolve_and_store_login_location, login_event.id, request_ip)
+    if result.reset_required:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, result.error or "Your password must be reset.")
     if not result.success or result.user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, result.error or "Invalid credentials.")
 
@@ -104,6 +110,76 @@ def login(
     db.commit()
     token = create_access_token(str(result.user.id), token_version=result.user.token_version)
     return TokenResponse(access_token=token, user=UserOut.model_validate(result.user))
+
+
+def _send_forgot_password_email(email: str) -> None:
+    """Background half of `forgot_password`: finds the account and emails it a link if it may have one.
+
+    Runs after the response is sent, in its own session, so the caller's response time and body are the
+    same whether or not the address belongs to an account. Failures are swallowed on purpose (a send
+    problem must not become a signal about the address) and the unused token is removed.
+    """
+    db = SessionLocal()
+    try:
+        user = db.scalar(select(User).where(User.email == email.lower()))
+        if user is None or not credential_reset.can_reset_by_link(db, user) or credential_reset.recently_issued(db, user):
+            return
+        raw, minutes = credential_reset.issue_token(db, user, via="forgot")
+        log_event(
+            db, entity_type="user", entity_id=user.id, action="password_reset_requested", actor_id=None,
+            detail={"via": "forgot", "expires_minutes": minutes},
+        )
+        db.commit()
+        try:
+            credential_reset.send_reset_email(db, user, raw, minutes, kind="forgot")
+        except Exception:  # noqa: BLE001 - see docstring
+            credential_reset.delete_unsent_token(db, raw)
+            db.commit()
+    finally:
+        db.close()
+
+
+@router.post("/forgot-password", status_code=status.HTTP_202_ACCEPTED)
+def forgot_password(
+    payload: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
+    request_ip: str = Depends(get_client_ip),
+):
+    """Emails a password-reset link to a native account's own address, if there is one.
+
+    The answer is identical for every address (unknown, SSO, deactivated, or real), and the work happens
+    after the response, so neither the body nor the timing reveals whether an account exists. An account
+    with a link issued in the last minute gets no second one.
+
+    Raises:
+        HTTPException: 429 when this client address is asking too often.
+    """
+    credential_reset.enforce_public_rate_limit(request_ip)
+    background_tasks.add_task(_send_forgot_password_email, payload.email)
+    return {"detail": "If that address belongs to an account that can sign in with a password, a reset link is on its way."}
+
+
+@router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
+def reset_password(
+    payload: ResetPasswordRequest,
+    request_ip: str = Depends(get_client_ip),
+    db: Session = Depends(get_db),
+):
+    """Sets a new password with a reset link's secret. Single use; ends every existing session.
+
+    Does not sign the person in: they sign in with the new password (and their second factor, if enrolled).
+
+    Raises:
+        HTTPException: 400 for an unknown, expired or used link (one message for all three); 429 when this
+            client address is trying too often.
+    """
+    credential_reset.enforce_public_rate_limit(request_ip)
+    try:
+        credential_reset.redeem_token(db, payload.token, payload.new_password)
+    except credential_reset.ResetTokenInvalid:
+        db.rollback()
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This reset link is invalid or has expired.") from None
+    db.commit()
 
 
 @router.post("/signup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
@@ -223,7 +299,11 @@ def verify_2fa(
         db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired challenge.")
     user = db.get(User, UUID(claims["sub"]))
-    if user is None or not user.is_active or user.is_archived or not user.is_2fa_enabled or not user.totp_secret:
+    if (
+        user is None or not user.is_active or user.is_archived or not user.is_2fa_enabled or not user.totp_secret
+        or user.must_reset_credentials
+    ):
+        # A challenge issued before a forced reset proves a password that is now suspect.
         log_login(
             db, user_id=user.id if user else None,
             email_attempted=user.email if user else "(invalid 2fa challenge)",

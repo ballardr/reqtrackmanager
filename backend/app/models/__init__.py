@@ -15,6 +15,7 @@ from app.models.change_request import (
     ChangeRequestVote,
     ReviewComment,
 )
+from app.models.credential_reset import CredentialResetToken
 from app.models.custom_field import CustomFieldDefinition
 from app.models.custom_role import (
     CustomRoleDefinition,
@@ -88,6 +89,7 @@ __all__ = [
     "ChangeRequestVersion",
     "ChangeRequestVote",
     "ReviewComment",
+    "CredentialResetToken",
     "CustomFieldDefinition",
     "CustomRoleDefinition",
     "CustomRolePermission",

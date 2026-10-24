@@ -431,7 +431,7 @@ class PendingInvite(UUIDPKMixin, TimestampMixin, Base):
     Only ever created for organisations with `sso_only=False`. For an
     `sso_only` org there is no working native-signup path to redeem a
     token against (native login is blocked outright for an account whose
-    only org requires SSO — `auth_backends.native._all_orgs_sso_only`), so
+    only org requires SSO — `auth_backends.native.all_orgs_sso_only`), so
     that flow instead provisions the `User` and role rows immediately,
     skipping this table entirely — see `docs/decisions.md`'s "Self-signup,
     invites, and SSO" entry.

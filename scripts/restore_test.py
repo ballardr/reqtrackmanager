@@ -57,7 +57,7 @@ from typing import Any, Callable, Optional, Sequence
 REPO_ROOT = Path(__file__).resolve().parent.parent
 COMPOSE_FILES = ("docker-compose.yml", "docker-compose.restore-test.yml")
 PROJECT_PREFIX = "reqtrack-drtest-"
-FAULTS = ("delete-row", "delete-object", "wrong-key", "corrupt-dump")
+FAULTS = ("delete-row", "delete-object", "wrong-key", "corrupt-dump", "unmarked-account")
 KEY_MODES = ("correct", "wrong")
 EX_TEMPFAIL = 75
 REPOSITORY_VOLUME_KEY = "reqtrack_backup_repo"
@@ -144,6 +144,9 @@ class Options:
         source_env: A `.env` file to take `PASSTHROUGH_KEYS` from (the production `.env` or a decrypted config snapshot).
         key_mode: `correct` uses the supplied encryption key, `wrong` a fresh random one.
         clear_unreadable_secrets: Restore with `--clear-unreadable-secrets` (the supported way past a lost key).
+        force_reset: Restore with `--force-reset` (scope `all` or `server_admins`): every local account must choose a
+            new password, and the run proves a locked-out administrator can be let back in from the command line.
+        reset_2fa: With `force_reset`, also clear two-factor enrolment.
         image_tag: Image tag for the scratch stack; None uses the tag recorded in the set's manifest.
         output_dir: Where the report is written.
         status_dir: Where the status file and Prometheus textfile are written; None writes none.
@@ -162,6 +165,8 @@ class Options:
     source_env: Optional[Path] = None
     key_mode: str = "correct"
     clear_unreadable_secrets: bool = False
+    force_reset: Optional[str] = None
+    reset_2fa: bool = False
     image_tag: Optional[str] = None
     output_dir: Path = Path("restore-test-reports")
     status_dir: Optional[Path] = None
@@ -536,6 +541,8 @@ class RestoreTest:
             return "statistics" in failed_checks
         if fault == "delete-object":
             return "file-objects" in failed_checks
+        if fault == "unmarked-account":
+            return "credential-recovery" in failed_checks
         if fault == "wrong-key":
             return "restore" in failed_steps and any(s.name == "unreadable-columns" and s.ok for s in self.report.steps)
         if fault == "corrupt-dump":
@@ -554,6 +561,8 @@ class RestoreTest:
         if opts.inject == "wrong-key":
             opts.key_mode = "wrong"
             self.report.key_mode = "wrong"
+        if opts.inject == "unmarked-account":
+            opts.force_reset = opts.force_reset or "all"  # the fault damages a forced reset, so one must have been applied
         if opts.key_mode not in KEY_MODES:
             raise HarnessError("setup", f"--key-mode must be one of {', '.join(KEY_MODES)}", 2)
         if opts.password_file is None or not opts.password_file.is_file():
@@ -651,7 +660,7 @@ class RestoreTest:
         if not self._restore_ok:
             return
 
-        if opts.inject in ("delete-row", "delete-object"):
+        if opts.inject in ("delete-row", "delete-object", "unmarked-account"):
             self._inject_fault(stats)
 
         self._start_services(("backend",), "application")
@@ -695,11 +704,15 @@ class RestoreTest:
         args = ["restore", "fresh", "--set", self.report.set_id, "--report", report_path]
         if opts.clear_unreadable_secrets:
             args.append("--clear-unreadable-secrets")
+        if opts.force_reset:
+            args += ["--force-reset", opts.force_reset]
+            if opts.reset_2fa:
+                args.append("--reset-2fa")
         if opts.repository:
             args += ["--repository", opts.repository]
         proc = self.docker.compose("run", "--rm", "-T", "restore", *args)
         document = self._fetch_json(report_path)
-        self.report.restore = {k: document.get(k) for k in ("result", "step", "error", "objects_restored", "secrets_cleared", "warnings", "mismatches") if k in document}
+        self.report.restore = {k: document.get(k) for k in ("result", "step", "error", "objects_restored", "secrets_cleared", "credentials_reset", "warnings", "mismatches") if k in document}
         if proc.returncode == EX_TEMPFAIL:
             raise HarnessError("restore", "a backup or another restore is running against this repository's staging area", EX_TEMPFAIL)
         if proc.returncode != 0:
@@ -735,14 +748,17 @@ class RestoreTest:
         opts, docker = self.options, self.docker
         started = time.monotonic()
         request: dict = {"manifest": self._manifest}
-        if opts.login_email and opts.login_password_file:
+        if opts.force_reset:
+            request["credential_reset"] = True  # the restored passwords are unusable by design: recovery replaces the login check
+        elif opts.login_email and opts.login_password_file:
             request["login"] = {"email": opts.login_email, "password": opts.login_password_file.read_text().strip()}
             docker.mask(request["login"]["password"])
         args = ["exec", "-T", "backend", "python", "scripts/dr_verify.py"]
         if opts.clear_unreadable_secrets:
             args.append("--allow-unreadable-secrets")
-        if self.report.restore.get("secrets_cleared"):
-            args += ["--extra-rows", "audit_events=1"]  # clearing writes exactly one audit event; nothing else may differ
+        written = (1 if self.report.restore.get("secrets_cleared") else 0) + (1 if self.report.restore.get("credentials_reset") else 0)
+        if written:
+            args += ["--extra-rows", f"audit_events={written}"]  # each of the restore's own actions writes exactly one audit event; nothing else may differ
         proc = docker.compose(*args, input=json.dumps(request))
         try:
             self.report.verify = json.loads(proc.stdout)
@@ -762,6 +778,12 @@ class RestoreTest:
         started = time.monotonic()
         if self.options.inject == "delete-row":
             detail = self._delete_one_row(stats)
+        elif self.options.inject == "unmarked-account":
+            done = self._sql(
+                "UPDATE users SET must_reset_credentials = false WHERE id = "
+                "(SELECT id FROM users WHERE must_reset_credentials AND password_hash IS NOT NULL LIMIT 1)"
+            )
+            detail = "cleared the must-reset marker on one local account" if done.returncode == 0 and "UPDATE 1" in done.stdout else None
         else:
             detail = self._delete_one_object()
         self._step("fault", started, detail is not None, detail or f"could not apply {self.options.inject}: the set holds nothing of that kind to remove")
@@ -910,6 +932,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--source-env", type=Path, help=".env file to take the encryption key and image settings from")
     parser.add_argument("--key-mode", choices=KEY_MODES, default="correct", help="correct: use the supplied key; wrong: a replacement key (tests recovery without the original)")
     parser.add_argument("--clear-unreadable-secrets", action="store_true", help="restore with --clear-unreadable-secrets")
+    parser.add_argument("--force-reset", nargs="?", const="all", choices=["all", "server_admins"], metavar="SCOPE", help="restore with --force-reset and prove a locked-out administrator can be let back in from the command line")
+    parser.add_argument("--reset-2fa", action="store_true", help="with --force-reset, also clear two-factor enrolment")
     parser.add_argument("--image-tag", help="image tag for the scratch stack (default: the tag recorded in the set)")
     parser.add_argument("--output", type=Path, default=Path("restore-test-reports"), help="directory for the report")
     parser.add_argument("--status-dir", type=Path, help="directory for restore-test-status.json and the Prometheus textfile (real runs only)")
@@ -943,6 +967,8 @@ def main(argv: Optional[Sequence] = None) -> int:
         source_env=args.source_env,
         key_mode=args.key_mode,
         clear_unreadable_secrets=args.clear_unreadable_secrets,
+        force_reset=args.force_reset,
+        reset_2fa=args.reset_2fa,
         image_tag=args.image_tag,
         output_dir=args.output,
         status_dir=args.status_dir,

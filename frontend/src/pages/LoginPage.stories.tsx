@@ -60,6 +60,35 @@ export const Default: Story = {
   },
 };
 
+/** Always offered, whatever the sign-up mode. */
+export const OffersForgotPassword: Story = {
+  decorators: [withRouter("/login")],
+  beforeEach: () => mockBrandingAndSignup(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("link", { name: "Forgot your password?" })).toHaveAttribute("href", "/forgot-password");
+  },
+};
+
+/** After a forced credential reset the correct password is refused with a 403 that points to the reset link. */
+export const PasswordResetRequired: Story = {
+  decorators: [withRouter("/login")],
+  beforeEach: () => {
+    mockBrandingAndSignup();
+    loginMock.mockRejectedValue(
+      new ApiError(403, 'Your password must be reset before you can sign in. Choose "Forgot your password?" to get a reset link.'),
+    );
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.type(canvas.getByLabelText("Email"), "alex@example.com");
+    await userEvent.type(canvas.getByLabelText("Password"), "old-password");
+    await userEvent.click(canvas.getByRole("button", { name: "Sign in" }));
+    await waitFor(() => expect(canvas.getByText(/must be reset before you can sign in/)).toBeInTheDocument());
+    await expect(canvas.getByRole("link", { name: "Forgot your password?" })).toBeInTheDocument();
+  },
+};
+
 export const SignUpPromptShownWhenSignupEnabled: Story = {
   decorators: [withRouter("/login")],
   beforeEach: () => mockBrandingAndSignup("always_on"),

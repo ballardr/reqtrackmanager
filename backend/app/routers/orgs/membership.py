@@ -50,7 +50,7 @@ from app.schemas.org import (
     UserAccessOut,
     UserAccessProject,
 )
-from app.services import engagement, invites
+from app.services import credential_reset, engagement, invites
 from app.services.audit import log_event
 from app.services.notifications import notify
 from app.services.rbac import (
@@ -1135,6 +1135,29 @@ def remove_org_user(
         actor_id=current_user.id, organization_id=organization_id,
     )
     db.commit()
+
+
+@router.post("/{organization_id}/users/{user_id}/password-reset", status_code=status.HTTP_204_NO_CONTENT)
+def send_org_user_password_reset(
+    organization_id: UUID,
+    user_id: UUID,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Emails a member a password-reset link, for an organisation admin helping someone who is locked out.
+
+    The link goes to the member's own address; the admin never sees it, so this cannot be used to take over
+    the account. Nothing changes until the member uses the link. Scoped like every org-admin account action:
+    the target must hold a role in this organisation.
+
+    Raises:
+        HTTPException: 404 if the user is not a member of this organisation; 400/409/429/502 as
+            `credential_reset.send_link_for_administrator`.
+    """
+    user = db.get(User, user_id)
+    if user is None or not get_effective_org_roles(db, user_id, organization_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found in this organisation.")
+    credential_reset.send_link_for_administrator(db, user, admin=current_user, organization_id=organization_id)
 
 
 @router.post("/{organization_id}/users/{user_id}/deactivate", status_code=status.HTTP_204_NO_CONTENT)

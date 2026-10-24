@@ -114,7 +114,14 @@ class User(UUIDPKMixin, TimestampMixin, Base):
             with no clock-precision ambiguity (a wall-clock timestamp
             comparison was tried first and rejected: JWT `iat` is only
             second-precision, so a token issued in the same second as its
-            own revocation would otherwise compare as still-valid).
+            own revocation would otherwise compare as still-valid). Also
+            the credential epoch: a password reset and a forced credential
+            reset (`services/credential_reset.py`) increment it too.
+        must_reset_credentials: Set by a forced credential reset. While set,
+            native sign-in is refused even with the correct password (the old
+            password is suspect), until the person redeems a reset link,
+            which clears it. Has no effect on SSO accounts, which hold no
+            local credential.
     """
 
     __tablename__ = "users"
@@ -159,6 +166,7 @@ class User(UUIDPKMixin, TimestampMixin, Base):
 
     deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     token_version: Mapped[int] = mapped_column(Integer, default=0)
+    must_reset_credentials: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Massif (v3) C-A-13: stamped on every successful login (native or 2FA
     # completion), used by the access-review user-directory filters
     # (stale_since_days / never_logged_in) in routers/orgs.py and system.py.

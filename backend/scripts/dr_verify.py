@@ -10,7 +10,8 @@ Usage (the stack's own `DATABASE_URL`, `STORAGE_*` and `APP_SECRET_ENCRYPTION_KE
     python scripts/dr_verify.py < request.json
 
 The request is one JSON document on standard input, so no manifest content or credential is ever on a command
-line: `{"manifest": {...}, "login": {"email": "...", "password": "..."}}` (`login` optional).
+line: `{"manifest": {...}, "login": {"email": "...", "password": "..."}, "credential_reset": true}` (`login` and
+`credential_reset` optional; `credential_reset` adds the `credential-recovery` check after a forced reset).
 
 Options: `--api-base URL` (default `http://127.0.0.1:8000`), `--allow-unreadable-secrets`, `--sample N`,
 `--extra-rows TABLE=N` (repeatable: rows the restore wrote itself, such as the one audit event of clearing
@@ -64,6 +65,7 @@ def main(argv: list[str] | None = None) -> int:
         manifest = load_manifest(json.dumps(request["manifest"]))
         login_data = request.get("login")
         login = LoginCredentials(email=login_data["email"], password=login_data["password"]) if login_data else None
+        expect_credential_reset = bool(request.get("credential_reset"))
     except (ValueError, KeyError, TypeError) as exc:  # json.JSONDecodeError and a bad TABLE=N are ValueErrors
         print(f"cannot read the request: {type(exc).__name__}", file=sys.stderr)
         return 2
@@ -86,6 +88,7 @@ def main(argv: list[str] | None = None) -> int:
             allow_unreadable_secrets=args.allow_unreadable_secrets,
             extra_rows=extra_rows,
             login=login,
+            expect_credential_reset=expect_credential_reset,
             sample_size=args.sample,
         )
     print(json.dumps(report.to_json_dict(), indent=2))

@@ -30,6 +30,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from app.database import SessionLocal
 from app.modules.registry import ModuleScheduledJob, get_all_module_scheduled_jobs
+from app.services.credential_reset import purge_spent_tokens
 from app.services.reviews import send_due_review_reminders
 from app.services.stages import auto_approve_overdue_stage_reviews
 
@@ -54,6 +55,15 @@ def _run_stage_auto_approval() -> None:
         db.close()
 
 
+def _run_credential_token_purge() -> None:
+    """Opens a DB session and removes password-reset tokens that were spent or expired more than a week ago."""
+    db = SessionLocal()
+    try:
+        purge_spent_tokens(db)
+    finally:
+        db.close()
+
+
 def _run_module_job(job: ModuleScheduledJob) -> None:
     """Opens a DB session and runs one module-contributed sweep
  — the generic counterpart of
@@ -67,7 +77,7 @@ def _run_module_job(job: ModuleScheduledJob) -> None:
 
 
 def start_scheduler() -> None:
-    """Starts the daily review-reminder and stage-deadline sweeps, plus
+    """Starts the daily review-reminder, stage-deadline and reset-token purge sweeps, plus
     every registered module's own declared scheduled jobs.
 
     Called once from `main.py`'s lifespan startup.
@@ -76,6 +86,7 @@ def start_scheduler() -> None:
     _scheduler = AsyncIOScheduler()
     _scheduler.add_job(_run_review_reminders, CronTrigger(hour=1, minute=0), id="review_reminders")
     _scheduler.add_job(_run_stage_auto_approval, CronTrigger(hour=1, minute=15), id="stage_auto_approval")
+    _scheduler.add_job(_run_credential_token_purge, CronTrigger(hour=1, minute=30), id="credential_token_purge")
     for module_key, job in get_all_module_scheduled_jobs():
         _scheduler.add_job(
             _run_module_job, CronTrigger(hour=job.hour, minute=job.minute),

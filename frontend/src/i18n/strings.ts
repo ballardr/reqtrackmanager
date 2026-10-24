@@ -98,6 +98,60 @@ const en = {
     orgSpecifiedHint: (orgPlural: string) => `Sign-up is open to email addresses from participating ${orgPlural.toLowerCase()} only.`,
     invitePrompt: "You've been invited — complete your account below.",
   },
+  passwordReset: {
+    forgotLink: "Forgot your password?",
+    forgotTitle: "Reset your password",
+    forgotPrompt: "Enter your account's email address and we will email you a link to choose a new password.",
+    email: "Email",
+    sendLink: "Send reset link",
+    forgotSent:
+      "If that address belongs to an account that signs in with a password, a reset link is on its way. The link works once and expires soon.",
+    forgotError: "The request could not be sent. Try again in a moment.",
+    backToLogin: "Back to sign in",
+    resetTitle: "Choose a new password",
+    resetPrompt: "Choose a new password for your account. You will be signed out everywhere and sign in again with it.",
+    newPassword: "New password",
+    confirmPassword: "Confirm new password",
+    passwordsDiffer: "The two passwords do not match.",
+    submit: "Set new password",
+    done: "Your password has been changed. Sign in with the new one.",
+    invalidLink: "This reset link is invalid or has expired.",
+    missingLink: "This reset link is incomplete. Open the link from your email again, or request a new one.",
+    requestNew: "Request a new link",
+    resetError: "The password could not be changed.",
+    // Administrator actions (Org Admin and Server Management)
+    sendLinkAction: "Send password reset link",
+    sendLinkTitle: (name: string) => `Send a password reset link to ${name}?`,
+    sendLinkMessage:
+      "A single-use link is emailed to the person's own address. Nothing changes until they use it, and you will not see the link.",
+    sendLinkConfirm: "Send link",
+    sentToast: (name: string) => `Password reset link sent to ${name}`,
+    forceAction: "Require a new password",
+    forceActionTitle: "Require a new password?",
+    forceActionMessage:
+      "Ends all of their sessions, revokes their access tokens and blocks password sign-in until they choose a new one with an emailed link.",
+    forceActionConfirm: "Require new password",
+    forceActionToast: "They must now choose a new password",
+    forcePanelTitle: "Force a credential reset",
+    forcePanelHint:
+      "After an incident, or a restore of data that may be exposed: end sessions, revoke access tokens and require a new password for a group of accounts. If no administrator can sign in, run the same operation from the command line.",
+    forceOpen: "Force a credential reset…",
+    forceWho: "Who",
+    forceScopeAll: "Everyone",
+    forceScopeOrg: (org: string) => `One ${org.toLowerCase()}`,
+    forceScopeAdmins: "Server administrators",
+    forceTwoFactor: "Also clear two-factor enrolment",
+    forceSendLinks: "Email each person a new reset link",
+    forceSave: "Force reset…",
+    forceConfirmTitle: "Force this credential reset?",
+    forceConfirmMessage:
+      "Everyone in scope is signed out now, loses their access tokens and cannot sign in with a password until they choose a new one. You are signed out too if you are in scope.",
+    forceTypedText: "RESET",
+    forceConfirm: "Force reset",
+    forceResult: (accounts: number, emailed: number) =>
+      `Credential reset applied to ${accounts} account${accounts === 1 ? "" : "s"}; ${emailed} reset link${emailed === 1 ? "" : "s"} emailed`,
+    forceNoEmail: "No reset links were emailed: use the command line (issue-link) to hand them over.",
+  },
   nav: {
     projects: "{Projects}",
     overview: "Overview",
@@ -2234,6 +2288,11 @@ const en = {
     fieldPickerSummaryLimit: 3,
   },
   help: {
+    // Server Management → Force a credential reset
+    forceResetWho: "Everyone covers every account on the platform, including your own. A single organisation covers its members. Server administrators covers only the administrators of the whole platform.",
+    forceResetOrganisation: "The organisation whose members must choose a new password. A person who belongs to several is affected everywhere.",
+    forceResetTwoFactor: "Removes authenticator enrolment so each person enrols again. Tick it if a stolen database might have exposed the stored secrets together with the encryption key.",
+    forceResetSendLinks: "Each person with a password gets an email with a single-use link to choose a new one. Leave it off to hand links over yourself from the command line, for example when email is down.",
     // Server Management → Add user
     addUserOrganization: "The organisation the new person joins. Leave it as none for an account that belongs to no organisation yet.",
     // Requirements and change requests

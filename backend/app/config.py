@@ -162,6 +162,13 @@ class Settings(BaseSettings):
         user_create_rate_limit_burst: Most accounts or invites one server administrator may create in a
             burst from Server Management (a token bucket per user and per worker process). 0 disables it.
         user_create_rate_limit_per_minute: The sustained creations per minute, per worker process.
+        credential_reset_token_minutes: How long an emailed password-reset link works (5 to 1440 minutes).
+            A link issued from the command line may ask for longer, up to 1440, with `--ttl-minutes`.
+        public_auth_rate_limit_burst / public_auth_rate_limit_per_minute: Token bucket per client address
+            and per worker process for the unauthenticated "forgot password" and "reset password" calls.
+            0 disables it.
+        credential_reset_send_rate_limit_burst / credential_reset_send_rate_limit_per_minute: Token bucket
+            per administrator and per worker process for sending reset links to other people. 0 disables it.
         allow_external_modules: Deployment-level opt-in for the modular
             feature system's third-party discovery sources
             (`app.modules.registry`'s Python entry-point scan and
@@ -279,6 +286,11 @@ class Settings(BaseSettings):
     search_rate_limit_per_minute: int = 120
     user_create_rate_limit_burst: int = 20
     user_create_rate_limit_per_minute: int = 30
+    credential_reset_token_minutes: int = Field(default=60, ge=5, le=1440)
+    public_auth_rate_limit_burst: int = 10
+    public_auth_rate_limit_per_minute: int = 10
+    credential_reset_send_rate_limit_burst: int = 20
+    credential_reset_send_rate_limit_per_minute: int = 30
     allow_external_modules: bool = False
     extra_modules_path: str | None = None
     module_frame_allowed_origins: str = ""

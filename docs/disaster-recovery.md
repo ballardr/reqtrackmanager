@@ -97,9 +97,25 @@ flowchart TD
 1. Install Docker and get this repository and the image tag the set names (`list` and `--dry-run` print it).
 2. Recover the `.env` with `config` and your age identity. A set taken with `BACKUP_SECRETS_MODE=none` holds none: supply `APP_SECRET_ENCRYPTION_KEY` and `JWT_SECRET` from wherever you keep them.
 3. `./scripts/restore.sh fresh --repository <off-site repository> --start` (credentials for the repository as for backups). Output ends with `verified against the manifest`.
-4. After an incident that may have exposed the dump or the host, force credential resets before users sign in (not yet available; see the plan).
+4. After an incident that may have exposed the dump or the host, add `--force-reset` (and `--reset-2fa`) to the restore, then print links for the first administrators; see [Credentials after a restore](#credentials-after-a-restore).
 
 **Keys.** The restored application needs the original `APP_SECRET_ENCRYPTION_KEY`; the restore checks that every encrypted value decrypts with the key it is given and fails otherwise. If the original is lost, set a new key and add `--clear-unreadable-secrets`: those values are removed (users with 2FA re-enrol; organisation SMTP and SSO secrets are re-entered) and one audit event records the counts. Clearing is refused without a key to judge by.
+
+### Credentials after a restore
+
+Use this when the dump, the host or a backup may be in the wrong hands, or the old credentials are suspect for any reason. It is independent of the secrets mode: hashes are in every dump, and the encryption key may live elsewhere.
+
+```bash
+# on the restored copy, before it goes live: end every session, revoke access tokens, require a new password
+./scripts/restore.sh fresh --repository <repository> --force-reset --reset-2fa --start
+# the first administrators cannot sign in with a password now: print a single-use link for each, to your terminal only
+docker compose exec backend python -m app.cli.credentials issue-link --server-admins
+# once they are in and email works, send links to everyone else (Server Management → Access review → Force a credential reset…
+# does the same from the UI, or from the command line:)
+docker compose exec backend python -m app.cli.credentials force-reset --all --send --yes
+```
+
+`--force-reset [all|server_admins]` runs on the scratch database before it replaces anything and writes one audit event (`cli:<os user>`, counts only). It sends no email, because a restored host may have none. Accounts that sign in through single sign-on keep working (their sessions end and they sign in again). The tool is the same one operators use any time an administrator is locked out; see [Password resets and credential recovery](website/docs/workflows/password-reset-and-credential-recovery.md). SCIM tokens, `JWT_SECRET` and the encryption key are not rotated by it; rotate them separately if exposed.
 
 **After an in-place restore** the replaced database stays on the server as `<name>_pre_restore_<UTC time>` (the name is printed and recorded in `restore-report.json`). Rolling back is stopping the application and renaming it back; when you no longer need it, `DROP DATABASE` it, since it still holds all the data the restore replaced.
 
@@ -138,8 +154,9 @@ flowchart LR
 | `email-disabled` | A send attempt is refused before any connection (`EMAIL_DELIVERY=disabled`) |
 | `api-smoke` | As a manager of a project that holds records: health, identity, organisation and project lists, a record, a project search and a project export |
 | `login` | Only with `--login-email` and `--login-password-file`: that account signs in with its password, proving the stored hashes verify |
+| `credential-recovery` | Only with `--force-reset`: every local account is marked as needing a new password, a session from before the reset is dead, `python -m app.cli.credentials issue-link` prints a link for a server administrator while every administrator is locked out, the link sets a password exactly once, and the new password signs in |
 
-Options: `--set` (a set id), `--key-mode wrong` and `--clear-unreadable-secrets` (recovery without the original key: the run passes when the unreadable values are removed and the application still works), `--image-tag`, `--output` (reports; default `./restore-test-reports/<project>/report.{json,md}`), `--status-dir` (writes `restore-test-status.json` and `reqtrack-restore-test.prom`, with the last success time carried forward over a failure), `--keep` (leave the scratch project running; the command to remove it is printed), `--check-subset` (share of repository data the integrity check reads). Exit status: `0` passed, `1` a check failed, `2` bad arguments, `75` a backup or restore is running.
+Options: `--force-reset [all|server_admins]` and `--reset-2fa` (restore with a forced credential reset and prove a locked-out administrator is let back in from the command line; replaces the `login` check, since restored passwords no longer work by design), `--set` (a set id), `--key-mode wrong` and `--clear-unreadable-secrets` (recovery without the original key: the run passes when the unreadable values are removed and the application still works), `--image-tag`, `--output` (reports; default `./restore-test-reports/<project>/report.{json,md}`), `--status-dir` (writes `restore-test-status.json` and `reqtrack-restore-test.prom`, with the last success time carried forward over a failure), `--keep` (leave the scratch project running; the command to remove it is printed), `--check-subset` (share of repository data the integrity check reads). Exit status: `0` passed, `1` a check failed, `2` bad arguments, `75` a backup or restore is running.
 
 **Prove the checks fail.** `--inject FAULT` damages the restored copy and passes only when the harness catches it, so a check that cannot fail is noticed:
 
@@ -149,12 +166,11 @@ Options: `--set` (a set id), `--key-mode wrong` and `--clear-unreadable-secrets`
 | `delete-object` | one stored object a file record points at | `file-objects` |
 | `wrong-key` | a replacement `APP_SECRET_ENCRYPTION_KEY` | the restore, naming exactly the encrypted columns that hold values, with their counts |
 | `corrupt-dump` | 256 bytes of the largest pack in a copy of the repository | the repository check or the restore |
+| `unmarked-account` | the must-reset marker cleared on one local account after a forced reset | `credential-recovery` |
 
-`./scripts/restore-test-selfcheck.sh` runs the whole chain on throwaway projects: it builds a source stack, seeds the end-to-end dataset, takes a real backup, runs the positive case, the recovery-without-key case and the four faults, and checks nothing was left behind. CI runs it as the `restore-test` job, which `docker-build` needs, so a backup that cannot be restored is never published.
+`./scripts/restore-test-selfcheck.sh` runs the whole chain on throwaway projects: it builds a source stack, seeds the end-to-end dataset, takes a real backup, runs the positive case, the recovery-without-key case, a forced credential reset (with a locked-out administrator let back in from the command line) and the five faults, and checks nothing was left behind. CI runs it as the `restore-test` job, which `docker-build` needs, so a backup that cannot be restored is never published.
 
-**Needs.** Docker with the Compose plugin and `python3` 3.9 or newer on the host. The restore fetches the set into the scratch project's staging volume and holds a second copy of the database, so it needs free disk for the set plus a database copy; the restore tool prints the figure it needs and refuses to start without it. If the Docker VM's disk is full, Postgres in the scratch stack fails with "could not write init file": free space (`docker builder prune -f`) and rerun. The image tag the set names is used, so an old set needs that image available.
-
-**Not covered yet.** The reset-link and forced-credential-reset cases need the credential reset command, which is not built; they are added with it.
+**Needs.** Docker with the Compose plugin and `python3` 3.9 or newer on the host. The restore fetches the set into the scratch project's staging volume and holds a second copy of the database, so it needs free disk for the set plus a database copy; the restore tool prints the figure it needs and refuses to start without it. The scratch stack starts SeaweedFS without disk preallocation (the bundled one reserves about 1 GB per volume, 7 GB at the first upload), so it stays small. If the Docker VM's disk is full, Postgres in the scratch stack fails with "could not write init file": free space (`docker builder prune -f`) and rerun. The image tag the set names is used, so an old set needs that image available.
 
 ## Security notes
 

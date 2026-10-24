@@ -662,6 +662,72 @@ def test_secrets_the_key_cannot_read_fail_the_restore_unless_clearing_is_asked_f
     assert "JBSWY3DPEHPK3PXP" not in json.dumps(audit)
 
 
+def _add_local_user(db_url: str, *, enrolled: bool = False) -> str:
+    """Adds a native user with a password hash (and optionally 2FA) to a database; returns its email."""
+    email = f"drf-{uuid.uuid4().hex[:8]}@example.test"
+    engine = create_engine(db_url, poolclass=NullPool)
+    try:
+        with Session(engine) as db:
+            db.add(User(email=email, display_name="Local", auth_backend="native", password_hash="x" * 60))
+            db.commit()
+            if enrolled:
+                db.execute(text("UPDATE users SET is_2fa_enabled = true WHERE email = :e"), {"e": email})
+                db.commit()
+    finally:
+        engine.dispose()
+    return email
+
+
+@needs_restic
+@needs_pg
+def test_force_reset_marks_every_local_account_on_the_restored_copy_and_audits_it(tmp_path: Path, make_database: Callable[[], str]):
+    (tmp_path / "first").mkdir()
+    (tmp_path / "second").mkdir()
+    first_config = _real_config(tmp_path / "first")
+    _real_backup(first_config, FakeS3({}))
+    source = make_database()
+    assert run_restore(first_config, _restore_deps(first_config, source), RestoreOptions(mode=RestoreMode.FRESH)).result == "ok"
+    email = _add_local_user(source, enrolled=True)
+    config = _real_config(tmp_path / "second")
+    source_engine = create_engine(source, poolclass=NullPool)
+    from app.services.dr_backup import dump_database
+
+    assert run_backup(config, _deps(config, FakeS3({}), engine=source_engine, db_url=source, dumper=dump_database)).result == "ok"
+    source_engine.dispose()
+
+    target = make_database()
+    report = run_restore(
+        config, _restore_deps(config, target, actor="cli:tester"),
+        RestoreOptions(mode=RestoreMode.FRESH, force_reset="all", reset_2fa=True),
+    )
+
+    assert report.result == "ok", (report.step, report.error)
+    assert report.credentials_reset["marked"] >= 1 and report.credentials_reset["two_factor_cleared"] == 1
+    engine = create_engine(target, poolclass=NullPool)
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT must_reset_credentials, token_version, is_2fa_enabled FROM users WHERE email = :e"), {"e": email}
+            ).one()
+            audit = conn.execute(text("SELECT detail FROM audit_events WHERE action = 'credentials_force_reset'")).scalars().all()
+    finally:
+        engine.dispose()
+    assert row.must_reset_credentials is True and row.token_version == 1 and row.is_2fa_enabled is False
+    assert len(audit) == 1 and audit[0]["actor"] == "cli:tester" and audit[0]["scope"] == "all"
+    assert email not in json.dumps(audit)
+
+
+@needs_restic
+@needs_pg
+def test_an_unknown_force_reset_scope_fails_before_anything_is_swapped_in(tmp_path: Path, make_database: Callable[[], str]):
+    config = _real_config(tmp_path)
+    _real_backup(config, FakeS3({}))
+    target = make_database()
+    report = run_restore(config, _restore_deps(config, target), RestoreOptions(mode=RestoreMode.FRESH, force_reset="everyone"))
+    assert report.result == "failed" and report.step == "credentials"
+    assert _tables(target) == set()
+
+
 @needs_restic
 @needs_pg
 def test_clearing_needs_a_key_to_judge_by(tmp_path: Path, make_database: Callable[[], str]):

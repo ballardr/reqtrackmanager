@@ -5,13 +5,16 @@
 #   1. the positive case: the set restores into a working platform whose statistics equal the source
 #      (including a real sign-in as the seeded administrator);
 #   2. the same with a replacement encryption key and --clear-unreadable-secrets (recovery without the key);
-#   3. four injected faults (a deleted row, a deleted object, a wrong key, a damaged repository), each of which
-#      the restore-test must catch: a check that cannot fail is not a check;
-#   4. nothing left behind (no scratch containers or volumes).
+#   3. a forced credential reset (--force-reset all --reset-2fa): every local account must choose a new password and
+#      a locked-out server administrator is let back in with a single-use link printed by the command line;
+#   4. five injected faults (a deleted row, a deleted object, a wrong key, a damaged repository, an account whose
+#      reset marker was cleared), each of which the restore-test must catch: a check that cannot fail is not a check;
+#   5. nothing left behind (no scratch containers or volumes).
 # The source stack and every scratch project are removed at the end, pass or fail, unless DRCHECK_KEEP=1.
 #
 # Usage (from the repo root; needs Docker with the Compose plugin and python3; takes 15 to 30 minutes):
 #   ./scripts/restore-test-selfcheck.sh
+# DRCHECK_CASES="positive nokey reset faults" (any subset) runs only those cases.
 # Environment: DRCHECK_OUTPUT (report directory, default ./restore-test-reports),
 # DRCHECK_IMAGE_PREFIX / DRCHECK_IMAGE_TAG (the images built and used, default reqtrack-drcheck / selfcheck, so a
 # real deployment's images are never replaced), DRCHECK_KEEP=1 (leave the source stack for inspection).
@@ -130,13 +133,25 @@ run_case() {
   fi
 }
 
-run_case "Positive: restore, start, verify, sign in" \
-  --login-email "$ADMIN_EMAIL" --login-password-file "$WORK/admin-password"
-run_case "Recovery without the original key (--key-mode wrong, secrets cleared)" \
-  --key-mode wrong --clear-unreadable-secrets
-for fault in delete-row delete-object wrong-key corrupt-dump; do
-  run_case "Self-test: the harness must catch '$fault'" --inject "$fault"
-done
+selected() { case " ${DRCHECK_CASES:-positive nokey reset faults} " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
+
+if selected positive; then
+  run_case "Positive: restore, start, verify, sign in" \
+    --login-email "$ADMIN_EMAIL" --login-password-file "$WORK/admin-password"
+fi
+if selected nokey; then
+  run_case "Recovery without the original key (--key-mode wrong, secrets cleared)" \
+    --key-mode wrong --clear-unreadable-secrets
+fi
+if selected reset; then
+  run_case "Forced credential reset: every local account locked, a locked-out administrator let back in from the command line" \
+    --force-reset all --reset-2fa
+fi
+if selected faults; then
+  for fault in delete-row delete-object wrong-key corrupt-dump unmarked-account; do
+    run_case "Self-test: the harness must catch '$fault'" --inject "$fault"
+  done
+fi
 
 step "Nothing left behind"
 if docker volume ls -q | grep -q '^reqtrack-drtest-'; then

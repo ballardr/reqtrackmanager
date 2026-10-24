@@ -8,7 +8,7 @@
 #   ./scripts/restore.sh config --age-identity FILE --output PATH [--set ID] [--repository R]
 #       Decrypts the set's .env snapshot to PATH (mode 0600; refuses to overwrite). Needs only Docker, so it
 #       works on a new host before any .env exists. Set BACKUP_REPO_VOLUME to a host path, or pass --repository.
-#   ./scripts/restore.sh fresh [--set latest|ID] [--repository R] [--dry-run] [--start] [--clear-unreadable-secrets]
+#   ./scripts/restore.sh fresh [--set latest|ID] [--repository R] [--dry-run] [--start] [--clear-unreadable-secrets] [--force-reset [all|server_admins]] [--reset-2fa]
 #       Into an empty database (a new host). Refuses a database that holds data.
 #   ./scripts/restore.sh in-place --yes [same options]
 #       Replaces the live database; the application is stopped first and the old database is kept under a new
