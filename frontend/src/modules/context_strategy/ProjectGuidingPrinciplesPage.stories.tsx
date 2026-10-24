@@ -2,9 +2,11 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
+import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { buildProject, withRouter, withToast } from "../../testing/storybook-helpers";
 import { ProjectGuidingPrinciplesPage } from "./ProjectGuidingPrinciplesPage";
 import type { GuidingPrinciple } from "./types";
+import { chooseListAction, openListMenu } from "../../testing/listActionsMenu";
 
 const PROJECT_ID = "project-1";
 
@@ -21,6 +23,7 @@ function guidingPrinciple(overrides: Partial<GuidingPrinciple> = {}): GuidingPri
 
 function mockPageApis(guidingPrinciples: GuidingPrinciple[]) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.endsWith("/records/guiding_principle/columns")) return buildRecordColumns({ label: "Guiding principles" });
     if (path === `/api/v1/projects/${PROJECT_ID}`) return buildProject({ id: PROJECT_ID, organization_id: "org-1" });
     if (path.startsWith(`/api/v1/projects/${PROJECT_ID}/modules/context_strategy/guiding-principles`)) return guidingPrinciples;
     throw new Error(`Unmocked GET: ${path}`);
@@ -69,3 +72,19 @@ export const OpenCreateModal: Story = {
 
 export const LightTheme: Story = { ...ListsGuidingPrinciples };
 export const DarkTheme: Story = { ...ListsGuidingPrinciples, globals: { theme: "dark" } };
+
+/** Export and Import are on the title row; Export carries the page's filters (the server applies the same rules). */
+export const ExportCarriesThePageFilters: Story = {
+  beforeEach: () => {
+    mockPageApis([guidingPrinciple()]);
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["code\n"], { type: "text/csv" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Field data is captured once")).toBeInTheDocument());
+    await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await chooseListAction(canvas, "Export as CSV");
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/guiding_principle/export"));
+  },
+};

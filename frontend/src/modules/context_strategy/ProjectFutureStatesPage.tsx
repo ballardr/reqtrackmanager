@@ -27,7 +27,6 @@ import { ListPageLayout } from "../../components/ListPageLayout";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
-import { oneOf, useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { projectFutureStateApi } from "./api";
 import { FutureStateFormModal } from "./FutureStateFormModal";
 import { FUTURE_STATE_ROADMAP_STATUSES, FUTURE_STATE_STATUS_LABEL, FUTURE_STATE_STATUS_TONE } from "./types";
@@ -36,12 +35,15 @@ import { Badge } from "../../components/Badge";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
 import { rowProjectId } from "../../api/projectScope";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
 import { useProjectScope } from "../../hooks/useProjectScope";
+import { localToday } from "../../utils/localDate";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
+import { addSharedListFilters } from "../../utils/listFilterParams";
 
 export function ProjectFutureStatesPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -49,19 +51,19 @@ export function ProjectFutureStatesPage() {
   const { showToast } = useToast();
   const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "future_state");
   const commitTags = useCommitTags(projectId ?? "", "future_state");
-  const initial = useInitialSearchParams();
   const [project, setProject] = useState<Project | null>(null);
   const [futureStates, setFutureStates] = useState<FutureState[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<FutureStateStatus | "">(() => oneOf(initial.get("status"), Object.keys(FUTURE_STATE_STATUS_LABEL) as FutureStateStatus[]));
-  const [includeArchived, setIncludeArchived] = useState(false);
+  // Filters live in the URL so the list comes back as it was left after a visit to a record.
+  const [search, setSearch] = useUrlText("q");
+  const [statusFilter, setStatusFilter] = useUrlChoice("status", Object.keys(FUTURE_STATE_STATUS_LABEL) as FutureStateStatus[]);
+  const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
-  const [roadmapOnly, setRoadmapOnly] = useState(initial.get("roadmap") === "1");
-  const [targetPassedOnly, setTargetPassedOnly] = useState(initial.get("target_passed") === "1");
-  const [noMeasuresOnly, setNoMeasuresOnly] = useState(initial.get("no_measures") === "1");
+  const [roadmapOnly, setRoadmapOnly] = useUrlFlag("roadmap");
+  const [targetPassedOnly, setTargetPassedOnly] = useUrlFlag("target_passed");
+  const [noMeasuresOnly, setNoMeasuresOnly] = useUrlFlag("no_measures");
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -83,17 +85,30 @@ export function ProjectFutureStatesPage() {
 
   useLoadOnChange(reloadFutureStates, [projectId, includeArchived, tagFilter.query, projectScope.scope]);
 
+  /** The list's filters by the names its export takes; the server applies the same rules the page does. */
+  function filterParams(): URLSearchParams {
+    const params = new URLSearchParams();
+    if (statusFilter) params.set("status", statusFilter);
+    if (search) params.set("search", search);
+    if (includeArchived) params.set("include_archived", "true");
+    if (roadmapOnly) params.set("roadmap_only", "true");
+    if (targetPassedOnly) params.set("target_passed_only", "true");
+    if (noMeasuresOnly) params.set("no_measures_only", "true");
+    addSharedListFilters(params, tagFilter, projectScope);
+    return params;
+  }
+
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (futureStates === null || project === null) return <Spinner />;
 
-  const today = new Date().toISOString().slice(0, 10); // UTC, like the report's reference date
+  const today = localToday(); // the person's own day, as the export's filter reads it
   const filtered = futureStates.filter((fs) => {
     if (roadmapOnly && !FUTURE_STATE_ROADMAP_STATUSES.includes(fs.status)) return false;
     if (targetPassedOnly && !(fs.target_date !== null && fs.target_date < today && fs.status !== "active")) return false;
     if (noMeasuresOnly && fs.success_measures.trim() !== "") return false;
     if (statusFilter && fs.status !== statusFilter) return false;
-    if (search && !`{fs.unique_code} {fs.title}`.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !`${fs.unique_code} ${fs.title}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
@@ -112,6 +127,7 @@ export function ProjectFutureStatesPage() {
     <div className="container stack">
       <ListPageLayout
         title="Future State"
+        records={{ projectId, recordType: "future_state", filters: filterParams().toString(), onImported: reloadFutureStates }}
         actions={
           <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
             New Future State

@@ -29,7 +29,7 @@ test.describe("Risk Management", () => {
 
     await page.goto(`/projects/${project.id}`);
     await page.getByRole("link", { name: "Risks", exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/risk_management/risks$`));
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/risk_management/risks(?:\\?.*)?$`));
     await expect(page.getByText("No Risks recorded for this project yet.")).toBeVisible();
 
     // --- Create (a Modal layer); the rating is derived from the picked levels.

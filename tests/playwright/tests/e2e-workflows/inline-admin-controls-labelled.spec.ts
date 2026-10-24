@@ -36,7 +36,7 @@ test.describe("inline admin controls are labelled", () => {
     await page.locator('input[type="file"][accept*="csv"]').setInputFiles({
       name: "labels.csv", mimeType: "text/csv", buffer: Buffer.from("Title,Why\nOne,Because\n"),
     });
-    await expect(page.getByText("Map your CSV columns")).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Import Requirements" })).toBeVisible();
     await page.getByLabel("Map Name").selectOption("Title");
     await expect(page.getByLabel("Map Reasoning")).toBeVisible();
   });

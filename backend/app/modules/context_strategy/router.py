@@ -64,6 +64,7 @@ from app.database import get_db
 from app.models.file import FileAsset
 from app.models.organization import Organization
 from app.models.user import User
+from app.modules.context_strategy import edits
 from app.modules.context_strategy._shared import (
     apply_value_error_as_conflict,
     context_strategy_link_to_out,
@@ -143,23 +144,18 @@ from app.modules.context_strategy.service import (
     activate_future_state,
     activate_guiding_principle,
     activate_strategy,
-    apply_future_state_new_version,
-    apply_guiding_principle_new_version,
-    apply_new_version,
     approve_future_state,
     approve_guiding_principle,
     approve_strategy,
     archive_future_state,
     archive_guiding_principle,
     archive_strategy,
-    create_future_state,
+    clean_type_definition,
     create_future_state_link,
     create_future_state_supersession,
-    create_guiding_principle,
     create_guiding_principle_link,
     create_guiding_principle_supersession,
     create_org_pain_point_type,
-    create_strategy,
     create_strategy_link,
     create_strategy_supersession,
     delete_org_pain_point_type,
@@ -195,7 +191,6 @@ from app.schemas.project import MoveDirection
 from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
 from app.services.ordering import move_ordered
-from app.services.principals import validate_principal
 from app.services.rbac import require_org_subcomponent_enabled
 from app.services.relationships import get_all_links
 
@@ -236,15 +231,13 @@ def create_org_strategy(
     org = db.get(Organization, organization_id)
     if org is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
-    strategy = create_strategy(
-        db, scope=_SCOPE, organization_id=organization_id, project_id=None, creator=current_user,
+    strategy = edits.create_strategy_record(
+        db, edits.RecordOwner(organization_id), current_user,
         title=payload.title, objective=payload.objective, current_state=payload.current_state,
         desired_future_state=payload.desired_future_state, rationale=payload.rationale,
         expected_outcomes=payload.expected_outcomes, constraints=payload.constraints,
         measures_of_success=payload.measures_of_success, priority=payload.priority, time_horizon=payload.time_horizon,
     )
-    log_event(db, entity_type=STRATEGY_ARTEFACT_TYPE, entity_id=strategy.id, action="created",
-              actor_id=current_user.id, organization_id=organization_id, detail={"title": payload.title})
     db.commit()
     db.refresh(strategy)
     return strategy_to_out(strategy, get_current_version(db, strategy.id))
@@ -255,10 +248,7 @@ def list_org_strategies(
     organization_id: UUID, include_archived: bool = False,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    query = select(Strategy).where(Strategy.organization_id == organization_id, Strategy.scope == _SCOPE)
-    if not include_archived:
-        query = query.where(Strategy.is_archived.is_(False))
-    strategies = db.scalars(query.order_by(Strategy.created_at)).all()
+    strategies = edits.organization_strategies(db, organization_id, include_archived)
     return [strategy_to_out(s, get_current_version(db, s.id)) for s in strategies]
 
 
@@ -281,21 +271,14 @@ def update_org_strategy(
     — see `service.LOCKED_STATUSES`)."""
     strategy = _get_strategy(db, organization_id, strategy_id)
     require_manage_role(db, current_user, _SCOPE, organization_id=organization_id, project_id=None)
-    current_version = get_current_version_for_update(db, strategy.id)
-    if is_locked(current_version):
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, "This Strategy is past review; its content can no longer be edited in place.",
-        )
-    apply_new_version(
-        db, strategy, current_version, current_user,
+    edits.edit_strategy_record(
+        db, edits.RecordOwner(organization_id), strategy, current_user,
         title=payload.title, objective=payload.objective, current_state=payload.current_state,
         desired_future_state=payload.desired_future_state, rationale=payload.rationale,
         expected_outcomes=payload.expected_outcomes, constraints=payload.constraints,
         measures_of_success=payload.measures_of_success, priority=payload.priority, time_horizon=payload.time_horizon,
         change_note=payload.change_note,
     )
-    log_event(db, entity_type=STRATEGY_ARTEFACT_TYPE, entity_id=strategy.id, action="updated",
-              actor_id=current_user.id, organization_id=organization_id)
     db.commit()
     return strategy_to_out(strategy, get_current_version(db, strategy.id))
 
@@ -672,14 +655,12 @@ def create_org_future_state(
     org = db.get(Organization, organization_id)
     if org is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
-    future_state = create_future_state(
-        db, scope=_FS_SCOPE, organization_id=organization_id, project_id=None, creator=current_user,
+    future_state = edits.create_future_state_record(
+        db, edits.RecordOwner(organization_id), current_user,
         title=payload.title, current_state=payload.current_state, desired_state=payload.desired_state,
         target_date=payload.target_date, outcomes=payload.outcomes, success_measures=payload.success_measures,
         constraints=payload.constraints, assumptions=payload.assumptions,
     )
-    log_event(db, entity_type=FUTURE_STATE_ARTEFACT_TYPE, entity_id=future_state.id, action="created",
-              actor_id=current_user.id, organization_id=organization_id, detail={"title": payload.title})
     db.commit()
     db.refresh(future_state)
     return future_state_to_out(future_state, get_current_future_state_version(db, future_state.id))
@@ -690,10 +671,7 @@ def list_org_future_states(
     organization_id: UUID, include_archived: bool = False,
     current_user: User = Depends(_require_future_state_view), db: Session = Depends(get_db),
 ):
-    query = select(FutureState).where(FutureState.organization_id == organization_id, FutureState.scope == _FS_SCOPE)
-    if not include_archived:
-        query = query.where(FutureState.is_archived.is_(False))
-    future_states = db.scalars(query.order_by(FutureState.created_at)).all()
+    future_states = edits.organization_future_states(db, organization_id, include_archived)
     return [future_state_to_out(fs, get_current_future_state_version(db, fs.id)) for fs in future_states]
 
 
@@ -715,20 +693,13 @@ def update_org_future_state(
     same status). 409s once the current version is locked."""
     future_state = _get_future_state(db, organization_id, future_state_id)
     require_future_state_manage_role(db, current_user, _FS_SCOPE, organization_id=organization_id, project_id=None)
-    current_version = get_current_future_state_version_for_update(db, future_state.id)
-    if is_future_state_locked(current_version):
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, "This Future State is past review; its content can no longer be edited in place.",
-        )
-    apply_future_state_new_version(
-        db, future_state, current_version, current_user,
+    edits.edit_future_state_record(
+        db, edits.RecordOwner(organization_id), future_state, current_user,
         title=payload.title, current_state=payload.current_state, desired_state=payload.desired_state,
         target_date=payload.target_date, target_date_explicitly_set=True, outcomes=payload.outcomes,
         success_measures=payload.success_measures, constraints=payload.constraints, assumptions=payload.assumptions,
         change_note=payload.change_note,
     )
-    log_event(db, entity_type=FUTURE_STATE_ARTEFACT_TYPE, entity_id=future_state.id, action="updated",
-              actor_id=current_user.id, organization_id=organization_id)
     db.commit()
     return future_state_to_out(future_state, get_current_future_state_version(db, future_state.id))
 
@@ -1114,7 +1085,7 @@ def create_pain_point_type(
     """Creates a new organisation-scoped Pain Point type (§6.2 "Add types")."""
     require_pain_point_type_admin_role(db, current_user, organization_id=organization_id)
     try:
-        pain_point_type = create_org_pain_point_type(db, organization_id, payload.name)
+        pain_point_type = create_org_pain_point_type(db, organization_id, payload.name, payload.definition)
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     log_event(db, entity_type="pain_point_type_definition", entity_id=pain_point_type.id, action="created",
@@ -1181,6 +1152,8 @@ def update_pain_point_type(
         pain_point_type.name = payload.name
     if payload.is_active is not None:
         pain_point_type.is_active = payload.is_active
+    if payload.definition is not None:
+        pain_point_type.definition = clean_type_definition(payload.definition)
     log_event(db, entity_type="pain_point_type_definition", entity_id=pain_point_type.id, action="updated",
               actor_id=current_user.id, organization_id=organization_id)
     db.commit()
@@ -1240,14 +1213,11 @@ def create_org_guiding_principle(
     org = db.get(Organization, organization_id)
     if org is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
-    validate_principal(db, payload.owner, organization_id=organization_id, project_id=None, field="owner")
-    guiding_principle = create_guiding_principle(
-        db, scope=_GP_SCOPE, organization_id=organization_id, project_id=None, creator=current_user,
+    guiding_principle = edits.create_guiding_principle_record(
+        db, edits.RecordOwner(organization_id), current_user,
         name=payload.name, principle_statement=payload.principle_statement, rationale=payload.rationale,
         priority=payload.priority, owner=payload.owner,
     )
-    log_event(db, entity_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, entity_id=guiding_principle.id, action="created",
-              actor_id=current_user.id, organization_id=organization_id, detail={"name": payload.name})
     db.commit()
     db.refresh(guiding_principle)
     return guiding_principle_to_out(db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id))
@@ -1258,12 +1228,7 @@ def list_org_guiding_principles(
     organization_id: UUID, include_archived: bool = False,
     current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
 ):
-    query = select(GuidingPrinciple).where(
-        GuidingPrinciple.organization_id == organization_id, GuidingPrinciple.scope == _GP_SCOPE,
-    )
-    if not include_archived:
-        query = query.where(GuidingPrinciple.is_archived.is_(False))
-    guiding_principles = db.scalars(query.order_by(GuidingPrinciple.created_at)).all()
+    guiding_principles = edits.organization_guiding_principles(db, organization_id, include_archived)
     return guiding_principles_to_out(db, guiding_principles)
 
 
@@ -1288,21 +1253,12 @@ def update_org_guiding_principle(
     `PROPOSED` — see `service.GUIDING_PRINCIPLE_LOCKED_STATUSES`)."""
     guiding_principle = _get_guiding_principle(db, organization_id, guiding_principle_id)
     require_guiding_principle_manage_role(db, current_user, _GP_SCOPE, organization_id=organization_id, project_id=None)
-    current_version = get_current_guiding_principle_version_for_update(db, guiding_principle.id)
-    if is_guiding_principle_locked(current_version):
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            "This Guiding Principle is past review; its content can no longer be edited in place.",
-        )
-    validate_principal(db, payload.owner, organization_id=organization_id, project_id=None, field="owner")
-    apply_guiding_principle_new_version(
-        db, guiding_principle, current_version, current_user,
+    edits.edit_guiding_principle_record(
+        db, edits.RecordOwner(organization_id), guiding_principle, current_user,
         name=payload.name, principle_statement=payload.principle_statement, rationale=payload.rationale,
         priority=payload.priority, owner=payload.owner, owner_explicitly_set=True,
         change_note=payload.change_note,
     )
-    log_event(db, entity_type=GUIDING_PRINCIPLE_ARTEFACT_TYPE, entity_id=guiding_principle.id, action="updated",
-              actor_id=current_user.id, organization_id=organization_id)
     db.commit()
     return guiding_principle_to_out(
         db, guiding_principle, get_current_guiding_principle_version(db, guiding_principle.id)

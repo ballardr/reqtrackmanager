@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect } from "storybook/test";
 
 import { buildNotification } from "../testing/storybook-helpers";
-import { getArtefactPath, getArtefactStatusLabel, getNotificationLink, getSearchHitPath, isArtefactInactive } from "./artefactPaths";
+import { getArtefactListPath, getArtefactPath, getArtefactStatusLabel, getNotificationLink, getSearchHitPath, isArtefactInactive } from "./artefactPaths";
 import { installedModules } from "./registry";
 import registeredArtefactTypes from "./registeredArtefactTypes.json";
 
@@ -23,6 +23,22 @@ export const EveryRegisteredArtefactTypeHasARoute: Story = {
   play: async () => {
     const unreachable = registeredArtefactTypes.filter((type) => getArtefactPath(type, "p-1", "id-1") === null);
     await expect(unreachable).toEqual([]);
+  },
+};
+
+/**
+ * Guard: every type the project overview counts opens a list from its chart, so a module that registers a type
+ * must declare where its list is. The three Compliance types derived from an assigned standard are not counted.
+ */
+export const EveryCountedArtefactTypeHasAListPage: Story = {
+  render: () => <div>Artefact type list pages</div>,
+  play: async () => {
+    const notCounted = new Set(["compliance_requirement", "project_compliance_requirement", "compliance_required_action_assessment"]);
+    const missing = registeredArtefactTypes.filter((type) => !notCounted.has(type) && getArtefactListPath(type, "p-1") === null);
+    await expect(missing).toEqual([]);
+    await expect(getArtefactListPath("requirement", "p-1")).toBe("/projects/p-1/requirements");
+    await expect(getArtefactListPath("risk", "p-1")).toBe("/projects/p-1/modules/risk_management/risks");
+    await expect(getArtefactListPath("not_a_type", "p-1")).toBeNull();
   },
 };
 

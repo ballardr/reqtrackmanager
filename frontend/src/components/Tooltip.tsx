@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 const VIEWPORT_MARGIN_PX = 8;
@@ -54,11 +54,27 @@ const POINTER_OFFSET_PX = 20;
  * caller to give the wrapping span the same `position: fixed` placement as
  * the fixed child, via these props, so the span IS the button's true
  * on-screen box and measurement is accurate again.
+ *
+ * `pinnable` is for a tooltip that carries a sentence or two the person
+ * needs to read (field help), so hover alone is not enough: a click or tap
+ * on the trigger (Enter or Space on the keyboard focus, which the browser
+ * turns into a click) pins the bubble open and the next one closes it; hover
+ * and keyboard focus still show it as before. Escape closes it without
+ * leaving the trigger (and stops there, so a dialog around it stays open),
+ * and so does a press anywhere outside the trigger. `wrap` lets a long label
+ * wrap inside a bounded width instead of running on one line. `bubbleId` is
+ * the id of the bubble, for the trigger's `aria-describedby`. The bubble is
+ * measured again when anything scrolls, since it is `fixed` and a pinned one
+ * would otherwise be left behind by a scrolling dialog body.
  */
 export function Tooltip({
-  label, children, className, style, followPointer = false,
-}: { label: string; children: ReactNode; className?: string; style?: CSSProperties; followPointer?: boolean }) {
+  label, children, className, style, followPointer = false, pinnable = false, wrap = false, bubbleId,
+}: {
+  label: string; children: ReactNode; className?: string; style?: CSSProperties; followPointer?: boolean;
+  pinnable?: boolean; wrap?: boolean; bubbleId?: string;
+}) {
   const [visible, setVisible] = useState(false);
+  const [pinned, setPinned] = useState(false);
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
   const triggerRef = useRef<HTMLSpanElement>(null);
@@ -92,8 +108,29 @@ export function Tooltip({
     }
     measure();
     window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
+    window.addEventListener("scroll", measure, true);
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
+    };
   }, [visible, followPointer, pointer]);
+
+  useEffect(() => {
+    if (!pinned) return;
+    function onPointerDown(e: PointerEvent) {
+      if (triggerRef.current?.contains(e.target as Node)) return;
+      setPinned(false);
+      setVisible(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [pinned]);
+
+  function close() {
+    setPinned(false);
+    setVisible(false);
+    setPointer(null);
+  }
 
   return (
     <span
@@ -106,18 +143,26 @@ export function Tooltip({
       }}
       onMouseMove={followPointer ? (e) => setPointer({ x: e.clientX, y: e.clientY }) : undefined}
       onMouseLeave={() => {
+        if (pinned) return;
         setVisible(false);
         setPointer(null);
       }}
       onFocus={() => setVisible(true)}
-      onBlur={() => setVisible(false)}
+      onBlur={close}
+      onClick={pinnable ? () => (pinned ? close() : setPinned(true)) : undefined}
+      onKeyDown={pinnable ? (e) => {
+        if (e.key !== "Escape" || !visible) return;
+        e.stopPropagation();
+        close();
+      } : undefined}
     >
       {children}
       {visible && createPortal(
         <span
           ref={bubbleRef}
+          id={bubbleId}
           role="tooltip"
-          className="tooltip-bubble"
+          className={wrap ? "tooltip-bubble tooltip-bubble--wrap" : "tooltip-bubble"}
           style={{
             top: position?.top ?? 0,
             left: position?.left ?? 0,

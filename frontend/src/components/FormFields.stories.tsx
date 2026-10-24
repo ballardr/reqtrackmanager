@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { useState } from "react";
 import { expect, fn, userEvent, within } from "storybook/test";
 
 import { requiredCaptions } from "../testing/requiredMarkers";
@@ -132,11 +133,64 @@ export const FieldsCanBeDisabled: Story = {
   },
 };
 
-export const AutoGrowTextAreaIsLabelled: Story = {
-  render: () => <TextAreaField label="Description" value="" onChange={fn()} autoGrow />,
+const FORTY_LINES = Array.from({ length: 40 }, (_, i) => `Line ${i + 1}`).join("\n");
+
+/** `TextAreaField` owns no state; this harness supplies what a form would. */
+function GrowingHarness({ initial, fixedHeight }: { initial: string; fixedHeight?: string }) {
+  const [value, setValue] = useState(initial);
+  return <TextAreaField helpNotNeeded label="Description" value={value} onChange={setValue} fixedHeight={fixedHeight} />;
+}
+
+export const TextAreaIsLabelled: Story = {
+  render: () => <TextAreaField label="Description" value="" onChange={fn()} />,
   play: async ({ canvasElement }) => {
     await userEvent.type(within(canvasElement).getByLabelText("Description"), "x");
     await expect(within(canvasElement).getByText("Description")).toBeInTheDocument();
+  },
+};
+
+/** The default: 40 lines make the box taller than an empty one, up to the cap, with the rest scrolling inside it. */
+export const TextAreaGrowsByDefaultAndCaps: Story = {
+  render: () => (
+    <div>
+      <GrowingHarness initial="" />
+      <GrowingHarness initial={FORTY_LINES} />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const [empty, long] = within(canvasElement).getAllByLabelText("Description") as HTMLTextAreaElement[];
+    await expect(long.clientHeight).toBeGreaterThan(empty.clientHeight);
+    // Capped (about 8 lines), not as tall as 40 lines of content.
+    await expect(long.scrollHeight).toBeGreaterThan(long.clientHeight);
+    await expect(long.clientHeight).toBeLessThan(long.scrollHeight / 2);
+  },
+};
+
+/** `rows` is the minimum height: an empty four-row field is taller than an empty two-row one. */
+export const TextAreaRowsIsTheMinimumHeight: Story = {
+  render: () => (
+    <div>
+      <TextAreaField helpNotNeeded label="Two" value="" onChange={fn()} />
+      <TextAreaField helpNotNeeded label="Four" value="" onChange={fn()} rows={4} />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByLabelText("Four").clientHeight).toBeGreaterThan(canvas.getByLabelText("Two").clientHeight);
+  },
+};
+
+/** The opt-out keeps a plain fixed-height box even with long content. */
+export const FixedHeightTextAreaDoesNotGrow: Story = {
+  render: () => (
+    <div>
+      <GrowingHarness initial="" fixedHeight="A one-line note." />
+      <GrowingHarness initial={FORTY_LINES} fixedHeight="A one-line note." />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const [empty, long] = within(canvasElement).getAllByLabelText("Description") as HTMLTextAreaElement[];
+    await expect(long.clientHeight).toBe(empty.clientHeight);
   },
 };
 

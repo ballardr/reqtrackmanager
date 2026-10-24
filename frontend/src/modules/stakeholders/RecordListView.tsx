@@ -18,6 +18,11 @@
  * Need: pass no `typeName`/`scopeLabels`); `columnsBeforeType` and
  * `columnsAfterScope` slot the kind's own columns around them.
  *
+ * Export and Import (`exportRecords`): on a list page the layout offers the shared Export and Import of the kind,
+ * narrowed by this list's own filters (status, type, search, archived, hidden, tags, scope) plus the `extraParams` the
+ * kind adds (a group filter). A list embedded in another page (an organisation panel) puts the same controls beside
+ * its New button, acting on the organisation's own records.
+ *
  * A kind can add its own filters (`extraFilters`) and narrow `records` before
  * passing them in. A list whose records are created elsewhere (the People page's "New" menu) omits
  * `onCreate`/`renderCreateModal`: it then shows no New button and no create form.
@@ -36,15 +41,34 @@ import { DirectoryTable, type DirectoryColumn } from "../../components/Directory
 import { FilterBadge } from "../../components/FilterBadge";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { ListActions, ListActionsMenu } from "../../components/ListActions";
 import { ListPageLayout } from "../../components/ListPageLayout";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
 import { TagFilterField } from "../../components/TagFilterField";
 import type { ProjectScopeState } from "../../hooks/useProjectScope";
 import type { TagFilterState } from "../../hooks/useTagFilter";
+import { useUrlText } from "../../hooks/useUrlFilter";
+import { addSharedListFilters } from "../../utils/listFilterParams";
 import { toErrorMessage } from "../../context/ToastContext";
 import { HIDDEN_SOURCE_LABEL, type HiddenSource } from "./types";
 import { Badge } from "../../components/Badge";
+
+/** One record kind a list page offers Export and Import for. */
+export interface ExportRecords {
+  /** The project whose list this is; give this or `organizationId`. */
+  projectId?: string;
+  /** The organisation whose own records the list shows (an organisation panel). */
+  organizationId?: string;
+  recordType: string;
+  onImported?: () => void;
+  /** Filters this kind adds beyond the list's own (a group filter). */
+  extraParams?: Record<string, string>;
+  /** Names the kind when the list shows several (`personas`). */
+  kindLabel?: string;
+  /** Filters this kind has no concept of: while one is set the kind has no rows to export, so it is not offered. */
+  without?: ("status" | "type")[];
+}
 
 /** What the list needs of any record kind. */
 /** The page-level header a list owns when it is a whole page: its title, actions and anything above the table. */
@@ -107,6 +131,7 @@ export function RecordListView<R extends ListedRecord, V>({
   onIncludeHiddenChange,
   onShowHidden,
   onOpen,
+  exportRecords,
   onCreate,
   renderCreateModal,
 }: {
@@ -155,14 +180,18 @@ export function RecordListView<R extends ListedRecord, V>({
   /** Re-shows a hidden record in this project (the Visibility cell's "Show" action). */
   onShowHidden?: (record: R) => void;
   onOpen: (record: R) => void;
+  /** Offers the shared Export and Import of this kind on a list page (`page`); `extraParams` are the filters the kind adds. */
+  exportRecords?: ExportRecords | ExportRecords[];
   /** Resolves on success; a rejection keeps the modal open and shows its message. Omit (with `renderCreateModal`) when records are created elsewhere. */
   onCreate?: (values: V, quickLinks: CollectedLink[], tags: string[]) => Promise<void>;
   /** Renders the create form; `onSave` is already wired to `onCreate` and the error state. */
   renderCreateModal?: (props: { scopeLabel: string; error: string | null; onCancel: () => void; onSave: (values: V, quickLinks?: CollectedLink[], tags?: string[]) => void }) => ReactNode;
 }) {
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
+  // On a list page the filters live in the URL, so it comes back as it was left after a visit to a record;
+  // embedded in another page (an organisation panel) they stay local, leaving that page's own parameters alone.
+  const [search, setSearch] = useUrlText("q", !!page);
+  const [statusFilter, setStatusFilter] = useUrlText("status", !!page);
+  const [typeFilter, setTypeFilter] = useUrlText("type", !!page);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const canCreate = !!onCreate && !!renderCreateModal;
@@ -174,6 +203,23 @@ export function RecordListView<R extends ListedRecord, V>({
     if (search && !searchText(r).toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
+
+  /** The list's filters by the names the shared export takes (the server applies the same rules the list does). */
+  function exportFilters(kind: ExportRecords): string {
+    const params = new URLSearchParams(kind.extraParams);
+    if (statusFilter) params.set("status", statusFilter);
+    if (typeFilter) params.set("type", typeFilter);
+    if (search) params.set("search", search);
+    if (includeArchived) params.set("include_archived", "true");
+    if (includeHidden) params.set("include_hidden", "true");
+    return addSharedListFilters(params, tagFilter?.filter, projectScope).toString();
+  }
+
+  const exportActions = exportRecords
+    ? [exportRecords].flat()
+        .filter((kind) => !(kind.without ?? []).some((key) => (key === "status" ? statusFilter : typeFilter)))
+        .map((kind) => ({ ...kind, filters: exportFilters(kind) }))
+    : undefined;
 
   const columns: DirectoryColumn<R>[] = [
     { key: "name", label: "Name", render: (r) => <>{nameIcon && <span className="record-name-icon">{nameIcon(r)}</span>}{r.name}<ProjectScopeLabel row={r} /></> },
@@ -283,6 +329,7 @@ export function RecordListView<R extends ListedRecord, V>({
           actions={page.actions ?? ((newButton || toolbar) && <div className="row" style={{ gap: "var(--space-3)", alignSelf: "flex-start" }}>{newButton}{toolbar}</div>)}
           tabs={page.tabs}
           contentProps={page.contentProps}
+          records={exportActions}
           filter={filterPanel}
         >
           {page.above}
@@ -290,10 +337,15 @@ export function RecordListView<R extends ListedRecord, V>({
         </ListPageLayout>
       ) : (
         <>
-          {(canCreate || toolbar) && (
+          {(canCreate || toolbar || exportActions) && (
             <div className="row" style={{ gap: "var(--space-3)", alignSelf: "flex-start" }}>
               {newButton}
               {toolbar}
+              {exportActions && (
+                <ListActionsMenu>
+                  {exportActions.map((kind) => <ListActions key={kind.recordType} {...kind} />)}
+                </ListActionsMenu>
+              )}
             </div>
           )}
           <div className="side-grid">

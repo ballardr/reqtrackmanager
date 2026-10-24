@@ -12,8 +12,9 @@ accent/wordmark/email-footer, default template, public login-info),
 (org-admin PAT incident-response actions), `taxonomies` (project
 statuses, requirement link types), `custom_roles` (Fine-Grained Access
 Control's permission vocabulary, `CustomRoleDefinition` CRUD, and its
-user/group grant endpoints —), and `scoring` (generic scoring-matrix levels, default
-model and bands) — into the single `/api/v1/orgs`
+user/group grant endpoints —), `scoring` (generic scoring-matrix levels, default
+model and bands) and `record_policy` (the personal-data policy override for record export and
+import) — into the single `/api/v1/orgs`
 router `main.py` mounts.
 
 Split out from one ~3,200-line module (previously `routers/orgs.py`) so
@@ -34,6 +35,7 @@ from app.routers.orgs import (
     groups,
     membership,
     org_pats,
+    record_policy,
     records,
     reports,
     resources,
@@ -62,3 +64,4 @@ router.include_router(org_pats.router, prefix=_PREFIX)
 router.include_router(taxonomies.router, prefix=_PREFIX)
 router.include_router(custom_roles.router, prefix=_PREFIX)
 router.include_router(scoring.router, prefix=_PREFIX)
+router.include_router(record_policy.router, prefix=_PREFIX)

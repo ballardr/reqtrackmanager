@@ -22,6 +22,9 @@ installCleanupHook();
 
 type Headers = Record<string, string>;
 
+/** The picker prefixes each title with its module name once more than one report source is listed. */
+const reportLabel = (title: string): string => `Stakeholders & Personas: ${title}`;
+
 const REPORTS = [
   "Power/interest grid", "Persona validation", "Need coverage", "Engagement staleness", "Engagement & research yield",
 ];
@@ -61,9 +64,9 @@ test.describe("Stakeholders & Personas: Reports", () => {
     await page.goto(`/projects/${project.id}/reports`);
     await expect(picker(page)).toBeVisible();
     const options = await picker(page).locator("option").allTextContents();
-    expect(options).toEqual(expect.arrayContaining(REPORTS));
+    expect(options).toEqual(expect.arrayContaining(REPORTS.map(reportLabel)));
 
-    await picker(page).selectOption({ label: "Power/interest grid" });
+    await picker(page).selectOption({ label: reportLabel("Power/interest grid") });
     await expect(page).toHaveURL(/report=power-interest-grid/);
     await page.reload();
     await expect(picker(page)).toHaveValue("power-interest-grid");
@@ -114,7 +117,7 @@ test.describe("Stakeholders & Personas: Reports", () => {
     await expect(page.getByText(outside)).toHaveCount(0);
     await expect(page.getByRole("region", { name: "Manage closely" }).getByText(inside)).toBeVisible();
 
-    await picker(page).selectOption({ label: "Engagement staleness" });
+    await picker(page).selectOption({ label: reportLabel("Engagement staleness") });
     await expect(page.getByLabel("Group", { exact: true })).toHaveCount(1);
     const stale = page.waitForRequest((r) => r.url().includes("engagement-staleness") && r.url().includes(`group_id=${group.id}`));
     await page.getByLabel("Group", { exact: true }).selectOption({ label: `Team ${suffix}` });
@@ -133,7 +136,7 @@ test.describe("Stakeholders & Personas: Reports", () => {
 
     for (const title of REPORTS) {
       await test.step(`${title}: PDF and CSV`, async () => {
-        await picker(page).selectOption({ label: title });
+        await picker(page).selectOption({ label: reportLabel(title) });
         await expect(page.getByRole("button", { name: "Export" })).toBeVisible();
         for (const kind of ["PDF", "CSV"] as const) {
           await page.getByRole("button", { name: "Export" }).click();

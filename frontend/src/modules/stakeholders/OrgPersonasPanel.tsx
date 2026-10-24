@@ -63,6 +63,7 @@ export function OrgPersonasPanel({ orgId }: { orgId: string }) {
       typeOptions={types.filter((t) => t.is_active).map((t) => ({ value: t.id, label: t.name }))}
       includeArchived={includeArchived}
       onIncludeArchivedChange={setIncludeArchived}
+      exportRecords={{ organizationId: orgId, onImported: reload }}
       onOpen={(p) => navigate(`/orgs/${orgId}/modules/stakeholders/personas/${p.id}`)}
       onCreate={async (values) => {
         await orgPersonaApi.create(orgId, values);

@@ -90,7 +90,8 @@ flowchart TD
 
 - **Organisation-scoped base types** (`PainPointTypeDefinition`) — the shared vocabulary every project in the organisation starts from, managed by the **Pain Point Type Admin** role. Every organisation is seeded with three defaults when the module is enabled: **Market**, **User**, and **Operator**.
 - **Project-scoped overrides/local types** (`ProjectPainPointType`) — a project can override an org type's name or enabled-state just for itself, hide it (the delete button on an organisation type hides it in this project; **Add organisation defaults** shows it again), or define a fully project-local type with no org type behind it at all. Pain Points that already use a hidden type keep it. Managed by the **Pain Point Manager** role, from that project's own admin page.
-- A project's *effective* type list is its own rows layered over the organisation's base types — an org type a project hasn't touched appears as-is; one it has overridden shows the project's own name/enabled-state instead.
+- **Definition** — each type can carry an optional explanation of what belongs under it ("A problem for the people who run or maintain the product"). It shows under the **Type** field when someone raises a Pain Point, so the right type is a quick choice. An organisation sets it in the Pain Point Types panel; a project can write its own text for an organisation type (it replaces the organisation's in that project only) or clear it to show the organisation's again. A project-only type has just its own.
+- A project's *effective* type list is its own rows layered over the organisation's base types — an org type a project hasn't touched appears as-is; one it has overridden shows the project's own name/enabled-state/definition instead.
 
 | Managing an organisation's Pain Point types |
 | --- |

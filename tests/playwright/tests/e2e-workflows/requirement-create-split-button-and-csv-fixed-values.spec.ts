@@ -1,59 +1,41 @@
 import { expect, test } from "@playwright/test";
 
 import { loginAs, openProject, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { expectListAction } from "../listActions";
 
 /**
- * Job to be done: three pieces of the "New Requirement" creation-flow
- * roadmap batch that the
- * rest of the suite exercises indirectly but never proves directly:
+ * Job to be done: two pieces of the requirement list's creation and bulk flow that the rest of the suite
+ * exercises indirectly but never proves directly:
  *
- * - The split-button trigger (style guide "Pattern: split-button trigger")
- *   — a plain click on "New requirement" performs the default action with
- *   no menu stop, and its own separate chevron affordance is what reveals
- *   "Import from CSV". Every other spec that creates a requirement already
- *   relies on the click-does-default half implicitly (they just click
- *   "New requirement" and start typing); this spec is the one place that
- *   actually asserts no menu appears, and separately exercises the
- *   chevron.
- * - The CSV wizard's column-mapping step living in a `Modal` — a real `role="dialog"` layer, not an inline block.
- * - The per-field "same value for every row" fixed-value toggle
- * actually producing the right import result end to end.
+ * - "New requirement" is a plain button: one click opens the create form with no menu stop, and the list's
+ *   shared Export and Import controls sit beside it (not behind a chevron).
+ * - The import wizard is a real `role="dialog"` layer, and a column with a closed list of values (component,
+ *   category, level, target version) can take one fixed value for every row, producing the right import result
+ *   end to end.
  */
-test.describe("New Requirement split-button trigger", () => {
-  test("a plain click opens the create form directly; the chevron reveals Import from CSV", async ({ page }) => {
+test.describe("New Requirement trigger and the list's Export and Import", () => {
+  test("a plain click opens the create form directly; Export and Import sit beside it, not behind it", async ({ page }) => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
+
+    await test.step("Export and Import are on the title row, with no hidden alternatives menu", async () => {
+      await expect(page.getByRole("button", { name: "List actions", exact: true })).toBeVisible();
+      await expectListAction(page, "Import from CSV");
+      await expect(page.getByRole("button", { name: "More options" })).toHaveCount(0);
+    });
 
     await test.step("a plain click on the main button opens the create form with no menu stop", async () => {
       await page.getByRole("button", { name: "New requirement", exact: true }).click();
       await expect(page.getByRole("dialog", { name: "New requirement" })).toBeVisible();
       await expect(page.getByPlaceholder("Name", { exact: true })).toBeVisible();
-      // The alternative-actions menu never appeared for this click.
-      await expect(page.getByRole("button", { name: "Import from CSV" })).toHaveCount(0);
       await page.keyboard.press("Escape");
       await expect(page.getByRole("dialog", { name: "New requirement" })).toHaveCount(0);
-    });
-
-    await test.step("the chevron reveals Import from CSV without opening the create form", async () => {
-      await page.getByRole("button", { name: "More options" }).click();
-      const menu = page.getByRole("dialog", { name: "New requirement" });
-      await expect(menu).toBeVisible();
-      await expect(menu.getByRole("button", { name: "Import from CSV" })).toBeVisible();
-      // Revealing the menu is not itself the default action — the create
-      // form's own Name field never appeared.
-      await expect(page.getByPlaceholder("Name", { exact: true })).toHaveCount(0);
-
-      await menu.getByRole("button", { name: "Import from CSV" }).click();
-      // Selecting the alternative opens the file picker, which surfaces as
-      // the CSV wizard's own mapping Modal once a file is chosen — proven
-      // together with the Modal assertion below.
-      await expect(menu).toHaveCount(0);
     });
   });
 });
 
-test.describe("CSV import wizard: Modal-hosted mapping step and per-field fixed values", () => {
+test.describe("CSV import wizard: Modal-hosted mapping step and per-column fixed values", () => {
   test("mapping step opens as a Modal, and fixed-value toggles apply one value to every row", async ({ page }) => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await openProject(page, PROJECT_NAMES.beta1);
@@ -87,37 +69,39 @@ test.describe("CSV import wizard: Modal-hosted mapping step and per-field fixed 
     const csv = `name\n${rowOneName}\n${rowTwoName}\n`;
 
     const fileInput = page.locator('input[type="file"][accept*="csv"]');
+    await expect(fileInput).toBeAttached();
     await fileInput.setInputFiles({ name: "names-only.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
 
-    const modal = page.getByRole("dialog", { name: "Map your CSV columns" });
-    await test.step("the mapping/preview step is a real Modal dialog, not an inline block", async () => {
+    const modal = page.getByRole("dialog", { name: "Import Requirements" });
+    await test.step("the wizard is a real Modal dialog on top of the page, not an inline block", async () => {
       await expect(modal).toBeVisible();
-      await expect(modal.getByText("Preview (first 2 of 2 rows)")).toBeVisible();
-      // The trigger row underneath (Export) is still present in the DOM —
-      // this is a layer on top of the page, not a page reflow.
-      await expect(page.getByRole("button", { name: "Export", exact: true })).toBeVisible();
+      await expect(modal.getByLabel("Map Name")).toHaveValue("name");
+      await expect(page.getByRole("button", { name: "List actions", exact: true })).toBeVisible();
     });
 
-    const importButton = modal.getByRole("button", { name: /^Import 2 row/ });
-    await test.step("required fields with no mapped column block import until fixed", async () => {
-      await expect(importButton).toBeDisabled();
+    const previewButton = modal.getByRole("button", { name: "Preview" });
+    await test.step("required columns with no source block the preview until fixed", async () => {
+      await expect(previewButton).toBeDisabled();
     });
 
-    await test.step("toggling each field to a fixed value and picking it unblocks import", async () => {
+    await test.step("toggling each column to a fixed value and picking it unblocks the preview", async () => {
       await modal.getByLabel("Use the same component for every row").check();
       await modal.getByLabel("Fixed component").selectOption(component.prefix);
       await modal.getByLabel("Use the same category for every row").check();
       await modal.getByLabel("Fixed category").selectOption(category.prefix);
       await modal.getByLabel("Use the same level for every row").check();
-      await modal.getByLabel("Fixed level").selectOption("optional");
+      await modal.getByLabel("Fixed level").selectOption("Optional");
       await modal.getByLabel("Use the same target version for every row").check();
       await modal.getByLabel("Fixed target version").selectOption(stage.name);
-      await expect(importButton).toBeEnabled();
+      await expect(previewButton).toBeEnabled();
     });
 
-    await test.step("importing applies the fixed values to every row, not just the first", async () => {
-      await importButton.click();
-      await expect(page.getByText(/Import complete: 2 created, 0 error\(s\)/)).toBeVisible();
+    await test.step("the preview and apply cover every row, not just the first", async () => {
+      await previewButton.click();
+      await expect(modal.getByText("2 to create, 0 to update, 0 unchanged, 0 with errors.")).toBeVisible();
+      await modal.getByRole("button", { name: "Apply 2 change(s)" }).click();
+      await expect(page.getByText("2 created, 0 updated, 0 failed.")).toBeVisible();
+      await expect(modal).toHaveCount(0);
     });
 
     await test.step("both created requirements carry the fixed component/category/level", async () => {

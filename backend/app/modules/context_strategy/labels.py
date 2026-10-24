@@ -24,6 +24,18 @@ LIFECYCLE_STATUS_LABEL: dict[str, str] = {
     "retired": "Retired",
 }
 
+# Badge tones, mirroring the `*_STATUS_TONE` maps in `frontend/src/modules/context_strategy/types.ts` by hand (a test
+# pins them). Strategy, Future State and Guiding Principle share one set.
+LIFECYCLE_STATUS_TONE: dict[str, str] = {
+    "draft": "muted",
+    "proposed": "info",
+    "under_review": "info",
+    "approved": "accent",
+    "active": "accent",
+    "superseded": "muted",
+    "retired": "muted",
+}
+
 PAIN_POINT_STATUS_LABEL: dict[str, str] = {
     "submitted": "Submitted",
     "triaged": "Triaged",
@@ -34,12 +46,30 @@ PAIN_POINT_STATUS_LABEL: dict[str, str] = {
     "closed": "Closed",
 }
 
+PAIN_POINT_STATUS_TONE: dict[str, str] = {
+    "submitted": "muted",
+    "triaged": "info",
+    "rejected": "danger",
+    "duplicate": "muted",
+    "accepted": "info",
+    "addressed": "info",
+    "closed": "accent",
+}
+
 OPEN_QUESTION_STATUS_LABEL: dict[str, str] = {
     "open": "Open",
     "investigating": "Investigating",
     "ready_for_decision": "Ready for Decision",
     "resolved": "Resolved",
     "withdrawn": "Withdrawn",
+}
+
+OPEN_QUESTION_STATUS_TONE: dict[str, str] = {
+    "open": "muted",
+    "investigating": "info",
+    "ready_for_decision": "info",
+    "resolved": "accent",
+    "withdrawn": "muted",
 }
 
 SCOPE_LABEL: dict[str, str] = {"organization": "Organisation", "project": "Project"}

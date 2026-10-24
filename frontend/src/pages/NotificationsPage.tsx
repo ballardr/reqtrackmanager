@@ -13,6 +13,8 @@ import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
 import { useResetOnChange } from "../hooks/useResetOnChange";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { useRestoredRowCount } from "../hooks/useListPosition";
+import { useUrlFlag, useUrlText } from "../hooks/useUrlFilter";
 
 const strings = t();
 
@@ -30,11 +32,13 @@ export function NotificationsPage() {
   const { showToast } = useToast();
   const [notifications, setNotifications] = useState<Notification[] | null>(null);
   const [total, setTotal] = useState(0);
-  const [search, setSearch] = useState("");
-  const [unreadOnly, setUnreadOnly] = useState(false);
+  // Filters live in the URL so the list comes back as it was left after a visit to a notification's record.
+  const [search, setSearch] = useUrlText("q");
+  const [unreadOnly, setUnreadOnly] = useUrlFlag("unread");
+  const limitFor = useRestoredRowCount(PAGE_SIZE);
 
   function listParams(offset: number): URLSearchParams {
-    const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
+    const params = new URLSearchParams({ limit: String(limitFor(offset)), offset: String(offset) });
     if (search) params.set("search", search);
     if (unreadOnly) params.set("unread_only", "true");
     return params;
@@ -75,6 +79,8 @@ export function NotificationsPage() {
   return (
     <div className="stack">
       <ListPageLayout
+        ready={notifications !== null}
+        loadedRows={notifications?.length}
         title={strings.notifications.title}
         actions={
           unreadCount > 0 && (

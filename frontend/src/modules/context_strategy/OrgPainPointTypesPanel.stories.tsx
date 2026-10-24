@@ -18,10 +18,10 @@ function mockOrgTypeApis(initial: PainPointTypeDefinition[]) {
   spyOn(api, "get").mockImplementation(async () => items);
   spyOn(api, "post").mockImplementation(async (path: string, body?: unknown) => {
     if (path.endsWith("/pain-point-types")) {
-      const payload = body as { name: string };
+      const payload = body as { name: string; definition?: string | null };
       const created: PainPointTypeDefinition = {
         id: `type-${items.length + 1}`, organization_id: ORG_ID, name: payload.name,
-        sort_order: items.length, is_active: true,
+        sort_order: items.length, is_active: true, definition: (payload.definition as string | null | undefined) ?? null,
       };
       items = [...items, created];
       return created;
@@ -42,7 +42,7 @@ function mockOrgTypeApis(initial: PainPointTypeDefinition[]) {
   });
   spyOn(api, "patch").mockImplementation(async (path: string, body?: unknown) => {
     const id = path.split("/pain-point-types/")[1];
-    const payload = body as { name?: string; is_active?: boolean };
+    const payload = body as { name?: string; is_active?: boolean; definition?: string };
     items = items.map((i) => (i.id === id ? { ...i, ...payload } : i));
     return items.find((i) => i.id === id);
   });
@@ -66,9 +66,9 @@ type Story = StoryObj<typeof OrgPainPointTypesPanel>;
 
 export const ListsDefaultTypes: Story = {
   beforeEach: () => mockOrgTypeApis([
-    { id: "type-market", organization_id: ORG_ID, name: "Market", sort_order: 0, is_active: true },
-    { id: "type-user", organization_id: ORG_ID, name: "User", sort_order: 1, is_active: true },
-    { id: "type-operator", organization_id: ORG_ID, name: "Operator", sort_order: 2, is_active: true },
+    { id: "type-market", organization_id: ORG_ID, name: "Market", sort_order: 0, is_active: true, definition: null },
+    { id: "type-user", organization_id: ORG_ID, name: "User", sort_order: 1, is_active: true, definition: null },
+    { id: "type-operator", organization_id: ORG_ID, name: "Operator", sort_order: 2, is_active: true, definition: null },
   ]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -79,7 +79,7 @@ export const ListsDefaultTypes: Story = {
 };
 
 export const AddType: Story = {
-  beforeEach: () => mockOrgTypeApis([{ id: "type-market", organization_id: ORG_ID, name: "Market", sort_order: 0, is_active: true }]),
+  beforeEach: () => mockOrgTypeApis([{ id: "type-market", organization_id: ORG_ID, name: "Market", sort_order: 0, is_active: true, definition: null }]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => canvas.getByPlaceholderText("Pain Point type name"));
@@ -87,14 +87,48 @@ export const AddType: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Add Pain Point type" }));
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
-      `/api/v1/orgs/${ORG_ID}/modules/context_strategy/pain-point-types`, { name: "Regulatory" }
+      `/api/v1/orgs/${ORG_ID}/modules/context_strategy/pain-point-types`, { name: "Regulatory", definition: null }
     ));
     await waitFor(() => expect(canvas.getByDisplayValue("Regulatory")).toBeInTheDocument());
   },
 };
 
+/** The definition is a growing text area beside the name, saved with the new type. */
+export const AddTypeWithDefinition: Story = {
+  beforeEach: () => mockOrgTypeApis([{ id: "type-market", organization_id: ORG_ID, name: "Market", sort_order: 0, is_active: true, definition: null }]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByPlaceholderText("Pain Point type name"));
+    await userEvent.type(canvas.getByPlaceholderText("Pain Point type name"), "Regulatory");
+    await userEvent.type(canvas.getByRole("textbox", { name: "Pain Point type definition (what belongs under it)" }), "Legal duties we must meet.");
+    await userEvent.click(canvas.getByRole("button", { name: "Add Pain Point type" }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/orgs/${ORG_ID}/modules/context_strategy/pain-point-types`,
+      { name: "Regulatory", definition: "Legal duties we must meet." }
+    ));
+    await waitFor(() => expect(canvas.getByDisplayValue("Legal duties we must meet.")).toBeInTheDocument());
+  },
+};
+
+/** An existing type's definition is edited in its row and saved with the pencil; clearing it sends a blank. */
+export const EditAndClearDefinition: Story = {
+  beforeEach: () => mockOrgTypeApis([{ id: "type-market", organization_id: ORG_ID, name: "Market", sort_order: 0, is_active: true, definition: "Buyers and competitors." }]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const box = await canvas.findByRole("textbox", { name: "Pain Point type definition" });
+    await expect(box).toHaveValue("Buyers and competitors.");
+    await userEvent.clear(box);
+    await userEvent.click(canvas.getByRole("button", { name: "Rename" }));
+
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
+      `/api/v1/orgs/${ORG_ID}/modules/context_strategy/pain-point-types/type-market`, { name: "Market", definition: "" }
+    ));
+  },
+};
+
 export const ToggleActiveState: Story = {
-  beforeEach: () => mockOrgTypeApis([{ id: "type-market", organization_id: ORG_ID, name: "Market", sort_order: 0, is_active: true }]),
+  beforeEach: () => mockOrgTypeApis([{ id: "type-market", organization_id: ORG_ID, name: "Market", sort_order: 0, is_active: true, definition: null }]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const toggle = await canvas.findByRole("switch", { name: "Active: Market" });
@@ -111,8 +145,8 @@ export const ToggleActiveState: Story = {
 
 export const DeleteBlockedWhileInUseShowsPlainError: Story = {
   beforeEach: () => mockOrgTypeApis([
-    { id: "type-market", organization_id: ORG_ID, name: "Market", sort_order: 0, is_active: true },
-    { id: "type-operator", organization_id: ORG_ID, name: "Operator", sort_order: 1, is_active: true },
+    { id: "type-market", organization_id: ORG_ID, name: "Market", sort_order: 0, is_active: true, definition: null },
+    { id: "type-operator", organization_id: ORG_ID, name: "Operator", sort_order: 1, is_active: true, definition: null },
   ]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

@@ -71,6 +71,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.file import FileAsset
+from app.models.organization import OrgGroup
 from app.models.relationship import ArtefactLink
 from app.models.requirement import Requirement
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
@@ -94,6 +95,7 @@ from app.modules.compliance.models import (
     ComplianceEvidenceFile,
     ComplianceEvidenceRevalidation,
     ComplianceMappingRelationshipTypeDefinition,
+    ComplianceOrgSettings,
     ComplianceRequiredAction,
     ComplianceRequiredActionAssessment,
     ComplianceRequirement,
@@ -101,6 +103,7 @@ from app.modules.compliance.models import (
     ComplianceReview,
     ComplianceReviewEvidenceLink,
     ComplianceStandard,
+    ComplianceStandardDefaultExclusion,
     ComplianceStandardVersion,
     ProjectCompliance,
     ProjectComplianceRequirement,
@@ -338,7 +341,11 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
         mapping_json["created_by_email"] = email(mapping_json.pop("_created_by"))
         mapping_json["archived_by_email"] = email(mapping_json.pop("_archived_by"))
 
+    settings = db.scalar(select(ComplianceOrgSettings).where(ComplianceOrgSettings.organization_id == org.id))
+    group_id = settings.default_standards_manager_group_id if settings else None
+    default_group = db.get(OrgGroup, group_id) if group_id else None
     return {
+        "compliance_default_standards_manager_group": default_group.name if default_group else None,
         "compliance_action_types": [{"name": t.name, "sort_order": t.sort_order} for t in action_types],
         "compliance_mapping_relationship_types": [
             {"name": t.name, "sort_order": t.sort_order, "implies_equivalence": t.implies_equivalence}
@@ -612,6 +619,27 @@ def _import_compliance_requirement_mappings(
         ))
 
 
+def _import_default_manager_group(db: Session, org: Organization, data: dict[str, Any], warnings: BundleImportWarnings) -> None:
+    """Restores the organisation's designated default compliance-managers group by name. An organisation
+    that already designates one keeps it (a merge never overrides a setting); a name the organisation has
+    no group for is skipped with a warning."""
+    name = data.get("compliance_default_standards_manager_group")
+    if not name:
+        return
+    settings = db.scalar(select(ComplianceOrgSettings).where(ComplianceOrgSettings.organization_id == org.id))
+    if settings is not None and settings.default_standards_manager_group_id is not None:
+        return
+    group = db.scalar(select(OrgGroup).where(OrgGroup.organization_id == org.id, OrgGroup.name == name))
+    if group is None:
+        warnings.add(f"Default compliance managers group {name!r} skipped — the organisation has no such group.")
+        return
+    if settings is None:
+        settings = ComplianceOrgSettings(organization_id=org.id)
+        db.add(settings)
+    settings.default_standards_manager_group_id = group.id
+    db.flush()
+
+
 def import_org_data(
     db: Session, org: Organization, data: dict[str, Any], users: UserResolver, warnings: BundleImportWarnings,
     resolutions: dict[str, str] | None,
@@ -627,6 +655,7 @@ def import_org_data(
     returned `requirement_id_by_ref` has no other consumer once `_import_
     compliance_requirement_mappings` has run."""
     _import_compliance_vocab(db, org, data)
+    _import_default_manager_group(db, org, data, warnings)
     requirement_id_by_ref = _import_compliance_standards(db, org, data, users, warnings, resolutions=resolutions)
     _import_compliance_requirement_mappings(db, org, data, users, requirement_id_by_ref, warnings)
 
@@ -1272,7 +1301,52 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     return {
         "compliance_project_compliances": project_compliances_json, "compliance_evidence": evidence_json,
         "compliance_requirement_links": _export_requirement_links(db, project),
+        "compliance_default_exclusions": _export_default_exclusions(db, project),
     }, file_assets_by_id
+
+
+def _export_default_exclusions(db: Session, project: Project) -> list[dict[str, Any]]:
+    """The standards this project is excepted out of the "applies to all projects" default for, each by
+    portable standard reference with its reason and who recorded it."""
+    out = []
+    for exclusion in db.scalars(
+        select(ComplianceStandardDefaultExclusion).where(ComplianceStandardDefaultExclusion.project_id == project.id)
+        .order_by(ComplianceStandardDefaultExclusion.excluded_at)
+    ):
+        standard = db.get(ComplianceStandard, exclusion.standard_id)
+        user = db.get(User, exclusion.excluded_by)
+        if standard is None:
+            continue
+        out.append({
+            "standard_reference": standard.reference, "reason": exclusion.reason, "excluded_at": _j(exclusion.excluded_at),
+            "excluded_by_email": user.email if user else None,
+        })
+    return out
+
+
+def _import_default_exclusions(
+    db: Session, project: Project, data: dict[str, Any], current_user: User, users: UserResolver,
+    warnings: BundleImportWarnings,
+) -> None:
+    """Recreates the project's default-applicability exclusions; one naming a standard the target
+    organisation lacks is skipped with a warning."""
+    for entry in data.get("compliance_default_exclusions", []):
+        standard = db.scalar(select(ComplianceStandard).where(
+            ComplianceStandard.organization_id == project.organization_id,
+            ComplianceStandard.reference == entry["standard_reference"],
+        ))
+        if standard is None:
+            warnings.add(
+                f"Default-applicability exclusion for standard {entry['standard_reference']!r} skipped — "
+                "the organisation has no such standard."
+            )
+            continue
+        db.add(ComplianceStandardDefaultExclusion(
+            standard_id=standard.id, project_id=project.id, reason=entry.get("reason", ""),
+            excluded_at=_dt(entry.get("excluded_at")) or datetime.now(UTC),
+            excluded_by=users.resolve(entry.get("excluded_by_email"), required=False, context="Compliance exclusion author") or current_user.id,
+        ))
+    db.flush()
 
 
 def _export_requirement_links(db: Session, project: Project) -> list[dict[str, Any]]:
@@ -1397,6 +1471,7 @@ def import_project_data(
     assessment_rows` created it, never silently fabricated from the bundle.
     """
     organization_id = project.organization_id
+    _import_default_exclusions(db, project, data, current_user, users, warnings)
 
     evidence_id_by_ref: dict[str, UUID] = {}
     for e in data.get("compliance_evidence", []):

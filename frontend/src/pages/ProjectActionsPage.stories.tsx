@@ -3,8 +3,10 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { ActionTypeDefinition, OrgUser, RequirementAction } from "../api/types";
+import { buildRecordColumns } from "../testing/recordTablesFixtures";
 import { buildActionType, buildRequirementAction, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { ProjectActionsPage } from "./ProjectActionsPage";
+import { chooseListAction, openListMenu } from "../testing/listActionsMenu";
 
 const PROJECT_ID = "project-1";
 
@@ -28,6 +30,7 @@ const actions: RequirementAction[] = [
 
 function mockProjectActionsApis() {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.endsWith("/records/requirement_action/columns")) return buildRecordColumns({ label: "Actions" });
     if (path.includes("/action-types")) return actionTypes;
     if (path.includes("/actions")) return actions;
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1" };
@@ -61,6 +64,22 @@ export const ListWithFilters: Story = {
     // A group assignee shows its name, kind and member count rather than a person's name.
     await expect(table.getByText("QA Team")).toBeInTheDocument();
     await expect(table.getByText("Org group · 3 members")).toBeInTheDocument();
+  },
+};
+
+/** The shared list actions: Export downloads the list with the page's filters, Import opens a file picker. */
+export const ExportAndImportAreOnTheTitleRow: Story = {
+  beforeEach: () => {
+    mockProjectActionsApis();
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["code,title\n"], { type: "text/csv" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Review password reset flow")).toBeInTheDocument());
+    await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await chooseListAction(canvas, "Export as CSV");
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/requirement_action/export"));
   },
 };
 

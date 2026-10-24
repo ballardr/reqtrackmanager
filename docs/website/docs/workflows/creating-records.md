@@ -23,7 +23,7 @@ A field with a **\*** after its name must be filled in before you can save; the 
 
 ## The (?) help button
 
-A **(?)** after a field's name explains what the field is, what it changes and a typical value, for example how a persona's importance weight alters a Pain Point's score. Select it to read the text under the name; select it again to hide it. Self-explanatory fields (a title, a comment) have no button.
+A **(?)** after a field's name explains what the field is, what it changes and a typical value, for example how a persona's importance weight alters a Pain Point's score. Hover over it, tab to it, or select it to read the text in a small bubble that never moves the fields around it; select it again, press Escape, or click elsewhere to close it. Self-explanatory fields (a title, a comment) have no button.
 
 ## Tags and Link to
 
@@ -33,6 +33,12 @@ A **(?)** after a field's name explains what the field is, what it changes and a
 ## Save and activate
 
 Some records start as a draft: Personas, Stakeholders and Stakeholder Needs. Where you are allowed to activate them, the form offers **Save and activate** beside **Save**, so a record you will use at once is not left in draft. It is one step: either the record is created and active, or nothing is stored. Records that need another person's approval (requirements, change requests, decisions, strategies, future states, guiding principles) never offer it, so nobody can approve their own work. See [The People page](../modules/stakeholders-personas-module/people-page.md).
+
+## The form header and long text
+
+Every form in a dialog or side panel keeps its **title, Cancel and Save** (and **Save and activate** where offered) in a header row that stays in view; only the fields below it scroll. However long the form is, you can save from where you are, and create and edit forms behave the same way. Press **Enter** in a single-line field to save, as before.
+
+A field meant for longer writing (a description, rationale, notes, evidence) grows as you type, up to a limit, after which it scrolls inside the field. Short fields such as a name stay one line.
 
 ## Where this fits
 

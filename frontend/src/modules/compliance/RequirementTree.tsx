@@ -658,10 +658,10 @@ function RequirementDetailPanel({
             <TextField help={COMPLIANCE_HELP.complianceRequirementReference} label="Reference" value={reference} onChange={setReference} placeholder="e.g. A.5.1" />
             <TextField helpNotNeeded required label="Name" ariaLabel="Requirement name" value={name} onChange={setName} />
             <FormGridFull>
-              <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} autoGrow />
+              <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} />
             </FormGridFull>
             <FormGridFull>
-              <TextAreaField helpNotNeeded label="Reasoning" value={reasoning} onChange={setReasoning} autoGrow />
+              <TextAreaField helpNotNeeded label="Reasoning" value={reasoning} onChange={setReasoning} />
             </FormGridFull>
           </FormGrid>
         ) : (
@@ -839,14 +839,14 @@ function RequirementClarifyModal({
           <TextField help={COMPLIANCE_HELP.complianceRequirementReference} label="Reference" value={reference} onChange={setReference} placeholder="e.g. A.5.1" />
           <TextField helpNotNeeded required label="Name" ariaLabel="Requirement name" value={name} onChange={setName} />
           <FormGridFull>
-            <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} autoGrow />
+            <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField helpNotNeeded label="Reasoning" value={reasoning} onChange={setReasoning} autoGrow />
+            <TextAreaField helpNotNeeded label="Reasoning" value={reasoning} onChange={setReasoning} />
           </FormGridFull>
           <FormGridFull>
             <TextAreaField helpNotNeeded required
-              label="Clarification note" value={clarificationNote} onChange={setClarificationNote} autoGrow
+              label="Clarification note" value={clarificationNote} onChange={setClarificationNote}
               inputProps={{ placeholder: "What changed, and why it's non-substantive." }}
             />
           </FormGridFull>

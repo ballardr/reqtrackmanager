@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from itertools import groupby
 
 from app.services.csv_safety import csv_safe
-from app.services.labels import requirement_status_label
+from app.services.labels import REQUIREMENT_STATUS_TONE, requirement_status_label
 from app.services.report_document import ReportBranding
 from app.services.report_docx import render_docx_document
 from app.services.report_model import Block, Gap, Heading, PageBreak, ReportDocument, Table, markdown_to_blocks
@@ -193,6 +193,8 @@ def build_requirement_document(
                     header,
                     [[r.unique_code, r.name, r.reasoning, requirement_status_label(r.status), r.tags] for r in category_rows],
                     col_widths_cm=widths,
+                    # The Status cell takes the badge colour the screen gives that status.
+                    tones=[[None, None, None, REQUIREMENT_STATUS_TONE.get(r.status), None] for r in category_rows],
                 ),
                 Gap(0.5),
             ]

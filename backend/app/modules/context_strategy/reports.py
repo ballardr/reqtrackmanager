@@ -53,7 +53,7 @@ from __future__ import annotations
 import uuid
 from collections import Counter, defaultdict
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -76,8 +76,11 @@ from app.modules.context_strategy.enums import (
 )
 from app.modules.context_strategy.labels import (
     LIFECYCLE_STATUS_LABEL,
+    LIFECYCLE_STATUS_TONE,
     OPEN_QUESTION_STATUS_LABEL,
+    OPEN_QUESTION_STATUS_TONE,
     PAIN_POINT_STATUS_LABEL,
+    PAIN_POINT_STATUS_TONE,
     PRIORITY_LABEL,
     ROLLUP_LABEL,
     SCOPE_LABEL,
@@ -107,6 +110,7 @@ from app.modules.context_strategy.pain_point_scores import (
 from app.modules.context_strategy.scoring import PAIN_POINT_SCORING_SCHEME
 from app.modules.registry import ReportDefinition, ReportParamDefinition, get_artefact_summary
 from app.services import relationships
+from app.services.labels import REQUIREMENT_STATUS_LABEL, REQUIREMENT_STATUS_TONE
 from app.services.principals import principal_text
 from app.services.report_framework import (
     ReportContext,
@@ -116,6 +120,7 @@ from app.services.report_framework import (
     ReportSection,
     build_report_routers,
     normalise_metrics,
+    tones_by_label,
 )
 from app.services.scoring import resolve_effective_bands, resolve_effective_cell_ratings
 
@@ -322,6 +327,7 @@ class PersonaScoreRow:
     band: str | None
     is_blocker: bool
     severity_ratio: float | None
+    band_tone: str | None = None
 
 
 @dataclass
@@ -421,7 +427,7 @@ def _persona_rows(ctx: ScoringContext, summary: PainPointScoringSummary) -> list
             frequency=levels["frequency"].name if levels["frequency"] else None,
             confidence=levels["confidence"].name if levels["confidence"] else None,
             score=e.score.normalised if e.score else None, band=e.score.band.label if e.score and e.score.band else None,
-            is_blocker=e.is_blocker, severity_ratio=ratio,
+            is_blocker=e.is_blocker, severity_ratio=ratio, band_tone=e.score.band.tone if e.score and e.score.band else None,
         ))
     return rows
 
@@ -529,6 +535,12 @@ def _item_row(i: RankedPainPoint) -> list[str]:
 
 
 _R1_COLUMNS = ["Model", "Rank", "Pain point", "Project", "Type", "Status", "Priority", "Score (0–100)", "Band", "Blocker", "Note", "Tags"]
+_R1_BAND_COLUMN = _R1_COLUMNS.index("Band")
+
+
+def _item_tones(items: list[RankedPainPoint]) -> list[list[str | None]]:
+    """Cell tones for `_item_row` rows: the Band column takes its band's tone, as the screen's badge does."""
+    return [[i.band_tone if column == _R1_BAND_COLUMN else None for column in range(len(_R1_COLUMNS))] for i in items]
 
 
 def collect_pain_point_prioritisation(db: Session, req: ReportContext) -> ReportResult:
@@ -556,17 +568,18 @@ def collect_pain_point_prioritisation(db: Session, req: ReportContext) -> Report
         "Intentional limitations are excluded from the ranking (see the Intentional section and R9).",
     ])
     ranking, unscored, blockers, intentional, breakdown, matrix = [], [], [], [], [], []
+    ranking_items, unscored_items, blocker_items, intentional_items = [], [], [], []
+    breakdown_tones, matrix_tones = [], []
     open_count = scored = 0
     for group in groups:
         fixable = [i for i in group.items if not i.is_intentional]
         ranked = sorted((i for i in fixable if i.score is not None), key=lambda i: (-(i.score or 0), i.title.lower()))
         for n, item in enumerate(ranked, start=1):
             item.rank = n
-        ranking += [_item_row(i) for i in ranked]
-        unscored += [_item_row(i) for i in fixable if i.score is None]
-        blockers += [_item_row(i) for i in fixable if i.is_blocker]
-        intentional += [_item_row(i) for i in sorted(
-            (i for i in group.items if i.is_intentional), key=lambda i: (-(i.score or 0), i.title.lower()))]
+        ranking_items += ranked
+        unscored_items += [i for i in fixable if i.score is None]
+        blocker_items += [i for i in fixable if i.is_blocker]
+        intentional_items += sorted((i for i in group.items if i.is_intentional), key=lambda i: (-(i.score or 0), i.title.lower()))
         for i in group.items:
             breakdown += [
                 [i.model_key, i.label, i.project_name, p.persona, label(SCORE_TARGET_STATUS_LABEL, p.target_status),
@@ -574,23 +587,30 @@ def collect_pain_point_prioritisation(db: Session, req: ReportContext) -> Report
                  "Yes" if p.is_blocker else ""]
                 for p in i.personas
             ]
+            breakdown_tones += [[None] * 9 + [p.band_tone, None] for p in i.personas]
         open_count += len(fixable)
         scored += len(ranked)
-        matrix += _matrix_rows(group, [i for i in fixable if i.matrix is not None])
+        group_rows, group_tones = _matrix_rows(group, [i for i in fixable if i.matrix is not None])
+        matrix += group_rows
+        matrix_tones += group_tones
+    ranking, blockers, unscored, intentional = (
+        [_item_row(i) for i in items] for items in (ranking_items, blocker_items, unscored_items, intentional_items)
+    )
     result.sections = [
-        ReportSection("ranking", "Ranked Pain Points", _R1_COLUMNS, ranking),
-        ReportSection("blockers", "Blockers", _R1_COLUMNS, blockers, gap=True,
+        ReportSection("ranking", "Ranked Pain Points", _R1_COLUMNS, ranking, tones=_item_tones(ranking_items)),
+        ReportSection("blockers", "Blockers", _R1_COLUMNS, blockers, gap=True, tones=_item_tones(blocker_items),
                       note="At least one persona is at the top Severity level."),
         ReportSection("unscored", "Not scored under this model", _R1_COLUMNS, unscored, gap=True,
-                      note="No persona has every input this model needs."),
+                      tones=_item_tones(unscored_items), note="No persona has every input this model needs."),
         ReportSection("matrix", "Severity × Frequency matrix",
-                      ["Model", "Severity \\ Frequency", *_matrix_columns(groups)], matrix,
-                      note="Count of Pain Points by their worst counted persona; confidence in brackets."),
-        ReportSection("intentional", "Intentional limitations", _R1_COLUMNS, intentional,
+                      ["Model", "Severity \\ Frequency", *_matrix_columns(groups)], matrix, tones=matrix_tones,
+                      note="Cells are coloured and named by rating band. Each shows the count of Pain Points by their "
+                           "worst counted persona, with confidence in brackets."),
+        ReportSection("intentional", "Intentional limitations", _R1_COLUMNS, intentional, tones=_item_tones(intentional_items),
                       note="Deliberate tier limitations: scored, but not part of the fix ranking."),
         ReportSection("personas", "Per-persona breakdown",
                       ["Model", "Pain point", "Project", "Persona", "Persona status", "Severity", "Frequency",
-                       "Confidence", "Score (0–100)", "Band", "Blocker"], breakdown),
+                       "Confidence", "Score (0–100)", "Band", "Blocker"], breakdown, tones=breakdown_tones),
     ]
     scoring = _scoring_query(req)
     result.metrics = [
@@ -611,21 +631,47 @@ def _matrix_columns(groups: list[ScoredGroup]) -> list[str]:
     return [lvl.name for lvl in sorted(groups[0].frequency_levels, key=lambda lvl: lvl.weight)] if groups else []
 
 
-def _matrix_rows(group: ScoredGroup, items: list[RankedPainPoint]) -> list[list[str]]:
-    """One row per Severity level (highest first); each cell counts Pain
-    Points with a breakdown of their Confidence."""
+def _cell_band(group: ScoredGroup, severity: LevelRef, frequency: LevelRef) -> BandRef | None:
+    """The rating band of one Severity × Frequency cell, as the on-screen matrix picks it: the cell's
+    explicit rating if it has one, else the highest band whose threshold its normalised score reaches."""
+    explicit = next(
+        (c.band_label for c in group.cell_ratings if c.severity == severity.name and c.frequency == frequency.name), None,
+    )
+    if explicit is not None:
+        pinned = next((b for b in group.bands if b.label == explicit), None)
+        if pinned is not None:
+            return pinned
+    top = max((lvl.weight for lvl in group.severity_levels), default=0.0) * max((lvl.weight for lvl in group.frequency_levels), default=0.0)
+    if top <= 0:
+        return None
+    score = severity.weight * frequency.weight / top
+    return max((b for b in group.bands if score >= b.min_score), key=lambda b: b.min_score, default=None)
+
+
+def _matrix_rows(group: ScoredGroup, items: list[RankedPainPoint]) -> tuple[list[list[str]], list[list[str | None]]]:
+    """One row per Severity level (highest first); each cell counts Pain Points with a breakdown of
+    their Confidence, then names the cell's rating band ("2 (High ×2) · Critical"; an empty cell is just
+    the band). The tones mirror the screen's band colours.
+
+    Returns:
+        `(rows, tones)`, the same shape.
+    """
     frequencies = sorted(group.frequency_levels, key=lambda lvl: lvl.weight)
     rows: list[list[str]] = []
+    tones: list[list[str | None]] = []
     for sev in sorted(group.severity_levels, key=lambda lvl: -lvl.weight):
         cells: list[str] = []
+        cell_tones: list[str | None] = []
         for freq in frequencies:
             here = [i for i in items if i.matrix and i.matrix.severity == sev.name and i.matrix.frequency == freq.name]
             confidence = Counter(i.matrix.confidence or "Unrated" for i in here if i.matrix)
-            cells.append(
-                f"{len(here)} ({', '.join(f'{k} ×{v}' for k, v in sorted(confidence.items()))})" if here else ""
-            )
+            band = _cell_band(group, sev, freq)
+            count = f"{len(here)} ({', '.join(f'{k} ×{v}' for k, v in sorted(confidence.items()))})" if here else ""
+            cells.append(" · ".join(part for part in (count, band.label if band else "") if part))
+            cell_tones.append(band.tone if band else None)
         rows.append([group.model_key, sev.name, *cells])
-    return rows
+        tones.append([None, None, *cell_tones])
+    return rows, tones
 
 
 def collect_upgrade_drivers(db: Session, req: ReportContext) -> ReportResult:
@@ -1353,7 +1399,17 @@ _SINCE = ReportParamDefinition(
     "since", "date", label="Changes since", description="Change history only: earliest version date to include.",
 )
 
-REPORT_DEFINITIONS: tuple[ReportDefinition, ...] = (
+# Badge colours for the PDF and Word output: every Status column (the Strategy, Future State, Guiding Principle, Pain
+# Point, Open Question and Requirement statuses share no label with a different tone), and the Requirement status column.
+_CELL_TONES = {
+    "Status": tones_by_label(
+        (LIFECYCLE_STATUS_LABEL, LIFECYCLE_STATUS_TONE), (PAIN_POINT_STATUS_LABEL, PAIN_POINT_STATUS_TONE),
+        (OPEN_QUESTION_STATUS_LABEL, OPEN_QUESTION_STATUS_TONE), (REQUIREMENT_STATUS_LABEL, REQUIREMENT_STATUS_TONE),
+    ),
+    "Requirement status": tones_by_label((REQUIREMENT_STATUS_LABEL, REQUIREMENT_STATUS_TONE)),
+}
+
+_REPORTS: tuple[ReportDefinition, ...] = (
     ReportDefinition(
         "r1", "pain-point-prioritisation", "Pain Point prioritisation",
         "Open Pain Points ranked by the chosen scoring model and persona roll-up, with Blockers always shown.",
@@ -1409,6 +1465,8 @@ REPORT_DEFINITIONS: tuple[ReportDefinition, ...] = (
         record_types=("pain_point",),
     ),
 )
+
+REPORT_DEFINITIONS: tuple[ReportDefinition, ...] = tuple(replace(d, cell_tones=_CELL_TONES) for d in _REPORTS)
 
 # Project and organisation routers for the module to include (`router.py`, `project_router.py`).
 REPORT_ROUTERS = build_report_routers(MODULE_KEY, REPORT_DEFINITIONS)

@@ -66,9 +66,9 @@ from app.modules.stakeholders.service import (
     grid_quadrant,
     hidden_persona_ids,
     hidden_stakeholder_ids,
-    list_project_visible_stakeholders,
     list_represented_personas,
     list_representing_stakeholders,
+    project_stakeholders,
     set_project_stakeholder_visibility,
     suggest_cadence,
     unarchive_record,
@@ -280,11 +280,9 @@ def list_project_stakeholders(
     def rows_for(pid: UUID) -> list:
         """This endpoint's rows for one project of the scope."""
         project = _project(db, pid)
-        stakeholders = list_project_visible_stakeholders(
-            db, project, include_archived=include_archived, include_hidden=include_hidden
+        stakeholders = project_stakeholders(
+            db, project, include_archived=include_archived, include_org=include_org, include_hidden=include_hidden
         )
-        if not include_org:
-            stakeholders = [s for s in stakeholders if s.scope == StakeholderScope.PROJECT]
         stakeholders = tag_filter.keep(db, pid, STAKEHOLDER_ARTEFACT_TYPE, stakeholders)
         if group_id is not None or group_by is not None:
             stakeholders = gsh.filter_and_sort_stakeholders(

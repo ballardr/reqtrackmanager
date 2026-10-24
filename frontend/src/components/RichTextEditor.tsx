@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api } from "../api/client";
 import type { FileAsset } from "../api/types";
 import { htmlToMarkdown, renderMarkdown, resolveImageRef } from "../utils/markdown";
+import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { FileUploadTrigger } from "./FileUploadTrigger";
 import { Modal } from "./Modal";
 import { Tooltip } from "./Tooltip";
@@ -345,13 +346,12 @@ export function RichTextEditor({
         </Modal>
       )}
       {mode === "markdown" ? (
-        <textarea
-          ref={textareaRef}
-          className="input"
+        <AutoGrowTextarea
+          textareaRef={textareaRef}
           rows={rows}
           placeholder={placeholder}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={onChange}
         />
       ) : (
         <div

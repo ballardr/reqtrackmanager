@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { expect, fn, screen, userEvent, waitFor, within } from "storybook/test";
+import { expect, fireEvent, fn, screen, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError } from "../api/client";
 import { DefinitionList } from "./DefinitionList";
@@ -299,6 +299,45 @@ export const DerivedOrderWithFloorAndOptionalField: Story = {
     await expect(canvas.getByPlaceholderText("Weight")).toHaveAttribute("type", "number");
     await userEvent.click(canvas.getByRole("button", { name: "Add level" }));
     await waitFor(() => expect(canvas.getAllByRole("button", { name: "Delete level" })).toHaveLength(3));
+  },
+};
+
+/** A long free-text field (`multiline`) is a growing text area in the row and in the add form. */
+export const MultilineFieldGrowsWithContent: Story = {
+  render: () => {
+    function Harness() {
+      const [items, setItems] = useState([{ id: "a", name: "Market", definition: "Buyers and competitors." }]);
+      return (
+        <DefinitionList<{ id: string; name: string; definition: string }>
+          items={items}
+          fields={[
+            { key: "name", getValue: (i) => i.name, placeholder: "Name", ariaLabel: "Type name" },
+            { key: "definition", getValue: (i) => i.definition, placeholder: "Definition", ariaLabel: "Type definition", multiline: true, optional: true },
+          ]}
+          getReassignLabel={(i) => i.name}
+          onRename={async (id, values) => setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...values } : i)))}
+          onAdd={async (values) => {
+            setItems((prev) => [...prev, { id: `n${prev.length}`, name: values.name, definition: values.definition }]);
+          }}
+          onDelete={async (id) => setItems((prev) => prev.filter((i) => i.id !== id))}
+          deleteLabel="Delete type"
+          addLabel="Add type"
+        />
+      );
+    }
+    return <Harness />;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const box = canvas.getByRole("textbox", { name: "Type definition" });
+    await expect(box.tagName).toBe("TEXTAREA");
+    const before = (box as HTMLElement).clientHeight;
+    fireEvent.change(box, { target: { value: Array.from({ length: 6 }, (_, i) => `Line ${i + 1}`).join("\n") } });
+    await waitFor(() => expect((box as HTMLElement).clientHeight).toBeGreaterThan(before));
+    // The optional definition may stay blank when adding.
+    await userEvent.type(canvas.getByPlaceholderText("Name"), "User");
+    await userEvent.click(canvas.getByRole("button", { name: "Add type" }));
+    await waitFor(() => expect(canvas.getByDisplayValue("User")).toBeInTheDocument());
   },
 };
 

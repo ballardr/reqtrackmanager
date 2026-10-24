@@ -38,6 +38,8 @@ import { FormActions } from "../components/FormActions";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useResetOnChange } from "../hooks/useResetOnChange";
+import { useRestoredRowCount } from "../hooks/useListPosition";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../hooks/useUrlFilter";
 
 // MIRROR_ALL/MIRROR_ROLE can convey manager/admin control (unlike
 // MEMBER_ONLY, which caps at baseline MEMBER — parity with
@@ -72,12 +74,14 @@ export function ProjectListPage() {
   // `ResultCount` in `FilterPanel`'s header alongside `total` above, which
   // is the filtered/searched count.
   const [totalUnfiltered, setTotalUnfiltered] = useState(0);
-  const [showArchived, setShowArchived] = useState(false);
-  const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState<ProjectRole | "">("");
-  const [stageStatusFilter, setStageStatusFilter] = useState<StageStatus | "">("");
-  const [orgFilter, setOrgFilter] = useState("");
-  const [favoriteOnly, setFavoriteOnly] = useState(false);
+  // Filters live in the URL so the list comes back as it was left after a visit to a project.
+  const [showArchived, setShowArchived] = useUrlFlag("archived");
+  const [search, setSearch] = useUrlText("q");
+  const [roleFilter, setRoleFilter] = useUrlChoice("role", Object.keys(PROJECT_ROLE_LABEL) as ProjectRole[]);
+  const [stageStatusFilter, setStageStatusFilter] = useUrlChoice("stage_status", Object.keys(STAGE_STATUS_LABEL) as StageStatus[]);
+  const [orgFilter, setOrgFilter] = useUrlText("org");
+  const [favoriteOnly, setFavoriteOnly] = useUrlFlag("favourites");
+  const limitFor = useRestoredRowCount(PAGE_SIZE);
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [showNewForm, setShowNewForm] = useState(false);
   const [newName, setNewName] = useState("");
@@ -137,11 +141,17 @@ export function ProjectListPage() {
   }, { runOnMount: true });
 
   useEffect(() => {
-    if (deepLinkParentId && deepLinkOrgId) setSearchParams({}, { replace: true });
+    if (!deepLinkParentId || !deepLinkOrgId) return;
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete("parentProjectId");
+      next.delete("organizationId");
+      return next;
+    }, { replace: true });
   }, [deepLinkParentId, deepLinkOrgId, setSearchParams]);
 
   function listParams(offset: number): URLSearchParams {
-    const params = new URLSearchParams({ archived: String(showArchived), limit: String(PAGE_SIZE), offset: String(offset) });
+    const params = new URLSearchParams({ archived: String(showArchived), limit: String(limitFor(offset)), offset: String(offset) });
     if (search) params.set("search", search);
     if (roleFilter) params.set("role", roleFilter);
     if (stageStatusFilter) params.set("stage_status", stageStatusFilter);
@@ -307,6 +317,8 @@ export function ProjectListPage() {
   return (
     <div className="stack">
       <ListPageLayout
+        ready={projects !== null}
+        loadedRows={projects?.length}
         title={strings.projects.title}
         actions={
           <button className="btn btn-primary" onClick={() => setShowNewForm(true)}>

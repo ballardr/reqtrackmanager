@@ -11,13 +11,17 @@
  *   filter starts ticked. A link that says `open=0`, or that names a slice the
  *   default would hide (a valid `status`, a type's own extra slice), starts
  *   unticked, so a link never lands on an empty list. `open=1` keeps it on.
- * - `useOpenOnly`: hold that state for the page.
+ * - `useOpenOnly`: hold that state for the page, in the URL (`open=1|0`, always written) with the list's other
+ *   filters, so the list comes back as it was left. The starting value is worked out once from the link the page
+ *   opened with; it is not re-derived when the person later picks a status.
  *
  * What counts as "open" stays with each type (a `*_OPEN_STATUSES` list beside
  * its status labels); this module knows nothing about any one type, so a
  * module's list uses it without a core edit.
  */
 import { useState } from "react";
+
+import { useUrlFlag, type UrlSetter } from "./useUrlFilter";
 
 /**
  * Whether a list starts on open items only.
@@ -52,6 +56,7 @@ export function useOpenOnly(
   initial: URLSearchParams,
   validStatuses: readonly string[],
   namesOtherSlice = false,
-): [boolean, (next: boolean) => void] {
-  return useState(() => opensOnOpenOnly(initial, validStatuses, namesOtherSlice));
+): [boolean, UrlSetter<boolean>] {
+  const [startsOpen] = useState(() => opensOnOpenOnly(initial, validStatuses, namesOtherSlice));
+  return useUrlFlag("open", startsOpen, { explicit: true });
 }

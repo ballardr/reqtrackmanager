@@ -24,6 +24,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { ListActions } from "../../components/ListActions";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
@@ -35,6 +36,7 @@ import { GUIDING_PRINCIPLE_PRIORITY_LABEL, GUIDING_PRINCIPLE_STATUS_LABEL, GUIDI
 import type { GuidingPrinciple, GuidingPrincipleFieldValues, GuidingPrinciplePriority, GuidingPrincipleStatus } from "./types";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { filterString } from "../../utils/listFilterParams";
 
 export function OrgGuidingPrinciplesPanel({ orgId }: { orgId: string }) {
   const navigate = useNavigate();
@@ -67,7 +69,7 @@ export function OrgGuidingPrinciplesPanel({ orgId }: { orgId: string }) {
   const filtered = guidingPrinciples.filter((g) => {
     if (statusFilter && g.status !== statusFilter) return false;
     if (priorityFilter && g.priority !== priorityFilter) return false;
-    if (search && !`{g.unique_code} {g.name}`.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !`${g.unique_code} ${g.name}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
@@ -84,9 +86,14 @@ export function OrgGuidingPrinciplesPanel({ orgId }: { orgId: string }) {
 
   return (
     <div className="stack">
-      <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
-        New Guiding Principle
-      </button>
+      <div className="row" style={{ gap: "var(--space-3)", alignSelf: "flex-start" }}>
+        <button className="btn btn-primary" onClick={() => setCreating(true)}>
+          New Guiding Principle
+        </button>
+        <ListActions
+          organizationId={orgId} recordType="guiding_principle" filters={filterString({ status: statusFilter, priority: priorityFilter, search, include_archived: includeArchived })} onImported={reloadGuidingPrinciples}
+        />
+      </div>
       <div className="side-grid">
         <DirectoryTable
           ariaLabel="Organisation Guiding Principles"

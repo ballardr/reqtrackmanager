@@ -3,7 +3,7 @@ root-causing e2e timeouts: the backend saturated a CPU on N+1 queries in the
 project and requirements lists).
 
 Covers:
-- `GET /projects/{id}/requirements` batching (`_prefetch_for_list`): the
+- `GET /projects/{id}/requirements` batching (`prefetch_for_list`): the
   batched per-row fields match the single-requirement endpoint exactly, and
   the query count no longer grows with the number of requirements.
 - `GET /projects/{id}/my-roles`: the caller's roles on one project, including

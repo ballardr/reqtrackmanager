@@ -33,6 +33,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { ListActions } from "../../components/ListActions";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
@@ -44,6 +45,7 @@ import { STRATEGY_PRIORITY_LABEL, STRATEGY_STATUS_LABEL, STRATEGY_STATUS_TONE } 
 import type { Strategy, StrategyFieldValues, StrategyPriority, StrategyStatus } from "./types";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { filterString } from "../../utils/listFilterParams";
 
 export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
   const navigate = useNavigate();
@@ -76,7 +78,7 @@ export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
   const filtered = strategies.filter((s) => {
     if (statusFilter && s.status !== statusFilter) return false;
     if (priorityFilter && s.priority !== priorityFilter) return false;
-    if (search && !`{s.unique_code} {s.title}`.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !`${s.unique_code} ${s.title}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
@@ -93,9 +95,14 @@ export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
 
   return (
     <div className="stack">
-      <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
-        New Strategy
-      </button>
+      <div className="row" style={{ gap: "var(--space-3)", alignSelf: "flex-start" }}>
+        <button className="btn btn-primary" onClick={() => setCreating(true)}>
+          New Strategy
+        </button>
+        <ListActions
+          organizationId={orgId} recordType="strategy" filters={filterString({ status: statusFilter, priority: priorityFilter, search, include_archived: includeArchived })} onImported={reloadStrategies}
+        />
+      </div>
       <div className="side-grid">
         <DirectoryTable
           ariaLabel="Organisation Strategy"

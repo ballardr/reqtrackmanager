@@ -684,9 +684,21 @@ select.input[size] {
   padding: 0.3rem 0.55rem;
   border-radius: var(--radius-md);
   white-space: nowrap;
-  z-index: 1000;
+  /* Above every overlay a control can sit in (Modal and SidePanel 1100, Popover 1150) so field help opened
+     inside a dialog is not hidden behind it; below the toast stack (1200). */
+  z-index: 1175;
   pointer-events: none;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+/* A tooltip carrying a sentence or two (field help): wraps inside a bounded width. `width: max-content`
+   keeps the wrapped width independent of where the bubble sits, so measuring it stays stable. */
+.tooltip-bubble--wrap {
+  white-space: normal;
+  width: max-content;
+  max-width: min(22rem, calc(100vw - 1rem));
+  padding: 0.45rem 0.7rem;
+  line-height: 1.4;
 }
 
 .grid {
@@ -1107,7 +1119,8 @@ a.figure-projects-link:hover {
   transition: left 0.15s ease;
 }
 
-.nav-rail-toggle {
+.nav-rail-toggle,
+.filter-panel-toggle {
   width: 28px;
   height: 28px;
   padding: 0;
@@ -1998,6 +2011,49 @@ td:has(> .disclosure-toggle) {
   cursor: pointer;
 }
 
+/* Bulk edit grid (components/RecordGrid): compact cells so a row of controls stays on one line; a changed cell is
+   tinted and marked on its left edge (the tint alone would be the only cue), a locked value reads as plain text. */
+.record-grid td {
+  padding: var(--space-1) 0.4rem;
+  vertical-align: middle;
+}
+.record-grid td .input {
+  min-width: 7rem;
+  padding-block: var(--space-1);
+}
+.record-grid__cell--changed {
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-warning);
+}
+.record-grid__row--read-only td {
+  color: var(--color-text-muted);
+}
+/* Vertical rule between two groups of controls on one toolbar row. */
+.toolbar-divider {
+  align-self: stretch;
+  width: 1px;
+  margin-inline: var(--space-2);
+  background: var(--color-border);
+}
+/* A locked value sits where the same column's select or input text sits (`.input`: 1px border + 0.6rem padding), so a
+   column reads as one list whether or not a row can be edited. */
+.record-grid td .tooltip-trigger {
+  display: flex;
+}
+.record-grid__locked {
+  flex: 1;
+  min-width: 7rem;
+  box-sizing: border-box;
+  padding: var(--space-1) calc(0.6rem + 1px);
+  cursor: help;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.record-grid__error {
+  color: var(--color-danger);
+  border-bottom: 1px solid var(--color-border);
+}
+
 /* Below 860px there isn't room for a full-width nav rail, a content
    column, and a 240px filter/activity sidebar side by side (confirmed:
    the page overflows past the viewport at 600px without this) — force the
@@ -2158,6 +2214,60 @@ td:has(> .disclosure-toggle) {
    bulk" / Principle 3). Fixed width in Popover.tsx's own inline style is
    the common case; this caps it on viewports narrower than that width so
    it can't get pushed past the screen edge on a phone. */
+/* Modal / SidePanel frame: pinned header (title, form actions, close, save error) over a scrolling body. */
+.dialog-card {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.dialog-header {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dialog-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.dialog-title {
+  margin: 0;
+  font-size: 1.1rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dialog-header-controls {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-left: auto;
+}
+
+.dialog-header-actions:empty {
+  display: none;
+}
+
+.dialog-header-actions > .row {
+  justify-content: flex-end;
+}
+
+.dialog-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-5);
+}
+
 .popover-bubble {
   max-width: calc(100vw - 1rem);
 }
@@ -2170,10 +2280,24 @@ td:has(> .disclosure-toggle) {
   white-space: normal;
 }
 
+/* A heading over a run of related menu items (`ActionMenuItem.group`), e.g. the record kind in a list's
+   export and import menu. */
+.menu-group-label {
+  padding: var(--space-2) var(--space-3) 0;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.menu-footer {
+  padding: var(--space-2) var(--space-3) 0;
+  max-width: 260px;
+  font-size: 0.8rem;
+}
+
 /* Field help (`FieldCaption`/`FieldHelp`, style guide "Pattern: field help"): the caption line of a
-   field, with a `(?)` button after the label that reveals the help text in place. The text takes the
-   whole line under the caption, so it never squeezes the caption. The icon is 14px (beside caption
-   text) and `flex: none` keeps a long label from squeezing it. */
+   field, with a `(?)` button after the label whose help text is a tooltip, so it never moves a field.
+   The icon is 14px (beside caption text) and `flex: none` keeps a long label from squeezing it. */
 .field-caption {
   display: flex;
   flex-wrap: wrap;
@@ -2196,7 +2320,7 @@ td:has(> .disclosure-toggle) {
 }
 
 .field-help__button:hover,
-.field-help__button[aria-expanded="true"] {
+.field-help__button:focus-visible {
   color: var(--color-accent);
 }
 
@@ -2204,14 +2328,6 @@ td:has(> .disclosure-toggle) {
   width: 14px;
   height: 14px;
   flex: none;
-}
-
-.field-help__text {
-  flex-basis: 100%;
-  font-size: 0.8rem;
-  font-weight: normal;
-  line-height: 1.4;
-  color: var(--color-text-muted);
 }
 
 /* Form and detail fields laid out in a grid (`FormGrid`): as many equal columns as fit at the
@@ -2601,6 +2717,15 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
       "content";
     grid-template-rows: auto;
   }
+}
+
+/* Filter panel collapsed by its toggle: it is hidden and the list takes the full width. */
+.list-page--filter-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "header"
+    "content";
+  grid-template-rows: auto;
 }
 
 /* A required field's `*` (`RequiredMark`) and the form's one-line legend, shown only while the form has a mark. */

@@ -369,6 +369,8 @@ class ModuleDefinition:
     search_providers: dict[str, ArtefactSearchProvider] = {}  # records the global search finds (§4j)
     not_searchable: dict[str, str] = {}  # artefact types deliberately outside the search, with the reason (§4j)
     search_scopes: dict[str, SearchScope] = {}  # extra places the search can be scoped to (§4j)
+    record_tables: dict[str, RecordTableProvider] = {}  # a type's list as an exportable, importable table (§4l)
+    not_importable: dict[str, str] = {}  # artefact types whose records import cannot author, with the reason (§4l)
     link_type_seeds: tuple[LinkTypeSeed, ...] = ()  # link types you ship; any artefact links to any by default (§4f-bis)
     reports: tuple[ReportDefinition, ...] = ()  # reports core serves for you (§4g)
     notification_types: tuple[NotificationTypeDefinition, ...] = ()  # notification kinds you send (§4h)
@@ -1150,6 +1152,8 @@ flowchart LR
   by default and cannot be a stored default: one `EXISTS` per type is much dearer than the record's own columns.
 - `open_owner_type` names the type whose page opens when yours has none of its own (a finding opens its
   engagement); `columns.owner_id` is that record's id.
+- **Frontend.** A list page passes `records={{ projectId, recordType, filters, onImported }}` to `ListPageLayout` and gets the Export menu and the Import wizard (`ListActions`, `CsvImportWizard`) from the columns above; `filters` is the page's own filter query string (the names its list request sends, minus paging and sort), so the file matches the screen. A module writes no export or import UI.
+- **The overview's total records.** The same provider feeds the project overview's *Total records* chart (`services/record_counts.py`, in `GET /projects/{id}/metrics` as `records_by_type` and `record_total`): give a cheap `count(db, user, project_id)` where a query is easy, else the rows of `list_records` with no filters are counted. Only the project's own, authored records count: organisation-owned rows are not any project's, and a type derived from an assigned standard sets `in_overview=False`. Declare the type's list page in `TierAModuleDefinition.artefactListPaths` so a legend row can open it (`artefactPaths.stories.tsx` fails for a counted type with none). A type the caller cannot read, or whose module is off, is omitted.
 - **Registration is required.** A type with neither a provider nor an entry in `not_searchable` (`{type: reason}`)
   fails `tests/test_search.py`, and the frontend must resolve a page for it (`artefactPaths`) or its result would
   be a dead row (`artefactPaths.stories.tsx`).
@@ -1161,6 +1165,62 @@ flowchart LR
   `TierAModuleDefinition.searchScopes` (`key`, `label`, `narrowness`, `match(pathname) -> ref id | null`); core
   names no module's scope.
 - Never log, audit or trace the query text; core already does not.
+
+### 4k. Project and organisation bundles: hooks every module provides
+
+Everything a module stores for a project travels in the project bundle (`services/project_export.py`), and everything it stores for an organisation travels in the organisation bundle (`services/org_export.py`). A module does this through `ModuleDefinition.project_bundle_hooks` and `org_bundle_hooks`, never a per-module edit to a core export file. A module with nothing to carry at a level says why in `no_project_bundle` / `no_org_bundle`; `backend/tests/test_module_bundle_hooks.py` fails for a module with neither, and for sections whose JSON keys collide with another module's or a core section (the sections are merged into one object, so a collision would overwrite data silently).
+
+```mermaid
+flowchart LR
+    Core["Core sections\n(requirements, groups, ...)"] --> M1["Each module: import_ hooks\n(registration order)"]
+    M1 --> M2["Each module: import_late hooks"]
+    M2 --> Audit["Audit trail replay"]
+```
+
+Read left to right: core sections import first, then every module's `import_` in registry order, then every `import_late`. Use `import_late` only for content that refers to another module's records, which may not exist yet (Pain Point scores refer to Personas).
+
+Rules for a hook (reference implementations: `modules/risk_management/export.py`, `modules/context_strategy/export.py`):
+
+- Cross-references use portable keys (type names, level axis and name, codes, labels, emails), never database ids. People and groups go through `principal_to_bundle` / `principal_columns_from_bundle`; a reference the target cannot match is left unset (or falls back to the importer for a mandatory owner) with a warning.
+- A record travels as its current content and status; history and comments do not. An import numbers records afresh with `generate_unique_code` and keeps the exported code only as a bundle `ref`.
+- Links between the module's own records and Requirements use `services.bundle_links.export_artefact_links` / `import_artefact_links`; attachments use `bundle_common.export_file_links` / `import_file_links`; tags use `record_tag_names` / `restore_record_tags`.
+- A type vocabulary carries its project overrides, project-only types and the organisation defaults the project has hidden (`ProjectDefinitionSuppression`).
+- An imported status is never an approval by someone else: no approver identity is carried, and project import is limited to organisation admins and project creators.
+- Add the export and import for a new table or column in the same change, with a round-trip test (export, import into a fresh project or organisation, compare).
+
+### 4l. Record tables: export and import of every list (List data and form UX, Phase 8)
+
+Every artefact type's list exports as CSV and, for a type people author, imports from the same file. You declare the table; core owns authorisation, the file, the preview and the audit.
+
+```mermaid
+flowchart LR
+    L["List filters + project scope"] --> E["GET records/{type}/export"]
+    E --> P["RecordTableProvider:\ncolumns + list_records"]
+    P --> F["CSV (code first)"]
+    F -->|"edit in a spreadsheet"| I["POST records/{type}/import\n(dry_run=true: preview)"]
+    I --> A["dry_run=false: apply"]
+    A --> U["the type's own create / update\n(version lock, validation, audit)"]
+```
+
+Read left to right: the same provider defines the columns of the file out and the file in, and the apply step runs the type's **own** create or update, never a raw write. A preview is that same run rolled back.
+
+- `record_tables[artefact_type] = RecordTableProvider(label, columns, list_records, find, prepare, create, update, filter_params, gate, can_create, can_update, approval_gated, organization_owned, organization)` (core types in `services/record_tables_core.py`).
+  - `columns(db, project)` returns `RecordColumn(key, label, get, parse, kind, editable, required, sensitivity, choices, cell_lock, tones)`. `get(prepared, record)` is the cell text (and the "before" an import compares against); `parse(ctx, text)` makes the value `create`/`update` receive and raises `RecordCellError` with a message the person can act on. **No `parse` means export-only** (a status behind an approval gate, a derived value, an instant). `prepare(db, project, records)` does the batch lookups once.
+  - `list_records(db, user, project_id, filters)` **must share its query with the type's list endpoint** (extract a function both call, as `services.requirements.filter_requirements` does), so a filter added to the page reaches the file. `filter_params` names the filters it understands; core refuses any other query parameter rather than ignore it. Tags and the nested-project scope are applied by core (`gate` is the list's own module gate).
+  - `gate` is the list's own `(module, sub-component)` gate. Core uses it for the nested-project scope **and** refuses the table (404, like an unknown type) while the project has that sub-component switched off, so a table never outlives the page it exports.
+  - `find(db, project, code)` searches **that project only**. `create(ctx, values)` and `update(ctx, record, values)` call the same service functions the type's endpoints call and **never commit** (core owns the transaction: a savepoint per row, one commit on apply). `update` receives only the cells that changed. Write the type's per-record audit event there as the endpoint does.
+  - `can_create` / `can_update` are the same check the type's endpoints make; when omitted the fine-grained `propose_create` / `manage` permission applies.
+  - `choices` is the closed list of cell texts a column accepts (enum labels, the project's stage names); the import wizard offers it as a pick list for "same value for every row". Leave it `None` for free text. `GET .../columns` also says whether the caller `can_import`, so a person who could not apply the file is not offered Import.
+- **The organisation's own lists.** A type the organisation can own also gives its provider `organization=OrganizationRecordTable(subcomponent, columns, list_records, find, prepare, create, update, filter_params, can_create, can_update)`: the same shape with the `Organization` where the project tier takes a project (`ctx.project` is `None`; use `ctx.organization`), gated by the sub-component the organisation list endpoint requires. Core serves it at `/api/v1/orgs/{id}/records/{type}/columns|export|import` and `/api/v1/orgs/{id}/reports/record-list` (`routers/org_record_tables.py`) through the same import body as the project tier, so the columns, the policy, the formula guard, the preview and the audit are shared. The tier matches only the organisation's own records (a project's code, or another organisation's, is an unknown-code row), writes codes qualified by the organisation code and uses the organisation-level `export_personal_data` grant. Share the list query and the create/edit function with the organisation endpoint, as for the project tier (`edits.create_strategy_record(db, RecordOwner(...))`). `backend/tests/test_org_record_tables.py` fails when a type with `organization_owned` has no organisation tier.
+- **Export-only tiers and types without a code.** A tier with no `create`/`update` is a read-only table; the type then gives its reason in `not_importable`. A module that declares no sub-components passes `subcomponent=None` (the module being enabled for the organisation is the whole gate). A type with no `PREFIX-nnn` code (the compliance requirement and its two project-level children, a recorded gap) returns a lightweight row object from `list_records` carrying the record and what its columns read, with `id`, `project_id` and `unique_code` (its clause reference, or blank) and gives `find` that always answers `None`; Compliance's `record_tables.py` is the reference.
+- **Organisation-owned rows.** A type the organisation can own (a Persona shared by every project) lists those rows in the project's table too. Give the provider `organization_owned(record) -> bool`: core then writes such a row with the organisation-qualified code (`ACME-PER-001`, always qualified, since its bare code could equal a project record's), and, because `find` searches the project's own records only, an import never changes one from a project (the row is reported as an unknown code). An organisation's own records are exported and imported at the organisation level.
+- **A write path the import can share.** A module's create/update that commits (a `*_from_payload` the endpoint calls) is split into a `stage_*` function that validates, writes and audits without committing, and a thin wrapper that commits and returns the API shape; the endpoint calls the wrapper and the provider the `stage_*` (see `modules/stakeholders/_*_shared.py`, `modules/context_strategy/edits.py`). Build the endpoint's own request payload (`PersonaCreate`, `StakeholderUpdate`) from the cells and turn a refusal into the row's error, so its length limits and tenancy checks apply unchanged.
+- **Format.** First column `code` (core writes it, qualified by the project code outside the request project or where the organisation enforces it). A person is one cell: an email, or `Name (Org group)` (`parse_principal_cell`, `PrincipalCells` for export). Enums by label, dates `YYYY-MM-DD`, instants UTC and export-only. Core adds the `'` formula guard on write and strips it on read; a provider never does.
+- **Approval gates.** A type with an approval gate sets `approval_gated=True` and gives its `status` no `parse`: a file creates drafts and edits content, it never approves (`tests/test_record_tables.py` fails otherwise).
+- **Personal data.** Classify a column with `sensitivity` (`personal`, `contact`, `free_text_people`); core leaves a tagged column out of every export and import unless the organisation's policy (its override, else the server default, else excluded) allows the tag **and** the person holds `export_personal_data` (`services/record_policy.py`). Never add a per-module check; the tag is the whole contract. Never expose a Restricted-classified value as a column.
+- **PDF and Word: the Record list report.** A provider's table is also a report (`GET /projects/{id}/reports/record-list?record_type=<type>&format=json|pdf|docx|csv`, `services/record_list_report.py`), listed in the report catalogue under the platform (`module_key` `platform`), not a module, with one `record_type` parameter holding exactly the types the caller may list. It adds no code per type: it renders `build_table`, so it shows the columns and rows the CSV export would. `format=csv` is the export's file byte for byte; a file (not the on-screen run) is audited as `records_exported`. A column colours its cells in PDF and Word with `RecordColumn.tones` (`{cell text: tone}`, tones as `report_model.TONE_FILL`); the text still names the value. The same MCP tool (`get_record_list_report`) serves every type.
+- **The bulk edit grid.** The same provider feeds the grid of a list (`GET /projects/{id}/records/{type}/grid`, `PATCH .../records/{type}/rows/{code}`; `build_grid` / `update_row` in `services/record_tables.py`, `components/RecordGrid.tsx`). A column is a grid cell when it is `editable`, importable and a closed-value kind (`enum`, `number`, `date`, `bool`); free text stays in the form. A save changes only the cells that differ from the value the grid loaded (`expected`; a cell changed since is refused with 409 and its current value), calls the provider's `update` in a savepoint and commits per row, so the type's own lock, validation and audit event apply and no second audit event is written. Two optional hooks say why something cannot be edited, as a courtesy to the person (the save is refused with the type's own message either way): `RecordTableProvider.read_only_reason(prepared, record)` for a whole row (a Requirement that is approved, a Pain Point at a terminal outcome) and `RecordColumn.cell_lock(prepared, record)` for one cell (a Pain Point scored per persona has no single severity). Rows of a related project (widened scope) and organisation-owned rows are read-only here. A list page offers the grid with `ViewToggle showGridOption` and `<RecordGrid projectId recordType filters contextKeys recordHref />`; the grid exists for the project tier only.
+- **Registration is required.** A type with no provider is listed in `PENDING_RECORD_TABLES` in `backend/tests/test_record_tables.py` (the list only shrinks). A type whose records import cannot author (produced by a workflow) still registers a provider for export (no `create`/`update`) and gives a reason in `not_importable`; a core type's reason is in `CORE_NOT_IMPORTABLE` (`services/record_tables_core.py`, change requests). Do not add per-type export or import code to a core file.
 
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 
@@ -1254,9 +1314,28 @@ REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
   `report_document.safe` and DOCX cells through `report_docx.clean_text`. Do not put Restricted data (secrets, file content) in
   a result: report reads are not audit-logged, on the basis that every field is
   already returned to the same caller elsewhere.
-- **Not built yet:** rich cells (Compliance's multi-line narrative), richer
-  section kinds (matrices) and row caps; add them when a second consumer needs
-  them.
+- **A cell the screen colours keeps its colour in PDF and Word.** `ReportSection.tones` is a grid shaped
+  like `rows` (`None` = no tone) naming a tone (`muted`, `info`, `accent`, `warning`, `danger`: the screen's
+  `BadgeTone`, so a rating band's `tone` goes straight in). A section whose `tones` are the wrong shape or
+  name an unknown tone raises when it is built. `report_model.TONE_FILL` is the one print colour per tone
+  (pinned to the stylesheet's `.scoring-cell--<tone>` tints by `backend/tests/test_report_tones.py`); CSV and
+  JSON carry the text only, so a toned cell's text also names the band ("2 (High ×2) · Critical"), which keeps
+  a greyscale print readable. A matrix is an ordinary table whose cells are toned (Pain Point R1's
+  Severity × Frequency, Risk RK2's Likelihood × Consequence).
+- **Status badges: declare, don't loop.** `ReportDefinition.cell_tones` maps a column heading to
+  `{label: tone}` (`{"Status": tones_by_label((RISK_STATUS_LABEL, RISK_STATUS_TONE))}`), and the framework tones
+  every matching cell in every section of the report, so a collector needs no change. Keep a `*_TONE` map beside
+  the `*_LABEL` map in the module's `labels.py`, the hand-kept twin of the frontend's (`test_report_tones.py`
+  fails when they drift); `tones_by_label` rejects a label that two enums tone differently. A collector's own
+  `tones` (a rating) wins over a declared one.
+- **Text colour is chosen by contrast, never fixed.** `report_model.text_on(fill)` returns black or white by the
+  WCAG rule the screen uses for the accent colour (`branding.contrast_text_hex`). Tone cells, and the table
+  header on an organisation's accent colour, use it, so a dark fill gets white text and a light one black. A
+  new renderer or a module's own PDF table must use `report_document.toned_paragraph` / `header_text_color`,
+  not a literal `colors.white`. The accent used *as text* on white paper (the cover title) goes through
+  `branding.readable_on_white`, which darkens a light accent until it reads.
+- **Not built yet:** rich cells (Compliance's multi-line narrative) and row caps; add them when a second
+  consumer needs them.
 - **On-screen UI is core too (Phase 13).** The project Reports page and Org
   Overview's "Reports" group list whatever the catalogue returns and run it with
   the shared `ReportRunner` (parameter form from the declaration, `ReportViewer`,

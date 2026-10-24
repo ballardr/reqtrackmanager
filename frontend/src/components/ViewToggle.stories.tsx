@@ -72,3 +72,22 @@ export const TilesOptionHidden: Story = {
     await expect(args.onChange).toHaveBeenCalledWith("list");
   },
 };
+
+/** A record list with editable columns offers the grid as one more view of the same rows. */
+export const GridOptionSwitchesToTheGrid: Story = {
+  args: { mode: "list", showTilesOption: false, showGridOption: true },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("button", { name: "Tile view" })).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Grid view" }));
+    await expect(args.onChange).toHaveBeenCalledWith("grid");
+  },
+};
+
+/** Off by default: a list without editable columns shows no Grid button. */
+export const NoGridButtonByDefault: Story = {
+  args: { mode: "list" },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).queryByRole("button", { name: "Grid view" })).not.toBeInTheDocument();
+  },
+};

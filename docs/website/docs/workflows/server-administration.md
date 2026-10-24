@@ -23,14 +23,19 @@ Opening any one org's admin page from here as a server admin (rather than an org
 
 | Server management |
 | --- |
-| Access review, platform branding, public sign-up, email and module settings |
+| Access review, platform branding, public sign-up, email, module and data policy settings |
 | ![Server management page with section navigation](../../static/img/screenshots/server-management.png) |
 
 - **Access review** — the platform-wide user directory: every user on the deployment, filterable to orphaned accounts (no organisation membership at all) or other server administrators. **Add user** creates a person from here (see [Adding a user](#adding-a-user)).
 - **Platform branding** — the deployment's own logo and login-page styling, distinct from an organisation's own branding.
 - **Public sign-up** — the deployment-wide sign-up mode: disabled (accounts created by an admin or invite only), always on (anyone can create an account, joining no organisation automatically), or restricted to organisations that have opted in by email domain. See [Signing in → Signing up](./signing-in.md#signing-up) for what a user sees on the other side of this setting.
 - **Email** — deployment-wide outbound email configuration.
+- **Data policy** — the deployment default for personal data in record exports and imports (see [below](#personal-data-in-exports-and-imports)).
 - **Modules** — which [modules](../modules/overview.md) exist for whom: the default entitlement policy (open or closed), what an organisation gets for a module it has not chosen itself (available, and on for new projects), an **Apply to all organisations** action that writes those defaults into existing organisations (type the word shown to confirm), and a per-organisation list to grant or withdraw a module. A module withdrawn from an organisation disappears from its administrators' and projects' module lists. A fresh install starts with every module available; an upgraded one changes only when you choose.
+
+## Personal data in exports and imports
+
+**Server Management → Data policy** sets the deployment-wide default for whether record columns that hold personal data (names and identifiers, contact details, free text that can quote people) may leave the application in an export, or be written by an import. Everything is excluded until you allow it, so a fresh install lets no personal data out through a file. Allowing a kind asks for confirmation; excluding one does not. An organisation can set its own rule under **Security** in its [admin page](./administering-an-organisation.md#personal-data-in-exports-and-imports), and one that has not follows this default. Each change is recorded in the audit log with the old and new value.
 
 ## Adding a user
 

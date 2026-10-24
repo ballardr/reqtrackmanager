@@ -210,11 +210,12 @@ def stakeholder_timeline(db: Session, project: Project, stakeholder: Stakeholder
 # --- List ---------------------------------------------------------------------
 
 
-def list_engagements(
+def filter_engagements(
     db: Session, project: Project, *, channel: str | None = None, stakeholder_id: uuid.UUID | None = None,
     persona_id: uuid.UUID | None = None, date_from=None, date_to=None, retention_due: bool | None = None,
-) -> list[EngagementOut]:
-    """The project's engagements, most recent first, narrowed by any of the filters (all must hold)."""
+) -> list[Engagement]:
+    """The project's engagements, most recent first, narrowed by any of the filters (all must hold). The list
+    endpoint and the record table share it."""
     rows = eng.list_project_engagements(db, project.id)
     if channel is not None:
         rows = [e for e in rows if e.channel.value == channel]
@@ -232,7 +233,12 @@ def list_engagements(
         get_visible_persona(db, project, persona_id)
         ids = eng.engagement_ids_linked_to(db, project, PERSONA_ARTEFACT_TYPE, persona_id, eng.COVERS_FORWARD)
         rows = [e for e in rows if e.id in ids]
-    return engagements_to_out(db, rows, project)
+    return rows
+
+
+def list_engagements(db: Session, project: Project, **filters) -> list[EngagementOut]:
+    """`filter_engagements` as API shapes."""
+    return engagements_to_out(db, filter_engagements(db, project, **filters), project)
 
 
 # --- Create / update / erase --------------------------------------------------
@@ -245,12 +251,10 @@ def _validate_facilitators(db: Session, project: Project, facilitators: Sequence
         validate_principal(db, ref, organization_id=project.organization_id, project_id=project.id, field="facilitators")
 
 
-def create_engagement_from_payload(
-    db: Session, payload: EngagementCreate, creator: User, project: Project
-) -> EngagementOut:
+def stage_engagement(db: Session, payload: EngagementCreate, creator: User, project: Project) -> Engagement:
     """Validates every reference in a create payload (404 before anything is written), creates the engagement
-    with its participants, covered personas and audience groups (groups expanded to their members), audit-logs,
-    commits and returns the API shape."""
+    with its participants, covered personas and audience groups (groups expanded to their members) and
+    audit-logs, without committing (the caller owns the transaction)."""
     _validate_facilitators(db, project, payload.facilitators)
     stakeholders = [get_visible_stakeholder(db, project, sid) for sid in dict.fromkeys(payload.stakeholder_ids)]
     personas = [get_visible_persona(db, project, pid) for pid in dict.fromkeys(payload.persona_ids)]
@@ -271,16 +275,24 @@ def create_engagement_from_payload(
     for group_id in dict.fromkeys(payload.group_ids):
         _audience_with_members(db, engagement, group_id, creator, project)
     log(db, engagement.id, creator, project.id, "created")
+    return engagement
+
+
+def create_engagement_from_payload(
+    db: Session, payload: EngagementCreate, creator: User, project: Project
+) -> EngagementOut:
+    """`stage_engagement`, then commits and returns the API shape."""
+    engagement = stage_engagement(db, payload, creator, project)
     db.commit()
     db.refresh(engagement)
     return engagement_to_out(db, engagement, project)
 
 
-def update_engagement_from_payload(
+def stage_engagement_update(
     db: Session, engagement: Engagement, payload: EngagementUpdate, actor: User, project: Project
-) -> EngagementOut:
-    """Applies a partial update (only fields present in the request body change), audit-logs, commits and
-    returns the API shape."""
+) -> None:
+    """Applies a partial update (only fields present in the request body change) and audit-logs, without
+    committing."""
     sent = payload.model_dump(exclude_unset=True)
     for required in ("title", "channel", "engagement_date"):
         if required in sent and sent[required] is None:
@@ -296,6 +308,13 @@ def update_engagement_from_payload(
         eng.set_facilitators(db, engagement, facilitators)
     eng.update_engagement(db, engagement, sent)  # ignores keys that are not engagement columns, like `facilitators`
     log(db, engagement.id, actor, project.id, "updated", fields=",".join(sorted(sent)))
+
+
+def update_engagement_from_payload(
+    db: Session, engagement: Engagement, payload: EngagementUpdate, actor: User, project: Project
+) -> EngagementOut:
+    """`stage_engagement_update`, then commits and returns the API shape."""
+    stage_engagement_update(db, engagement, payload, actor, project)
     db.commit()
     db.refresh(engagement)
     return engagement_to_out(db, engagement, project)

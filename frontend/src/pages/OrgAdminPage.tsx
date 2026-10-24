@@ -84,6 +84,7 @@ import { PermissionPicker } from "../components/PermissionPicker";
 import { ProjectMembersTable } from "../components/ProjectMembersTable";
 import { ReportContentEditor } from "../components/ReportContentEditor";
 import { OrganizationCodePanel } from "../components/OrganizationCodePanel";
+import { PersonalDataPolicyPanel } from "../components/PersonalDataPolicyPanel";
 import { ProjectCodePolicyPanel } from "../components/ProjectCodePolicyPanel";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { ResourceMenu } from "../components/ResourceMenu";
@@ -3785,6 +3786,12 @@ export function OrgAdminPage() {
                   </button>
                 )}
                 {patBulkResult && <div style={{ color: "var(--color-accent)" }}>{patBulkResult}</div>}
+              </CollapsibleSection>
+            )}
+
+            {orgId && (
+              <CollapsibleSection sectionKey="orgAdmin.personalData" title={strings.personalDataPolicy.title}>
+                <PersonalDataPolicyPanel scope={{ kind: "organization", organizationId: orgId }} />
               </CollapsibleSection>
             )}
           </div>

@@ -31,6 +31,7 @@ import {
   REQUIREMENT_LEVEL_LABEL,
   savedPrincipalDisplay,
 } from "../api/types";
+import { AutoGrowTextarea } from "../components/AutoGrowTextarea";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterField, FilterPanel } from "../components/FilterPanel";
@@ -42,7 +43,7 @@ import { PrincipalPicker } from "../components/PrincipalPicker";
 import { Modal } from "../components/Modal";
 import { ProposedLinksEditor } from "../components/ProposedLinksEditor";
 import { SortableHeader } from "../components/SortableHeader";
-import { cycleSort, type SortState } from "../components/sortState";
+import { cycleSort } from "../components/sortState";
 import { Spinner } from "../components/Spinner";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useOrgLabel, useOrgLabelCapitalized } from "../context/BrandingContext";
@@ -60,12 +61,17 @@ import { ProjectScopeFilter } from "../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../components/ProjectScopeLabel";
 import { rowProjectId } from "../api/projectScope";
 import { useResetOnChange } from "../hooks/useResetOnChange";
+import { useRestoredRowCount } from "../hooks/useListPosition";
+import { useUrlChoice, useUrlSort, useUrlText } from "../hooks/useUrlFilter";
+import { addSharedListFilters } from "../utils/listFilterParams";
 
 const PAGE_SIZE = 30;
+const SORT_KEYS = ["proposed_name", "status", "created_at"] as const;
 
 const CR_STATUS_OPTIONS: ChangeRequestStatus[] = [
   "draft", "submitted", "in_review", "approved", "rejected", "withdrawn",
 ];
+const STATUS_PARAMS: readonly (ChangeRequestStatus | "all")[] = [...CR_STATUS_OPTIONS, "all"];
 
 // Tri-state status filter — a change request list is
 // usually consulted for what still needs a decision, not a permanent
@@ -161,32 +167,38 @@ export function ChangeRequestsPage() {
   // — same fix and reasoning as `RequirementsPage.tsx`'s identical
   // two-effect shape) — only one filter state, and therefore only one
   // fetch, ever exists per mount.
-  const [statusFilter, setStatusFilter] = useState<CrStatusFilterValue>(
-    () => (searchParams.get("status") as CrStatusFilterValue) || "active"
-  );
-  const [targetStageFilter, setTargetStageFilter] = useState("");
-  // Free-text search (2026-10-04), server-side like the requirements list's,
-  // so it finds a change request on any page of the paginated list.
-  const [search, setSearch] = useState("");
+  // The list's filters, search and sort live in the URL (`useUrlFilter`), so it comes back as it was left
+  // after a visit to a record; the dashboard's CR tiles link here with `status`. "Active" (the default)
+  // is no parameter, "all statuses" is `status=all`.
+  const [statusParam, setStatusParam] = useUrlChoice("status", STATUS_PARAMS);
+  const statusFilter: CrStatusFilterValue = statusParam === "" ? "active" : statusParam === "all" ? "" : statusParam;
+  const setStatusFilter = (next: CrStatusFilterValue) => setStatusParam(next === "active" ? "" : next === "" ? "all" : next);
+  const [targetStageFilter, setTargetStageFilter] = useUrlText("stage");
+  // Free-text search, server-side like the requirements list's, so it finds a change request on any page.
+  const [search, setSearch] = useUrlText("q");
   const [createError, setCreateError] = useState<string | null>(null);
-  // Column-header sorting — backend `sort`/
-  // `order` param, same reasoning as `RequirementsPage.tsx`: this list is
-  // already backend-paginated (`PAGE_SIZE`/`LoadMoreButton`), so a
-  // client-side sort would only reorder the currently-loaded page.
-  type ChangeRequestSortKey = "proposed_name" | "status" | "created_at";
-  const [sort, setSort] = useState<SortState<ChangeRequestSortKey> | null>(null);
+  // Column-header sorting — backend `sort`/`order` param, same reasoning as `RequirementsPage.tsx`: this
+  // list is backend-paginated (`PAGE_SIZE`/`LoadMoreButton`), so a client-side sort would only reorder the
+  // currently-loaded page.
+  const [sort, setSort] = useUrlSort(SORT_KEYS);
+  const limitFor = useRestoredRowCount(PAGE_SIZE);
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
 
-  function listParams(offset: number): URLSearchParams {
-    const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
+  /** The list's filters, by the names its list request and the shared export both take (no paging or sort). */
+  function filterParams(): URLSearchParams {
+    const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (statusFilter === "active") params.set("active_only", "true");
     else if (statusFilter) params.set("cr_status", statusFilter);
     if (targetStageFilter) params.set("target_stage_id", targetStageFilter);
-    for (const tag of tagFilter.tags) params.append("tag", tag);
-    if (tagFilter.active) params.set("tag_mode", tagFilter.mode);
-    if (projectScope.widened) params.set("project_scope", projectScope.scope);
+    addSharedListFilters(params, tagFilter, projectScope);
+    return params;
+  }
+
+  function listParams(offset: number): URLSearchParams {
+    const params = new URLSearchParams({ limit: String(limitFor(offset)), offset: String(offset) });
+    filterParams().forEach((value, key) => params.append(key, value));
     if (sort) {
       params.set("sort", sort.key);
       params.set("order", sort.direction);
@@ -293,22 +305,6 @@ export function ChangeRequestsPage() {
     }, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deepLinkedRequirementId]);
-
-  // Deep-linked from the Project Overview dashboard's CR glance tiles/pie
-  // chart segments (UX review) — `statusFilter` above is already seeded
-  // straight from this same param on initial render (bug fix, 2026-08:
-  // dashboard glance navigation race), so this effect only strips it from
-  // the URL once; it must not call `setStatusFilter` itself, or the race
-  // it was fixed to eliminate comes back.
-  useEffect(() => {
-    const status = searchParams.get("status");
-    if (!status) return;
-    setSearchParams((params) => {
-      params.delete("status");
-      return params;
-    }, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
 
   const selectedRequirement = requirements.find((r) => r.id === requirementId) ?? null;
   // A modify-CR can only target an already-locked (approved/completed)
@@ -454,7 +450,7 @@ export function ChangeRequestsPage() {
   }
 
   function toggleStatusFilter(status: ChangeRequestStatus) {
-    setStatusFilter((current) => (current === status ? "" : status));
+    setStatusFilter(statusFilter === status ? "" : status);
   }
 
   function toggleTargetStageFilter(stageId: string | null) {
@@ -474,29 +470,26 @@ export function ChangeRequestsPage() {
         );
       case "reasoning":
         return (
-          <textarea
-            className="input"
+          <AutoGrowTextarea
             rows={2}
             value={proposed.reasoning}
-            onChange={(e) => setProposed((p) => ({ ...p, reasoning: e.target.value }))}
+            onChange={(value) => setProposed((p) => ({ ...p, reasoning: value }))}
           />
         );
       case "clarification":
         return (
-          <textarea
-            className="input"
+          <AutoGrowTextarea
             rows={2}
             value={proposed.clarification}
-            onChange={(e) => setProposed((p) => ({ ...p, clarification: e.target.value }))}
+            onChange={(value) => setProposed((p) => ({ ...p, clarification: value }))}
           />
         );
       case "description":
         return (
-          <textarea
-            className="input"
+          <AutoGrowTextarea
             rows={2}
             value={proposed.description}
-            onChange={(e) => setProposed((p) => ({ ...p, description: e.target.value }))}
+            onChange={(value) => setProposed((p) => ({ ...p, description: value }))}
           />
         );
       case "target_stage_id":
@@ -582,12 +575,15 @@ export function ChangeRequestsPage() {
   return (
     <div className="stack">
       <ListPageLayout
+        ready={crs !== null}
+        loadedRows={crs?.length}
         title={strings.changeRequests.title}
         actions={
           <button className="btn btn-primary" onClick={() => setShowForm(true)}>
             <Plus /> {strings.changeRequests.newChangeRequest}
           </button>
         }
+        records={{ projectId: projectId ?? "", recordType: "change_request", filters: filterParams().toString(), onImported: reload }}
         filter={
           <FilterPanel
             sectionKey="changeRequestsFilters"

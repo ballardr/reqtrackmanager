@@ -21,6 +21,11 @@
  * filters in the link are the ones applied and a link never lands on an empty
  * list.
  *
+ * A person who may score (the manager tier) also gets a Grid view of the same rows and filters
+ * (`RecordGrid`, "Pattern: bulk edit grid"): Type, Priority, the Intentional flag and the three score
+ * levels as cells, saved one Pain Point at a time. A Pain Point scored per persona shows its score cells
+ * locked, since one level cannot stand for several personas.
+ *
  * Also loads this project's effective Pain Point type list
  * (`projectPainPointApi.listTypes`) once, up front — both the type filter
  * dropdown and `PainPointFormModal`'s own type picker need it, and loading
@@ -30,8 +35,9 @@
  * Filters can be pre-set from the URL (a report figure links here, e.g.
  * `?open=1&blocker=1`): `status`, `priority`, `open=1|0` (still being worked; the default),
  * `intentional=hide|only`, `blocker=1`, `scored=yes|no`, and `model` /
- * `rollup` (the scoring the report ran with). They only seed the state; each
- * is a visible control in the filter panel, so it can be changed or cleared.
+ * `rollup` (the scoring the report ran with). They are the page's filter state (the URL is kept up to
+ * date as they change), so the list comes back as it was left after a visit to a record; each is a
+ * visible control in the filter panel, so it can be changed or cleared.
  */
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -42,12 +48,14 @@ import { projectScoringApi, type ScoringScheme } from "../../api/scoring";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
 import { ListPageLayout } from "../../components/ListPageLayout";
+import { RecordGrid } from "../../components/RecordGrid";
 import { ScoringModelSwitcher } from "../../components/ScoringModelSwitcher";
 import { SettingsPopoverButton } from "../../components/SettingsPopoverButton";
 import { Spinner } from "../../components/Spinner";
-import { cycleSort, type SortState } from "../../components/sortState";
+import { ViewToggle, useViewMode } from "../../components/ViewToggle";
+import { cycleSort } from "../../components/sortState";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
-import { oneOf, useInitialSearchParams } from "../../hooks/useInitialSearchParams";
+import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
 import { projectPainPointApi } from "./api";
 import { PainPointFormModal } from "./PainPointFormModal";
@@ -64,15 +72,20 @@ import { RecordCode } from "../../components/RecordCode";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../../hooks/useUrlFilter";
 import { rowProjectId } from "../../api/projectScope";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
 import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
+import { addSharedListFilters } from "../../utils/listFilterParams";
 
 const SCHEME_KEY = "pain_point";
 const DEFAULT_ROLLUP: PainPointRollup = "weighted_average";
+const INTENTIONAL_FILTERS = ["hide", "only"] as const;
+const SCORED_FILTERS = ["yes", "no"] as const;
+const SORT_KEYS = ["score"] as const;
 
 export function ProjectPainPointsPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -82,36 +95,42 @@ export function ProjectPainPointsPage() {
   const commitTags = useCommitTags(projectId ?? "", "pain_point");
   const initial = useInitialSearchParams();
   const [project, setProject] = useState<Project | null>(null);
+  // Where the grid puts its Columns / Discard / Save controls: the row of the view toggle.
+  const [toolbarHost, setToolbarHost] = useState<HTMLElement | null>(null);
   const [painPoints, setPainPoints] = useState<PainPoint[] | null>(null);
   const [types, setTypes] = useState<EffectivePainPointType[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<PainPointStatus | "">(() => oneOf(initial.get("status"), Object.keys(PAIN_POINT_STATUS_LABEL) as PainPointStatus[]));
-  const [priorityFilter, setPriorityFilter] = useState<PainPointPriority | "">(() => oneOf(initial.get("priority"), Object.keys(PAIN_POINT_PRIORITY_LABEL) as PainPointPriority[]));
-  const [includeArchived, setIncludeArchived] = useState(false);
+  const [search, setSearch] = useUrlText("q");
+  const [statusFilter, setStatusFilter] = useUrlChoice("status", Object.keys(PAIN_POINT_STATUS_LABEL) as PainPointStatus[]);
+  const [priorityFilter, setPriorityFilter] = useUrlChoice("priority", Object.keys(PAIN_POINT_PRIORITY_LABEL) as PainPointPriority[]);
+  const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
-  const [hideIntentional, setHideIntentional] = useState(initial.get("intentional") === "hide");
-  const [onlyIntentional, setOnlyIntentional] = useState(initial.get("intentional") === "only");
+  const [intentional, setIntentional] = useUrlChoice("intentional", INTENTIONAL_FILTERS);
+  const hideIntentional = intentional === "hide";
+  const onlyIntentional = intentional === "only";
   const [openOnly, setOpenOnly] = useOpenOnly(
     initial, Object.keys(PAIN_POINT_STATUS_LABEL),
     ["yes", "no"].includes(initial.get("scored") ?? "") || initial.get("blocker") === "1" || initial.get("intentional") === "only",
   );
-  const [blockersOnly, setBlockersOnly] = useState(initial.get("blocker") === "1");
-  const [scoredFilter, setScoredFilter] = useState<"" | "yes" | "no">(() => oneOf(initial.get("scored"), ["yes", "no"] as const));
+  const [blockersOnly, setBlockersOnly] = useUrlFlag("blocker");
+  const [scoredFilter, setScoredFilter] = useUrlChoice("scored", SCORED_FILTERS);
 
   const [scheme, setScheme] = useState<ScoringScheme | null>(null);
   const [scoringTargets, setScoringTargets] = useState<PainPointScoringTargets | null>(null);
-  const [model, setModel] = useState<string | null>(initial.get("model"));
-  const [rollup, setRollup] = useState<PainPointRollup>(
-    () => oneOf(initial.get("rollup"), Object.keys(PAIN_POINT_ROLLUP_LABEL) as PainPointRollup[]) || DEFAULT_ROLLUP,
-  );
+  // The scoring model and roll-up shown in this view; no `model` parameter means the scheme's default.
+  const [modelParam, setModelParam] = useUrlText("model");
+  const [rollupParam, setRollupParam] = useUrlChoice("rollup", Object.keys(PAIN_POINT_ROLLUP_LABEL) as PainPointRollup[]);
+  const rollup = rollupParam || DEFAULT_ROLLUP;
   const [scoring, setScoring] = useState<PainPointScoringList | null>(null);
-  const [sort, setSort] = useState<SortState | null>(null);
+  const [sort, setSort] = useUrlSort<string>(SORT_KEYS);
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useViewMode("context_strategy.pain_points", "list");
+  // Bumped after the grid saves, so the list view's scores are read again when the person switches back.
+  const [scoresVersion, setScoresVersion] = useState(0);
 
   async function reloadPainPoints() {
     if (!projectId) return;
@@ -143,10 +162,31 @@ export function ProjectPainPointsPage() {
   useEffect(() => {
     if (!projectId) return;
     projectPainPointApi
-      .listScores(projectId, { model_key: model ?? undefined, rollup, include_archived: includeArchived })
-      .then((loaded) => { setScoring(loaded); setModel((current) => current ?? loaded.model_key); })
+      .listScores(projectId, { model_key: modelParam || undefined, rollup, include_archived: includeArchived })
+      .then(setScoring)
       .catch(() => setScoring(null));
-  }, [projectId, model, rollup, includeArchived]);
+  }, [projectId, modelParam, rollup, includeArchived, scoresVersion]);
+  const model = modelParam || scoring?.model_key || null;
+
+  /** The list's filters by the names its export takes; the server applies the same rules the page does. */
+  function filterParams(): URLSearchParams {
+    const params = new URLSearchParams();
+    if (statusFilter) params.set("status", statusFilter);
+    if (priorityFilter) params.set("priority", priorityFilter);
+    if (search) params.set("search", search);
+    if (includeArchived) params.set("include_archived", "true");
+    if (openOnly) params.set("open_only", "true");
+    if (hideIntentional) params.set("hide_intentional", "true");
+    if (onlyIntentional) params.set("only_intentional", "true");
+    if (blockersOnly) params.set("blockers_only", "true");
+    if (scoredFilter) params.set("scored", scoredFilter);
+    if (blockersOnly || scoredFilter) {
+      if (modelParam) params.set("model_key", modelParam);
+      params.set("rollup", rollup);
+    }
+    addSharedListFilters(params, tagFilter, projectScope);
+    return params;
+  }
 
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
@@ -179,6 +219,8 @@ export function ProjectPainPointsPage() {
       })
     : filtered;
 
+  // Scoring is the manager tier, and so is editing a Pain Point: the same grant opens the grid.
+  const canScore = scoringTargets?.can_score === true;
   const scoreSettingsLabel = scheme && model
     ? `Score settings: ${scheme.models.find((m) => m.key === model)?.label ?? model}, combined by ${PAIN_POINT_ROLLUP_LABEL[rollup]}`
     : "Score settings";
@@ -213,10 +255,10 @@ export function ProjectPainPointsPage() {
             <ScoringModelSwitcher
               models={scheme.models.map((m) => ({ value: m.key, label: m.label }))}
               model={model}
-              onModelChange={setModel}
+              onModelChange={(next) => setModelParam(next === scheme.default_model_key ? "" : next)}
               rollups={Object.entries(PAIN_POINT_ROLLUP_LABEL).map(([value, label]) => ({ value, label }))}
               rollup={rollup}
-              onRollupChange={(next) => setRollup(next as PainPointRollup)}
+              onRollupChange={(next) => setRollupParam(next === DEFAULT_ROLLUP ? "" : (next as PainPointRollup))}
             />
             <span className="text-muted" style={{ fontSize: "0.8rem" }}>
               Applies to this view only; it is not saved.
@@ -236,6 +278,7 @@ export function ProjectPainPointsPage() {
     <div className="container stack">
       <ListPageLayout
         title="Pain Point"
+        records={{ projectId, recordType: "pain_point", filters: filterParams().toString(), onImported: reloadPainPoints }}
         actions={
           <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
             New Pain Point
@@ -273,11 +316,11 @@ export function ProjectPainPointsPage() {
             <FilterCheckbox label="Blockers only" checked={blockersOnly} onChange={setBlockersOnly} />
             <FilterCheckbox
               label="Hide intentional limitations" checked={hideIntentional}
-              onChange={(next) => { setHideIntentional(next); if (next) setOnlyIntentional(false); }}
+              onChange={(next) => setIntentional(next ? "hide" : "")}
             />
             <FilterCheckbox
               label="Only intentional limitations" checked={onlyIntentional}
-              onChange={(next) => { setOnlyIntentional(next); if (next) setHideIntentional(false); }}
+              onChange={(next) => setIntentional(next ? "only" : "")}
             />
             <ProjectScopeFilter scope={projectScope} />
             {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
@@ -285,6 +328,19 @@ export function ProjectPainPointsPage() {
           </FilterPanel>
         }
       >
+          {canScore && (
+            <div className="row" style={{ justifyContent: "flex-end", alignItems: "center" }}>
+              <div ref={setToolbarHost} className="row" style={{ alignItems: "center" }} />
+              <ViewToggle mode={viewMode} onChange={setViewMode} showTilesOption={false} showGridOption />
+            </div>
+          )}
+          {canScore && viewMode === "grid" ? (
+            <RecordGrid
+              projectId={projectId} toolbarHost={toolbarHost} recordType="pain_point" filters={filterParams().toString()} contextKeys={["title"]}
+              recordHref={(row) => `/projects/${row.project_id ?? projectId}/modules/context_strategy/pain-points/${row.id}`}
+              onSaved={() => { setScoresVersion((n) => n + 1); void reloadPainPoints(); }}
+            />
+          ) : (
           <DirectoryTable
             ariaLabel="Pain Points"
             columns={columns}
@@ -303,6 +359,7 @@ export function ProjectPainPointsPage() {
               </p>
             }
           />
+          )}
       </ListPageLayout>
 
       {creating && (

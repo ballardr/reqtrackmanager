@@ -26,6 +26,24 @@ REQUIREMENT_STATUS_LABEL: dict[str, str] = {
     "archived": "Archived",
 }
 
+# Badge tone per status, mirroring `REQUIREMENT_STATUS_TONE` in `frontend/src/api/types.ts` by hand (a test pins the two).
+REQUIREMENT_STATUS_TONE: dict[str, str] = {
+    "draft": "muted",
+    "reviewed": "info",
+    "approved": "accent",
+    "archived": "muted",
+}
+
+# Badge tone per change request status, mirroring `CHANGE_REQUEST_STATUS_TONE` in `frontend/src/api/types.ts` (a test pins the two).
+CHANGE_REQUEST_STATUS_TONE: dict[str, str] = {
+    "draft": "muted",
+    "submitted": "info",
+    "in_review": "info",
+    "approved": "accent",
+    "rejected": "danger",
+    "withdrawn": "muted",
+}
+
 
 def requirement_status_label(value: str) -> str:
     return REQUIREMENT_STATUS_LABEL.get(value, value)

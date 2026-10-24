@@ -228,10 +228,10 @@ def get_finding_in_project(db: Session, project_id: uuid.UUID, finding_id: uuid.
     return finding
 
 
-def add_finding(
+def stage_finding(
     db: Session, engagement: Engagement, payload: FindingCreate, actor: User, project: Project
-) -> FindingOut:
-    """Records a finding on the engagement, audit-logs and commits."""
+) -> ResearchFinding:
+    """Records a finding on the engagement and audit-logs, without committing (the caller owns the transaction)."""
     finding = eng.create_finding(
         db, project, engagement, creator_id=actor.id, actor=actor, title=payload.title, description=payload.description
     )
@@ -239,14 +239,22 @@ def add_finding(
         db, entity_type=FINDING_ARTEFACT_TYPE, entity_id=finding.id, action="created", actor_id=actor.id,
         project_id=project.id, detail={"engagement_id": str(engagement.id)},
     )
+    return finding
+
+
+def add_finding(
+    db: Session, engagement: Engagement, payload: FindingCreate, actor: User, project: Project
+) -> FindingOut:
+    """`stage_finding`, then commits."""
+    finding = stage_finding(db, engagement, payload, actor, project)
     db.commit()
     return finding_to_out(finding)
 
 
-def update_finding(
+def stage_finding_update(
     db: Session, finding: ResearchFinding, payload: FindingUpdate, actor: User, project: Project
-) -> FindingOut:
-    """Edits a finding (only fields present change), audit-logs and commits."""
+) -> None:
+    """Edits a finding (only fields present change) and audit-logs, without committing."""
     sent = payload.model_dump(exclude_unset=True)
     if "title" in sent and sent["title"] is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "A finding title cannot be null.")
@@ -258,6 +266,13 @@ def update_finding(
         db, entity_type=FINDING_ARTEFACT_TYPE, entity_id=finding.id, action="updated", actor_id=actor.id,
         project_id=project.id,
     )
+
+
+def update_finding(
+    db: Session, finding: ResearchFinding, payload: FindingUpdate, actor: User, project: Project
+) -> FindingOut:
+    """`stage_finding_update`, then commits."""
+    stage_finding_update(db, finding, payload, actor, project)
     db.commit()
     return finding_to_out(finding)
 

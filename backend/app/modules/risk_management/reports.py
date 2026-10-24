@@ -45,7 +45,7 @@ from __future__ import annotations
 import re
 import uuid
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select
@@ -56,12 +56,15 @@ from app.modules.registry import ReportDefinition, ReportParamDefinition
 from app.modules.risk_management.enums import RiskStatus, TreatmentAssessmentStatus
 from app.modules.risk_management.labels import (
     RISK_STATUS_LABEL,
+    RISK_STATUS_TONE,
     TREATMENT_ASSESSMENT_STATUS_LABEL,
+    TREATMENT_ASSESSMENT_STATUS_TONE,
     TREATMENT_STRATEGY_LABEL,
     risk_status_label,
 )
 from app.modules.risk_management.models import Risk, RiskReview, RiskTreatmentAssessment, RiskVersion
-from app.modules.risk_management.ratings import RiskRating, load_rating_context, rate_version
+from app.modules.risk_management.ratings import RatingContext, RiskRating, load_rating_context, rate_levels, rate_version
+from app.modules.risk_management.scoring import CONSEQUENCE_AXIS_KEY, LIKELIHOOD_AXIS_KEY
 from app.modules.risk_management.service import RISK_ARTEFACT_TYPE, RISK_SUBCOMPONENT_KEY, RISK_TYPES
 from app.modules.risk_management.treatment import effective_treatment_counts, treatment_link_ids
 from app.services.principals import principal_labels, principal_ref, principal_text
@@ -71,6 +74,7 @@ from app.services.report_framework import (
     ReportResult,
     ReportSection,
     build_report_routers,
+    tones_by_label,
 )
 
 MODULE_KEY = "risk_management"
@@ -108,6 +112,16 @@ def _label(rating: RiskRating | None) -> str:
     return (rating.label or NOT_RATED) if rating is not None else NOT_RATED
 
 
+def _tone(rating: RiskRating | None) -> str | None:
+    """The rating band's tone, as the screen's rating badge colours it (`None` when not rated or no bands)."""
+    return rating.tone if rating is not None else None
+
+
+def _tones(rows: list[list[str]], columns: dict[int, list[str | None]]) -> list[list[str | None]]:
+    """A tone grid shaped like `rows`, with `columns` (column index -> one tone per row) filled in."""
+    return [[columns[c][r] if c in columns else None for c in range(len(row))] for r, row in enumerate(rows)]
+
+
 @dataclass
 class RiskRow:
     """One risk of a report, with everything the collectors need.
@@ -119,6 +133,7 @@ class RiskRow:
         owner: The owner as text (`principal_text`: a user's name, or a group's name with its kind; "" when none).
         effective: How many treatment links are assessed effective.
         tags: The risk's tags as comma-separated text ("" when none).
+        context: The project's rating context the ratings were derived under (the matrix reads its levels, bands and cells).
     """
 
     risk: Risk
@@ -130,6 +145,7 @@ class RiskRow:
     owner: str
     effective: int
     tags: str = ""
+    context: RatingContext | None = None
 
 
 def _load_rows(db: Session, req: ReportContext, *, include_archived: bool = False) -> tuple[list[Project], list[RiskRow]]:
@@ -169,7 +185,7 @@ def _load_rows(db: Session, req: ReportContext, *, include_archived: bool = Fals
             risk, version, by_id[risk.project_id], inherent, residual,
             type_names.get(version.project_type_id, "") if version.project_type_id else "",
             principal_text(owners.get((version.owner_type, version.owner_id))) if version.owner_id else "",
-            effective.get(risk.id, 0), tags.get(risk.id, ""),
+            effective.get(risk.id, 0), tags.get(risk.id, ""), contexts[risk.project_id],
         ))
     rows.sort(key=lambda r: (r.project.name.lower(), r.risk.unique_code))
     return projects, rows
@@ -183,17 +199,33 @@ def _result(req: ReportContext, key: str, title: str, *, eligible: int, notes: l
     )
 
 
-def _by_rating(ratings: list[RiskRating | None]) -> list[tuple[str, int]]:
-    """Counts ratings by label, worst first (by the highest score seen under a label), "Not rated" last."""
+def _by_rating(ratings: list[RiskRating | None]) -> list[tuple[str, int, str | None]]:
+    """Counts ratings by label, worst first (by the highest score seen under a label), "Not rated" last.
+
+    Returns:
+        `(label, count, tone)` per label; the tone is that of the first rating seen under the label
+        (labels are band names, so a label has one tone within a project).
+    """
     counts: Counter[str] = Counter()
     worst: dict[str, float] = {}
+    tone_of: dict[str, str | None] = {}
     for rating in ratings:
         label = _label(rating)
         counts[label] += 1
+        tone_of.setdefault(label, _tone(rating))
         if rating is not None:
             worst[label] = max(worst.get(label, 0.0), rating.normalised)
     ordered = sorted((lbl for lbl in counts if lbl != NOT_RATED), key=lambda lbl: -worst.get(lbl, 0.0))
-    return [(lbl, counts[lbl]) for lbl in [*ordered, *([NOT_RATED] if NOT_RATED in counts else [])]]
+    return [(lbl, counts[lbl], tone_of[lbl]) for lbl in [*ordered, *([NOT_RATED] if NOT_RATED in counts else [])]]
+
+
+def _rating_count_section(key: str, title: str, ratings: list[RiskRating | None]) -> ReportSection:
+    """A two-column "Rating / Risks" table, each rating label in its band's tone."""
+    counted = _by_rating(ratings)
+    return ReportSection(
+        key, title, ["Rating", "Risks"], [[label, str(n)] for label, n, _ in counted],
+        tones=[[tone, None] for _, _, tone in counted],
+    )
 
 
 # --- RK1: Risk register -----------------------------------------------------------
@@ -232,22 +264,25 @@ def collect_risk_register(db: Session, req: ReportContext) -> ReportResult:
         "Code", "Title", "Project", "Type", "Status", "Owner", "Strategy", "Inherent", "Residual", "Effective treatments",
         "Next review", "Tags",
     ]
+    register_rows = [
+        [
+            req.code(r.risk.unique_code, r.project.id), r.version.title, r.project.name, r.type_name, risk_status_label(r.version.status.value),
+            r.owner, TREATMENT_STRATEGY_LABEL.get(r.version.treatment_strategy.value, "") if r.version.treatment_strategy else "",
+            _label(r.inherent), _label(r.residual), str(r.effective), _fmt_date(r.version.review_date),
+            r.tags,
+        ]
+        for r in rows
+    ]
     result.sections = [
-        ReportSection("register", "Risks", columns, [
-            [
-                req.code(r.risk.unique_code, r.project.id), r.version.title, r.project.name, r.type_name, risk_status_label(r.version.status.value),
-                r.owner, TREATMENT_STRATEGY_LABEL.get(r.version.treatment_strategy.value, "") if r.version.treatment_strategy else "",
-                _label(r.inherent), _label(r.residual), str(r.effective), _fmt_date(r.version.review_date),
-                r.tags,
-            ]
-            for r in rows
-        ]),
+        ReportSection("register", "Risks", columns, register_rows, tones=_tones(register_rows, {
+            columns.index("Inherent"): [_tone(r.inherent) for r in rows], columns.index("Residual"): [_tone(r.residual) for r in rows],
+        })),
         ReportSection(
             "by_status", "By status", ["Status", "Risks"],
             [[label, str(sum(r.version.status.value == value for r in rows))] for value, label in RISK_STATUS_LABEL.items()],
         ),
-        ReportSection("by_inherent", "By inherent rating", ["Rating", "Risks"], [[lbl, str(n)] for lbl, n in _by_rating([r.inherent for r in rows])]),
-        ReportSection("by_residual", "By residual rating", ["Rating", "Risks"], [[lbl, str(n)] for lbl, n in _by_rating([r.residual for r in rows])]),
+        _rating_count_section("by_inherent", "By inherent rating", [r.inherent for r in rows]),
+        _rating_count_section("by_residual", "By residual rating", [r.residual for r in rows]),
     ]
     overdue = sum(_is_overdue(r, req.today) for r in rows)
     result.metrics = [
@@ -267,6 +302,59 @@ def collect_risk_register(db: Session, req: ReportContext) -> ReportResult:
 def _is_overdue(row: RiskRow, today: date) -> bool:
     """Whether the risk's review date has passed and it is still due a review."""
     return row.version.review_date is not None and row.version.review_date < today and row.version.status in REVIEWABLE_STATUSES
+
+
+def _matrix_sections(exposed: list[RiskRow]) -> list[ReportSection]:
+    """The Likelihood × Consequence matrix, once for the inherent and once for the residual rating.
+
+    Each cell is coloured and named by the rating band the project's own matrix gives it (explicit cell
+    rating, else threshold) and counts the exposed Risks placed there. Projects share a matrix when their
+    bands and cell ratings are identical; a project rated under a model without exactly those two axes
+    (the three-axis model) has no grid and is left out.
+
+    Args:
+        exposed: The Risks to place.
+
+    Returns:
+        Zero to two sections per distinct matrix (empty when no project has a grid).
+    """
+    grids: dict[tuple, list[RiskRow]] = {}
+    for r in exposed:
+        ctx = r.context
+        if ctx is not None and set(ctx.model.axis_keys) == {LIKELIHOOD_AXIS_KEY, CONSEQUENCE_AXIS_KEY}:
+            grids.setdefault((tuple(ctx.bands), tuple(sorted((str(k), v) for k, v in ctx.cells.cells.items()))), []).append(r)
+    sections: list[ReportSection] = []
+    for index, members in enumerate(grids.values(), start=1):
+        ctx = members[0].context
+        assert ctx is not None  # grids only holds rows with a context
+        likelihood = sorted((lvl for lvl in ctx.levels_by_id.values() if lvl.axis_key == LIKELIHOOD_AXIS_KEY), key=lambda lvl: -lvl.weight)
+        consequence = sorted((lvl for lvl in ctx.levels_by_id.values() if lvl.axis_key == CONSEQUENCE_AXIS_KEY), key=lambda lvl: lvl.weight)
+        if not likelihood or not consequence:
+            continue
+        suffix = f" ({', '.join(sorted({m.project.name for m in members}))})" if len(grids) > 1 else ""
+        for basis in ("inherent", "residual"):
+            placed = Counter(
+                (getattr(m.version, f"{basis}_likelihood_level_id"), getattr(m.version, f"{basis}_consequence_level_id")) for m in members
+            )
+            rows: list[list[str]] = []
+            tones: list[list[str | None]] = []
+            for lik in likelihood:
+                cells: list[str] = []
+                cell_tones: list[str | None] = []
+                for con in consequence:
+                    rating = rate_levels(ctx, likelihood=lik.id, consequence=con.id, detectability=None)
+                    count = placed[(lik.id, con.id)]
+                    cells.append(" · ".join(part for part in ((rating.label or "") if rating else "", str(count) if count else "") if part))
+                    cell_tones.append(_tone(rating))
+                rows.append([lik.name, *cells])
+                tones.append([None, *cell_tones])
+            sections.append(ReportSection(
+                f"matrix_{basis}_{index}" if len(grids) > 1 else f"matrix_{basis}",
+                f"Likelihood × Consequence matrix, {basis} rating{suffix}",
+                ["Likelihood \\ Consequence", *(lvl.name for lvl in consequence)], rows, tones=tones,
+                note="Each cell is coloured and named by its rating band, with the number of exposed Risks placed there.",
+            ))
+    return sections
 
 
 # --- RK2: Risk exposure -----------------------------------------------------------
@@ -289,8 +377,10 @@ def collect_risk_exposure(db: Session, req: ReportContext) -> ReportResult:
         "they are history or no longer exposure. Residual ratings are set by a person and are not recalculated "
         "when treatments change.",
     ])
-    inherent = dict(_by_rating([r.inherent for r in exposed]))
-    residual = dict(_by_rating([r.residual for r in exposed]))
+    counted_inherent, counted_residual = _by_rating([r.inherent for r in exposed]), _by_rating([r.residual for r in exposed])
+    inherent = {label: n for label, n, _ in counted_inherent}
+    residual = {label: n for label, n, _ in counted_residual}
+    label_tones = {label: tone for label, _, tone in [*counted_residual, *counted_inherent]}
     labels = [lbl for lbl in dict.fromkeys([*inherent, *residual]) if lbl != NOT_RATED]
     labels += [NOT_RATED] if NOT_RATED in inherent or NOT_RATED in residual else []
     unrated = [r for r in exposed if r.inherent is None]
@@ -306,16 +396,24 @@ def collect_risk_exposure(db: Session, req: ReportContext) -> ReportResult:
             _label(r.inherent), _label(r.residual), r.tags,
         ]
 
+    def exposure_tones(listed: list[RiskRow]) -> dict[int, list[str | None]]:
+        return {columns.index("Inherent"): [_tone(r.inherent) for r in listed], columns.index("Residual"): [_tone(r.residual) for r in listed]}
+
     result.sections = [
         ReportSection(
             "by_rating", "Inherent against residual", ["Rating", "Inherent", "Residual"],
             [[lbl, str(inherent.get(lbl, 0)), str(residual.get(lbl, 0))] for lbl in labels],
+            tones=[[label_tones.get(lbl), None, None] for lbl in labels],
         ),
-        ReportSection("top_residual", f"Highest residual risks (top {TOP_RESIDUAL_ROWS})", columns, [row(r) for r in ranked]),
         ReportSection(
-            "not_rated", "Not rated", columns, [row(r) for r in unrated], gap=True,
+            "top_residual", f"Highest residual risks (top {TOP_RESIDUAL_ROWS})", columns, [row(r) for r in ranked],
+            tones=_tones([row(r) for r in ranked], exposure_tones(ranked)),
+        ),
+        ReportSection(
+            "not_rated", "Not rated", columns, [row(r) for r in unrated], gap=True, tones=_tones([row(r) for r in unrated], exposure_tones(unrated)),
             note="Exposed Risks with no inherent rating, so they cannot be placed on the matrix.",
         ),
+        *_matrix_sections(exposed),
     ]
     result.metrics = [
         ReportMetric("Exposed Risks", len(exposed)),
@@ -372,6 +470,9 @@ def collect_treatment_coverage(db: Session, req: ReportContext) -> ReportResult:
             str(c[TreatmentAssessmentStatus.NEEDS_REASSESSMENT]), r.tags,
         ]
 
+    def inherent_tones(listed: list[RiskRow]) -> dict[int, list[str | None]]:
+        return {columns.index("Inherent"): [_tone(r.inherent) for r in listed]}
+
     untreated = [r for r in expected if verdicts[r.risk.id][TreatmentAssessmentStatus.EFFECTIVE] == 0]
     stale = [r for r in expected if verdicts[r.risk.id][TreatmentAssessmentStatus.NEEDS_REASSESSMENT] > 0]
     totals = Counter[TreatmentAssessmentStatus]()
@@ -383,9 +484,13 @@ def collect_treatment_coverage(db: Session, req: ReportContext) -> ReportResult:
         "not treating them is the decision.",
     ])
     result.sections = [
-        ReportSection("untreated", "No effective treatment", columns, [row(r) for r in untreated], gap=True),
+        ReportSection(
+            "untreated", "No effective treatment", columns, [row(r) for r in untreated], gap=True,
+            tones=_tones([row(r) for r in untreated], inherent_tones(untreated)),
+        ),
         ReportSection(
             "needs_reassessment", "Resting on a verdict to reassess", columns, [row(r) for r in stale], gap=True,
+            tones=_tones([row(r) for r in stale], inherent_tones(stale)),
             note="A linked Requirement changed after its treatment was judged Effective; a person must reassess it.",
         ),
         ReportSection(
@@ -483,7 +588,13 @@ _DUE_WITHIN = ReportParamDefinition(
     description="How many days ahead a review counts as due soon (default 30).",
 )
 
-REPORT_DEFINITIONS: tuple[ReportDefinition, ...] = (
+# Badge colours for the PDF and Word output, as the screen's badges show them: the Status and Verdict columns.
+_CELL_TONES = {
+    "Status": tones_by_label((RISK_STATUS_LABEL, RISK_STATUS_TONE)),
+    "Verdict": tones_by_label((TREATMENT_ASSESSMENT_STATUS_LABEL, TREATMENT_ASSESSMENT_STATUS_TONE)),
+}
+
+_REPORTS: tuple[ReportDefinition, ...] = (
     ReportDefinition(
         "rk1", "risk-register", "Risk register",
         "Every Risk with its type, status, owner, strategy, inherent and residual rating, and next review.",
@@ -509,6 +620,8 @@ REPORT_DEFINITIONS: tuple[ReportDefinition, ...] = (
         record_types=("risk",),
     ),
 )
+
+REPORT_DEFINITIONS: tuple[ReportDefinition, ...] = tuple(replace(d, cell_tones=_CELL_TONES) for d in _REPORTS)
 
 # Project router for the module to include; there is no organisation-wide variant.
 REPORT_ROUTERS = build_report_routers(MODULE_KEY, REPORT_DEFINITIONS)

@@ -85,6 +85,41 @@ export const PrefixesModuleNameWhenSeveralModules: Story = {
   },
 };
 
+/**
+ * The platform's Record list is a catalogue entry like any module report: its `record_type` choice is generated
+ * with the declared labels, the run carries the chosen type, and no module-specific UI is involved.
+ */
+export const TheRecordListChoosesATypeAndRunsWithIt: Story = {
+  args: {
+    entries: [
+      buildReportCatalogueEntry({
+        module_key: "platform", module_name: "Platform", key: "record-list", slug: "record-list", title: "Record list",
+        description: "A table of any kind of record in this project.",
+        path: "/api/v1/projects/project-1/reports/record-list", supports_include_children: false,
+        params: [
+          {
+            name: "record_type", type: "string", default: "requirement", choices: ["requirement", "requirement_action"],
+            minimum: null, maximum: null, description: "Which records to list.", label: "Record type",
+            choice_labels: { requirement: "Requirements", requirement_action: "Actions" },
+          },
+          { name: "tag", type: "string", default: null, choices: null, minimum: null, maximum: null, description: "Only records carrying this tag.", label: "Tag" },
+        ],
+      }),
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/v1/projects/project-1/reports/record-list?format=json&record_type=requirement"));
+    const select = canvas.getByLabelText("Record type");
+    await expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual(["Default", "Requirements", "Actions"]);
+    await userEvent.selectOptions(select, "requirement_action");
+    await waitFor(() =>
+      expect(api.get).toHaveBeenCalledWith("/api/v1/projects/project-1/reports/record-list?format=json&record_type=requirement_action"),
+    );
+    await expect(canvas.queryByText("Include child projects")).not.toBeInTheDocument();
+  },
+};
+
 export const NoReportsMessage: Story = {
   args: { entries: [] },
   play: async ({ canvasElement }) => {

@@ -45,7 +45,7 @@ from __future__ import annotations
 import re
 import uuid
 from collections import Counter, defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 
 from fastapi import HTTPException, status
@@ -76,6 +76,7 @@ from app.modules.stakeholders.labels import (
     ENGAGEMENT_CHANNEL_LABEL,
     GRID_QUADRANT_LABEL,
     RECORD_STATUS_LABEL,
+    RECORD_STATUS_TONE,
     REQUIREMENT_STATUS_LABEL,
     TARGET_CADENCE_LABEL,
     label,
@@ -113,6 +114,7 @@ from app.modules.stakeholders.service import (
     resolve_persona_weight_with_source,
     suggest_cadence,
 )
+from app.services.labels import REQUIREMENT_STATUS_TONE
 from app.services.principals import principal_labels, principal_ref, principal_text
 from app.services.report_framework import (
     ReportContext,
@@ -120,6 +122,7 @@ from app.services.report_framework import (
     ReportResult,
     ReportSection,
     build_report_routers,
+    tones_by_label,
 )
 
 MODULE_KEY = STAKEHOLDERS_MODULE_KEY
@@ -991,7 +994,12 @@ _SINCE = ReportParamDefinition(
     "since", "date", label="Since", description="Only engagements on or after this date (YYYY-MM-DD).",
 )
 
-REPORT_DEFINITIONS: tuple[ReportDefinition, ...] = (
+# Badge colours for the PDF and Word output: the Status column (Persona, Need and Requirement statuses).
+_CELL_TONES = {
+    "Status": tones_by_label((RECORD_STATUS_LABEL, RECORD_STATUS_TONE), (REQUIREMENT_STATUS_LABEL, REQUIREMENT_STATUS_TONE)),
+}
+
+_REPORTS: tuple[ReportDefinition, ...] = (
     ReportDefinition(
         "s1", "power-interest-grid", "Power/interest grid",
         "Stakeholders on Influence × Interest, grouped into Manage closely, Keep satisfied, Keep informed and Monitor, "
@@ -1027,6 +1035,8 @@ REPORT_DEFINITIONS: tuple[ReportDefinition, ...] = (
         record_types=("persona", "engagement"),
     ),
 )
+
+REPORT_DEFINITIONS: tuple[ReportDefinition, ...] = tuple(replace(d, cell_tones=_CELL_TONES) for d in _REPORTS)
 
 # Project router for the module to include; there is no organisation-wide variant.
 REPORT_ROUTERS = build_report_routers(MODULE_KEY, REPORT_DEFINITIONS)

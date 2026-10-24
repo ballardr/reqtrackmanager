@@ -9,7 +9,11 @@ entries and the generated MCP tools. Every test builds its own organisation.
 
 from __future__ import annotations
 
+import io
 from datetime import UTC, datetime, timedelta
+
+from docx import Document
+from docx.oxml.ns import qn
 
 from app.database import SessionLocal
 from app.modules.registry import build_mcp_tool_manifest
@@ -26,6 +30,7 @@ from app.modules.risk_management.tests._helpers import (
     setup,
     user_ref,
 )
+from app.services.report_model import TONE_FILL
 from tests.conftest import auth_headers, create_org_admin_in, create_project
 
 SLUGS = ("risk-register", "risk-exposure", "treatment-coverage", "review-schedule")
@@ -162,6 +167,80 @@ def test_rk2_exposure_compares_inherent_and_residual_and_leaves_out_history(clie
     assert _metric(report, "Not rated") == 1
     assert unrated["unique_code"] in {r[0] for r in _section(report, "not_rated")["rows"]}
     assert mild["unique_code"]
+
+
+def _docx_tables(client, token, project_id, slug) -> list:
+    """The Word tables of a report, read back from the real download."""
+    resp = _report(client, token, project_id, slug, format="docx")
+    return Document(io.BytesIO(resp.content)).tables
+
+
+def _fill(cell) -> str | None:
+    shading = cell._tc.tcPr.find(qn("w:shd")) if cell._tc.tcPr is not None else None
+    return shading.get(qn("w:fill")) if shading is not None else None
+
+
+def _table_headed(tables, first_heading: str):
+    return next(t for t in tables if t.rows[0].cells[0].text.startswith(first_heading))
+
+
+def test_risk_word_export_colours_ratings_as_the_screen_does(client, admin_token):
+    """Rating cells take their band's tone in the register, exposure and coverage tables; labels stay in the text."""
+    _, project, token = setup(client, admin_token, "RK Tone Co")
+    worst = _scored(client, token, project, inherent=("Almost certain", "Catastrophic"), residual=("Likely", "Major"), title="Worst")
+    _scored(client, token, project, inherent=None, title="Unrated")
+    _move(client, token, project["id"], worst["id"], "assessed")
+
+    register = _table_headed(_docx_tables(client, token, project["id"], "risk-register"), "Code")
+    header = [c.text for c in register.rows[0].cells]
+    row = next(r for r in register.rows[1:] if r.cells[1].text == "Worst")
+    assert row.cells[header.index("Inherent")].text == "Critical"
+    assert _fill(row.cells[header.index("Inherent")]) == TONE_FILL["danger"]
+    assert _fill(row.cells[header.index("Residual")]) == TONE_FILL["warning"]  # High
+    assert row.cells[header.index("Status")].text == "Assessed"
+    assert _fill(row.cells[header.index("Status")]) == TONE_FILL["info"]  # the screen's badge tone for Assessed
+    unrated = next(r for r in register.rows[1:] if r.cells[1].text == "Unrated")
+    assert _fill(unrated.cells[header.index("Status")]) == TONE_FILL["muted"]  # Identified is muted, not info
+    assert unrated.cells[header.index("Inherent")].text == "Not rated"
+    assert _fill(unrated.cells[header.index("Inherent")]) not in set(TONE_FILL.values())
+
+    counts = _table_headed(_docx_tables(client, token, project["id"], "risk-register"), "Rating")
+    by_label = {r.cells[0].text: _fill(r.cells[0]) for r in counts.rows[1:]}
+    assert by_label["Critical"] == TONE_FILL["danger"]
+
+    coverage = _table_headed(_docx_tables(client, token, project["id"], "treatment-coverage"), "Code")
+    coverage_header = [c.text for c in coverage.rows[0].cells]
+    listed = next(r for r in coverage.rows[1:] if r.cells[1].text == "Worst")
+    assert _fill(listed.cells[coverage_header.index("Inherent")]) == TONE_FILL["danger"]
+
+
+def test_rk2_draws_the_likelihood_consequence_matrix_in_band_colours(client, admin_token):
+    _, project, token = setup(client, admin_token, "RK Matrix Co")
+    worst = _scored(client, token, project, inherent=("Almost certain", "Catastrophic"), residual=("Likely", "Major"), title="Worst")
+    mild = _scored(client, token, project, inherent=("Possible", "Minor"), title="Mild")
+    for risk in (worst, mild):
+        _move(client, token, project["id"], risk["id"], "assessed")
+
+    report = _report(client, token, project["id"], "risk-exposure")
+    keys = [s["key"] for s in report["sections"]]
+    assert keys[-2:] == ["matrix_inherent", "matrix_residual"]  # one matrix per basis; one scheme, so no numbering
+    inherent = _section(report, "matrix_inherent")
+    assert inherent["columns"][0].startswith("Likelihood")
+    assert inherent["rows"][0][0] == "Almost certain"  # the highest likelihood is the top row
+
+    tables = _docx_tables(client, token, project["id"], "risk-exposure")
+    matrices = [t for t in tables if t.rows[0].cells[0].text.startswith("Likelihood")]
+    assert len(matrices) == 2
+    inherent_table = matrices[0]
+    columns = [c.text for c in inherent_table.rows[0].cells]
+    top = next(r for r in inherent_table.rows[1:] if r.cells[0].text == "Almost certain")
+    corner = top.cells[columns.index("Catastrophic")]
+    assert corner.text == "Critical · 1"  # the band name, then how many Risks sit in this cell
+    assert _fill(corner) == TONE_FILL["danger"]
+    empty_low = next(r for r in inherent_table.rows[1:] if r.cells[0].text == "Rare").cells[1]
+    assert empty_low.text in {"Low", "Medium"} and _fill(empty_low) in {TONE_FILL["muted"], TONE_FILL["info"]}  # empty cells still show their band
+    possible = next(r for r in inherent_table.rows[1:] if r.cells[0].text == "Possible").cells[columns.index("Minor")]
+    assert possible.text.endswith("· 1")
 
 
 # --- RK3 --------------------------------------------------------------------------

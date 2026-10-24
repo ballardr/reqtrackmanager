@@ -10,9 +10,9 @@ import { PainPointFormModal } from "./PainPointFormModal";
 import type { EffectivePainPointType, PainPoint } from "./types";
 
 const TYPES: EffectivePainPointType[] = [
-  { id: "type-market", name: "Market", display_order: 0, is_enabled: true, source: "org" },
-  { id: "type-user", name: "User", display_order: 1, is_enabled: true, source: "org" },
-  { id: "type-operator", name: "Operator", display_order: 2, is_enabled: true, source: "org" },
+  { id: "type-market", name: "Market", display_order: 0, is_enabled: true, source: "org", definition: null },
+  { id: "type-user", name: "User", display_order: 1, is_enabled: true, source: "org", definition: null },
+  { id: "type-operator", name: "Operator", display_order: 2, is_enabled: true, source: "org", definition: null },
 ];
 
 /**
@@ -33,6 +33,17 @@ export const CreateNew: Story = {
   play: async () => {
     const body = within(document.body);
     await expect(body.getByRole("heading", { name: "New Pain Point" })).toBeInTheDocument();
+  },
+};
+
+/** The picked type's definition shows under the picker, so the author knows what belongs there. */
+export const ShowsTheTypeDefinition: Story = {
+  args: { types: TYPES.map((t) => (t.id === "type-operator" ? { ...t, definition: "People who run and maintain the product." } : t)) },
+  play: async () => {
+    const body = within(document.body);
+    await expect(body.queryByText("People who run and maintain the product.")).not.toBeInTheDocument();
+    await userEvent.selectOptions(body.getByLabelText("Type"), "type-operator");
+    await expect(body.getByText("People who run and maintain the product.")).toBeInTheDocument();
   },
 };
 
@@ -77,7 +88,7 @@ export const SaveDisabledUntilRequiredFieldsFilled: Story = {
 
 export const EditExistingOffersDisabledCurrentType: Story = {
   args: {
-    types: [{ id: "type-legacy", name: "Legacy", display_order: 3, is_enabled: false, source: "org" }, ...TYPES],
+    types: [{ id: "type-legacy", name: "Legacy", display_order: 3, is_enabled: false, source: "org", definition: null }, ...TYPES],
     initial: {
       id: "pain-point-1", project_id: "project-1", unique_code: "PP-001", pain_point_type_id: "type-legacy", pain_point_type_name: "Legacy",
       creator_id: "user-1", is_archived: false, archived_at: null, archived_by: null,

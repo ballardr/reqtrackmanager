@@ -57,8 +57,9 @@ from sqlalchemy.orm import Session
 
 from app.models.file import FileAsset
 from app.models.organization import Organization, ReportTemplate
-from app.services.branding import DEFAULT_ACCENT_COLOR_HEX
+from app.services.branding import DEFAULT_ACCENT_COLOR_HEX, readable_on_white
 from app.services.files import read_file
+from app.services.report_model import TONE_FILL, text_on
 
 STYLES = getSampleStyleSheet()
 _MAX_IMAGE_WIDTH = A4[0] - 4 * cm  # matches SimpleDocTemplate's leftMargin+rightMargin default (2cm each)
@@ -158,7 +159,7 @@ def title_flowables(title: str, branding: ReportBranding | None) -> list:
     """
     story: list = []
     if branding and branding.include_cover_page:
-        accent_color = colors.HexColor(branding.accent_color_hex)
+        accent_color = colors.HexColor(readable_on_white(branding.accent_color_hex))  # text on white paper
         cover_style = ParagraphStyle("cover_title", parent=STYLES["Title"], textColor=accent_color, fontSize=28)
         story.append(Spacer(1, 6 * cm))
         if branding.logo_bytes:
@@ -203,17 +204,59 @@ def build_pdf(story: list, *, footer_text: str | None = None, pagesize=A4, **doc
     return buffer.getvalue()
 
 
+_TONED_STYLES: dict[tuple[int, str], tuple[ParagraphStyle, ParagraphStyle]] = {}
+
+
+def toned_paragraph(text: str, style: ParagraphStyle, tone: str | None) -> Paragraph:
+    """A table-cell paragraph whose cell `styled_table` fills with the tone's colour.
+
+    The text colour is chosen by contrast with the fill (`report_model.text_on`). A cell with no (or an
+    unknown) tone is an ordinary paragraph.
+
+    Args:
+        text: Untrusted cell text (escaped here).
+        style: The cell's normal style.
+        tone: A key of `report_model.TONE_FILL`, or `None`.
+
+    Returns:
+        The paragraph; a toned one carries `tone_fill` (a ReportLab colour) for `styled_table`.
+    """
+    if tone not in TONE_FILL:
+        return Paragraph(safe(text), style)
+    cached = _TONED_STYLES.get((id(style), tone))
+    if cached is None:
+        toned = ParagraphStyle(f"{style.name}_{tone}", parent=style, textColor=colors.HexColor(f"#{text_on(TONE_FILL[tone])}"))
+        cached = _TONED_STYLES[(id(style), tone)] = (style, toned)  # holds `style` so its id is never reused
+    paragraph = Paragraph(safe(text), cached[1])
+    paragraph.tone_fill = colors.HexColor(f"#{TONE_FILL[tone]}")  # type: ignore[attr-defined]
+    return paragraph
+
+
+def header_text_color(accent_color):
+    """The text colour for a table header filled with `accent_color`: white or black by contrast
+    (`report_model.text_on`), so a light organisation accent does not get unreadable white text.
+
+    Args:
+        accent_color: The header fill (a ReportLab colour).
+
+    Returns:
+        A ReportLab colour.
+    """
+    r, g, b = (round(c * 255) for c in (accent_color.red, accent_color.green, accent_color.blue))
+    return colors.HexColor(f"#{text_on(f'{r:02X}{g:02X}{b:02X}')}")
+
+
 def styled_table(data: list[list], *, col_widths: list[float], accent_color, compact: bool = False) -> Table:
     """An accent-headed table with a repeating header row.
 
     Args:
-        data: Rows including the header row; cells are strings or flowables.
+        data: Rows including the header row; cells are strings or flowables (a `toned_paragraph` cell is filled).
         col_widths: Column widths in points.
         accent_color: Header background (a ReportLab colour).
         compact: `True` for the light-grid, zebra-striped style module reports
-            use (header cells are expected to be white-text Paragraphs);
-            `False` for the requirement report's heavier grid with white
-            header text.
+            use (header cells are expected to be Paragraphs coloured with
+            `header_text_color`); `False` for the requirement report's heavier
+            grid, whose header text takes that colour here.
 
     Returns:
         The table flowable.
@@ -229,10 +272,16 @@ def styled_table(data: list[list], *, col_widths: list[float], accent_color, com
     else:
         table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), accent_color),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("TEXTCOLOR", (0, 0), (-1, 0), header_text_color(accent_color)),
             ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ]))
+    fills = [
+        ("BACKGROUND", (c, r), (c, r), cell.tone_fill)
+        for r, row in enumerate(data) for c, cell in enumerate(row) if getattr(cell, "tone_fill", None) is not None
+    ]
+    if fills:
+        table.setStyle(TableStyle(fills))  # after the zebra rows, so a toned cell overrides its stripe
     return table
 
 

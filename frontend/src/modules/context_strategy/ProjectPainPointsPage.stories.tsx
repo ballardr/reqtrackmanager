@@ -2,15 +2,17 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import { buildProject, buildScoringScheme, withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildGrid, buildRecordColumns } from "../../testing/recordTablesFixtures";
+import { buildProject, buildScoringScheme, buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { scoreValue, scoringSummary } from "./painPointScoringFixtures";
 import { ProjectPainPointsPage } from "./ProjectPainPointsPage";
 import type { EffectivePainPointType, PainPoint, PainPointScoringSummary } from "./types";
+import { chooseListAction, openListMenu } from "../../testing/listActionsMenu";
 
 const PROJECT_ID = "project-1";
 
 const TYPES: EffectivePainPointType[] = [
-  { id: "type-operator", name: "Operator", display_order: 0, is_enabled: true, source: "org" },
+  { id: "type-operator", name: "Operator", display_order: 0, is_enabled: true, source: "org", definition: null },
 ];
 
 function painPoint(overrides: Partial<PainPoint> = {}): PainPoint {
@@ -25,8 +27,11 @@ function painPoint(overrides: Partial<PainPoint> = {}): PainPoint {
   };
 }
 
-function mockPageApis(painPoints: PainPoint[], scoring: PainPointScoringSummary[] = []) {
+function mockPageApis(painPoints: PainPoint[], scoring: PainPointScoringSummary[] = [], { canScore = false } = {}) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.endsWith("/records/pain_point/columns")) return buildRecordColumns({ label: "Pain points" });
+    if (path.includes("/records/pain_point/grid")) return buildGrid();
+    if (path.endsWith("/pain-point-scoring-targets")) return { can_score: canScore, available_targets: [] };
     if (path === `/api/v1/projects/${PROJECT_ID}`) return buildProject({ id: PROJECT_ID, organization_id: "org-1" });
     if (path === `/api/v1/projects/${PROJECT_ID}/scoring-schemes/pain_point`) return buildScoringScheme();
     if (path.startsWith(`/api/v1/projects/${PROJECT_ID}/modules/context_strategy/pain-point-scores`)) {
@@ -49,6 +54,8 @@ const meta: Meta<typeof ProjectPainPointsPage> = {
         `/projects/${PROJECT_ID}/modules/context_strategy/pain-points${context.parameters.query ?? ""}`,
         "/projects/:projectId/modules/context_strategy/pain-points",
       )(Story, context),
+    // `ViewToggle`'s `useViewMode` reads the view mode through `useUiPreference`, which needs a real `useAuth()` user.
+    withStatefulAuth(buildUser()),
     withToast(),
   ],
 };
@@ -276,5 +283,60 @@ export const IgnoresUnknownFilterValues: Story = {
   beforeEach: () => mockPageApis([painPoint({ title: "Still listed" })]),
   play: async ({ canvasElement }) => {
     await waitFor(() => expect(within(canvasElement).getByText("Still listed")).toBeInTheDocument());
+  },
+};
+
+/** Export and Import are on the title row; Export carries the page's filters (the server applies the same rules). */
+export const ExportCarriesThePageFilters: Story = {
+  parameters: { query: "?status=triaged&intentional=hide&q=pric" },
+  beforeEach: () => {
+    mockPageApis([painPoint({ title: "Competitive pricing pressure", status: "triaged" })]);
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["code\n"], { type: "text/csv" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Competitive pricing pressure")).toBeInTheDocument());
+    await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await chooseListAction(canvas, "Export as CSV");
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/pain_point/export?status=triaged&search=pric&hide_intentional=true"));
+  },
+};
+
+
+/** A person who may score gets a Grid view of the same filters; a change saves through the row endpoint. */
+export const ScorerEditsScoresInTheGrid: Story = {
+  beforeEach: () => {
+    mockPageApis([painPoint()], [], { canScore: true });
+    spyOn(api, "patch").mockImplementation(async (_path: string, body?: unknown) => {
+      const { cells } = body as { cells: Record<string, string> };
+      return { ...buildGrid().rows[0], cells: { ...buildGrid().rows[0].cells, ...cells } };
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Grid view" }));
+    await canvas.findByRole("table", { name: "Pain points grid" });
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringMatching(/\/records\/pain_point\/grid\?.*open_only=true/)));
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Severity for PNP-001" }), "Blocker");
+    await userEvent.click(canvas.getByRole("button", { name: "Save 1 change" }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/records/pain_point/rows/PNP-001`, { cells: { severity: "Blocker" }, expected: { severity: "" } },
+      ),
+    );
+    await expect(await within(document.body).findByText("1 saved.")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    await canvas.findByRole("table", { name: "Pain Points" });
+  },
+};
+
+/** Someone who cannot score is offered no Grid view. */
+export const NoGridViewWithoutTheScoringGrant: Story = {
+  beforeEach: () => mockPageApis([painPoint()], [], { canScore: false }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("table", { name: "Pain Points" });
+    await expect(canvas.queryByRole("button", { name: "Grid view" })).not.toBeInTheDocument();
   },
 };

@@ -35,6 +35,7 @@ import type { FileAsset, OrgUser, PrincipalRef } from "../../api/types";
 import { activityActionLabel, principalRef } from "../../api/types";
 import { PrincipalPicker } from "../../components/PrincipalPicker";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
+import { FormActions } from "../../components/FormActions";
 import { Modal } from "../../components/Modal";
 import { ResourcePickerModal } from "../../components/ResourcePickerModal";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
@@ -583,10 +584,10 @@ export function RequirementAssessmentPanel({
         <Modal title="Reject this assessment?" onClose={() => setRejecting(false)}>
           <div className="stack">
             <TextAreaField helpNotNeeded required label="Decision note" value={decisionNote} onChange={setDecisionNote} rows={3} />
-            <div className="row" style={{ justifyContent: "flex-end" }}>
-              <button className="btn" onClick={() => setRejecting(false)}>Cancel</button>
-              <button className="btn btn-danger" disabled={!decisionNote.trim()} onClick={reject}>Reject</button>
-            </div>
+            <FormActions
+              onCancel={() => setRejecting(false)} onSave={reject} saveLabel="Reject" saveTone="danger"
+              saveDisabled={!decisionNote.trim()}
+            />
           </div>
         </Modal>
       )}

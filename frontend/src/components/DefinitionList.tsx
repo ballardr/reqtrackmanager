@@ -10,7 +10,8 @@ import {
   type DeleteInUseRemoveOption,
 } from "./DeleteInUseDialog";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { InlineTextInput, TextField } from "./FormFields";
+import { AutoGrowTextarea } from "./AutoGrowTextarea";
+import { InlineTextInput, TextAreaField, TextField } from "./FormFields";
 
 const strings = t();
 
@@ -29,6 +30,9 @@ export interface DefinitionListField<T> {
   /** HTML input type; `"number"` for numeric fields such as a scoring
    * level's weight (default `"text"`). */
   inputType?: "text" | "number";
+  /** A long free-text value (a definition): a row shows a field that grows with its content, and the add form a
+   * growing text area, instead of a one-line input. */
+  multiline?: boolean;
 }
 
 /** What the in-use delete dialog shows for one item, when a vocabulary needs
@@ -209,16 +213,28 @@ export function DefinitionList<T extends { id: string }>({
           <div key={item.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "var(--space-3)" }}>
             <div className="row" style={{ justifyContent: "space-between" }}>
               <div className="row">
-                {fields.map((f) => (
-                  <InlineTextInput
-                    key={f.key}
-                    type={f.inputType ?? "text"}
-                    maxWidth={f.maxWidth ?? 220}
-                    ariaLabel={f.ariaLabel ?? f.placeholder ?? f.key}
-                    value={draft[f.key]}
-                    onChange={(next) => setEdits((m) => ({ ...m, [item.id]: { ...draft, [f.key]: next } }))}
-                  />
-                ))}
+                {fields.map((f) =>
+                  f.multiline ? (
+                    <AutoGrowTextarea
+                      key={f.key}
+                      rows={2}
+                      style={{ width: f.maxWidth ?? 360, maxWidth: "100%" }}
+                      aria-label={f.ariaLabel ?? f.placeholder ?? f.key}
+                      placeholder={f.placeholder}
+                      value={draft[f.key]}
+                      onChange={(next) => setEdits((m) => ({ ...m, [item.id]: { ...draft, [f.key]: next } }))}
+                    />
+                  ) : (
+                    <InlineTextInput
+                      key={f.key}
+                      type={f.inputType ?? "text"}
+                      maxWidth={f.maxWidth ?? 220}
+                      ariaLabel={f.ariaLabel ?? f.placeholder ?? f.key}
+                      value={draft[f.key]}
+                      onChange={(next) => setEdits((m) => ({ ...m, [item.id]: { ...draft, [f.key]: next } }))}
+                    />
+                  )
+                )}
                 {dirty && isValid(draft) && (
                   <button className="btn" title={strings.admin.rename} aria-label={strings.admin.rename} onClick={() => handleRename(item)}>
                     <Pencil />
@@ -305,17 +321,26 @@ export function DefinitionList<T extends { id: string }>({
         />
       )}
       <div className="row" style={{ alignItems: "flex-end" }}>
-        {fields.map((f) => (
-          <TextField helpNotNeeded
-            key={f.key}
-            label={f.placeholder ?? f.ariaLabel ?? f.key}
-            ariaLabel={fields.length > 1 ? f.ariaLabel : undefined}
-            placeholder={f.placeholder}
-            value={newDraft[f.key]}
-            onChange={(next) => setNewDraft((d) => ({ ...d, [f.key]: next }))}
-            inputProps={{ type: f.inputType ?? "text" }}
-          />
-        ))}
+        {fields.map((f) =>
+          f.multiline ? (
+            <TextAreaField helpNotNeeded
+              key={f.key}
+              label={f.placeholder ?? f.ariaLabel ?? f.key}
+              value={newDraft[f.key]}
+              onChange={(next) => setNewDraft((d) => ({ ...d, [f.key]: next }))}
+            />
+          ) : (
+            <TextField helpNotNeeded
+              key={f.key}
+              label={f.placeholder ?? f.ariaLabel ?? f.key}
+              ariaLabel={fields.length > 1 ? f.ariaLabel : undefined}
+              placeholder={f.placeholder}
+              value={newDraft[f.key]}
+              onChange={(next) => setNewDraft((d) => ({ ...d, [f.key]: next }))}
+              inputProps={{ type: f.inputType ?? "text" }}
+            />
+          )
+        )}
         <button className="btn btn-primary" onClick={handleAdd} disabled={!isValid(newDraft)}>
           <Plus /> {addLabel}
         </button>

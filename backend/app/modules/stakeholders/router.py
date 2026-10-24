@@ -43,6 +43,7 @@ from app.modules.stakeholders.service import (
     PERSONA_TYPES,
     archive_persona,
     get_current_persona_version,
+    organization_personas,
     unarchive_persona,
 )
 from app.schemas.file import FileAssetOut
@@ -173,10 +174,7 @@ def list_org_personas(
     organization_id: UUID, include_archived: bool = False,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    query = select(Persona).where(Persona.organization_id == organization_id, Persona.scope == _SCOPE)
-    if not include_archived:
-        query = query.where(Persona.is_archived.is_(False))
-    return sh.personas_to_out(db, db.scalars(query.order_by(Persona.created_at)).all())
+    return sh.personas_to_out(db, organization_personas(db, organization_id, include_archived=include_archived))
 
 
 @router.get("/personas/{persona_id}", response_model=PersonaOut)

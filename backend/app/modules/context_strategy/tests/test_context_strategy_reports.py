@@ -10,16 +10,20 @@ module being a 404, and PDF/CSV output (including CSV formula neutralising).
 
 from __future__ import annotations
 
+import io
 import re
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from docx import Document
+from docx.oxml.ns import qn
 from sqlalchemy import update
 
 from app.database import SessionLocal
 from app.modules.context_strategy.enums import GuidingPrincipleStatus, StrategyStatus
 from app.modules.context_strategy.models import GuidingPrincipleVersion, StrategyVersion
 from app.services.codes import label_title
+from app.services.report_model import TONE_FILL
 from tests.conftest import (
     auth_headers,
     create_component_and_category,
@@ -223,6 +227,42 @@ def test_r1_group_data_carries_cell_ratings_by_level_name_for_a_severity_x_frequ
     assert other["cell_ratings"] == []
 
 
+def test_r1_word_export_keeps_the_band_colours_of_the_screen(client, admin_token):
+    """Band cells in the ranking and the Severity x Frequency matrix are filled with the band's tone, pinned cells included."""
+    org, project, token = _setup(client, admin_token, "R1 Tone Co")
+    pid = project["id"]
+    levels = _levels(client, token, pid)
+    _scored_pain_point(client, token, pid, levels, "Major constant", "Major", "Constant", "High")
+    _scored_pain_point(client, token, pid, levels, "Blocker rare", "Blocker", "Rare", "High")
+    resp = client.put(
+        f"/api/v1/orgs/{org['id']}/scoring-schemes/pain_point/models/sxf/cell-ratings",
+        json={"cells": [{"first_level_id": levels["severity"]["Major"], "second_level_id": levels["frequency"]["Constant"],
+                         "band_label": "Critical"}]},
+        headers=auth_headers(token),
+    )
+    assert resp.status_code == 200, resp.text
+    bands = {b["label"]: b["tone"] for b in _report(client, token, pid, "pain-point-prioritisation", model_key="sxf")["data"]["groups"][0]["bands"]}
+
+    download = _report(client, token, pid, "pain-point-prioritisation", model_key="sxf", format="docx")
+    tables = Document(io.BytesIO(download.content)).tables
+    ranking = next(t for t in tables if t.rows[0].cells[0].text == "Model" and t.rows[0].cells[1].text == "Rank")
+    header = [c.text for c in ranking.rows[0].cells]
+    for row in ranking.rows[1:]:
+        band = row.cells[header.index("Band")]
+        shading = band._tc.tcPr.find(qn("w:shd")) if band._tc.tcPr is not None else None
+        assert shading is not None and shading.get(qn("w:fill")) == TONE_FILL[bands[band.text]]
+
+    matrix = next(t for t in tables if t.rows[0].cells[1].text.startswith("Severity"))
+    columns = [c.text for c in matrix.rows[0].cells]
+    pinned = next(r for r in matrix.rows[1:] if r.cells[1].text == "Major").cells[columns.index("Constant")]
+    assert pinned.text == "1 (High ×1) · Critical"  # count, confidence, then the band that colours it
+    assert pinned._tc.tcPr.find(qn("w:shd")).get(qn("w:fill")) == TONE_FILL[bands["Critical"]]
+    for row in matrix.rows[1:]:
+        for cell in row.cells[2:]:
+            assert cell.text.split(" · ")[-1] in bands  # every cell, empty ones too, names its band
+            assert cell._tc.tcPr.find(qn("w:shd")).get(qn("w:fill")) in set(TONE_FILL.values())
+
+
 def test_r1_ranks_and_segregates_blockers_unscored_and_intentional(client, admin_token):
     _, project, token = _setup(client, admin_token, "R1 Rank Co")
     pid = project["id"]
@@ -245,7 +285,8 @@ def test_r1_ranks_and_segregates_blockers_unscored_and_intentional(client, admin
     assert metrics["Open Pain Points (excluding intentional)"] == 3 and metrics["Blockers"] == 1
     # The matrix places both scored fixable items by their worst persona.
     matrix = _section(report, "matrix")
-    assert sum(int(cell.split()[0]) for row in matrix["rows"] for cell in row[2:] if cell) == 2
+    counted = [re.match(r"(\d+) \(", cell) for row in matrix["rows"] for cell in row[2:]]
+    assert sum(int(m.group(1)) for m in counted if m) == 2
 
 
 def test_r1_model_switch_reorders_and_unknown_model_is_400(client, admin_token):

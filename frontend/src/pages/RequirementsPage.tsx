@@ -14,7 +14,6 @@ import type {
   Project,
   ProjectStage,
   Requirement,
-  RequirementImportResult,
   RequirementStatus,
 } from "../api/types";
 import type { CollectedLink } from "../api/artefactLinks";
@@ -26,7 +25,6 @@ import {
   principalRef,
 } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { CsvImportWizard, type CsvImportWizardHandle } from "../components/CsvImportWizard";
 import { CustomFieldsForm } from "../components/CustomFieldsForm";
 import { RequirementFields } from "../components/RequirementFields";
 import { EMPTY_REQUIREMENT_FIELDS, requirementPeopleAndReviewPayload, type RequirementFieldValues } from "../components/requirementFieldValues";
@@ -42,9 +40,8 @@ import { TagField } from "../components/TagField";
 import { BulkTagDialog } from "../components/BulkTagDialog";
 import { projectTagAdminApi } from "../api/tags";
 import { TagFilterField } from "../components/TagFilterField";
-import { SplitButtonTrigger } from "../components/SplitButtonTrigger";
 import { SortableHeader } from "../components/SortableHeader";
-import { cycleSort, type SortState } from "../components/sortState";
+import { cycleSort } from "../components/sortState";
 import { Spinner } from "../components/Spinner";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useAuth } from "../context/AuthContext";
@@ -66,6 +63,9 @@ import { ProjectScopeFilter } from "../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../components/ProjectScopeLabel";
 import { rowProjectId } from "../api/projectScope";
 import { useResetOnChange } from "../hooks/useResetOnChange";
+import { useRestoredRowCount } from "../hooks/useListPosition";
+import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../hooks/useUrlFilter";
+import { addSharedListFilters } from "../utils/listFilterParams";
 
 const PAGE_SIZE = 30;
 
@@ -73,6 +73,7 @@ const PAGE_SIZE = 30;
 // independent overlay marker (`Requirement.is_completed`), filtered via its
 // own `FilterCheckbox` below rather than a status option.
 const STATUS_OPTIONS: RequirementStatus[] = ["draft", "reviewed", "approved", "archived"];
+const SORT_KEYS = ["unique_code", "name", "status"] as const;
 
 /**
  * Requirement browser (C-G-04: sorted by component/category), with search
@@ -115,45 +116,23 @@ export function RequirementsPage() {
   const [newInlineComponentPrefix, setNewInlineComponentPrefix] = useState("");
   const [newInlineCategoryName, setNewInlineCategoryName] = useState("");
   const [newInlineCategoryPrefix, setNewInlineCategoryPrefix] = useState("");
-  const [search, setSearch] = useState("");
-  // Seeded directly from the URL on initial render, not set in a separate
-  // effect after mount (bug fix, 2026-08: dashboard glance navigation
-  // race) — a `?status=`/`?stage=` deep link from `ProjectOverviewPage`'s
-  // dashboard tiles used to be applied by a *second* effect that ran after
-  // the reload effect below had already kicked off one fetch with the
-  // still-empty default filter, so whichever of the two in-flight
-  // responses resolved last "won", sometimes leaving the rendered list out
-  // of sync with the (correctly-set) filter dropdown until the user
-  // toggled it and back. Seeding here means only one filter state, and
-  // therefore only one fetch, ever exists per mount.
-  const [statusFilter, setStatusFilter] = useState<RequirementStatus | "">(
-    () => (searchParams.get("status") as RequirementStatus | "") || ""
-  );
-  // C-G-11: completion is a separate overlay marker, not a status value —
-  // its own deep-linkable filter, same seed-from-URL treatment as
-  // `statusFilter`/`targetStageFilter` above (ProjectOverviewPage's
-  // "% complete" dashboard tile links here with `?completed=1`).
-  const [completedFilter, setCompletedFilter] = useState(() => searchParams.get("completed") === "1");
-  const [targetStageFilter, setTargetStageFilter] = useState(() => searchParams.get("stage") || "");
-  const [categoryFilter, setCategoryFilter] = useState("");
-  const [hasCommentsOnly, setHasCommentsOnly] = useState(false);
-  const [onlyWatched, setOnlyWatched] = useState(false);
-  // Unarchive endpoint + Restore button: an
-  // archived requirement's detail page (`RequirementDetailPage.tsx`) is now
-  // where the Restore button lives, but until this filter existed there was
-  // no way to *reach* an archived requirement from this list at all — the
-  // default query already excludes them, mirroring `ProjectActionsPage.tsx`'s
-  // own `include_archived` checkbox.
-  const [includeArchived, setIncludeArchived] = useState(false);
-  // Column-header sorting: this list is
-  // backend-paginated (`PAGE_SIZE`/`LoadMoreButton` above), so sorting has
-  // to be a `sort`/`order` query param the backend honours rather than a
-  // client-side sort of just the currently-loaded page — sorting only the
-  // loaded rows would silently misrepresent the true full-list order.
-  type RequirementSortKey = "unique_code" | "name" | "status";
-  const [sort, setSort] = useState<SortState<RequirementSortKey> | null>(null);
+  // The list's filters, search and sort live in the URL (`useUrlFilter`), so it comes back as it was left
+  // after a visit to a record, and a dashboard glance links here with the same `status`, `stage` and
+  // `completed` parameters. Completion is a separate overlay marker, not a status value.
+  const [search, setSearch] = useUrlText("q");
+  const [statusFilter, setStatusFilter] = useUrlChoice<RequirementStatus>("status", STATUS_OPTIONS);
+  const [completedFilter, setCompletedFilter] = useUrlFlag("completed");
+  const [targetStageFilter, setTargetStageFilter] = useUrlText("stage");
+  const [categoryFilter, setCategoryFilter] = useUrlText("category");
+  const [hasCommentsOnly, setHasCommentsOnly] = useUrlFlag("comments");
+  const [onlyWatched, setOnlyWatched] = useUrlFlag("watched");
+  // An archived requirement's detail page has the Restore button; this filter is how the list reaches one.
+  const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
+  // The list is backend-paginated (`PAGE_SIZE`/`LoadMoreButton`), so sorting is a `sort`/`order` query
+  // parameter the backend honours; sorting only the loaded rows would misrepresent the full-list order.
+  const [sort, setSort] = useUrlSort(SORT_KEYS);
+  const limitFor = useRestoredRowCount(PAGE_SIZE);
   const [showNewForm, setShowNewForm] = useState(false);
-  const csvWizardRef = useRef<CsvImportWizardHandle>(null);
   const [newFields, setNewFields] = useState<RequirementFieldValues>(EMPTY_REQUIREMENT_FIELDS);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [newComponentId, setNewComponentId] = useState("");
@@ -161,8 +140,6 @@ export function RequirementsPage() {
   const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>([]);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [viewMode, setViewMode] = useViewMode("requirements");
-  const [importResult, setImportResult] = useState<RequirementImportResult | null>(null);
-  const [importing, setImporting] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
 
   // --- Create-modal step 2: attach files to the just-created requirement
@@ -192,8 +169,9 @@ export function RequirementsPage() {
   const bulkMoveTriggerRef = useRef<HTMLButtonElement>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
 
-  function listParams(offset: number): URLSearchParams {
-    const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
+  /** The list's filters, by the names its list request and the shared export both take (no paging or sort). */
+  function filterParams(): URLSearchParams {
+    const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (statusFilter) params.set("status", statusFilter);
     if (completedFilter) params.set("is_completed", "true");
@@ -202,9 +180,13 @@ export function RequirementsPage() {
     if (hasCommentsOnly) params.set("has_comments", "true");
     if (onlyWatched) params.set("only_watched", "true");
     if (includeArchived) params.set("include_archived", "true");
-    for (const tag of tagFilter.tags) params.append("tag", tag);
-    if (tagFilter.active) params.set("tag_mode", tagFilter.mode);
-    if (projectScope.widened) params.set("project_scope", projectScope.scope);
+    addSharedListFilters(params, tagFilter, projectScope);
+    return params;
+  }
+
+  function listParams(offset: number): URLSearchParams {
+    const params = new URLSearchParams({ limit: String(limitFor(offset)), offset: String(offset) });
+    filterParams().forEach((value, key) => params.append(key, value));
     if (sort) {
       params.set("sort", sort.key);
       params.set("order", sort.direction);
@@ -220,7 +202,7 @@ export function RequirementsPage() {
   const listParamsRef = useLatest(listParams);
 
   // Belt-and-suspenders guard (bug fix, 2026-08: dashboard glance
-  // navigation race) alongside the searchParams-seeding fix above — neither
+  // navigation race) alongside the filters living in the URL — neither
   // `loadRequirements` nor `reload()` previously sequenced requests at all,
   // so *any* path that can fire two overlapping fetches (e.g. rapid filter
   // changes, not just the mount-time race the seeding fix eliminates) could
@@ -295,29 +277,6 @@ export function RequirementsPage() {
       return params;
     }, { replace: true });
   }, [newFormRequested, setSearchParams]);
-
-  // Deep-linked from the Project Overview dashboard's glance tiles/pie-chart
-  // segments/stage-progress bars (UX review: clicking a widget should land
-  // here pre-filtered to match it) — `statusFilter`/`targetStageFilter`
-  // above are already seeded straight from these same params on initial
-  // render (bug fix, 2026-08: dashboard glance navigation race), so this
-  // effect only has to strip them from the URL once, so a later reload of
-  // this page doesn't keep reapplying a stale filter; it must not call
-  // `setStatusFilter`/`setTargetStageFilter` itself, or the race it was
-  // fixed to eliminate comes back.
-  useEffect(() => {
-    const status = searchParams.get("status");
-    const stage = searchParams.get("stage");
-    const completed = searchParams.get("completed");
-    if (!status && !stage && !completed) return;
-    setSearchParams((params) => {
-      params.delete("status");
-      params.delete("stage");
-      params.delete("completed");
-      return params;
-    }, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
 
   useEffect(() => {
     if (!projectId || !user) return;
@@ -429,22 +388,6 @@ export function RequirementsPage() {
     setShowNewForm(false);
     setCreatedRequirement(null);
     reload();
-  }
-
-  async function importCsv(file: File) {
-    if (!projectId) return;
-    setImporting(true);
-    try {
-      const result = await api.postFile<RequirementImportResult>(
-        `/api/v1/projects/${projectId}/requirements/import`, file
-      );
-      setImportResult(result);
-      reload();
-    } catch (err) {
-      showToast(toErrorMessage(err, strings.common.error), "error");
-    } finally {
-      setImporting(false);
-    }
   }
 
   async function move(id: string, direction: "up" | "down") {
@@ -590,18 +533,14 @@ export function RequirementsPage() {
     <div className="stack">
       <ListPageLayout
         title={strings.requirements.title}
+        ready={requirements !== null}
+        loadedRows={requirements?.length}
         actions={
-          <SplitButtonTrigger
-            icon={<Plus size={16} />}
-            label={strings.requirements.newRequirement}
-            onDefaultAction={() => setShowNewForm(true)}
-            menuTitle={strings.requirements.newRequirement}
-            moreOptionsLabel={strings.common.moreOptions}
-            alternatives={[
-              { label: strings.requirements.importFromCsv, onSelect: () => csvWizardRef.current?.openFilePicker() },
-            ]}
-          />
+          <button className="btn btn-primary" onClick={() => setShowNewForm(true)}>
+            <Plus size={16} /> {strings.requirements.newRequirement}
+          </button>
         }
+        records={{ projectId: projectId ?? "", recordType: "requirement", filters: filterParams().toString(), onImported: reload }}
         filter={
           <FilterPanel
             sectionKey="requirementsFilters"
@@ -653,35 +592,6 @@ export function RequirementsPage() {
           </FilterPanel>
         }
       >
-        <CsvImportWizard
-          ref={csvWizardRef}
-          showImportTrigger={false}
-          projectId={projectId ?? ""} projectName={project?.name ?? ""}
-          components={components} categories={categories} stages={stages} customFields={customFieldDefs}
-          importing={importing} onImport={importCsv}
-        />
-
-        {importResult && (
-          <div className="card stack" style={{ gap: "var(--space-2)" }}>
-            <div className="row" style={{ justifyContent: "space-between" }}>
-              <strong>
-                Import complete: {importResult.created} created, {importResult.errors.length} error(s)
-              </strong>
-              <button className="btn" onClick={() => setImportResult(null)}>
-                Dismiss
-              </button>
-            </div>
-            {importResult.errors.length > 0 && (
-              <ul style={{ margin: 0 }}>
-                {importResult.errors.map((e, i) => (
-                  <li key={i} className="text-muted">
-                    Row {e.row}: {e.message}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
 
         {showNewForm && metaLoaded && (
           // Style guide "Pattern: modal dialog for entity create/rename" —

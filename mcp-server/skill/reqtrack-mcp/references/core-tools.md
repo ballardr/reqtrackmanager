@@ -92,6 +92,12 @@ Finds the record a qualified code names, such as `ACME-REQ-001`.
 
 Parameters: `qualified_code*` (string), `organization_id` (string)
 
+## `get_record_list_report` (read)
+
+Lists every record of one type in a project as a single table: the "Record list" report.
+
+Parameters: `project_id` (string), `record_type*` (string), `project_scope` (string), `tags` (list[string]), `tag_mode` (string)
+
 ## `get_requirement` (read)
 
 Gets a single requirement's full current detail.

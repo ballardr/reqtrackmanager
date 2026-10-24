@@ -3,10 +3,12 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../../api/client";
+import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { withToast } from "../../testing/storybook-helpers";
 import { buildEngagement, buildFinding, buildPersona, buildStakeholder } from "./fixtures";
 import { ProjectEngagementsPage } from "./ProjectEngagementsPage";
 import type { Engagement } from "./types";
+import { chooseListAction, openListMenu } from "../../testing/listActionsMenu";
 
 const PROJECT_ID = "project-1";
 const BASE = `/api/v1/projects/${PROJECT_ID}/modules/stakeholders`;
@@ -25,6 +27,7 @@ const ENGAGEMENTS: Engagement[] = [
 
 function mockPageApis(rows: Engagement[]) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (/\/records\/[a-z_]+\/columns$/.test(path)) return buildRecordColumns({ label: "Engagements" });
     if (path.startsWith(`${BASE}/engagements`)) return rows;
     if (path === `${BASE}/stakeholders`) return [buildStakeholder()];
     if (path === `${BASE}/personas`) return [buildPersona()];
@@ -102,6 +105,24 @@ export const FiltersAreSentToTheApi: Story = {
     await waitFor(() => expect(api.get).toHaveBeenCalledWith(`${BASE}/engagements?stakeholder_id=stakeholder-1`));
     await userEvent.click(canvas.getByLabelText("Retention review due"));
     await waitFor(() => expect(api.get).toHaveBeenCalledWith(`${BASE}/engagements?stakeholder_id=stakeholder-1&retention_due=true`));
+  },
+};
+
+/** Export carries the server-side filters (a participant, a date range, retention) and the list's own channel filter. */
+export const ExportCarriesTheFilters: Story = {
+  beforeEach: () => {
+    mockPageApis(ENGAGEMENTS);
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["code\n"], { type: "text/csv" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByText("Evidence follow-up"));
+    await userEvent.click(canvas.getByLabelText("Retention review due"));
+    await userEvent.click(canvas.getByRole("button", { name: "Email" }));
+    await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await chooseListAction(canvas, "Export as CSV");
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/engagement/export?retention_due=true&type=Email`));
   },
 };
 

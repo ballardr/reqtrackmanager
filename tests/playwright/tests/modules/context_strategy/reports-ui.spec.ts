@@ -93,12 +93,15 @@ test.describe("Context & Strategy: Reports UI", () => {
 
     await expect(picker(page)).toHaveValue("requirements");
     await expect(page.getByRole("button", { name: "Generate PDF" })).toBeVisible();
+    // With more than one report source the picker prefixes each title with its module name.
     const options = await picker(page).locator("option").allTextContents();
     expect(options[0]).toBe("Requirements report");
-    expect(options).toEqual(expect.arrayContaining(["Pain Point prioritisation", "Open Question register", "Strategy cascade and alignment"]));
+    expect(options).toEqual(expect.arrayContaining([
+      "Context & Strategy: Pain Point prioritisation", "Context & Strategy: Open Question register", "Context & Strategy: Strategy cascade and alignment",
+    ]));
 
     // The selection is the URL, so a report is linkable and survives a reload.
-    await picker(page).selectOption({ label: "Open Question register" });
+    await picker(page).selectOption("open-question-register");
     await expect(page).toHaveURL(/report=open-question-register/);
     await page.reload();
     await expect(picker(page)).toHaveValue("open-question-register");
@@ -272,7 +275,7 @@ test.describe("Context & Strategy: Reports UI", () => {
             page.getByRole("button", { name: `Download ${kind} report` }).click(),
           ]);
           expect(download.suggestedFilename()).toBe(`${report.value}.${kind.toLowerCase()}`);
-          await expect(page.getByText(`Downloaded ${report.label} (${kind}).`)).toBeVisible();
+          await expect(page.getByText(`Downloaded ${report.label.replace(/^[^:]+: /, "")} (${kind}).`)).toBeVisible();
         }
       });
     }
@@ -313,7 +316,9 @@ test.describe("Context & Strategy: Reports UI", () => {
 
     await page.goto(`/projects/${project.id}/reports`);
     await expect(page.getByRole("button", { name: "Generate PDF" })).toBeVisible();
-    await expect(picker(page)).toHaveCount(0);
+    // The platform Record list report keeps the picker, but no Context & Strategy report is in it.
+    const options = await picker(page).locator("option").allTextContents();
+    expect(options.filter((o) => o.startsWith("Context & Strategy: "))).toEqual([]);
   });
 
   test("a disabled sub-component removes only its own reports", async ({ page, request }) => {
@@ -326,8 +331,8 @@ test.describe("Context & Strategy: Reports UI", () => {
     await page.goto(`/projects/${project.id}/reports`);
     await expect(picker(page)).toBeVisible();
     const options = await picker(page).locator("option").allTextContents();
-    expect(options).toContain("Pain Point prioritisation");
-    expect(options).not.toContain("Open Question register");
+    expect(options).toContain("Context & Strategy: Pain Point prioritisation");
+    expect(options).not.toContain("Context & Strategy: Open Question register");
   });
 
   test("organisation reports are listed for an org admin and need the org role for anyone else", async ({ page, request }) => {
@@ -394,7 +399,9 @@ test.describe("Context & Strategy: Reports UI", () => {
       await expect(page.getByRole("heading", { name: /E2E Reports UI/ })).toBeVisible();
       await expect(page.getByRole("link", { name: "Reports", exact: true })).toHaveCount(0);
       await page.goto(`/orgs/${org.id}/overview/reports`);
-      await expect(picker(page)).toHaveCount(0);
+      // The platform Record list report keeps the picker, but no Context & Strategy report is in it.
+    const options = await picker(page).locator("option").allTextContents();
+    expect(options.filter((o) => o.startsWith("Context & Strategy: "))).toEqual([]);
     });
 
     await test.step("granting the org role makes the group appear", async () => {

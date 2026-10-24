@@ -182,10 +182,10 @@ test("mockup engagement: reactions, subscriptions, admin tabs, dashboard charts"
     // `overview-new-requirement-side-panel.spec.ts`/`project-compliance-view.spec.ts`.
     await page.getByRole("link", { name: "Overview", exact: true }).click();
     await expect(page.getByText("Requirements by status")).toBeVisible();
-    // Scoped to main: the nav rail's own "Change requests" link (always
-    // present alongside this dashboard once a project is selected) exact-
-    // matches the same text as this chart's legend label.
-    await expect(page.getByRole("main").getByText("Change requests", { exact: true })).toBeVisible();
+    // Scoped to main and to the chart's title: the nav rail's own "Change requests"
+    // link and the total-records chart's "Change requests" legend button exact-match
+    // the same text.
+    await expect(page.getByRole("main").locator("div.text-muted").filter({ hasText: /^Change requests$/ })).toBeVisible();
     await expect(page.getByText("Stage progress")).toBeVisible();
     await expect(page.getByText("Project activity")).toBeVisible();
   });

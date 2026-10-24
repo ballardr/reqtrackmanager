@@ -46,7 +46,7 @@ import re
 import uuid
 from collections import Counter, defaultdict
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -59,7 +59,7 @@ from app.models.project import Project
 from app.models.requirement import Requirement, RequirementVersion
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.modules.decisions.enums import DecisionStatus
-from app.modules.decisions.labels import DECISION_STATUS_LABEL, decision_status_label
+from app.modules.decisions.labels import DECISION_STATUS_LABEL, DECISION_STATUS_TONE, decision_status_label
 from app.modules.decisions.models import Decision, DecisionTypeDefinition
 from app.modules.registry import (
     ReportDefinition,
@@ -75,6 +75,7 @@ from app.services.report_framework import (
     ReportResult,
     ReportSection,
     build_report_routers,
+    tones_by_label,
 )
 
 MODULE_KEY = "decisions"
@@ -564,7 +565,10 @@ _OVERDUE_DAYS = ReportParamDefinition(
     description="Days a Decision may wait for a verdict before it is flagged overdue (default 14).",
 )
 
-REPORT_DEFINITIONS: tuple[ReportDefinition, ...] = (
+# Badge colours for the PDF and Word output: the Status column, as the screen's badge shows it.
+_CELL_TONES = {"Status": tones_by_label((DECISION_STATUS_LABEL, DECISION_STATUS_TONE))}
+
+_REPORTS: tuple[ReportDefinition, ...] = (
     ReportDefinition(
         "d1", "decision-register", "Decision register",
         "Every Decision with its type, status, date, decision maker, owner and supersession.",
@@ -589,6 +593,8 @@ REPORT_DEFINITIONS: tuple[ReportDefinition, ...] = (
         record_types=("decision", "requirement"),
     ),
 )
+
+REPORT_DEFINITIONS: tuple[ReportDefinition, ...] = tuple(replace(d, cell_tones=_CELL_TONES) for d in _REPORTS)
 
 # Project router for the module to include (`project_router`); there is no organisation-wide variant.
 REPORT_ROUTERS = build_report_routers(MODULE_KEY, REPORT_DEFINITIONS)

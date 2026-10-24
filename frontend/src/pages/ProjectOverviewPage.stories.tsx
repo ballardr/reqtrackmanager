@@ -22,6 +22,12 @@ const metrics: ProjectMetrics = {
     { stage_id: "s2", name: "Build", status: "scoping", requirement_count: 14, completed_percent: 30 },
   ],
   scope_project_count: 1,
+  records_by_type: [
+    { type: "requirement", label: "Requirements", count: 24 },
+    { type: "risk", label: "Risks", count: 9 },
+    { type: "decision", label: "Decisions", count: 4 },
+  ],
+  record_total: 37,
 };
 
 const activity: ChangeEntry[] = [buildChangeEntry({ action: "updated", actor_display_name: "Alex Morgan" })];
@@ -56,12 +62,29 @@ export const Dashboard: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByText("Atlas Platform")).toBeInTheDocument();
-    // "24" (requirement_count) legitimately also appears as the donut
-    // chart's centre total, since it equals the sum of
-    // requirements_by_status — scope to the metrics tile specifically
-    // rather than assuming a single match.
-    await expect(canvas.getByText("Requirements").previousSibling).toHaveTextContent("24");
+    // The total-records chart: its centre is the sum across modules and each type has a legend row.
+    const totalCard = canvas.getByText("Total records").closest(".card") as HTMLElement;
+    await expect(within(totalCard).getByText("37")).toBeInTheDocument();
+    for (const label of ["Requirements", "Risks", "Decisions"]) {
+      await expect(within(totalCard).getByRole("button", { name: new RegExp(label) })).toBeInTheDocument();
+    }
     await expect(canvas.getByText("Alex Morgan updated")).toBeInTheDocument();
+  },
+};
+
+/** A project with no records shows words, not an empty ring. */
+export const NoRecords: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.includes("/metrics")) return { ...metrics, records_by_type: [], record_total: 0 };
+      if (path.endsWith("/changes")) return activity;
+      if (path.endsWith("/ancestors") || path.endsWith("/children") || path.endsWith("/enabled-modules")) return [];
+      return buildProject({ id: "project-1", name: "Atlas Platform", summary: "Core platform requirements." });
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("No records yet.")).toBeInTheDocument();
   },
 };
 
@@ -171,7 +194,10 @@ export const WidenedToTheParent: Story = {
     spyOn(api, "get").mockImplementation(async (path: string) => {
       if (path.includes("/metrics")) {
         return path.includes("project_scope=parents")
-          ? { ...metrics, requirement_count: 60, scope_project_count: 2 }
+          ? {
+            ...metrics, requirement_count: 60, scope_project_count: 2, record_total: 60,
+            records_by_type: [{ type: "requirement", label: "Requirements", count: 60 }],
+          }
           : metrics;
       }
       if (path.endsWith("/scope-options")) return { has_parents: true, has_children: false, truncated: false };
@@ -191,6 +217,7 @@ export const WidenedToTheParent: Story = {
     await expect(select).toHaveClass("project-scope-select-widened");
     await userEvent.hover(select);
     await expect(await within(document.body).findByRole("tooltip")).toHaveTextContent("Counts cover 2 projects");
-    await expect(canvas.getByText("Requirements").previousSibling).toHaveTextContent("60");
+    const totalCard = canvas.getByText("Total records").closest(".card") as HTMLElement;
+    await waitFor(() => expect(within(totalCard).getAllByText("60").length).toBeGreaterThan(0));
   },
 };

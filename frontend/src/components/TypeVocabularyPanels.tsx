@@ -26,6 +26,10 @@
  * (`RestoreOrgDefaultsButton`) shows them again. Delete on a project-only type
  * deletes it, blocked while in use.
  *
+ * A module whose types carry an explanation (`withDefinition`, Pain Points) gets a second, growing text field per row; its
+ * value travels with the name, but is sent only when it changed, so renaming an organisation type in a project does not
+ * silently copy the organisation's definition into that project as an override. A blank value clears.
+ *
  * Gating is server-side (403 surfaces through `DefinitionList`'s error
  * handling), so both panels render their controls unconditionally. The `api`
  * adapter must be a stable reference (a module-level constant), since a change
@@ -35,7 +39,7 @@ import { type ReactNode, useEffect, useState } from "react";
 
 import { ApiError } from "../api/client";
 import { toErrorMessage, useToast } from "../context/ToastContext";
-import { DefinitionList } from "./DefinitionList";
+import { DefinitionList, type DefinitionListField } from "./DefinitionList";
 import { RestoreOrgDefaultsButton, type HiddenDefinition } from "./RestoreOrgDefaultsButton";
 import { Spinner } from "./Spinner";
 import { ToggleSwitch } from "./ToggleSwitch";
@@ -45,6 +49,7 @@ export interface OrgTypeRow {
   id: string;
   name: string;
   is_active: boolean;
+  definition?: string | null;
 }
 
 /** One row of a project's effective type list. */
@@ -54,31 +59,46 @@ export interface EffectiveTypeRow {
   display_order: number;
   is_enabled: boolean;
   source: "org" | "project_override" | "project_local";
+  /** The text shown for the type: the project's own, else the organisation's. */
+  definition?: string | null;
 }
 
 /** The org-tier calls a module supplies. `scopeId` is the organisation id. */
 export interface OrgTypeVocabularyApi<T extends OrgTypeRow> {
   list(orgId: string): Promise<T[]>;
-  create(orgId: string, name: string): Promise<unknown>;
+  create(orgId: string, name: string, definition?: string): Promise<unknown>;
   move(orgId: string, typeId: string, direction: "up" | "down"): Promise<unknown>;
-  update(orgId: string, typeId: string, values: { name?: string; is_active?: boolean }): Promise<unknown>;
+  update(orgId: string, typeId: string, values: { name?: string; is_active?: boolean; definition?: string }): Promise<unknown>;
   delete(orgId: string, typeId: string): Promise<unknown>;
 }
 
 /** The project-tier calls a module supplies. */
 export interface ProjectTypeVocabularyApi {
   list(projectId: string): Promise<EffectiveTypeRow[]>;
-  createLocal(projectId: string, name: string, displayOrder?: number): Promise<unknown>;
+  createLocal(projectId: string, name: string, displayOrder?: number, definition?: string): Promise<unknown>;
   override(
     projectId: string,
     typeRefId: string,
-    values: { name?: string | null; display_order?: number | null; is_enabled?: boolean | null },
+    values: { name?: string | null; display_order?: number | null; is_enabled?: boolean | null; definition?: string | null },
   ): Promise<unknown>;
   /** Deletes a project-only type, or hides an organisation default (any org-backed row's id). */
   delete(projectId: string, typeRefId: string): Promise<unknown>;
   listHidden(projectId: string): Promise<HiddenDefinition[]>;
   /** Shows hidden organisation defaults again: the given ids, or all when omitted. */
   restore(projectId: string, orgTypeIds?: string[]): Promise<unknown>;
+}
+
+/** The growing "Definition" field a vocabulary opts into with `withDefinition`. */
+function definitionField<T extends { definition?: string | null }>(noun: string, scope: string): DefinitionListField<T> {
+  return {
+    key: "definition",
+    getValue: (item) => item.definition ?? "",
+    placeholder: `${scope}${noun} type definition (what belongs under it)`,
+    ariaLabel: `${scope}${noun} type definition`,
+    maxWidth: 360,
+    multiline: true,
+    optional: true,
+  };
 }
 
 const SOURCE_LABEL: Record<EffectiveTypeRow["source"], string> = {
@@ -108,6 +128,7 @@ export function OrgTypeVocabularyPanel<T extends OrgTypeRow>({
   noun,
   description,
   api,
+  withDefinition = false,
   inUseMessage = "This type is still used by at least one project. Disable it instead of deleting it.",
 }: {
   orgId: string;
@@ -115,6 +136,8 @@ export function OrgTypeVocabularyPanel<T extends OrgTypeRow>({
   noun: string;
   description: ReactNode;
   api: OrgTypeVocabularyApi<T>;
+  /** Each type also has an optional definition. */
+  withDefinition?: boolean;
   inUseMessage?: string;
 }) {
   const { showToast } = useToast();
@@ -149,18 +172,23 @@ export function OrgTypeVocabularyPanel<T extends OrgTypeRow>({
       <p className="text-muted">{description}</p>
       <DefinitionList<T>
         items={items}
-        fields={[{ key: "name", getValue: (item) => item.name, placeholder: `${noun} type name`, ariaLabel: `${noun} type name` }]}
+        fields={[
+          { key: "name", getValue: (item) => item.name, placeholder: `${noun} type name`, ariaLabel: `${noun} type name` },
+          ...(withDefinition ? [definitionField<T>(noun, "")] : []),
+        ]}
         getReassignLabel={(item) => item.name}
         onMove={async (id, direction) => {
           await api.move(orgId, id, direction);
           reload();
         }}
         onRename={async (id, values) => {
-          await api.update(orgId, id, { name: values.name });
+          const current = items.find((i) => i.id === id);
+          const changed = withDefinition && values.definition !== (current?.definition ?? "");
+          await api.update(orgId, id, { name: values.name, ...(changed ? { definition: values.definition } : {}) });
           reload();
         }}
         onAdd={async (values) => {
-          await api.create(orgId, values.name);
+          await api.create(orgId, values.name, withDefinition ? values.definition || undefined : undefined);
           showToast(`${noun} type created.`);
           reload();
         }}
@@ -202,12 +230,15 @@ export function ProjectTypeVocabularyPanel({
   noun,
   description,
   api,
+  withDefinition = false,
 }: {
   projectId: string;
   /** Singular artefact name used in labels and toasts, e.g. "Pain Point". */
   noun: string;
   description: ReactNode;
   api: ProjectTypeVocabularyApi;
+  /** Each type also has an optional definition. */
+  withDefinition?: boolean;
 }) {
   const { showToast } = useToast();
   const [items, setItems] = useState<EffectiveTypeRow[] | null>(null);
@@ -242,7 +273,10 @@ export function ProjectTypeVocabularyPanel({
       <p className="text-muted">{description}</p>
       <DefinitionList<EffectiveTypeRow>
         items={items}
-        fields={[{ key: "name", getValue: (item) => item.name, placeholder: `Project ${noun} type name`, ariaLabel: `Project ${noun} type name` }]}
+        fields={[
+          { key: "name", getValue: (item) => item.name, placeholder: `Project ${noun} type name`, ariaLabel: `Project ${noun} type name` },
+          ...(withDefinition ? [definitionField<EffectiveTypeRow>(noun, "Project ")] : []),
+        ]}
         getReassignLabel={(item) => item.name}
         onMove={async (id, direction) => {
           const idx = items.findIndex((i) => i.id === id);
@@ -259,12 +293,14 @@ export function ProjectTypeVocabularyPanel({
           }
         }}
         onRename={async (id, values) => {
-          await api.override(projectId, id, { name: values.name });
+          const current = items.find((i) => i.id === id);
+          const changed = withDefinition && values.definition !== (current?.definition ?? "");
+          await api.override(projectId, id, { name: values.name, ...(changed ? { definition: values.definition } : {}) });
           reload();
         }}
         onAdd={async (values) => {
           const nextOrder = items.length === 0 ? 0 : Math.max(...items.map((i) => i.display_order)) + 1;
-          await api.createLocal(projectId, values.name, nextOrder);
+          await api.createLocal(projectId, values.name, nextOrder, withDefinition ? values.definition || undefined : undefined);
           showToast(`Project ${noun} type created.`);
           reload();
         }}

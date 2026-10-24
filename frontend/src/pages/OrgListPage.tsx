@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+
+import { useUrlText } from "../hooks/useUrlFilter";
 import { Navigate } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -41,7 +43,8 @@ const strings = t();
  */
 export function OrgListPage({ target = "admin" }: { target?: "admin" | "overview" }) {
   const [orgs, setOrgs] = useState<Organization[] | null>(null);
-  const [search, setSearch] = useState("");
+  // The search lives in the URL so the list comes back as it was left after a visit to a record.
+  const [search, setSearch] = useUrlText("q");
   const orgLabelPlural = useOrgLabelPlural();
   const orgLabelCap = useOrgLabelCapitalized();
 

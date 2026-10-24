@@ -62,6 +62,14 @@ COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL: dict[str, str] = {
     "expired": "Expired",
 }
 
+# Mirrors `COMPLIANCE_EVIDENCE_VALIDITY_STATE_TONE` in `frontend/src/modules/compliance/types.ts` by hand (a test pins it).
+COMPLIANCE_EVIDENCE_VALIDITY_STATE_TONE: dict[str, str] = {
+    "no_expiry": "muted",
+    "valid": "accent",
+    "expiring_soon": "warning",
+    "expired": "danger",
+}
+
 COMPLIANCE_REVIEW_STATUS_LABEL: dict[str, str] = {
     "scheduled": "Scheduled",
     "completed": "Completed",

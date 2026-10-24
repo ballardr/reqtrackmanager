@@ -283,12 +283,13 @@ def get_org_type(db: Session, organization_id: uuid.UUID, type_id: uuid.UUID) ->
 # --- Create / update bodies --------------------------------------------------
 
 
-def create_persona_from_payload(
+def stage_persona(
     db: Session, scope: PersonaScope, payload: PersonaCreate, creator: User, *, organization_id: uuid.UUID,
     project_id: uuid.UUID | None,
-) -> PersonaOut:
-    """Validates a create payload (type reference, owner/champion tenancy),
-    creates the persona, audit-logs, commits and returns the API shape.
+) -> Persona:
+    """Validates a create payload (type reference, owner/champion tenancy), creates the persona and audit-logs,
+    without committing (the caller owns the transaction: the endpoint commits, the record-table import wraps a
+    savepoint around it).
 
     With `payload.activate` the persona is also moved to `ACTIVE` before the single commit, so both audit
     events carry the same actor and either both are stored or neither. Activation has the same gate as
@@ -312,17 +313,26 @@ def create_persona_from_payload(
         transition_persona(
             db, persona, get_current_persona_version(db, persona.id), PersonaStatus.ACTIVE, creator, action="activated",
         )
+    return persona
+
+
+def create_persona_from_payload(
+    db: Session, scope: PersonaScope, payload: PersonaCreate, creator: User, *, organization_id: uuid.UUID,
+    project_id: uuid.UUID | None,
+) -> PersonaOut:
+    """`stage_persona`, then commits and returns the API shape."""
+    persona = stage_persona(db, scope, payload, creator, organization_id=organization_id, project_id=project_id)
     db.commit()
     db.refresh(persona)
     return persona_to_out(db, persona, get_current_persona_version(db, persona.id), project_id=project_id)
 
 
-def update_persona_from_payload(
+def stage_persona_update(
     db: Session, persona: Persona, payload: PersonaUpdate, actor: User, *, organization_id: uuid.UUID,
     project_id: uuid.UUID | None,
-) -> PersonaOut:
-    """Applies a partial update as a new version (only fields present in the
-    request body change), audit-logs, commits and returns the API shape."""
+) -> None:
+    """Applies a partial update as a new version (only fields present in the request body change) and
+    audit-logs, without committing."""
     sent = payload.model_dump(exclude_unset=True, exclude={"change_note"})
     # `name` is NOT NULL: an explicit null would otherwise be applied verbatim.
     if "name" in sent and sent["name"] is None:
@@ -349,6 +359,14 @@ def update_persona_from_payload(
     apply_persona_new_version(db, persona, current, actor, changes=sent, change_note=payload.change_note)
     log_event(db, entity_type=PERSONA_ARTEFACT_TYPE, entity_id=persona.id, action="updated", actor_id=actor.id,
               organization_id=persona.organization_id, project_id=persona.project_id)
+
+
+def update_persona_from_payload(
+    db: Session, persona: Persona, payload: PersonaUpdate, actor: User, *, organization_id: uuid.UUID,
+    project_id: uuid.UUID | None,
+) -> PersonaOut:
+    """`stage_persona_update`, then commits and returns the API shape."""
+    stage_persona_update(db, persona, payload, actor, organization_id=organization_id, project_id=project_id)
     db.commit()
     return persona_to_out(db, persona, get_current_persona_version(db, persona.id), project_id=project_id)
 

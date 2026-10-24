@@ -57,6 +57,7 @@ import { StandardFormModal, type EditableStandardFieldValues, type StandardFormV
 import { StandardImportModal } from "./StandardImportModal";
 import type { StandardImportResult } from "./types";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
 
 type StandardListRow = StandardAcrossOrgsRow;
 
@@ -67,8 +68,9 @@ export function StandardListPage() {
 
   const [orgs, setOrgs] = useState<Organization[] | null>(null);
   const [rows, setRows] = useState<StandardListRow[] | null>(null);
-  const [search, setSearch] = useState("");
-  const [includeArchived, setIncludeArchived] = useState(false);
+  // Filters live in the URL so the list comes back as it was left after a visit to a record.
+  const [search, setSearch] = useUrlText("q");
+  const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);

@@ -5,8 +5,10 @@ import { DRAFT_ARTEFACT_ID } from "../api/artefactLinks";
 import { api } from "../api/client";
 import type { Category, Component, ProjectStage } from "../api/types";
 import { buildCandidate, buildGraph, buildOption } from "../testing/artefactLinksFixtures";
+import { buildRecordColumns } from "../testing/recordTablesFixtures";
 import { buildChangeRequest, buildRequirement, buildUser, withRouter, withStatefulAuth, withTerminology, withToast } from "../testing/storybook-helpers";
 import { ChangeRequestsPage } from "./ChangeRequestsPage";
+import { chooseListAction } from "../testing/listActionsMenu";
 
 const PROJECT_ID = "project-1";
 
@@ -28,6 +30,12 @@ const requirement = buildRequirement({
 /** `links` also answers the Links finder's reads (the proposed-links section), as a user who may link would see them. */
 function mockChangeRequestsListApis({ links = false }: { links?: boolean } = {}) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.endsWith("/records/change_request/columns")) {
+      return buildRecordColumns({
+        label: "Change requests", importable: false, can_import: false,
+        not_importable_reason: "A change request is a proposal, so it is authored in its form, not in a file.",
+      });
+    }
     if (links && path.includes("/link-graph")) return buildGraph([], { can_link: true });
     if (links && path.includes("/link-types")) return [buildOption({ other_types: [{ type: "decision", label: "Decision" }] })];
     if (links && path.includes("/link-candidates")) return { items: [buildCandidate()], truncated: false };
@@ -74,6 +82,21 @@ export const ListOfChangeRequests: Story = {
     await expect(canvas.getByRole("link", { name: "Add SSO login" })).toBeInTheDocument();
     // Each request leads with its record code in a Code column.
     await expect(canvas.getAllByText(/CR-\d{3}/).length).toBeGreaterThan(0);
+  },
+};
+
+/** The shared list actions: Export downloads the list with the page's filters (the default "Active" view); a change request has no Import. */
+export const ExportIsOnTheTitleRowAndThereIsNoImport: Story = {
+  beforeEach: () => {
+    mockChangeRequestsListApis();
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["code,title\n"], { type: "text/csv" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "Reset password" })).toBeInTheDocument());
+    await chooseListAction(canvas, "Export as CSV");
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/change_request/export?active_only=true"));
+    await expect(canvas.queryByText("Import")).not.toBeInTheDocument();
   },
 };
 

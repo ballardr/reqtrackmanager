@@ -109,6 +109,7 @@ from uuid import UUID
 from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
+from app.modules.context_strategy import export as bundle_export
 from app.modules.context_strategy._shared import FUTURE_STATE_APPROVE_PERMISSION as _FUTURE_STATE_APPROVE_PERMISSION
 from app.modules.context_strategy._shared import (
     GUIDING_PRINCIPLE_APPROVE_PERMISSION as _GUIDING_PRINCIPLE_APPROVE_PERMISSION,
@@ -117,6 +118,7 @@ from app.modules.context_strategy._shared import OPEN_QUESTION_RESOLVE_PERMISSIO
 from app.modules.context_strategy._shared import PAIN_POINT_DECIDE_PERMISSION as _PAIN_POINT_DECIDE_PERMISSION
 from app.modules.context_strategy._shared import STRATEGY_APPROVE_PERMISSION as _STRATEGY_APPROVE_PERMISSION
 from app.modules.context_strategy.models import GuidingPrincipleVersion, OpenQuestion, PainPoint
+from app.modules.context_strategy.record_tables import RECORD_TABLES
 from app.modules.context_strategy.reports import REPORT_DEFINITIONS
 from app.modules.context_strategy.scoring import PAIN_POINT_SCORING_SCHEME
 from app.modules.context_strategy.search import SEARCH_PROVIDERS
@@ -134,6 +136,8 @@ from app.modules.registry import (
     ModuleDefinition,
     ModuleFrontendManifest,
     ModuleNavEntry,
+    ModuleOrgBundleHooks,
+    ModuleProjectBundleHooks,
     ModuleRoleDefinition,
     ModuleSubComponentDefinition,
     PrincipalReference,
@@ -782,6 +786,11 @@ MODULE_DEFINITION = ModuleDefinition(
     get_project_router=get_project_router,
     resolve_file_owner_project_id=resolve_file_owner_project_id,
     on_org_created=_seed_org_defaults,
+    org_bundle_hooks=ModuleOrgBundleHooks(export=bundle_export.export_org_data, import_=bundle_export.import_org_data),
+    project_bundle_hooks=ModuleProjectBundleHooks(
+        export=bundle_export.export_project_data, import_=bundle_export.import_project_data,
+        import_late=bundle_export.import_late_project_data,
+    ),
     models_import_path="app.modules.context_strategy.models",
     migrations_dir="app/modules/context_strategy/migrations",
     # Five separate top-level nav-rail entries, one per artefact type, not one
@@ -836,6 +845,7 @@ MODULE_DEFINITION = ModuleDefinition(
     reports=REPORT_DEFINITIONS,
     artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
     search_providers=SEARCH_PROVIDERS,
+    record_tables=RECORD_TABLES,
     artefact_type_labels=ARTEFACT_TYPE_LABELS,
     link_type_seeds=LINK_TYPE_SEEDS,
     # Each of Context & Strategy's five artefacts declares its own

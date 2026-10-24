@@ -44,9 +44,11 @@ test.describe("Risk Management: reports", () => {
     await page.goto(`/projects/${project.id}/reports`);
 
     await expect(picker(page)).toHaveValue("requirements");
-    expect(await picker(page).locator("option").allTextContents()).toEqual(expect.arrayContaining(REPORTS));
+    // With more than one report source the picker prefixes each title with its module name.
+    const options = (await picker(page).locator("option").allTextContents()).map((o) => o.replace(/^[^:]+: /, ""));
+    expect(options).toEqual(expect.arrayContaining(REPORTS));
 
-    await picker(page).selectOption({ label: "Risk register" });
+    await picker(page).selectOption("risk-register");
     await expect(page).toHaveURL(/report=risk-register/);
     await page.reload();
     await expect(picker(page)).toHaveValue("risk-register");
@@ -96,7 +98,7 @@ test.describe("Risk Management: reports", () => {
     await page.goto(`/projects/${project.id}/reports`);
     await expect(picker(page)).toHaveValue("requirements");
     const values = await picker(page).locator("option").evaluateAll((els, labels) =>
-      els.filter((e) => labels.includes(e.textContent ?? "")).map((e) => ({ value: (e as HTMLOptionElement).value, label: e.textContent ?? "" })),
+      els.filter((e) => labels.includes((e.textContent ?? "").replace(/^[^:]+: /, ""))).map((e) => ({ value: (e as HTMLOptionElement).value, label: e.textContent ?? "" })),
     REPORTS);
     expect(values).toHaveLength(4);
 
@@ -132,6 +134,8 @@ test.describe("Risk Management: reports", () => {
 
     await page.goto(`/projects/${project.id}/reports`);
     await expect(page.getByRole("button", { name: "Generate PDF" })).toBeVisible();
-    await expect(picker(page)).toHaveCount(0);
+    // The platform Record list report keeps the picker, but no Risk report is in it.
+    const options = await picker(page).locator("option").allTextContents();
+    expect(options.filter((o) => REPORTS.includes(o.replace(/^[^:]+: /, "")))).toEqual([]);
   });
 });

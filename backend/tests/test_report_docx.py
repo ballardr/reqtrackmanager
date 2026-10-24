@@ -100,6 +100,19 @@ def test_requirement_document_groups_chapters_and_tables():
     assert not [b for b in flowing.blocks if isinstance(b, PageBreak)]
 
 
+def test_requirement_document_tones_the_status_cell_like_the_screen_badge():
+    from app.services.report_model import TONE_FILL
+
+    rows = [_row("R-1", status="approved"), _row("R-2", status="draft")]
+    document = build_requirement_document(project_name="P", pre_markdown="", rows=rows, post_markdown="", chapters_per_component=False)
+    table = next(b for b in document.blocks if isinstance(b, Table))
+    assert [table.tone_at(i, 3) for i in range(2)] == ["accent", "muted"]
+    assert all(table.tone_at(i, c) is None for i in range(2) for c in (0, 1, 2, 4))
+    docx = _open(render_docx_document(document))
+    cells = docx.tables[0].rows
+    assert cells[1].cells[3]._tc.tcPr.find(qn("w:shd")).get(qn("w:fill")) == TONE_FILL["accent"]
+
+
 def test_result_document_is_landscape_with_a_table_per_non_empty_section():
     result = ReportResult(
         "k", "T", "Scope", datetime(2026, 1, 2, 3, 4, tzinfo=UTC), ["caveat"],

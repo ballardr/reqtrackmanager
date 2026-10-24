@@ -1,4 +1,4 @@
-fastmcp==3.4.5
+fastmcp==3.4.11
 # fastmcp requires httpx>=0.28.1 (newer than the backend's own pin of
 # 0.27.2 — this is a separate service/container, so the two don't need to
 # match).

@@ -51,9 +51,10 @@ import { DecisionQuickViewPanel } from "./DecisionQuickViewPanel";
 import { DECISION_OPEN_STATUSES, DECISION_STATUS_LABEL, DECISION_STATUS_TONE } from "./types";
 import type { Decision, DecisionFieldValues, DecisionStatus, DecisionTemplate, DecisionTypeDefinition } from "./types";
 import { Badge } from "../../components/Badge";
-import { oneOf, useInitialSearchParams } from "../../hooks/useInitialSearchParams";
+import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { rowProjectId } from "../../api/projectScope";
@@ -62,6 +63,7 @@ import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
 import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
+import { addSharedListFilters } from "../../utils/listFilterParams";
 
 export function ProjectDecisionsPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -77,12 +79,13 @@ export function ProjectDecisionsPage() {
   const [decisions, setDecisions] = useState<Decision[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<DecisionStatus | "">(() => oneOf(initial.get("status"), Object.keys(DECISION_STATUS_LABEL) as DecisionStatus[]));
+  // Filters live in the URL so the list comes back as it was left after a visit to a record.
+  const [search, setSearch] = useUrlText("q");
+  const [statusFilter, setStatusFilter] = useUrlChoice("status", Object.keys(DECISION_STATUS_LABEL) as DecisionStatus[]);
   const [openOnly, setOpenOnly] = useOpenOnly(initial, Object.keys(DECISION_STATUS_LABEL));
-  const [decisionTypeFilter, setDecisionTypeFilter] = useState("");
-  const [includeArchived, setIncludeArchived] = useState(false);
-  const [ownedByMe, setOwnedByMe] = useState(false);
+  const [decisionTypeFilter, setDecisionTypeFilter] = useUrlText("type");
+  const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
+  const [ownedByMe, setOwnedByMe] = useUrlFlag("mine");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
 
@@ -121,6 +124,19 @@ export function ProjectDecisionsPage() {
 
   useLoadOnChange(reloadDecisions, [projectId, search, statusFilter, decisionTypeFilter, includeArchived, ownedByMe, tagFilter.query, projectScope.scope]);
 
+  /** The list's filters by the names its export takes; the server applies the same rules the page does. */
+  function filterParams(): URLSearchParams {
+    const params = new URLSearchParams();
+    if (statusFilter) params.set("status", statusFilter);
+    if (decisionTypeFilter) params.set("type", decisionTypeFilter);
+    if (search) params.set("search", search);
+    if (includeArchived) params.set("include_archived", "true");
+    if (ownedByMe) params.set("mine", "true");
+    if (openOnly) params.set("open_only", "true");
+    addSharedListFilters(params, tagFilter, projectScope);
+    return params;
+  }
+
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (decisions === null || project === null) return <Spinner />;
@@ -150,6 +166,7 @@ export function ProjectDecisionsPage() {
     <div className="container stack">
       <ListPageLayout
         title="Decisions"
+        records={{ projectId, recordType: "decision", filters: filterParams().toString(), onImported: reloadDecisions }}
         actions={
           <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
             New decision

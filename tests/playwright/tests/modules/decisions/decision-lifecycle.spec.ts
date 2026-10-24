@@ -99,7 +99,7 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     // user-menu link ("E2E Decisions Admin — Preferences"), since this
     // persona's own display name happens to contain "Decisions" too.
     await page.getByRole("link", { name: "Decisions", exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/decisions$`));
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/decisions(?:\\?.*)?$`));
 
     // --- Create Decision A ("DEC-001") and move it to Approved on its own
     // detail page (reached via the list's quick-view panel).
@@ -141,7 +141,7 @@ test.describe("Decision Management: create -> propose -> approve -> supersede", 
     // link (`DecisionDetailPage.tsx`) from the nav-rail's own "Decisions"
     // link, which also matches a plain substring search on this page.
     await page.getByRole("link", { name: "← Decisions", exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/decisions$`));
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/decisions(?:\\?.*)?$`));
 
     await page.getByRole("button", { name: "New decision" }).click();
     dialog = page.getByRole("dialog", { name: "New decision" });

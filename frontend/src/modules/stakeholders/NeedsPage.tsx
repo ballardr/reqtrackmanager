@@ -104,6 +104,7 @@ export function NeedsPage() {
         onIncludeArchivedChange={setIncludeArchived}
         onOpen={(need) => navigate(`/projects/${rowProjectId(need, projectId)}/modules/stakeholders/needs/${need.id}`)}
         tagFilter={{ projectId, filter: tagFilter }}
+        exportRecords={{ projectId, onImported: () => setRefreshKey((k) => k + 1) }}
         projectScope={projectScope}
         page={{
           title: hasPeople ? "People" : "Needs",

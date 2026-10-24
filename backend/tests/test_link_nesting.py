@@ -638,7 +638,7 @@ def test_csv_export_never_names_another_projects_requirement(world, tree):
     assert world.generic_link(
         tree.child, (REQ, tree.req["child"]), related, (REQ, second_root), other_project=tree.root,
     ).status_code == 201
-    resp = world.client.get(f"/api/v1/projects/{tree.child['id']}/requirements/export", headers=auth_headers(world.token))
+    resp = world.client.get(f"/api/v1/projects/{tree.child['id']}/records/requirement/export", headers=auth_headers(world.token))
     assert resp.status_code == 200, resp.text
     assert root_code not in resp.text
 
@@ -767,6 +767,7 @@ def test_decision_in_the_parent_cannot_address_a_pain_point_below_it_but_the_rev
 # A new file that queries `ArtefactLink` directly, or asks `services.relationships` for cross-level
 # links, must be reviewed against the "another project's artefact" rule and added here.
 _REVIEWED_LINK_READERS = {
+    "services/bundle_links.py": "same-project links only (source_project_id is null); a cross-level link is not exported",
     "services/link_graph.py": "authorises every end in its own project",
     "services/link_nesting.py": "counts links a type's scope would flag",
     "modules/compliance/export.py": "same-project requirement -> clause links only (source_project_id is null)",
@@ -786,7 +787,6 @@ _REVIEWED_LINK_READERS = {
     "services/org_deletion.py": "removes every link of a deleted organisation",
     "services/project_export.py": "same-project links only; counts the rest for the manifest",
     "services/relationships.py": "default-deny: excludes cross-level links unless asked",
-    "services/requirement_csv.py": "same-project links only",
 }
 
 

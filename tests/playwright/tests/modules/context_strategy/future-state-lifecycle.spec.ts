@@ -99,7 +99,7 @@ test.describe("Context & Strategy: create -> propose -> approve -> activate a Fu
     // `strategy-lifecycle.spec.ts`'s own disambiguation).
     await page.goto(`/projects/${project.id}`);
     await page.getByRole("link", { name: "Future State", exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/future-states$`));
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/future-states(?:\\?.*)?$`));
 
     // --- Create the Future State and open its detail page.
     await page.getByRole("button", { name: "New Future State" }).click();
@@ -135,7 +135,7 @@ test.describe("Context & Strategy: create -> propose -> approve -> activate a Fu
 
     // --- Back on the list, the Future State shows its final status.
     await page.getByRole("link", { name: "← Future State", exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/future-states$`));
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/future-states(?:\\?.*)?$`));
     const row = page.locator("tr", { hasText: futureStateTitle });
     await expect(row.getByText("Active", { exact: true })).toBeVisible();
   });

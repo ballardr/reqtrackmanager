@@ -16,6 +16,7 @@ other test files already do.
 from __future__ import annotations
 
 import io
+import uuid
 import zipfile
 from datetime import date, timedelta
 
@@ -473,3 +474,63 @@ def test_org_merge_rejects_an_invalid_compliance_standard_resolution_value(clien
 
     resp = _merge(client, target_token, target_org["id"], bundle_bytes, resolutions={conflict["id"]: "overwrite"})
     assert resp.status_code == 400, resp.text
+
+
+def test_project_export_import_round_trips_default_applicability_exclusions(client, admin_token, org_id):
+    """A project excepted out of a standard's applies-to-all default keeps that exception, with its
+    reason, when it is exported and imported (otherwise the copy would silently rejoin the standard)."""
+    standard = _create_standard(client, admin_token, org_id, reference="EXCL-STD", name="Exclusion Standard")
+    project = create_project(client, admin_token, org_id, name="Excluded Source")
+    resp = client.post(
+        f"{_base(org_id)}/standards/{standard['id']}/exclusions",
+        json={"project_id": project["id"], "reason": "Out of scope for this product line."}, headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 201, resp.text
+
+    bundle = client.get(f"/api/v1/projects/{project['id']}/export", headers=auth_headers(admin_token)).content
+    imported = client.post(
+        "/api/v1/projects/import", data={"organization_id": org_id, "name": "Excluded Reimport"},
+        files={"file": ("bundle.zip", bundle, "application/zip")}, headers=auth_headers(admin_token),
+    )
+    assert imported.status_code == 201, imported.text
+    assert imported.json()["warnings"] == []
+    new_id = imported.json()["project"]["id"]
+
+    exclusions = client.get(f"{_base(org_id)}/standards/{standard['id']}/exclusions", headers=auth_headers(admin_token)).json()
+    mine = next(e for e in exclusions if e["project_id"] == new_id)
+    assert mine["reason"] == "Out of scope for this product line."
+
+
+def test_org_export_import_round_trips_the_default_compliance_managers_group(client, admin_token):
+    from tests.conftest import create_org_group
+
+    org, token = create_org_admin_in(client, admin_token, "Compliance Group Bundle Co")
+    resp = client.put(f"/api/v1/orgs/{org['id']}/modules/compliance", json={"enabled": True}, headers=auth_headers(token))
+    assert resp.status_code == 200, resp.text
+    group_id = create_org_group(client, token, org["id"], "Compliance Leads")
+    resp = client.put(
+        f"{_base(org['id'])}/settings", json={"default_standards_manager_group_id": group_id}, headers=auth_headers(token),
+    )
+    assert resp.status_code == 200, resp.text
+
+    export = client.get(f"/api/v1/orgs/{org['id']}/export", headers=auth_headers(token))
+    assert export.status_code == 200, export.text
+    imported = client.post(
+        "/api/v1/orgs/import", data={"name": "Compliance Group Copy"},
+        files={"file": ("bundle.zip", export.content, "application/zip")}, headers=auth_headers(admin_token),
+    )
+    assert imported.status_code == 201, imported.text
+    new_org = imported.json()["organization"]["id"]
+
+    from sqlalchemy import select
+
+    from app.database import SessionLocal
+    from app.models.organization import OrgGroup
+    from app.modules.compliance.models import ComplianceOrgSettings
+
+    db = SessionLocal()
+    try:
+        settings = db.scalar(select(ComplianceOrgSettings).where(ComplianceOrgSettings.organization_id == uuid.UUID(new_org)))
+        assert settings is not None and db.get(OrgGroup, settings.default_standards_manager_group_id).name == "Compliance Leads"
+    finally:
+        db.close()

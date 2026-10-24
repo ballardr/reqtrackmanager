@@ -18,11 +18,12 @@
  * implementation.
  */
 import { ChevronDown } from "lucide-react";
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
 
 import { Popover } from "./Popover";
+import { Tooltip } from "./Tooltip";
 
 export interface MultiSelectOption {
   value: string;
@@ -46,6 +47,7 @@ export function MultiSelectDropdown({
   filterable = false,
   summaryLimit,
   id,
+  icon,
 }: {
   /** Accessible name for the closed trigger button and the opened list's title. */
   triggerLabel: string;
@@ -58,6 +60,8 @@ export function MultiSelectDropdown({
   summaryLimit?: number;
   /** `id` of the trigger, so a field caption can point at it (`FieldShell`'s `controlId`). */
   id?: string;
+  /** Renders the trigger as an icon-only button (named and given a tooltip by `triggerLabel`) instead of a dropdown showing the summary. */
+  icon?: ReactNode;
 }) {
   const strings = useStrings();
   const [open, setOpen] = useState(false);
@@ -71,8 +75,16 @@ export function MultiSelectDropdown({
   const needle = filter.trim().toLowerCase();
   const visible = needle ? options.filter((o) => `${o.label} ${o.hint ?? ""}`.toLowerCase().includes(needle)) : options;
 
-  return (
-    <>
+  const trigger = icon ? (
+    <Tooltip label={triggerLabel}>
+      <button
+        id={id} ref={triggerRef} type="button" className="btn btn-icon" aria-label={triggerLabel} aria-haspopup="true" aria-expanded={open}
+        onClick={() => { setFilter(""); setOpen((o) => !o); }}
+      >
+        {icon}
+      </button>
+    </Tooltip>
+  ) : (
       <button
         id={id}
         ref={triggerRef}
@@ -102,6 +114,10 @@ export function MultiSelectDropdown({
         </span>
         <ChevronDown size={14} style={{ flexShrink: 0 }} />
       </button>
+  );
+  return (
+    <>
+      {trigger}
       {open && (
         <Popover anchorRef={triggerRef} title={triggerLabel} onClose={() => setOpen(false)}>
           <div className="stack" style={{ gap: "var(--space-3)" }}>

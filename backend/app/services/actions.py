@@ -19,10 +19,12 @@ importing a private helper from another.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session, object_session
 
 from app.models.enums import RequirementActionOutcome, ReviewTargetType
@@ -30,9 +32,11 @@ from app.models.project import Project
 from app.models.requirement_action import RequirementAction
 from app.models.user import User
 from app.schemas.action import RequirementActionOut
-from app.schemas.principal import PrincipalOut
+from app.schemas.principal import PrincipalOut, PrincipalRef
 from app.services import engagement
-from app.services.principals import principal_labels, principal_ref
+from app.services.audit import log_event
+from app.services.principals import principal_columns, principal_labels, principal_ref, validate_principal
+from app.services.project_hierarchy import resolve_effective_action_types
 from app.services.rbac import lock_project_for_update
 
 
@@ -135,3 +139,104 @@ def action_to_out(
             else engagement.get_comment_count(db, ReviewTargetType.ACTION, action.id)
         ),
     )
+
+
+UNSET: Any = object()
+"""Marks a nullable argument of `edit_action` as "leave unchanged", since `None` there means "clear"."""
+
+
+def validate_action_type(db: Session, project_id: UUID, action_type_id: UUID) -> None:
+    """400s unless `action_type_id` is one of `project_id`'s *effective* action types: its own, or
+    (hierarchical projects, always on) a fallback inherited from its nearest ancestor
+    (`services.project_hierarchy.resolve_effective_action_types`). This is what lets a `RequirementAction`
+    in a child project reference the parent's `ActionTypeDefinition` row directly.
+
+    Raises:
+        HTTPException: 400 when the type is not available to the project.
+    """
+    if action_type_id not in {at.id for at in resolve_effective_action_types(db, project_id)}:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "action_type_id must be an action type defined in this project, or inherited from a parent project.",
+        )
+
+
+def create_action(
+    db: Session, project: Project, actor: User, *, title: str, description: str = "", action_type_id: UUID,
+    assignee: PrincipalRef | None = None, due_date: date | None = None,
+) -> RequirementAction:
+    """Creates a standalone action and writes its `created` audit event (the caller commits).
+
+    Raises:
+        HTTPException: 400 for an action type or assignee that is not valid for the project.
+    """
+    validate_action_type(db, project.id, action_type_id)
+    validate_principal(db, assignee, organization_id=project.organization_id, project_id=project.id, field="assignee")
+    action = RequirementAction(
+        project_id=project.id, unique_code=generate_unique_code(project), action_type_id=action_type_id,
+        title=title, description=description, **principal_columns("assignee", assignee),
+        due_date=due_date, creator_id=actor.id,
+    )
+    db.add(action)
+    db.flush()
+    log_event(db, entity_type="requirement_action", entity_id=action.id, action="created",
+              actor_id=actor.id, project_id=project.id, organization_id=project.organization_id,
+              detail={"unique_code": action.unique_code, "title": action.title})
+    return action
+
+
+def edit_action(
+    db: Session, project: Project, actor: User, action: RequirementAction, *, title: str | None = None,
+    description: str | None = None, action_type_id: UUID | None = None, assignee: Any = UNSET, due_date: Any = UNSET,
+    outcome_status: RequirementActionOutcome | None = None,
+) -> RequirementAction:
+    """Edits an action and writes its `updated` audit event (the caller commits). `None` leaves a field as it
+    is; `assignee` and `due_date` use `UNSET` for that, so `None` clears them. A changed outcome stamps
+    `completed_at`/`completed_by` (`apply_outcome_transition`).
+
+    Raises:
+        HTTPException: 400 for an action type or assignee that is not valid for the project.
+    """
+    if action_type_id is not None:
+        validate_action_type(db, project.id, action_type_id)
+        action.action_type_id = action_type_id
+    if assignee is not UNSET:
+        validate_principal(db, assignee, organization_id=project.organization_id, project_id=project.id, field="assignee")
+        for column, value in principal_columns("assignee", assignee).items():
+            setattr(action, column, value)
+    if title is not None:
+        action.title = title
+    if description is not None:
+        action.description = description
+    if due_date is not UNSET:
+        action.due_date = due_date
+    if outcome_status is not None and outcome_status != action.outcome_status:
+        apply_outcome_transition(action, outcome_status, actor)
+    log_event(db, entity_type="requirement_action", entity_id=action.id, action="updated",
+              actor_id=actor.id, project_id=project.id, organization_id=project.organization_id,
+              detail={"outcome_status": action.outcome_status.value})
+    return action
+
+
+def list_actions_filtered(
+    db: Session, project_id: UUID, *, outcome_status: RequirementActionOutcome | None = None,
+    action_type_id: UUID | None = None, include_archived: bool = False,
+) -> list[RequirementAction]:
+    """One project's actions by code, narrowed by the list endpoint's filters: the single implementation
+    behind that endpoint and the record table export, so a filter added here reaches both.
+
+    Args:
+        db: Active session (read only).
+        project_id: The project.
+        outcome_status: Only actions with this outcome.
+        action_type_id: Only actions of this type.
+        include_archived: Include archived actions.
+    """
+    query = select(RequirementAction).where(RequirementAction.project_id == project_id)
+    if not include_archived:
+        query = query.where(RequirementAction.is_archived.is_(False))
+    if outcome_status is not None:
+        query = query.where(RequirementAction.outcome_status == outcome_status)
+    if action_type_id is not None:
+        query = query.where(RequirementAction.action_type_id == action_type_id)
+    return list(db.scalars(query.order_by(RequirementAction.unique_code)).all())

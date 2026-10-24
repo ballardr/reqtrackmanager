@@ -99,6 +99,20 @@ Under **Role management**, define custom roles and grant fixed, module, or custo
 - Whether **self-signup** is allowed for an accepted email domain, on top of the server-wide sign-up mode a server admin controls (see [Server administration](./server-administration.md)).
 - Whether and how **external users** can be added to the organisation's projects — see [Administering a project → Adding external users](./administering-a-project.md#adding-external-users).
 
+## Personal data in exports and imports
+
+**Security → Personal data in exports and imports** decides whether record columns that hold personal data may leave the application in a record export, or be written by an import. Each kind of column is its own row:
+
+| Kind | What it covers |
+|------|----------------|
+| Names and identifiers | A stakeholder's name, a participant label |
+| Contact details | Email addresses, phone numbers, and the people named as owners or assignees |
+| Free text that can quote people | Notes and descriptions such as an engagement's notes |
+
+A row **follows the server** unless you change it, and a fresh server excludes everything until a [server admin allows it](./server-administration.md#personal-data-in-exports-and-imports). Switching a row shows the **Custom** badge; **Follow the server again** removes your choice. Allowing a kind asks for confirmation, excluding one does not, and every change is recorded in the audit log.
+
+The setting is only half of the rule. A person also needs the **Export personal data** permission to include or import these columns: organisation admins have it, project administrators and managers have it in their project, and you can grant it to anyone (a user or a group) through a [custom role](../core-features/role-management.md). A column the setting or the permission rules out is left out of the file, and an import ignores it and says why.
+
 ## Seeing every project in the organisation
 
 An org admin can see every project belonging to the organisation — including ones without a direct role on them — from the admin page's **Projects** section. This is visibility into which projects exist, not a grant of access to their requirements or change requests; see [Roles, groups, and access control](../concepts/roles-groups-and-access-control.md) for why that distinction is deliberate.

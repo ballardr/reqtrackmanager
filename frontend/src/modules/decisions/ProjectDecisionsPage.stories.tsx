@@ -3,9 +3,11 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import type { Principal } from "../../api/types";
+import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { buildProject, buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { ProjectDecisionsPage } from "./ProjectDecisionsPage";
 import type { Decision, DecisionTypeDefinition } from "./types";
+import { chooseListAction, openListMenu } from "../../testing/listActionsMenu";
 
 const PROJECT_ID = "project-1";
 
@@ -33,6 +35,7 @@ function decision(overrides: Partial<Decision> = {}): Decision {
 
 function mockPageApis(decisions: Decision[]) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.endsWith("/records/decision/columns")) return buildRecordColumns({ label: "Decisions" });
     if (path === `/api/v1/projects/${PROJECT_ID}`) return buildProject({ id: PROJECT_ID, organization_id: "org-1" });
     if (path.includes("/orgs/org-1/users")) return [];
     if (path.includes("/templates")) return [];
@@ -146,6 +149,25 @@ export const OpenCreateModal: Story = {
     // `DecisionFormModal` portals to `document.body` — see that file's own
     // stories for why this query isn't `within(canvasElement)`.
     await expect(within(document.body).getByRole("heading", { name: "New decision" })).toBeInTheDocument();
+  },
+};
+
+/** Export and Import are on the title row; Export carries the list's filters (the server applies the same rules). */
+export const ExportCarriesThePageFilters: Story = {
+  parameters: { query: "?mine=1&q=postgres" },
+  beforeEach: () => {
+    mockPageApis(MIXED);
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["code\n"], { type: "text/csv" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Use Terraform for infra")).toBeInTheDocument());
+    await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await chooseListAction(canvas, "Export as CSV");
+    await waitFor(() =>
+      expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/decision/export?search=postgres&mine=true&open_only=true`),
+    );
   },
 };
 

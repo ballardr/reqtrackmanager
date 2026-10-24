@@ -9,17 +9,18 @@
  * only the API and which groups are editable differ.
  *
  * In a project the tree also shows the organisation's groups, marked
- * "Organisation" and read-only (they are edited from the organisation view); a
+ * "Organisation" and read-only (they are edited from the organisation view; their Export is on the People page); a
  * project group can be created under one. Deleting is a tier-1 `ConfirmDialog`
  * that states the member and child counts, since it removes memberships and
  * moves child groups up but never deletes a stakeholder. Every mutating control
  * always renders; the backend enforces the Stakeholder manage permission and a
- * 403 surfaces as a toast.
+ * 403 surfaces as a toast. The organisation view also offers the shared Export and Import of its own groups.
  */
 import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { ListActions } from "../../components/ListActions";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
@@ -163,6 +164,7 @@ export function StakeholderGroupsPanel({
           New group
         </button>
         <button className="btn" onClick={openProposals}>Create from Organisation / group text</button>
+        {organizationId && <ListActions organizationId={organizationId} recordType="stakeholder_group" onImported={reload} />}
       </div>
 
       {groups.length === 0 ? (

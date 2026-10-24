@@ -63,6 +63,15 @@ export const moduleDefinition: TierAModuleDefinition = {
     engagement: (projectId, id) => `/projects/${projectId}/modules/stakeholders/engagements/${id}`,
     research_finding: (projectId, id) => `/projects/${projectId}/modules/stakeholders/engagements?finding=${id}`,
   },
+  artefactListPaths: {
+    persona: (projectId) => `/projects/${projectId}/modules/stakeholders/people?kind=persona`,
+    stakeholder: (projectId) => `/projects/${projectId}/modules/stakeholders/people?kind=stakeholder`,
+    stakeholder_need: (projectId) => `/projects/${projectId}/modules/stakeholders/needs`,
+    stakeholder_group: (projectId) => `/projects/${projectId}/modules/stakeholders/groups`,
+    engagement: (projectId) => `/projects/${projectId}/modules/stakeholders/engagements`,
+    // Findings are read on their engagement; the engagements list is the page that holds them.
+    research_finding: (projectId) => `/projects/${projectId}/modules/stakeholders/engagements`,
+  },
   artefactStatusLabels: {
     persona: PERSONA_STATUS_LABEL,
     stakeholder: STAKEHOLDER_STATUS_LABEL,

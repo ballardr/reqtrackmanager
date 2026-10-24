@@ -3,10 +3,12 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../../api/client";
 import type { OrgUser } from "../../api/types";
+import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { buildProject, withRouter, withToast } from "../../testing/storybook-helpers";
 import { buildPersona, buildStakeholder, buildStakeholderGroup, buildStakeholderScheme } from "./fixtures";
 import { PeoplePage } from "./PeoplePage";
 import type { EffectivePersonaType, Persona, Stakeholder, StakeholderGroup } from "./types";
+import { chooseListAction, openListMenu } from "../../testing/listActionsMenu";
 
 const PROJECT_ID = "project-1";
 const BASE = `/api/v1/projects/${PROJECT_ID}/modules/stakeholders`;
@@ -50,6 +52,7 @@ function mockApis(data: Partial<Data> = {}) {
   };
   spyOn(api, "get").mockImplementation(async (path: string) => {
     const [route] = path.split("?");
+    if (/\/records\/[a-z_]+\/columns$/.test(route)) return buildRecordColumns({ label: "Records" });
     if (route === `/api/v1/projects/${PROJECT_ID}/enabled-modules`) {
       return [{ module_key: "stakeholders", name: "Stakeholders & Personas", frontend_manifest: null, disabled_sub_components: d.disabled }];
     }
@@ -379,3 +382,53 @@ export const LoadErrorShowsMessage: Story = {
 
 export const LightTheme: Story = { ...ListsEveryKindTogether };
 export const DarkTheme: Story = { ...ListsEveryKindTogether, globals: { theme: "dark" } };
+
+/** One kind: its own Export (and Import) with the list's filters. */
+export const PersonasOnlyOffersTheirOwnExportWithTheFilters: Story = {
+  parameters: { kind: "persona" },
+  beforeEach: () => {
+    mockApis();
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["code\n"], { type: "text/csv" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Field Technician")).toBeInTheDocument());
+    await userEvent.selectOptions(canvas.getByLabelText("Status"), "draft");
+    await chooseListAction(canvas, "Export as CSV");
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/persona/export?status=draft`));
+  },
+};
+
+/** Several kinds: one menu with an Export and Import group per kind, each named, each acting on its own kind. */
+export const SeveralKindsOfferAnExportEach: Story = {
+  beforeEach: () => {
+    mockApis();
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["code\n"], { type: "text/csv" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Field Technician")).toBeInTheDocument());
+    const menu = await openListMenu(canvas);
+    for (const heading of ["Personas", "Stakeholders", "Groups"]) {
+      await expect(await menu.findByText(heading)).toBeInTheDocument();
+    }
+    await userEvent.keyboard("{Escape}");
+    await chooseListAction(canvas, "Export as CSV", "Stakeholders");
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/stakeholder/export`));
+  },
+};
+
+/** Groups have no status or type, so while one of those filters is set there is no group export to offer. */
+export const AGroupExportIsNotOfferedWhileAStatusFilterExcludesEveryGroup: Story = {
+  beforeEach: () => mockApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Field Technician")).toBeInTheDocument());
+    await expect(await (await openListMenu(canvas)).findByText("Groups")).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await userEvent.selectOptions(canvas.getByLabelText("Status"), "draft");
+    const menu = await openListMenu(canvas);
+    await waitFor(() => expect(menu.queryByText("Groups")).not.toBeInTheDocument());
+    await expect(menu.getByText("Personas")).toBeInTheDocument();
+  },
+};

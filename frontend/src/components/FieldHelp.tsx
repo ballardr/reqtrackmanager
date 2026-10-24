@@ -3,16 +3,17 @@
  *
  * The help affordance every non-obvious form field carries (docs/ux-style-guide.md, "Pattern: field
  * help"): a `(?)` button after the field's caption that reveals one or two sentences saying what the
- * field is, what it affects and typical values. `FieldCaption` is the caption line every shared field
+ * field is, what it affects and typical values, as a tooltip. `FieldCaption` is the caption line every shared field
  * component renders, so the label and the help sit the same way everywhere.
  *
  * Design decisions:
- * - The text opens in place under the caption (a disclosure), not in a floating `Popover`: fields are
- *   built inside dialogs and popovers, and a popover opened from a popover is not allowed. An inline
- *   disclosure also needs no positioning, and a tap works the same as a click.
- * - The button is a keyboard-focusable control named "Help: {label}"; Escape closes the text while focus
- *   is on the button or inside the text. It is named by visually-hidden text, not `aria-label`, so a
- *   label lookup for the field ("Name") finds the field alone and never also its help button.
+ * - The text is a pinnable `Tooltip` (hover or keyboard focus shows it, a click or tap pins it, Escape or
+ *   an outside press closes it), not an in-place disclosure and not a `Popover`: it is portalled to
+ *   `document.body`, so opening it never moves the fields around the caption, and fields are built inside
+ *   dialogs and popovers where a popover opened from a popover is not allowed.
+ * - The button is a keyboard-focusable control named "Help: {label}" and described by the tooltip text.
+ *   It is named by visually-hidden text, not `aria-label`, so a label lookup for the field ("Name")
+ *   finds the field alone and never also its help button.
  * - A field that is self-explanatory (a title, a name) passes `helpNotNeeded` instead of `help`, which
  *   keeps the opt-out greppable; `scripts/check_field_help.py` fails on a field with neither.
  * - A button inside a `<label>` becomes that label's control (the first labelable descendant), so a
@@ -20,10 +21,11 @@
  *   control by `htmlFor` instead, and keeps the plain wrapping `<label>` for a field without help.
  */
 import { CircleHelp } from "lucide-react";
-import { useId, useState } from "react";
+import { useId } from "react";
 import type { ReactNode } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
+import { Tooltip } from "./Tooltip";
 
 /** The props every shared field component takes for field help: give `help`, or `helpNotNeeded` when the field explains itself. */
 export type FieldHelpProps = {
@@ -56,33 +58,15 @@ export function RequiredMark() {
  */
 export function FieldHelp({ label, help }: { label: string; help: string }) {
   const strings = useStrings();
-  const [open, setOpen] = useState(false);
   const textId = useId();
 
   return (
-    <>
-      <button
-        type="button"
-        className="field-help__button"
-        aria-expanded={open}
-        aria-controls={open ? textId : undefined}
-        onClick={() => setOpen((o) => !o)}
-        onKeyDown={(e) => {
-          if (e.key === "Escape" && open) {
-            e.stopPropagation();
-            setOpen(false);
-          }
-        }}
-      >
+    <Tooltip label={help} pinnable wrap bubbleId={textId}>
+      <button type="button" className="field-help__button" aria-describedby={textId}>
         <CircleHelp aria-hidden="true" />
         <span className="sr-only">{strings.common.fieldHelp(label)}</span>
       </button>
-      {open && (
-        <span id={textId} role="note" className="field-help__text">
-          {help}
-        </span>
-      )}
-    </>
+    </Tooltip>
   );
 }
 

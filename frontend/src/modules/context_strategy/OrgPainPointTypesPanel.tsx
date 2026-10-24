@@ -25,6 +25,7 @@ export function OrgPainPointTypesPanel({ orgId }: { orgId: string }) {
       orgId={orgId}
       noun="Pain Point"
       api={orgPainPointTypeApi}
+      withDefinition
       description={
         <>
           The shared Pain Point type vocabulary every project in this organisation sees by default (Market, User, and

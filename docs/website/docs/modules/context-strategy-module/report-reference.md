@@ -32,7 +32,7 @@ Ranks the open Pain Points under the scoring model and persona roll-up you choos
 
 | Table | Holds | Act on it by |
 | --- | --- | --- |
-| Severity × Frequency matrix | Cells coloured by rating band, with a dot per Pain Point sized by Confidence (the exported tables give the counts, with Confidence in brackets) | Reading where the weight of problems sits. |
+| Severity × Frequency matrix | Cells coloured by rating band, with a dot per Pain Point sized by Confidence (the PDF and Word tables colour each cell the same way and name its band, with the count and Confidence in brackets) | Reading where the weight of problems sits. |
 | Ranked Pain Points | Rank, type, status, score, flags | Starting at the top. |
 | **Blockers** (gap) | Pain Points where a persona is at the top Severity level, naming the persona | Treating these first, whatever their rank. |
 | **Not scored under this model** (gap) | Pain Points no persona has every input for | Scoring them, or choosing a model whose inputs you have. |

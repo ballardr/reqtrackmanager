@@ -116,7 +116,8 @@ export function PainPointFormModal({
     <Modal title={initial ? `Edit ${initial.title}` : "New Pain Point"} onClose={onCancel} size="lg">
       <div className="stack">
         <FormGrid minColumn="18rem">
-          <LabeledSelect helpNotNeeded required label="Type" value={painPointTypeId} onChange={setPainPointTypeId} options={typeOptions} />
+          <LabeledSelect helpNotNeeded required label="Type" value={painPointTypeId} onChange={setPainPointTypeId} options={typeOptions}
+            hint={types.find((t) => t.id === painPointTypeId)?.definition || undefined} />
           <LabeledSelect helpNotNeeded
             label="Priority"
             value={priority}

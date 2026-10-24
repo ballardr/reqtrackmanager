@@ -44,8 +44,9 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Emu, Pt, RGBColor
 
-from app.services.branding import DEFAULT_ACCENT_COLOR_HEX
+from app.services.branding import DEFAULT_ACCENT_COLOR_HEX, readable_on_white
 from app.services.report_model import (
+    TONE_FILL,
     BulletList,
     Gap,
     Heading,
@@ -55,6 +56,7 @@ from app.services.report_model import (
     Paragraph,
     ReportDocument,
     Table,
+    text_on,
 )
 
 DOCX_AUTHOR = "ReqTrackManager"
@@ -168,7 +170,7 @@ def _cover(doc: DocxDocument, document: ReportDocument, accent: str, usable_cm: 
         paragraph = doc.add_paragraph(style="Title")
         run = paragraph.add_run(title)
         run.font.size = Pt(28)
-        run.font.color.rgb = RGBColor.from_string(accent)
+        run.font.color.rgb = RGBColor.from_string(_hex(readable_on_white(accent)))  # text on a white page
         doc.add_page_break()
     else:
         doc.add_paragraph(title, style="Title")
@@ -188,15 +190,20 @@ def _table(doc: DocxDocument, block: Table, accent: str, usable_cm: float) -> No
         column.width = Cm(width * scale)  # the grid widths; Word and LibreOffice read these, not only the cells'
     font_size = Pt(7.5 if block.compact else 8)
 
-    def fill(cells, values, *, header: bool = False, shade: str | None = None) -> None:
-        for cell, value, width in zip(cells, values, widths, strict=False):
+    def fill(cells, values, *, header: bool = False, shade: str | None = None, row_index: int = 0) -> None:
+        for column, (cell, value, width) in enumerate(zip(cells, values, widths, strict=False)):
             cell.width = Cm(width * scale)
             run = cell.paragraphs[0].add_run(clean_text(value))
             run.font.size = font_size
+            tone = None if header else block.tone_at(row_index, column)
             if header:
                 run.font.bold = True
-                run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+                run.font.color.rgb = RGBColor.from_string(text_on(accent))  # white or black, whichever the accent needs
                 _shade(cell, accent)
+            elif tone:
+                # A tone overrides the zebra stripe; the text colour is chosen by contrast with the tint.
+                run.font.color.rgb = RGBColor.from_string(text_on(TONE_FILL[tone]))
+                _shade(cell, TONE_FILL[tone])
             elif shade:
                 _shade(cell, shade)
 
@@ -204,7 +211,7 @@ def _table(doc: DocxDocument, block: Table, accent: str, usable_cm: float) -> No
     _repeat_header(table.rows[0])
     for index, row in enumerate(block.rows):
         cells = table.add_row().cells
-        fill(cells, (row + [""] * count)[:count], shade=_ZEBRA if block.compact and index % 2 else None)
+        fill(cells, (row + [""] * count)[:count], shade=_ZEBRA if block.compact and index % 2 else None, row_index=index)
     doc.add_paragraph()  # keeps two consecutive tables from merging in Word
 
 

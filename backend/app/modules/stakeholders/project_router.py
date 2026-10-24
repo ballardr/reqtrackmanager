@@ -55,7 +55,7 @@ from app.modules.stakeholders.service import (
     clear_project_persona_visibility,
     clear_project_persona_weight,
     get_current_persona_version,
-    list_project_visible_personas,
+    project_personas,
     set_project_persona_visibility,
     set_project_persona_weight,
     unarchive_persona,
@@ -228,11 +228,9 @@ def list_project_personas(
     def rows_for(pid: UUID) -> list:
         """This endpoint's rows for one project of the scope."""
         project = _project(db, pid)
-        personas = list_project_visible_personas(
-            db, project, include_archived=include_archived, include_hidden=include_hidden
+        personas = project_personas(
+            db, project, include_archived=include_archived, include_org=include_org, include_hidden=include_hidden
         )
-        if not include_org:
-            personas = [p for p in personas if p.scope == PersonaScope.PROJECT]
         personas = tag_filter.keep(db, pid, PERSONA_ARTEFACT_TYPE, personas)
         return sh.personas_to_out(db, personas, project_id=pid)
 

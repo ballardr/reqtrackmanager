@@ -30,6 +30,7 @@ import { FilterField, FilterPanel } from "../components/FilterPanel";
 import { ListPageLayout } from "../components/ListPageLayout";
 import { ItemRow } from "../components/ItemRow";
 import { LoadMoreButton } from "../components/LoadMoreButton";
+import { useRestoredRowCount } from "../hooks/useListPosition";
 import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
 import { SearchFieldPicker } from "../components/SearchFieldPicker";
 import { SearchHitSummary } from "../components/SearchHitSummary";
@@ -80,6 +81,8 @@ export function SearchPage({ api = searchApi }: { api?: SearchApi }) {
   const terms = queryTerms(state.q, state.match);
   const ready = state.q.trim().length >= SEARCH_MIN_QUERY;
   const requestKey = JSON.stringify(searchRequestFor(state, PAGE_SIZE, 0));
+  // Back from a result asks for the results that were loaded ("Show more") in one request.
+  const limitFor = useLatest(useRestoredRowCount(PAGE_SIZE));
 
   function update(patch: Partial<SearchPageState>, options: { replace?: boolean } = { replace: true }) {
     setSearchParams(searchStateToParams({ ...state, ...patch }), options);
@@ -115,7 +118,7 @@ export function SearchPage({ api = searchApi }: { api?: SearchApi }) {
     if (!ready) return;
     const controller = new AbortController();
     api
-      .search(JSON.parse(requestKey), controller.signal)
+      .search({ ...JSON.parse(requestKey), limit: limitFor.current(0) }, controller.signal)
       .then((found) => {
         if (controller.signal.aborted) return;
         setAnswer({ key: requestKey, response: found, hits: found.hits });
@@ -126,7 +129,7 @@ export function SearchPage({ api = searchApi }: { api?: SearchApi }) {
         setFailure({ key: requestKey, message: err instanceof ApiError ? err.message : strings.search.failed });
       });
     return () => controller.abort();
-  }, [requestKey, ready, api, strings.search.failed]);
+  }, [requestKey, ready, api, strings.search.failed, limitFor]);
 
   const response = ready ? (answer?.response ?? null) : null;
   const hits = ready && answer ? answer.hits : [];
@@ -199,6 +202,8 @@ export function SearchPage({ api = searchApi }: { api?: SearchApi }) {
   return (
     <div className="stack">
       <ListPageLayout
+        ready={!ready || (answer !== null && !pending)}
+        loadedRows={hits.length}
         title={ready ? strings.search.pageHeading(state.q.trim()) : strings.search.pageTitle}
         filter={
           <FilterPanel

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, type ReactNode, type RefObject } fr
 import { createPortal } from "react-dom";
 
 import { useDialogA11y } from "./dialogA11y";
+import { DialogSlotContext } from "./dialogSlots";
 
 const VIEWPORT_MARGIN_PX = 8;
 const VERTICAL_GAP_PX = 6.4; // 0.4rem
@@ -31,6 +32,13 @@ const VERTICAL_GAP_PX = 6.4; // 0.4rem
  * expected to hold `onClose` as "set open state to false" and pass a
  * stable `anchorRef` for the trigger button.
  *
+ * The position is re-measured when the window or any ancestor scrolls or resizes and when the content
+ * changes size, so it stays attached to its anchor; if the content does not fit on the roomier side
+ * of the anchor it is capped to the room and scrolls inside, so no control is ever out of reach.
+ *
+ * A popover has no header, so it clears any enclosing dialog's header slots: a `FormActions` inside it
+ * keeps its buttons in the popover instead of moving them to the dialog behind it.
+ *
  * `fit` sizes the panel to its content instead of the fixed 280px (up to the
  * viewport width less a margin, `.popover-bubble`'s `max-width`), for a menu
  * whose longest label would otherwise clip.
@@ -56,25 +64,43 @@ export function Popover({
       const anchor = anchorRef.current;
       const bubble = bubbleRef.current;
       if (!anchor || !bubble) return;
+      // Measure the content's natural height, not a height capped by an earlier pass.
+      bubble.style.maxHeight = "";
       const anchorRect = anchor.getBoundingClientRect();
       const bubbleRect = bubble.getBoundingClientRect();
 
       let left = anchorRect.right - bubbleRect.width;
       left = Math.max(VIEWPORT_MARGIN_PX, Math.min(left, window.innerWidth - bubbleRect.width - VIEWPORT_MARGIN_PX));
 
-      const spaceBelow = window.innerHeight - anchorRect.bottom - bubbleRect.height - VERTICAL_GAP_PX;
-      const top =
-        spaceBelow < VIEWPORT_MARGIN_PX
-          ? Math.max(VIEWPORT_MARGIN_PX, anchorRect.top - bubbleRect.height - VERTICAL_GAP_PX)
-          : anchorRect.bottom + VERTICAL_GAP_PX;
+      // Open on the side with room for the whole bubble, else on the roomier side, capped to that room
+      // and scrolling inside, so every control in it can be reached however low the anchor sits.
+      const spaceBelow = window.innerHeight - anchorRect.bottom - VERTICAL_GAP_PX - VIEWPORT_MARGIN_PX;
+      const spaceAbove = anchorRect.top - VERTICAL_GAP_PX - VIEWPORT_MARGIN_PX;
+      const below = bubbleRect.height <= spaceBelow || spaceBelow >= spaceAbove;
+      const room = Math.max(0, below ? spaceBelow : spaceAbove);
+      const height = Math.min(bubbleRect.height, room);
+      if (bubbleRect.height > room) {
+        bubble.style.maxHeight = `${room}px`;
+        bubble.style.overflowY = "auto";
+      }
+      const top = below ? anchorRect.bottom + VERTICAL_GAP_PX : anchorRect.top - height - VERTICAL_GAP_PX;
 
       bubble.style.top = `${top}px`;
       bubble.style.left = `${left}px`;
       bubble.style.visibility = "visible";
     }
     measure();
+    // The bubble is `position: fixed`, so it must follow its anchor when any ancestor scrolls (the page
+    // scrolls inside a container, not the window) and when its own content changes size.
+    const observer = new ResizeObserver(measure);
+    if (bubbleRef.current) observer.observe(bubbleRef.current);
     window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
+    window.addEventListener("scroll", measure, true);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
+    };
   }, [anchorRef]);
 
   useEffect(() => {
@@ -101,7 +127,7 @@ export function Popover({
         visibility: "hidden",
       }}
     >
-      {children}
+      <DialogSlotContext.Provider value={null}>{children}</DialogSlotContext.Provider>
     </div>,
     document.body
   );

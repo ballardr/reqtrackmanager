@@ -847,12 +847,22 @@ class ModuleProjectBundleHooks:
             (`app.services.bundle_common.UserResolver`), called from
             `project_export.apply_project_data` after every core section
             has already run.
+        import_late: Optional callable with `import_`'s signature, run for
+            every module once *all* modules' `import_` have finished. For
+            content that refers to another module's records, which do not
+            exist yet while this module's own `import_` runs (Context &
+            Strategy's per-persona Pain Point scores refer to Personas, which
+            a later-registered module creates). `None` when `import_` alone
+            suffices.
     """
 
     export: Callable[[Session, Project], tuple[dict[str, Any], dict[uuid.UUID, FileAsset]]]
     import_: Callable[
         [Session, Project, dict[str, Any], dict[str, bytes], User, UserResolver, BundleImportWarnings], None
     ]
+    import_late: (
+        Callable[[Session, Project, dict[str, Any], dict[str, bytes], User, UserResolver, BundleImportWarnings], None] | None
+    ) = None
 
 
 #: `openapi_extra` key a route's own author sets to mark it as an
@@ -1492,6 +1502,237 @@ class SearchScope:
     narrowness: int = 200
 
 
+RECORD_SENSITIVITY_TAGS: tuple[str, ...] = ("personal", "contact", "free_text_people")
+"""The closed vocabulary of `RecordColumn.sensitivity` besides `"none"`: `personal` (names and identifiers of
+people), `contact` (ways to reach a person) and `free_text_people` (free text that can quote people). A closed core
+concept, not a per-module value: a module classifies its own columns with these, it never adds a tag."""
+
+
+class RecordCellError(ValueError):
+    """Raised by a `RecordColumn.parse` (or a provider's create/update) when a cell cannot be used; the message is
+    shown to the person as the row's error, so it names the problem in their terms and never echoes other rows' data."""
+
+
+@dataclass(frozen=True)
+class RecordFilters:
+    """The list filters of an export, as the query parameters the type's own list endpoint takes.
+
+    Attributes:
+        values: `{parameter name: [values]}` for the provider's `filter_params` only (the engine has
+            already taken `tag`, `tag_mode`, `project_scope` and `format`, and rejects any other name).
+    """
+
+    values: Mapping[str, Sequence[str]] = field(default_factory=dict)
+
+    def one(self, key: str) -> str | None:
+        """The first value of `key`, or `None` when absent or blank."""
+        found = [v for v in self.values.get(key, ()) if v.strip()]
+        return found[0].strip() if found else None
+
+    def many(self, key: str) -> list[str]:
+        """Every non-blank value of `key`."""
+        return [v.strip() for v in self.values.get(key, ()) if v.strip()]
+
+    def flag(self, key: str) -> bool | None:
+        """`key` as a boolean (`true`/`1`/`yes`), `None` when absent."""
+        value = self.one(key)
+        return None if value is None else value.lower() in ("true", "1", "yes")
+
+
+@dataclass
+class RecordImportContext:
+    """What a provider's `parse`, `create` and `update` get for one import.
+
+    Attributes:
+        db: The session. Providers never commit: the engine owns the transaction (a savepoint per row, one
+            commit at the end of an apply, a rollback for a preview).
+        project: The project being imported into; `None` when the import is into the organisation's own records
+            (`OrganizationRecordTable`), whose providers read `organization` instead.
+        user: The person importing; the actor for the type's own audit events.
+        cache: Per-import scratch for lookups (a user by email), so a 5,000-row file does not repeat them.
+        organization: The organisation being imported into (set for both tiers by the engine).
+    """
+
+    db: Session
+    project: Any
+    user: Any
+    cache: dict[str, Any] = field(default_factory=dict)
+    organization: Any = None
+
+    @property
+    def organization_id(self) -> uuid.UUID:
+        """The organisation being imported into: the project's, or the organisation itself at the organisation tier."""
+        return self.project.organization_id if self.project is not None else self.organization.id
+
+    @property
+    def project_id(self) -> uuid.UUID | None:
+        """The project being imported into, or `None` at the organisation tier."""
+        return self.project.id if self.project is not None else None
+
+
+@dataclass(frozen=True)
+class RecordColumn:
+    """One column of a record type's table, shared by export, import and the bulk edit grid.
+
+    A column is **importable** when it has a `parse`; one without is export-only (a status the approval gate
+    owns, a derived value, an instant). The provider is the only place a column is classified.
+
+    Attributes:
+        key: The CSV header (stable; a rename breaks people's files).
+        label: The name a person sees.
+        get: `(prepared, record) -> str`: the cell text, **unprefixed** (the engine adds the formula guard);
+            also the "before" value an import compares against. Dates `YYYY-MM-DD`, instants UTC ISO 8601,
+            enums by the label users see, a person as an email (user) or `Name (Org group)` (group).
+        parse: `(ctx, text) -> value`: the cell text (whitespace stripped, may be empty) to the value
+            `create`/`update` receive; raises `RecordCellError`. `None` for an export-only column.
+        kind: `text`, `enum`, `principal`, `date`, `number`, `bool`, `instant` or `list`, for the UI.
+        editable: Whether the bulk edit grid may offer it; only an importable column can be editable. The grid
+            edits the closed-value kinds (`enum`, `number`, `date`, `bool`); a free-text column is edited in the
+            record's form, where a long text has room to grow.
+        required: Whether a create needs a value (the form's `*`); a column that is present must not be blank.
+        sensitivity: `"none"` or one of `RECORD_SENSITIVITY_TAGS`.
+        choices: The cell texts the column accepts when they are a closed list (enum labels, the project's
+            stage names), so the import wizard offers a pick list for "same value for every row".
+            `None` for free text and for values that are not a short closed list (a person, a date).
+        cell_lock: `(prepared, record) -> str | None`: why the bulk edit grid cannot edit this one cell of this row (a
+            Pain Point scored per persona has no single severity to set), or `None`. The grid shows the cell disabled
+            with the reason, and a save of it is refused with the same reason. Does not affect export or import.
+        tones: Badge tone per cell text (`{"Approved": "accent"}`, tone names as `report_model.TONE_FILL`), so the
+            record-list report's PDF and Word fill the cell as the screen's badge does. A cell text not listed is
+            left plain; the text itself still names the value, so a greyscale print reads.
+    """
+
+    key: str
+    label: str
+    get: Callable[[Any, Any], str]
+    parse: Callable[[RecordImportContext, str], Any] | None = None
+    kind: str = "text"
+    editable: bool = False
+    required: bool = False
+    sensitivity: str = "none"
+    choices: tuple[str, ...] | None = None
+    cell_lock: Callable[[Any, Any], str | None] | None = field(default=None, compare=False)
+    tones: Mapping[str, str] = field(default_factory=dict, compare=False)
+
+    @property
+    def importable(self) -> bool:
+        """Whether an import may write this column."""
+        return self.parse is not None
+
+
+@dataclass(frozen=True)
+class OrganizationRecordTable:
+    """How a record type offers the records its **organisation** owns (a Strategy or a Persona shared by every
+    project) as a table, for the organisation-level lists. The engine's organisation routes
+    (`/orgs/{id}/records/{type}/...`) use it exactly as the project routes use the provider, and the same
+    `RecordColumn`s: a column is declared once and serves both tiers.
+
+    Every callable takes the `Organization` where the project tier takes a project; nothing here commits.
+
+    Attributes:
+        subcomponent: The owning module's sub-component whose organisation-level state gates the list (the same
+            one the organisation list endpoint requires); the route answers 404 while it is off. `None` for a module
+            that declares no sub-components: the module being enabled for the organisation is then the whole gate.
+        columns: `(db, organization) -> columns` (first column excluded; the engine adds `code`).
+        list_records: `(db, user, organization, filters) -> records`: the organisation's own records, with the
+            filters of the organisation list (the endpoint and the provider share one query).
+        find: `(db, organization, unique_code) -> record | None`, searching **this organisation's own records only**.
+        prepare: `(db, organization, records) -> prepared`: batch lookups handed to every column's `get`.
+        create: `(ctx, values) -> record` through the organisation endpoint's own create path (`ctx.project` is
+            `None`; use `ctx.organization`). `None` for a type import cannot create.
+        update: `(ctx, record, values) -> None` through its own update path. `None` for a type import cannot update.
+        filter_params: The organisation list's filter parameter names; any other is refused.
+        can_create / can_update: `(db, user, organization_id) -> bool`, the same check as the organisation
+            endpoint's create / update. `None` falls back to the fine-grained `propose_create` / `manage` permission.
+    """
+
+    subcomponent: str | None
+    columns: Callable[[Session, Any], Sequence[RecordColumn]]
+    list_records: Callable[[Session, Any, Any, RecordFilters], list[Any]]
+    find: Callable[[Session, Any, str], Any | None]
+    prepare: Callable[[Session, Any, list[Any]], Any] | None = None
+    create: Callable[[RecordImportContext, Mapping[str, Any]], Any] | None = None
+    update: Callable[[RecordImportContext, Any, Mapping[str, Any]], None] | None = None
+    filter_params: frozenset[str] = frozenset()
+    can_create: Callable[[Session, Any, uuid.UUID], bool] | None = None
+    can_update: Callable[[Session, Any, uuid.UUID], bool] | None = None
+
+
+@dataclass(frozen=True)
+class RecordTableProvider:
+    """How a record type offers its list as a table that leaves as CSV (PDF and Word through the
+    record-list report) and, for an authored type, comes back as an import that creates and updates.
+
+    The engine (`services.record_tables`) owns authorisation, the project scope, tags, the file format, caps,
+    the formula guard, the preview, the per-row transaction and the audit events; a provider says only what
+    the type's rows and columns are and how its **own** create/update path is called, so a type's version
+    lock, validation, approval gate and audit event are never bypassed by a file.
+
+    Attributes:
+        label: The plural name for the UI and file name (`"Requirements"`).
+        columns: `(db, project) -> columns`, first column excluded (the engine adds `code`). A callable because
+            some columns are the project's own (custom fields).
+        list_records: `(db, user, project_id, filters) -> records` for one project, with the filters of the type's
+            list endpoint (the endpoint and the provider share one query function, so a filter reaches both).
+            Archived rows only when asked, as the list does.
+        find: `(db, project, unique_code) -> record | None`, searching **this project only**.
+        prepare: `(db, project, records) -> prepared`: batch lookups handed to every column's `get`.
+        create: `(ctx, values) -> record` through the type's own create path; `values` holds every importable
+            column in the file, parsed. `None` for a type that import cannot create.
+        update: `(ctx, record, values) -> None` through the type's own update path; `values` holds the
+            changed columns only. Raises `RecordCellError` or `HTTPException` for a row it refuses (a locked
+            requirement). `None` for a type that import cannot update.
+        filter_params: The list endpoint's filter parameter names this provider understands; any other
+            parameter is rejected, so a filtered-looking screen never downloads an unfiltered file.
+        gate: `(module_key, sub_component_key | None)`: the list endpoint's module gate, used for the project
+            scope; `None` for a core type.
+        can_create / can_update: `(db, user, project_id) -> bool`, the same check as the type's own create /
+            update endpoint. `None` falls back to the fine-grained `propose_create` / `manage` permission.
+        id_of: Reads a record's id (tag filter, scope de-duplication).
+        code_of: Reads a record's `unique_code`.
+        approval_gated: The type has an approval gate, so import never writes its status (a test asserts no
+            importable column is named `status`).
+        organization_owned: `(record) -> bool` for a type whose list also shows records the organisation owns
+            (a persona shared by every project): such a row is exported with the organisation-qualified code
+            (`ACME-PER-001`, always qualified, since its bare code could equal a project record's), and is
+            never matched by an import into a project, whose `find` searches the project's own records only.
+            `None` for a type that has no organisation-owned records.
+        organization: The type's table at the organisation tier (`OrganizationRecordTable`): the organisation's own
+            records on the organisation-level lists. `None` for a type the organisation cannot own.
+        read_only_reason: `(prepared, record) -> str | None`: why the bulk edit grid shows this row read-only
+            (a Pain Point at a terminal outcome), or `None` when it can be edited. The grid greys such a row and
+            says the reason; a save of it is refused with the type's own message either way, so this is a courtesy
+            to the person, not the gate. `None` for a type whose rows are always editable in principle.
+        count: `(db, user, project_id) -> int`: how many records of this type the project itself holds, as its
+            default list shows them (archived rows left out), **excluding** organisation-owned rows. The project
+            overview's record total calls it for every type, so a type with a cheap query supplies one; `None`
+            counts the rows of `list_records` with no filters.
+        in_overview: Whether the type is a record a person authored in the project and so counts in the overview's
+            total. `False` for rows derived from something else (a project's assessment of each clause of an
+            assigned standard, the standard's own clauses): a count of them describes the standard, not the work.
+    """
+
+    label: str
+    columns: Callable[[Session, Any], Sequence[RecordColumn]]
+    list_records: Callable[[Session, Any, uuid.UUID, RecordFilters], list[Any]]
+    find: Callable[[Session, Any, str], Any | None]
+    prepare: Callable[[Session, Any, list[Any]], Any] | None = None
+    create: Callable[[RecordImportContext, Mapping[str, Any]], Any] | None = None
+    update: Callable[[RecordImportContext, Any, Mapping[str, Any]], None] | None = None
+    filter_params: frozenset[str] = frozenset()
+    gate: tuple[str, str | None] | None = None
+    can_create: Callable[[Session, Any, uuid.UUID], bool] | None = None
+    can_update: Callable[[Session, Any, uuid.UUID], bool] | None = None
+    id_of: Callable[[Any], Any] = lambda record: record.id
+    code_of: Callable[[Any], str] = lambda record: record.unique_code
+    approval_gated: bool = False
+    organization_owned: Callable[[Any], bool] | None = None
+    organization: OrganizationRecordTable | None = None
+    read_only_reason: Callable[[Any, Any], str | None] | None = None
+    count: Callable[[Session, Any, uuid.UUID], int] | None = None
+    in_overview: bool = True
+
+
 @dataclass(frozen=True)
 class LinkTypeSeed:
     """A link type a module wants to exist in every organisation, so its
@@ -1668,6 +1909,11 @@ class ReportDefinition:
             `ReportContext.code` / `ReportContext.org_code` and the row's tags
             through `ReportContext.tag_text`, never a hand-formatted code; the
             declaration lets a test prove each type is registered and coded.
+        cell_tones: Badge colours for the PDF and Word output, by column heading: `{"Status": {"Approved": "accent"}}`
+            tones every cell under a column headed "Status" whose text is a listed label, in every section of the
+            report, as the screen's badge does. Build the inner maps with `report_framework.tones_by_label` from the
+            module's label and tone maps. A cell whose text is not listed is left plain. Ratings are toned by the
+            collector (`ReportSection.tones`), which wins over this.
     """
 
     key: str
@@ -1681,6 +1927,7 @@ class ReportDefinition:
     org_scope: Literal["readable_projects", "all_org_projects"] = "readable_projects"
     params: tuple[ReportParamDefinition, ...] = field(default=())
     record_types: tuple[str, ...] = field(default=())
+    cell_tones: Mapping[str, Mapping[str, str]] = field(default_factory=dict, compare=False)
 
 
 @dataclass(frozen=True)
@@ -1943,12 +2190,18 @@ class ModuleDefinition:
         org_bundle_hooks: Optional `ModuleOrgBundleHooks` — this module's
             contribution to `app.services.org_export`'s organisation bundle
             export/import, read via `get_all_module_org_bundle_hooks`.
-            `None` for a module with no org-level bundle content of its own.
+            `None` for a module with no org-level bundle content of its own;
+            such a module then states why in `no_org_bundle`.
+        no_org_bundle: Reason this module has no `org_bundle_hooks` (it owns nothing at
+            organisation level). A backend test fails for a module with neither.
         project_bundle_hooks: Optional `ModuleProjectBundleHooks` — this
             module's contribution to `app.services.project_export`'s
             project bundle export/import, read via `get_all_module_
             project_bundle_hooks`. `None` for a module with no project-level
-            bundle content of its own.
+            bundle content of its own; such a module then states why in
+            `no_project_bundle`.
+        no_project_bundle: Reason this module has no `project_bundle_hooks` (it stores nothing
+            per project). A backend test fails for a module with neither.
         on_org_created: Optional hook (module boundary cleanup, 2026-09-08 —
             see `docs/decisions.md`'s "Module system follow-up: on_org_created
             / project_nav_visible hooks" entry) called once, synchronously,
@@ -2149,6 +2402,13 @@ class ModuleDefinition:
             Scope filter (Compliance: one standard). Addressed in a request as
             `<module_key>:<scope_key>:<ref_id>`; a scope of a module that is off for the
             caller's project is neither offered nor accepted.
+        record_tables: Maps one of this module's own `artefact_types` to a `RecordTableProvider`, making its
+            list exportable (CSV, PDF, Word) and, where the provider has `create`/`update`, importable from the
+            list itself. Read via `get_record_table_providers`. Registration is required of every artefact
+            type, and export has no exemption; a type authored by a workflow rather than by people says why
+            it cannot be imported in `not_importable` (and still registers a provider for export).
+        not_importable: `{artefact type: reason}` for a type deliberately left without import. A backend
+            test fails for a type that has neither a provider able to import nor a reason.
         reports: The reports this module contributes, each
             a `ReportDefinition`. The module mounts the routers built by
             `app.services.report_framework.build_report_routers` and may
@@ -2210,7 +2470,9 @@ class ModuleDefinition:
     resolve_file_owner_project_id: Callable[[Session, uuid.UUID], uuid.UUID | None] | None = None
     scheduled_jobs: tuple[ModuleScheduledJob, ...] = field(default=())
     org_bundle_hooks: ModuleOrgBundleHooks | None = None
+    no_org_bundle: str | None = None
     project_bundle_hooks: ModuleProjectBundleHooks | None = None
+    no_project_bundle: str | None = None
     on_org_created: Callable[[Session, uuid.UUID], None] | None = None
     org_creation_choices: tuple[OrgCreationChoiceOption, ...] = field(default=())
     on_org_created_with_choices: Callable[[Session, uuid.UUID, frozenset[str]], None] | None = None
@@ -2237,6 +2499,8 @@ class ModuleDefinition:
     search_providers: dict[str, ArtefactSearchProvider] = field(default_factory=dict)
     not_searchable: dict[str, str] = field(default_factory=dict)
     search_scopes: dict[str, SearchScope] = field(default_factory=dict)
+    record_tables: dict[str, RecordTableProvider] = field(default_factory=dict)
+    not_importable: dict[str, str] = field(default_factory=dict)
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -3865,6 +4129,29 @@ def get_not_searchable_types() -> dict[str, str]:
     reasons: dict[str, str] = {}
     for definition in get_module_registry().values():
         reasons.update(definition.not_searchable)
+    return reasons
+
+
+def get_record_table_providers() -> dict[str, RecordTableProvider]:
+    """Every registered artefact type's `RecordTableProvider`: the core types' (`services.record_tables_core`)
+    plus each module's `record_tables`. A type claimed twice keeps the first registration."""
+    from app.services.record_tables_core import CORE_RECORD_TABLES
+
+    merged: dict[str, RecordTableProvider] = dict(CORE_RECORD_TABLES)
+    for definition in get_module_registry().values():
+        for artefact_type, provider in definition.record_tables.items():
+            merged.setdefault(artefact_type, provider)
+    return merged
+
+
+def get_not_importable_types() -> dict[str, str]:
+    """`{artefact type: reason}` for every type left without import: a core type's
+    (`services.record_tables_core.CORE_NOT_IMPORTABLE`) and each module's `not_importable`."""
+    from app.services.record_tables_core import CORE_NOT_IMPORTABLE
+
+    reasons: dict[str, str] = dict(CORE_NOT_IMPORTABLE)
+    for definition in get_module_registry().values():
+        reasons.update(definition.not_importable)
     return reasons
 
 

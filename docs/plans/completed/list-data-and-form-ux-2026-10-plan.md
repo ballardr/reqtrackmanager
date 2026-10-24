@@ -1,31 +1,34 @@
 # List Data and Form UX (October 2026) — Plan
 
-**Status:** planned 2026-10-22, not started. Built from eight items the user picked up (section 1). Nothing is implemented; Phase 0 is answered, Phase 1 is next.
+**Status:** planned 2026-10-22, closed 2026-10-24 (19/19). Built from nine items the user picked up (section 1; item 9 added 2026-10-23). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position), 7 (type definition), 7b (module bundles), 8 (record-table extension point), 8b (personal-data policy), 9 (shared list actions), 10 (record-list report), 11 (core types), 12 (Context & Strategy and Stakeholders), 12b (organisation-level lists), 13 (Risk, Decisions, Compliance) and 14 (bulk edit grid) and 15 (overview total-records chart) and 16 (close-out) are done.
 **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. Q1–Q4 were answered by the user on 2026-10-22 (section 2). Everything in the "Agent defaults" table is **Decided by: Agent** and open to override before the phase that uses it starts.
 
 ## Status / Resume Here
 
-0 / 16 phases complete (Phase 0, the questions, is signed off and not counted in the total). Phases 2–7 are independent small fixes and can start at once after Phase 1. Phases 8–14 are one chain: the extension point, then everything that uses it.
+19 / 19 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–14 done 2026-10-23, Phases 15 and 16 done 2026-10-24; Phases 12, 12b, 13, 14 and 15 uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
 
 | # | Phase | Item | Status |
 |---|-------|------|--------|
 | 0 | Sign-off on Q1–Q4 | all | [x] |
-| 1 | Agent instructions and style guide rules written first | 4, 5, 6, 7, 8 | [ ] |
-| 2 | Coloured report cells and matrices keep their colour in PDF and Word (inventory of every coloured on-screen table, incl. the Risk matrix) | 1 | [ ] |
-| 3 | Field help `(?)` becomes a tooltip | 2 | [ ] |
-| 4 | Long text fields grow with their content (Pain Point description first, then a sweep) | 4 | [ ] |
-| 5 | Form header: title and Save/Cancel pinned, body scrolls (shared `Modal`, then every form) | 8 | [ ] |
-| 6 | List scroll position and loaded rows survive a trip to a record and back | 6 | [ ] |
-| 7 | Pain Point types get an optional definition | 7 | [ ] |
-| 8 | Record-table extension point (backend): columns, list, CSV out, CSV in with update | 5 | [ ] |
-| 8b | Personal-data policy: column sensitivity, server default, organisation override, new permission | 5 | [ ] |
-| 9 | Shared list actions (frontend): Export menu + Import wizard on `ListPageLayout` pages; Requirements migrated | 5 | [ ] |
-| 10 | Record-list report in the Reports page (CSV, PDF, Word of any type) | 5 | [ ] |
-| 11 | Roll-out A: core types (Requirements, Change Requests, Actions) | 5 | [ ] |
-| 12 | Roll-out B: Context & Strategy, Stakeholders (Persona, Stakeholder, Need, Group, Engagement, Research Finding) | 5 | [ ] |
-| 13 | Roll-out C: Risk, Decisions, Compliance | 5 | [ ] |
-| 14 | Bulk edit grid (generic) wired to Pain Points; other types register editable columns | 3 | [ ] |
-| 15 | Docs website, seeds, README, close-out and archive this plan | all | [ ] |
+| 1 | Agent instructions and style guide rules written first | 4, 5, 6, 7, 8 | [x] |
+| 2 | Coloured report cells and matrices keep their colour in PDF and Word (inventory of every coloured on-screen table, incl. the Risk matrix) | 1 | [x] |
+| 3 | Field help `(?)` becomes a tooltip | 2 | [x] |
+| 4 | Long text fields grow with their content (Pain Point description first, then a sweep) | 4 | [x] |
+| 5 | Form header: title and Save/Cancel pinned, body scrolls (shared `Modal`, then every form) | 8 | [x] |
+| 6 | List scroll position and loaded rows survive a trip to a record and back | 6 | [x] |
+| 7 | Pain Point types get an optional definition | 7 | [x] |
+| 7b | Every module's records travel in the project **and** organisation bundles (Context & Strategy, Decisions; audit of the other modules; enforcement test) | 7 | [x] |
+| 8 | Record-table extension point (backend): columns, list, CSV out, CSV in with update | 5 | [x] |
+| 8b | Personal-data policy: column sensitivity, server default, organisation override, new permission | 5 | [x] |
+| 9 | Shared list actions (frontend): Export menu + Import wizard on `ListPageLayout` pages; Requirements migrated | 5 | [x] |
+| 10 | Record-list report in the Reports page (CSV, PDF, Word of any type) | 5 | [x] |
+| 11 | Roll-out A: core types (Requirements, Change Requests, Actions) | 5 | [x] |
+| 12 | Roll-out B: Context & Strategy, Stakeholders (Persona, Stakeholder, Need, Group, Engagement, Research Finding) | 5 | [x] |
+| 12b | Organisation-level export and import: the organisation's own Strategies, Future States, Guiding Principles, Personas, Stakeholders and Groups (generic organisation route, org list pages) | 5 | [x] |
+| 13 | Roll-out C: Risk, Decisions, Compliance | 5 | [x] |
+| 14 | Bulk edit grid (generic) wired to Pain Points; other types register editable columns | 3 | [x] |
+| 15 | Project overview: total-records pie chart by type, replacing the per-module count tiles | 9 | [x] |
+| 16 | Docs website, seeds, README, close-out and archive this plan | all | [x] |
 
 ```mermaid
 flowchart LR
@@ -35,30 +38,34 @@ flowchart LR
     P1 --> P5["5 Form header"]
     P1 --> P6["6 Scroll"]
     P1 --> P7["7 Type definition"]
+    P7 --> P7b["7b Module bundles"]
     P1 --> P8["8 Extension point"]
     P8 --> P8b["8b Personal-data policy"]
     P8b --> P9["9 List actions"]
     P8b --> P10["10 Reports page"]
     P9 --> P11["11 Core"]
     P9 --> P12["12 Strategy + Stakeholders"]
+    P12 --> P12b["12b Organisation-level lists"]
     P9 --> P13["13 Risk, Decisions, Compliance"]
+    P13 --> P15["15 Overview total records"]
     P8 --> P14["14 Bulk edit grid"]
-    P2 --> P15["15 Close-out"]
-    P3 --> P15
-    P4 --> P15
-    P5 --> P15
-    P6 --> P15
-    P7 --> P15
-    P10 --> P15
-    P11 --> P15
-    P12 --> P15
-    P13 --> P15
-    P14 --> P15
+    P2 --> P16["16 Close-out"]
+    P3 --> P16
+    P4 --> P16
+    P5 --> P16
+    P6 --> P16
+    P7b --> P16
+    P10 --> P16
+    P11 --> P16
+    P12b --> P16
+    P13 --> P16
+    P15 --> P16
+    P14 --> P16
 ```
 
 Read left to right: after the rules in Phase 1, Phases 2–7 stand alone; the export/import work is the chain 8 → 8b → 9/10 → 11–13, and the grid (14) needs only the extension point.
 
-## 1. The eight items
+## 1. The nine items
 
 | # | Item (user's words, condensed) | Phase |
 |---|---|---|
@@ -70,6 +77,7 @@ Read left to right: after the rules in Phase 1, Phases 2–7 stand alone; the ex
 | 6 | Returning to a list after editing an item puts the user back at the top; keep the position; style-guide rule | 6 |
 | 7 | Pain Point types get an optional definition | 7 |
 | 8 | Long forms: Save at the top as well, or a header row with title + Save and a scrollable form; same for edit; style guide | 5 |
+| 9 | Project overview: the glances count requirements only and mean little once other modules are enabled; show total records as a pie chart split by record type (added 2026-10-23) | 15 |
 
 ## 2. Decisions
 
@@ -158,6 +166,20 @@ Each phase follows the checklist in section 4. Every requirement states why it e
 - **Checks recorded in decisions.md:** no new project-scoped table, so the nested-project fallback check does not apply; no new core enum value; no person field.
 - **Tests:** backend (create/update/bundle round trip, org-to-project hide still works); stories; Playwright editing a definition and seeing it in the picker.
 
+### Phase 7b — Every module's records travel in the project and organisation bundles
+
+- **Why:** found in Phase 7. A project bundle should carry everything a project owns, but only Compliance, Risk Management and Stakeholders register `ModuleDefinition.project_bundle_hooks`. **Context & Strategy** (Pain Points, their type vocabulary and scores, Strategies, Future States, Guiding Principles, Open Questions) and **Decisions** (decisions, decision types, templates) register none, so exporting and importing a project silently drops that data. Raised by the user 2026-10-23 (**Decided by: User**: all modules must export their project components with the project bundle, the organisation bundle must carry every module's organisation-level components too, and both are standing agent instructions).
+- **Risk:** data loss on project move or restore; a bundle that looks complete and is not; the same gap repeating for every future module.
+- **Outcome:** each of those two modules contributes `ModuleProjectBundleHooks` **and** `ModuleOrgBundleHooks` (organisation-owned Strategies, Future States and Guiding Principles, the organisation Pain Point type vocabulary, Decision templates and types, and any other organisation-level rows), following Risk and Stakeholders as the reference. A test fails for a registered module that lacks hooks or a stated reason at either level (new `ModuleDefinition` fields, same shape as `not_searchable`), so a new module cannot ship without them.
+- **Work:**
+  1. **Inventory first**, recorded in `docs/decisions.md`: every project-scoped and organisation-scoped table of **every** module (not only the two known gaps: Compliance, Risk and Stakeholders have hooks but may still omit tables or newer columns), and for each whether it travels (it should, unless there is a stated reason). Fix any further gap found in the same phase.
+  2. Write the hooks: portable keys for cross-references, users and groups through `principal_to_bundle`/`UserResolver`, versions and approval state as the existing core sections do, attachments through the bundle file mechanism, the human code (information only; an import numbers afresh), tags and links as the other modules carry them. Type vocabularies carry their hidden organisation defaults (`ProjectDefinitionSuppression`) and the Phase 7 `definition` / `definition_override`.
+  3. The enforcement test at both levels, plus `docs/modules.md`. The standing rule is already in `CLAUDE.md` (**Every Module Travels in the Project and Organisation Bundles**, written 2026-10-23); update it if the work changes the extension points' names.
+  4. Check whether Decisions/Context & Strategy already export through another path (Reports, org export) so the gap is described accurately.
+- **Security review (identify, verify, remediate, recorded in decisions.md):** tenancy (an import never references another project's or organisation's row), restricted fields are not bundled, an imported approval state cannot bypass an approval gate (compare how the core sections treat it), file size limits.
+- **Tests:** round trip per module at both levels (export a seeded project or organisation, import into a fresh one, compare), cross-organisation import, a record with an owner that is a group, the hidden-default and definition round trip, the enforcement test.
+- **Docs website:** the project and organisation export/import pages list what travels.
+
 ### Phase 8 — Record-table extension point (backend)
 
 - **Why:** only Requirements can export or import CSV. 19 other registered types cannot, and the Reports page cannot produce a basic table of Pain Points. Per-type endpoints would repeat the same code 20 times.
@@ -176,6 +198,7 @@ flowchart LR
   Read left to right: the same provider defines the columns for the file out and the file in, and the apply step goes through the type's own update path, never a raw write.
 - **Work:** `RecordTableProvider` (key, label, columns with `key`, `label`, getter, setter/parser, `editable` flag, `required` on create, enum/principal/date kinds, and a `sensitivity` tag: none, `personal`, `contact` or `free_text_people`; the provider is the only place a column is classified, and a column with no tag is `none`); list function that takes the same filter object as the type's list endpoint and the `ProjectScope`; shared generic routes (`/projects/{id}/records/{type}/export|import`, plus org-level for organisation-owned types) gated by the same module/sub-component gate and permission as the type's list (export) and create/update (import); formula-injection guard (D6); row and size caps (D4); audit events (D7); `ModuleDefinition.record_tables`, `not_importable`; the enforcement test; Requirements' existing importer moved onto the provider (it keeps its mapping/constant-value behaviour, now client-side only).
 - **Security review (identify, verify, remediate, recorded in decisions.md):** authorization on every row of an import (a code from another project or organisation is rejected), tenancy, injection, upload limits, no logging of cell values.
+- **Delivered (2026-10-23):** the engine, routes, registry fields and providers for Requirement and Action; the other 18 types are in `PENDING_RECORD_TABLES` (`backend/tests/test_record_tables.py`) until Phases 11–13. **Carried forward, with reasons in decisions.md:** the legacy Requirements `export`/`import` endpoints go in Phase 9 with the Requirements page; organisation-level routes arrive with the first organisation-owned provider (Phase 12); PDF and Word of a list are Phase 10.
 - **Tests:** a generic suite parametrised over every registered type: export, re-import unchanged (no changes reported), edit one column and re-import (one update), unknown code, wrong-project code, formula prefix round trip, permission denied. Run pytest one invocation at a time.
 
 ### Phase 8b — Personal-data policy
@@ -190,21 +213,28 @@ flowchart LR
   - Audit events for a policy change (old/new value, never data) and for an export that included tagged columns.
   - Update the data classification policy and the control matrix; record the identify, verify, remediate pass in decisions.md.
 - **Module boundary:** tags live on the provider (a module classifies its own columns); core holds only the tag vocabulary, as a closed list that is an intentional core concept, not a per-module value.
-- **Tests:** backend matrix of (server default × org override × permission) for export, import, report and grid; a test that fails if a provider column named like a known personal field has no tag in the Stakeholders and Engagement providers; Storybook for both panels; Playwright toggling the org override and seeing the column appear in the export.
+- **Tests:** backend matrix of (server default × org override × permission) for export, import, report and grid; a test that fails if a provider column named like a known personal field has no tag in the Stakeholders and Engagement providers; Storybook for both panels; Playwright toggling the org override and seeing the column appear in the export (no real provider column is tagged until Phase 12, so the spec drives the panels and the API and the backend suite tags a real column).
+- **Delivered (2026-10-23):** `services/record_policy.py`, the two override tables (migration 0105), the `export_personal_data` permission, `resolve_export_columns` built on them, admin APIs and the shared `PersonalDataPolicyPanel` (Server Management → Data policy; Org Admin → Security). **Carried forward, with reasons in decisions.md:** the one-line "columns were left out" note belongs to the list actions (Phase 9; the API already returns `omitted_reasons`); the Stakeholders and Engagement tagging test ships with those providers (Phase 12); the Record-list report and the grid call the same resolver when built (Phases 10, 14). Per tag only, not per type (**Decided by: Agent**).
 
 ### Phase 9 — Shared list actions (frontend)
 
 - **Why:** each list would otherwise hand-build its Export and Import controls.
 - **Work:** `ListActions` (an action menu entry group or a `ReportExportButton` + "Import" pair, per the existing action-menu and one-door patterns) rendered from `ListPageLayout` given a record type and the page's filter state; `CsvImportWizard` generalised from the provider's columns (column mapping, constant-value, preview step, error CSV download), then `RequirementsPage` migrated onto it in the same change; the shared `useRecordTableExport` hook; Toast on every mutation.
 - **Tests:** stories for the menu and each wizard step; Playwright for Requirements and Pain Points export download and a create+update import.
+- **Delivered (2026-10-23):** `ListActions` (via `ListPageLayout`'s `records` prop), `CsvImportWizard` rebuilt on the provider's columns (map, fixed value for a column with `choices`, preview, apply, error file), `useRecordTableExport`, `api/recordTables.ts`; `GET .../columns` gained `choices` and `can_import`; `RequirementsPage` migrated and the legacy Requirements `export`/`import` endpoints, `requirement_csv.py` and the old wizard deleted, their tests moved to the shared routes. **Carried forward, with reasons in decisions.md:** PDF and Word join the Export menu with the record-list report (Phase 10); Playwright drives Requirements (Pain Points has no provider until Phase 12; generic behaviour is in stories with a fake provider); Actions joins in Phase 11.
 
 ### Phase 10 — Record list in the Reports page
 
 - **Why:** the user could not export a basic Pain Point table from the Reports page.
 - **Work:** one `ReportDefinition` "Record list" (D8) built on the provider list; parameters: `record_type`, status/open filter, tags, project scope; `record_types` per the codes rule; PDF/Word via the framework (coloured cells from Phase 2 where a column has a tone); `mcp_guidance.md`/skill reference regenerated per the MCP rule (`generate_mcp_module_tools_reference.py`, in `backend/`).
 - **Tests:** `test_report_record_codes.py` passes; catalogue Storybook; Playwright generating a Pain Point table.
+- **Delivered (2026-10-23):** a platform report (not a module `ReportDefinition`: the framework is module-shaped and this report belongs to no module) at `GET /projects/{id}/reports/record-list`, in the catalogue as "Platform: Record list", built on `build_table`; PDF and Word join every list's Export menu with the page's filters; `RecordColumn.tones`; one core MCP tool `get_record_list_report`; a 5,000-row limit on documents. **Carried forward, with reasons in decisions.md:** the Reports page offers type, project scope and tag (status/open filters are per type, so they come from the list's Export menu); Playwright drives Requirements because Pain Points has no provider until Phase 12; `test_report_record_codes.py` does not apply to a non-`ReportDefinition` report.
 
 ### Phases 11–13 — Roll-out
+
+- **Delivered, Phase 11 (2026-10-23):** the Change request table (export-only; reason in `CORE_NOT_IMPORTABLE`), the shared change request list query, and Export/Import on the Actions list and Export on the Change requests list. Requirement and Action providers were already in place from Phases 8–9. Change requests are not importable (**Decided by: User**, 2026-10-23: import the requirements instead; a request imported alone is hard to link to its requirement).
+
+- **Delivered, Phase 12 (2026-10-23):** providers for Strategy, Future State, Guiding Principle, Pain Point, Open Question, Persona, Stakeholder, Stakeholder Group, Stakeholder Need, Engagement and Research Finding, registered by their two modules; the Context & Strategy create and edit logic extracted into `edits.py` and the Stakeholders `*_from_payload` functions split into `stage_*` plus a committing wrapper, so page and file share one path; the page filters of those lists reach the export server-side; the Stakeholder, Persona and Group lists also export the organisation's shared records with an organisation-qualified code (read-only in a project's file); Stakeholder and Engagement personal data is tagged and governed by Phase 8b. Engagement is importable (the guess that it would be exempt was wrong). Research findings have no list page of their own: they export from the Reports page's Record list. **Carried forward, with reasons in decisions.md:** the organisation-level lists, to Phase 12b (below); Pain Point scores are not file columns (Phase 14's grid owns them).
 
 Each phase, for each type: write the provider (columns, editable flags), wire the list page to `ListActions`, add the import behaviour (update by code), add a seed row where a new field needs one, and decide import exemptions with a stated reason in `docs/decisions.md` and `not_importable` (likely candidates: Engagement, Compliance evidence, and Compliance assessment records, whose rows are produced by a workflow rather than authored). Export has no exemption.
 
@@ -216,16 +246,41 @@ Each phase, for each type: write the provider (columns, editable flags), wire th
 
 - **Tests:** the Phase 8 suite runs against each type; one Playwright spec per phase covers a representative type; the all-types enforcement test must pass at the end of 13.
 
+- **Delivered, Phase 13 (2026-10-23):** providers for Risk, Decision, Compliance Evidence (importable) and the Standard Requirement, a project's assessment of it and the assessment of a required action (export-only, each with its reason in `not_importable`); Decision and Evidence create/edit extracted into `edits.py` / `evidence_edits.py`, Risk's into `stage_risk` / `stage_risk_update`; Export/Import on the Risk and Decisions lists, the Evidence tab, an assignment's requirements, the Outstanding tab and (organisation tier) a standard version. The three codeless Compliance types export their clause reference as the Code column (**Decided by: Agent**; giving them real codes remains the recorded gap). `OrganizationRecordTable.subcomponent` may be `None` and a tier may be export-only. The all-types enforcement test now has no pending set.
+
+### Phase 12b — Organisation-level export and import
+
+- **Delivered (2026-10-23):** `OrganizationRecordTable` on the provider, the generic organisation routes (`columns|export|import` and the Record list report as PDF, Word and CSV), one shared import body for both tiers, the organisation Strategy / Future State / Guiding Principle create and edit moved to `edits.py` so page and file share it, organisation-level `export_personal_data`, `ListActions` / `CsvImportWizard` / `useRecordTableExport` taking a project or an organisation, and the controls on the five organisation panels and the organisation group manager. **Carried forward, with reasons in decisions.md:** no organisation Reports page exists, so the Record list report is reached from each panel's Export menu; the organisation Pain Point type vocabulary stays out (a vocabulary, in the organisation bundle).
+
+- **Why:** the engine, `GET .../columns` and the Record list report are project-scoped, but six types can be owned by the organisation (Strategy, Future State, Guiding Principle, Persona, Stakeholder, Stakeholder Group). Their organisation lists have no Export, and "export has no exemptions". Phase 12 made the providers; this phase gives them an organisation route.
+- **Work:** a generic organisation route (`/orgs/{id}/records/{type}/columns|export|import`) gated by the type's organisation-level `organization_subcomponent` and manage role; the provider declares how it lists and finds organisation-scoped rows (a second `list_records` / `find` for the organisation tier, or one that takes an owner), and `organization_owned` rows are then the ones it writes; `ListActions` and `useRecordTableExport` accept an organisation instead of a project; the organisation panels (`OrgStrategiesPanel`, `OrgFutureStatesPanel`, `OrgGuidingPrinciplesPanel`, `OrgPersonasPanel`, `OrgStakeholdersPanel`) get the controls; the Record list report offers organisation-owned types at the organisation level; personal-data policy resolves for the organisation (no project permission context, so the permission is the organisation-level `export_personal_data`).
+- **Decide first (agent default, open to override):** whether the organisation Pain Point type vocabulary is a record list (it is a vocabulary panel, not an artefact type, so it likely stays out and the vocabulary travels in the organisation bundle, which Phase 7b already did).
+- **Tests:** the Phase 8 suite parametrised over the organisation tier for each type; cross-organisation codes rejected; Playwright on one organisation panel; Storybook for the controls on a panel.
+
+### Phase 15 — Project overview: total records by type
+
+- **Why:** the overview's tiles (requirement count, % complete, change request counts) describe one module. With Risk, Decisions, Stakeholders and the rest enabled, "N requirements" says little about the project. A total with its split by type does, and it is the same set of types the export work (Phases 8–13) just made countable.
+- **Work:**
+  - **Backend:** `records_by_type` (`[{type, label, count}]`) and `record_total` on the project metrics, following the overview's project scope (nested projects) exactly as the existing counts do. Counts come from a `count` on the record-table provider (Phase 8), not a hand-written query per type in the router, so a new type appears with no core edit. Only types whose module is enabled for the project and which the caller may read are counted (a count of a type the caller cannot open leaks its existence); the total is the sum of what is shown.
+  - **Frontend:** a "Total records" headline plus a pie (donut) chart on `StatusPieChart`, centre figure = total, one segment per type, legend listing every type with its count (colour is never the only cue). A segment and its legend row open that type's list (`artefactPaths`, scope preserved). Segment colours come from each type's registered `entityAccentColor` (`useEntityAccentColor`), so no core map gains a module entry; the chart is placed in the overview beside the existing status charts.
+  - **Replaces:** the "Requirements" count tile (requirements are now a segment). Whether "% complete", files and the change request tiles stay is the decision below.
+- **Decide first (agent default, open to override):** (a) keep "% complete" and the change request pipeline tiles, since they are workflow signals and not counts; drop only the requirement count; files stay a tile, not a segment (a file is not an artefact type); (b) with more than about eight types, the smallest collapse into one "Other" segment in the chart while the legend still lists each type; (c) a project with no records shows the empty-state text, not an empty ring. **Decided by: Agent.**
+- **Disagreement to weigh:** a pie suits "share of the whole" for a handful of segments; with 15–20 types it gets unreadable, which is why (b) caps it and the legend carries the exact numbers. If the user finds that unsatisfying, a horizontal bar per type is the alternative on the same data.
+- **Delivered (2026-10-24):** `services/record_counts.py`, `RecordTableProvider.count` / `in_overview`, `ProjectScope.total`, `records_by_type` / `record_total` on the metrics, the *Total records* donut on `StatusPieChart` (custom `colors` and `legend`), `utils/recordTotals.ts` (seven named slices, the rest folded into "Other"), a generic `TierAModuleDefinition.artefactListPaths` with `getArtefactListPath`, and the Requirements count tile removed. **Changes from the spec, with reasons in decisions.md:** slice colours come from a categorical palette, not `entityAccentColor` (one colour per module, so a module's types would share a slice colour); the three Compliance types derived from an assigned standard are not counted; the list click goes through a new list-path extension point because none existed.
+- **Tests:** backend: counts per type, disabled module omitted, unreadable type omitted, total equals the sum, nested scope widens it, cross-project isolation; Storybook for the chart (many types, one type, empty, "Other" grouping); Playwright on the overview with two modules' records, clicking a segment opens the filtered list.
+- **Docs:** the website's project overview page; record the decision in `docs/decisions.md`; seeds already carry records of each type from Phases 11–13 (check the demo dataset shows several types).
+
 ### Phase 14 — Bulk edit grid
 
 - **Why:** scoring many Pain Points one at a time is the use case that started this request.
 - **Work:** `RecordGrid` (shared): rows from the same provider list and filters as the page, columns marked `editable`, cell editors from the shared field components (select for enums, number, text), arrow/Tab/Enter navigation, dirty-cell highlight, "Save N changes" with per-row results in a toast, a row that fails stays dirty with its error; rows in a state that forbids edits (or the user lacks permission for) render read-only with the reason in a tooltip; saves use the type's own update path with the version lock, one request per row so one failure doesn't block others (a bulk endpoint only if measured slow, per the bulk-operations pattern). Pain Point columns: severity, frequency, confidence, with the scoring scheme's allowed levels; entry point is a "Grid" view toggle on the list (view toggle pattern).
 - **Other modules:** each type's provider already marks editable columns in Phases 11–13; the grid appears for a type once it has at least one editable column. Anything else is listed in decisions.md.
 - **Tests:** stories; Playwright editing three cells and saving, a failing row, and a read-only row.
+- **Delivered (2026-10-23):** `GET .../records/{type}/grid` and `PATCH .../records/{type}/rows/{code}` (generic, in the record-table engine), `RecordGrid` and the Grid option of `ViewToggle`, `RecordTableProvider.read_only_reason` and `RecordColumn.cell_lock`, the Pain Point score columns, and the Pain Point list wired. **Changes from the spec, with reasons in decisions.md:** grid cells are closed-value kinds only (free text stays in the form); a save carries the values the cells had when loaded so a stale cell is refused; Pain Point scores became ordinary file columns (the Phase 12 carry-forward is reversed); **carried forward:** the Grid toggle on the other lists (their editable columns are declared; each is a page change of the same size) and an organisation-level grid.
 
-### Phase 15 — Close-out
+### Phase 16 — Close-out
 
-- **Work:** docs website review (`docs/website/`: lists, export/import, help, forms, Pain Point types); README; `docs/solution-architecture.md` for the extension point; `docs/modules.md` section for `record_tables`; decisions.md entry per phase with `Decided by` tags; confirm the two seed scripts run on a fresh database; `python scripts/check_doc_links.py`; Status table 16/16; `git mv` to `docs/plans/completed/` and rewrite references; update the memory index.
+- **Work:** docs website review (`docs/website/`: lists, export/import, help, forms, Pain Point types); README; `docs/solution-architecture.md` for the extension point; `docs/modules.md` section for `record_tables`; decisions.md entry per phase with `Decided by` tags; confirm the two seed scripts run on a fresh database; `python scripts/check_doc_links.py`; Status table 19/19; `git mv` to `docs/plans/completed/` and rewrite references; update the memory index.
 
 ## 4. Standing checklist per phase
 
@@ -254,4 +309,4 @@ Each phase, for each type: write the provider (columns, editable flags), wire th
 | Tooltip rebuild regresses accessible names that tests rely on | Keep "Help: {label}" naming and the sr-only text pattern; the field-help check stays |
 | Coloured cells unreadable in greyscale or low contrast | Band name stays in the cell text; text colour picked for contrast |
 
-When the table reads 16 / 16: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").
+When the table reads 19 / 19: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").

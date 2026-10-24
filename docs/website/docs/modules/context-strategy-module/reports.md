@@ -108,7 +108,7 @@ Rows that name a record lead with its code and end with its tags; see [Reports a
 
 | Format | Contains |
 | --- | --- |
-| **PDF** | The report's notes and **every table** (including the matrix and gap tables), laid out for reading or circulating, with the branding template's cover, accent colour and footer if you chose one. The on-screen figure tiles and the matrix's colouring are not drawn; the figures appear in the tables. R8 opens with a Headline figures table, so it is the one to circulate. |
+| **PDF** | The report's notes and **every table** (including the matrix and gap tables), laid out for reading or circulating, with the branding template's cover, accent colour and footer if you chose one. The on-screen figure tiles are not drawn; the figures appear in the tables. Badges keep their colour: Status columns, the Band columns and the R1 matrix cells are filled in the colour the screen shows, and the word or band name is also in the cell text, so a black-and-white print still reads. R8 opens with a Headline figures table, so it is the one to circulate. |
 | **Word (DOCX)** | The same content, order and branding as the PDF, as an editable Word file in landscape: real headings and tables with a repeating header row, and a footer with page numbers. |
 | **CSV** | The report's **first table** only, as a flat file for a spreadsheet. Cell values that a spreadsheet could read as a formula are neutralised. |
 

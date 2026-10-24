@@ -92,13 +92,9 @@ test.describe("server admin manages an organisation's lifecycle", () => {
       await expect(page.getByText(orgName)).toBeVisible();
 
       await page.goBack();
-      await expect(page).toHaveURL(/\/server\/organisations$/);
-      // A fresh mount of this page after navigating back defaults to the
-      // "Active" status filter, same as a first visit — re-apply "All" so
-      // the rest of this test (which watches this org through a disabled
-      // state) can still find its row. role="combobox" scoping: see the
-      // comment on this same selector near the top of this test.
-      await page.getByRole("combobox", { name: "Status" }).selectOption("all");
+      // Back returns to the list as it was left: the "All" status filter is kept in the URL.
+      await expect(page).toHaveURL(/\/server\/organisations\?status=all$/);
+      await expect(page.getByRole("combobox", { name: "Status" })).toHaveValue("all");
     });
 
     await test.step("disable it", async () => {

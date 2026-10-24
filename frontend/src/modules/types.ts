@@ -359,6 +359,11 @@ export interface TierAModuleDefinition {
    * the frontend counterpart of the backend's `artefact_summary_providers`).
    * Omitted for a module whose records nothing else links to. */
   artefactPaths?: Record<string, (projectId: string, id: string) => string>;
+  /** Where each of this module's own artefact types has its list page in a project, keyed by artefact type
+   * (`modules/artefactPaths.ts`'s `getArtefactListPath`), so core views that summarise records by type (the
+   * project overview's total-records chart) can open a type's list without naming a module's URL. A type with no
+   * list page of its own names the page it appears on. */
+  artefactListPaths?: Record<string, (projectId: string) => string>;
   /** Where each of this module's organisation-owned artefact types that has an organisation-level page opens,
    * keyed by artefact type (a shared Strategy opens at its organisation page, not through a project). The
    * global search uses it for a result that belongs to the organisation and was not found through a project

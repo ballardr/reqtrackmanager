@@ -39,7 +39,7 @@ def _get_decision_type_in_project(db: Session, project_id: UUID, decision_type_i
     """Fetches a decision type this project literally owns (for
     rename/move/delete, which must never act on a row a hierarchical-
     project fallback merely makes *visible* to this project — see
-    `core._validate_effective_decision_type` for the "may a Decision
+    `edits.validate_effective_decision_type` for the "may a Decision
     reference this type" question instead, which is deliberately broader)."""
     decision_type = db.get(DecisionTypeDefinition, decision_type_id)
     if decision_type is None or decision_type.project_id != project_id:

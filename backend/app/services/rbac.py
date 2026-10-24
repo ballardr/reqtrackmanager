@@ -3079,6 +3079,14 @@ admin opts in" rationale, applied here to `OrgRole` instead.
 """
 
 
+EXPORT_PERSONAL_DATA = "export_personal_data"
+"""The administrative permission that lets a person include or import personal-data record columns."""
+
+_PERSONAL_DATA_EXPORT_PROJECT_ROLES = frozenset({ProjectRole.PROJECT_ADMINISTRATOR, ProjectRole.PROJECT_MANAGER})
+"""Project roles that hold `EXPORT_PERSONAL_DATA` in their project (organisation admins hold it through
+`_ORG_ROLE_PERMISSIONS`; anyone else needs a custom or module role that lists it)."""
+
+
 def _artefact_permissions_for_levels(levels: tuple[PermissionLevel, ...]) -> set[str]:
     """Every unscoped (`subtype=None`) artefact-type permission at each of
     `levels`, across every currently-registered artefact type
@@ -3456,6 +3464,8 @@ def get_effective_permissions(
         project_roles = get_effective_project_roles(db, user_id, project_id)
         for role in project_roles:
             permissions |= _artefact_permissions_for_levels(_PROJECT_ROLE_LEVELS.get(role, ()))
+        if project_roles & _PERSONAL_DATA_EXPORT_PROJECT_ROLES:
+            permissions.add(EXPORT_PERSONAL_DATA)
 
     permissions |= _module_role_permission_grants(
         db, user_id, organization_id=organization_id, project_id=project_id,

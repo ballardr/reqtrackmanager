@@ -149,3 +149,16 @@ export const FilterableNarrowsTheOptions: Story = {
     await expect(within(group).getByText("(all types)")).toBeInTheDocument();
   },
 };
+
+/** With `icon` the trigger is an icon-only button named by `triggerLabel` (no summary text) that opens the same checkbox list. */
+export const IconTriggerOpensTheSameList: Story = {
+  args: { icon: <span aria-hidden="true">▦</span>, triggerLabel: "Columns" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const trigger = canvas.getByRole("button", { name: "Columns" });
+    await expect(trigger).toHaveTextContent("▦");
+    await expect(trigger).not.toHaveTextContent("Member");
+    await userEvent.click(trigger);
+    await expect(within(within(document.body).getByRole("group", { name: "Columns" })).getByRole("checkbox", { name: "Revoke Member from Alex Morgan" })).toBeChecked();
+  },
+};

@@ -205,6 +205,8 @@ flowchart LR
 
 **"Not set" is never zero.** An optional rating input offers an explicit "Not scored" option (`ScoringLevelPicker`), and a result missing an input reads "not scored under this model" — never 0, and never silently dropped from a ranking.
 
+**A long text value in a row is `multiline`.** A `DefinitionListField` holding prose (a type's definition) sets `multiline: true`: the row and the add form show a growing text area, not a one-line input.
+
 **Derived order hides reorder controls.** When a list's order is computed (scoring levels are ordered by weight), omit `DefinitionList`'s `onMove` so no up/down buttons appear; when a list has a floor (an axis keeps two levels), set `minItems` so delete is disabled with a reason.
 
 **Thresholds are percentages of a maximum.** Rating-band boundaries are entered as a percentage of the model's maximum score (`ScoringBandsEditor`), never as raw scores, so they survive re-weighting and read the same across models.
@@ -261,7 +263,7 @@ The CSV import wizard's own column-mapping/preview logic is unchanged here, it j
 
 The current inline form here (a kind selector plus a per-field checkbox-revealed editor) is the most field-heavy inline form in the app — under this pattern it moves into the same side panel unchanged, it just stops pushing the list down while doing it.
 
-**The same "one door" shape applies past creates, too (Principle 11).** The CSV wizard's "Export CSV" and "Download template" were two permanently-visible, adjacent buttons for two related downloads — not a create flow, but the identical "two blocks competing for the same job" problem. They now live behind a single "Export" `Popover` trigger, the same component (and the same small-menu shape) `RequirementsPage`'s own "+ New requirement" uses for Add one/Import from CSV. Reach for this whenever a screen accumulates a second, related, non-primary action next to an existing one rather than adding it as its own permanent button.
+**The same "one door" shape applies past creates, too (Principle 11).** The CSV wizard's "Export CSV" and "Download template" were two permanently-visible, adjacent buttons for two related downloads — not a create flow, but the identical "two blocks competing for the same job" problem. They now live behind a single "Export" `Popover` trigger, the same small-menu shape the shared list actions' Export menu uses. Reach for this whenever a screen accumulates a second, related, non-primary action next to an existing one rather than adding it as its own permanent button.
 
 ## Pattern: modal dialog for entity create/rename
 
@@ -400,7 +402,7 @@ First and only call site so far: `OrgAdminPage.tsx`'s Users table Roles column, 
 
 For a primary action that has exactly one common case and one (or a small number of) less-common alternative — "add a requirement" vs. "import a batch from CSV" — clicking the main control performs the common case directly; a small secondary affordance (a chevron, or hovering the control) reveals the alternative(s) without an extra click for the common path. This is different from the app's current `Popover`-menu-on-click shape (used today by `RequirementsPage`'s "+ New Requirement" trigger), which makes *every* click, including the common case, stop at a menu first.
 
-**Built 2026-08-24** as `SplitButtonTrigger` (`frontend/src/components/SplitButtonTrigger.tsx`) — a button + adjacent chevron, sharing `Popover`'s existing positioning/outside-click-close logic for the revealed alternate-options list, exactly as scoped: its own reusable component, not a one-off on `RequirementsPage`. First wired up there (`RequirementsPage.tsx:434`), replacing the `Popover`-based two-option menu it's named against above — a plain click now calls `onDefaultAction` directly (opening the create form) with no menu stop, and the chevron (its own accessible name, "More options") reveals "Import from CSV". Judgment call: the reveal affordance is click-to-open on the chevron, not hover — the pattern's own wording allows either ("a chevron, or hovering the control"), and click was chosen since hover has no equivalent on a touchscreen (this app supports mobile viewports, U-P-02) and every other disclosure control in the app (`CollapsibleSection`, `Popover` itself) already opens on click; see `docs/decisions.md` for the full reasoning. Other call sites this shape would fit (per this section's own "anywhere else a primary action currently forces a menu stop" note) weren't converted in this pass — scoped to `RequirementsPage` only, per [docs/plans/completed/ux-audit-2026-08.md](plans/completed/ux-audit-2026-08.md)'s roadmap item 505.
+**Built 2026-08-24** as `SplitButtonTrigger` (`frontend/src/components/SplitButtonTrigger.tsx`) — a button + adjacent chevron, sharing `Popover`'s existing positioning/outside-click-close logic for the revealed alternate-options list, exactly as scoped: its own reusable component, not a one-off on `RequirementsPage`. First wired up on `RequirementsPage`, replacing the `Popover`-based two-option menu it's named against above — a plain click called `onDefaultAction` directly (opening the create form) with no menu stop, and the chevron (its own accessible name, "More options") revealed "Import from CSV". `RequirementsPage` has since moved to a plain "New requirement" button because every record list now has the shared Import and Export controls beside its create button ([Pattern: list actions](#pattern-list-actions-export-and-import)); the component stays for a create button that really has alternative ways to add. Judgment call: the reveal affordance is click-to-open on the chevron, not hover — the pattern's own wording allows either ("a chevron, or hovering the control"), and click was chosen since hover has no equivalent on a touchscreen (this app supports mobile viewports, U-P-02) and every other disclosure control in the app (`CollapsibleSection`, `Popover` itself) already opens on click; see `docs/decisions.md` for the full reasoning. Other call sites this shape would fit (per this section's own "anywhere else a primary action currently forces a menu stop" note) weren't converted in this pass — scoped to `RequirementsPage` only, per [docs/plans/completed/ux-audit-2026-08.md](plans/completed/ux-audit-2026-08.md)'s roadmap item 505.
 
 ## Pattern: auto-growing textarea
 
@@ -409,6 +411,8 @@ For a primary action that has exactly one common case and one (or a small number
 `AutoGrowTextarea` (`frontend/src/components/AutoGrowTextarea.tsx`) is a controlled `<textarea>` (`value`/`onChange`, same contract as a plain one) that grows to fit its content via `scrollHeight` instead of scrolling inside a fixed row count, capped at a maximum height so a pasted essay doesn't push the rest of the form off-screen. The cap is computed from the element's own resolved `line-height` (`getComputedStyle`, not a hardcoded pixel number) multiplied by a `maxVisibleLines` prop (default 8, per this item's own "roughly 8 lines" suggestion) plus its actual padding/border — so it tracks `theme.css`'s real typography if that ever changes rather than needing every caller to keep a magic number in sync with the stylesheet by hand. First used on `RequirementsPage.tsx`'s Reasoning/Description fields, in place of a fixed `rows={2}` `<textarea>`.
 
 Use this for any free-text field where more than a couple of lines is a realistic, common case (a reasoning/description/notes field) — not for a field that's genuinely meant to stay short (a name, a title), where growth would just be visual noise. `theme.css`'s global `box-sizing: border-box` matters to any future edit of this component: `scrollHeight` never includes border width (a universal DOM behaviour, not box-sizing-dependent), so the border has to be added back before being assigned to `style.height` — missed once during this component's own build, caught by a Storybook interaction test rather than manual inspection (see `docs/decisions.md`).
+
+**The rule (long prose always grows).** Every long free-text field is `autoGrow`, wherever it appears: create forms, edit forms and detail pages (a record's description, rationale, source, impact, evidence, notes). `TextAreaField` grows by default, with `rows` as its minimum height; a field meant to stay short passes `fixedHeight="<reason>"`, which keeps a plain fixed-height box (an inline editor with no label uses `AutoGrowTextarea` directly, never a raw `<textarea>`). A create form and the matching edit form use the same field group, so they cannot disagree. `scripts/check_textarea_autogrow.py` (empty baseline) fails a raw `<textarea>` and a `fixedHeight` with no reason. Reason: a fixed box hides what was typed and makes the author scroll inside a field to review it (the Pain Point description was the case that exposed this).
 
 ## Pattern: view toggle (tile vs. list)
 
@@ -470,6 +474,8 @@ flowchart TD
   Start -->|"~4 or fewer — e.g. Groups (Name, role, Members)"| Side["layout=#quot;side#quot; (default): .side-grid sidebar, fields stacked"]
   Start -->|"5+, or a column needs real width (multi-select, provenance text) — e.g. Users, Access Review, Members"| Top["layout=#quot;top#quot;: full-width bar above the table, fields in a wrapping row"]
 ```
+
+**Collapse and expand (`ListPageLayout`).** A side `FilterPanel` is a card with a "Filters" title row like every other card (the search and count sit under it). Inside a `ListPageLayout` the title row carries a round, icon-only collapse toggle (the nav rail's toggle style: `PanelTopClose`, tooltip, `aria-expanded`). Collapsing hides the card and the list takes the full width; a "Filters" button with the panel icon (`PanelTopOpen`) then appears beside the List actions menu on the title row to expand it. The state is the page's own and survives a change of view (list, grid). Collapsing never clears a filter. The panel reads the state from `FilterCollapseContext`, so a page passes nothing.
 
 Leave an existing `layout="side"` consumer alone unless it actually has this problem — don't move a narrow directory to `layout="top"` just because the option now exists; the default side placement remains correct for most of this app's filter/list pages (`RequirementsPage.tsx`, `ChangeRequestsPage.tsx`, `ProjectListPage.tsx`, and the rest listed in "Pattern: `FilterPanel`" above are not directories at all in "Pattern: directories at scale"'s sense, and stay on `layout="side"` unchanged).
 
@@ -554,6 +560,8 @@ Two different "download a report" shapes exist in this app, built independently 
 **A third surface, same pattern (Module 1 Phase 13):** the dedicated Reports page is also the one destination for module reports. A `ReportCatalogue` "Report" picker (linkable via `?report=`) lists the requirements report first and every catalogue report after it; module reports use the inline `ReportExportButton` shape (their options are on-screen parameters, not a pre-generation configuration story), and the Org Overview "Reports" group reuses the same component. Do not add a per-module report page.
 
 **The rule:** if a page would need to ask the user anything before generating the file beyond "which format" (a template, custom sections, which appendices), it needs the dedicated-page shape. If the page already has its own filters and "export" just means "as CSV/PDF, please," it needs `ReportExportButton` — and that export must respect the page's current filter state, not silently widen to an unfiltered full dataset (a filtered-looking screen producing an unfiltered download is a worse defect than no export button at all, since it looks correct until read closely). Don't build a fourth shape for a new export need without checking whether one of these fits.
+
+**A fourth door, now the default for record lists:** a list of records offers Export and Import itself, through the shared list actions ([Pattern: list actions](#pattern-list-actions-export-and-import)); the Reports page's "Record list" report is the second door to the same data, not a replacement. The list actions are a menu (`ActionMenu`) rather than a fourth export shape: one door for the list's export and import items.
 
 ## Missing components identified this pass
 
@@ -1047,13 +1055,77 @@ A required field is marked with a `*` after its caption; an optional field says 
 
 ## Pattern: field help
 
-Every form field that is not self-explanatory carries a `(?)` help button after its caption. Reason: some fields have no context on their own (a persona's importance weight, a scoring model, a review reminder lead time), and a guessed value leaves inconsistent data that nobody can later explain.
+Every form field that is not self-explanatory carries a `(?)` help button after its caption. Opening it must not shift the layout. Reason: some fields have no context on their own (a persona's importance weight, a scoring model, a review reminder lead time), and a guessed value leaves inconsistent data that nobody can later explain.
 
-- **How:** give the shared field component `help={strings.help.<key>}` (`TextField`, `TextAreaField`, `DateField`, `LabeledSelect`, `CheckboxField`, `ToggleField`, `ColorField`, `FileField`, `UploadField`, `PrincipalFormField`, `RecordFieldGroup`). `ColorField` also takes `presets` (named swatches), `emptyLabel` (a "no colour" button) and has a colour picker plus a hex box that accepts `#rgb` or `#rrggbb`. `FieldCaption`/`FieldHelp` (`components/FieldHelp.tsx`) render the button, named "Help: {label}", and reveal the text **in place under the caption**, not in a floating `Popover`: forms are built inside dialogs and popovers, and a popover opened from a popover is not allowed. The button is keyboard-focusable, Escape closes the text (and not the dialog around it), and a tap works like a click.
+- **How:** give the shared field component `help={strings.help.<key>}` (`TextField`, `TextAreaField`, `DateField`, `LabeledSelect`, `CheckboxField`, `ToggleField`, `ColorField`, `FileField`, `UploadField`, `PrincipalFormField`, `RecordFieldGroup`). `ColorField` also takes `presets` (named swatches), `emptyLabel` (a "no colour" button) and has a colour picker plus a hex box that accepts `#rgb` or `#rrggbb`. `FieldCaption`/`FieldHelp` (`components/FieldHelp.tsx`) render the button, named "Help: {label}", and reveal the text as a **tooltip**: it opens on hover and on keyboard focus, toggles on click or tap (touch has no hover), and closes on Escape (which does not close the dialog around it) or an outside click. It is portalled to `document.body` (the `Tooltip` mechanism), so opening it never moves a field below the caption and it works inside a `Modal`, `SidePanel` or `Popover` without being a popover opened from a popover. The button keeps the name "Help: {label}", is described by the tooltip text and is keyboard-focusable. The mechanism is `Tooltip`'s `pinnable` and `wrap` props; a new help-like affordance reuses them rather than building a second tooltip.
 - **Copy:** the text lives in `strings.help` in `frontend/src/i18n/strings.ts`, written for the end user in one or two sentences: what the field is, what it affects, a typical value. Terminology tokens (`{requirement}`, `{project}`) are filled in per organisation, so help follows the renamed terms.
 - **Opt out:** a self-explanatory field (a name, a title, a comment, an email) passes `helpNotNeeded` instead, which keeps the decision greppable. A field whose visible `hint` already explains it opts out too; do not show the same sentence twice. Never pass both.
 - **Enforced:** `scripts/check_field_help.py` (a pytest, `backend/tests/test_field_help.py`) fails on a field with neither prop. Its baseline (`scripts/field_help_baseline.json`) is empty: a new field decides when it is written.
 - **Definition-driven fields** (a custom field's label comes from its definition, a list of text areas from a field table) opt out: the label is data, not a place to hard-code copy.
+
+## Pattern: list actions (export and import)
+
+Every record list offers **Export** and **Import** from one kebab menu ("List actions", `ListActions`) beside its New button — never as separate buttons, so the action area stays one create button and one menu however many items the menu grows. The menu is rendered by `ListPageLayout` (`ListActions`, rendered by `ListPageLayout` given the record type and the page's filter state), and the person never has to visit the Reports page to get a table out. Reason: a list that cannot be exported forces a screenshot or a re-key; per-page hand-built controls drift.
+
+- **Export** items are in the kebab menu (`ActionMenu` with the kebab icon, the policy `note` as its footer): **Export as CSV** (the file that re-imports), **Export as PDF** and **Export as Word file** (the Record list report, which the Reports page offers too as the second door). It exports what the page shows: the current filters, the nested-project scope and "Open only" are applied, never widened to the full set (the page passes the same filter query its list request sends). **Download import template** sits under them. When columns were left out by the personal-data policy, the menu says so in one line.
+- **One file, both directions.** The CSV is the import file. Its first column is `code`; people are an email or a group name; dates are `YYYY-MM-DD`; enums use the label the user sees. PDF and Word share the same columns (a coloured cell keeps its colour and also says its value in text).
+- **Import** is `CsvImportWizard`: **Import from CSV** opens the file picker, then the wizard maps columns (a column with a closed list of values can take one value for every row), **preview**, apply. The Import item is shown only to a person who may create or update the type's records. The preview lists creates, updates (before and after for each changed field) and row errors; apply runs valid rows, reports `N created, N updated, N failed` in a `Toast`, and offers the failed rows as a downloadable error CSV. A row with a code updates that record; a blank code creates; an unknown code is an error.
+- **A list of several kinds** (the People list shows Personas, Stakeholders and Groups together) gives each kind its own group of items under a heading (**Personas**, **Stakeholders**) in the one menu, through `ListPageLayout`'s `records` array and `ListActions`' `kindLabel` (a list outside the layout wraps its `ListActions` in `ListActionsMenu`), because each file holds one record type. A kind that has no concept of a filter that is set (a group has no status) is not offered while that filter is set, since its file would be empty.
+- **Import never bypasses the type.** Updates use the type's own update path (version lock, audit, validation). A type with an approval gate imports drafts and content, not status. A type that cannot be imported hides the Import item and says why in its provider.
+
+```mermaid
+flowchart LR
+    A["Export from a list<br/>(filters applied)"] --> B["Edit the CSV in a spreadsheet"]
+    B --> C["Import: upload + map columns"]
+    C --> D["Preview: creates, updates, errors"]
+    D -->|"Apply"| E["Type's own create/update path"]
+    E --> F["Toast: N created, N updated, N failed"]
+    D -->|"Cancel"| G["Nothing written"]
+    F -->|"failures"| H["Download error CSV"]
+```
+
+Read left to right: the preview is the only gate before anything is written, and apply goes through the type's own path, so an import cannot do what the same person could not do by hand.
+
+## Pattern: list position
+
+A list page keeps its place. After opening a record and returning (Back, or the record's own "back to list" link), the list shows the same rows at the same scroll offset, including rows loaded by "Show more". Reason: editing down a list is the working pattern, and starting from the top each time makes the person find their place again.
+
+- **How:** `ListPageLayout` applies the shared hook (`hooks/useListPosition.ts`): it saves the window scroll offset and the number of rows loaded per list location in `sessionStorage` when the list unmounts and restores the offset once the rows have rendered. A page passes `ready` (false while its rows load; a page that shows a spinner instead of the layout while loading omits it) and, if it is paginated, `loadedRows`. A paginated page also sizes its first load with `useRestoredRowCount(PAGE_SIZE)`, so the rows loaded with "Show more" come back in one request. A page never writes scroll code.
+- **Where the filters live:** in the URL, through `hooks/useUrlFilter.ts` (`useUrlText`, `useUrlFlag`, `useUrlChoice`, `useUrlList`, `useUrlSort`, plus `useTagFilter` and `useOpenOnly`, which use them), with the same `[value, setter]` shape as `useState`. A value at its default is absent from the URL; a deep link names the same parameters (`?status=draft`). Page-local state that is not a filter (a dialog being open, a selection) stays in `useState`. A list that is also embedded in another page (an organisation panel) keeps its filters local there (`useUrlText(name, false)`) so it leaves that page's parameters alone.
+- **When:** back navigation (the browser's Back) and the record's own back link only. `RecordHeader`'s back link goes to the list with the filters it was left with and asks it to restore. A fresh visit (navigation link, typed address, new tab) starts at the top, and so does a list whose filters in the URL differ from the saved ones, because restoring a position in a different list would be wrong. A position saved by an earlier page load is used only when the browser itself is restoring (a reload).
+- **Prerequisite:** a list's filters are in the URL, not component state; otherwise the restored position would show a different list.
+
+## Pattern: form header
+
+A form in a `Modal` or `SidePanel` has a **header row** with the title and the form's actions (Cancel, Save, and Save and activate where [allowed](#pattern-save-and-activate)), and a **scrollable body**. Reason: Save below the fold on a long form means scrolling to the end to commit, and the foot of a different form is a different place every time.
+
+- Create and edit forms are the same in this; there is no short-form exception. Close (x) and Escape behave as today.
+- The actions are `FormActions`, written where the form always put them: inside a `Modal` or `SidePanel` it portals its buttons into the dialog's header (and a save error under the title, so it is seen without scrolling) through `DialogFrame`; handlers and state stay in the form. A form that is a real `<form>` element submits with Enter as usual. Inside a `Popover`, or outside any dialog, it renders inline.
+- A dialog that is a form never hand-writes its own Cancel/primary row; `FormActions` takes `saveTone="danger"`, `cancelDisabled` and an optional `onSave` for the variations. A confirmation dialog (`ConfirmDialog`) is not a form and keeps its short footer.
+- Do not render Save at the foot as well, and do not hand-write a header row.
+
+## Pattern: bulk edit grid
+
+A type with at least one closed-value editable column offers a **Grid** view on its list ([view toggle](#pattern-view-toggle-tile-vs-list), `ViewToggle showGridOption`): the same rows and filters as the list, with the editable columns as cells, so many records can be adjusted without opening each one (first use: severity, frequency and confidence on Pain Points). A type declares its editable columns on its record-table provider (`RecordColumn.editable`); the grid is generic (`RecordGrid`, fed by `GET .../records/{type}/grid`).
+
+```mermaid
+flowchart LR
+    G["Grid: rows + filters of the list"] --> C["Change cells (marked, counted)"]
+    C --> S["Save N changes"]
+    S --> R["PATCH one row at a time:\nchanged cells + the values they had"]
+    R -->|"type's own update path"| OK["Row replaced by the server's answer"]
+    R -->|"refused / changed elsewhere"| ER["Row stays changed, message under it"]
+```
+
+Read left to right: each changed row is its own request, so one refusal never blocks the rest, and a cell someone else changed since it loaded is refused, not overwritten.
+
+- Cells use the shared inline controls (`InlineSelect` for an enum, `InlineTextInput` for a date or number, `InlineCheckbox`); only closed-value kinds (`enum`, `number`, `date`, `bool`) are grid cells. Free text is edited in the record's form, where a long text has room to grow ([auto-growing textarea](#pattern-auto-growing-textarea)).
+- Tab moves between cells; Enter (Shift+Enter) moves down (up) the column, and so do the arrows in a date or number cell. A changed cell is tinted and marked on its left edge, and the Save button counts the changed rows.
+- Every row states its editing state in an **Editing** column (**Editable**, **Partly editable**, **Read-only**, a label with the reason in a tooltip, never colour alone), beside the record's **Status** column, so a locked row is never a puzzle. The **Columns** icon menu (`MultiSelectDropdown icon`) chooses the columns shown: by default the context, editable, status and Editing columns, and any other column of the type as read-only text. The choice is a per-person, per-type preference stored as the keys switched away from the default (`grid_columns:{type}`), so a column added later follows the default; a column with unsaved changes cannot be hidden.
+- Switching to the grid leaves the filter panel as it was; collapsing it gives the table the full width.
+- A row that cannot be edited (a locked record, another project's, or no permission) and a single cell that cannot (`RecordColumn.cell_lock`, e.g. a score on a Pain Point scored per persona) show their value as text with the reason in a tooltip that keyboard focus reaches. A locked value is drawn at the same left offset as the select or input text in its column, so the column lines up.
+- Result feedback is one `Toast`: "N saved, M failed". A failed row keeps its changes and shows its message in place. The toolbar is a **Columns** icon menu (`Columns3`), an undo icon (**Discard changes**, restores the saved values) and **Save**, on the same row as the view toggle and before it, with a divider between the two groups (`<columns> <discard> <save> | <list> <grid>`): the page gives `RecordGrid` a `toolbarHost` element on that row and the grid renders its controls into it; the record count stays above the table; there is no Reload (the version lock catches a record changed elsewhere, and a page refresh reads the list again).
+- The list is cut at 500 rows and says so; narrow the filters to reach the rest. The grid is offered only to a person who may update the type's records.
 
 ## Tokens
 

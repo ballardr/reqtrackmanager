@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { MemoryRouter } from "react-router-dom";
 import { expect, fn, userEvent, within } from "storybook/test";
 
 import { buildNeed } from "./fixtures";
@@ -7,6 +8,8 @@ import { NeedListView } from "./NeedListView";
 const meta: Meta<typeof NeedListView> = {
   title: "Modules/Stakeholders/NeedListView",
   component: NeedListView,
+  // The list keeps its filters in the URL, so it needs a router.
+  decorators: [(Story) => <MemoryRouter><Story /></MemoryRouter>],
   args: {
     needs: [buildNeed(), buildNeed({ id: "need-2", name: "Audit without a meeting", status: "draft", unique_code: "NEED-002" })],
     ariaLabel: "Stakeholder Needs",

@@ -675,6 +675,9 @@ def test_deleting_a_group_needs_a_replacement_for_owners_and_clears_reviewers(cl
 
 
 def test_csv_export_writes_a_group_and_the_same_file_imports_it_back(client, admin_token, org_id):
+    import csv
+    import io
+
     project = create_project(client, admin_token, org_id)
     me_email = "admin@example.com"
     team = create_org_group(client, admin_token, org_id, "Csv Team")
@@ -684,48 +687,43 @@ def test_csv_export_writes_a_group_and_the_same_file_imports_it_back(client, adm
     _requirement(client, admin_token, pid, name="Personal", owner=_user(_me(client, admin_token)))
     h = auth_headers(admin_token)
 
-    exported = client.get(f"/api/v1/projects/{pid}/requirements/export", headers=h)
-    assert exported.status_code == 200
-    import csv
-    import io
+    def run(project_id, text, *, apply=True):
+        resp = client.post(
+            f"/api/v1/projects/{project_id}/records/requirement/import", params={"dry_run": "false" if apply else "true"},
+            files={"file": ("r.csv", text.encode(), "text/csv")}, headers=h,
+        )
+        assert resp.status_code == 200, resp.text
+        return resp.json()
 
-    rows = {r["name"]: r for r in csv.DictReader(io.StringIO(exported.text))}
-    assert rows["Grouped"]["owner_email"] == "" and rows["Grouped"]["owner_group"] == "Csv Team (Org group)"
-    assert rows["Grouped"]["reviewer_group"] == "Csv Squad (Project group)" and rows["Grouped"]["reviewer_email"] == ""
-    assert rows["Personal"]["owner_email"] == me_email and rows["Personal"]["owner_group"] == ""
+    exported = client.get(f"/api/v1/projects/{pid}/records/requirement/export", headers=h)
+    assert exported.status_code == 200
+    text = exported.content.decode("utf-8-sig")
+    rows = {r["name"]: r for r in csv.DictReader(io.StringIO(text))}
+    assert rows["Grouped"]["owner"] == "Csv Team (Org group)" and rows["Grouped"]["reviewer"] == "Csv Squad (Project group)"
+    assert rows["Personal"]["owner"] == me_email and rows["Personal"]["reviewer"] == ""
 
     target = create_project(client, admin_token, org_id, "Csv Target")
     create_project_group(client, admin_token, target["id"], "Csv Squad")
     _scope(client, admin_token, target["id"])
-    imported = client.post(
-        f"/api/v1/projects/{target['id']}/requirements/import",
-        files={"file": ("r.csv", exported.content, "text/csv")}, headers=h,
-    )
-    assert imported.status_code == 201, imported.text
-    assert imported.json()["created"] == 2, imported.json()
+    # The codes belong to the source project; blanking them makes every row a new record here.
+    out = io.StringIO()
+    writer = csv.DictWriter(out, fieldnames=["code", "name", "component", "category", "owner", "reviewer"])
+    writer.writeheader()
+    for row in rows.values():
+        writer.writerow({"code": "", **{k: row[k] for k in ("name", "component", "category", "owner", "reviewer")}})
+    imported = run(target["id"], out.getvalue())
+    assert imported["created"] == 2, imported
     copied = {r["name"]: r for r in client.get(f"/api/v1/projects/{target['id']}/requirements", headers=h).json()}
     assert copied["Grouped"]["owner"]["label"] == "Csv Team" and copied["Grouped"]["reviewer"]["type"] == "project_group"
     assert copied["Personal"]["owner"]["type"] == "user"
 
-    bad = (
-        "name,component_prefix,category_prefix,owner_email,owner_group\n"
-        f"Both,{rows['Grouped']['component_prefix']},{rows['Grouped']['category_prefix']},{me_email},Csv Team\n"
-        f"Unknown,{rows['Grouped']['component_prefix']},{rows['Grouped']['category_prefix']},,No Such Group\n"
-    )
-    result = client.post(
-        f"/api/v1/projects/{pid}/requirements/import", files={"file": ("bad.csv", bad.encode(), "text/csv")}, headers=h,
-    ).json()
-    assert result["created"] == 0
-    assert any("not both" in e["message"] for e in result["errors"]) and any("Unknown group" in e["message"] for e in result["errors"])
+    component, category = rows["Grouped"]["component"], rows["Grouped"]["category"]
+    bad = run(pid, f"name,component,category,owner\nUnknown,{component},{category},No Such Group\n")
+    assert bad["created"] == 0 and bad["failed"] == 1
+    assert "No Such Group" in bad["rows"][0]["message"]
 
-    good = (
-        "name,component_prefix,category_prefix,owner_group,reviewer_group\n"
-        f"By name,{rows['Grouped']['component_prefix']},{rows['Grouped']['category_prefix']},Csv Team,Csv Squad\n"
-    )
-    ok = client.post(
-        f"/api/v1/projects/{pid}/requirements/import", files={"file": ("good.csv", good.encode(), "text/csv")}, headers=h,
-    ).json()
-    assert ok["created"] == 1, ok
+    good = run(pid, f"name,component,category,owner,reviewer\nBy name,{component},{category},Csv Team,Csv Squad\n")
+    assert good["created"] == 1, good
     made = next(r for r in client.get(f"/api/v1/projects/{pid}/requirements", headers=h).json() if r["name"] == "By name")
     assert made["owner"]["type"] == "org_group" and made["reviewer"]["type"] == "project_group"
 

@@ -56,16 +56,18 @@ def test_project_export_import_round_trips_relationships(client, admin_token):
 
     result = _import(client, token, org["id"], "Rel Bundle Reimported", content)
     new_id = result["project"]["id"]
-    # Pain Points and Decisions are not part of the project bundle yet (their modules have no bundle hooks), so
-    # those two links cannot be recreated: each is reported rather than silently dropped.
-    assert len(result["warnings"]) == 2 and all("not found or ambiguous" in w for w in result["warnings"])
+    # Pain Points and Decisions travel in the project bundle (their modules' hooks run before this one's), so all
+    # four links are recreated.
+    assert result["warnings"] == []
 
     new_stakeholder = next(
         s for s in client.get(f"/api/v1/projects/{new_id}/modules/stakeholders/stakeholders", headers=h).json()
         if s["name"] == "Bundled Person"
     )
     got = {(r["kind"], r["target_type"]) for r in client.get(_rels(new_id, "stakeholder", new_stakeholder["id"]), headers=h).json()}
-    assert got == {("approves", "requirement")}
+    assert got == {
+        ("approves", "requirement"), ("experiences_pain_point", "pain_point"), ("consulted_on_decision", "decision"),
+    }
     # The shared org persona's link is re-created for the new project only.
     assert [r["kind"] for r in client.get(_rels(new_id, "persona", persona["id"]), headers=h).json()] == ["affected_by_requirement"]
 

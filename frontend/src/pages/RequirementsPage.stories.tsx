@@ -9,8 +9,10 @@ import {
   withRouter, withStatefulAuth, withTerminology, withToast,
 } from "../testing/storybook-helpers";
 import { buildCandidate, buildOption } from "../testing/artefactLinksFixtures";
+import { buildRecordColumns } from "../testing/recordTablesFixtures";
 import { buildVocabulary } from "../testing/tagsFixtures";
 import { RequirementsPage } from "./RequirementsPage";
+import { chooseListAction, openListMenu } from "../testing/listActionsMenu";
 
 const PROJECT_ID = "project-1";
 
@@ -46,6 +48,7 @@ function mockRequirementsListApis(
   const cats = opts.categories ?? categories;
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (opts.withTags && path.endsWith(`/projects/${PROJECT_ID}/tags`)) return buildVocabulary();
+    if (path.endsWith("/records/requirement/columns")) return buildRecordColumns();
     if (path.endsWith("/scope-options")) return { has_parents: opts.withParent === true, has_children: false, truncated: false };
     if (path.endsWith("/my-roles")) return { roles: myRoles === "manager" ? ["project_manager"] : ["member"] };
     if (path.includes("/artefacts/")) return finderReply(path, opts.linkOptions ?? [], opts.candidates ?? []);
@@ -102,53 +105,36 @@ export const TilesView: Story = {
   },
 };
 
-/** Style guide "Pattern: split-button trigger" — a
- * plain click on "New requirement" performs the common-case action
- * ("Add one") directly, opening the create form as a `Modal` layer
- * (not an inline block that reflows the list underneath) with no menu
- * stop first. This replaces the previous `Popover`-based two-option menu,
- * which made *every* click — including the common case — open a menu
- * first; see `SplitButtonTrigger.stories.tsx` for the chevron/alternatives
- * half of this component's own behaviour, covered there rather than
- * duplicated per call site. */
-export const NewRequirementSplitButtonOpensCreateFormDirectly: Story = {
+/** A plain click on "New requirement" opens the create form as a `Modal` layer (not an inline block that reflows
+ * the list underneath), with no menu stop first. Import is not hidden behind it: the list's shared Export and
+ * Import controls sit beside it (see `ListActions.stories.tsx` for what they do). */
+export const NewRequirementOpensCreateFormDirectly: Story = {
   beforeEach: () => mockRequirementsListApis("manager"),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
-
-    // The CSV wizard's own "Import CSV" trigger is hidden now that this
-    // page's split button is the one door for both — Export/template stay,
-    // combined behind their own single "Export" popover trigger (see
-    // CsvImportWizard.stories.tsx's ExportMenuOffersCsvAndTemplate).
-    await expect(canvas.queryByText("Import CSV")).not.toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Export" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "More options" })).not.toBeInTheDocument();
 
     await userEvent.click(canvas.getByRole("button", { name: "New requirement" }));
-    // The create form is a `Modal` — a layer portalled to
-    // `document.body`, not an inline block inside `canvasElement` — so the
-    // list underneath stays untouched (Principle 3) and the field lives
-    // outside `canvas`. No menu ever opened for this click.
+    // The create form is a `Modal` portalled to `document.body`, so the list underneath stays untouched.
     await expect(within(document.body).getByRole("dialog", { name: "New requirement" })).toBeInTheDocument();
     await expect(within(document.body).getByPlaceholderText("Name")).toBeInTheDocument();
   },
 };
 
-/** The chevron beside "New requirement" reveals "Import from CSV" — the
- * one alternative to the split button's default action, opening the CSV
- * wizard's own file picker (see `CsvImportWizard.stories.tsx`'s
- * `HiddenImportTriggerOpensViaRef` for what that picker does once opened). */
-export const NewRequirementChevronRevealsImportFromCsv: Story = {
-  beforeEach: () => mockRequirementsListApis("manager"),
+/** The shared list actions: Export downloads the list through the generic record table route, Import opens a file picker. */
+export const ExportAndImportAreOnTheTitleRow: Story = {
+  beforeEach: () => {
+    mockRequirementsListApis("manager");
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["code,name\n"], { type: "text/csv" }));
+  },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
-
-    await userEvent.click(canvas.getByRole("button", { name: "More options" }));
-    const menu = within(document.body).getByRole("dialog", { name: "New requirement" });
-    await expect(within(menu).getByRole("button", { name: "Import from CSV" })).toBeInTheDocument();
-    // Revealing the menu doesn't itself open the create form.
-    await expect(within(document.body).queryByPlaceholderText("Name")).not.toBeInTheDocument();
+    await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await chooseListAction(canvas, "Export as CSV");
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/requirement/export"));
   },
 };
 

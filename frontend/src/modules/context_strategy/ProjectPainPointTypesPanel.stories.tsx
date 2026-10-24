@@ -25,8 +25,8 @@ function mockProjectTypeApis(initial: EffectivePainPointType[]) {
       return { restored: back };
     }
     if (path.endsWith("/pain-point-types")) {
-      const payload = body as { name: string; display_order: number | null };
-      const created = { id: `local-${items.length + 1}`, name: payload.name, display_order: payload.display_order ?? 0, is_enabled: true, source: "project_local" as const };
+      const payload = body as { name: string; display_order: number | null; definition?: string | null };
+      const created = { id: `local-${items.length + 1}`, name: payload.name, display_order: payload.display_order ?? 0, is_enabled: true, source: "project_local" as const, definition: payload.definition ?? null };
       items = [...items, created];
       return created;
     }
@@ -34,7 +34,7 @@ function mockProjectTypeApis(initial: EffectivePainPointType[]) {
   });
   spyOn(api, "put").mockImplementation(async (path: string, body?: unknown) => {
     const id = path.split("/pain-point-types/")[1];
-    const payload = body as { name?: string; display_order?: number; is_enabled?: boolean };
+    const payload = body as { name?: string; display_order?: number; is_enabled?: boolean; definition?: string };
     items = items.map((i) => (i.id === id ? { ...i, ...payload, source: i.source === "org" ? "project_override" : i.source } : i));
     return items.find((i) => i.id === id);
   });
@@ -60,9 +60,9 @@ type Story = StoryObj<typeof ProjectPainPointTypesPanel>;
 
 export const ListsEffectiveTypes: Story = {
   beforeEach: () => mockProjectTypeApis([
-    { id: "type-market", name: "Market", display_order: 0, is_enabled: true, source: "org" },
-    { id: "override-1", name: "Frontline User", display_order: 1, is_enabled: true, source: "project_override" },
-    { id: "local-1", name: "Field team", display_order: 2, is_enabled: true, source: "project_local" },
+    { id: "type-market", name: "Market", display_order: 0, is_enabled: true, source: "org", definition: null },
+    { id: "override-1", name: "Frontline User", display_order: 1, is_enabled: true, source: "project_override", definition: null },
+    { id: "local-1", name: "Field team", display_order: 2, is_enabled: true, source: "project_local", definition: null },
   ]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -76,7 +76,7 @@ export const ListsEffectiveTypes: Story = {
 };
 
 export const RenameOrgTypeCreatesOverride: Story = {
-  beforeEach: () => mockProjectTypeApis([{ id: "type-market", name: "Market", display_order: 0, is_enabled: true, source: "org" }]),
+  beforeEach: () => mockProjectTypeApis([{ id: "type-market", name: "Market", display_order: 0, is_enabled: true, source: "org", definition: null }]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const input = await canvas.findByDisplayValue("Market");
@@ -91,8 +91,42 @@ export const RenameOrgTypeCreatesOverride: Story = {
   },
 };
 
+/** Renaming an organisation type must not copy the organisation's definition into the project as an override. */
+export const RenameLeavesInheritedDefinitionAlone: Story = {
+  beforeEach: () => mockProjectTypeApis([{ id: "type-market", name: "Market", display_order: 0, is_enabled: true, source: "org", definition: "Org text." }]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const input = await canvas.findByDisplayValue("Market");
+    await userEvent.clear(input);
+    await userEvent.type(input, "Customer");
+    await userEvent.click(canvas.getByRole("button", { name: "Rename" }));
+
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/pain-point-types/type-market`, { name: "Customer" }
+    ));
+  },
+};
+
+/** Writing a definition in the project sends it as the project's own text. */
+export const OverrideDefinitionInProject: Story = {
+  beforeEach: () => mockProjectTypeApis([{ id: "type-market", name: "Market", display_order: 0, is_enabled: true, source: "org", definition: "Org text." }]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const box = await canvas.findByRole("textbox", { name: "Project Pain Point type definition" });
+    await expect(box).toHaveValue("Org text.");
+    await userEvent.clear(box);
+    await userEvent.type(box, "Our buyers.");
+    await userEvent.click(canvas.getByRole("button", { name: "Rename" }));
+
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/pain-point-types/type-market`, { name: "Market", definition: "Our buyers." }
+    ));
+    await waitFor(() => expect(canvas.getByText("Org default (overridden)")).toBeInTheDocument());
+  },
+};
+
 export const AddProjectLocalType: Story = {
-  beforeEach: () => mockProjectTypeApis([{ id: "type-market", name: "Market", display_order: 0, is_enabled: true, source: "org" }]),
+  beforeEach: () => mockProjectTypeApis([{ id: "type-market", name: "Market", display_order: 0, is_enabled: true, source: "org", definition: null }]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => canvas.getByPlaceholderText("Project Pain Point type name"));
@@ -100,14 +134,14 @@ export const AddProjectLocalType: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Add project-only Pain Point type" }));
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
-      `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/pain-point-types`, { name: "Field team", display_order: 1 }
+      `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/pain-point-types`, { name: "Field team", display_order: 1, definition: null }
     ));
     await waitFor(() => expect(canvas.getByDisplayValue("Field team")).toBeInTheDocument());
   },
 };
 
 export const ToggleEnabledState: Story = {
-  beforeEach: () => mockProjectTypeApis([{ id: "local-1", name: "Field team", display_order: 0, is_enabled: true, source: "project_local" }]),
+  beforeEach: () => mockProjectTypeApis([{ id: "local-1", name: "Field team", display_order: 0, is_enabled: true, source: "project_local", definition: null }]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const toggle = await canvas.findByRole("switch", { name: "Enabled: Field team" });
@@ -124,8 +158,8 @@ export const ToggleEnabledState: Story = {
 
 export const DeletingAnOrgDefaultHidesItAndItCanBeAddedBack: Story = {
   beforeEach: () => mockProjectTypeApis([
-    { id: "type-market", name: "Market", display_order: 0, is_enabled: true, source: "org" },
-    { id: "local-1", name: "Field team", display_order: 1, is_enabled: true, source: "project_local" },
+    { id: "type-market", name: "Market", display_order: 0, is_enabled: true, source: "org", definition: null },
+    { id: "local-1", name: "Field team", display_order: 1, is_enabled: true, source: "project_local", definition: null },
   ]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -150,8 +184,8 @@ export const DeletingAnOrgDefaultHidesItAndItCanBeAddedBack: Story = {
 
 export const DeleteBlockedWhileInUse: Story = {
   beforeEach: () => mockProjectTypeApis([
-    { id: "local-1", name: "Field team", display_order: 0, is_enabled: true, source: "project_local" },
-    { id: "local-2", name: "Spare type", display_order: 1, is_enabled: true, source: "project_local" },
+    { id: "local-1", name: "Field team", display_order: 0, is_enabled: true, source: "project_local", definition: null },
+    { id: "local-2", name: "Spare type", display_order: 1, is_enabled: true, source: "project_local", definition: null },
   ]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

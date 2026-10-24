@@ -120,14 +120,14 @@ test.describe("Compliance Module: project compliance view", () => {
     // --- download the project's own compliance report, PDF and
     // CSV — behind the shared `ReportExportButton`'s "Export" trigger
     // (rather than two permanently-visible buttons).
-    await page.getByRole("button", { name: "Export" }).click();
+    await page.getByRole("button", { name: "Export", exact: true }).click();
     const exportMenu = page.getByRole("dialog", { name: "Export" });
     const pdfDownloadPromise = page.waitForEvent("download");
     await exportMenu.getByRole("button", { name: "Download PDF report" }).click();
     const pdfDownload = await pdfDownloadPromise;
     expect(pdfDownload.suggestedFilename()).toContain("compliance-report.pdf");
 
-    await page.getByRole("button", { name: "Export" }).click();
+    await page.getByRole("button", { name: "Export", exact: true }).click();
     const csvDownloadPromise = page.waitForEvent("download");
     await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download CSV report" }).click();
     const csvDownload = await csvDownloadPromise;
@@ -325,7 +325,7 @@ test.describe("Compliance Module: project compliance view", () => {
         req.url().includes("standard_id=") &&
         req.url().includes("requirement_id=")
     );
-    await page.getByRole("button", { name: "Export" }).click();
+    await page.getByRole("button", { name: "Export", exact: true }).click();
     await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download CSV report" }).click();
     await reportRequestPromise;
   });

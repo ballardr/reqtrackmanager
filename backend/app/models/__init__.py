@@ -53,6 +53,7 @@ from app.models.project import (
     UserProjectRole,
 )
 from app.models.project_status import ProjectStatusDefinition
+from app.models.record_policy import OrganizationRecordSensitivityOverride, ServerRecordSensitivityDefault
 from app.models.relationship import ArtefactLink
 from app.models.report_content import ReportContent
 from app.models.requirement import (
@@ -109,6 +110,8 @@ __all__ = [
     "ServerSettings",
     "UserOrgRole",
     "PersonalAccessToken",
+    "OrganizationRecordSensitivityOverride",
+    "ServerRecordSensitivityDefault",
     "FavoriteProject",
     "OrgGroupProjectRole",
     "Project",

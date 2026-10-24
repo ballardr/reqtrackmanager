@@ -14,15 +14,11 @@ duplicating it.
 
 from __future__ import annotations
 
-import csv
-import io
-from dataclasses import dataclass, field
-from datetime import date
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -32,13 +28,9 @@ from app.metrics import (
     requirements_updated_total,
 )
 from app.models.change_request import ChangeRequest
-from app.models.custom_field import CustomFieldEntityKind, CustomFieldType
-from app.models.engagement import Subscription
+from app.models.custom_field import CustomFieldEntityKind
 from app.models.enums import (
-    ChangeRequestStatus,
-    PrincipalType,
     ProjectRole,
-    RequirementLevel,
     RequirementStatus,
     ReviewTargetType,
     StageStatus,
@@ -47,40 +39,31 @@ from app.models.project import Project, ProjectCategory, ProjectComponent, Proje
 from app.models.requirement import Requirement, RequirementVersion
 from app.models.user import User
 from app.schemas.changes import ChangeEntryOut
-from app.schemas.principal import PrincipalOut, PrincipalRef
 from app.schemas.project import MoveDirection
 from app.schemas.requirement import (
     RequirementCreate,
-    RequirementImportError,
-    RequirementImportResult,
     RequirementOut,
     RequirementUpdate,
     RequirementVersionOut,
 )
 from app.services import engagement, pubsub
-from app.services import tags as tag_service
 from app.services.audit import log_event
-from app.services.bundle_common import enforce_upload_size_limit
 from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
-from app.services.downloads import filename_safe
-from app.services.principals import group_ref_from_text, validate_principal
+from app.services.principals import validate_principal
 from app.services.project_scope import ProjectScope
 from app.services.rbac import get_effective_project_roles, require_project_view
-from app.services.requirement_csv import (
-    CUSTOM_FIELD_COLUMN_PREFIX,
-    custom_field_definitions_for_export,
-    export_requirements_csv,
-)
 from app.services.requirements import (
-    apply_new_version,
+    OPEN_CR_STATUSES,
+    ListPrefetch,
+    RequirementFilters,
     archive_requirement,
     create_requirement,
+    edit_requirement,
+    filter_requirements,
     get_current_version,
-    get_current_version_for_update,
     get_keywords,
     is_locked,
-    set_keywords,
     unarchive_requirement,
     version_people,
 )
@@ -101,7 +84,6 @@ def _require_edit_role(db: Session, user: User, project_id: UUID) -> None:
 
 
 REQUIRES_APPROVAL_STATUSES = {RequirementStatus.DRAFT, RequirementStatus.REVIEWED}
-OPEN_CR_STATUSES = (ChangeRequestStatus.SUBMITTED, ChangeRequestStatus.IN_REVIEW)
 
 
 def _has_open_change_request(db: Session, requirement_id: UUID) -> bool:
@@ -115,71 +97,14 @@ def _has_open_change_request(db: Session, requirement_id: UUID) -> bool:
     )
 
 
-@dataclass
-class _ListPrefetch:
-    """Per-requirement lookups for a whole list, loaded in a fixed number of
-    queries (`_prefetch_for_list`) instead of five per row — the list
-    endpoint was the second-hottest backend path in the e2e suite (99
-    queries for one page of Alpha-1, 2026-10-04 profiling).
-
-    Attributes:
-        versions: Current (`valid_to IS NULL`) version per requirement id.
-        keywords: Keywords per requirement id (absent = none).
-        subscribed: Requirement ids the caller is subscribed to.
-        comment_counts: Comment count per requirement id (absent = 0).
-        open_change_request: Requirement ids with an open change request.
-        people: Resolved owner and reviewer (`services.principals.principal_labels`), keyed by `(type, id)`.
-    """
-
-    versions: dict[UUID, RequirementVersion] = field(default_factory=dict)
-    keywords: dict[UUID, list[str]] = field(default_factory=dict)
-    subscribed: set[UUID] = field(default_factory=set)
-    comment_counts: dict[UUID, int] = field(default_factory=dict)
-    open_change_request: set[UUID] = field(default_factory=set)
-    people: dict[tuple[str, UUID], PrincipalOut] = field(default_factory=dict)
-
-
-def _prefetch_for_list(db: Session, requirement_ids: list[UUID], current_user_id: UUID) -> _ListPrefetch:
-    """Loads every `_ListPrefetch` field for `requirement_ids` — same
-    semantics as `get_current_version`/`get_keywords`/`engagement.
-    is_subscribed`/`engagement.get_comment_count`/`_has_open_change_request`,
-    batched.
-
-    Raises:
-        HTTPException: 500 if a requirement has no current version (the same
-            broken-data signal `get_current_version` raises).
-    """
-    prefetch = _ListPrefetch()
-    if not requirement_ids:
-        return prefetch
-    for version in db.scalars(select(RequirementVersion).where(
-        RequirementVersion.requirement_id.in_(requirement_ids), RequirementVersion.valid_to.is_(None),
-    )).all():
-        prefetch.versions[version.requirement_id] = version
-    if len(prefetch.versions) != len(set(requirement_ids)):
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Requirement has no current version.")
-    prefetch.people = version_people(db, prefetch.versions.values())
-    prefetch.keywords = tag_service.keywords_for_requirements(db, requirement_ids)
-    prefetch.subscribed = set(db.scalars(select(Subscription.entity_id).where(
-        Subscription.subscriber_type == PrincipalType.USER.value, Subscription.subscriber_id == current_user_id,
-        Subscription.entity_type == "requirement",
-        Subscription.entity_id.in_(requirement_ids),
-    )).all())
-    prefetch.comment_counts = engagement.get_comment_counts(db, ReviewTargetType.REQUIREMENT, requirement_ids)
-    prefetch.open_change_request = set(db.scalars(select(ChangeRequest.requirement_id).where(
-        ChangeRequest.requirement_id.in_(requirement_ids), ChangeRequest.status.in_(OPEN_CR_STATUSES),
-    )).all())
-    return prefetch
-
-
 def _to_out(
     db: Session, requirement: Requirement, version: RequirementVersion, current_user_id: UUID,
-    prefetch: _ListPrefetch | None = None,
+    prefetch: ListPrefetch | None = None,
 ) -> RequirementOut:
     """Builds the API response shape for a requirement from its identity row
     plus one version snapshot, including `current_user_id`'s subscription
     state (C-N-01) and derived list-view badge indicators. Pass `prefetch`
-    (from `_prefetch_for_list`) when serialising many rows, so these come
+    (from `prefetch_for_list`) when serialising many rows, so these come
     from batched lookups instead of per-row queries."""
     if prefetch is not None:
         people = prefetch.people
@@ -341,57 +266,18 @@ def list_requirements(
     """
     unfiltered = 0
 
+    filters = RequirementFilters(
+        include_archived=include_archived, is_completed=is_completed, component_id=component_id, category_id=category_id,
+        tag_names=tuple(tag), tag_match_all=tag_mode == "all", keyword=keyword, search=search, status=status_filter,
+        target_stage_id=target_stage_id, has_comments=has_comments, only_watched=only_watched,
+    )
+
     def rows_for(pid: UUID) -> list[RequirementOut]:
         nonlocal unfiltered
-        query = select(Requirement).where(Requirement.project_id == pid)
-        if not include_archived:
-            query = query.where(Requirement.is_archived.is_(False))
-
-        unfiltered += db.scalar(select(func.count()).select_from(query.subquery())) or 0
-
-        if is_completed is not None:
-            query = query.where(Requirement.is_completed.is_(is_completed))
-        if component_id:
-            query = query.where(Requirement.component_id == component_id)
-        if category_id:
-            query = query.where(Requirement.category_id == category_id)
-        if any(t.strip() for t in tag):
-            query = query.where(Requirement.id.in_(
-                tag_service.tagged_ids(
-                    db, project=db.get(Project, pid), artefact_type="requirement", names=tag, match_all=tag_mode == "all",
-                )
-            ))
-        requirements = db.scalars(query).all()
-        prefetch = _prefetch_for_list(db, [r.id for r in requirements], current_user.id)
-
-        rows = []
-        for req in requirements:
-            version = prefetch.versions[req.id]
-            kws = prefetch.keywords.get(req.id, [])
-            if keyword and keyword.casefold() not in {k.casefold() for k in kws}:
-                continue
-            if search:
-                needle = search.lower()
-                if needle not in version.name.lower() and needle not in req.unique_code.lower():
-                    continue
-            if status_filter and version.status != status_filter:
-                continue
-            if target_stage_id and version.target_stage_id != target_stage_id:
-                continue
-            item = _to_out(db, req, version, current_user.id, prefetch)
-            if has_comments and item.comment_count == 0:
-                continue
-            if only_watched and not item.is_subscribed:
-                continue
-            rows.append(item)
-
-        if not sort:
-            comp_order = {c.id: c.sort_order for c in db.scalars(
-                select(ProjectComponent).where(ProjectComponent.project_id == pid)).all()}
-            cat_order = {c.id: c.sort_order for c in db.scalars(
-                select(ProjectCategory).where(ProjectCategory.project_id == pid)).all()}
-            rows.sort(key=lambda r: (comp_order.get(r.component_id, 0), cat_order.get(r.category_id, 0), r.sort_order))
-        return rows
+        found = filter_requirements(db, pid, current_user.id, filters, structural_order=not sort)
+        unfiltered += found.unfiltered
+        prefetch = found.prefetch
+        return [_to_out(db, req, prefetch.versions[req.id], current_user.id, prefetch) for req in found.requirements]
 
     out = project_scope.collect(db, db.get(Project, project_id), current_user.id, "requirement", rows_for)
     response.headers["X-Total-Unfiltered-Count"] = str(unfiltered)
@@ -406,251 +292,6 @@ def list_requirements(
     if limit is not None:
         out = out[offset:offset + limit]
     return out
-
-
-@router.post("/import", response_model=RequirementImportResult, status_code=status.HTTP_201_CREATED)
-async def import_requirements(
-    project_id: UUID, file: UploadFile = File(...),
-    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
-):
-    """Bulk-creates requirements from an uploaded CSV.
-
-    Required columns: `name`, `component_prefix` (must match an existing
-    `ProjectComponent.prefix`), `category_prefix` (must match an existing
-    `ProjectCategory.prefix` *nested under that same component* —
-    categories are unique per component, not per project).
-
-    Optional columns, all of which round-trip with `GET .../export`:
-    `reasoning`, `clarification`, `description`, `level`
-    ("requirement"/"recommended", defaults to "requirement"),
-    `target_version` (must match an existing `ProjectStage.name`, defaults
-    to the project's earliest stage), `owner_email` (must match a member of
-    the project's organisation; blank falls back to the importing user, same as
-    a normal create) or `owner_group` (an organisation group or one of this
-    project's groups, as `Name (Org group)` / `Name (Project group)` or a bare
-    name; not both), `keywords` (`;`-separated), `review_date` (`YYYY-MM-DD`),
-    `review_lead_days` (integer), `reviewer_email` or `reviewer_group` (as the
-    owner columns), and one
-    `cf_<custom field name>` column per the project's requirement custom
-    field definitions (validated the same way `POST` (create) validates
-    them — see `validate_custom_field_values`).
-
-    `unique_code`, `status`, `links`, and `attachments` are accepted but
-    ignored if present — `GET .../export` includes them for reference/
-    round-trip convenience, but a flat CSV row can't safely recreate
-    cross-requirement links or binary attachments, and status has its own
-    workflow-transition rules (every imported row is created as `draft`,
-    matching `POST` (create)'s own default).
-
-    Unknown prefixes/stage names/emails or invalid custom field values are
-    reported as row errors rather than silently creating new components/
-    categories/stages or dropping the requirement's owner. Registered
-    before `GET /{requirement_id}` so the static "/import" path isn't
-    swallowed by that dynamic route.
-
-    Every valid row is created in a single transaction — nothing commits
-    until the whole file has been processed, so a mid-file server error
-    can't leave a half-imported batch; per-row validation errors, by
-    contrast, are expected and simply skip that row while the rest import
-    normally.
-    """
-    _require_edit_role(db, current_user, project_id)
-    project = db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
-
-    components = {c.prefix: c for c in db.scalars(select(ProjectComponent).where(ProjectComponent.project_id == project_id)).all()}
-    # Keyed by (component_id, prefix), not prefix alone: a category prefix is
-    # only unique within its parent component now (the tree), so two
-    # categories under different components can share a prefix without this
-    # lookup silently colliding on the wrong one.
-    categories_by_key = {
-        (c.component_id, c.prefix): c
-        for c in db.scalars(select(ProjectCategory).where(ProjectCategory.project_id == project_id)).all()
-    }
-    stages = {s.name: s for s in db.scalars(select(ProjectStage).where(ProjectStage.project_id == project_id)).all()}
-    # target_stage_id is mandatory on every requirement — a CSV row that
-    # doesn't specify target_version falls back to the project's own
-    # earliest stage (by sort_order), the same backfill convention
-    # migration 0004 uses for pre-existing rows that had no target at all.
-    default_stage = min(stages.values(), key=lambda s: s.sort_order) if stages else None
-    definitions_by_name = {d.name: d for d in custom_field_definitions_for_export(db, project_id)}
-
-    raw = await file.read()
-    enforce_upload_size_limit(raw, what="CSV upload")
-    reader = csv.DictReader(io.StringIO(raw.decode("utf-8-sig")))
-    custom_field_columns = [h for h in (reader.fieldnames or []) if h.startswith(CUSTOM_FIELD_COLUMN_PREFIX)]
-
-    count = len(db.scalars(select(Requirement.id).where(Requirement.project_id == project_id)).all())
-    errors: list[RequirementImportError] = []
-    created = 0
-    email_cache: dict[str, User | None] = {}
-
-    def _lookup_user(email: str) -> User | None:
-        normalized = email.strip().lower()
-        if normalized not in email_cache:
-            email_cache[normalized] = db.scalar(select(User).where(User.email == normalized))
-        return email_cache[normalized]
-
-    def _person_from_row(person_field: str) -> tuple[PrincipalRef | None, str | None]:
-        """The owner or reviewer a CSV row names: `<field>_email` (a user of this organisation) or
-        `<field>_group` (an organisation group or one of this project's groups); at most one.
-        Returns `(principal, None)`, or `(None, error message)` for a row that cannot be imported.
-        """
-        email = (row.get(f"{person_field}_email") or "").strip()
-        group = (row.get(f"{person_field}_group") or "").strip()
-        if email and group:
-            return None, f"Give either {person_field}_email or {person_field}_group, not both."
-        ref: PrincipalRef | None = None
-        if email:
-            user = _lookup_user(email)
-            if user is None:
-                return None, f"Unknown {person_field}_email '{email}'."
-            ref = PrincipalRef(type=PrincipalType.USER, id=user.id)
-        elif group:
-            ref, problem = group_ref_from_text(db, group, organization_id=project.organization_id, project_id=project_id)
-            if ref is None:
-                return None, problem
-        try:
-            validate_principal(
-                db, ref, organization_id=project.organization_id, project_id=project_id, field=person_field,
-            )
-        except HTTPException as exc:
-            return None, str(exc.detail)
-        return ref, None
-
-    for row_num, row in enumerate(reader, start=2):  # header is row 1
-        name = (row.get("name") or "").strip()
-        component_prefix = (row.get("component_prefix") or "").strip()
-        category_prefix = (row.get("category_prefix") or "").strip()
-        level_raw = (row.get("level") or "requirement").strip().lower()
-        target_version = (row.get("target_version") or "").strip()
-
-        if not name:
-            errors.append(RequirementImportError(row=row_num, message="Missing required 'name'."))
-            continue
-        component = components.get(component_prefix)
-        if component is None:
-            errors.append(RequirementImportError(row=row_num, message=f"Unknown component_prefix '{component_prefix}'."))
-            continue
-        category = categories_by_key.get((component.id, category_prefix))
-        if category is None:
-            errors.append(RequirementImportError(
-                row=row_num, message=f"Unknown category_prefix '{category_prefix}' for component '{component_prefix}'."
-            ))
-            continue
-        try:
-            level = RequirementLevel(level_raw)
-        except ValueError:
-            errors.append(RequirementImportError(row=row_num, message=f"Invalid level '{level_raw}'."))
-            continue
-        target_stage_id = default_stage.id if default_stage else None
-        if target_version:
-            stage = stages.get(target_version)
-            if stage is None:
-                errors.append(RequirementImportError(row=row_num, message=f"Unknown target_version '{target_version}'."))
-                continue
-            target_stage_id = stage.id
-        if target_stage_id is None:
-            errors.append(RequirementImportError(row=row_num, message="Project has no stages; cannot assign a target."))
-            continue
-
-        people: dict[str, PrincipalRef | None] = {}
-        people_error = None
-        for person_field in ("owner", "reviewer"):
-            person, people_error = _person_from_row(person_field)
-            if people_error is not None:
-                break
-            people[person_field] = person
-        if people_error is not None:
-            errors.append(RequirementImportError(row=row_num, message=people_error))
-            continue
-
-        review_date_raw = (row.get("review_date") or "").strip()
-        review_date_value = None
-        if review_date_raw:
-            try:
-                review_date_value = date.fromisoformat(review_date_raw)
-            except ValueError:
-                errors.append(RequirementImportError(
-                    row=row_num, message=f"Invalid review_date '{review_date_raw}' (expected YYYY-MM-DD)."
-                ))
-                continue
-
-        review_lead_days_raw = (row.get("review_lead_days") or "").strip()
-        review_lead_days_value = None
-        if review_lead_days_raw:
-            try:
-                review_lead_days_value = int(review_lead_days_raw)
-            except ValueError:
-                errors.append(RequirementImportError(row=row_num, message=f"Invalid review_lead_days '{review_lead_days_raw}'."))
-                continue
-
-        raw_custom_fields: dict[str, object] = {}
-        for column in custom_field_columns:
-            definition = definitions_by_name.get(column[len(CUSTOM_FIELD_COLUMN_PREFIX):])
-            if definition is None:
-                continue  # stale/unknown column name (e.g. field renamed/deleted since export) — ignore, don't error
-            cell = row.get(column, "")
-            if definition.field_type == CustomFieldType.CHECKBOX:
-                # A checkbox has no "unanswered" state at the storage level
-                # (unlike text/list) — a blank cell most naturally reads as
-                # unchecked rather than "not set", so it's always included.
-                raw_custom_fields[str(definition.id)] = cell.strip().lower() in {"true", "1", "yes", "x"}
-            elif cell != "":
-                raw_custom_fields[str(definition.id)] = cell
-        try:
-            custom_fields = validate_custom_field_values(db, project_id, CustomFieldEntityKind.REQUIREMENT, raw_custom_fields)
-        except HTTPException as exc:
-            errors.append(RequirementImportError(row=row_num, message=str(exc.detail)))
-            continue
-
-        keywords = [k.strip() for k in (row.get("keywords") or "").split(";") if k.strip()]
-
-        create_requirement(
-            db, project, component, category, current_user,
-            name=name, reasoning=(row.get("reasoning") or "").strip(),
-            clarification=(row.get("clarification") or "").strip(), description=(row.get("description") or "").strip(),
-            owner=people["owner"], keywords=keywords, sort_order=count, target_stage_id=target_stage_id, level=level,
-            custom_fields=custom_fields, review_date=review_date_value, review_lead_days=review_lead_days_value,
-            reviewer=people["reviewer"],
-        )
-        count += 1
-        created += 1
-
-    if created:
-        log_event(db, entity_type="project", entity_id=project_id, action="requirements_imported",
-                   actor_id=current_user.id, project_id=project_id, detail={"created": created, "errors": len(errors)})
-        db.commit()
-    return RequirementImportResult(created=created, errors=errors)
-
-
-@router.get("/export")
-def export_requirements(
-    project_id: UUID, include_archived: bool = False,
-    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
-):
-    """Exports every field of this project's requirements as a full-fidelity
-    CSV — custom field values, target stage, keywords, review scheduling,
-    and more — directly re-importable via `POST .../import` (see that
-    endpoint's docstring for exactly which columns round-trip vs. are
-    reference-only). Distinct from `POST /reports/csv` (R-F-02), which
-    produces a fixed, formatted report table rather than a round-trippable
-    data dump — see `services.reports`'s module docstring.
-
-    Registered before `GET /{requirement_id}` so this static path isn't
-    swallowed by that dynamic route (same reasoning as `/import` above).
-    """
-    project = db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
-    csv_bytes = export_requirements_csv(db, project, include_archived=include_archived)
-    return Response(
-        content=csv_bytes, media_type="text/csv",
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename_safe(project.name, fallback="project")}-requirements-export.csv"'
-        },
-    )
 
 
 @router.get("/{requirement_id}", response_model=RequirementOut)
@@ -695,43 +336,22 @@ def update_requirement(
     requirement = db.get(Requirement, requirement_id)
     if requirement is None or requirement.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
-    current_version = get_current_version_for_update(db, requirement.id)
-    if is_locked(current_version):
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            "This requirement is approved; changes must be made via a change request.",
-        )
-    custom_fields = validate_custom_field_values(db, project_id, CustomFieldEntityKind.REQUIREMENT, payload.custom_fields)
     project = db.get(Project, project_id)
-    for person_field in ("owner", "reviewer"):
-        validate_principal(
-            db, getattr(payload, person_field), organization_id=project.organization_id, project_id=project_id,
-            field=person_field,
-        )
-    new_version = apply_new_version(
-        db, requirement, current_version, current_user,
+    new_version = edit_requirement(
+        db, project, requirement, current_user,
         name=payload.name, reasoning=payload.reasoning, clarification=payload.clarification,
         description=payload.description,
         status_value=payload.status, owner=payload.owner,
-        target_stage_id=payload.target_stage_id, target_stage_explicitly_set=payload.target_stage_id is not None,
+        target_stage_id=payload.target_stage_id,
         level=payload.level,
         change_note=payload.change_note or "Direct edit during scoping.",
-        custom_fields=custom_fields,
+        custom_fields=payload.custom_fields,
         review_date=payload.review_date, review_date_explicitly_set=True,
         review_lead_days=payload.review_lead_days, review_lead_days_explicitly_set=True,
         reviewer=payload.reviewer, reviewer_explicitly_set=True,
+        component_id=payload.component_id, category_id=payload.category_id,
+        keywords=payload.keywords,
     )
-    if payload.component_id != requirement.component_id or payload.category_id != requirement.category_id:
-        component = db.get(ProjectComponent, payload.component_id)
-        category = db.get(ProjectCategory, payload.category_id)
-        if component is None or component.project_id != project_id or category is None or category.project_id != project_id:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid component or category.")
-        if category.component_id != component.id:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Category does not belong to the selected component.")
-        requirement.component_id = payload.component_id
-        requirement.category_id = payload.category_id
-    if payload.keywords is not None:
-        set_keywords(db, requirement, payload.keywords, current_user.id)
     log_event(db, entity_type="requirement", entity_id=requirement.id, action="updated",
               actor_id=current_user.id, project_id=project_id, detail={"change_note": payload.change_note})
     requirements_updated_total.inc()

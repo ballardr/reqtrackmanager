@@ -20,9 +20,19 @@ flowchart LR
 
 Owners, reviewers and task assignees are written as a user's email or a group's name and matched in the importing organisation; one that cannot be matched becomes the importing user (an owner) or is left empty (a reviewer or assignee), with a warning.
 
-A module's own content is included when it has any, for example the Risks, reviews and treatment links of [Risk Management](../modules/risk-management-module/export-and-import.md) or the Personas of Stakeholders & Personas. Each module decides what travels and matches its references by name or code on import, warning where it cannot.
+Every module's records travel with the project, and its organisation-level records and vocabularies travel with the organisation. A module must do this, or say why it has nothing to carry:
 
-[Tags](tags.md) travel too: the project's tag list, colours and setting, and the tags on its requirements, personas, stakeholders, needs, engagements, research findings and risks. They are restored even if the new project only allows listed tags. An organisation bundle does not carry tags, and neither do the bundle's other records (for example pain points, which have no project bundle at all).
+| Module | In a project bundle | In an organisation bundle |
+| --- | --- | --- |
+| Context & Strategy | Strategies, Future States, Guiding Principles, Pain Points (with attachments and per-persona scores), Open Questions, Pain Point types (overrides, project-only types, hidden defaults, definitions) and the links between them and to requirements | Pain Point types, and organisation-level Strategies, Future States and Guiding Principles |
+| Decisions | Decision types, Decisions (with attachments and tags) and their links | Decision templates |
+| Compliance | Assignments, assessments, evidence, reviews, requirement links and the standards the project is excepted from | Standards, vocabularies, mappings and the default compliance managers group |
+| Risk Management | [Risks, reviews and treatment links](../modules/risk-management-module/export-and-import.md) and risk types | Risk types |
+| Stakeholders & Personas | Personas, stakeholders, needs, groups, relationships and engagements with their findings | Organisation-level personas, stakeholders, groups and type vocabularies |
+
+A record travels as it is now: its current content and status, not its version history or comments. Records are numbered afresh in the new project (Risks keep their codes), and references are matched by name, title or code, with a warning where one cannot be matched (for example a score against a persona the new project does not have, or a user who is not in the target organisation). Links only travel between records of the same project; a link to another project, or to a record that is not in the bundle, is dropped. Organisation-level attachments do not travel.
+
+[Tags](tags.md) travel too: the project's tag list, colours and setting, and the tags on its requirements, personas, stakeholders, needs, engagements, research findings, risks, pain points, strategies, future states, guiding principles, open questions and decisions. They are restored even if the new project only allows listed tags. An organisation bundle does not carry the tag list itself.
 
 ## What's excluded, and why
 

@@ -31,7 +31,6 @@ from app.models.enums import ArtefactType, ProjectRole, RequirementActionOutcome
 from app.models.file import CommentFile, FileAsset, RequirementActionFile
 from app.models.project import Project
 from app.models.requirement import Requirement, RequirementVersion
-from app.models.requirement_action import RequirementAction
 from app.models.user import User
 from app.schemas.action import LinkedRequirementOut, RequirementActionCreate, RequirementActionOut, RequirementActionUpdate
 from app.schemas.file import FileAssetOut
@@ -39,15 +38,16 @@ from app.schemas.requirement import CommentCreate, CommentOut, CommentUpdate
 from app.services import engagement
 from app.services.actions import (
     action_to_out,
-    apply_outcome_transition,
     assignee_labels,
-    generate_unique_code,
+    edit_action,
     get_requirement_action_in_project,
+    list_actions_filtered,
+)
+from app.services.actions import (
+    create_action as create_action_record,
 )
 from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
-from app.services.principals import principal_columns, validate_principal
-from app.services.project_hierarchy import resolve_effective_action_types
 from app.services.project_scope import ProjectScope
 from app.services.rbac import get_effective_project_roles, require_project_manage, require_project_view
 from app.services.relationships import get_all_links as get_all_artefact_links
@@ -68,24 +68,6 @@ def _require_edit_role(db: Session, user: User, project_id: UUID) -> None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only stakeholders, administrators, or managers may do this.")
 
 
-def _validate_action_type(db: Session, project_id: UUID, action_type_id: UUID) -> None:
-    """400s unless `action_type_id` is one of `project_id`'s *effective*
-    action types — its own, or (hierarchical projects, always on) a
-    fallback inherited from its nearest ancestor
-    (`services.project_hierarchy.resolve_effective_action_types`). This is
-    what lets a `RequirementAction` in a child project reference the
-    parent's `ActionTypeDefinition` row directly — a deliberate
-    cross-project FK reference, the same shape nested-org-group role
-    inheritance already uses (referencing another scope's row rather than
-    copying it)."""
-    effective_ids = {at.id for at in resolve_effective_action_types(db, project_id)}
-    if action_type_id not in effective_ids:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "action_type_id must be an action type defined in this project, or inherited from a parent project.",
-        )
-
-
 @router.post("", response_model=RequirementActionOut, status_code=status.HTTP_201_CREATED)
 def create_action(
     project_id: UUID, payload: RequirementActionCreate,
@@ -98,18 +80,10 @@ def create_action(
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
-    _validate_action_type(db, project_id, payload.action_type_id)
-    validate_principal(db, payload.assignee, organization_id=project.organization_id, project_id=project_id, field="assignee")
-    action = RequirementAction(
-        project_id=project_id, unique_code=generate_unique_code(project), action_type_id=payload.action_type_id,
-        title=payload.title, description=payload.description, **principal_columns("assignee", payload.assignee),
-        due_date=payload.due_date, creator_id=current_user.id,
+    action = create_action_record(
+        db, project, current_user, title=payload.title, description=payload.description,
+        action_type_id=payload.action_type_id, assignee=payload.assignee, due_date=payload.due_date,
     )
-    db.add(action)
-    db.flush()
-    log_event(db, entity_type="requirement_action", entity_id=action.id, action="created",
-              actor_id=current_user.id, project_id=project_id, organization_id=project.organization_id,
-              detail={"unique_code": action.unique_code, "title": action.title})
     db.commit()
     db.refresh(action)
     return action_to_out(db, action)
@@ -126,14 +100,9 @@ def list_actions(
     `project_scope` widens the list to the parent and/or child projects the caller can open."""
 
     def rows_for(pid: UUID) -> list[RequirementActionOut]:
-        query = select(RequirementAction).where(RequirementAction.project_id == pid)
-        if not include_archived:
-            query = query.where(RequirementAction.is_archived.is_(False))
-        if outcome_status is not None:
-            query = query.where(RequirementAction.outcome_status == outcome_status)
-        if action_type_id is not None:
-            query = query.where(RequirementAction.action_type_id == action_type_id)
-        actions = db.scalars(query.order_by(RequirementAction.unique_code)).all()
+        actions = list_actions_filtered(
+            db, pid, outcome_status=outcome_status, action_type_id=action_type_id, include_archived=include_archived,
+        )
         actions = tag_filter.keep(db, pid, "requirement_action", actions)
         counts = engagement.get_comment_counts(db, ReviewTargetType.ACTION, [a.id for a in actions])
         labels = assignee_labels(db, actions)
@@ -199,20 +168,12 @@ def update_action(
     other fields)."""
     _require_edit_role(db, current_user, project_id)
     action = get_requirement_action_in_project(db, project_id, action_id)
-    _validate_action_type(db, project_id, payload.action_type_id)
     project = db.get(Project, project_id)
-    validate_principal(db, payload.assignee, organization_id=project.organization_id, project_id=project_id, field="assignee")
-    action.title = payload.title
-    action.description = payload.description
-    action.action_type_id = payload.action_type_id
-    for column, value in principal_columns("assignee", payload.assignee).items():
-        setattr(action, column, value)
-    action.due_date = payload.due_date
-    if payload.outcome_status is not None and payload.outcome_status != action.outcome_status:
-        apply_outcome_transition(action, payload.outcome_status, current_user)
-    log_event(db, entity_type="requirement_action", entity_id=action.id, action="updated",
-              actor_id=current_user.id, project_id=project_id, organization_id=project.organization_id,
-              detail={"outcome_status": action.outcome_status.value})
+    edit_action(
+        db, project, current_user, action, title=payload.title, description=payload.description,
+        action_type_id=payload.action_type_id, assignee=payload.assignee, due_date=payload.due_date,
+        outcome_status=payload.outcome_status,
+    )
     db.commit()
     db.refresh(action)
     return action_to_out(db, action)

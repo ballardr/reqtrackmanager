@@ -2,10 +2,12 @@ import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
+import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { withRouter, withToast } from "../../testing/storybook-helpers";
 import { buildNeed, buildPersona } from "./fixtures";
 import { NeedsPage } from "./NeedsPage";
 import type { Need } from "./types";
+import { chooseListAction, openListMenu } from "../../testing/listActionsMenu";
 
 const PROJECT_ID = "project-1";
 const BASE = `/api/v1/projects/${PROJECT_ID}/modules/stakeholders`;
@@ -14,6 +16,7 @@ const ROUTE = "/projects/:projectId/modules/stakeholders/needs";
 function mockApis(disabled: string[] = [], needs: Need[] = [buildNeed()]) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     const [route] = path.split("?");
+    if (/\/records\/[a-z_]+\/columns$/.test(route)) return buildRecordColumns({ label: "Records" });
     if (route === `/api/v1/projects/${PROJECT_ID}/enabled-modules`) {
       return [{ module_key: "stakeholders", name: "Stakeholders & Personas", frontend_manifest: null, disabled_sub_components: disabled }];
     }
@@ -91,5 +94,21 @@ export const SwitchedOffSaysSo: Story = {
   beforeEach: () => mockApis(["stakeholder_need"]),
   play: async ({ canvasElement }) => {
     await waitFor(() => expect(within(canvasElement).getByText(/Stakeholder Needs aren't enabled/)).toBeInTheDocument());
+  },
+};
+
+/** The Needs list offers the shared Export and Import, narrowed by its own filters. */
+export const ExportAndImportAreOnTheTitleRow: Story = {
+  beforeEach: () => {
+    mockApis();
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["code\n"], { type: "text/csv" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Diagnose faults quickly")).toBeInTheDocument());
+    await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await chooseListAction(canvas, "Export as CSV");
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/stakeholder_need/export`));
   },
 };

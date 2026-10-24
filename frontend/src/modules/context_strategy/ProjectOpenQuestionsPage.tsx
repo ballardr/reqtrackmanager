@@ -34,7 +34,7 @@ import { FilterCheckbox, FilterField, FilterPanel } from "../../components/Filte
 import { ListPageLayout } from "../../components/ListPageLayout";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
-import { oneOf, useInitialSearchParams } from "../../hooks/useInitialSearchParams";
+import { useInitialSearchParams } from "../../hooks/useInitialSearchParams";
 import { useOpenOnly } from "../../hooks/useOpenOnly";
 import { projectOpenQuestionApi } from "./api";
 import { OpenQuestionFormModal } from "./OpenQuestionFormModal";
@@ -43,14 +43,17 @@ import type { OpenQuestion, OpenQuestionFieldValues, OpenQuestionPriority, OpenQ
 import { Badge } from "../../components/Badge";
 import { RecordCode } from "../../components/RecordCode";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useUrlChoice, useUrlFlag, useUrlText } from "../../hooks/useUrlFilter";
 import { rowProjectId } from "../../api/projectScope";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../../components/ProjectScopeLabel";
 import { useProjectScope } from "../../hooks/useProjectScope";
+import { localToday } from "../../utils/localDate";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
+import { addSharedListFilters } from "../../utils/listFilterParams";
 
 export function ProjectOpenQuestionsPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -63,15 +66,16 @@ export function ProjectOpenQuestionsPage() {
   const [openQuestions, setOpenQuestions] = useState<OpenQuestion[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<OpenQuestionStatus | "">(() => oneOf(initial.get("status"), Object.keys(OPEN_QUESTION_STATUS_LABEL) as OpenQuestionStatus[]));
-  const [priorityFilter, setPriorityFilter] = useState<OpenQuestionPriority | "">(() => oneOf(initial.get("priority"), Object.keys(OPEN_QUESTION_PRIORITY_LABEL) as OpenQuestionPriority[]));
-  const [includeArchived, setIncludeArchived] = useState(false);
+  // Filters live in the URL so the list comes back as it was left after a visit to a record.
+  const [search, setSearch] = useUrlText("q");
+  const [statusFilter, setStatusFilter] = useUrlChoice("status", Object.keys(OPEN_QUESTION_STATUS_LABEL) as OpenQuestionStatus[]);
+  const [priorityFilter, setPriorityFilter] = useUrlChoice("priority", Object.keys(OPEN_QUESTION_PRIORITY_LABEL) as OpenQuestionPriority[]);
+  const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
   const [openOnly, setOpenOnly] = useOpenOnly(initial, Object.keys(OPEN_QUESTION_STATUS_LABEL));
-  const [overdueOnly, setOverdueOnly] = useState(initial.get("overdue") === "1");
-  const [unownedOnly, setUnownedOnly] = useState(initial.get("unowned") === "1");
+  const [overdueOnly, setOverdueOnly] = useUrlFlag("overdue");
+  const [unownedOnly, setUnownedOnly] = useUrlFlag("unowned");
 
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -93,11 +97,25 @@ export function ProjectOpenQuestionsPage() {
 
   useLoadOnChange(reloadOpenQuestions, [projectId, includeArchived, tagFilter.query, projectScope.scope]);
 
+  /** The list's filters by the names its export takes; the server applies the same rules the page does. */
+  function filterParams(): URLSearchParams {
+    const params = new URLSearchParams();
+    if (statusFilter) params.set("status", statusFilter);
+    if (priorityFilter) params.set("priority", priorityFilter);
+    if (search) params.set("search", search);
+    if (includeArchived) params.set("include_archived", "true");
+    if (openOnly) params.set("open_only", "true");
+    if (overdueOnly) params.set("overdue_only", "true");
+    if (unownedOnly) params.set("unowned_only", "true");
+    addSharedListFilters(params, tagFilter, projectScope);
+    return params;
+  }
+
   if (!projectId) return null;
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (openQuestions === null || project === null) return <Spinner />;
 
-  const today = new Date().toISOString().slice(0, 10); // UTC, like the report's reference date
+  const today = localToday(); // the person's own day, as the export's filter reads it
   const matches = (q: OpenQuestion, applyOpenOnly: boolean) => {
     if (applyOpenOnly && !OPEN_QUESTION_OPEN_STATUSES.includes(q.status)) return false;
     if (overdueOnly && !(q.due_date !== null && q.due_date < today)) return false;
@@ -126,6 +144,7 @@ export function ProjectOpenQuestionsPage() {
     <div className="container stack">
       <ListPageLayout
         title="Open Question"
+        records={{ projectId, recordType: "open_question", filters: filterParams().toString(), onImported: reloadOpenQuestions }}
         actions={
           <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
             New Open Question

@@ -887,7 +887,17 @@ def seed_default_pain_point_types(db: Session, organization_id: uuid.UUID) -> No
 # --- Org-scoped Pain Point type vocabulary -----------------------------------
 
 
-def create_org_pain_point_type(db: Session, organization_id: uuid.UUID, name: str) -> PainPointTypeDefinition:
+def clean_type_definition(definition: str | None) -> str | None:
+    """Normalises a Pain Point type definition: surrounding whitespace is dropped and a blank value
+    becomes `None` (no definition)."""
+    if definition is None:
+        return None
+    return definition.strip() or None
+
+
+def create_org_pain_point_type(
+    db: Session, organization_id: uuid.UUID, name: str, definition: str | None = None
+) -> PainPointTypeDefinition:
     """Creates a new organisation-scoped Pain Point type (§6.2 "Add
     types"). Placed at the end of the organisation's own display order.
 
@@ -910,7 +920,9 @@ def create_org_pain_point_type(db: Session, organization_id: uuid.UUID, name: st
             select(PainPointTypeDefinition.id).where(PainPointTypeDefinition.organization_id == organization_id)
         ).all()
     )
-    pain_point_type = PainPointTypeDefinition(organization_id=organization_id, name=name, sort_order=count)
+    pain_point_type = PainPointTypeDefinition(
+        organization_id=organization_id, name=name, sort_order=count, definition=clean_type_definition(definition)
+    )
     db.add(pain_point_type)
     db.flush()
     return pain_point_type
@@ -975,6 +987,8 @@ class EffectivePainPointType:
             rejected by `create_pain_point`/`update_pain_point` if selected.
         source: `"org"` / `"project_override"` / `"project_local"` — see
             `id`'s own docstring.
+        definition: Effective definition — the project's own text when it
+            has one, else the organisation's; `None` when neither wrote one.
     """
 
     id: uuid.UUID
@@ -982,6 +996,7 @@ class EffectivePainPointType:
     display_order: int
     is_enabled: bool
     source: str
+    definition: str | None = None
 
 
 PAIN_POINT_TYPE_KIND = "pain_point_type"
@@ -1037,20 +1052,23 @@ def resolve_effective_pain_point_types(db: Session, project_id: uuid.UUID, organ
                     ),
                     is_enabled=override.is_enabled,
                     source="project_override",
+                    definition=(
+                        override.definition_override if override.definition_override is not None else org_type.definition
+                    ),
                 )
             )
         else:
             effective.append(
                 EffectivePainPointType(
                     id=org_type.id, name=org_type.name, display_order=org_type.sort_order,
-                    is_enabled=True, source="org",
+                    is_enabled=True, source="org", definition=org_type.definition,
                 )
             )
     for row in local_rows:
         effective.append(
             EffectivePainPointType(
                 id=row.id, name=row.name_override or "", display_order=row.display_order_override or 0,
-                is_enabled=row.is_enabled, source="project_local",
+                is_enabled=row.is_enabled, source="project_local", definition=row.definition_override,
             )
         )
 
@@ -1192,7 +1210,7 @@ PAIN_POINT_TYPE_HIDING = _PainPointTypeHiding()
 
 
 def create_project_local_pain_point_type(
-    db: Session, project_id: uuid.UUID, name: str, *, display_order: int | None = None
+    db: Session, project_id: uuid.UUID, name: str, *, display_order: int | None = None, definition: str | None = None
 ) -> ProjectPainPointType:
     """Creates a fully project-local Pain Point type (§6.2 "Add types" —
     the genuinely project-only case, not backed by any org row).
@@ -1217,7 +1235,7 @@ def create_project_local_pain_point_type(
         )
     local_type = ProjectPainPointType(
         project_id=project_id, org_type_id=None, name_override=name, display_order_override=display_order,
-        is_enabled=True,
+        is_enabled=True, definition_override=clean_type_definition(definition),
     )
     db.add(local_type)
     db.flush()
@@ -1231,19 +1249,23 @@ def set_project_pain_point_type_override(
     name: str | None = None,
     display_order: int | None = None,
     is_enabled: bool | None = None,
+    definition: str | None = None,
 ) -> ProjectPainPointType:
     """Applies a partial update to a `ProjectPainPointType` row — for an
     org-backed row (`org_type_id` set), this is a local override of the
-    org type's name/order/enabled state (§6.2 "Rename types"/"Reorder
+    org type's name/order/enabled state/definition (§6.2 "Rename types"/"Reorder
     types"/"Disable types"); for a project-local row, these fields are its
-    own primary name/order/enabled state. Only the fields explicitly
-    passed (non-`None`) are changed."""
+    own primary name/order/enabled state/definition. Only the fields explicitly
+    passed (non-`None`) are changed; a blank `definition` clears the project's
+    text (an organisation type's own then shows again)."""
     if name is not None:
         project_pain_point_type.name_override = name
     if display_order is not None:
         project_pain_point_type.display_order_override = display_order
     if is_enabled is not None:
         project_pain_point_type.is_enabled = is_enabled
+    if definition is not None:
+        project_pain_point_type.definition_override = clean_type_definition(definition)
     db.flush()
     return project_pain_point_type
 
