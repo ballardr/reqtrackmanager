@@ -412,7 +412,7 @@ jobs:
             -e JWT_SECRET=test-secret-not-for-production \
             -e APP_SECRET_ENCRYPTION_KEY=test-encryption-key-not-for-production \
             --entrypoint python container-backup:ci \
-            -m pytest tests/test_dr_backup.py tests/test_dr_stats.py -q -p no:cacheprovider
+            -m pytest tests/test_dr_backup.py tests/test_dr_stats.py tests/test_dr_restore.py -q -p no:cacheprovider
 
       - name: Backend coverage summary
         working-directory: tests/container

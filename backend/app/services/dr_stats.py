@@ -273,10 +273,7 @@ def encrypted_columns() -> list[tuple[str, str]]:
     """
     import_all_module_models()
     found = [
-        (table.name, column.name)
-        for table in Base.metadata.sorted_tables
-        for column in table.columns
-        if isinstance(column.type, EncryptedString)
+        (table.name, column.name) for table in Base.metadata.sorted_tables for column in table.columns if isinstance(column.type, EncryptedString)
     ]
     return sorted(found)
 

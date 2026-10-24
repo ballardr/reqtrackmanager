@@ -1,17 +1,17 @@
 # Disaster Recovery: Backup, Restore and Restore-Test — Plan
 
-**Status:** planned 2026-10-20; Phase 0 decisions signed off 2026-10-24, spike B open; Phase 1 and Phase 2 done 2026-10-24. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. **Decided by: User** (2026-10-20): wants documentation and scripts for a whole-platform backup that suits disaster recovery, runs from cron, has matching recovery instructions and scripts, and can be tested by restoring to a temporary system and checking the platform is stable and its statistics (users, projects, records) are correct. Everything below about *how* is **Decided by: Agent** until the user signs off the open decisions in §2.
+**Status:** planned 2026-10-20; Phase 0 decisions signed off 2026-10-24, spike B open; Phases 1, 2 and 3 done 2026-10-24. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. **Decided by: User** (2026-10-20): wants documentation and scripts for a whole-platform backup that suits disaster recovery, runs from cron, has matching recovery instructions and scripts, and can be tested by restoring to a temporary system and checking the platform is stable and its statistics (users, projects, records) are correct. Everything below about *how* is **Decided by: Agent** until the user signs off the open decisions in §2.
 
 ## Status / Resume Here
 
-2 / 9 phases complete (Phase 0 partly: only the least-privilege S3 identity of spike B is open; the backup uses the application's identity). Phases 1–4 are the tooling and are each useful alone; 5–7 wrap it for operators and auditors.
+3 / 9 phases complete (Phase 0 partly: only the least-privilege S3 identity of spike B is open; the backup uses the application's identity). Phases 1–4 are the tooling and are each useful alone; 5–7 wrap it for operators and auditors.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 0 | Sign-off on open decisions and spikes | [~] decisions signed off, spikes A, C, D done, B blocked (see §2) |
 | 1 | Backup-set format, manifest and `dr_stats` | [x] done 2026-10-24: `services/dr_stats.py`, `services/dr_manifest.py`, `scripts/dr_stats.py`, `docs/schemas/backup-manifest.schema.json`, 18 tests in `tests/test_dr_stats.py` |
 | 2 | Backup tool (DB, objects, config, encryption, retention, off-site) | [x] done 2026-10-24: `services/dr_backup.py`, `dr_restic.py`, `dr_object_mirror.py`, `scripts/dr_backup.py`, `backup` Dockerfile target + Compose profile, `scripts/dr-backup.sh`, CI job; 48 tests in `tests/test_dr_backup.py`, run in the `backup` image and on a throwaway Compose project (seeded, config and `none` modes, destination copy, bundle, wrong password) |
-| 3 | Restore tool (fresh host, in place, scratch) | [ ] |
+| 3 | Restore tool (fresh host, in place, scratch) | [x] done 2026-10-24: `services/dr_restore.py`, `scripts/dr_restore.py`, `scripts/restore.sh` (list, config, fresh, in-place, legacy files), `restore` Compose service; restores into a scratch database, verifies against the manifest, then renames into place; 35 tests in `tests/test_dr_restore.py`; run on a real Compose project (destroyed volumes, fresh restore, in-place restore). Scratch-stack orchestration and the `--force-reset` hook are left to Phases 4 and 3b (see `docs/decisions.md`) |
 | 4 | Restore-test harness and CI job | [ ] |
 | 5 | Scheduling and monitoring | [ ] |
 | 6 | Runbook, docs website, SOC 2 and architecture docs | [ ] |

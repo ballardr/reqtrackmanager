@@ -166,6 +166,8 @@ services:
     environment:
       DATABASE_URL: postgresql://reqtrack:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in production}@db:5432/reqtrack
       APP_SECRET_ENCRYPTION_KEY: ${BACKUP_PROBE_ENCRYPTION_KEY-${APP_SECRET_ENCRYPTION_KEY:-}}
+      # Recorded in each set's manifest, so a restore can name the image the set was taken with.
+      IMAGE_TAG: ${IMAGE_TAG:-latest}
       STORAGE_BACKEND: ${STORAGE_BACKEND:-s3}
       STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-reqtrackmanager}
       STORAGE_S3_ENDPOINT_URL: ${STORAGE_S3_ENDPOINT_URL:-http://storage:9000}
@@ -206,6 +208,22 @@ services:
         condition: service_healthy
       storage:
         condition: service_healthy
+
+  # Disaster-recovery restore (docs/disaster-recovery.md): the backup image running scripts/dr_restore.py, so
+  # it shares the backup service's repository, staging, credentials and database/storage settings. Run it
+  # through `scripts/restore.sh`, which stops the application first for an in-place restore. The only
+  # difference from `backup` is write access to the local file store (STORAGE_BACKEND=local) so attachments
+  # can be put back; it replaces the database by renaming a verified copy, never by writing into the live one.
+  # (`extends` also carries the `backup` profile along, so `--profile backup` makes this service available too;
+  # it only runs when named.)
+  restore:
+    extends:
+      service: backup
+    profiles: ["restore"]
+    entrypoint: ["python", "scripts/dr_restore.py"]
+    command: ["--help"]
+    volumes:
+      - reqtrack_local_files:/source/local_files
 
   frontend:
     image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-frontend:${IMAGE_TAG:-latest}

@@ -479,6 +479,8 @@ flowchart LR
 
 The document holds the Alembic revision, an exact row count of every table found in the database catalogue (a table added by a module needs no edit), business counts (records per registered artefact type, users, projects, groups, links, file records), and two integrity probes: every file record has a stored object, and every `EncryptedString` column decrypts with the configured key. It contains counts and ids only, never row content.
 
+A restore (`backend/app/services/dr_restore.py`, run through `scripts/restore.sh`) never writes into the live database: it restores the set into a scratch database, recomputes the statistics there, compares them with the manifest and only then renames the scratch database into place, keeping the replaced one under a new name. Objects are put back before the swap and only ever added. The statistics are computed by the application's own models, so a restore needs the image the set was taken with; see [disaster-recovery.md](disaster-recovery.md).
+
 ### Observability Layer
 The architecture includes observability services for metrics, logs, and traces:
 - Prometheus for metrics collection

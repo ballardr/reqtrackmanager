@@ -62,8 +62,13 @@ def _collect(storage=None, snapshot_id: str | None = None) -> dr_stats.DrStats:
 
 def _file_asset(db, organization_id, uploaded_by, key: str, backend: str = "s3", size: int = 10) -> uuid.UUID:
     asset = FileAsset(
-        organization_id=organization_id, storage_backend=backend, storage_key=key, filename="f.txt",
-        content_type="text/plain", size_bytes=size, uploaded_by=uploaded_by,
+        organization_id=organization_id,
+        storage_backend=backend,
+        storage_key=key,
+        filename="f.txt",
+        content_type="text/plain",
+        size_bytes=size,
+        uploaded_by=uploaded_by,
     )
     db.add(asset)
     db.flush()

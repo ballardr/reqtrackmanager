@@ -148,6 +148,11 @@ class BackupConfig(BaseSettings):
         return [d.strip() for d in self.destinations_raw.replace("\n", ",").split(",") if d.strip()]
 
     @property
+    def pg_restore(self) -> str:
+        """The `pg_restore` executable beside `pg_dump` (the same PostgreSQL release, which reads its dumps)."""
+        return str(Path(self.pg_dump).with_name("pg_restore"))
+
+    @property
     def retention(self) -> Retention:
         """The retention policy as the restic wrapper takes it."""
         return Retention(self.keep_hourly, self.keep_daily, self.keep_weekly, self.keep_monthly)
@@ -203,7 +208,7 @@ def run_lock(staging_dir: Path) -> Iterator[None]:
         handle.close()
 
 
-def _sha256_file(path: Path) -> tuple[str, int]:
+def sha256_file(path: Path) -> tuple[str, int]:
     """Returns the SHA-256 and size of a file, read in blocks."""
     digest, size = hashlib.sha256(), 0
     with path.open("rb") as handle:
@@ -224,12 +229,12 @@ def require_password(password_file: Path) -> None:
 
 
 def _entry(path: Path, set_dir: Path) -> ComponentEntry:
-    sha, size = _sha256_file(path)
+    sha, size = sha256_file(path)
     return ComponentEntry(path=path.relative_to(set_dir).as_posix(), sha256=sha, bytes=size)
 
 
-def _pg_env(db_url: str) -> tuple[list[str], dict[str, str]]:
-    """Splits a database URL into `pg_dump` connection arguments and an environment holding the password.
+def pg_connection(db_url: str) -> tuple[list[str], dict[str, str]]:
+    """Splits a database URL into `pg_dump`/`pg_restore` connection arguments and an environment holding the password.
 
     The password is passed through `PGPASSWORD`, never on the command line.
     """
@@ -247,7 +252,7 @@ def dump_database(config: BackupConfig, db_url: str, snapshot_id: str, out: Path
     Raises:
         BackupError: If `pg_dump` is missing or exits non-zero.
     """
-    args, env = _pg_env(db_url)
+    args, env = pg_connection(db_url)
     argv = [config.pg_dump, "--format=custom", "--no-password", f"--snapshot={snapshot_id}", f"--file={out}", *args]
     try:
         proc = subprocess.run(argv, capture_output=True, text=True, env=env, check=False)
@@ -411,7 +416,8 @@ def write_bundle(config: BackupConfig, restic: Restic, recipient: str, output: P
     output.chmod(0o600)
 
 
-def _write_atomic(path: Path, content: str) -> None:
+def write_atomic(path: Path, content: str) -> None:
+    """Writes `content` to `path` through a temp file and a rename, so a reader never sees a half-written file (mode 0644)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}-")
     with os.fdopen(fd, "w") as handle:
@@ -447,7 +453,7 @@ def write_status(status_dir: Path, report: RunReport, previous_success: float | 
         "last_success_timestamp": last_success,
         "destinations": [{"target": d.target, "ok": d.ok, "error": d.error} for d in report.destinations],
     }
-    _write_atomic(status_dir / "status.json", json.dumps(document, indent=2) + "\n")
+    write_atomic(status_dir / "status.json", json.dumps(document, indent=2) + "\n")
     lines = [
         "# HELP reqtrack_backup_last_run_success 1 if the last backup run succeeded, else 0.",
         "# TYPE reqtrack_backup_last_run_success gauge",
@@ -469,7 +475,7 @@ def write_status(status_dir: Path, report: RunReport, previous_success: float | 
     ]
     for index, dest in enumerate(report.destinations, start=1):
         lines.append(f'reqtrack_backup_destination_up{{destination="{index}"}} {1 if dest.ok else 0}')
-    _write_atomic(status_dir / "reqtrack-backup.prom", "\n".join(lines) + "\n")
+    write_atomic(status_dir / "reqtrack-backup.prom", "\n".join(lines) + "\n")
 
 
 def _previous_success(status_dir: Path) -> float | None:

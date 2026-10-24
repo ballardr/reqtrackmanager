@@ -9,7 +9,7 @@ Responsibilities:
 - Initialise a repository on first use, and a copy target with the source's chunker parameters so
   `restic copy` deduplicates.
 - Expose the few operations the tool needs: backup, copy, forget with retention, check, list snapshots,
-  restore.
+  restore (optionally verified against the repository), and dump of one stored file.
 - Redact secrets from anything that can reach a log, a status file or an exception message.
 
 Design decisions:
@@ -33,6 +33,11 @@ from pathlib import Path
 from typing import Any
 
 _URL_CREDENTIALS = re.compile(r"(?P<scheme>[A-Za-z][A-Za-z0-9+.-]*://)[^/@\s]+@")
+
+
+def _as_text(value: str | bytes) -> str:
+    """Decodes captured output for an error message, tolerating binary garbage."""
+    return value if isinstance(value, str) else value.decode("utf-8", "replace")
 
 
 class ResticError(RuntimeError):
@@ -116,7 +121,13 @@ class Restic:
         self._probe_timeout = probe_timeout
 
     def run(
-        self, repo: str, *args: str, from_repo: str | None = None, check: bool = True, timeout: float | None = None
+        self,
+        repo: str,
+        *args: str,
+        from_repo: str | None = None,
+        check: bool = True,
+        timeout: float | None = None,
+        text: bool = True,
     ) -> subprocess.CompletedProcess:
         """Runs `restic -r <repo> <args>`.
 
@@ -126,10 +137,12 @@ class Restic:
             from_repo: A source repository (`--from-repo`), for `init` and `copy`.
             check: Raise `ResticError` on a non-zero exit.
             timeout: Overrides the instance timeout for this command.
+            text: False to capture stdout as bytes (a binary file from `dump`); stderr is then text-decoded
+                only for error messages.
 
         Returns:
-            The completed process (text mode, stdout and stderr captured, unredacted: callers parse
-            stdout and must not log it raw).
+            The completed process (stdout and stderr captured, unredacted: callers parse stdout and must
+            not log it raw).
 
         Raises:
             ResticError: If `check` and restic exits non-zero or cannot be started.
@@ -139,13 +152,13 @@ class Restic:
             argv += ["--from-repo", from_repo, "--from-password-file", self._password_file]
         argv += list(args)
         try:
-            proc = self._runner(argv, capture_output=True, text=True, env=self._env, check=False, timeout=timeout or self._timeout)
+            proc = self._runner(argv, capture_output=True, text=text, env=self._env, check=False, timeout=timeout or self._timeout)
         except subprocess.TimeoutExpired as exc:
             raise ResticError(self.redact(f"restic {args[0]} timed out after {exc.timeout:.0f}s")) from exc
         except OSError as exc:
             raise ResticError(self.redact(f"cannot run restic: {exc}")) from exc
         if check and proc.returncode != 0:
-            detail = (proc.stderr or proc.stdout or "").strip().splitlines()
+            detail = _as_text(proc.stderr or (proc.stdout if text else b"")).strip().splitlines()
             tail = " | ".join(detail[-3:])
             raise ResticError(self.redact(f"restic {args[0]} failed (exit {proc.returncode}): {tail}"))
         return proc
@@ -237,9 +250,36 @@ class Restic:
         records = json.loads(proc.stdout or "[]")
         return sorted(records or [], key=lambda r: r.get("time", ""))
 
-    def restore(self, repo: str, snapshot: str, target: Path, *, include: Sequence[str] = ()) -> None:
-        """Restores a snapshot (`latest` or an id) into `target`, optionally only paths matching `include`."""
+    def restore(self, repo: str, snapshot: str, target: Path, *, include: Sequence[str] = (), verify: bool = False) -> None:
+        """Restores a snapshot (`latest` or an id) into `target`, optionally only paths matching `include`.
+
+        Args:
+            repo: Repository to read.
+            snapshot: `latest` or a snapshot id.
+            target: Directory to restore into (paths keep their absolute form beneath it).
+            include: Restrict the restore to paths matching these patterns.
+            verify: Re-read every restored file and compare it with the repository (`restic restore --verify`),
+                so a damaged pack or a short write fails the restore instead of surfacing later.
+
+        Raises:
+            ResticError: If restic fails.
+        """
         args = ["restore", snapshot, "--target", str(target)]
+        if verify:
+            args.append("--verify")
         for pattern in include:
             args += ["--include", pattern]
         self.run(repo, *args)
+
+    def dump_file(self, repo: str, snapshot: str, path: str) -> bytes:
+        """Returns the bytes of one file stored in a snapshot, without restoring anything else.
+
+        Args:
+            repo: Repository to read.
+            snapshot: `latest` or a snapshot id.
+            path: Absolute path of the file inside the snapshot.
+
+        Raises:
+            ResticError: If the snapshot or the file is not found, or restic fails.
+        """
+        return self.run(repo, "dump", snapshot, path, text=False).stdout
