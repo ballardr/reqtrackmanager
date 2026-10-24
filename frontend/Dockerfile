@@ -24,6 +24,11 @@ RUN npm run build
 
 FROM nginx:1.30-alpine
 
+# Pull in Alpine security fixes released after the base image was built, so the
+# CI vulnerability gate (HIGH/CRITICAL with a fix available) does not fail on a
+# patched-but-not-yet-rebuilt base layer.
+RUN apk upgrade --no-cache
+
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY docker/env-config-entrypoint.sh /docker/env-config-entrypoint.sh
