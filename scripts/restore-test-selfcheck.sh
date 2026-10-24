@@ -67,6 +67,9 @@ step() { printf '\n== %s\n' "$*"; }
 step "Building the images (cached after the first run)"
 printf '%s' "$(random)" > "$WORK/repo-password"
 printf '%s' "$ADMIN_PASSWORD" > "$WORK/admin-password"
+# Both names carry the one secret: older Compose releases (the CI runner has 2.38) evaluate the legacy
+# STORAGE_ROOT_PASSWORD fallback eagerly and refuse to start without it.
+STORAGE_SECRET="$(random)"
 cat > "$WORK/source.env" <<ENV
 POSTGRES_PASSWORD=$(random)
 JWT_SECRET=$(random)
@@ -74,7 +77,8 @@ APP_SECRET_ENCRYPTION_KEY=$(random)
 SERVER_ADMIN_EMAIL=$ADMIN_EMAIL
 SERVER_ADMIN_PASSWORD=$ADMIN_PASSWORD
 STORAGE_ACCESS_KEY=drsrc
-STORAGE_SECRET_KEY=$(random)
+STORAGE_SECRET_KEY=$STORAGE_SECRET
+STORAGE_ROOT_PASSWORD=$STORAGE_SECRET
 SMTP_HOST=mail-sink.invalid
 RESTORE_TEST_SERVER_ADMIN_ENABLED=true
 BACKUP_REPO_PASSWORD_FILE=$WORK/repo-password

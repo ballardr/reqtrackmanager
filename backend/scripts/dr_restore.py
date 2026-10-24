@@ -42,6 +42,7 @@ from app.services.dr_restore import (  # noqa: E402
     RestoreError,
     RestoreMode,
     RestoreOptions,
+    config_snapshot_label,
     decrypt_config,
     list_sets,
     read_manifest,
@@ -114,7 +115,7 @@ def main(argv: list[str] | None = None) -> int:
             if not sets:
                 print("the repository holds no backup sets")
             for info in sets:
-                print(f"{info.set_id}  snapshot {info.snapshot_id[:8]}  secrets {info.secrets_mode}  {info.time}")
+                print(f"{info.set_id}  snapshot {info.snapshot_id[:8]}  {config_snapshot_label(info.secrets_mode)}  {info.time}")
             return 0
 
         if args.command == "manifest":

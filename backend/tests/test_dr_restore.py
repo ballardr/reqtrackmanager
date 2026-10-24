@@ -43,6 +43,7 @@ from app.services.dr_restore import (
     RestoreMode,
     RestoreOptions,
     compatibility_problems,
+    config_snapshot_label,
     decrypt_config,
     extract_local_files,
     list_sets,
@@ -818,6 +819,19 @@ def test_cli_config_writes_the_plain_env_to_stdout_only(tmp_path: Path, monkeypa
     captured = capsysbinary.readouterr()
     assert captured.out == env_file.read_bytes() and b"sentinel-cli-jwt" not in captured.err
     assert b"sentinel-cli-jwt" not in _all_bytes(config.status_dir)
+
+
+@pytest.mark.parametrize(
+    "mode, label",
+    [
+        ("config", "with config snapshot"),
+        ("none", "no config snapshot"),
+        ("unknown", "config snapshot unknown"),
+        ("anything", "config snapshot unknown"),
+    ],
+)
+def test_config_snapshot_label_is_a_fixed_phrase(mode: str, label: str):
+    assert config_snapshot_label(mode) == label
 
 
 def test_cli_rejects_invalid_configuration(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]):

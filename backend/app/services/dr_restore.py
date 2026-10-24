@@ -268,6 +268,21 @@ def _tag(tags: list[str], prefix: str) -> str | None:
     return next((t[len(prefix) :] for t in tags if t.startswith(prefix)), None)
 
 
+_CONFIG_SNAPSHOT_LABEL = {"config": "with config snapshot", "none": "no config snapshot"}
+
+
+def config_snapshot_label(mode: str) -> str:
+    """Describes whether a set holds an encrypted config snapshot, for display.
+
+    Args:
+        mode: A set's `secrets_mode` (`config`, `none` or `unknown`).
+
+    Returns:
+        A fixed phrase, so what is printed is never data read from the repository.
+    """
+    return _CONFIG_SNAPSHOT_LABEL.get(mode, "config snapshot unknown")
+
+
 def list_sets(restic: Restic, repository: str) -> list[SetInfo]:
     """Lists the backup sets in a repository, newest first.
 

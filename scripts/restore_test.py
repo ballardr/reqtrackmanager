@@ -86,6 +86,7 @@ SECRET_KEYS = (
     "JWT_SECRET",
     "SERVER_ADMIN_PASSWORD",
     "STORAGE_SECRET_KEY",
+    "STORAGE_ROOT_PASSWORD",
 )
 """Environment entries whose values are masked in everything the harness prints or writes."""
 
@@ -271,12 +272,16 @@ def scratch_environment(
         env["IMAGE_TAG"] = image_tag
     if manifest_backend:
         env["STORAGE_BACKEND"] = manifest_backend
+    storage_secret = generate()
     env.update(
         {
             "POSTGRES_PASSWORD": generate(),
             "JWT_SECRET": generate(),
             "SERVER_ADMIN_PASSWORD": generate(),
-            "STORAGE_SECRET_KEY": generate(),
+            "STORAGE_SECRET_KEY": storage_secret,
+            # Compose releases such as 2.38 (the CI runner) evaluate the legacy fallback in `${STORAGE_SECRET_KEY:-${STORAGE_ROOT_PASSWORD:?}}`
+            # eagerly and refuse to start without it, so both names carry the one secret.
+            "STORAGE_ROOT_PASSWORD": storage_secret,
             "STORAGE_ACCESS_KEY": "drtest",
             "SMTP_HOST": "mail-sink.invalid",
             "BACKUP_REPO_PASSWORD_FILE": str(password_file),
@@ -666,7 +671,7 @@ class RestoreTest:
             "manifest",
             started,
             True,
-            f"set {self._manifest['set_id']} ({self._manifest['storage_backend']} storage, secrets {self._manifest['secrets_mode']}, image {tag or 'untagged'}, "
+            f"set {self._manifest['set_id']} ({self._manifest['storage_backend']} storage, {'with' if self._manifest['secrets_mode'] == 'config' else 'no'} config snapshot, image {tag or 'untagged'}, "
             f"{len(stats['tables'])} tables, {stats['business']['users']['total']} users, {stats['business']['projects']} projects)",
         )
 

@@ -183,6 +183,8 @@ def test_scratch_environment_never_copies_production_credentials(password_file):
     )
     assert env["APP_SECRET_ENCRYPTION_KEY"] == "original-key"
     assert env["IMAGE_TAG"] == "v1" and env["STORAGE_BACKEND"] == "s3"
+    assert env["STORAGE_ROOT_PASSWORD"] == env["STORAGE_SECRET_KEY"] != "PRODUCTION-STORAGE"
+    assert "STORAGE_ROOT_PASSWORD" in harness.SECRET_KEYS
     assert not any("PRODUCTION" in value for value in env.values())
     assert "SMTP_PASSWORD" not in env
     assert env["SMTP_HOST"].endswith(".invalid")
