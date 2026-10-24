@@ -34,6 +34,12 @@ A **(?)** after a field's name explains what the field is, what it changes and a
 
 Some records start as a draft: Personas, Stakeholders and Stakeholder Needs. Where you are allowed to activate them, the form offers **Save and activate** beside **Save**, so a record you will use at once is not left in draft. It is one step: either the record is created and active, or nothing is stored. Records that need another person's approval (requirements, change requests, decisions, strategies, future states, guiding principles) never offer it, so nobody can approve their own work. See [The People page](../modules/stakeholders-personas-module/people-page.md).
 
+## The form header and long text
+
+Every form in a dialog or side panel keeps its **title, Cancel and Save** (and **Save and activate** where offered) in a header row that stays in view; only the fields below it scroll. However long the form is, you can save from where you are, and create and edit forms behave the same way. Press **Enter** in a single-line field to save, as before.
+
+A field meant for longer writing (a description, rationale, notes, evidence) grows as you type, up to a limit, after which it scrolls inside the field. Short fields such as a name stay one line.
+
 ## Where this fits
 
 Long forms that you open from a list appear in a side panel or a dialog; the same fields appear on the record's page when you edit it, so a field you could set on creation is also one you can change later.

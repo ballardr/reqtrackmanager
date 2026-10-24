@@ -11871,3 +11871,11 @@ Closes the open question left by the Pain Points default. **Decided by: User** (
 - **Not applicable, checked.** *Codes / search / tags / bundles:* no new type. *Module boundary:* generic. *Time:* none.
 - **Tests.** Stories for `ListPageLayout` (hide, start hidden) and `RecordGrid` (editing state, column choice, dirty column locked); Playwright `modules/context_strategy/pain-point-grid.spec.ts`.
 - **Docs.** `docs/ux-style-guide.md` ("Pattern: bulk edit grid", "filter panel placement"), the docs website's Pain Point scoring page.
+
+## List data and form UX (October 2026) Phase 16: close-out (2026-10-24)
+
+- **Website review (Decided by: Agent).** Phases 7–15 each updated the site as they landed (CSV import and export, personal data, Pain Point scoring grid and type definitions, bundles, overview chart, coloured report cells, field help, list position). Three gaps remained and were closed: the pinned form header and auto-growing long text (`workflows/creating-records.md`) and the collapsible filter panel as a general list behaviour (`core-features/search-filtering-and-view-mode.md`, previously only mentioned on the Pain Point scoring page).
+- **README (Decided by: Agent).** The Requirements-only CSV sentence now says every module list exports and imports; the feature paragraph names the help tooltip, pinned form header, list position, collapsible filters, bulk edit grid and overview chart.
+- **Architecture and module docs.** `docs/solution-architecture.md` (record tables, organisation tier) and `docs/modules.md` §4l (extension point, grid, enforcement) were written with Phases 8–14 and checked, not rewritten.
+- **Seeds.** Both scripts take their idempotent path cleanly against the live test stack and carry the Pain Point type definition and records of several types. A run against an empty database was not made: the only database here is the shared test one, and wiping it was not authorised.
+- **Security / SOC 2 / modules / parity / time:** documentation only; nothing to review.

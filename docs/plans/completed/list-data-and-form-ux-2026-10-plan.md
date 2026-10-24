@@ -1,11 +1,11 @@
 # List Data and Form UX (October 2026) — Plan
 
-**Status:** planned 2026-10-22, in progress. Built from nine items the user picked up (section 1; item 9 added 2026-10-23). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position), 7 (type definition), 7b (module bundles), 8 (record-table extension point), 8b (personal-data policy), 9 (shared list actions), 10 (record-list report), 11 (core types), 12 (Context & Strategy and Stakeholders), 12b (organisation-level lists), 13 (Risk, Decisions, Compliance) and 14 (bulk edit grid) and 15 (overview total-records chart) are done; the Phase 16 close-out is next.
+**Status:** planned 2026-10-22, closed 2026-10-24 (19/19). Built from nine items the user picked up (section 1; item 9 added 2026-10-23). Phases 1 (rules), 2 (coloured cells), 3 (help tooltip), 4 (long text grows), 5 (form header), 6 (list position), 7 (type definition), 7b (module bundles), 8 (record-table extension point), 8b (personal-data policy), 9 (shared list actions), 10 (record-list report), 11 (core types), 12 (Context & Strategy and Stakeholders), 12b (organisation-level lists), 13 (Risk, Decisions, Compliance) and 14 (bulk edit grid) and 15 (overview total-records chart) and 16 (close-out) are done.
 **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. Q1–Q4 were answered by the user on 2026-10-22 (section 2). Everything in the "Agent defaults" table is **Decided by: Agent** and open to override before the phase that uses it starts.
 
 ## Status / Resume Here
 
-18 / 19 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–14 done 2026-10-23, Phase 15 done 2026-10-24; Phases 12, 12b, 13, 14 and 15 uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
+19 / 19 phases complete (Phase 0, the questions, is signed off and not counted in the total; Phases 1–14 done 2026-10-23, Phases 15 and 16 done 2026-10-24; Phases 12, 12b, 13, 14 and 15 uncommitted). Phases 8–14 are one chain: the extension point, then everything that uses it.
 
 | # | Phase | Item | Status |
 |---|-------|------|--------|
@@ -28,7 +28,7 @@
 | 13 | Roll-out C: Risk, Decisions, Compliance | 5 | [x] |
 | 14 | Bulk edit grid (generic) wired to Pain Points; other types register editable columns | 3 | [x] |
 | 15 | Project overview: total-records pie chart by type, replacing the per-module count tiles | 9 | [x] |
-| 16 | Docs website, seeds, README, close-out and archive this plan | all | [ ] |
+| 16 | Docs website, seeds, README, close-out and archive this plan | all | [x] |
 
 ```mermaid
 flowchart LR

@@ -26,6 +26,10 @@ flowchart LR
     D["Open the list from the navigation"] --> E["Top of the list, default filters"]
 ```
 
+## Hiding the filter panel
+
+Every list page with a filter panel has a round collapse button in the panel's **Filters** header. Collapsing it gives the list the full width; a **Filters** button beside the **List actions** menu on the title row brings it back. Collapsing never clears a filter, and the panel opens again on your next visit.
+
 ## Listing records from parent and child projects
 
 In a project that has a parent or child project you can open, every record list (requirements, change requests, actions, files, and each module's lists such as risks, decisions, engagements and people) and the project **Overview** has a **Show records from** filter: *This project*, *This + parent projects*, *This + child projects*, or *This + parent and child projects*. It is not shown when the project has no relatives you can open. On the project **Overview** it is a compact select in the title row beside **New requirement**; hover or focus it to read what it covers (it is outlined while widened).
