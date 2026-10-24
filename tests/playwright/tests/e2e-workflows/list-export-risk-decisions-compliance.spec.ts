@@ -75,7 +75,7 @@ test("a Decisions list exports, an edited rationale re-imports as an update and 
   ).json();
 
   await page.goto(`/projects/${project.id}/modules/decisions`);
-  await expect(page.getByRole("link", { name: created.unique_code })).toBeVisible();
+  await expect(page.getByRole("button", { name: created.unique_code })).toBeVisible();
   await expectListAction(page, "Import from CSV");
 
   const csv = await exportCsv(page);
@@ -93,6 +93,17 @@ test("a Decisions list exports, an edited rationale re-imports as an update and 
 test("Compliance evidence exports and re-imports, while the outstanding required actions export with no import", async ({ page }) => {
   const { suffix, org, project, adminHeaders } = await setUpOrg(page, "EvidenceExport");
   await enableModule(page, org.id, "compliance", adminHeaders);
+  // The project's Compliance page only exists once the organisation has a published standard to assign.
+  const orgBase = `${API_BASE_URL}/api/v1/orgs/${org.id}/modules/compliance`;
+  const standard = await (
+    await page.request.post(`${orgBase}/standards`, {
+      headers: adminHeaders, data: { reference: `E2E-EXP-${suffix}`, name: `E2E Export Standard ${suffix}`, initial_version_label: "1.0" },
+    })
+  ).json();
+  const [version] = await (await page.request.get(`${orgBase}/standards/${standard.id}/versions`, { headers: adminHeaders })).json();
+  const versionBase = `${orgBase}/standards/${standard.id}/versions/${version.id}`;
+  expect((await page.request.post(`${versionBase}/requirements`, { headers: adminHeaders, data: { name: `E2E Export Requirement ${suffix}` } })).ok()).toBeTruthy();
+  expect((await page.request.post(`${versionBase}/publish`, { headers: adminHeaders })).ok()).toBeTruthy();
   const base = `${API_BASE_URL}/api/v1/projects/${project.id}/modules/compliance`;
   const title = `E2E Export Evidence ${suffix}`;
   const created = await (await page.request.post(`${base}/evidence`, { headers: adminHeaders, data: { title, notes: "Lab report" } })).json();
