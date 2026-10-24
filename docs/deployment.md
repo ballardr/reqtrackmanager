@@ -270,7 +270,7 @@ PostgreSQL is not started with automatic backups. Use the provided scripts on a 
 
 A whole-platform backup (database, attachments in either storage backend, the encrypted `.env`, a manifest, off-host copies, retention and an integrity check) is available through `./scripts/dr-backup.sh`; see [disaster-recovery.md](disaster-recovery.md). Its matching restore (`./scripts/restore.sh fresh|in-place|list|config`, verified against the set's manifest before anything is replaced) is in the same page; `restore.sh FILE` still restores the legacy files above.
 
-Test restores periodically — a backup that has never been restored is not a verified backup.
+Test restores periodically — a backup that has never been restored is not a verified backup. `./scripts/restore-test.sh` does it for you on a throwaway Compose project (restore, start the application, compare every table count and statistic with the backup's manifest, sign in, search, export) and exits non-zero on any difference; see [disaster-recovery.md](disaster-recovery.md#restore-test). The backend setting `EMAIL_DELIVERY=disabled` (default `smtp`) makes every send fail before a connection is opened; the restore test uses it so a restored copy can never email real users.
 
 ### Migrations
 

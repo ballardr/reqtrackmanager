@@ -10,6 +10,7 @@ External dependencies: pydantic-settings.
 """
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -46,6 +47,10 @@ class Settings(BaseSettings):
         storage_local_dir: Filesystem directory for the local backend.
         storage_s3_*: Connection details for the S3-compatible backend.
         smtp_*: SMTP connection details for outgoing email (C-N-03).
+        email_delivery: "smtp" sends mail through `smtp_*`; "disabled" makes every send fail with
+            `EmailDeliveryDisabled` before any connection is opened, so a copy of the platform that must
+            never reach real recipients (the disaster-recovery restore-test stack) cannot, whatever
+            `smtp_host` says. Callers already treat a failed send as "not emailed".
         deployment_notification_email: Address (or group address) notified
             of deployment-level events such as low disk space or database
             connectivity failures (I-M-09).
@@ -239,6 +244,7 @@ class Settings(BaseSettings):
     storage_s3_secret_key: str = "minioadmin"
     storage_s3_region: str = "us-east-1"
 
+    email_delivery: Literal["smtp", "disabled"] = "smtp"
     smtp_host: str = "mailhog"
     smtp_port: int = 1025
     smtp_use_tls: bool = False

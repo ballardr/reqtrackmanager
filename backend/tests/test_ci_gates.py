@@ -78,3 +78,10 @@ def test_codeowners_file_exists_and_names_an_owner():
     assert codeowners.is_file()
     rules = [line for line in codeowners.read_text(encoding="utf-8").splitlines() if line.strip() and not line.startswith("#")]
     assert any(line.split()[0] == "*" and line.split()[1].startswith("@") for line in rules)
+
+
+def test_a_backup_that_cannot_be_restored_blocks_publishing():
+    """The restore-test job runs the end-to-end self-check, and docker-build needs it."""
+    job = _job("restore-test")
+    assert "scripts/restore-test-selfcheck.sh" in job
+    assert re.search(r"needs: \[[^\]]*restore-test[^\]]*\]", _job("docker-build"))

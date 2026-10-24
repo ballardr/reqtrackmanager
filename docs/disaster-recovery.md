@@ -1,6 +1,6 @@
 # Disaster recovery: backup and restore
 
-Whole-platform backup and restore for recovering a lost host, a corrupted volume or a bad deploy. The automated restore-test, scheduling and the full runbook are separate deliverables; this page covers taking a backup and restoring one.
+Whole-platform backup and restore for recovering a lost host, a corrupted volume or a bad deploy. This page covers taking a backup, restoring one, and proving the latest backup restores (the restore test). Scheduling and the full runbook are separate deliverables.
 
 ## What a backup holds
 
@@ -107,10 +107,60 @@ flowchart TD
 
 Legacy files from `scripts/backup.sh` (`.sql.gz`, `reqtrack-files-*.tar.gz`) still restore with `./scripts/restore.sh FILE`, now in one transaction that stops at the first error, so only into an empty database.
 
+## Restore test
+
+`./scripts/restore-test.sh` proves the latest set restores into a working platform whose numbers match the source. It runs on a throwaway Compose project (`reqtrack-drtest-<UTC time>`) with its own volumes and network, no published ports, email delivery disabled and credentials generated for the run, so it is safe on the production host. The repository is mounted read-only. The scratch project and its credentials are removed afterwards, pass or fail.
+
+```bash
+export BACKUP_REPO_PASSWORD_FILE=/secure/location/restic-password
+./scripts/restore-test.sh --repository-volume reqtrack_backup_repo --source-env /secure/location/.env
+./scripts/restore-test.sh --repository sftp:backup@host:/srv/reqtrack --source-env ...   # the off-site copy, the honest test
+```
+
+`--source-env` supplies the original `APP_SECRET_ENCRYPTION_KEY` (the production `.env` or one recovered with `restore.sh config`); it is the only production value used. Everything else is generated.
+
+```mermaid
+flowchart LR
+    A["Repository check"] --> B["Read manifest"]
+    B --> C["Scratch stack: db and storage"]
+    C --> D["restore fresh, verified against the manifest"]
+    D --> E["Start the application"]
+    E --> F["In-application checks"]
+    F --> G["Report, metrics, teardown"]
+```
+
+| Check (in the restored application) | Passes when |
+|-------------------------------------|-------------|
+| `migrations` | The database is at the manifest's revision and that is the image's head, so `alembic upgrade head` changes nothing |
+| `statistics` | Every table count and business statistic equals the manifest, recomputed after the application has been running |
+| `file-objects` | Every file record has its object and a random sample reads back at its recorded size |
+| `encrypted-columns` | Every encrypted value decrypts with the key the stack runs with |
+| `email-disabled` | A send attempt is refused before any connection (`EMAIL_DELIVERY=disabled`) |
+| `api-smoke` | As a manager of a project that holds records: health, identity, organisation and project lists, a record, a project search and a project export |
+| `login` | Only with `--login-email` and `--login-password-file`: that account signs in with its password, proving the stored hashes verify |
+
+Options: `--set` (a set id), `--key-mode wrong` and `--clear-unreadable-secrets` (recovery without the original key: the run passes when the unreadable values are removed and the application still works), `--image-tag`, `--output` (reports; default `./restore-test-reports/<project>/report.{json,md}`), `--status-dir` (writes `restore-test-status.json` and `reqtrack-restore-test.prom`, with the last success time carried forward over a failure), `--keep` (leave the scratch project running; the command to remove it is printed), `--check-subset` (share of repository data the integrity check reads). Exit status: `0` passed, `1` a check failed, `2` bad arguments, `75` a backup or restore is running.
+
+**Prove the checks fail.** `--inject FAULT` damages the restored copy and passes only when the harness catches it, so a check that cannot fail is noticed:
+
+| Fault | Done to | Must be caught by |
+|-------|---------|-------------------|
+| `delete-row` | one row of a leaf table, after the restore | `statistics` |
+| `delete-object` | one stored object a file record points at | `file-objects` |
+| `wrong-key` | a replacement `APP_SECRET_ENCRYPTION_KEY` | the restore, naming exactly the encrypted columns that hold values, with their counts |
+| `corrupt-dump` | 256 bytes of the largest pack in a copy of the repository | the repository check or the restore |
+
+`./scripts/restore-test-selfcheck.sh` runs the whole chain on throwaway projects: it builds a source stack, seeds the end-to-end dataset, takes a real backup, runs the positive case, the recovery-without-key case and the four faults, and checks nothing was left behind. CI runs it as the `restore-test` job, which `docker-build` needs, so a backup that cannot be restored is never published.
+
+**Needs.** Docker with the Compose plugin and `python3` 3.9 or newer on the host. The restore fetches the set into the scratch project's staging volume and holds a second copy of the database, so it needs free disk for the set plus a database copy; the restore tool prints the figure it needs and refuses to start without it. If the Docker VM's disk is full, Postgres in the scratch stack fails with "could not write init file": free space (`docker builder prune -f`) and rerun. The image tag the set names is used, so an old set needs that image available.
+
+**Not covered yet.** The reset-link and forced-credential-reset cases need the credential reset command, which is not built; they are added with it.
+
 ## Security notes
 
 - The `backup` service has no listener and no Docker socket, drops all capabilities, and reads the database and storage over the Compose network with the application's own credentials.
 - The staging volume holds the object mirror and, during a run, an unencrypted dump: treat it as Confidential and keep it on an encrypted disk. The dump is removed when the run ends, successfully or not.
 - A backup contains the same data as production, including password hashes and encrypted secrets. `none` mode keeps the keys out of it; `config` mode stores them only encrypted to your age key.
+- The restore test mounts the repository read-only and generates fresh credentials for its scratch stack; `restore-test-reports/` holds counts and check names only, never row values or secrets, but is still operational detail to keep private.
 - The least-privilege read-only S3 identity for the backup is not in place yet; the tool currently uses the application's credentials, which already include list and read.
 - The `restore` service additionally writes to the database server (it creates, renames and drops databases), the object store and the local file store; it is not started unless you run it, and shares the backup service's hardening (no listener, no Docker socket, all capabilities dropped).

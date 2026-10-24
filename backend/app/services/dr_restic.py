@@ -32,6 +32,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+_READ_COMMANDS = frozenset({"cat", "check", "dump", "ls", "restore", "snapshots"})
+"""restic commands that only read the repository, so `--no-lock` is safe for them."""
+
 _URL_CREDENTIALS = re.compile(r"(?P<scheme>[A-Za-z][A-Za-z0-9+.-]*://)[^/@\s]+@")
 
 
@@ -99,6 +102,9 @@ class Restic:
         runner: `subprocess.run`-compatible callable (replaced in tests).
         timeout: Seconds one restic command may run; restic retries an unreachable remote for a long time,
             so without a limit one dead destination would hold the backup lock indefinitely.
+        no_lock: Read commands run with `--no-lock`, so the repository can sit on a read-only mount (a
+            restore-test that must not be able to change the repository it reads). Writing commands are
+            unaffected and fail on such a mount, which is the point.
     """
 
     def __init__(
@@ -111,6 +117,7 @@ class Restic:
         runner: Runner = subprocess.run,
         timeout: float | None = None,
         probe_timeout: float = 120.0,
+        no_lock: bool = False,
     ) -> None:
         self._password_file = str(password_file)
         self._binary = binary
@@ -119,6 +126,7 @@ class Restic:
         self._runner = runner
         self._timeout = timeout
         self._probe_timeout = probe_timeout
+        self._no_lock = no_lock
 
     def run(
         self,
@@ -150,7 +158,10 @@ class Restic:
         argv = [self._binary, "-r", repo, "--password-file", self._password_file, "--no-cache"]
         if from_repo is not None:
             argv += ["--from-repo", from_repo, "--from-password-file", self._password_file]
-        argv += list(args)
+        command, rest = args[0], list(args[1:])
+        if self._no_lock and command in _READ_COMMANDS:
+            rest.insert(0, "--no-lock")
+        argv += [command, *rest]
         try:
             proc = self._runner(argv, capture_output=True, text=text, env=self._env, check=False, timeout=timeout or self._timeout)
         except subprocess.TimeoutExpired as exc:

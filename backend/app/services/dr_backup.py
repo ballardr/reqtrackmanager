@@ -113,6 +113,8 @@ class BackupConfig(BaseSettings):
         local_files_dir: The local file store, archived when `STORAGE_BACKEND=local`.
         pg_dump: The `pg_dump` executable (must be the server's major version or newer, within reason).
         restic_timeout_seconds: Longest one restic command may run before the step fails.
+        repository_read_only: The repository is on a read-only mount (the restore-test): read commands take no
+            repository lock.
     """
 
     model_config = SettingsConfigDict(env_prefix="BACKUP_", extra="ignore", populate_by_name=True)
@@ -133,6 +135,7 @@ class BackupConfig(BaseSettings):
     local_files_dir: Path = Path("/source/local_files")
     pg_dump: str = "pg_dump"
     restic_timeout_seconds: float = Field(default=4 * 3600, gt=0)
+    repository_read_only: bool = False
 
     @field_validator("check_subset")
     @classmethod
@@ -374,7 +377,7 @@ def deps_from_environment(config: BackupConfig) -> BackupDeps:
         engine=engine,
         db_url=settings.database_url,
         storage_backend=settings.storage_backend,
-        restic=Restic(config.password_file, redactor=redact, timeout=config.restic_timeout_seconds),
+        restic=Restic(config.password_file, redactor=redact, timeout=config.restic_timeout_seconds, no_lock=config.repository_read_only),
         storage_client=client,
         storage_bucket=settings.storage_s3_bucket,
         storage_for_probe=get_storage_backend(),

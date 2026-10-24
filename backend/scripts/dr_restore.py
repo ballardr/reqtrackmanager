@@ -11,6 +11,8 @@ Usage (configuration comes from `BACKUP_*`, `DATABASE_URL` and `STORAGE_*` envir
     python scripts/dr_restore.py restore in-place --yes       # replaces the live database; the old one is kept under a new name
     python scripts/dr_restore.py restore fresh --dry-run      # what would happen, and whether it is allowed
     python scripts/dr_restore.py config --age-identity FILE   # the set's .env, decrypted, on stdout
+    python scripts/dr_restore.py manifest                     # the set's manifest (JSON) on stdout, nothing downloaded
+    python scripts/dr_restore.py check [--subset 5%]          # repository structure plus a sample of its data
 
 `restore` options: `--set` (`latest`, a set id or a snapshot id prefix), `--repository` (read an off-site copy
 instead of the primary), `--clear-unreadable-secrets` (remove encrypted values the configured key cannot read),
@@ -32,6 +34,7 @@ _BACKEND_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_BACKEND_DIR))
 
 from app.services.dr_backup import EX_TEMPFAIL, AlreadyRunning, BackupConfig, BackupError, require_password  # noqa: E402
+from app.services.dr_manifest import dump_manifest  # noqa: E402
 from app.services.dr_restic import ResticError  # noqa: E402
 from app.services.dr_restore import (  # noqa: E402
     RestoreError,
@@ -39,6 +42,8 @@ from app.services.dr_restore import (  # noqa: E402
     RestoreOptions,
     decrypt_config,
     list_sets,
+    read_manifest,
+    resolve_set,
     restic_from_environment,
     restore_deps_from_environment,
     run_restore,
@@ -67,6 +72,14 @@ def _parser() -> argparse.ArgumentParser:
     config.add_argument("--age-identity", type=Path, required=True, help="file holding the age identity (private key)")
     config.add_argument("--set", default="latest", dest="selector")
     config.add_argument("--repository", help="repository to read instead of the primary")
+
+    manifest = sub.add_parser("manifest", help="print a set's manifest as JSON")
+    manifest.add_argument("--set", default="latest", dest="selector")
+    manifest.add_argument("--repository", help="repository to read instead of the primary")
+
+    check = sub.add_parser("check", help="verify the repository's structure and a sample of its data")
+    check.add_argument("--repository", help="repository to read instead of the primary")
+    check.add_argument("--subset", help="share of data to read (5%% or 1/10; default BACKUP_CHECK_SUBSET; empty for structure only)")
     return parser
 
 
@@ -95,6 +108,23 @@ def main(argv: list[str] | None = None) -> int:
                 print("the repository holds no backup sets")
             for info in sets:
                 print(f"{info.set_id}  snapshot {info.snapshot_id[:8]}  secrets {info.secrets_mode}  {info.time}")
+            return 0
+
+        if args.command == "manifest":
+            require_password(config.password_file)
+            restic = restic_from_environment(config)
+            sys.stdout.write(dump_manifest(read_manifest(restic, repository, resolve_set(list_sets(restic, repository), args.selector))))
+            return 0
+
+        if args.command == "check":
+            require_password(config.password_file)
+            try:
+                subset = BackupConfig(check_subset=args.subset).check_subset if args.subset is not None else config.check_subset
+            except ValueError as exc:
+                print(f"invalid --subset: {exc}", file=sys.stderr)
+                return 2
+            restic_from_environment(config).check(repository, read_data_subset=subset or None)
+            print(f"repository check passed (data sample: {subset or 'none'})")
             return 0
 
         if args.command == "config":

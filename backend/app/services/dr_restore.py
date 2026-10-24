@@ -221,7 +221,9 @@ def restic_from_environment(config: BackupConfig) -> Restic:
 
     Secrets named in the environment are redacted from anything it reports.
     """
-    return Restic(config.password_file, redactor=Redactor(secret_values(None)), timeout=config.restic_timeout_seconds)
+    return Restic(
+        config.password_file, redactor=Redactor(secret_values(None)), timeout=config.restic_timeout_seconds, no_lock=config.repository_read_only
+    )
 
 
 def restore_deps_from_environment(config: BackupConfig) -> RestoreDeps:

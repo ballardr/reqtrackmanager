@@ -481,6 +481,17 @@ The document holds the Alembic revision, an exact row count of every table found
 
 A restore (`backend/app/services/dr_restore.py`, run through `scripts/restore.sh`) never writes into the live database: it restores the set into a scratch database, recomputes the statistics there, compares them with the manifest and only then renames the scratch database into place, keeping the replaced one under a new name. Objects are put back before the swap and only ever added. The statistics are computed by the application's own models, so a restore needs the image the set was taken with; see [disaster-recovery.md](disaster-recovery.md).
 
+The restore test (`scripts/restore_test.py`, wrapped by `scripts/restore-test.sh`) proves that chain on a throwaway Compose project: it runs on the host (it drives `docker compose`; the backup and restore tools stay free of the Docker socket), starts `db` and `storage` in an isolated project (own volumes and network, no published ports, `EMAIL_DELIVERY=disabled`, generated credentials, the repository mounted read-only), restores the set with the real restore tool, starts the backend on the result and runs `backend/scripts/dr_verify.py` inside it (migrations, statistics, stored objects, encrypted columns, email, API smoke). Fault injection (`--inject`) and `scripts/restore-test-selfcheck.sh` prove each check can fail; CI runs the self-check as the `restore-test` job, a prerequisite of `docker-build`.
+
+```mermaid
+flowchart LR
+    H["Host: restore_test.py"] -->|"docker compose -p reqtrack-drtest-ts"| P["Scratch project"]
+    R[("Backup repository, read-only")] --> P
+    P --> V["dr_verify.py in the restored backend"]
+    V --> O["report.json, report.md, status and metrics files"]
+    H -->|"down -v"| P
+```
+
 ### Observability Layer
 The architecture includes observability services for metrics, logs, and traces:
 - Prometheus for metrics collection
