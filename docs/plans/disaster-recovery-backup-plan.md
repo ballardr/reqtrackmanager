@@ -1,6 +1,6 @@
 # Disaster Recovery: Backup, Restore and Restore-Test — Plan
 
-**Status:** planned 2026-10-20, not started. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. **Decided by: User** (2026-10-20): wants documentation and scripts for a whole-platform backup that suits disaster recovery, runs from cron, has matching recovery instructions and scripts, and can be tested by restoring to a temporary system and checking the platform is stable and its statistics (users, projects, records) are correct. Everything below about *how* is **Decided by: Agent** until the user signs off the open decisions in §2.
+**Status:** planned 2026-10-20; Phase 0 decisions signed off 2026-10-24, spike B open. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. **Decided by: User** (2026-10-20): wants documentation and scripts for a whole-platform backup that suits disaster recovery, runs from cron, has matching recovery instructions and scripts, and can be tested by restoring to a temporary system and checking the platform is stable and its statistics (users, projects, records) are correct. Everything below about *how* is **Decided by: Agent** until the user signs off the open decisions in §2.
 
 ## Status / Resume Here
 
@@ -8,7 +8,7 @@
 
 | # | Phase | Status |
 |---|-------|--------|
-| 0 | Sign-off on open decisions and three spikes | [ ] |
+| 0 | Sign-off on open decisions and spikes | [~] decisions signed off, spikes A, C, D done, B blocked (see §2) |
 | 1 | Backup-set format, manifest and `dr_stats` | [ ] |
 | 2 | Backup tool (DB, objects, config, encryption, retention, off-site) | [ ] |
 | 3 | Restore tool (fresh host, in place, scratch) | [ ] |
@@ -47,7 +47,26 @@ flowchart LR
 | DB dump and file store taken at different moments, with no defined order | A restored row can reference an object the archive does not contain |
 | Nothing verifies a restore | "A backup that has never been restored is not a verified backup" is stated in the docs but not enforced |
 
-## 2. Open decisions (need user sign-off in Phase 0)
+## 2. Decisions (signed off 2026-10-24) and spike results
+
+Q2, Q5 and Q6 take the recommendation (**Decided by: Agent**, revisable). Q1, Q3, Q4, Q7 are **Decided by: User** as below; the full account is in `docs/decisions.md` ("Disaster recovery Phase 0").
+
+| Q | Answer |
+|---|--------|
+| Q1 | restic is the one engine, fanning each snapshot out to several destinations (`restic copy`), plus an optional `bundle` command that writes an age-encrypted tar of the latest set for scp or any manual copy |
+| Q3 | Compose `backup` service plus host wrappers |
+| Q4 | S3-compatible, SFTP (also serves scp hosts), local/NFS, Azure Blob |
+| Q7 | Both controls approved |
+
+| Spike | Result |
+|-------|--------|
+| A snapshot dump | Confirmed: `pg_dump --snapshot` and counts via `SET TRANSACTION SNAPSHOT` match exactly under concurrent writes; no drift tolerance needed |
+| B SeaweedFS mirror | Open: a Read+List-only identity was denied everything in 3.97 (global and `bucket/*` action forms still to try); listing past 1000 keys, ETag vs MD5 and overwrite detection unproven. Blocked by a full Docker VM disk |
+| C scratch sends nothing | One email choke point (`services/email.py`, deployment-wide `SMTP_*`); no webhooks; add a generic `EMAIL_DELIVERY=smtp\|disabled` setting in Phase 4 |
+| D reset hooks | None exist; `token_version` is reusable as the credential epoch; the bootstrap admin password is never re-applied to a restored database |
+
+### Original questions
+
 
 | # | Question | Recommendation |
 |---|----------|----------------|
