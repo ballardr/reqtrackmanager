@@ -293,12 +293,18 @@ def encrypt_config(env_file: Path, recipient: str, out: Path, redact: Redactor) 
     """Encrypts the operator's `.env` to an age recipient (public key), so the backup host cannot read it back.
 
     Raises:
-        BackupError: If the file is missing or empty, no recipient is set, or `age` fails.
+        BackupError: If the file is missing, empty or unreadable by this user, no recipient is set, or `age` fails.
     """
     if not recipient:
         raise BackupError("config", "BACKUP_SECRETS_MODE=config needs BACKUP_CONFIG_AGE_RECIPIENT (an age public key)")
     if not env_file.is_file() or env_file.stat().st_size == 0:
         raise BackupError("config", "BACKUP_SECRETS_MODE=config needs the .env mounted at BACKUP_ENV_FILE (or set BACKUP_SECRETS_MODE=none)")
+    if not os.access(env_file, os.R_OK):
+        raise BackupError(
+            "config",
+            "the .env mounted at BACKUP_ENV_FILE is not readable by the backup container's user (a 0600 file owned by someone else is not): "
+            "make it readable to that user, or set BACKUP_SECRETS_MODE=none",
+        )
     try:
         proc = subprocess.run(["age", "--recipient", recipient, "--output", str(out), str(env_file)], capture_output=True, text=True, check=False)
     except OSError as exc:
@@ -317,7 +323,11 @@ def secret_values(env_file: Path | None) -> list[str]:
     except Exception:  # an unparseable URL has nothing to redact
         pass
     if env_file is not None and env_file.is_file():
-        for line in env_file.read_text(errors="replace").splitlines():
+        try:
+            lines = env_file.read_text(errors="replace").splitlines()
+        except OSError:  # unreadable by this user: config mode reports it by name when it needs the file
+            lines = []
+        for line in lines:
             name, sep, value = line.partition("=")
             if sep and not name.lstrip().startswith("#") and _SECRET_NAME.search(name):
                 values.append(value.strip().strip("'\""))

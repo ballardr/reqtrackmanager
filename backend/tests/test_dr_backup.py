@@ -472,6 +472,20 @@ def test_config_mode_refuses_to_run_without_what_it_needs(tmp_path: Path, recipi
     assert not Path(config.repository).exists(), "nothing may be stored by a run that cannot honour its mode"
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads any file")
+def test_config_mode_names_an_env_file_the_backup_user_cannot_read(tmp_path: Path):
+    recipient = "age1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"
+    env_file = tmp_path / "env"
+    env_file.write_text("JWT_SECRET=never-printed\n")
+    env_file.chmod(0o000)
+    assert dr_backup.secret_values(env_file) is not None, "redaction setup must not fail on an unreadable file"
+    config = _config(tmp_path, secrets_mode=SecretsMode.CONFIG, env_file=env_file, config_age_recipient=recipient)
+    report = run_backup(config, _deps(config, FakeS3()))
+    assert report.result == "failed" and report.step == "config"
+    assert "not readable" in (report.error or "") and "never-printed" not in (report.error or "")
+    assert not Path(config.repository).exists()
+
+
 # --- run_backup: failures ----------------------------------------------------------------------------
 
 

@@ -87,7 +87,9 @@ BACKUP_SECRETS_MODE=config
 GHCR_IMAGE_PREFIX=$GHCR_IMAGE_PREFIX
 IMAGE_TAG=$IMAGE_TAG
 ENV
-chmod 600 "$WORK/source.env"
+# Readable by the backup container's own user (not the runner's uid), which mounts it read-only; the file is
+# throwaway and sits in a 0700 directory.
+chmod 644 "$WORK/source.env"
 
 source_compose build backend backup
 

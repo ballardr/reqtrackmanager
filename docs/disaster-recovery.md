@@ -94,7 +94,7 @@ All variables are read by the `backup` service (see `docker-compose.yml`).
 | `BACKUP_REPO_PASSWORD_FILE` | required | File holding the restic repository password (a Docker secret). Losing it loses every backup |
 | `BACKUP_SECRETS_MODE` | `config` | `config` also stores the encrypted `.env`; `none` stores no key material (you supply keys at restore time) |
 | `BACKUP_CONFIG_AGE_RECIPIENT` | | age public key the `.env` is encrypted to. Required in `config` mode |
-| `BACKUP_ENV_FILE` | | Host path of the `.env` to snapshot. Required in `config` mode |
+| `BACKUP_ENV_FILE` | | Host path of the `.env` to snapshot. Required in `config` mode. The backup container runs as an unprivileged user and mounts it read-only, so the file must be readable by that user (a `0600` file owned by another account fails the run at the `config` step) |
 | `BACKUP_DESTINATIONS` | | Comma-separated restic repositories to copy each snapshot to: `/mnt/nfs/reqtrack`, `s3:https://host/bucket`, `sftp:user@host:/path`, `azure:container:/path` |
 | `BACKUP_STORAGE_ACCESS_KEY` / `_SECRET_KEY` | the application's pair | S3 identity the backup reads the object store with. Set a read-only one for an external S3 service (see Security notes); the bundled SeaweedFS needs the default |
 | `BACKUP_REPO_VOLUME` | `reqtrack_backup_repo` | Volume or host path of the primary repository |
