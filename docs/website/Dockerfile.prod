@@ -28,9 +28,12 @@ ARG DOCS_BASE_URL=/
 # so nginx's own `$uri` is left alone).
 ENV DOCS_BASE_URL=${DOCS_BASE_URL}
 
-# Drop the stock nginx welcome page so nothing but the docs is served.
+# Pull in Alpine security fixes released after the base image was built, so the
+# CI vulnerability gate (HIGH/CRITICAL with a fix available) does not fail on a
+# patched-but-not-yet-rebuilt base layer. Also drop the stock nginx welcome page
+# so nothing but the docs is served.
 USER root
-RUN rm -f /usr/share/nginx/html/index.html /usr/share/nginx/html/50x.html
+RUN apk upgrade --no-cache && rm -f /usr/share/nginx/html/index.html /usr/share/nginx/html/50x.html
 USER nginx
 
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template

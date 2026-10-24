@@ -11879,3 +11879,10 @@ Closes the open question left by the Pain Points default. **Decided by: User** (
 - **Architecture and module docs.** `docs/solution-architecture.md` (record tables, organisation tier) and `docs/modules.md` §4l (extension point, grid, enforcement) were written with Phases 8–14 and checked, not rewritten.
 - **Seeds.** Both scripts take their idempotent path cleanly against the live test stack and carry the Pain Point type definition and records of several types. A run against an empty database was not made: the only database here is the shared test one, and wiping it was not authorised.
 - **Security / SOC 2 / modules / parity / time:** documentation only; nothing to review.
+
+## CI: image scan runs alongside the tests (2026-10-24)
+
+- **Image scan split out of `docker-build` (Decided by: User, mechanism Agent).** A fixable HIGH CVE in the docs image's `brotli-libs` only surfaced after `frontend`, `backend-tests` and `e2e-tests` (~40 minutes) had passed, because the Trivy scan lived in `docker-build`, which needs them. The image builds, docs smoke test and Trivy scan are now the `image-scan` job with no `needs`; `docker-build` needs it, so nothing vulnerable is pushed. Cost: `docker-build` rebuilds the images to push them (no shared builder cache between jobs).
+- **Docs image runs `apk upgrade` (Decided by: Agent).** The finding had a released fix in the Alpine repository but not in the pinned nginx base layer; upgrading at build time clears it. Trade-off: builds are less reproducible between base-image rebuilds.
+- **Ruleset (Decided by: Agent).** `image-scan` is not added to the required checks: `docker-build` is required and depends on it, so a failure still blocks the merge.
+- **Not applicable, checked.** Security-sensitive code paths, modules, bundles, time: CI and Dockerfile only.

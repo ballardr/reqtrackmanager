@@ -55,7 +55,7 @@ flowchart LR
 
 This is one of the better-evidenced policies in this package precisely because the codebase's own working conventions already closely match what CC8.1 asks for — the gap was formalizing CI enforcement, not inventing a process from nothing. See `docs/decisions.md` for the running record and `docs/deployment.md`'s "Two separate Compose stacks" section for the environment-isolation rationale.
 
-- **CI enforcement**: `.github/workflows/ci.yml` — `frontend` (lint/type-check/build/Storybook tests), `backend-tests` (the real `tests/container/docker-compose.yml` stack; pytest with coverage and a failing threshold, JUnit reporting; `ruff check`), `e2e-tests` (the full Playwright suite), `dependency-scan` (`pip-audit` on the backend and mcp-server requirements, `npm audit --omit=dev` at high on the frontend and Playwright lockfiles) and `docker-build` (production images built, scanned with Trivy for fixable HIGH/CRITICAL findings, then pushed to ghcr.io on `main` only; a pull request builds and scans but never pushes). The documentation site's `npm audit` is reported but not gating (see Known Gaps).
+- **CI enforcement**: `.github/workflows/ci.yml` — `frontend` (lint/type-check/build/Storybook tests), `backend-tests` (the real `tests/container/docker-compose.yml` stack; pytest with coverage and a failing threshold, JUnit reporting; `ruff check`), `e2e-tests` (the full Playwright suite), `dependency-scan` (`pip-audit` on the backend and mcp-server requirements, `npm audit --omit=dev` at high on the frontend and Playwright lockfiles), `image-scan` (production images built and scanned with Trivy for fixable HIGH/CRITICAL findings, started with the test jobs so a finding fails the run early) and `docker-build` (needs all of the above, then builds and pushes to ghcr.io on `main` only; a pull request never pushes). The documentation site's `npm audit` is reported but not gating (see Known Gaps).
 - **Coverage threshold**: `--cov-fail-under=93.2`, the published backend figure (95.2% on 2026-10-22) minus two points. It is raised when coverage rises and never lowered to make a run pass.
 - **Code owners**: `.github/CODEOWNERS` names the reviewer GitHub requests on every pull request.
 
@@ -63,8 +63,10 @@ This is one of the better-evidenced policies in this package precisely because t
 flowchart LR
     PR[Pull request] --> T[frontend, backend-tests, e2e-tests]
     PR --> D[dependency-scan]
-    T --> B[docker-build: build, Trivy scan]
+    PR --> I[image-scan: build, Trivy scan]
+    T --> B[docker-build]
     D --> B
+    I --> B
     B -->|main only| P[Push to ghcr.io]
 ```
 
