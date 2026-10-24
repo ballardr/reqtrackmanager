@@ -268,6 +268,8 @@ PostgreSQL is not started with automatic backups. Use the provided scripts on a 
 
 `backup.sh` covers everything in one run for the common case: it always dumps the database, and additionally archives `reqtrack_local_files` when the running deployment has `STORAGE_BACKEND=local`. If you use `STORAGE_BACKEND=s3` (the Compose default, via the bundled SeaweedFS service), back up the `reqtrack_storage_data` volume with SeaweedFS's own backup/replication tooling instead — it isn't a plain file tree this script can tar up.
 
+A whole-platform backup (database, attachments in either storage backend, the encrypted `.env`, a manifest, off-host copies, retention and an integrity check) is available through `./scripts/dr-backup.sh`; see [disaster-recovery.md](disaster-recovery.md). Its matching restore tool is not released yet, so keep using the scripts above until it is.
+
 Test restores periodically — a backup that has never been restored is not a verified backup.
 
 ### Migrations

@@ -306,7 +306,13 @@ def probe_encrypted_columns(db: Session, existing_tables: set[str]) -> dict[str,
     return result
 
 
-def collect_stats(db: Session, storage: FileStorageBackend | None = None, *, snapshot_id: str | None = None) -> DrStats:
+def collect_stats(
+    db: Session,
+    storage: FileStorageBackend | None = None,
+    *,
+    snapshot_id: str | None = None,
+    probe_encryption: bool = True,
+) -> DrStats:
     """Collects the full statistics document inside one consistent REPEATABLE READ transaction.
 
     Args:
@@ -314,6 +320,9 @@ def collect_stats(db: Session, storage: FileStorageBackend | None = None, *, sna
         storage: The configured storage backend to probe file records against, or None to skip that probe.
         snapshot_id: A snapshot id exported by another session (`pg_export_snapshot()`), to read exactly
             the data a `pg_dump --snapshot` run dumps. None reads the data as of now.
+        probe_encryption: Whether to try decrypting encrypted columns. False when the caller was not given
+            `APP_SECRET_ENCRYPTION_KEY` (the backup tool in `BACKUP_SECRETS_MODE=none`): the probe would blame a
+            placeholder key, so it is left empty and the restore, which has the key, runs it.
 
     Returns:
         The document. The session's transaction is left open for the caller to close.
@@ -331,7 +340,10 @@ def collect_stats(db: Session, storage: FileStorageBackend | None = None, *, sna
         alembic_revision=_alembic_revision(db, tables),
         tables=tables,
         business=business_stats(db),
-        probes=Probes(files=probe_files(db, storage), encrypted_columns=probe_encrypted_columns(db, set(tables))),
+        probes=Probes(
+            files=probe_files(db, storage),
+            encrypted_columns=probe_encrypted_columns(db, set(tables)) if probe_encryption else {},
+        ),
     )
 
 

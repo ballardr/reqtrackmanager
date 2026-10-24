@@ -49,12 +49,22 @@ def test_only_the_documentation_site_audit_is_non_gating():
 
 
 def test_images_are_scanned_before_any_push():
-    """The Trivy step runs before the registry login and before every push step."""
-    job = _job("docker-build")
-    scan = job.index("Trivy")
-    assert "--exit-code 1" in job
-    assert scan < job.index("Log in to ghcr.io")
-    assert scan < job.index("Build and push backend image")
+    """Trivy runs in the image-scan job, which docker-build needs, so nothing is pushed unscanned."""
+    scan_job = _job("image-scan")
+    assert "Trivy" in scan_job and "--exit-code 1" in scan_job
+    assert re.search(r"needs: \[[^\]]*image-scan[^\]]*\]", _job("docker-build"))
+
+
+def test_every_pushed_image_is_scanned():
+    """Each image docker-build pushes is built and named in the Trivy loop of image-scan."""
+    pushed = re.findall(r"Build and push ([a-z-]+) image", _job("docker-build"))
+    assert {"backend", "backup", "frontend", "mcp-server", "docs"} <= set(pushed)
+    scan_job = _job("image-scan")
+    loop = re.search(r"for image in ([^;]+); do", scan_job)
+    assert loop, "image-scan has no Trivy loop"
+    scanned = set(loop.group(1).split())
+    for name in pushed:
+        assert (f"scan-{name}:ci" in scanned) or (name == "docs" and "docs-smoke:test" in scanned), f"{name} image is pushed but not scanned"
 
 
 def test_docker_build_waits_for_the_dependency_scan():

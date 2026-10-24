@@ -147,6 +147,66 @@ services:
       timeout: 5s
       retries: 10
 
+  # Disaster-recovery backup (docs/disaster-recovery.md). Not started with the stack: run it with the
+  # `backup` profile, `scripts/dr-backup.sh` (or `docker compose --profile backup run --rm backup`). It has no
+  # listener and no access to the Docker socket; it reads the database and the object store over the
+  # Compose network with the application's own credentials (the bundled identity already holds Read and
+  # List) and writes an encrypted restic repository. The repository volume is on THIS host, so a real
+  # deployment also sets BACKUP_DESTINATIONS to a copy elsewhere. APP_SECRET_ENCRYPTION_KEY is only passed
+  # so the dump's encrypted columns can be checked; set BACKUP_PROBE_ENCRYPTION_KEY= (empty) to keep the
+  # key away from this container.
+  backup:
+    image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-backup:${IMAGE_TAG:-latest}
+    build:
+      context: ./backend
+      target: backup
+    profiles: ["backup"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      DATABASE_URL: postgresql://reqtrack:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in production}@db:5432/reqtrack
+      APP_SECRET_ENCRYPTION_KEY: ${BACKUP_PROBE_ENCRYPTION_KEY-${APP_SECRET_ENCRYPTION_KEY:-}}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-s3}
+      STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-reqtrackmanager}
+      STORAGE_S3_ENDPOINT_URL: ${STORAGE_S3_ENDPOINT_URL:-http://storage:9000}
+      STORAGE_S3_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-${STORAGE_ROOT_USER:-minioadmin}}
+      STORAGE_S3_SECRET_KEY: ${STORAGE_SECRET_KEY:-${STORAGE_ROOT_PASSWORD:?Set STORAGE_SECRET_KEY in production}}
+      BACKUP_PASSWORD_FILE: /run/secrets/backup_repo_password
+      BACKUP_SECRETS_MODE: ${BACKUP_SECRETS_MODE:-config}
+      BACKUP_CONFIG_AGE_RECIPIENT: ${BACKUP_CONFIG_AGE_RECIPIENT:-}
+      BACKUP_BUNDLE_AGE_RECIPIENT: ${BACKUP_BUNDLE_AGE_RECIPIENT:-}
+      BACKUP_DESTINATIONS: ${BACKUP_DESTINATIONS:-}
+      BACKUP_KEEP_HOURLY: ${BACKUP_KEEP_HOURLY:-0}
+      BACKUP_KEEP_DAILY: ${BACKUP_KEEP_DAILY:-7}
+      BACKUP_KEEP_WEEKLY: ${BACKUP_KEEP_WEEKLY:-4}
+      BACKUP_KEEP_MONTHLY: ${BACKUP_KEEP_MONTHLY:-12}
+      BACKUP_CHECK_SUBSET: ${BACKUP_CHECK_SUBSET-5%}
+      # Credentials for the restic destinations (S3-compatible, Azure Blob); leave empty for others.
+      AWS_ACCESS_KEY_ID: ${BACKUP_AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${BACKUP_AWS_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION: ${BACKUP_AWS_DEFAULT_REGION:-}
+      AZURE_ACCOUNT_NAME: ${BACKUP_AZURE_ACCOUNT_NAME:-}
+      AZURE_ACCOUNT_KEY: ${BACKUP_AZURE_ACCOUNT_KEY:-}
+    volumes:
+      # A named volume by default; BACKUP_REPO_VOLUME may be a host path (an NFS mount, a second disk).
+      - ${BACKUP_REPO_VOLUME:-reqtrack_backup_repo}:/backup/repo
+      # Holds the object mirror and, briefly, the unencrypted dump: Confidential, keep it on an encrypted disk.
+      - reqtrack_backup_staging:/backup/staging
+      - reqtrack_backup_status:/backup/status
+      # Read-only view of the local file store (only used when STORAGE_BACKEND=local).
+      - reqtrack_local_files:/source/local_files:ro
+      # The operator's .env, read only when BACKUP_SECRETS_MODE=config; set BACKUP_ENV_FILE=./.env.
+      - ${BACKUP_ENV_FILE:-/dev/null}:/run/backup/env:ro
+      # ssh keys and known_hosts for SFTP destinations; set BACKUP_SSH_DIR to a host directory to use them.
+      - ${BACKUP_SSH_DIR:-reqtrack_backup_ssh}:/home/app/.ssh:ro
+    secrets:
+      - backup_repo_password
+    depends_on:
+      db:
+        condition: service_healthy
+      storage:
+        condition: service_healthy
+
   frontend:
     image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-frontend:${IMAGE_TAG:-latest}
     build:
@@ -300,6 +360,17 @@ volumes:
   reqtrack_db_data:
   reqtrack_storage_data:
   reqtrack_local_files:
+  reqtrack_backup_repo:
+  reqtrack_backup_staging:
+  reqtrack_backup_status:
+  reqtrack_backup_ssh:
+
+# The restic repository password for the `backup` profile: a file the operator keeps outside the repository
+# and outside the data it protects (docs/disaster-recovery.md, "Key custody"). Only read when the backup
+# service starts.
+secrets:
+  backup_repo_password:
+    file: ${BACKUP_REPO_PASSWORD_FILE:-/dev/null}
 
 # The one S3 identity the bundled storage accepts. It is restricted to the
 # application bucket (Admin lets it create that bucket on first start, as the

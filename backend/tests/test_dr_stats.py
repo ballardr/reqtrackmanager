@@ -185,6 +185,18 @@ def test_encrypted_columns_are_probed_and_a_wrong_key_is_reported(client):
     assert "hunter2-sentinel" not in wrong.model_dump_json()
 
 
+def test_encryption_probe_can_be_left_out_when_the_caller_has_no_key(client):
+    with SessionLocal() as db:
+        db.add(Organization(name="NoKey", slug=f"nokey-{uuid.uuid4().hex[:8]}", smtp_password="hunter2-sentinel"))
+        db.commit()
+        try:
+            stats = dr_stats.collect_stats(db, None, probe_encryption=False)
+        finally:
+            db.rollback()
+    assert stats.probes.encrypted_columns == {}
+    assert dr_stats.probe_failures(stats) == []
+
+
 def test_document_holds_no_row_content(world):
     project = world.project("Sentinel-Project-Name")
     world.requirement(project, "Sentinel-Requirement-Title")
@@ -290,6 +302,7 @@ def test_manifest_refuses_a_newer_format_bad_paths_and_naive_times(client):
         _manifest(stats, secrets_mode="vault")
 
 
+@pytest.mark.skipif(not _SCHEMA_FILE.is_file(), reason="repository docs not visible (the backend container mounts only backend/)")
 def test_committed_schema_matches_the_models():
     committed = json.loads(_SCHEMA_FILE.read_text())
     regenerate = "python scripts/dr_stats.py --manifest-schema > ../docs/schemas/backup-manifest.schema.json"
