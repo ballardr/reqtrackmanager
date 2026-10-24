@@ -4,7 +4,7 @@ sidebar_position: 2
 
 # Password resets and credential recovery
 
-Passwords are reset with a **single-use link emailed to the account's own address**. Nobody, administrators included, ever sees another person's password or the link. The same mechanism covers a forgotten password, an administrator helping someone who is locked out, and the aftermath of a security incident or a [disaster-recovery restore](../installation-deployment/storage-database-and-migrations.md).
+Passwords are reset with a **single-use link emailed to the account's own address**. Nobody, administrators included, ever sees another person's password or the link. The same mechanism covers a forgotten password, an administrator helping someone who is locked out, and the aftermath of a security incident or a [disaster-recovery restore](../installation-deployment/backup-and-disaster-recovery.md).
 
 | Who | What they can do | Where |
 | --- | --- | --- |

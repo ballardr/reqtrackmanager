@@ -12,32 +12,33 @@ sidebar_position: 5
 
 ## Database
 
-PostgreSQL is not started with automatic backups. Use the provided scripts on a schedule — cron, a systemd timer, or your orchestrator's job scheduler:
+PostgreSQL and the stored files are not backed up unless you schedule it. The supported tool is the whole-platform backup: one command captures the database, the attachments (the bundled SeaweedFS, any S3-compatible bucket, or the local-files volume) and, optionally, the encrypted `.env`, with a manifest, off-site copies, retention and an integrity check. Its matching restore and a restore test that proves the latest backup works are described in [Backup and disaster recovery](./backup-and-disaster-recovery.md).
 
 ```bash
-./scripts/backup.sh [output-dir]     # pg_dump (gzip'd) + local file storage (tar.gz, if STORAGE_BACKEND=local), timestamped
-./scripts/restore.sh <backup-file>   # restores a .sql.gz into db, or a reqtrack-files-*.tar.gz into backend
+./scripts/dr-backup.sh                  # take a backup
+./scripts/restore.sh fresh|in-place     # restore, verified against the manifest before anything is replaced
+./scripts/restore-test.sh ...           # prove the latest backup restores
 ```
 
 ```mermaid
 flowchart LR
-    Backup[backup.sh] -->|"pg_dump, gzip'd"| SQL[".sql.gz"]
-    Backup -->|"if STORAGE_BACKEND=local"| Files["reqtrack-files-*.tar.gz"]
-    SQL --> Restore["restore.sh"]
-    Files --> Restore
-    Restore -->|"into db"| DB[(PostgreSQL)]
-    Restore -->|"into backend"| FS["Local file storage"]
+    DB[(PostgreSQL)] --> Backup["dr-backup.sh"]
+    Files["Attachments"] --> Backup
+    Backup --> Repo[("Encrypted repository, local and off-site")]
+    Repo --> Restore["restore.sh"]
+    Restore --> DB2[(PostgreSQL)]
+    Restore --> Files2["Attachments"]
+    Repo --> Test["restore-test.sh"]
 ```
 
-`backup.sh` covers everything in one run for the common case: it always dumps the database, and additionally archives `reqtrack_local_files` when the running deployment has `STORAGE_BACKEND=local`. If you use `STORAGE_BACKEND=s3` (the Compose default, via the bundled SeaweedFS service), back up the `reqtrack_storage_data` volume with SeaweedFS's own backup/replication tooling instead — it isn't a plain file tree this script can tar up.
-
-Test restores periodically — a backup that has never been restored is not a verified backup.
+The older `./scripts/backup.sh` (a plain `pg_dump`, and the local-files volume only when `STORAGE_BACKEND=local`) is kept for one-off dumps; it does not cover SeaweedFS objects or the `.env`, so do not rely on it for recovery. `./scripts/restore.sh FILE` still restores its output into an empty database.
 
 ## Migrations
 
-The backend runs `alembic upgrade head` automatically on every startup. Upgrading to a new ReqTrackManager version is therefore just: pull the new image, `docker compose up -d backend` — no manual migration step is required. Because the migration runs immediately and automatically on container start, **always take a database backup before upgrading**.
+The backend runs `alembic upgrade head` automatically on every startup. Upgrading to a new ReqTrackManager version is therefore just: pull the new image, `docker compose up -d backend` — no manual migration step is required. Because the migration runs immediately and automatically on container start, **always take a backup (`./scripts/dr-backup.sh`) before upgrading**.
 
 ## Next steps
 
+- [Backup and disaster recovery](./backup-and-disaster-recovery.md)
 - [TLS, reverse proxy, and same-origin deployment](./tls-and-reverse-proxy.md)
 - [Scaling and adding modules](./scaling-and-modules.md)

@@ -28,10 +28,10 @@ The policy package doesn't just describe intent; it points at controls that alre
 
 The control matrix's own summary lists what's still open, rather than treating a documented gap as closed. As of this page's writing, the gaps requiring attention before a real audit include:
 
-- **No branch protection enforcing the CI check before merge** — CI runs and gates on every push and PR, but requiring it to pass before a merge is allowed is a repository setting, not yet configured.
+- **No required reviewer approval before merge** — CI runs and gates every push and PR, and the branch ruleset requires those checks, but it requires 0 approvals (one maintainer, an accepted exception), so there is no segregation of duties between author and merger.
 - **No account lockout or brute-force protection on the first-factor password check** — the second-factor (2FA) challenge step does lock out after repeated failed codes; the initial password check doesn't yet.
-- **No automated dependency or container vulnerability scanning.**
-- **No formal, scheduled backup automation** — backup/restore scripts exist, but scheduling and restore testing are left to the operator.
+- **Documentation-site `braces` advisory (no patched release)** — dependency and container image scanning runs in CI and gates; this one finding is reported, not gating.
+- **Backup scheduling and restore testing are the operator's to switch on** — the tooling to schedule a backup, alert when it stops, and prove weekly that it restores exists ([Backup and disaster recovery](../installation-deployment/backup-and-disaster-recovery.md)), but running it, holding the keys and exercising a recovery on a clean machine are Company actions.
 - **No formal risk register, vendor due-diligence records, or deficiency-tracking system.**
 - A number of purely **organisational** items — a named information security owner, a governance structure, staff training and attestation — that describe the operating company adopting this software, not the software itself, and so can't be closed by an engineering change at all.
 

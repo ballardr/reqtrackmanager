@@ -50,6 +50,19 @@ This table is ported from the project [README](https://github.com/ballardr/reqtr
 | `HELP_ENABLED` / `HELP_URL` | `true` / the public docs site | — | The header Help link opens `HELP_URL` in a new tab; `HELP_ENABLED=false` removes the link (and `/help` shows "Help is not configured"). Point `HELP_URL` at an internally hosted copy for air-gapped installs — see [Hosting the documentation internally](./production-deployment.md#hosting-the-documentation-internally) |
 | `IMAGE_TAG` / `GHCR_IMAGE_PREFIX` | `latest` / `ghcr.io/ballardr/reqtrackmanager` | — | Which published container image tag `docker-compose.yml` pulls (a SemVer, a commit SHA, or `latest`) and from where — see [Obtaining container images](./production-deployment.md#obtaining-container-images) |
 
+## Backup variables
+
+Read by the `backup`, `backup-scheduler` and `restore` services, not the application. The full list, with defaults, is in the [disaster-recovery runbook](https://github.com/ballardr/reqtrackmanager/blob/main/docs/disaster-recovery.md#configuration).
+
+| Variable | Default | Required | Purpose |
+|----------|---------|----------|---------|
+| `BACKUP_REPO_PASSWORD_FILE` | — | **Yes** | File holding the repository password. Losing it makes every backup unreadable |
+| `BACKUP_DESTINATIONS` | unset | Recommended | Comma-separated off-host repositories each backup is copied to (`s3:`, `sftp:`, `azure:` or a path). Without one, backups stay on this host |
+| `BACKUP_SECRETS_MODE` | `config` | — | `config` also stores the `.env`, encrypted to `BACKUP_CONFIG_AGE_RECIPIENT`; `none` keeps all key material out of the backup |
+| `BACKUP_SCHEDULE` / `BACKUP_SCHEDULE_TIMEZONE` | unset / `UTC` | — | For the `backup-scheduler` service: `HH:MM` daily in the named IANA zone, or `every Nh` |
+| `BACKUP_KEEP_DAILY` / `_WEEKLY` / `_MONTHLY` | `7` / `4` / `12` | — | Retention. Erased records stay in older sets until these expire |
+| `BACKUP_STATUS_VOLUME` | `reqtrack_backup_status` | — | Where status files and metrics are written; the observability stack reads them from here |
+
 ## Frontend configuration
 
 `VITE_API_BASE_URL` (build-time, via `frontend/.env`) or its container-runtime equivalent `PUBLIC_API_BASE_URL`, passed to `docker-compose.yml` and injected into a generated `env-config.js` at container startup — the same built frontend image can point at different backends without a rebuild.

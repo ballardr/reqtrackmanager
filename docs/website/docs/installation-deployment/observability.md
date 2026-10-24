@@ -90,7 +90,7 @@ flowchart LR
 | `ReqTrackRestoreTestFailed` / `ReqTrackRestoreTestStale` | The last restore-test failed, or none has passed for the weekly schedule plus a day |
 | `ReqTrackBackupMetricsMissing` | Nothing reports a backup run, so none may be scheduled |
 
-The bundled stack has no Alertmanager: the alerts show in Prometheus and Grafana, and you add an `alerting:` section to `observability/prometheus.yml` to be paged. The staleness thresholds follow the interval each tool publishes, so changing a backup schedule needs no rule edits. How to schedule backups and the weekly restore-test (a Compose service, systemd timers or cron) is in the disaster-recovery runbook (`docs/disaster-recovery.md`, "Scheduling and monitoring").
+The bundled stack has no Alertmanager: the alerts show in Prometheus and Grafana, and you add an `alerting:` section to `observability/prometheus.yml` to be paged. The staleness thresholds follow the interval each tool publishes, so changing a backup schedule needs no rule edits. How to schedule backups and the weekly restore-test (a Compose service, systemd timers or cron) is in [Backup and disaster recovery](./backup-and-disaster-recovery.md).
 
 ## Next steps
 

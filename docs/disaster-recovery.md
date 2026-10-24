@@ -1,6 +1,49 @@
 # Disaster recovery: backup and restore
 
-Whole-platform backup and restore for recovering a lost host, a corrupted volume or a bad deploy. This page covers taking a backup, restoring one, and proving the latest backup restores (the restore test). Scheduling and the full runbook are separate deliverables.
+Whole-platform backup and restore for recovering a lost host, a corrupted volume or a bad deploy. This page is the runbook: what is covered, who holds which key, how to back up, schedule, restore and prove a restore, and what to do when a step fails.
+
+## At a glance
+
+| | |
+|---|---|
+| **Recovery point (RPO)** | The interval between backups: 24 hours with the default nightly schedule. Set `BACKUP_SCHEDULE=every 1h` (dedup keeps it cheap) for less. Point-in-time recovery between backups is not provided |
+| **Recovery time (RTO)** | Install Docker, fetch the repository and `.env`, then one `restore.sh fresh` command. The time is dominated by fetching the set and uploading objects, so it grows with attachment volume; it has not yet been measured on a clean machine. Each restore-test report (and `reqtrack_restore_test_duration_seconds`) records how long the whole run took on your data, including starting the scratch stack, which is the best estimate you will have until then |
+| **Proof** | `restore-test.sh` restores the latest set into a throwaway stack and compares every table count with the manifest; weekly by default, alerted when it stops passing |
+| **Not covered** | Container images (pulled by the tag the manifest names); telemetry (Prometheus, Loki, Tempo, Grafana); anything outside the three data volumes and the `.env`; per-project restore (use the project bundle export) |
+
+| You have lost... | Do this |
+|------------------|---------|
+| The host or its disks | [New host](#restore), restoring from the off-site repository |
+| Data, or a bad deploy, on a host that still works | `restore.sh in-place` from a chosen set ([Restore](#restore)) |
+| Nothing yet, and want to know it would work | `restore-test.sh` ([Restore test](#restore-test)) |
+| Control of the host or a backup (breach, stolen disk) | Restore, then [reset credentials](#credentials-after-a-restore) and rotate the keys below |
+
+```mermaid
+flowchart TD
+    A["Incident"] --> B{"Is the host healthy?"}
+    B -->|"No"| C["New host: restore.sh config, then restore.sh fresh from off-site"]
+    B -->|"Yes, data is wrong"| D["restore.sh in-place from a chosen set"]
+    C --> E{"Could the host or a backup be exposed?"}
+    D --> E
+    E -->|"Yes"| F["Add --force-reset, issue links for administrators, rotate keys"]
+    E -->|"No"| G["Sign in and check"]
+    F --> G
+    G --> H["Run restore-test.sh to prove the next backup is sound"]
+```
+
+### Key custody
+
+The backup is only as recoverable as the secrets kept **outside** it. Two people should be able to reach each item, at least one copy should be offline, and none should live only on the host being backed up.
+
+| Secret | Needed to | If lost |
+|--------|-----------|---------|
+| Repository password (`BACKUP_REPO_PASSWORD_FILE`) | Read any backup set | Every backup is unreadable; nothing can recover it |
+| age identity (private half of `BACKUP_CONFIG_AGE_RECIPIENT`) | Recover the `.env` from a `config`-mode set | Supply the `.env` values yourself, as in `none` mode |
+| `APP_SECRET_ENCRYPTION_KEY` | Decrypt 2FA enrolments and organisation SMTP and SSO secrets | Restore with `--clear-unreadable-secrets`: users re-enrol 2FA and organisations re-enter secrets |
+| `JWT_SECRET` | Keep sessions valid | Everyone signs in again (harmless) |
+| Off-site destination credentials | Reach the off-site repository | Use the local copy, or recover them from your provider |
+
+`BACKUP_SECRETS_MODE=none` keeps the last four out of the backup entirely; `config` stores the `.env` encrypted to your age key; hold that identity apart from the repository password, so one leak does not open both. Rotate the repository password and keys if either may have been exposed (`restic key` manages repository passwords), and keep at least one copy of each secret in a place that survives losing the host.
 
 ## What a backup holds
 
@@ -273,6 +316,27 @@ Every tool writes Prometheus textfiles (`reqtrack-*.prom`) to the status directo
 The thresholds follow the published intervals, so changing a schedule needs no rule edit. The bundled stack has no Alertmanager: alerts show in Prometheus and Grafana; add an `alerting:` section to `observability/prometheus.yml` to be paged. `ReqTrackBackupMetricsMissing` also fires on a stack that takes no backups at all; that is the point, remove it only if you really intend that. Check the rules with `promtool check rules observability/alerts/*.rules.yml` and `promtool test rules observability/alerts/tests/*.test.yml` (CI runs both; `promtool` is in the `prom/prometheus` image).
 
 Without a metrics stack, `status.json` (and `restore-test-status.json`) in the status directory hold the same facts, and cron's `MAILTO` mails any output a failed run prints.
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+|---------|---------------|
+| Backup exits `75` | Another backup or restore holds the lock. Wait; a scheduled run treats this as not a failure |
+| Backup exits `1`, `ReqTrackBackupDestinationDown` | The primary set was taken but a destination copy failed (host down, credentials, full disk). The run counts as failed until every destination succeeds; fix the destination; the next run copies its own new set, and the set that missed stays only in the primary repository |
+| A run takes a long time to fail | An unreachable remote is retried by restic; each command has a time limit so one dead destination cannot hold the lock indefinitely |
+| `ReqTrackBackupStale` or `ReqTrackBackupMetricsMissing` | Nothing is running the backup: check `systemctl list-timers 'reqtrack-*'`, the crontab, or `docker compose logs backup-scheduler` (an invalid `BACKUP_SCHEDULE` stops it with exit `2`) |
+| Backup fails at `stats` with a failed integrity probe | The live system already has a file record with no object, or an encrypted value its key cannot read. Fix production first: a backup of a broken system would only record the break |
+| Restore refused: image or schema revision | The set was taken at another revision. Use the image tag the refusal names, restore, then upgrade (the newer image migrates on start) |
+| Restore refused: target not empty (`fresh`) | The database already has tables. Use `in-place` if you mean to replace it, or start from empty volumes |
+| Restore fails at `verify`, or statistics differ | The restored copy does not match the manifest. The scratch database is dropped and the live one is untouched; try the previous set (`list`, then `--set ID`) and keep the failing report |
+| Restore stops on encrypted values that cannot be read | The key supplied is not the original. Supply the original `APP_SECRET_ENCRYPTION_KEY`, or accept the loss with `--clear-unreadable-secrets` ([Keys](#restore)) |
+| No `.env` in the set | It was taken with `BACKUP_SECRETS_MODE=none`; supply your own |
+| `wrong password` or `unable to open config file` from restic | The repository password is wrong or the repository path is: check `BACKUP_REPO_PASSWORD_FILE` and `--repository` |
+| Everyone is locked out after a restore | Expected after `--force-reset`: print a link with `python -m app.cli.credentials issue-link --server-admins` ([Credentials after a restore](#credentials-after-a-restore)) |
+| `could not write init file`, or a failed fetch for lack of space | The Docker VM or the staging volume is full. Free space (`docker builder prune -f`) and rerun; a restore needs the set plus a database copy |
+| Restore-test fails but production is fine | Read `restore-test-reports/<project>/report.md`: the failing check names what differs. Run `./scripts/restore-test-selfcheck.sh` to prove the harness itself still catches faults |
+
+When a restore fails, the output and `restore-report.json` name the step that failed (`select`, `checksums`, `objects`, `database`, `secrets`, `verify`) and carry counts and ids, never row values. A failed restore leaves the live database untouched: the replaced one is renamed to `<name>_pre_restore_<UTC time>` only after verification passes.
 
 ## Security notes
 

@@ -444,7 +444,7 @@ The database layer should include:
 - schema migration support
 - versioned schema changes
 - transactional integrity for workflow steps
-- backup and restore procedures
+- backup, restore and restore-test procedures (see Stateful Components and Backup Verification below and [disaster-recovery.md](disaster-recovery.md))
 
 ### File Storage Layer
 Files such as supporting documents and uploaded attachments are stored in a configurable backend. The initial deployment can use local filesystem storage, while the design should allow later migration to object storage such as S3 or MinIO.
@@ -463,6 +463,8 @@ Everything a disaster recovery must restore lives in exactly three Compose volum
 | Operator `.env` | `APP_SECRET_ENCRYPTION_KEY`, `JWT_SECRET`, credentials | host | optional, separate key |
 | `frontend`, `mcp-server`, `docs` | None (no volumes, no files written) | n/a | no |
 | `prometheus`, `loki`, `tempo`, `grafana`, `alloy` | Telemetry only, optional profile | container filesystem | no |
+
+**Recovery objectives.** The recovery point is the backup interval (nightly by default; no point-in-time recovery). Retention defaults to 7 daily, 4 weekly and 12 monthly sets, applied to every repository, so an erased record leaves backup media only when the last set holding it expires. Backup repositories, the staging volume and the restore-test scratch stack hold the same Confidential data as production and are protected accordingly; key custody is in [disaster-recovery.md](disaster-recovery.md#key-custody).
 
 A backup records a manifest (`manifest.json`, schema in [schemas/backup-manifest.schema.json](schemas/backup-manifest.schema.json)) that embeds a statistics document produced by `backend/app/services/dr_stats.py`. The same code recomputes it on a restored stack, so "the restore matches the source" has one definition.
 
