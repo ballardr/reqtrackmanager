@@ -1,0 +1,9 @@
+tier,scenario,repeat,users,request,count,failures,throttled,p50_ms,p95_ms,p99_ms,mean_ms,max_ms,rps,bytes_mean
+T4,browse,1,4,GET /artefacts/{type}/{id}/activity,4,0,0,430,1000,1000,551.0,1031.1605508904904,0.2,1936
+T4,browse,1,4,GET /projects,14,0,0,400,1000,1000,428.4,1024.5687500573695,0.7,913
+T4,browse,1,4,GET /projects/{id}/metrics (dashboard),11,0,0,540,1900,1900,824.2,1931.9746138062328,0.55,581
+T4,browse,1,4,GET /projects/{id}/requirements (page of 50),24,0,0,1200,2000,2100,1171.4,2108.9780749753118,1.2,91673
+T4,browse,1,4,GET /projects/{id}/requirements/{id},22,0,0,130,720,770,220.4,771.04851603508,1.1,1738
+T4,browse,1,4,GET /projects/{id}/tags/usage,4,0,0,210,1000,1000,360.9,1038.5297979228199,0.2,3517
+T4,browse,1,4,GET /requirements/{id}/comments,15,0,0,84,340,340,124.3,344.34405993670225,0.75,591
+T4,browse,1,4,GET /requirements/{id}/links,17,0,0,110,810,810,165.7,807.2939950507134,0.85,1560

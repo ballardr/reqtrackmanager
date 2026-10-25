@@ -226,6 +226,8 @@ class Thresholds:
 
     Attributes:
         max_load_per_core: Load average per core.
+        load_samples: Consecutive samples above `max_load_per_core` before the watchdog trips. One heavy
+            scenario can spike the 1-minute average briefly; stopping on a single sample would end a healthy run.
         min_available_gib: Least available memory (Linux).
         max_swap_growth_gib: Most the swap in use may grow during the run (Linux). Swap already in use when the
             run starts is not pressure by itself (a long-running server holds idle pages there); growth during the
@@ -236,6 +238,7 @@ class Thresholds:
     """
 
     max_load_per_core: float = 1.5
+    load_samples: int = 6
     min_available_gib: float = 1.0
     max_swap_growth_gib: float = 0.25
     min_free_disk_gib: float = 5.0
@@ -313,6 +316,7 @@ class Watchdog:
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._failures = 0
+        self._load_over = 0
 
     @property
     def tripped(self) -> bool:
@@ -338,8 +342,12 @@ class Watchdog:
         reader = lambda name, default: self.readers.get(name, default)  # noqa: E731
         limits = self.thresholds
         load = reader("load", load_per_core)()
-        if load is not None and load > limits.max_load_per_core:
-            return self._trip(f"host load {load:.2f} per core exceeds {limits.max_load_per_core:g}")
+        self._load_over = self._load_over + 1 if load is not None and load > limits.max_load_per_core else 0
+        if self._load_over >= limits.load_samples:
+            return self._trip(
+                f"host load {load:.2f} per core stayed above {limits.max_load_per_core:g} for {self._load_over} samples "
+                "(the load includes this stack's own threads; raise --max-load-per-core if the host is otherwise healthy)"
+            )
         free = reader("available", available_memory_gib)()
         if free is not None and free < limits.min_available_gib:
             return self._trip(f"available memory {free:.1f} GiB is below {limits.min_available_gib:g}")

@@ -843,7 +843,9 @@ def export_project(project: Project = Depends(require_project_manage), current_u
     (`require_project_manage`): project managers, project administrators,
     or organisation admins of this project's organisation.
     """
-    zip_bytes = build_project_bundle(db, project, current_user)
+    # Read-only: each person or group named on many records is looked up once, not once per record.
+    with memoize_module_state(), memoize_user_lookups():
+        zip_bytes = build_project_bundle(db, project, current_user)
     return Response(
         content=zip_bytes, media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename_safe(project.name, fallback="project")}-export.zip"'},

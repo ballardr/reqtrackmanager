@@ -56,16 +56,17 @@ from app.services.rbac import get_effective_project_roles, require_project_view
 from app.services.requirements import (
     OPEN_CR_STATUSES,
     ListPrefetch,
-    ListSortKeys,
+    ListRow,
     RequirementFilters,
     archive_requirement,
     create_requirement,
     edit_requirement,
-    filter_requirements,
+    filter_requirement_rows,
     get_current_version,
     get_keywords,
     is_locked,
     prefetch_for_list,
+    requirements_by_ids,
     unarchive_requirement,
     version_people,
 )
@@ -274,38 +275,45 @@ def list_requirements(
         target_stage_id=target_stage_id, has_comments=has_comments, only_watched=only_watched,
     )
 
-    sort_keys: dict[UUID, ListSortKeys] = {}
+    # One project, or a scope widened over related projects. With one project the database sorts and pages,
+    # so only the returned page is read; a widened scope needs every project's rows to order and page them
+    # together, so those are read whole and cut here.
+    single = not project_scope.widened
+    matching = 0
 
-    def rows_for(pid: UUID) -> list[Requirement]:
-        nonlocal unfiltered
-        found = filter_requirements(db, pid, current_user.id, filters, structural_order=not sort, prefetch=False)
+    def rows_for(pid: UUID) -> list[ListRow]:
+        nonlocal unfiltered, matching
+        found = filter_requirement_rows(
+            db, pid, current_user.id, filters, sort=sort, descending=order == "desc",
+            limit=limit if single else None, offset=offset if single else 0,
+        )
         unfiltered += found.unfiltered
-        sort_keys.update(found.sort_keys)
-        return found.requirements
+        matching += found.total
+        return found.rows
 
     rows = project_scope.collect(db, db.get(Project, project_id), current_user.id, "requirement", rows_for)
     response.headers["X-Total-Unfiltered-Count"] = str(unfiltered)
 
-    if sort:
-        def _sort_value(req: Requirement):
-            value = sort_keys[req.id].name if sort == "name" else (
-                sort_keys[req.id].status if sort == "status" else getattr(req, sort)
-            )
-            return value.lower() if isinstance(value, str) else value
-        rows.sort(key=_sort_value, reverse=(order == "desc"))
-
-    response.headers["X-Total-Count"] = str(len(rows))
-    if limit is not None:
-        rows = rows[offset:offset + limit]
-    # Only the rows returned are serialised: their versions, people, keywords and counts are loaded for
-    # this page alone, so a page of 50 costs the same in a project of 20,000.
-    prefetch = prefetch_for_list(db, [r.id for r in rows], current_user.id)
+    if not single:
+        matching = len(rows)
+        if sort:
+            def _sort_value(row: ListRow):
+                value = getattr(row, sort)
+                return value.lower() if isinstance(value, str) else value
+            rows.sort(key=_sort_value, reverse=(order == "desc"))
+        if limit is not None:
+            rows = rows[offset:offset + limit]
+    response.headers["X-Total-Count"] = str(matching)
+    # Only the rows returned are loaded as records and serialised: their versions, people, keywords and counts
+    # are fetched for this page alone, so a page of 50 costs the same in a project of 20,000.
+    by_id = {r.id: r for r in requirements_by_ids(db, [row.id for row in rows])}
+    prefetch = prefetch_for_list(db, list(by_id), current_user.id)
     out = []
-    for req in rows:
-        item = _to_out(db, req, prefetch.versions[req.id], current_user.id, prefetch)
-        item.from_project_id = getattr(req, "from_project_id", None)
-        item.from_project_name = getattr(req, "from_project_name", None)
-        item.from_project_code = getattr(req, "from_project_code", None)
+    for row in rows:
+        item = _to_out(db, by_id[row.id], prefetch.versions[row.id], current_user.id, prefetch)
+        item.from_project_id, item.from_project_name, item.from_project_code = (
+            row.from_project_id, row.from_project_name, row.from_project_code,
+        )
         out.append(item)
     return out
 

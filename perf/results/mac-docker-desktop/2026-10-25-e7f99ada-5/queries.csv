@@ -1,0 +1,10 @@
+tier,scenario,request,requests,queries_per_request,db_ms_per_request
+T4,browse,GET /api/v1/projects,16,24.0,132.72
+T4,browse,GET /api/v1/projects/{project_id}/artefacts/{artefact_type}/{artefact_id}/activity,4,39.5,302.69
+T4,browse,GET /api/v1/projects/{project_id}/metrics,14,96.0,777.76
+T4,browse,GET /api/v1/projects/{project_id}/requirements,29,20.76,464.39
+T4,browse,GET /api/v1/projects/{project_id}/requirements/{requirement_id},29,18.0,145.72
+T4,browse,GET /api/v1/projects/{project_id}/requirements/{requirement_id}/comments,17,17.59,117.7
+T4,browse,GET /api/v1/projects/{project_id}/requirements/{requirement_id}/links,18,15.33,73.91
+T4,browse,GET /api/v1/projects/{project_id}/tags/usage,5,34.0,139.02
+T4,browse,POST /api/v1/auth/login,4,8.0,12.72

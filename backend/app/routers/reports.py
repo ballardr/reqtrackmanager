@@ -28,9 +28,10 @@ from app.database import get_db
 from app.models.file import FileAsset
 from app.models.organization import Organization
 from app.models.project import Project, ProjectCategory, ProjectComponent
-from app.models.requirement import Requirement
+from app.models.requirement import Requirement, RequirementVersion
 from app.models.user import User
 from app.schemas.report import ReportRequest
+from app.services import tags as tag_service
 from app.services.codes import display_code
 from app.services.downloads import file_response, filename_safe
 from app.services.files import read_file
@@ -49,7 +50,6 @@ from app.services.reports import (
     generate_docx_report,
     generate_pdf_report,
 )
-from app.services.requirements import get_current_version, get_keywords
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/reports", tags=["reports"])
 
@@ -72,13 +72,20 @@ def _collect_rows(db: Session, project_id: UUID, payload: ReportRequest) -> list
     if payload.category_id is not None:
         query = query.where(Requirement.category_id == payload.category_id)
     requirements = db.scalars(query).all()
+    # The current versions and tags of every requirement are read in one statement each, not one per row.
+    ids = [req.id for req in requirements]
+    versions = {v.requirement_id: v for v in db.scalars(select(RequirementVersion).where(
+        RequirementVersion.requirement_id.in_(ids), RequirementVersion.valid_to.is_(None)))} if ids else {}
+    tags_by_id = tag_service.keywords_for_requirements(db, ids) if ids else {}
 
     rows = []
     for req in requirements:
-        version = get_current_version(db, req.id)
+        version = versions.get(req.id)
+        if version is None:
+            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Requirement has no current version.")
         if payload.status is not None and version.status != payload.status:
             continue
-        keywords = get_keywords(db, req.id)
+        keywords = tags_by_id.get(req.id, [])
         if payload.keyword is not None and payload.keyword.casefold() not in {k.casefold() for k in keywords}:
             continue
         component = components.get(req.component_id)

@@ -51,6 +51,16 @@ def bundle_dir(results_root: Path, host_label: str, date: str, commit: str) -> P
     return results_root / host_label / f"{date}-{commit[:8]}"
 
 
+def unused_bundle_dir(directory: Path) -> Path:
+    """`directory`, or `<directory>-2`, `-3`... when it exists, so a second run on the same day and commit never
+    overwrites the first run's results."""
+    candidate, number = directory, 1
+    while candidate.exists():
+        number += 1
+        candidate = directory.with_name(f"{directory.name}-{number}")
+    return candidate
+
+
 def _write_json(path: Path, document: dict) -> None:
     path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n")
 

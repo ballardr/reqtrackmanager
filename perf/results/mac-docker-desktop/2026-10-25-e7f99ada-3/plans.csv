@@ -1,0 +1,8 @@
+tier,scenario,rank,node,relation,index,filtered,est_rows,plan_cost
+T4,browse,1,Seq Scan,requirement_versions,,yes,19962,5544.8
+T4,browse,1,Seq Scan,requirements,,yes,19031,5544.8
+T4,browse,2,Seq Scan,audit_events,,yes,1,5898.5
+T4,browse,3,Seq Scan,requirement_versions,,yes,19962,5639.8
+T4,browse,3,Seq Scan,requirements,,yes,19031,5639.8
+T4,browse,4,Seq Scan,requirements,,yes,19031,697.6
+T4,browse,5,Seq Scan,audit_events,,yes,65,5460.6

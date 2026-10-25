@@ -1084,10 +1084,23 @@ def _import_rows(
     has_code_column = CODE_COLUMN in header
 
     ctx = RecordImportContext(db=db, project=target.project, user=user, organization=organization)
-    prepared_cache: dict[str, Any] = {}
     results: list[RowResult] = []
     failed: list[tuple[dict[str, str], str]] = []
     seen_codes: set[str] = set()
+
+    # The records the file names are found and prepared once for the whole file, not once per row: preparing
+    # loads the type's structure (components, categories, stages), people and tags, which cost the same for 1 row
+    # as for 1,000.
+    found_by_code: dict[str, Any] = {}
+    batch_prepared = None
+    if has_code_column and update_fn is not None:
+        for row in file_rows:
+            code = read_cell(row.get(CODE_COLUMN, ""))
+            if code and code.upper() not in found_by_code:
+                found_by_code[code.upper()] = target.find(code)
+        named = [record for record in found_by_code.values() if record is not None]
+        if named and target.prepare is not None:
+            batch_prepared = target.prepare(named)
 
     for line, row in enumerate(file_rows, start=2):
         raw_code = read_cell(row.get(CODE_COLUMN, "")) if has_code_column else ""
@@ -1104,7 +1117,7 @@ def _import_rows(
                 results.append(result)
                 continue
             seen_codes.add(raw_code.upper())
-            record = target.find(raw_code)
+            record = found_by_code[raw_code.upper()] if raw_code.upper() in found_by_code else target.find(raw_code)
             if record is None:
                 fail(f"No record with the code {raw_code} in this {target.place}.")
                 results.append(result)
@@ -1133,10 +1146,7 @@ def _import_rows(
                 result.action = "create"
                 result.code = ""
             else:
-                prepared = prepared_cache.get(str(target.id_of(record)))
-                if prepared is None and target.prepare is not None:
-                    prepared = target.prepare([record])
-                    prepared_cache[str(target.id_of(record))] = prepared
+                prepared = batch_prepared
                 changes = []
                 for column in in_file:
                     before = column.get(prepared, record)

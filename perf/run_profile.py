@@ -100,6 +100,10 @@ class Interrupted(Exception):
     """The operator pressed Ctrl-C or the process was asked to stop."""
 
 
+DEDICATED_MAX_LOAD_PER_CORE = 4.0
+"""Load limit on a dedicated host: nothing else runs there, so load is mostly this run's own threads."""
+
+
 @dataclass
 class Options:
     """The parsed command line.
@@ -122,6 +126,8 @@ class Options:
         out: Results root.
         cache_dir: Where dataset snapshots live (outside the repository).
         watch_url: A read-only health URL to poll and abort on (production's `/health`).
+        max_load_per_core: Host load average per core above which (for a sustained period) the run stops; None for
+            the default (1.5, or `DEDICATED_MAX_LOAD_PER_CORE` on a dedicated host).
         scenarios: Explicit scenario names, or None for the mode's set.
         profiling: `none`, `cpu` (py-spy flamegraphs) or `heap` (one worker under memray; one tier).
     """
@@ -147,6 +153,7 @@ class Options:
     out: Path = RESULTS_ROOT
     cache_dir: Path = DEFAULT_CACHE
     watch_url: Optional[str] = None
+    max_load_per_core: Optional[float] = None
     scenarios: Optional[list] = None
     profiling: str = "none"
 
@@ -223,6 +230,13 @@ def parse_args(argv: list) -> Options:
         "--profiling", default="none", choices=PROFILING_MODES,
         help="cpu: py-spy flamegraph per scenario; heap: one worker under memray, one tier (both build the profile image; latency is not comparable)",
     )
+    parser.add_argument(
+        "--max-load-per-core", type=float, default=None,
+        help="stop the run when the host's 1-minute load average per core stays above this for about 30 seconds (default 1.5, or 4 "
+             "with --dedicated, where there is no neighbour to protect and the load is mostly the run's own). "
+             "The load counts every runnable thread on the host, including this stack's own, and a container held back by its CPU cap "
+             "still counts, so a busy server may need a higher value; --watch-url is the direct check that production is unaffected",
+    )
     parser.add_argument("--watch-url", help="a health URL (production's /health) to poll with GET; the run aborts if it slows or fails")
     args = parser.parse_args(argv)
     if args.workers != "auto" and not (args.workers.isdigit() and int(args.workers) >= 1):
@@ -242,7 +256,7 @@ def parse_args(argv: list) -> Options:
         breadth=args.breadth, density=args.density, seed=args.seed, repeats=args.repeats, workers=1 if args.profiling == "heap" else (None if args.workers == "auto" else int(args.workers)), max_cpus=args.max_cpus,
         max_mem=args.max_mem, dedicated=args.dedicated, allow_heavy=args.allow_heavy or args.dedicated, soak_minutes=args.soak_minutes,
         plan=args.plan, cleanup=args.cleanup, images=args.images, storage=args.storage, keep=args.keep, out=args.out,
-        cache_dir=args.cache_dir, watch_url=args.watch_url, scenarios=args.scenarios.split(",") if args.scenarios else None, profiling=args.profiling,
+        cache_dir=args.cache_dir, watch_url=args.watch_url, max_load_per_core=args.max_load_per_core, scenarios=args.scenarios.split(",") if args.scenarios else None, profiling=args.profiling,
     )
 
 
@@ -839,9 +853,17 @@ class ProfileRun:
         self.options.cache_dir.mkdir(parents=True, exist_ok=True)
         reasons = resources.preflight_headroom(
             caps, total_requirements=largest, disk_path=self.options.cache_dir, available=self._available_reader(host),
+            thresholds=self.thresholds(),
         )
         if reasons:
             raise RunError("not enough headroom on this host: " + "; ".join(reasons), EX_USAGE)
+
+    def thresholds(self) -> resources.Thresholds:
+        """The host-pressure limits for this run (the defaults, with the operator's load limit)."""
+        limit = self.options.max_load_per_core
+        if limit is None:
+            limit = DEDICATED_MAX_LOAD_PER_CORE if self.options.dedicated else resources.Thresholds().max_load_per_core
+        return resources.Thresholds(max_load_per_core=limit)
 
     def _available_reader(self, host: dict) -> Callable[[], Optional[float]]:
         """Memory still free for new work: inside the VM on Docker Desktop (shared by every container), else the host's."""
@@ -879,7 +901,7 @@ class ProfileRun:
         self.docker = compose.PerfDocker(self.compose_files(), env_file, REPO_ROOT, secrets=[self.env[k] for k in SECRET_KEYS], runner=self._runner)
         self.sampler = sampler.Sampler(self.docker)
         self.watchdog = resources.Watchdog(
-            resources.Thresholds(), options.cache_dir, watch_url=options.watch_url, on_trip=self._on_watchdog,
+            self.thresholds(), options.cache_dir, watch_url=options.watch_url, on_trip=self._on_watchdog,
             readers={"available": self._available_reader(host)},
         )
         started = self._now()
@@ -981,7 +1003,9 @@ class ProfileRun:
             **({"postgres": self.pg_settings} if self.pg_settings else {}), **({"db_pool": self.db_pool} if self.db_pool else {}),
             **self.heap_totals,
         }
-        directory = bundle.bundle_dir(self.options.out, self.options.label, run_doc["date"], git["commit"] or "0" * 7)
+        directory = bundle.unused_bundle_dir(
+            bundle.bundle_dir(self.options.out, self.options.label, run_doc["date"], git["commit"] or "0" * 7)
+        )
         samples = [row for row in self.sampler.rows if "scenario" in row]
         bundle.write_bundle(
             directory, host=host_doc, run=run_doc, datasets=self.datasets, samples=samples, latency=self.latency, queries=self.query_rows(),

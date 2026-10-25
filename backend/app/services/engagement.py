@@ -30,36 +30,53 @@ from app.services.principals import principal_labels, principal_recipients, vali
 from app.services.rbac import get_project_member_user_ids
 
 
+def comments_to_out(db: Session, comments: list[ReviewComment], current_user_id: UUID) -> list[CommentOut]:
+    """`CommentOut`s for several comments, each with the author's display name, this user's reaction state and
+    attached files (none of which are columns on `ReviewComment`), loaded in a fixed number of statements so a
+    thread of 200 comments costs the same as one of 2.
+
+    Args:
+        db: Active session (read only).
+        comments: The comments, in the order to return.
+        current_user_id: The viewer (for `reacted_by_me`).
+    """
+    if not comments:
+        return []
+    ids = [c.id for c in comments]
+    authors = {u.id: u for u in db.scalars(select(User).where(User.id.in_({c.author_id for c in comments})))}
+    reaction_counts = dict(db.execute(
+        select(CommentReaction.comment_id, func.count(CommentReaction.id))
+        .where(CommentReaction.comment_id.in_(ids)).group_by(CommentReaction.comment_id)
+    ).all())
+    reacted = set(db.scalars(select(CommentReaction.comment_id).where(
+        CommentReaction.comment_id.in_(ids), CommentReaction.user_id == current_user_id,
+    )).all())
+    attachments: dict[UUID, list[FileAsset]] = {}
+    for comment_id, asset in db.execute(
+        select(CommentFile.comment_id, FileAsset).join(FileAsset, CommentFile.file_id == FileAsset.id)
+        .where(CommentFile.comment_id.in_(ids))
+    ).all():
+        attachments.setdefault(comment_id, []).append(asset)
+    out = []
+    for comment in comments:
+        author = authors.get(comment.author_id)
+        out.append(CommentOut(
+            id=comment.id,
+            author_id=comment.author_id,
+            author_display_name=author.display_name if author is not None else "Unknown user",
+            body=comment.body,
+            created_at=comment.created_at,
+            edited_at=comment.edited_at,
+            reaction_count=reaction_counts.get(comment.id, 0),
+            reacted_by_me=comment.id in reacted,
+            attachments=[FileAssetOut.model_validate(a) for a in attachments.get(comment.id, [])],
+        ))
+    return out
+
+
 def comment_to_out(db: Session, comment: ReviewComment, current_user_id: UUID) -> CommentOut:
-    """Builds a CommentOut with the author's display name, this user's
-    reaction state, and attached files, since none of those are columns on
-    `ReviewComment` itself."""
-    author = db.get(User, comment.author_id)
-    reaction_count = db.scalar(
-        select(func.count(CommentReaction.id)).where(CommentReaction.comment_id == comment.id)
-    ) or 0
-    reacted_by_me = (
-        db.scalar(
-            select(CommentReaction.id).where(
-                CommentReaction.comment_id == comment.id, CommentReaction.user_id == current_user_id
-            )
-        )
-        is not None
-    )
-    attachments = db.scalars(
-        select(FileAsset).join(CommentFile, CommentFile.file_id == FileAsset.id).where(CommentFile.comment_id == comment.id)
-    ).all()
-    return CommentOut(
-        id=comment.id,
-        author_id=comment.author_id,
-        author_display_name=author.display_name if author is not None else "Unknown user",
-        body=comment.body,
-        created_at=comment.created_at,
-        edited_at=comment.edited_at,
-        reaction_count=reaction_count,
-        reacted_by_me=reacted_by_me,
-        attachments=[FileAssetOut.model_validate(a) for a in attachments],
-    )
+    """`comments_to_out` for one comment."""
+    return comments_to_out(db, [comment], current_user_id)[0]
 
 
 def add_reaction(db: Session, comment_id: UUID, user_id: UUID) -> None:

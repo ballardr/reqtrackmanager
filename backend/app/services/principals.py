@@ -57,7 +57,7 @@ from app.models.project import Project, ProjectGroup
 from app.models.requirement import RequirementVersion
 from app.models.requirement_action import RequirementAction
 from app.models.user import User
-from app.modules.registry import PrincipalReference, get_module_principal_references
+from app.modules.registry import PrincipalReference, get_module_principal_references, scoped_memo
 from app.schemas.principal import PrincipalOut, PrincipalRef, PrincipalUsageItem, PrincipalUsageOut
 from app.services.audit import log_event
 from app.services.rbac import (
@@ -574,11 +574,23 @@ def principal_to_bundle(db: Session, type_value: str | None, principal_id: uuid.
     if type_value is None or principal_id is None:
         return None
     if type_value == PrincipalType.USER.value:
-        email = db.scalar(select(User.email).where(User.id == principal_id))
+        email = _user_email(db, principal_id)
         return {"type": type_value, "email": email} if email else None
-    model = OrgGroup if type_value == PrincipalType.ORG_GROUP.value else ProjectGroup
-    name = db.scalar(select(model.name).where(model.id == principal_id))
+    name = _group_name(db, type_value, principal_id)
     return {"type": type_value, "name": name} if name else None
+
+
+@scoped_memo
+def _user_email(db: Session, user_id: uuid.UUID) -> str | None:
+    """A user's email (read once per principal while `memoize_module_state()` is active, as an export is)."""
+    return db.scalar(select(User.email).where(User.id == user_id))
+
+
+@scoped_memo
+def _group_name(db: Session, type_value: str, group_id: uuid.UUID) -> str | None:
+    """A group's name (memoised like `_user_email`)."""
+    model = OrgGroup if type_value == PrincipalType.ORG_GROUP.value else ProjectGroup
+    return db.scalar(select(model.name).where(model.id == group_id))
 
 
 def principal_from_bundle(

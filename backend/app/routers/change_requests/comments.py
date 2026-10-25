@@ -95,7 +95,7 @@ def list_comments(
         .where(ReviewComment.target_type == ReviewTargetType.CHANGE_REQUEST, ReviewComment.target_id == cr_id)
         .order_by(ReviewComment.created_at)
     ).all()
-    return [engagement.comment_to_out(db, c, current_user.id) for c in comments]
+    return engagement.comments_to_out(db, list(comments), current_user.id)
 
 
 @router.post("/{cr_id}/comments/{comment_id}/files", response_model=FileAssetOut, status_code=status.HTTP_201_CREATED)

@@ -1,0 +1,10 @@
+tier,scenario,rank,node,relation,index,filtered,est_rows,plan_cost
+T4,browse,1,Seq Scan,requirement_versions,,yes,20105,7215.8
+T4,browse,1,Seq Scan,requirements,,yes,19031,7215.8
+T4,browse,1,Seq Scan,project_components,,no,2,7215.8
+T4,browse,1,Seq Scan,project_categories,,no,4,7215.8
+T4,browse,2,Seq Scan,requirement_versions,,yes,20105,5640.9
+T4,browse,2,Seq Scan,requirements,,yes,19031,5640.9
+T4,browse,3,Seq Scan,audit_events,,yes,1,5898.5
+T4,browse,4,Seq Scan,audit_events,,yes,3,4943.6
+T4,browse,5,Seq Scan,requirements,,yes,19031,697.6

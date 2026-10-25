@@ -332,7 +332,9 @@ def test_headroom_preflight_names_each_shortfall():
     assert resources.preflight_headroom(caps, total_requirements=1000, disk_path=Path("/"), **ok) == []
     busy = resources.preflight_headroom(caps, total_requirements=1000, disk_path=Path("/"), **{**ok, "load": lambda: 3.0})
     low_memory = resources.preflight_headroom(caps, total_requirements=1000, disk_path=Path("/"), **{**ok, "available": lambda: 4.5})
-    swapping = resources.preflight_headroom(caps, total_requirements=1000, disk_path=Path("/"), **{**ok, "swap": lambda: 3.0, "available": lambda: 8.0})
+    swapping = resources.preflight_headroom(
+        caps, total_requirements=1000, disk_path=Path("/"), **{**ok, "swap": lambda: 3.0, "available": lambda: 8.0},
+    )
     full = resources.preflight_headroom(caps, total_requirements=20000, disk_path=Path("/"), **{**ok, "free_disk": lambda p: 8.0})
     assert "busy" in busy[0] and "memory" in low_memory[0] and "swap" in swapping[0] and "disk" in full[0]
 
@@ -350,7 +352,6 @@ def test_watchdog_trips_on_each_pressure_signal_and_calls_back_once():
     base = {"load": lambda: 0.1, "available": lambda: 8.0, "swap": lambda: 0.0, "free_disk": lambda p: 50.0}
     tripped: list = []
     for name, reader, text in (
-        ("load", lambda: 5.0, "load"),
         ("available", lambda: 0.2, "memory"),
         ("free_disk", lambda p: 1.0, "disk"),
     ):
@@ -358,6 +359,21 @@ def test_watchdog_trips_on_each_pressure_signal_and_calls_back_once():
         assert text in dog.check_once() and dog.tripped
     healthy = resources.Watchdog(resources.Thresholds(), Path("/"), readers=base)
     assert healthy.check_once() is None and not healthy.tripped
+
+
+def test_watchdog_trips_on_sustained_load_not_on_a_spike():
+    load = [3.0]
+    readers = {"load": lambda: load[0], "available": lambda: 20.0, "swap": lambda: 0.0, "free_disk": lambda p: 50.0}
+    dog = resources.Watchdog(resources.Thresholds(load_samples=3), Path("/"), readers=readers)
+    assert dog.check_once() is None and dog.check_once() is None
+    load[0] = 0.5
+    assert dog.check_once() is None, "a spike that ends resets the count"
+    load[0] = 3.0
+    assert dog.check_once() is None and dog.check_once() is None
+    assert "stayed above" in dog.check_once() and dog.tripped
+    # The operator's limit is respected.
+    relaxed = resources.Watchdog(resources.Thresholds(max_load_per_core=4.0, load_samples=1), Path("/"), readers=readers)
+    assert relaxed.check_once() is None
 
 
 def test_watchdog_trips_on_swap_growth_not_on_swap_already_in_use():
@@ -1472,3 +1488,26 @@ def test_a_long_database_identifier_is_not_mistaken_for_a_secret_but_a_random_to
         f"tier,scenario,rank,node,relation,index,filtered,est_rows,plan_cost\nT2,browse,1,Index Scan,requirement_versions,{token},no,9,1\n"
     )
     assert [f.rule for f in scrub.scan_tree(tmp_path, identities=["someoneelse"])] == ["long opaque string (possible secret)"]
+
+
+def test_a_second_run_on_the_same_day_and_commit_gets_its_own_bundle_directory(tmp_path):
+    first = bundle.bundle_dir(tmp_path, "mac-docker-desktop", "2026-10-25", "e7f99adaf4f6")
+    assert bundle.unused_bundle_dir(first) == first
+    first.mkdir(parents=True)
+    second = bundle.unused_bundle_dir(first)
+    assert second.name == "2026-10-25-e7f99ada-2"
+    second.mkdir()
+    assert bundle.unused_bundle_dir(first).name == "2026-10-25-e7f99ada-3"
+
+
+def test_load_limit_defaults_by_host_kind_and_honours_the_operator():
+    from perf import run_profile
+
+    def limit(*argv):
+        options = run_profile.parse_args(["lab-host", *argv])
+        return run_profile.ProfileRun(options).thresholds().max_load_per_core
+
+    assert limit() == 1.5
+    assert limit("--dedicated") == run_profile.DEDICATED_MAX_LOAD_PER_CORE
+    assert limit("--max-load-per-core", "2.5") == 2.5
+    assert limit("--dedicated", "--max-load-per-core", "2.5") == 2.5
