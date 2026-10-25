@@ -24,6 +24,7 @@ flowchart TD
         Loki[Grafana Loki]
         Tempo[Grafana Tempo]
         Grafana[Grafana]
+        CAdv[cAdvisor]
     end
 
     FE --> BE
@@ -33,12 +34,13 @@ flowchart TD
     Alloy --> Prom
     Alloy --> Loki
     Alloy --> Tempo
+    CAdv --> Prom
     Prom --> Grafana
     Loki --> Grafana
     Tempo --> Grafana
 ```
 
-This adds Prometheus (http://localhost:9090), Loki, Tempo, Grafana Alloy, and Grafana (http://localhost:3300 — anonymous viewer access enabled for local use; put it behind authentication before running this in production).
+This adds Prometheus (http://localhost:9090), Loki, Tempo, Grafana Alloy, cAdvisor and Grafana (http://localhost:3300 — anonymous viewer access enabled for local use; put it behind authentication before running this in production).
 
 ## Health checks and metrics
 
@@ -63,11 +65,37 @@ Two counters answer "how busy is the API and database". Ask for the window you w
 
 `db_statements_total` counts statements the backend sends to PostgreSQL, labelled only by `operation` (`select`, `insert`, `update`, `delete`, `other`). It carries no table names, ids or SQL text, so it is safe on the unauthenticated `/metrics` endpoint. One bulk statement counts once whatever its row count, and the backend's own `/health` probe lands in `other`. Each backend replica exposes its own counters, so sum across targets as the queries above do.
 
+## Resource usage (memory and CPU)
+
+Grafana's **ReqTrackManager → Resource usage** dashboard answers "how much does each service use over time?". It combines two sources:
+
+```mermaid
+flowchart LR
+    C["Containers"] -->|"cgroups"| CA["cAdvisor"]
+    W["Backend workers"] -->|"/metrics"| P["Prometheus"]
+    CA --> P
+    P --> G["Resource usage dashboard"]
+```
+
+| Panel | Source | Use it to |
+|-------|--------|-----------|
+| Memory working set, memory RSS, CPU per container | cAdvisor | Size `mem_limit` and the host; the working set is what the kernel counts against a limit |
+| Backend RSS per worker, total and worker count | `worker_resident_memory_bytes{pid}` | See what each `BACKEND_WORKERS` process holds; equal large workers suggest duplicated imports |
+| Database pool connections | `db_pool_connections{state}` | Check workers × (pool size + overflow) stays under PostgreSQL's `max_connections` |
+| Container restarts and OOM kills (last hour) | cAdvisor | Spot a service that is crash-looping or too big for its limit |
+
+Things to know:
+
+- cAdvisor reports **every** container the Docker daemon runs, not only this stack; the legend shows `project/service` so two stacks on one host stay apart.
+- It mounts the Docker socket and `/sys` read-only and needs the `SYSLOG` capability to read OOM kills from the kernel log. It publishes no port. Leave it out (do not enable the profile) on a host where that is not acceptable.
+- On Docker Desktop (macOS, Windows) the figures describe the Linux VM the containers run in, and the VM's size caps everything.
+- `worker_resident_memory_bytes` counts shared pages in every worker, so the sum of workers overstates real use; the container working set is the true total.
+
 ## Logs and traces
 
-Grafana Alloy ships container logs to Loki, and exposes an OTLP receiver on port `4317` ready to forward traces to Tempo once the backend is instrumented with OpenTelemetry — this instrumentation is not yet done (see [Architecture overview → Known limitations](../reference/architecture-overview.md#known-limitations)), so the tracing pipeline is wired and ready but currently receives no application traces. Prometheus is pre-configured with a scrape target for the backend's `/metrics` endpoint. Grafana starts with no data sources or dashboards provisioned: add Prometheus (`http://prometheus:9090`), Loki and Tempo under **Connections → Data sources**, then use the queries above in Explore or your own dashboards.
+Grafana Alloy ships container logs to Loki, and exposes an OTLP receiver on port `4317` ready to forward traces to Tempo once the backend is instrumented with OpenTelemetry — this instrumentation is not yet done (see [Architecture overview → Known limitations](../reference/architecture-overview.md#known-limitations)), so the tracing pipeline is wired and ready but currently receives no application traces. Prometheus is pre-configured with a scrape target for the backend's `/metrics` endpoint. Grafana starts with Prometheus and the **Resource usage** dashboard provisioned (below). Add Loki and Tempo under **Connections → Data sources** yourself, then use the queries above in Explore or your own dashboards.
 
-The repo's `observability/` directory holds the raw configuration this profile runs from (`prometheus.yml`, `alloy.river`, `tempo.yaml`, and `alerts/` for the backup alert rules), if you want to see or adapt exactly what's being scraped and shipped.
+The repo's `observability/` directory holds the raw configuration this profile runs from (`prometheus.yml`, `alloy.river`, `tempo.yaml`, `grafana/` for the provisioned data source and dashboard, and `alerts/` for the backup alert rules), if you want to see or adapt exactly what's being scraped and shipped.
 
 ## Backup and restore-test monitoring
 

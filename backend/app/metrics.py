@@ -13,9 +13,22 @@ engine event (`instrument_engine`), because every database statement, from
 any code path, must be counted. Its only label is the statement's operation,
 never a table name, id or SQL text, so cardinality stays at five series and
 nothing Restricted reaches the unauthenticated `/metrics` output.
+
+The `worker_*` and `db_pool_*` gauges describe the process that sets them, so
+in multi-process mode they use `liveall` (one series per live worker, labelled
+with its `pid`). `multiprocess` cannot export the standard process collector,
+so `update_worker_gauges` (run on a timer by `app.main`) refreshes them; only
+byte and connection counts are exported, never paths or arguments.
 """
 
-from prometheus_client import Counter, Gauge, Histogram
+import asyncio
+import os
+import re
+import resource
+import sys
+from pathlib import Path
+
+from prometheus_client import Counter, Gauge, Histogram, multiprocess
 from sqlalchemy import Delete, Insert, Select, Update, event
 from sqlalchemy.engine import Engine
 
@@ -92,3 +105,99 @@ def instrument_engine(engine: Engine) -> None:
         compiled = getattr(context, "compiled", None)
         operation = classify_statement(getattr(compiled, "statement", None))
         db_statements_total.labels(operation=operation).inc()
+
+
+worker_resident_memory_bytes = Gauge(
+    "worker_resident_memory_bytes", "Resident set size of this backend worker process",
+    multiprocess_mode="liveall",
+)
+db_pool_connections = Gauge(
+    "db_pool_connections", "Connections in this worker's database pool, by state (checked_out, idle)",
+    ["state"], multiprocess_mode="liveall",
+)
+
+_STATM = Path("/proc/self/statm")
+_PAGE_SIZE = resource.getpagesize()
+
+
+def read_resident_memory_bytes() -> int:
+    """Returns this process's resident set size in bytes.
+
+    Reads `/proc/self/statm` (current RSS) on Linux; elsewhere falls back to the
+    peak RSS from `getrusage`, which is bytes on macOS and KiB on other systems.
+
+    Returns:
+        The resident set size in bytes.
+    """
+    try:
+        return int(_STATM.read_text().split()[1]) * _PAGE_SIZE
+    except (OSError, IndexError, ValueError):
+        peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        return peak if sys.platform == "darwin" else peak * 1024
+
+
+def update_worker_gauges(engine: Engine) -> None:
+    """Refreshes this worker's memory and database-pool gauges.
+
+    Args:
+        engine: The engine whose pool is reported. A pool without checkout
+            counters (`NullPool`) reports zeros.
+    """
+    worker_resident_memory_bytes.set(read_resident_memory_bytes())
+    pool = engine.pool
+    checked_out = pool.checkedout() if hasattr(pool, "checkedout") else 0
+    idle = pool.checkedin() if hasattr(pool, "checkedin") else 0
+    db_pool_connections.labels(state="checked_out").set(checked_out)
+    db_pool_connections.labels(state="idle").set(idle)
+
+
+WORKER_GAUGE_INTERVAL_SECONDS = 5
+
+_LIVE_GAUGE_FILE = re.compile(r"^gauge_live\w+_(\d+)\.db$")
+
+
+def purge_dead_worker_gauges(multiproc_dir: str) -> list[int]:
+    """Drops the live-gauge files of worker processes that no longer exist.
+
+    `prometheus_client` keeps reporting a `live*` gauge for a pid until
+    `mark_process_dead` is called, and uvicorn never calls it, so a restarted
+    worker would leave a frozen series behind. Run before each scrape.
+
+    Args:
+        multiproc_dir: The `PROMETHEUS_MULTIPROC_DIR` directory.
+
+    Returns:
+        The pids whose files were removed.
+    """
+    removed = []
+    for path in Path(multiproc_dir).glob("gauge_live*.db"):
+        match = _LIVE_GAUGE_FILE.match(path.name)
+        if not match:
+            continue
+        pid = int(match.group(1))
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            multiprocess.mark_process_dead(pid, multiproc_dir)
+            removed.append(pid)
+        except PermissionError:
+            pass  # exists, owned by someone else
+    return removed
+
+
+async def run_worker_gauge_loop(engine: Engine, interval_seconds: float = WORKER_GAUGE_INTERVAL_SECONDS) -> None:
+    """Keeps this worker's gauges fresh until cancelled.
+
+    Every worker runs one (not only the elected leader), because each reports
+    its own process. A failed refresh is skipped so it can never stop the worker.
+
+    Args:
+        engine: The engine whose pool is reported.
+        interval_seconds: Time between refreshes.
+    """
+    while True:
+        try:
+            update_worker_gauges(engine)
+        except Exception:  # monitoring must never take the worker down
+            pass
+        await asyncio.sleep(interval_seconds)

@@ -4,12 +4,12 @@
 
 ## Status / Resume Here
 
-1 / 8 phases complete (Phase 0 built 2026-10-25; its real arm64 CI run and the merge-to-`main` manifest check are still to do, see its entry in `docs/decisions.md`). **Start order (Decided by: User, 2026-10-23): Phase 0 first**, so arm64 images exist before any Pi run; it does not block the other phases, which can follow in order 1, 2, 3, 4, 4b, 5, 6. Phases 2–4 each save their results under `perf/results/<host-label>/<date>-<commit>/` (summarised CSV/JSON) so Phase 6 can plot them; each phase is independently useful, so stopping after any one is fine. Every scenario runs at every dataset tier (see "Dataset tiers"), so results are keyed by data volume as well as host.
+2 / 8 phases complete (Phase 0 built 2026-10-25; its real arm64 CI run and the merge-to-`main` manifest check are still to do, see its entry in `docs/decisions.md`; Phase 1 built 2026-10-25, see its decisions entry for what was and was not verified). Next: Phase 2. **Start order (Decided by: User, 2026-10-23): Phase 0 first**, so arm64 images exist before any Pi run; it does not block the other phases, which can follow in order 1, 2, 3, 4, 4b, 5, 6. Phases 2–4 each save their results under `perf/results/<host-label>/<date>-<commit>/` (summarised CSV/JSON) so Phase 6 can plot them; each phase is independently useful, so stopping after any one is fine. Every scenario runs at every dataset tier (see "Dataset tiers"), so results are keyed by data volume as well as host.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 0 | Multi-arch (amd64 + arm64) production images in CI | [x] built 2026-10-25; awaiting first CI run |
-| 1 | Container-level metrics (cAdvisor → Prometheus → Grafana) | [ ] |
+| 1 | Container-level metrics (cAdvisor → Prometheus → Grafana) | [x] built 2026-10-25 |
 | 2 | Load generator and baseline scenarios | [ ] |
 | 3 | In-process profiling of the backend (memory + CPU) | [ ] |
 | 4 | PostgreSQL profiling | [ ] |
@@ -57,9 +57,9 @@ What exists: the `observability` compose profile (Prometheus, Loki, Tempo, Alloy
 
 **Why:** answers "how much does each service use over time?" without touching application code. **Risk:** point-in-time `docker stats` hides peaks and growth. **Outcome:** per-container memory (working set, RSS), CPU, restart/OOM counts in Grafana.
 
-- Add `cadvisor` to the `observability` profile (read-only mounts of `/`, `/var/run`, `/sys`, `/var/lib/docker`); add a scrape job to [observability/prometheus.yml](../../observability/prometheus.yml).
+- Add `cadvisor` to the `observability` profile (read-only mounts of `/`, the Docker socket, `/sys`, `/var/lib/docker`; `SYSLOG` capability for OOM events); add a scrape job to [observability/prometheus.yml](../../observability/prometheus.yml).
 - Add a provisioned Grafana dashboard: memory working set and CPU per container, backend per-worker RSS, Postgres connection count, OOM-kill/restart count.
-- Per-worker RSS: `prometheus_client` multiprocess mode does not export the process collector, so add a small gauge (`process_resident_memory_bytes` labelled by worker pid) in `app/metrics.py` using `psutil` or `/proc/self/statm`.
+- Per-worker RSS: `prometheus_client` multiprocess mode does not export the process collector, so add a small gauge (`worker_resident_memory_bytes`, labelled by worker pid) in `app/metrics.py` reading `/proc/self/statm`, plus `db_pool_connections{state}` for the pool.
 - Caveat to document: on Docker Desktop (macOS/Windows) numbers describe the Linux VM, and the VM's size caps everything.
 - **Security:** cAdvisor needs broad host mounts; keep it inside the `observability` profile, bound to localhost, never in the production compose path by default.
 

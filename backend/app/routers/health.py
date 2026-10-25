@@ -18,6 +18,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_l
 from sqlalchemy import text
 
 from app.database import engine
+from app.metrics import purge_dead_worker_gauges
 
 router = APIRouter(tags=["health"])
 
@@ -55,10 +56,13 @@ def metrics() -> Response:
     With several worker processes (`BACKEND_WORKERS`) each worker counts
     separately, so when `PROMETHEUS_MULTIPROC_DIR` is set (the container
     entrypoint sets it) the response aggregates every worker's files —
-    `prometheus_client`'s documented multi-process mode. Without it (single
+    `prometheus_client`'s documented multi-process mode (after dropping the
+    per-worker gauges of workers that have exited). Without it (single
     process, tests) the default registry is used as before.
     """
-    if os.environ.get("PROMETHEUS_MULTIPROC_DIR"):
+    multiproc_dir = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
+    if multiproc_dir:
+        purge_dead_worker_gauges(multiproc_dir)
         registry = CollectorRegistry()
         multiprocess.MultiProcessCollector(registry)
         return Response(content=generate_latest(registry), media_type=CONTENT_TYPE_LATEST)

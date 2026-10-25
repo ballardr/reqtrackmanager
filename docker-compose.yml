@@ -419,12 +419,44 @@ services:
       - tempo
       - prometheus
 
+  # Per-container CPU and memory for the "Resource usage" dashboard. It needs read access to the host's cgroups
+  # and Docker's data directory, so it lives only in this profile, publishes no port (Prometheus reaches it on the
+  # compose network) and mounts everything read-only. On Docker Desktop it reports the Linux VM's containers.
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    profiles: ["observability"]
+    command:
+      - --docker_only=true
+      - --housekeeping_interval=15s
+      - --store_container_labels=false
+      - --whitelisted_container_labels=com.docker.compose.service,com.docker.compose.project
+    volumes:
+      - /:/rootfs:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    # The kernel log is where OOM kills are reported (container_oom_events_total); reading it needs this one
+    # capability, which is far narrower than `privileged`.
+    devices:
+      - /dev/kmsg:/dev/kmsg:r
+    cap_add:
+      - SYSLOG
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      start_period: 30s
+      timeout: 5s
+      retries: 5
+
   grafana:
     image: grafana/grafana:11.2.0
     profiles: ["observability"]
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
       - "3300:3000"
     depends_on:

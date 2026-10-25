@@ -844,7 +844,8 @@ The platform should expose and record the following metrics:
 - application availability and uptime
 - HTTP request rate, latency, and error rate for frontend and backend endpoints
 - backend CPU, memory, and container restart counts
-- database connection pool utilization and query latency
+- database connection pool utilization and query latency (`db_pool_connections{state}`: connections checked out and idle in each worker's pool)
+- per-worker resident memory (`worker_resident_memory_bytes{pid}`, refreshed every 5 s by each worker because `prometheus_client`'s multi-process mode exports no process collector; files of exited workers are purged at scrape time) and per-container CPU, memory, restarts and OOM kills from cAdvisor (observability profile), shown on the provisioned Grafana "Resource usage" dashboard
 - database statement counts by operation (`db_statements_total{operation}`, from a SQLAlchemy engine event in `app/metrics.py`; operation-only labels so no table names, ids or SQL reach the unauthenticated endpoint). Request rate comes from `http_requests_total`
 - requirement workflow metrics such as created, updated, approved, completed, and archived counts
 - change request metrics such as submitted, approved, rejected, and review duration

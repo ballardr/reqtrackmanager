@@ -11,3 +11,17 @@ scrape_configs:
     static_configs:
       - targets: ["backend:8000"]
     metrics_path: /metrics
+
+  # Per-container CPU and memory. Only compose services are kept: `service` and `compose_project` come from the
+  # compose labels cAdvisor stores (the project keeps two stacks on one host apart); other cgroups are dropped.
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+    metric_relabel_configs:
+      - source_labels: [container_label_com_docker_compose_service]
+        target_label: service
+      - source_labels: [container_label_com_docker_compose_project]
+        target_label: compose_project
+      - source_labels: [service]
+        regex: ".+"
+        action: keep

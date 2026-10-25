@@ -39,7 +39,7 @@ flowchart TD
 | `mcp-server` | Read-only MCP server exposing requirements to AI assistants (see [mcp-server.md](mcp-server.md)) | Yes | Yes |
 | `mailhog` | Local SMTP catcher with a web UI | **No** — replace with a real SMTP provider via `SMTP_HOST` | Yes |
 | `keycloak` | Real OIDC identity provider, for testing per-org SSO login end-to-end (E-U-01) | **No** — a real deployment points `oidc_issuer_url` at each org's own IdP instead, never at this test container | Yes |
-| `prometheus`, `loki`, `tempo`, `grafana`, `alloy` | Optional observability stack (`--profile observability`) | Yes, opt-in | No |
+| `prometheus`, `loki`, `tempo`, `grafana`, `alloy`, `cadvisor` | Optional observability stack (`--profile observability`) | Yes, opt-in | No |
 
 ## Local / evaluation deployment
 
@@ -354,7 +354,7 @@ The modular feature system's frontend half also supports a genuinely third-party
 docker compose --profile observability up -d
 ```
 
-Adds Prometheus, Loki, Tempo, Grafana Alloy, and Grafana. In production, put Grafana behind the same authentication/reverse-proxy layer as the rest of the stack — the bundled Grafana config enables anonymous viewer access, which is appropriate for local development only. See the [README](../README.md#optional-observability-stack) for the exposed ports and scrape config. No Grafana data sources or dashboards are provisioned; add Prometheus (`http://prometheus:9090`), Loki and Tempo in Grafana yourself.
+Adds Prometheus, Loki, Tempo, Grafana Alloy, and Grafana. In production, put Grafana behind the same authentication/reverse-proxy layer as the rest of the stack — the bundled Grafana config enables anonymous viewer access, which is appropriate for local development only. See the [README](../README.md#optional-observability-stack) for the exposed ports and scrape config. Grafana provisions Prometheus and a **Resource usage** dashboard (cAdvisor container metrics plus the backend's `worker_resident_memory_bytes` and `db_pool_connections`); add Loki and Tempo in Grafana yourself. cAdvisor mounts the Docker socket and `/sys` read-only and holds the `SYSLOG` capability, so it only runs when this profile is enabled.
 
 Two counters cover traffic and database load (ready-to-paste PromQL; each replica is scraped separately, so `sum` across targets):
 

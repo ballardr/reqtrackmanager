@@ -24,8 +24,8 @@ from fastapi.responses import JSONResponse
 
 from app.body_limit import BodySizeLimitMiddleware
 from app.config import get_settings
-from app.database import SessionLocal
-from app.metrics import http_request_duration_seconds, http_requests_total
+from app.database import SessionLocal, engine
+from app.metrics import http_request_duration_seconds, http_requests_total, run_worker_gauge_loop
 from app.migrations import run_migrations
 from app.modules.registry import get_module_registry, sync_module_role_definitions
 from app.routers import (
@@ -140,7 +140,10 @@ async def lifespan(_: FastAPI):
         stop_scheduler()
 
     leadership_task = asyncio.create_task(run_leadership_loop(start_singletons, stop_singletons))
+    # Per worker (not leader-only): each process reports its own memory and pool usage.
+    worker_gauge_task = asyncio.create_task(run_worker_gauge_loop(engine))
     yield
+    worker_gauge_task.cancel()
     leadership_task.cancel()
     stop_singletons()
     pubsub.stop_listener()
