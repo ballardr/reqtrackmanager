@@ -279,6 +279,43 @@ def test_the_backends_cap_covers_its_workers_or_the_budget_is_refused():
     assert resources.plan_caps(8, 32, max_mem_gib=3.2, workers=2).memory_gib == 3.2
 
 
+def test_workers_are_chosen_from_the_budget_up_to_the_production_default():
+    assert resources.auto_workers(cpus=8, memory_gib=16) == 4  # never beyond the default
+    assert resources.auto_workers(cpus=2, memory_gib=16) == 2  # limited by CPUs
+    assert resources.auto_workers(cpus=8, memory_gib=3.2) == 2  # limited by memory
+    assert resources.auto_workers(cpus=8, memory_gib=resources.minimum_budget_gib(1)) == 1
+    with pytest.raises(resources.ResourceError, match="even with one backend worker"):
+        resources.auto_workers(cpus=8, memory_gib=2.0)
+
+
+def test_every_chosen_worker_count_fits_its_own_budget():
+    for memory in (3.1, 3.6, 4.1, 5, 8, 32):
+        for cpus in (1, 2, 4, 8):
+            caps = resources.plan_caps(16, 64, max_cpus=cpus, max_mem_gib=memory)
+            assert caps.workers_auto and 1 <= caps.workers <= 4
+            assert int(caps.per_service["backend"]["mem"].rstrip("m")) >= resources.backend_floor_gib(caps.workers) * 1024 - 1
+
+
+def test_a_named_worker_count_the_backends_share_cannot_hold_is_refused():
+    with pytest.raises(resources.ResourceError, match="workers need"):
+        resources.plan_caps(16, 64, max_mem_gib=4.1, workers=4)  # the other services take a share, leaving under 2.5 GiB
+
+
+def test_a_named_worker_count_is_kept_and_not_marked_automatic():
+    caps = resources.plan_caps(16, 64, max_mem_gib=8, workers=3)
+    assert caps.workers == 3 and not caps.workers_auto
+    assert resources.plan_caps(16, 64, max_mem_gib=8).workers == 4
+
+
+def test_the_workers_option_accepts_a_number_or_auto_and_defaults_to_auto():
+    assert run_profile.parse_args(["x-host-label"]).workers is None
+    assert run_profile.parse_args(["x-host-label", "--workers", "auto"]).workers is None
+    assert run_profile.parse_args(["x-host-label", "--workers", "2"]).workers == 2
+    for bad in ("0", "-1", "two"):
+        with pytest.raises(SystemExit):
+            run_profile.parse_args(["x-host-label", "--workers", bad])
+
+
 def test_caps_refuse_a_budget_the_stack_cannot_run_in_or_the_host_cannot_give():
     with pytest.raises(resources.ResourceError, match="below"):
         resources.plan_caps(8, 8)

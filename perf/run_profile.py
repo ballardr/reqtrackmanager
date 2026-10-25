@@ -88,7 +88,7 @@ class Options:
         tiers: Dataset tiers to run, in order.
         breadth / density / seed: Dataset shape (see `datasets/profiles.yaml`).
         repeats: Repeats of each scenario run (variance).
-        workers: `BACKEND_WORKERS` for the stack.
+        workers: `BACKEND_WORKERS` for the stack, or None to choose from the budget (the default; at most 4).
         max_cpus / max_mem: The stack's CPU and memory budget (None: conservative defaults).
         dedicated: The host runs nothing else, so caps default to nearly everything.
         allow_heavy: Run heavy scenarios on a shared host.
@@ -110,7 +110,7 @@ class Options:
     density: str = "typical"
     seed: int = 1
     repeats: Optional[int] = None
-    workers: int = 4
+    workers: Optional[int] = None
     max_cpus: Optional[float] = None
     max_mem: Optional[float] = None
     dedicated: bool = False
@@ -178,7 +178,10 @@ def parse_args(argv: list) -> Options:
     parser.add_argument("--density", default="typical", choices=["sparse", "typical", "dense"])
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--repeats", type=int)
-    parser.add_argument("--workers", type=int, default=4, help="BACKEND_WORKERS (default 4, the production default)")
+    parser.add_argument(
+        "--workers", default="auto",
+        help="BACKEND_WORKERS: a number, or auto (default) for the most the CPU and memory budget supports, up to 4, the production default",
+    )
     parser.add_argument("--max-cpus", type=float, help="CPU budget for the whole stack (default: half the cores)")
     parser.add_argument("--max-mem", type=float, help="memory budget in GiB for the whole stack (default: a quarter of Docker's memory)")
     parser.add_argument("--dedicated", action="store_true", help="this host runs nothing else: use nearly all of it, and run heavy scenarios")
@@ -194,13 +197,15 @@ def parse_args(argv: list) -> Options:
     parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE, help="where dataset snapshots are kept (default ~/.cache/reqtrack-perf)")
     parser.add_argument("--watch-url", help="a health URL (production's /health) to poll with GET; the run aborts if it slows or fails")
     args = parser.parse_args(argv)
+    if args.workers != "auto" and not (args.workers.isdigit() and int(args.workers) >= 1):
+        parser.error("--workers must be a positive number or 'auto'")
     if args.quick and args.full:
         parser.error("choose --quick or --full, not both")
     if not args.label and not args.cleanup:
         parser.error("a host label is required")
     return Options(
         label=args.label or "cleanup", mode="full" if args.full else "quick", tiers=args.tiers.split(",") if args.tiers else [],
-        breadth=args.breadth, density=args.density, seed=args.seed, repeats=args.repeats, workers=args.workers, max_cpus=args.max_cpus,
+        breadth=args.breadth, density=args.density, seed=args.seed, repeats=args.repeats, workers=None if args.workers == "auto" else int(args.workers), max_cpus=args.max_cpus,
         max_mem=args.max_mem, dedicated=args.dedicated, allow_heavy=args.allow_heavy or args.dedicated, soak_minutes=args.soak_minutes,
         plan=args.plan, cleanup=args.cleanup, images=args.images, storage=args.storage, keep=args.keep, out=args.out,
         cache_dir=args.cache_dir, watch_url=args.watch_url, scenarios=args.scenarios.split(",") if args.scenarios else None,
@@ -298,6 +303,7 @@ class ProfileRun:
         self.aborted: Optional[str] = None
         self.notes: list = []
         self._noted: set = set()
+        self.workers = options.workers or resources.DEFAULT_WORKERS
         self.latency: list = []
         self.datasets: list = []
         self.dataset_details: list = []
@@ -341,10 +347,11 @@ class ProfileRun:
         largest = max(self.total_requirements(t) for t in tiers)
         sizes = self.summary["tiers"]
         tier_text = ", ".join(f"{t} ({sizes[t]} requirements per project, {self.total_requirements(t)} in all)" for t in tiers)
+        worker_text = f"{caps.workers}, chosen from the budget" if caps.workers_auto else str(caps.workers)
         lines = [
             f"Plan for host label '{self.options.label}' ({self.options.mode} mode)",
             f"  Compose project   : {compose.PROJECT} (files: docker-compose.yml + perf/docker-compose.perf.yml; no published ports)",
-            f"  Services          : db, storage, backend (workers={self.options.workers}), plus a load generator container per scenario",
+            f"  Services          : db, storage, backend (workers={worker_text}), plus a load generator container per scenario",
             f"  Images            : {image_source}",
             f"  Caps              : {caps.cpus:g} CPUs, {caps.memory_gib:.1f} GiB memory, no swap (backend {caps.per_service['backend']['mem']}, db {caps.per_service['db']['mem']})",
             f"  Host              : {host['arch']}, {host['docker_cores']} cores and {host['docker_ram_gib']} GiB visible to Docker",
@@ -515,7 +522,7 @@ class ProfileRun:
             for kind, seen in (("OOM-killed", oom == "true"), ("restarted", restarts not in ("0", ""))):
                 if seen and (tier, kind) not in self._noted:
                     self._noted.add((tier, kind))
-                    self.notes.append(f"backend {kind} by the end of {scenario} at {tier} (restarts {restarts}); its memory cap may be too small for {self.options.workers} workers")
+                    self.notes.append(f"backend {kind} by the end of {scenario} at {tier} (restarts {restarts}); its memory cap may be too small for {self.workers} workers")
 
     def run_scenarios(self, tier: str, manifest: dict, names: list) -> None:
         """Runs every scenario at the tier, `repeats` times, recording latency and sampling resources."""
@@ -578,6 +585,7 @@ class ProfileRun:
             return 0
         host = hostinfo.collect(storage=options.storage, run=self._runner)
         caps = resources.plan_caps(host["docker_cores"], host["docker_ram_gib"], max_cpus=options.max_cpus, max_mem_gib=options.max_mem, dedicated=options.dedicated, docker_vm=host["docker_vm"], workers=options.workers)
+        self.workers = caps.workers
         git = git_state(run=self._runner)
         backend_image, image_source = self.choose_images(host, git)
         for line in self.plan_lines(host, caps, f"backend {image_source} ({backend_image.split(':')[0].split('/')[-1]}), load generator built locally"):
@@ -588,7 +596,7 @@ class ProfileRun:
 
         self.work = Path(tempfile.mkdtemp(prefix=f"{compose.PROJECT}-"))
         self.work.chmod(0o700)
-        self.env = stack_environment(caps=caps, workers=options.workers, backend_image=backend_image, loadgen_image="reqtrack-perf-loadgen:build", generate=self._generate)
+        self.env = stack_environment(caps=caps, workers=caps.workers, backend_image=backend_image, loadgen_image="reqtrack-perf-loadgen:build", generate=self._generate)
         env_file = self.work / "perf.env"
         env_file.write_text(render_env_file(self.env))
         env_file.chmod(0o600)
@@ -675,6 +683,8 @@ class ProfileRun:
         if self.aborted:
             reasons.append("aborted")
         details = self.dataset_details
+        if caps.workers_auto and self.options.mode == "full":
+            self.notes.append(f"workers chosen automatically ({caps.workers}); not comparable with a run at a different worker count")
         host_doc = dict(host)
         if self.sampler.throttle_flags_seen:
             host_doc["throttle_flags_seen"] = sorted(self.sampler.throttle_flags_seen)
@@ -682,7 +692,7 @@ class ProfileRun:
             "schema_version": bundle.RUN_SCHEMA_VERSION, "host_label": self.options.label, "commit": git["commit"],
             "date": started.strftime("%Y-%m-%d"), "mode": self.options.mode, "tiers": tiers, "breadth": self.options.breadth,
             "density": self.options.density, "seed": self.options.seed, "profiles_version": self.summary["version"], "scenarios": names,
-            "repeats": self.repeats(), "workers": self.options.workers, "image_source": image_source, "caps": caps.as_dict(),
+            "repeats": self.repeats(), "workers": caps.workers, "workers_auto": caps.workers_auto, "image_source": image_source, "caps": caps.as_dict(),
             "shared_host": not self.options.dedicated, "non_publishable": bool(reasons), "non_publishable_reasons": reasons,
             "aborted": self.aborted, "snapshot_used": [d["snapshot_used"] for d in details],
             "startup_seconds": [d["startup_seconds"] for d in details], "notes": self.notes,

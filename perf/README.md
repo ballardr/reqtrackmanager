@@ -42,6 +42,10 @@ flowchart LR
    container memory and CPU are sampled with `docker stats`.
 4. The bundle is written, checked for anything identifying, archived; the stack is torn down in every case.
 
+## Backend workers
+
+`--workers auto` (the default) picks the most the CPU and memory budget supports, at most 4 (the production default), at about 0.5 GiB per worker plus 0.5 GiB for the parent. A budget that cannot run one worker is refused. The chosen count and `workers_auto` are recorded in `run.json`; a full run with an automatic count carries a note, because the headline comparison between hosts needs the same count: name it (`--workers 2`) for runs you intend to compare.
+
 ## Dataset tiers
 
 Requirements per project; every tier also scales the other record types and the links between them
