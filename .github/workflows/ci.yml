@@ -425,6 +425,7 @@ jobs:
           docker run --rm --network container_default \
             -v "$PWD/../../docs:/docs:ro" \
             -v "$PWD/../../scripts:/scripts:ro" \
+            -v "$PWD/../../perf:/perf:ro" \
             -v "$PWD/../../observability:/observability:ro" \
             -v "$PWD/../../docker-compose.yml:/docker-compose.yml:ro" \
             -e REQUIRE_DR_TOOLS=1 \
@@ -433,7 +434,8 @@ jobs:
             -e APP_SECRET_ENCRYPTION_KEY=test-encryption-key-not-for-production \
             --entrypoint python container-backup:ci \
             -m pytest tests/test_dr_backup.py tests/test_dr_stats.py tests/test_dr_restore.py tests/test_dr_verify.py \
-            tests/test_restore_test_harness.py tests/test_dr_schedule.py tests/test_dr_monitoring.py -q -p no:cacheprovider
+            tests/test_restore_test_harness.py tests/test_dr_schedule.py tests/test_dr_monitoring.py \
+            tests/test_perf_runner.py tests/test_perf_dataset.py -q -p no:cacheprovider
 
       # The backup and restore-test alert rules: syntax, then their unit tests (a failed backup, a stale one, a
       # silent scheduler, a restore-test eight days old), using promtool from the Prometheus image the stack runs.

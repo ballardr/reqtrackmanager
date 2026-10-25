@@ -1734,6 +1734,24 @@ class RecordTableProvider:
 
 
 @dataclass(frozen=True)
+class PerfDatasetGenerator:
+    """How a module's own records are generated in bulk for the performance tooling (`perf/`), so a dataset
+    scaled to thousands of requirements also scales this module's records and their links.
+
+    Attributes:
+        generate: Called once per generated project with a `services.perf_dataset.context.PerfProjectContext`;
+            writes the type's rows (bulk inserts through `insert_rows`, populating every column the application's
+            own create path populates, and a never-reused code through the project's sequence counter) and returns
+            the rows written by table name.
+        order: Lower runs first. Core requirements run at 10 and actions at 20; a type that links to requirements
+            runs after them and finds their ids in `ctx.shared["requirement"]`.
+    """
+
+    generate: Callable[[Any], dict[str, int]]
+    order: int = 100
+
+
+@dataclass(frozen=True)
 class LinkTypeSeed:
     """A link type a module wants to exist in every organisation, so its
     artefact types can be linked meaningfully without a core edit
@@ -2409,6 +2427,12 @@ class ModuleDefinition:
             it cannot be imported in `not_importable` (and still registers a provider for export).
         not_importable: `{artefact type: reason}` for a type deliberately left without import. A backend
             test fails for a type that has neither a provider able to import nor a reason.
+        perf_generators: Maps one of this module's own `artefact_types` to a `PerfDatasetGenerator`, so the
+            performance tooling's dataset tiers scale this type's records and their links. Read via
+            `get_perf_generators`. A backend test fails for a registered type with neither a generator, a reason in
+            `no_perf_generator`, nor an entry in that test's shrinking list of tracked gaps.
+        no_perf_generator: `{artefact type: reason}` for a type that is not generated (a record produced by a
+            workflow whose volume is not a function of the requirement count).
         reports: The reports this module contributes, each
             a `ReportDefinition`. The module mounts the routers built by
             `app.services.report_framework.build_report_routers` and may
@@ -2501,6 +2525,8 @@ class ModuleDefinition:
     search_scopes: dict[str, SearchScope] = field(default_factory=dict)
     record_tables: dict[str, RecordTableProvider] = field(default_factory=dict)
     not_importable: dict[str, str] = field(default_factory=dict)
+    perf_generators: dict[str, PerfDatasetGenerator] = field(default_factory=dict)
+    no_perf_generator: dict[str, str] = field(default_factory=dict)
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -4152,6 +4178,26 @@ def get_not_importable_types() -> dict[str, str]:
     reasons: dict[str, str] = dict(CORE_NOT_IMPORTABLE)
     for definition in get_module_registry().values():
         reasons.update(definition.not_importable)
+    return reasons
+
+
+def get_perf_generators() -> dict[str, PerfDatasetGenerator]:
+    """Every registered artefact type's `PerfDatasetGenerator`: the core types'
+    (`services.perf_dataset.core`) plus each module's `perf_generators`. A type claimed twice keeps the first."""
+    from app.services.perf_dataset.registry import CORE_PERF_GENERATORS
+
+    merged: dict[str, PerfDatasetGenerator] = dict(CORE_PERF_GENERATORS)
+    for definition in get_module_registry().values():
+        for artefact_type, generator in definition.perf_generators.items():
+            merged.setdefault(artefact_type, generator)
+    return merged
+
+
+def get_no_perf_generator_types() -> dict[str, str]:
+    """`{artefact type: reason}` for every type a module declared not generated for the performance tooling."""
+    reasons: dict[str, str] = {}
+    for definition in get_module_registry().values():
+        reasons.update(definition.no_perf_generator)
     return reasons
 
 

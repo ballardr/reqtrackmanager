@@ -4,13 +4,13 @@
 
 ## Status / Resume Here
 
-2 / 8 phases complete (Phase 0 built 2026-10-25; its real arm64 CI run and the merge-to-`main` manifest check are still to do, see its entry in `docs/decisions.md`; Phase 1 built 2026-10-25, see its decisions entry for what was and was not verified). Next: Phase 2. **Start order (Decided by: User, 2026-10-23): Phase 0 first**, so arm64 images exist before any Pi run; it does not block the other phases, which can follow in order 1, 2, 3, 4, 4b, 5, 6. Phases 2–4 each save their results under `perf/results/<host-label>/<date>-<commit>/` (summarised CSV/JSON) so Phase 6 can plot them; each phase is independently useful, so stopping after any one is fine. Every scenario runs at every dataset tier (see "Dataset tiers"), so results are keyed by data volume as well as host.
+3 / 8 phases complete (Phase 0 built 2026-10-25; its real arm64 CI run and the merge-to-`main` manifest check are still to do, see its entry in `docs/decisions.md`; Phase 1 built 2026-10-25, see its decisions entry for what was and was not verified; Phase 2 built 2026-10-25 and run end to end on Docker Desktop at T0 and T1, with the Linux, Raspberry Pi and larger-tier runs, the module-type generators, attachments and the frontend page-load scenario still to do: see its decisions entry). Next: Phase 3. **Start order (Decided by: User, 2026-10-23): Phase 0 first**, so arm64 images exist before any Pi run; it does not block the other phases, which can follow in order 1, 2, 3, 4, 4b, 5, 6. Phases 2–4 each save their results under `perf/results/<host-label>/<date>-<commit>/` (summarised CSV/JSON) so Phase 6 can plot them; each phase is independently useful, so stopping after any one is fine. Every scenario runs at every dataset tier (see "Dataset tiers"), so results are keyed by data volume as well as host.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 0 | Multi-arch (amd64 + arm64) production images in CI | [x] built 2026-10-25; awaiting first CI run |
 | 1 | Container-level metrics (cAdvisor → Prometheus → Grafana) | [x] built 2026-10-25 |
-| 2 | Load generator and baseline scenarios | [ ] |
+| 2 | Load generator and baseline scenarios | [x] built 2026-10-25; T0/T1 run on Docker Desktop |
 | 3 | In-process profiling of the backend (memory + CPU) | [ ] |
 | 4 | PostgreSQL profiling | [ ] |
 | 4b | Scaling findings and fixes | [ ] |

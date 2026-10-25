@@ -126,6 +126,10 @@ For a preview that doesn't need a local Node install, or to see it alongside the
 
 Changing `docs/website/package.json` follows the same lockfile-sync discipline as the frontend: run `docs/website/scripts/sync-lockfile.sh` (it refuses to run under the wrong Node major version, per `docs/website/.nvmrc`) rather than a bare `npm install`.
 
+## Performance profiling
+
+[perf/README.md](../perf/README.md) describes the portable profiling runner (`perf/run_profile.sh <host-label> --plan|--quick|--full`): an isolated Compose project, dataset tiers from 30 to 20,000 requirements per project, Locust scenarios, and anonymised results bundles under `perf/results/`. It is run by hand on the hosts that matter; CI never runs timed performance tests, only the tests that pin its safety and the dataset generator (`backend/tests/test_perf_runner.py`, `test_perf_dataset.py`).
+
 ## End-to-end tests
 
 Requires the dev/test stack running:
