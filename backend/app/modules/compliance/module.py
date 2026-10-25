@@ -149,6 +149,7 @@ from app.modules.compliance.perf_dataset import (
 )
 from app.modules.compliance.record_tables import NOT_IMPORTABLE, RECORD_TABLES
 from app.modules.compliance.scaling_probes import SCALING_PROBES
+from app.modules.compliance.report_fields import REPORT_FIELDS
 from app.modules.compliance.search import SEARCH_PROVIDERS, SEARCH_SCOPES
 from app.modules.compliance.service import (
     COMPLIANCE_ACTION_ASSESSMENT_MANAGE_PERMISSION,
@@ -507,6 +508,7 @@ MODULE_DEFINITION = ModuleDefinition(
     not_importable=NOT_IMPORTABLE,
     artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
     search_providers=SEARCH_PROVIDERS,
+    report_fields=REPORT_FIELDS,
     search_scopes=SEARCH_SCOPES,
     artefact_type_labels=ARTEFACT_TYPE_LABELS,
     artefact_ids_in_organization=_artefact_ids_in_organization,
