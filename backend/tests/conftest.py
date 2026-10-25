@@ -156,6 +156,18 @@ def _schema():
 
 
 @pytest.fixture(autouse=True)
+def _default_security_posture(monkeypatch):
+    """Pins the operator opt-ins that weaken a security check to their defaults, whatever the environment.
+
+    The CI container shares its environment with the Playwright stack, which turns these on so an organisation's
+    relay or IdP can sit on the stack's private network. A test that needs the opt-in sets it itself.
+    """
+    settings = get_settings()
+    for name in ("org_smtp_allow_private_network_targets", "oidc_allow_private_network_targets"):
+        monkeypatch.setattr(settings, name, False)
+
+
+@pytest.fixture(autouse=True)
 def _clean_tables():
     yield
     with app_engine.begin() as conn:
