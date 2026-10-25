@@ -270,15 +270,16 @@ jobs:
   backend-tests:
     name: Backend tests & coverage
     runs-on: ubuntu-latest
-    # Normal runs finish in ~30 minutes (docker build + ~27 min of pytest at
-    # -n 4 + ruff); the platform-enhancements branch's ~6k lines of new
-    # backend tests pushed it past the old 20-minute ceiling, which then
-    # cancelled a healthy run mid-pytest (shown as "cancelled", not failed).
+    # Runs finish in 30-45 minutes (docker build + 29-41 min of pytest at
+    # -n 4 over ~3.4k tests + ruff); runner speed varies by ~10 minutes
+    # between runs. The ceiling has been outgrown twice (20 -> 45 -> 75): a
+    # healthy run past it is cancelled mid-pytest (shown as "cancelled", not
+    # failed). If this is hit again, shard the suite instead of raising it.
     # Without a ceiling here a stalled step just sits until someone notices
     # and cancels it manually, instead of failing the run automatically —
     # see e2e-tests' identical timeout-minutes comment for the real incident
     # (an 18-minute apt-get mirror hang) this pattern exists to catch.
-    timeout-minutes: 45
+    timeout-minutes: 75
     permissions:
       # checks: write is for the "Publish backend test results" step below
       # (dorny/test-reporter creating a check run). Badge publishing (which
