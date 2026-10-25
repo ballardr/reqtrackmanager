@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from app.auth_backends.native import NativeAuthBackend
 from app.config import get_settings
 from app.database import SessionLocal, get_db
-from app.deps import get_client_ip, get_current_user
+from app.deps import get_client_ip, get_current_session_user, get_current_user
 from app.metrics import login_attempts_total
 from app.models.enums import OrgRole, SignupMode
 from app.models.notification import NotificationType
@@ -34,6 +34,7 @@ from app.schemas.auth import (
     ChangePasswordRequest,
     ForgotPasswordRequest,
     LoginRequest,
+    MediaTokenResponse,
     MyMembershipsOut,
     MyOrgGroupOut,
     MyOrgMembershipOut,
@@ -48,7 +49,15 @@ from app.schemas.auth import (
     UserOut,
     UserPreferencesUpdate,
 )
-from app.security import create_2fa_challenge_token, create_access_token, decode_access_token, hash_password, verify_password
+from app.security import (
+    MEDIA_TOKEN_MINUTES,
+    create_2fa_challenge_token,
+    create_access_token,
+    create_media_token,
+    decode_access_token,
+    hash_password,
+    verify_password,
+)
 from app.services import credential_reset, notifications, totp
 from app.services.audit import log_event, log_login
 from app.services.branding import get_server_settings
@@ -343,6 +352,27 @@ def verify_2fa(
     return TokenResponse(access_token=token, user=UserOut.model_validate(user))
 
 
+@router.post("/media-token", response_model=MediaTokenResponse)
+def create_my_media_token(current_user: User = Depends(get_current_session_user)):
+    """Mints the caller's short-lived media token for file URLs and the live-update socket.
+
+    A file URL (`<img src>`) cannot carry an Authorization header, so it carries this token instead of the
+    session token: it is good for nothing but loading files and opening `/ws/projects/{id}`, expires in
+    `MEDIA_TOKEN_MINUTES`, and dies with the user's next credential change like any session token. The
+    frontend fetches a new one before the old one lapses.
+
+    Returns:
+        The token and its lifetime in seconds.
+
+    Raises:
+        HTTPException: 401 without a valid session; 403 for a Personal Access Token.
+    """
+    return MediaTokenResponse(
+        token=create_media_token(str(current_user.id), current_user.token_version),
+        expires_in_seconds=MEDIA_TOKEN_MINUTES * 60,
+    )
+
+
 @router.get("/me", response_model=UserOut)
 def read_me(current_user: User = Depends(get_current_user)):
     """Returns the current authenticated user's profile."""
@@ -454,7 +484,7 @@ def update_preferences(
 @router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
 def change_password(
     payload: ChangePasswordRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_session_user),
     db: Session = Depends(get_db),
 ):
     """Changes the current user's password (native auth only)."""
@@ -480,14 +510,52 @@ def change_password(
     db.commit()
 
 
+def _require_valid_totp_code(db: Session, user: User, code: str) -> None:
+    """Checks a TOTP `code` for the caller's own enrolment/disable step, with the per-account lockout.
+
+    Wrong codes increment `User.failed_2fa_attempts` and, at `two_factor_max_failed_attempts`, set
+    `failed_2fa_locked_until` — the same counters `/2fa/verify` uses, so the two doors share one budget.
+    A correct code clears the counter.
+
+    Args:
+        db: Active session; a failed attempt is committed here before the error is raised.
+        user: The caller (with `totp_secret` set).
+        code: The submitted six-digit code.
+
+    Raises:
+        HTTPException: 429 while the account is locked out; 400 for a wrong code.
+    """
+    if user.failed_2fa_locked_until is not None and user.failed_2fa_locked_until > datetime.now(UTC):
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many failed attempts. Try again later.")
+    if totp.verify_code(user.totp_secret, code):
+        user.failed_2fa_attempts = 0
+        return
+    user.failed_2fa_attempts += 1
+    if user.failed_2fa_attempts >= _settings.two_factor_max_failed_attempts:
+        user.failed_2fa_locked_until = datetime.now(UTC) + timedelta(minutes=_settings.two_factor_lockout_minutes)
+        user.failed_2fa_attempts = 0
+    db.commit()
+    raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid code.")
+
+
 @router.post("/2fa/enroll", response_model=TwoFactorEnrollResponse)
-def enroll_2fa(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def enroll_2fa(current_user: User = Depends(get_current_session_user), db: Session = Depends(get_db)):
     """Starts 2FA enrollment: generates a secret and a QR code to scan (C-U-14).
 
     2FA is not yet active — the user must call `/2fa/status` with
     `{"action": "confirm", "code": ...}` and a code generated from the
     scanned secret before `is_2fa_enabled` is set.
+
+    Raises:
+        HTTPException: 409 when 2FA is already enabled. Replacing the secret of an active second factor
+            would let whoever holds the session switch the factor off with a code from their own secret
+            (`/2fa/status` verifies against the stored secret), so the current factor has to be disabled,
+            with a code from it, before a new one can be enrolled.
     """
+    if current_user.is_2fa_enabled:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Two-factor authentication is already enabled. Disable it with a current code before enrolling again."
+        )
     secret = totp.generate_secret()
     current_user.totp_secret = secret
     db.commit()
@@ -501,7 +569,7 @@ def enroll_2fa(current_user: User = Depends(get_current_user), db: Session = Dep
 @router.post("/2fa/status", status_code=status.HTTP_204_NO_CONTENT)
 def confirm_or_disable_2fa(
     payload: TwoFactorStatusUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_session_user),
     db: Session = Depends(get_db),
 ):
     """Applies a 2FA status transition for the current user — merges the
@@ -521,21 +589,24 @@ def confirm_or_disable_2fa(
       rationale as `change_password`: a token issued while 2FA was still on
       shouldn't silently keep working past this point).
 
+    Both branches count wrong codes against the same per-account lockout `/2fa/verify` uses, so a held
+    session cannot grind through the 6-digit space here instead.
+
     Raises:
-        HTTPException: 400 per the branch-specific guards above.
+        HTTPException: 400 per the branch-specific guards above; 429 while the account is locked out.
     """
     if payload.action == "confirm":
         if not current_user.totp_secret:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Call /2fa/enroll first.")
-        if not totp.verify_code(current_user.totp_secret, payload.code):
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid code.")
+        if current_user.is_2fa_enabled:
+            raise HTTPException(status.HTTP_409_CONFLICT, "Two-factor authentication is already enabled.")
+        _require_valid_totp_code(db, current_user, payload.code)
         current_user.is_2fa_enabled = True
         log_event(db, entity_type="user", entity_id=current_user.id, action="2fa_enabled", actor_id=current_user.id)
     else:  # "disable"
         if not current_user.is_2fa_enabled or not current_user.totp_secret:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "2FA is not enabled.")
-        if not totp.verify_code(current_user.totp_secret, payload.code):
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid code.")
+        _require_valid_totp_code(db, current_user, payload.code)
         current_user.is_2fa_enabled = False
         current_user.totp_secret = None
         current_user.token_version += 1

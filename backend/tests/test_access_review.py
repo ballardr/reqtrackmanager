@@ -199,7 +199,9 @@ def test_ban_deactivates_and_blocks_future_role_grants(client, admin_token, org_
     assert "banned" in resp.json()["detail"].lower()
 
 
-def test_unban_allows_role_grants_again_but_does_not_reactivate(client, admin_token, org_id):
+def test_unban_does_not_reactivate_so_role_grants_wait_for_reactivation(client, admin_token, org_id):
+    """Unbanning lifts the ban but is not a reactivation: the account still cannot sign in, and no role can be
+    granted to a deactivated account, so grants (and sign-in) resume only once a server admin reactivates it."""
     unbanned_id = _make_orphaned_user(client, admin_token, org_id, "to_be_unbanned@example.com")
     client.post(f"/api/v1/system/users/{unbanned_id}/status", json={"action": "ban"}, headers=auth_headers(admin_token))
 
@@ -207,17 +209,19 @@ def test_unban_allows_role_grants_again_but_does_not_reactivate(client, admin_to
     assert resp.status_code == 204
 
     org_b, org_b_admin_token = create_org_admin_in(client, admin_token, "Org For Unban Regrant")
-    resp = client.post(
-        f"/api/v1/orgs/{org_b['id']}/users/{unbanned_id}/roles",
-        json={"user_id": unbanned_id, "role": "member"},
-        headers=auth_headers(org_b_admin_token),
-    )
-    assert resp.status_code == 204
+    grant = {"user_id": unbanned_id, "role": "member"}
+    url = f"/api/v1/orgs/{org_b['id']}/users/{unbanned_id}/roles"
+    resp = client.post(url, json=grant, headers=auth_headers(org_b_admin_token))
+    assert resp.status_code == 409 and "deactivated" in resp.json()["detail"]
 
     # Unban is not reactivation — still can't log in until reactivated separately.
     assert client.post(
         "/api/v1/auth/login", json={"email": "to_be_unbanned@example.com", "password": "Password123!"}
     ).status_code == 401
+
+    resp = client.post(f"/api/v1/system/users/{unbanned_id}/status", json={"action": "reactivate"}, headers=auth_headers(admin_token))
+    assert resp.status_code == 204
+    assert client.post(url, json=grant, headers=auth_headers(org_b_admin_token)).status_code == 204
 
 
 def test_reactivate_refuses_a_still_banned_account(client, admin_token, org_id):

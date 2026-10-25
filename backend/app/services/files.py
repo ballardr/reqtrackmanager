@@ -14,6 +14,7 @@ import uuid
 from functools import lru_cache
 from uuid import UUID
 
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -95,7 +96,15 @@ def upload_file(
 
     Returns:
         The created FileAsset (not yet committed).
+
+    Raises:
+        HTTPException: 413 when `data` is larger than `Settings.max_upload_bytes`.
     """
+    if len(data) > settings.max_upload_bytes:
+        raise HTTPException(
+            status.HTTP_413_CONTENT_TOO_LARGE,
+            f"The file is too large (limit {settings.max_upload_bytes // (1024 * 1024)} MB).",
+        )
     backend = get_storage_backend()
     key = f"{organization_id}/{uuid.uuid4()}_{_safe_key_component(filename)}"
     backend.save(key, data)

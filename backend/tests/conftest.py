@@ -156,6 +156,18 @@ def _schema():
 
 
 @pytest.fixture(autouse=True)
+def _default_security_posture(monkeypatch):
+    """Pins the operator opt-ins that weaken a security check to their defaults, whatever the environment.
+
+    The CI container shares its environment with the Playwright stack, which turns these on so an organisation's
+    relay or IdP can sit on the stack's private network. A test that needs the opt-in sets it itself.
+    """
+    settings = get_settings()
+    for name in ("org_smtp_allow_private_network_targets", "oidc_allow_private_network_targets"):
+        monkeypatch.setattr(settings, name, False)
+
+
+@pytest.fixture(autouse=True)
 def _clean_tables():
     yield
     with app_engine.begin() as conn:
@@ -214,6 +226,13 @@ def login(client: TestClient, email: str, password: str) -> str:
 
 def auth_headers(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
+
+
+def media_token(client: TestClient, session_token: str) -> str:
+    """Helper: mints the short-lived media token a `?token=` URL (file download, WebSocket) must carry."""
+    resp = client.post("/api/v1/auth/media-token", headers=auth_headers(session_token))
+    assert resp.status_code == 200, resp.text
+    return resp.json()["token"]
 
 
 @pytest.fixture

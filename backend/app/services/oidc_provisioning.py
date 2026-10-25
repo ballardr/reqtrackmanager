@@ -5,20 +5,75 @@ Provisioning logic shared by the OIDC login flow (routers/auth_oidc.py) and,
 per the enterprise-integration blueprint (docs/enterprise-integration.md), a
 future SCIM implementation: turning verified IdP claims into a local `User`
 account and organisation role, for Massif (v3)'s E-U-01.
+
+Design decision: an organisation's identity provider is configured by that
+organisation's own administrator, so its claims prove who someone is *to that
+organisation*, never who they are to the platform. A `User` is global (one account may
+belong to several organisations), so linking an existing account to an IdP is
+only allowed when the organisation already has a claim on that account
+(`_assert_may_link`); otherwise any organisation administrator could point their organisation at an
+IdP they control and sign in as any account on the platform.
 """
 
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.organization import Organization, OrgGroup, OrgGroupMember, UserOrgRole
+from app.models.organization import Organization, OrgGroup, OrgGroupMember, PendingInvite, UserOrgRole
 from app.models.user import User
 
 
-def find_or_provision_user(db: Session, claims: dict, *, issuer: str) -> User:
+def _assert_may_link(db: Session, existing: User, org: Organization) -> None:
+    """Raises unless `org` may bind `existing` to its identity provider.
+
+    An organisation may link an account only when it already has a claim on it (the account holds a role
+    in the organisation, or an unexpired invite to the account's address names the organisation) and no
+    other organisation has a stronger one: every other organisation the account belongs to must sign in
+    through the same issuer. A server administrator account is never linkable, because it is the platform's
+    own credential rather than any tenant's.
+
+    Args:
+        db: Active database session.
+        existing: The account matched by email.
+        org: The organisation whose identity provider asserted the email.
+
+    Raises:
+        ValueError: If the link would let one organisation's identity provider take over an account that
+            also belongs to something outside it.
+    """
+    if existing.is_server_admin:
+        raise ValueError("A server administrator account cannot be linked to an organisation's identity provider.")
+    org_ids = set(db.scalars(select(UserOrgRole.organization_id).where(UserOrgRole.user_id == existing.id)).all())
+    has_claim = org.id in org_ids or db.scalar(
+        select(PendingInvite.id).where(
+            PendingInvite.email == existing.email.lower(), PendingInvite.organization_id == org.id,
+            PendingInvite.accepted_at.is_(None), PendingInvite.expires_at > datetime.now(UTC),
+        ).limit(1)
+    ) is not None
+    if not has_claim:
+        raise ValueError(f"{existing.email} is already registered and is not a member of {org.name}; refusing to link it.")
+    others = org_ids - {org.id}
+    if others:
+        other_issuers = set(
+            db.scalars(
+                select(Organization.oidc_issuer_url).where(
+                    Organization.id.in_(others), Organization.sso_enabled.is_(True)
+                )
+            ).all()
+        )
+        same_issuer_orgs = len(other_issuers) == len(others) and other_issuers <= {org.oidc_issuer_url}
+        if not same_issuer_orgs:
+            raise ValueError(
+                f"{existing.email} also belongs to other organisations that do not use this identity provider; "
+                "refusing to link it."
+            )
+
+
+def find_or_provision_user(db: Session, claims: dict, *, issuer: str, org: Organization) -> User:
     """Resolves a `User` from verified OIDC claims, provisioning one if needed.
 
     Resolution order:
@@ -35,7 +90,9 @@ def find_or_provision_user(db: Session, claims: dict, *, issuer: str) -> User:
            an IdP that doesn't verify email must never be allowed to
            silently take over an existing native account just by claiming
            its address; that would let anyone who can create an account at
-           an unverified-email IdP hijack any existing local account.
+           an unverified-email IdP hijack any existing local account. Even
+           then, only an account `org` already has a claim on may be linked
+           (`_assert_may_link`), and an account bound to another identity is refused.
         3. Otherwise, auto-provisions a new native-less account
            (`auth_backend="oidc"`, `password_hash=None`).
 
@@ -47,9 +104,15 @@ def find_or_provision_user(db: Session, claims: dict, *, issuer: str) -> User:
             (`org.oidc_issuer_url`, not a value taken from the claims
             themselves — the caller already confirmed `claims["iss"]`
             matches this before calling).
+        org: The organisation whose identity provider produced `claims`; it bounds which existing
+            accounts may be linked (`_assert_may_link`).
 
     Returns:
         The resolved or newly created User (added to the session, not yet committed).
+
+    Raises:
+        ValueError: If the claims carry no email, the email is unverified for an existing account, or the
+            existing account is not one `org` may link (see `_assert_may_link`).
     """
     subject = claims["sub"]
     email = claims.get("email")
@@ -76,10 +139,14 @@ def find_or_provision_user(db: Session, claims: dict, *, issuer: str) -> User:
                 f"{email} is already registered and this identity provider did not assert a verified email; "
                 "refusing to link automatically."
             )
-        if existing_by_email.auth_backend != "oidc" or not existing_by_email.external_subject:
-            existing_by_email.auth_backend = "oidc"
-            existing_by_email.external_subject = subject
-            existing_by_email.oidc_issuer = issuer
+        if existing_by_email.auth_backend == "oidc" and existing_by_email.external_subject:
+            # Already bound to one identity (a different subject or issuer, or step 1 would have matched):
+            # never hand the account to another identity provider.
+            raise ValueError(f"{email} is already linked to a different single sign-on identity; refusing to link it.")
+        _assert_may_link(db, existing_by_email, org)
+        existing_by_email.auth_backend = "oidc"
+        existing_by_email.external_subject = subject
+        existing_by_email.oidc_issuer = issuer
         return existing_by_email
 
     user = User(

@@ -70,7 +70,10 @@ printf '%s' "$ADMIN_PASSWORD" > "$WORK/admin-password"
 # Both names carry the one secret: older Compose releases (the CI runner has 2.38) evaluate the legacy
 # STORAGE_ROOT_PASSWORD fallback eagerly and refuse to start without it.
 STORAGE_SECRET="$(random)"
+# REQUIRE_STRONG_SECRETS=false: the seeded end-to-end dataset signs in as the built-in administrator
+# (ChangeMe123!), which the strong-secret start-up check refuses. Every other secret below is random.
 cat > "$WORK/source.env" <<ENV
+REQUIRE_STRONG_SECRETS=false
 POSTGRES_PASSWORD=$(random)
 JWT_SECRET=$(random)
 APP_SECRET_ENCRYPTION_KEY=$(random)

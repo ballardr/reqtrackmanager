@@ -44,6 +44,7 @@ from app.models.requirement import Requirement
 from app.models.requirement_action import RequirementAction
 from app.models.user import User
 from app.modules.registry import resolve_module_file_project_id
+from app.services.downloads import content_disposition
 from app.services.files import read_file
 from app.services.rbac import (
     _project_organization_id,
@@ -187,7 +188,7 @@ def download_file(
     return Response(
         content=data, media_type=file_asset.content_type,
         headers={
-            "Content-Disposition": f'{disposition}; filename="{file_asset.filename}"',
+            "Content-Disposition": content_disposition(disposition, file_asset.filename),
             "X-Content-Type-Options": "nosniff",
         },
     )

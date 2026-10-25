@@ -10,6 +10,7 @@ file so the sanitization and content types exist in exactly one place.
 from __future__ import annotations
 
 import re
+from urllib.parse import quote
 
 from fastapi import Response
 
@@ -27,6 +28,28 @@ def filename_safe(name: str, *, fallback: str = "download") -> str:
     cleaned = re.sub(r'[\\"/\r\n\t]', "", name)
     cleaned = re.sub(r"[^\x20-\x7e]", "_", cleaned).strip()
     return cleaned or fallback
+
+
+def content_disposition(disposition: str, filename: str, *, fallback: str = "file") -> str:
+    """Builds a `Content-Disposition` header value for a user-supplied filename.
+
+    The plain `filename` is the printable-ASCII form (`filename_safe`), so a header never carries a quote, a
+    control character or a character Latin-1 cannot encode (which would turn the download into a 500); a
+    name that had to be altered also gets the RFC 5987 `filename*` form so the browser saves the real name.
+
+    Args:
+        disposition: `attachment` or `inline`.
+        filename: The stored, uploader-chosen name.
+        fallback: Used when nothing printable is left of `filename`.
+
+    Returns:
+        The header value.
+    """
+    safe = filename_safe(filename, fallback=fallback)
+    value = f'{disposition}; filename="{safe}"'
+    if filename and safe != filename:
+        value += f"; filename*=UTF-8''{quote(re.sub(r'[\\\r\n\t]', '', filename), safe='')}"
+    return value
 
 
 _MEDIA_TYPES = {

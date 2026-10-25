@@ -7,6 +7,9 @@ server-admin incident-response actions (per-token revoke/descope, bulk
 revoke-all) live in routers/orgs.py and routers/system.py respectively,
 alongside those routers' other org-/deployment-scoped admin actions —
 see docs/decisions.md's "Personal Access Tokens" section for why.
+
+Every endpoint here needs an interactive session (`deps.get_current_session_user`), never a PAT: a token that
+could mint a wider or longer-lived token would make its own scope and expiry meaningless.
 """
 
 from __future__ import annotations
@@ -19,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import get_current_user
+from app.deps import get_current_session_user
 from app.models.organization import Organization
 from app.models.pat import PersonalAccessToken
 from app.models.project import Project
@@ -55,7 +58,7 @@ def _resolve_project_refs(db: Session, project_id_strs: list[str]) -> list[Perso
 @router.get("/max-lifetime")
 def get_max_lifetime(
     organization_ids: list[UUID] = Query(default_factory=list),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_session_user),
     db: Session = Depends(get_db),
 ) -> dict:
     """Returns the longest expiry currently allowed for a token scoped to
@@ -75,7 +78,7 @@ def get_max_lifetime(
 @router.post("", response_model=PersonalAccessTokenCreateOut, status_code=status.HTTP_201_CREATED)
 def create_pat(
     payload: PersonalAccessTokenCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_session_user),
     db: Session = Depends(get_db),
 ):
     """Creates a new Personal Access Token, scoped to the given orgs.
@@ -130,7 +133,7 @@ def create_pat(
 
 
 @router.get("", response_model=list[PersonalAccessTokenOut])
-def list_my_pats(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def list_my_pats(current_user: User = Depends(get_current_session_user), db: Session = Depends(get_db)):
     """Lists the caller's own tokens (revoked ones included, so they can
     still see their own history) — never the secret or its hash."""
     pats = db.scalars(
@@ -151,7 +154,7 @@ def list_my_pats(current_user: User = Depends(get_current_user), db: Session = D
 
 
 @router.delete("/{pat_id}", status_code=status.HTTP_204_NO_CONTENT)
-def revoke_my_pat(pat_id: UUID, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def revoke_my_pat(pat_id: UUID, current_user: User = Depends(get_current_session_user), db: Session = Depends(get_db)):
     """Revokes one of the caller's own tokens. 404 (not 403) if the id
     doesn't belong to the caller — the same IDOR-safe non-disclosure
     pattern used elsewhere in this codebase, so a caller can't probe for
@@ -166,7 +169,7 @@ def revoke_my_pat(pat_id: UUID, current_user: User = Depends(get_current_user), 
 
 
 @router.post("/revoke-all", response_model=BulkRevokeResult)
-def revoke_all_my_pats(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def revoke_all_my_pats(current_user: User = Depends(get_current_session_user), db: Session = Depends(get_db)):
     """Revokes every one of the caller's own non-revoked tokens in one call."""
     count = revoke_matching(db, PersonalAccessToken.user_id == current_user.id)
     log_event(

@@ -3,8 +3,9 @@ Module: routers.ws
 
 Optional WebSocket interface for live requirement/change-request state
 updates (I-A-04). Browsers cannot set an Authorization header on a
-WebSocket handshake, so the access token is passed as a query parameter
-instead.
+WebSocket handshake, so a credential is passed as a query parameter
+instead — and a URL is logged, so it is the short-lived media token
+(`POST /api/v1/auth/media-token`, `security.create_media_token`), never the session token.
 """
 
 from __future__ import annotations
@@ -89,7 +90,7 @@ async def project_updates(websocket: WebSocket, project_id: UUID, token: str = Q
     deactivated/archived.
     """
     claims = decode_access_token(token)
-    if not claims or "sub" not in claims or claims.get("purpose") != "access":
+    if not claims or "sub" not in claims or claims.get("purpose") != "media":
         await websocket.close(code=4401)
         return
     token_version = claims.get("tv", 0)

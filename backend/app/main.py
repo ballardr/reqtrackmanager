@@ -11,6 +11,7 @@ External dependencies: FastAPI, Starlette, Prometheus client.
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 import time
 from contextlib import asynccontextmanager
@@ -21,6 +22,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.body_limit import BodySizeLimitMiddleware
 from app.config import get_settings
 from app.database import SessionLocal
 from app.metrics import http_request_duration_seconds, http_requests_total
@@ -67,6 +69,22 @@ from app.services.storage_health import run_storage_health_loop
 from app.version import APP_VERSION
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
+
+
+def _check_secrets() -> None:
+    """Warns about placeholder/weak secrets at start, and refuses to start when `REQUIRE_STRONG_SECRETS` is on.
+
+    Raises:
+        RuntimeError: If `Settings.require_strong_secrets` is set and any secret is still a placeholder or
+            too short (the message names the setting, never its value).
+    """
+    problems = settings.weak_secret_problems()
+    if not problems:
+        return
+    if settings.require_strong_secrets:
+        raise RuntimeError("Refusing to start with weak secrets: " + "; ".join(problems) + ".")
+    logger.warning("Weak or placeholder secrets in use (acceptable only for local development): %s.", "; ".join(problems))
 
 
 @asynccontextmanager
@@ -79,6 +97,7 @@ async def lifespan(_: FastAPI):
     disk-usage monitor, I-M-11), so several workers (`BACKEND_WORKERS`) never
     duplicate it. Every process start self-heals the schema rather than
     requiring a manual migration step first."""
+    _check_secrets()
     with startup_lock():
         run_migrations()
         db = SessionLocal()
@@ -139,6 +158,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Added before CORS so it ends up inside it (middleware added last runs first): a 413 still carries the CORS
+# headers the browser needs to read it.
+app.add_middleware(BodySizeLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -240,6 +262,10 @@ async def client_date_middleware(request: Request, call_next):
         reset_client_date(token)
 
 
+#: The HTTP methods the metrics label by name; any other request method is recorded as `OTHER`.
+_METRIC_METHODS = frozenset({"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"})
+
+
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
     """Records request count and latency for every HTTP request (I-M metrics).
@@ -261,8 +287,11 @@ async def metrics_middleware(request: Request, call_next):
     duration = time.perf_counter() - start
     route = request.scope.get("route")
     path = route.path if route else "unmatched"
-    http_requests_total.labels(method=request.method, path=path, status_code=response.status_code).inc()
-    http_request_duration_seconds.labels(method=request.method, path=path).observe(duration)
+    # The method is client-supplied and HTTP lets it be any token, so an unrecognised one is bucketed:
+    # otherwise anyone could mint a new time series per request on the unauthenticated /metrics output.
+    method = request.method if request.method in _METRIC_METHODS else "OTHER"
+    http_requests_total.labels(method=method, path=path, status_code=response.status_code).inc()
+    http_request_duration_seconds.labels(method=method, path=path).observe(duration)
     return response
 
 

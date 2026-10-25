@@ -642,8 +642,7 @@ def test_sso_login_adopts_pre_provisioned_invited_account_and_keeps_its_roles():
 
         adopted = find_or_provision_user(
             db, {"sub": "direct-subject-1", "email": "direct@ssoprovision.example.com", "email_verified": True},
-            issuer="https://idp.example.com",
-        )
+            issuer="https://idp.example.com", org=org)
         db.commit()
         assert adopted.id == user.id
         assert adopted.auth_backend == "oidc"

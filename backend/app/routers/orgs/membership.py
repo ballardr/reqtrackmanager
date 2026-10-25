@@ -53,6 +53,12 @@ from app.schemas.org import (
 from app.services import credential_reset, engagement, invites
 from app.services.audit import log_event
 from app.services.notifications import notify
+from app.services.org_membership import (
+    assert_account_active,
+    assert_may_add_account,
+    belongs_elsewhere,
+    remove_member_from_organization,
+)
 from app.services.rbac import (
     can_manage_project_settings,
     get_effective_org_roles,
@@ -667,10 +673,15 @@ def assign_org_role(
             "Only an existing organisation admin (or server admin) may grant the org_admin role.",
         )
     target = db.get(User, user_id)
-    if target is not None and target.is_banned:
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN, "This user has been banned by a server admin and cannot be granted a role."
-        )
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found.")
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    # A user id is not consent: an account another organisation holds joins this one only when this
+    # organisation allows external users (`services.org_membership`), and a banned one never does.
+    assert_may_add_account(db, org, target)
+    assert_account_active(db, user_id)
     existing = db.scalar(
         select(UserOrgRole).where(
             UserOrgRole.user_id == user_id,
@@ -804,6 +815,7 @@ def assign_org_module_role(
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "This user has been banned by a server admin and cannot be granted a role."
         )
+    assert_account_active(db, user_id)
     valid = any(
         module_key == payload.module_key and role.role_key == payload.role_key
         for module_key, role in list_enabled_module_roles(db, organization_id, "org")
@@ -1070,71 +1082,11 @@ def remove_org_user(
     case that actually errors instead (kept as a 404 here too, for the same
     "you can't remove someone who isn't there" reason).
     """
-    from app.models.enums import ProjectRole  # local import matching leave_organization's own convention
-    from app.services.rbac import lock_organization_for_update, lock_project_for_update
-
     if user_id == current_user.id:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, "Use the leave-organisation action to remove your own membership."
         )
-
-    lock_organization_for_update(db, organization_id)
-
-    roles = get_effective_org_roles(db, user_id, organization_id)
-    if not roles:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found in this organisation.")
-
-    projects = db.scalars(select(Project).where(Project.organization_id == organization_id)).all()
-    blocking_projects = []
-    for p in projects:
-        lock_project_for_update(db, p.id)
-        concrete_managers = get_effective_project_managers(db, p.id)
-        i_am_manager = user_id in concrete_managers or ProjectRole.PROJECT_MANAGER in get_effective_project_roles(
-            db, user_id, p.id
-        )
-        if i_am_manager and not (concrete_managers - {user_id}):
-            blocking_projects.append(p.name)
-    if blocking_projects:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            "This user is the sole manager of: " + ", ".join(blocking_projects) + ". Assign another manager first.",
-        )
-
-    project_ids = [p.id for p in projects]
-    if project_ids:
-        db.execute(
-            UserProjectRole.__table__.delete().where(
-                UserProjectRole.user_id == user_id, UserProjectRole.project_id.in_(project_ids)
-            )
-        )
-        db.execute(
-            ProjectGroupMember.__table__.delete().where(
-                ProjectGroupMember.user_id == user_id,
-                ProjectGroupMember.project_group_id.in_(
-                    select(ProjectGroup.id).where(ProjectGroup.project_id.in_(project_ids))
-                ),
-            )
-        )
-    db.execute(
-        OrgGroupMember.__table__.delete().where(
-            OrgGroupMember.user_id == user_id,
-            OrgGroupMember.org_group_id.in_(
-                select(OrgGroup.id).where(OrgGroup.organization_id == organization_id)
-            ),
-        )
-    )
-    engagement.remove_subscriptions_and_favorites_for_projects(db, user_id, project_ids)
-
-    db.execute(
-        UserOrgRole.__table__.delete().where(
-            UserOrgRole.user_id == user_id, UserOrgRole.organization_id == organization_id
-        )
-    )
-    log_event(
-        db, entity_type="user_org_role", entity_id=user_id, action="removed_from_organization",
-        actor_id=current_user.id, organization_id=organization_id,
-    )
-    db.commit()
+    remove_member_from_organization(db, organization_id, user_id, actor_id=current_user.id)
 
 
 @router.post("/{organization_id}/users/{user_id}/password-reset", status_code=status.HTTP_204_NO_CONTENT)
@@ -1167,7 +1119,11 @@ def deactivate_org_user(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
-    """Deactivates a user (C-U-04).
+    """Deactivates a user (C-U-04). For an account that belongs to this organisation alone this ends the
+    account; for a server administrator or someone another organisation also holds it is scoped to this
+    organisation — their roles, project access and group membership here are removed, the account stays
+    active everywhere else (see `services.org_membership.remove_member_from_organization`, which can refuse
+    with 409 while the person is the sole manager of a project).
 
     Applies the C-U-09 fallback: for any project where this removal leaves
     no remaining project manager, the acting admin is assigned as manager so
@@ -1209,6 +1165,13 @@ def deactivate_org_user(
     user = db.get(User, user_id)
     if user is None or not get_effective_org_roles(db, user_id, organization_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found in this organisation.")
+    # Deactivation ends the whole account, in every organisation, and an organisation administrator's
+    # authority stops at their own organisation. For a platform administrator or someone another organisation
+    # also holds, "deactivate" therefore means deactivate *here*: the membership (roles, project access, group
+    # membership) is removed and the account stays active everywhere else.
+    if user.is_server_admin or belongs_elsewhere(db, user_id, organization_id):
+        remove_member_from_organization(db, organization_id, user_id, actor_id=current_user.id, action="deactivated_in_organization")
+        return
     user.is_active = False
     user.deactivated_at = _now()
 
@@ -1241,6 +1204,16 @@ def deactivate_org_user(
 
     for project in projects:
         if not managers_before_by_project[project.id]:
+            continue
+        if project.is_archived:
+            # An archived project is dormant: making the acting admin its manager would hand them a role
+            # on something they never asked for. It is left without a manager (an org admin can still
+            # unarchive it and assign one) and the gap is recorded.
+            log_event(
+                db, entity_type="project", entity_id=project.id, action="manager_fallback_skipped_archived",
+                actor_id=current_user.id, project_id=project.id,
+                detail={"reason": "last_manager_deactivated", "deactivated_user_id": str(user_id)},
+            )
             continue
         remaining = get_effective_project_managers(db, project.id) - {user_id}
         if not remaining:

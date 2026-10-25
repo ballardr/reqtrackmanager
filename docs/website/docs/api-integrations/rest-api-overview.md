@@ -39,6 +39,11 @@ A [module](../modules/overview.md) isn't limited to what ships in the core appli
 - **Timestamps are ISO 8601, UTC** (e.g. `"2026-09-15T03:42:37.401458Z"`).
 - **Authentication** is a bearer token on every authenticated request — see [Authenticating](./authenticating.md).
 
+## Files and request size
+
+- **Downloading a file.** Send the token in the `Authorization` header like any other call. A browser `<img src>` cannot do that, so the web app puts a **media token** in the URL instead: `POST /api/v1/auth/media-token` (interactive sign-in only) returns one that lasts 15 minutes and can load files and open the live-update WebSocket, nothing else. A session token or a personal access token in a `?token=` query string is refused, because a URL is written to server logs and browser history.
+- **Size limits.** A single uploaded file may be at most 50 MB and any other request body at most 52 MB (the answer is `413`); bundle and spreadsheet imports may be up to 200 MB. An operator changes the first two with `MAX_UPLOAD_BYTES` and `MAX_REQUEST_BODY_BYTES`.
+
 ## Your calendar day
 
 A few derived values depend on whether a date has "happened yet", for example a Stakeholder's last-engaged date. The web app sends its own calendar day in an optional **`X-Client-Date`** request header (`YYYY-MM-DD`), so a contact logged this morning in Sydney counts straight away rather than after UTC midnight. A script can send the header too; it is used only when it is within a day of the UTC date, and otherwise (or when omitted) the UTC date applies.

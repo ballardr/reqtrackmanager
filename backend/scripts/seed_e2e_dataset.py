@@ -86,6 +86,16 @@ def assign_org_role(org_admin_headers: dict, org_id: str, user_id: str, role: st
     r.raise_for_status()
 
 
+def set_external_user_policy(org_admin_headers: dict, org_id: str, policy: str) -> None:
+    """Sets only `external_user_policy`, round-tripping the org's other advanced settings unchanged."""
+    r = httpx.get(f"{BASE}/orgs/{org_id}/advanced-settings", headers=org_admin_headers, timeout=30)
+    r.raise_for_status()
+    settings = r.json()
+    settings["external_user_policy"] = policy
+    r = httpx.put(f"{BASE}/orgs/{org_id}/advanced-settings", json=settings, headers=org_admin_headers, timeout=30)
+    r.raise_for_status()
+
+
 def create_project(
     headers: dict, org_id: str, name: str, summary: str,
     *, parent_project_id: str | None = None, role_inheritance_mode: str | None = None,
@@ -677,8 +687,12 @@ def main() -> None:
     # personas; never logged into by the Playwright suite.
     create_org_user(h_admin, beta["id"], "e2e-bootstrap-beta@example.com", "E2E Bootstrap Helper (Beta)", "org_admin")
     h_beta_bootstrap = h(login("e2e-bootstrap-beta@example.com", PASSWORD))
+    # Both already belong to Alpha, so Beta's default policy (no external users) refuses them; open it for
+    # the two grants and close it again so the dataset keeps Beta's default.
+    set_external_user_policy(h_beta_bootstrap, beta["id"], "anyone")
     assign_org_role(h_beta_bootstrap, beta["id"], orgadmin_ab["user_id"], "org_admin")
     assign_org_role(h_beta_bootstrap, beta["id"], member_ab["user_id"], "member")
+    set_external_user_policy(h_beta_bootstrap, beta["id"], "disabled")
 
     print("Granting server-admin to the zero-org persona...")
     r = httpx.put(

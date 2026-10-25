@@ -15,6 +15,9 @@ from typing import Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+#: The default value of the secrets that must be replaced before a deployment is exposed.
+_PLACEHOLDER_SECRET = "change-me-in-production"
+
 
 class Settings(BaseSettings):
     """Application settings sourced from environment variables.
@@ -140,6 +143,12 @@ class Settings(BaseSettings):
             endpoints, internal admin APIs, etc.) — appropriate for a
             single-tenant or otherwise fully-trusted-tenant deployment, not a
             deployment serving mutually-untrusted organisations.
+        org_smtp_allow_private_network_targets: Deployment-level opt-in that lets an organisation's own SMTP
+            relay (`Organization.smtp_host`, used by the organisation's "send test email" action) resolve to a
+            private or loopback address. Off by default for the same reason as `oidc_allow_private_network_
+            targets`: the relay is chosen by an organisation administrator, a tenant, and the check is what
+            stops it from being aimed at the deployment's own network (a mail relay, a database port, the
+            cloud metadata service). Turn it on for a deployment whose organisations all use an internal relay.
         access_review_show_org_names: Whether the server-admin access review
             (C-A-13) names the specific organisations each user belongs to,
             rather than only a count. `SystemUserOut`'s org-membership field
@@ -169,6 +178,21 @@ class Settings(BaseSettings):
             0 disables it.
         credential_reset_send_rate_limit_burst / credential_reset_send_rate_limit_per_minute: Token bucket
             per administrator and per worker process for sending reset links to other people. 0 disables it.
+        require_strong_secrets: When true, the process refuses to start while `jwt_secret` is the built-in
+            placeholder or shorter than 32 characters, `app_secret_encryption_key` is the built-in placeholder, or the
+            S3 secret key is the bundled store's well-known default. The defaults exist so a development
+            checkout runs with no setup; without this, a deployment that forgets one variable silently
+            runs with a publicly known signing key (anyone can mint a session for any account). The production
+            Compose stack turns it on. Off by default so a development checkout needs no setup; a start with a
+            weak value logs a warning either way (`weak_secret_problems`).
+        max_upload_bytes: Largest single file an attachment, avatar, logo or evidence upload may be (`services.
+            files.upload_file`, 413 beyond it). Every upload handler reads the whole file into memory, so this
+            and `max_request_body_bytes` are what bound a worker against a signed-in user with the lowest
+            upload right. Bundle and spreadsheet imports have their own, larger ceiling
+            (`services.bundle_common.MAX_IMPORT_UPLOAD_BYTES`).
+        max_request_body_bytes: Largest request body of any other endpoint (`body_limit`); above
+            `max_upload_bytes` by the multipart framing. A reverse proxy's `client_max_body_size` should be
+            set to the same order of magnitude.
         allow_external_modules: Deployment-level opt-in for the modular
             feature system's third-party discovery sources
             (`app.modules.registry`'s Python entry-point scan and
@@ -279,6 +303,7 @@ class Settings(BaseSettings):
     two_factor_lockout_minutes: int = 15
     oidc_internal_base_url_override: str | None = None
     oidc_allow_private_network_targets: bool = False
+    org_smtp_allow_private_network_targets: bool = False
     access_review_show_org_names: bool = True
     help_enabled: bool = True
     help_url: str = "https://ballardr.github.io/reqtrackmanager/"
@@ -291,9 +316,31 @@ class Settings(BaseSettings):
     public_auth_rate_limit_per_minute: int = 10
     credential_reset_send_rate_limit_burst: int = 20
     credential_reset_send_rate_limit_per_minute: int = 30
+    require_strong_secrets: bool = False
+    max_upload_bytes: int = Field(default=50 * 1024 * 1024, ge=1)
+    max_request_body_bytes: int = Field(default=52 * 1024 * 1024, ge=1)
     allow_external_modules: bool = False
     extra_modules_path: str | None = None
     module_frame_allowed_origins: str = ""
+
+    def weak_secret_problems(self) -> list[str]:
+        """Lists the secrets that are still the built-in placeholder or too short to protect anything.
+
+        Returns:
+            One human-readable line per problem (never the secret itself); empty when all are fine. The
+            encryption key is only checked against its placeholder, not its length: changing it makes every
+            stored secret unreadable, so a deployment's existing key must never be rejected for being short.
+        """
+        problems: list[str] = []
+        if self.jwt_secret == _PLACEHOLDER_SECRET or len(self.jwt_secret) < 32:
+            problems.append("JWT_SECRET is the built-in placeholder or shorter than 32 characters")
+        if self.app_secret_encryption_key == _PLACEHOLDER_SECRET:
+            problems.append("APP_SECRET_ENCRYPTION_KEY is the built-in placeholder")
+        if self.storage_backend == "s3" and self.storage_s3_secret_key == "minioadmin":
+            problems.append("STORAGE_S3_SECRET_KEY is the bundled object store's well-known default")
+        if self.server_admin_enabled and self.server_admin_password == "ChangeMe123!":
+            problems.append("SERVER_ADMIN_PASSWORD is the built-in placeholder")
+        return problems
 
     @property
     def cors_origin_list(self) -> list[str]:

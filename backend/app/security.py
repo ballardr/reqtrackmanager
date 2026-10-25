@@ -137,6 +137,33 @@ def create_2fa_challenge_token(subject: str) -> str:
     return _encode_jwt(payload)
 
 
+#: How long a media token works, in minutes. Short, because it travels in a URL (an `<img src>` cannot send
+#: an Authorization header) and so can end up in an access log or a browser history.
+MEDIA_TOKEN_MINUTES = 15
+
+
+def create_media_token(subject: str, token_version: int) -> str:
+    """Creates a short-lived signed token that is good for one thing: loading files into `<img>`/`<a>` tags.
+
+    The frontend cannot send an Authorization header from an `<img src>`, so file URLs carry a credential in
+    the query string. That credential must not be the session token — a URL is logged by proxies and the API
+    server and kept in browser history, and a session token found there is a working login. This token has its
+    own `purpose`, so `deps.get_current_user` rejects it everywhere except `deps.
+    get_current_user_header_or_query*` (file downloads) and the WebSocket handshake; it dies after
+    `MEDIA_TOKEN_MINUTES` and with the user's next `token_version` bump (password change, 2FA disable, forced
+    reset), exactly like a session token.
+
+    Args:
+        subject: The user id.
+        token_version: The user's current `User.token_version`, embedded as `tv`.
+
+    Returns:
+        An encoded JWT string.
+    """
+    expire = datetime.now(UTC) + timedelta(minutes=MEDIA_TOKEN_MINUTES)
+    return _encode_jwt({"sub": subject, "exp": expire, "tv": token_version, "purpose": "media"})
+
+
 def create_oidc_state_token(organization_id: str, client_nonce: str, client: str = "app") -> str:
     """Creates a short-lived signed token carrying the organisation id
     (and the browser-generated client nonce, see below) through an OIDC

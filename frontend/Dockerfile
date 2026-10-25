@@ -17,8 +17,10 @@ ENV VITE_APP_VERSION=${APP_VERSION} \
     VITE_BUILD_DATE=${BUILD_DATE}
 
 WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN npm install
+# `npm ci`, not `npm install`: install exactly what the lockfile pins (and fail when it is out of step with
+# package.json) so the image never builds from versions nobody reviewed.
+COPY package.json package-lock.json ./
+RUN npm ci
 COPY . .
 RUN npm run build
 
