@@ -11,13 +11,14 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.enums import ArtefactType
 from app.models.project import Project
 from app.models.relationship import ArtefactLink
-from app.models.requirement import Requirement
+from app.models.requirement import Requirement, RequirementVersion
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
 from app.routers.requirements.core import _get_requirement_in_project, _require_edit_role
@@ -34,8 +35,8 @@ from app.services.requirements import get_current_version, is_locked, requires_c
 router = APIRouter(tags=["requirements-links"])
 
 
-def _link_to_out(db: Session, link: ArtefactLink, viewpoint_requirement_id: UUID) -> RequirementLinkOut:
-    """Resolves an `ArtefactLink` (requirement-to-requirement, per this
+def _links_to_out(db: Session, links: list[ArtefactLink], viewpoint_requirement_id: UUID) -> list[RequirementLinkOut]:
+    """Resolves `ArtefactLink`s (requirement-to-requirement, per this
     endpoint's own scope) into the API shape from the perspective of
     `viewpoint_requirement_id` — whichever requirement `GET
     /{requirement_id}/links` was called for. Direction and the
@@ -49,25 +50,45 @@ def _link_to_out(db: Session, link: ArtefactLink, viewpoint_requirement_id: UUID
     `source_type`/`target_type` are `ArtefactType.REQUIREMENT` (see
     `create_link` below), so that's a safe assumption for any row this
     function is handed.
+
+    The link types, the other requirements and their current versions are
+    each loaded in one statement for the whole list, so a hub requirement
+    with hundreds of links costs the same number of statements as one with two.
     """
-    link_type = db.get(RequirementLinkTypeDefinition, link.link_type_id)
-    if link.source_id == viewpoint_requirement_id:
-        direction = "outgoing"
-        display_name = link_type.forward_name if link_type is not None else ""
-        other_id = link.target_id
-    else:
-        direction = "incoming"
-        display_name = link_type.reverse_name if link_type is not None else ""
-        other_id = link.source_id
-    other = db.get(Requirement, other_id)
-    other_version = get_current_version(db, other_id) if other is not None else None
-    return RequirementLinkOut(
-        id=link.id, source_requirement_id=link.source_id, target_requirement_id=link.target_id,
-        link_type_id=link.link_type_id, direction=direction, display_name=display_name,
-        other_requirement_id=other_id,
-        other_requirement_unique_code=other.unique_code if other is not None else "",
-        other_requirement_name=other_version.name if other_version is not None else "",
-    )
+    other_ids = {
+        link.target_id if link.source_id == viewpoint_requirement_id else link.source_id for link in links
+    }
+    link_types = {
+        t.id: t for t in db.scalars(select(RequirementLinkTypeDefinition).where(
+            RequirementLinkTypeDefinition.id.in_({link.link_type_id for link in links})))
+    } if links else {}
+    others = {
+        r.id: r for r in db.scalars(select(Requirement).where(Requirement.id.in_(other_ids)))
+    } if other_ids else {}
+    names = {
+        v.requirement_id: v.name for v in db.scalars(select(RequirementVersion).where(
+            RequirementVersion.requirement_id.in_(other_ids), RequirementVersion.valid_to.is_(None)))
+    } if other_ids else {}
+    out = []
+    for link in links:
+        link_type = link_types.get(link.link_type_id)
+        if link.source_id == viewpoint_requirement_id:
+            direction = "outgoing"
+            display_name = link_type.forward_name if link_type is not None else ""
+            other_id = link.target_id
+        else:
+            direction = "incoming"
+            display_name = link_type.reverse_name if link_type is not None else ""
+            other_id = link.source_id
+        other = others.get(other_id)
+        out.append(RequirementLinkOut(
+            id=link.id, source_requirement_id=link.source_id, target_requirement_id=link.target_id,
+            link_type_id=link.link_type_id, direction=direction, display_name=display_name,
+            other_requirement_id=other_id,
+            other_requirement_unique_code=other.unique_code if other is not None else "",
+            other_requirement_name=names.get(other_id, ""),
+        ))
+    return out
 
 
 @router.post("/{requirement_id}/links", response_model=RequirementLinkOut, status_code=status.HTTP_201_CREATED)
@@ -115,7 +136,7 @@ def create_link(
                       "link_type_id": str(payload.link_type_id)})
     db.commit()
     db.refresh(link)
-    return _link_to_out(db, link, requirement_id)
+    return _links_to_out(db, [link], requirement_id)[0]
 
 
 @router.get("/{requirement_id}/links", response_model=list[RequirementLinkOut])
@@ -135,7 +156,7 @@ def list_links(
         link for link in get_all_artefact_links(db, ArtefactType.REQUIREMENT, requirement_id)
         if link.source_type == ArtefactType.REQUIREMENT and link.target_type == ArtefactType.REQUIREMENT
     ]
-    return [_link_to_out(db, link, requirement_id) for link in links]
+    return _links_to_out(db, links, requirement_id)
 
 
 @router.delete("/{requirement_id}/links/{link_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -1,0 +1,16 @@
+{
+  "arch": "amd64",
+  "compose_version": "5.5.1",
+  "cpu_family": "intel",
+  "docker_cores": 12,
+  "docker_ram_gib": 7.7,
+  "docker_version": "29.8.1",
+  "docker_vm": true,
+  "host_cores": 12,
+  "host_ram_gib": 32.0,
+  "os": "docker-desktop",
+  "python": "3.12",
+  "schema_version": 1,
+  "storage": "unknown",
+  "virtualised": null
+}

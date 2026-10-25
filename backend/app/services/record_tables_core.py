@@ -267,7 +267,7 @@ def _list_requirements(db: Session, user: User, project_id: uuid.UUID, filters: 
             status=enum_filter(filters, "status", RequirementStatus), target_stage_id=uuid_filter(filters, "target_stage_id"),
             has_comments=filters.flag("has_comments"), only_watched=filters.flag("only_watched"),
         ),
-        structural_order=True,
+        structural_order=True, prefetch=False,
     )
     return found.requirements
 

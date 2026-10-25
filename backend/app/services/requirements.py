@@ -16,7 +16,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.models.change_request import ChangeRequest
@@ -426,26 +426,53 @@ class RequirementFilters:
     only_watched: bool | None = None
 
 
+@dataclass(frozen=True)
+class ListSortKeys:
+    """The few current-version values the list needs to filter, order and sort every row of a project,
+    read as columns so a large project is not loaded as whole versions (description text and all).
+
+    Attributes:
+        name: The version name.
+        status: The version status.
+        target_stage_id: The version's target stage.
+        sort_order: The version's manual order within its category.
+    """
+
+    name: str
+    status: RequirementStatus
+    target_stage_id: UUID | None
+    sort_order: int
+
+
 @dataclass
 class FilteredRequirements:
     """A project's requirements after `filter_requirements`.
 
     Attributes:
         requirements: The matching requirements, in component/category order when asked.
-        prefetch: The lookups for exactly those rows (versions, people, counts).
+        prefetch: The lookups for exactly those rows (versions, people, counts); empty when the caller asked
+            for none (`prefetch=False`) and will load them for the one page it returns.
         unfiltered: How many requirements the project has before any filter beyond archived visibility.
+        sort_keys: `ListSortKeys` per kept requirement id.
     """
 
     requirements: list[Requirement]
     prefetch: ListPrefetch
     unfiltered: int
+    sort_keys: dict[UUID, ListSortKeys] = field(default_factory=dict)
 
 
 def filter_requirements(
-    db: Session, project_id: UUID, current_user_id: UUID, filters: RequirementFilters, *, structural_order: bool
+    db: Session, project_id: UUID, current_user_id: UUID, filters: RequirementFilters, *, structural_order: bool,
+    prefetch: bool = True,
 ) -> FilteredRequirements:
     """One project's requirements narrowed by `filters`: the single implementation behind the list endpoint
     and the record table export, so a filter added here reaches both.
+
+    The project's rows are read as identity rows plus the current version's filter and order columns (one
+    query); keywords, comment counts and subscriptions are loaded for the whole project only when a filter
+    needs them. The full per-row lookups (`prefetch_for_list`) are then loaded for the **kept** rows only, or
+    left to the caller (`prefetch=False`) when it returns just one page of them.
 
     Args:
         db: Active session (read only).
@@ -454,9 +481,13 @@ def filter_requirements(
         filters: The filters.
         structural_order: Order by the project's component, category and sort order (the list's default
             when no explicit sort is requested).
+        prefetch: Load the per-row lookups for the kept rows (default); `False` returns an empty prefetch.
 
     Returns:
-        The rows, their prefetched lookups and the unfiltered count.
+        The rows, their sort keys, their prefetched lookups (unless skipped) and the unfiltered count.
+
+    Raises:
+        HTTPException: 500 if a requirement has no current version (broken data).
     """
     query = select(Requirement).where(Requirement.project_id == project_id)
     if not filters.include_archived:
@@ -476,25 +507,45 @@ def filter_requirements(
                 names=list(filters.tag_names), match_all=filters.tag_match_all,
             )
         ))
-    candidates = list(db.scalars(query).all())
-    prefetch = prefetch_for_list(db, [r.id for r in candidates], current_user_id)
+    rows = db.execute(
+        query.add_columns(
+            RequirementVersion.id, RequirementVersion.name, RequirementVersion.status,
+            RequirementVersion.target_stage_id, RequirementVersion.sort_order,
+        ).outerjoin(RequirementVersion, and_(
+            RequirementVersion.requirement_id == Requirement.id, RequirementVersion.valid_to.is_(None),
+        ))
+    ).all()
+    candidates = [row[0] for row in rows]
+    if any(row[1] is None for row in rows):
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Requirement has no current version.")
+    keys = {row[0].id: ListSortKeys(*row[2:]) for row in rows}
+    ids = list(keys)
+
+    keywords = tag_service.keywords_for_requirements(db, ids) if filters.keyword and ids else {}
+    comment_counts = (
+        engagement.get_comment_counts(db, ReviewTargetType.REQUIREMENT, ids) if filters.has_comments and ids else {}
+    )
+    subscribed = set(db.scalars(select(Subscription.entity_id).where(
+        Subscription.subscriber_type == PrincipalType.USER.value, Subscription.subscriber_id == current_user_id,
+        Subscription.entity_type == "requirement", Subscription.entity_id.in_(ids),
+    )).all()) if filters.only_watched and ids else set()
 
     kept: list[Requirement] = []
     for req in candidates:
-        version = prefetch.versions[req.id]
-        if filters.keyword and filters.keyword.casefold() not in {k.casefold() for k in prefetch.keywords.get(req.id, [])}:
+        key = keys[req.id]
+        if filters.keyword and filters.keyword.casefold() not in {k.casefold() for k in keywords.get(req.id, [])}:
             continue
         if filters.search:
             needle = filters.search.lower()
-            if needle not in version.name.lower() and needle not in req.unique_code.lower():
+            if needle not in key.name.lower() and needle not in req.unique_code.lower():
                 continue
-        if filters.status and version.status != filters.status:
+        if filters.status and key.status != filters.status:
             continue
-        if filters.target_stage_id and version.target_stage_id != filters.target_stage_id:
+        if filters.target_stage_id and key.target_stage_id != filters.target_stage_id:
             continue
-        if filters.has_comments and prefetch.comment_counts.get(req.id, 0) == 0:
+        if filters.has_comments and comment_counts.get(req.id, 0) == 0:
             continue
-        if filters.only_watched and req.id not in prefetch.subscribed:
+        if filters.only_watched and req.id not in subscribed:
             continue
         kept.append(req)
 
@@ -503,8 +554,13 @@ def filter_requirements(
             select(ProjectComponent).where(ProjectComponent.project_id == project_id)).all()}
         cat_order = {c.id: c.sort_order for c in db.scalars(
             select(ProjectCategory).where(ProjectCategory.project_id == project_id)).all()}
-        kept.sort(key=lambda r: (comp_order.get(r.component_id, 0), cat_order.get(r.category_id, 0), prefetch.versions[r.id].sort_order))
-    return FilteredRequirements(requirements=kept, prefetch=prefetch, unfiltered=unfiltered)
+        kept.sort(key=lambda r: (comp_order.get(r.component_id, 0), cat_order.get(r.category_id, 0), keys[r.id].sort_order))
+    return FilteredRequirements(
+        requirements=kept,
+        prefetch=prefetch_for_list(db, [r.id for r in kept], current_user_id) if prefetch else ListPrefetch(),
+        unfiltered=unfiltered,
+        sort_keys={r.id: keys[r.id] for r in kept},
+    )
 
 
 # --- direct edit (shared by the edit endpoint and the record table import) -------------------------

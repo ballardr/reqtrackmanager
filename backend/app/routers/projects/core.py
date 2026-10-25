@@ -48,7 +48,7 @@ from app.models.project_status import ProjectStatusDefinition
 from app.models.requirement import Baseline, BaselineItem, Requirement, RequirementVersion
 from app.models.requirement_action import RequirementAction
 from app.models.user import User
-from app.modules.registry import run_on_project_created_hooks, snapshot_project_module_state
+from app.modules.registry import memoize_module_state, run_on_project_created_hooks, snapshot_project_module_state
 from app.schemas.changes import ChangeEntryOut
 from app.schemas.file import FileAssetOut, ProjectFileOut
 from app.schemas.project import (
@@ -1092,59 +1092,39 @@ class _ProjectCounts:
 
 def _project_counts(db: Session, pid: UUID) -> _ProjectCounts:
     """The overview counts of one project: live requirements (and how many are completed, by status),
-    change requests by outcome, and distinct requirement attachments."""
+    change requests by outcome, and distinct requirement attachments.
+
+    Each figure is an aggregate computed by the database in a fixed number of statements, so the cost does not
+    grow with the number of requirements (no id list is read back or sent in an `IN (...)`).
+    """
     counts = _ProjectCounts(id=pid)
-    requirement_ids = db.scalars(
-        select(Requirement.id).where(Requirement.project_id == pid, Requirement.is_archived.is_(False))
-    ).all()
-    counts.requirements = len(requirement_ids)
-    if requirement_ids:
-        # C-G-11: completion is `Requirement.is_completed`, an overlay
-        # marker independent of `RequirementVersion.status` (no longer a
-        # `RequirementStatus` value at all) — queried directly off the
-        # identity row, not the version.
-        counts.completed = len(
-            db.scalars(
-                select(Requirement.id).where(
-                    Requirement.id.in_(requirement_ids), Requirement.is_completed.is_(True)
-                )
-            ).all()
-        )
-        for status_value in db.scalars(
-            select(RequirementVersion.status).where(
-                RequirementVersion.requirement_id.in_(requirement_ids), RequirementVersion.valid_to.is_(None)
-            )
+    live = (Requirement.project_id == pid, Requirement.is_archived.is_(False))
+    # C-G-11: completion is `Requirement.is_completed`, an overlay marker independent of
+    # `RequirementVersion.status` (no longer a `RequirementStatus` value at all), so it is read off the
+    # identity row, not the version.
+    counts.requirements, completed = db.execute(
+        select(func.count(), func.count().filter(Requirement.is_completed.is_(True))).where(*live)
+    ).one()
+    counts.completed = completed
+    if counts.requirements:
+        for status_value, total in db.execute(
+            select(RequirementVersion.status, func.count())
+            .join(Requirement, Requirement.id == RequirementVersion.requirement_id)
+            .where(*live, RequirementVersion.valid_to.is_(None))
+            .group_by(RequirementVersion.status)
         ).all():
-            counts.by_status[status_value.value] = counts.by_status.get(status_value.value, 0) + 1
-        counts.files = len(
-            set(
-                db.scalars(
-                    select(RequirementFile.file_id).where(RequirementFile.requirement_id.in_(requirement_ids))
-                ).all()
-            )
-        )
-    counts.proposed = len(
-        db.scalars(
-            select(ChangeRequest.id).where(
-                ChangeRequest.project_id == pid,
-                ChangeRequest.status.in_([ChangeRequestStatus.SUBMITTED, ChangeRequestStatus.IN_REVIEW]),
-            )
-        ).all()
-    )
-    counts.approved = len(
-        db.scalars(
-            select(ChangeRequest.id).where(
-                ChangeRequest.project_id == pid, ChangeRequest.status == ChangeRequestStatus.APPROVED
-            )
-        ).all()
-    )
-    counts.rejected = len(
-        db.scalars(
-            select(ChangeRequest.id).where(
-                ChangeRequest.project_id == pid, ChangeRequest.status == ChangeRequestStatus.REJECTED
-            )
-        ).all()
-    )
+            counts.by_status[status_value.value] = total
+        counts.files = db.scalar(
+            select(func.count(RequirementFile.file_id.distinct()))
+            .join(Requirement, Requirement.id == RequirementFile.requirement_id)
+            .where(*live)
+        ) or 0
+    by_outcome = dict(db.execute(
+        select(ChangeRequest.status, func.count()).where(ChangeRequest.project_id == pid).group_by(ChangeRequest.status)
+    ).all())
+    counts.proposed = by_outcome.get(ChangeRequestStatus.SUBMITTED, 0) + by_outcome.get(ChangeRequestStatus.IN_REVIEW, 0)
+    counts.approved = by_outcome.get(ChangeRequestStatus.APPROVED, 0)
+    counts.rejected = by_outcome.get(ChangeRequestStatus.REJECTED, 0)
     return counts
 
 
@@ -1175,7 +1155,9 @@ def get_project_metrics(
         for key, value in c.by_status.items():
             requirements_by_status[key] = requirements_by_status.get(key, 0) + value
     own_requirement_count = own.requirements
-    record_counts = count_records_by_type(db, current_user, db.get(Project, project_id), project_scope)
+    # Read-only: each module tier is read once per organisation or project, not once per record type.
+    with memoize_module_state():
+        record_counts = count_records_by_type(db, current_user, db.get(Project, project_id), project_scope)
 
     # Per-stage progress (dashboard "Stage Progress" chart): a stage that has
     # been baselined (C-G-10) shows completion across the requirements
@@ -1186,24 +1168,23 @@ def get_project_metrics(
         select(ProjectStage).where(ProjectStage.project_id == project_id).order_by(ProjectStage.sort_order)
     ).all()
     stage_progress: list[StageProgressOut] = []
+    # One query for every baselined stage: items captured and how many of them are now completed (the
+    # oldest baseline of a stage when it somehow has several).
+    baselined: dict[UUID, tuple[int, int]] = {}
+    for stage_id, total, done in db.execute(
+        select(Baseline.stage_id, func.count(BaselineItem.requirement_id),
+               func.count(Requirement.id).filter(Requirement.is_completed.is_(True)))
+        .select_from(Baseline)
+        .outerjoin(BaselineItem, BaselineItem.baseline_id == Baseline.id)
+        .outerjoin(Requirement, Requirement.id == BaselineItem.requirement_id)
+        .where(Baseline.project_id == project_id)
+        .group_by(Baseline.id, Baseline.stage_id, Baseline.created_at)
+        .order_by(Baseline.created_at, Baseline.id)
+    ).all():
+        baselined.setdefault(stage_id, (total, done))
     for stage in stages:
-        baseline = db.scalar(
-            select(Baseline).where(Baseline.project_id == project_id, Baseline.stage_id == stage.id)
-        )
-        if baseline is not None:
-            item_requirement_ids = db.scalars(
-                select(BaselineItem.requirement_id).where(BaselineItem.baseline_id == baseline.id)
-            ).all()
-            stage_requirement_count = len(item_requirement_ids)
-            stage_completed = 0
-            if item_requirement_ids:
-                stage_completed = len(
-                    db.scalars(
-                        select(Requirement.id).where(
-                            Requirement.id.in_(item_requirement_ids), Requirement.is_completed.is_(True)
-                        )
-                    ).all()
-                )
+        if stage.id in baselined:
+            stage_requirement_count, stage_completed = baselined[stage.id]
             stage_percent = (stage_completed / stage_requirement_count * 100.0) if stage_requirement_count else 0.0
         else:
             stage_requirement_count = own_requirement_count

@@ -1,0 +1,114 @@
+{
+  "datasets": [
+    {
+      "database_bytes": 17202199,
+      "generation_seconds": 7.1,
+      "integrity_problems": [],
+      "link_degree_histogram": {
+        "0": 6,
+        "1": 26,
+        "<=10": 13,
+        "<=2": 31,
+        "<=5": 22,
+        "<=50": 2,
+        "links": 150,
+        "max": 25
+      },
+      "rows": {
+        "artefact_links": 210,
+        "artefact_tags": 121,
+        "audit_events": 520,
+        "requirement_actions": 30,
+        "requirement_versions": 176,
+        "requirements": 100,
+        "review_comments": 150,
+        "tags": 25
+      },
+      "spec": {
+        "breadth": "single",
+        "density": "typical",
+        "generator_version": 1,
+        "profiles_version": 1,
+        "ratios": {
+          "actions": 0.3,
+          "comments": 1.5,
+          "cross_level_link_fraction": 0.05,
+          "hub_exponent": 0.6,
+          "mean_degree": 3,
+          "tag_vocabulary": 25,
+          "tags_per_requirement": 1.2,
+          "versions_per_requirement": 2.0
+        },
+        "requirements_per_project": 100,
+        "seed": 1,
+        "tier": "T1",
+        "topology": {
+          "nesting_depth": 0,
+          "nesting_fanout": 0,
+          "organisations": 1,
+          "projects_per_org": 1
+        },
+        "total_projects": 1,
+        "total_requirements": 100,
+        "users_per_org": 6
+      },
+      "tier": "T1"
+    },
+    {
+      "database_bytes": 22068247,
+      "generation_seconds": 0.0,
+      "integrity_problems": [],
+      "link_degree_histogram": {
+        "0": 135,
+        "1": 232,
+        "<=10": 85,
+        "<=100": 2,
+        "<=2": 233,
+        "<=5": 283,
+        "<=50": 30,
+        "links": 1500,
+        "max": 68
+      },
+      "rows": {
+        "artefact_links": 2107,
+        "artefact_tags": 1224,
+        "audit_events": 5450,
+        "requirement_actions": 300,
+        "requirement_versions": 2003,
+        "requirements": 1000,
+        "review_comments": 1500,
+        "tags": 25
+      },
+      "spec": {
+        "breadth": "single",
+        "density": "typical",
+        "generator_version": 1,
+        "profiles_version": 1,
+        "ratios": {
+          "actions": 0.3,
+          "comments": 1.5,
+          "cross_level_link_fraction": 0.05,
+          "hub_exponent": 0.6,
+          "mean_degree": 3,
+          "tag_vocabulary": 25,
+          "tags_per_requirement": 1.2,
+          "versions_per_requirement": 2.0
+        },
+        "requirements_per_project": 1000,
+        "seed": 1,
+        "tier": "T2",
+        "topology": {
+          "nesting_depth": 0,
+          "nesting_fanout": 0,
+          "organisations": 1,
+          "projects_per_org": 1
+        },
+        "total_projects": 1,
+        "total_requirements": 1000,
+        "users_per_org": 6
+      },
+      "tier": "T2"
+    }
+  ],
+  "schema_version": 1
+}

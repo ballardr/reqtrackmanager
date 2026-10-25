@@ -1,0 +1,31 @@
+tier,scenario,repeat,users,request,count,failures,throttled,p50_ms,p95_ms,p99_ms,mean_ms,max_ms,rps,bytes_mean
+T1,browse,1,4,GET /artefacts/{type}/{id}/activity,13,0,0,72,130,130,76.4,130.11452509090304,0.65,2505
+T1,browse,1,4,GET /projects,19,0,0,49,110,110,55.7,109.80828199535608,0.95,908
+T1,browse,1,4,GET /projects/{id}/metrics (dashboard),17,0,0,110,710,710,191.0,705.6093639694154,0.85,562
+T1,browse,1,4,GET /projects/{id}/requirements (page of 50),34,0,0,61,130,130,71.6,126.51471211574972,1.7,86838
+T1,browse,1,4,GET /projects/{id}/requirements/{id},32,0,0,37,93,490,53.9,488.1626069545746,1.6,1912
+T1,browse,1,4,GET /projects/{id}/tags/usage,12,0,0,62,130,130,67.2,134.93412802927196,0.6,3463
+T1,browse,1,4,GET /requirements/{id}/comments,15,0,0,36,55,55,37.8,54.52380096539855,0.75,604
+T1,browse,1,4,GET /requirements/{id}/links,18,0,0,43,480,480,71.0,479.6010011341423,0.9,1211
+T1,list_filtered,1,4,"GET requirements (has comments, page)",14,0,0,140,160,160,135.1,163.63704297691584,0.7,85523
+T1,list_filtered,1,4,"GET requirements (status + sort, page)",54,0,0,120,190,600,137.0,600.5830590147525,2.7,77989
+T1,list_filtered,1,4,"GET requirements (tag, page)",49,0,0,120,170,600,143.7,601.4152897987515,2.45,18038
+T1,list_filtered,1,4,"GET requirements (text search, page)",43,0,0,130,170,600,137.4,600.0433228909969,2.15,5335
+T1,links,1,4,GET /artefacts/{type}/{id}/link-candidates,38,0,0,170,660,670,196.8,671.1961890105158,1.9,656
+T1,links,1,4,GET /artefacts/{type}/{id}/link-graph (hub),77,0,0,160,580,670,171.8,669.0187430940568,3.85,50061
+T1,links,1,4,GET /requirements/{id}/links (hub),45,0,0,66,110,110,65.4,107.54995094612241,2.25,7045
+T2,browse,1,4,GET /artefacts/{type}/{id}/activity,14,0,0,68,120,120,72.1,115.44221895746887,0.7,1923
+T2,browse,1,4,GET /projects,12,0,0,49,540,540,88.5,540.4355460777879,0.6,906
+T2,browse,1,4,GET /projects/{id}/metrics (dashboard),12,0,0,120,620,620,165.5,620.1946048531681,0.6,570
+T2,browse,1,4,GET /projects/{id}/requirements (page of 50),41,0,0,100,260,590,132.8,592.5960519816726,2.05,86367
+T2,browse,1,4,GET /projects/{id}/requirements/{id},38,0,0,32,91,300,46.2,299.63789600878954,1.9,1824
+T2,browse,1,4,GET /projects/{id}/tags/usage,4,0,0,63,600,600,194.2,603.1647820491344,0.2,3487
+T2,browse,1,4,GET /requirements/{id}/comments,11,0,0,33,47,47,33.6,46.817738097161055,0.55,803
+T2,browse,1,4,GET /requirements/{id}/links,27,0,0,29,130,320,50.6,316.592815797776,1.35,1564
+T2,list_filtered,1,4,"GET requirements (has comments, page)",19,0,0,170,620,620,206.4,618.4587669558823,0.95,81307
+T2,list_filtered,1,4,"GET requirements (status + sort, page)",37,0,0,120,690,700,210.3,696.1757058743387,1.85,85003
+T2,list_filtered,1,4,"GET requirements (tag, page)",46,0,0,90,580,650,161.6,654.0300659835339,2.3,93167
+T2,list_filtered,1,4,"GET requirements (text search, page)",56,0,0,130,580,610,178.7,614.3799910787493,2.8,54669
+T2,links,1,4,GET /artefacts/{type}/{id}/link-candidates,43,0,0,100,150,740,118.5,735.4750828817487,2.15,7285
+T2,links,1,4,GET /artefacts/{type}/{id}/link-graph (hub),64,0,0,130,200,600,146.5,595.3721108380705,3.2,121265
+T2,links,1,4,GET /requirements/{id}/links (hub),52,0,0,42,400,500,84.7,501.11439102329314,2.6,26774

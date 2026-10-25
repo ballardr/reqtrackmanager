@@ -166,7 +166,7 @@ The stack is isolated by construction; the hardware is shared, so its impact is 
 | Notifications | `EMAIL_DELIVERY=disabled` and a placeholder SMTP host: 20,000 generated records cannot email anyone. |
 | CPU and memory | Hard caps with no swap (default: half the cores and a quarter of Docker's memory, half on Docker Desktop; `--max-cpus`, `--max-mem`), reduced CPU shares, so an OOM kills the perf container. |
 | Disk | Preflight estimates image, database and snapshot size and refuses without headroom. |
-| A busy host | Preflight refuses on load, low memory or swap; a watchdog samples them during the run (and `--watch-url`, a GET-only health poll of production) and stops and tears down the stack when a threshold is crossed (`aborted` in `run.json`). |
+| A busy host | Preflight refuses on load or low memory, and on existing swap only when the memory left after the caps could not take it back (idle pages a long-running server holds in swap are not pressure); a watchdog samples load, memory and swap *growth* during the run (and `--watch-url`, a GET-only health poll of production) and stops and tears down the stack when a threshold is crossed (`aborted` in `run.json`). |
 | Leftovers | Teardown runs on success, failure, Ctrl-C and abort; `--cleanup` removes what a crash left, by the same scoped rule. |
 
 Honest limits: isolation is by Docker project, not hypervisor. A Docker daemon or kernel problem (daemon restart,

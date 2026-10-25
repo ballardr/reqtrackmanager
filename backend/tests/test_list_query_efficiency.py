@@ -125,6 +125,132 @@ def test_requirements_list_matches_detail_and_query_count_is_flat(client, admin_
     assert large.count == small.count, (small.count, large.count)
 
 
+class _FullVersionRows:
+    """Counts the rows fetched by statements that read whole requirement versions (their long text columns), as
+    opposed to the few columns the list reads to filter and order a project."""
+
+    def __init__(self):
+        self.rows = 0
+
+    def __call__(self, _conn, cursor, statement, *_args, **_kwargs):
+        if "requirement_versions.description" in statement and statement.lstrip().upper().startswith("SELECT"):
+            self.rows += max(cursor.rowcount, 0)
+
+    def __enter__(self):
+        event.listen(engine, "after_cursor_execute", self)
+        return self
+
+    def __exit__(self, *_exc):
+        event.remove(engine, "after_cursor_execute", self)
+
+
+def test_requirements_page_cost_does_not_grow_with_the_project(client, admin_token):
+    """A page of N costs the same in a small and a large project: the same number of statements, only the
+    page's own versions loaded in full, and a response that is the page and nothing more."""
+    org, token = create_org_admin_in(client, admin_token, "Page Cost Co")
+    project = create_project(client, token, org["id"], "Page Cost Project")
+    component_id, category_id = create_component_and_category(client, token, project["id"])
+    base = f"/api/v1/projects/{project['id']}/requirements"
+    page = {"limit": 5, "offset": 0}
+
+    _create_requirements(client, token, project["id"], component_id, category_id, 8, "Small")
+    with _QueryCounter() as small, _FullVersionRows() as small_rows:
+        small_resp = client.get(base, params=page, headers=auth_headers(token))
+    _create_requirements(client, token, project["id"], component_id, category_id, 22, "Large")
+    with _QueryCounter() as large, _FullVersionRows() as large_rows:
+        large_resp = client.get(base, params=page, headers=auth_headers(token))
+
+    assert small_resp.headers["X-Total-Count"] == "8" and large_resp.headers["X-Total-Count"] == "30"
+    assert len(small_resp.json()) == len(large_resp.json()) == 5
+    assert large.count == small.count, (small.count, large.count)
+    assert small_rows.rows == large_rows.rows == 5, (small_rows.rows, large_rows.rows)
+
+
+def test_requirements_sorted_page_matches_the_full_sorted_list(client, admin_token):
+    """Sorting and paging before serialising returns exactly the slice of the full sorted list, for every
+    sortable column and direction."""
+    org, token = create_org_admin_in(client, admin_token, "Page Sort Co")
+    project = create_project(client, token, org["id"], "Page Sort Project")
+    component_id, category_id = create_component_and_category(client, token, project["id"])
+    base = f"/api/v1/projects/{project['id']}/requirements"
+    for name in ("delta", "Alpha", "charlie", "Bravo", "echo", "Foxtrot", "golf"):
+        resp = client.post(base, json={"name": name, "component_id": component_id, "category_id": category_id},
+                           headers=auth_headers(token))
+        assert resp.status_code == 201, resp.text
+
+    for sort in ("name", "unique_code", "status", "created_at"):
+        for order in ("asc", "desc"):
+            params = {"sort": sort, "order": order}
+            full = client.get(base, params=params, headers=auth_headers(token)).json()
+            got = client.get(base, params={**params, "limit": 3, "offset": 2}, headers=auth_headers(token)).json()
+            assert [r["id"] for r in got] == [r["id"] for r in full[2:5]], (sort, order)
+            assert got == full[2:5]
+
+
+def test_project_metrics_query_count_does_not_grow_with_the_project(client, admin_token):
+    """The overview's counts are database aggregates and its per-type totals read module state once per
+    module, so statements per request stay the same as requirements, comments and change requests grow."""
+    org, token = create_org_admin_in(client, admin_token, "Metrics Cost Co")
+    project = create_project(client, token, org["id"], "Metrics Cost Project")
+    component_id, category_id = create_component_and_category(client, token, project["id"])
+    url = f"/api/v1/projects/{project['id']}/metrics"
+
+    ids = _create_requirements(client, token, project["id"], component_id, category_id, 2, "Few")
+    with _QueryCounter() as small:
+        small_body = client.get(url, headers=auth_headers(token)).json()
+    ids += _create_requirements(client, token, project["id"], component_id, category_id, 8, "Many")
+    base = f"/api/v1/projects/{project['id']}/requirements/{ids[0]}"
+    assert client.post(f"{base}/approve", headers=auth_headers(token)).status_code == 200
+    done = client.post(f"{base}/complete", headers=auth_headers(token))
+    assert done.status_code == 200, done.text
+    with _QueryCounter() as large:
+        large_body = client.get(url, headers=auth_headers(token)).json()
+
+    assert (small_body["requirement_count"], large_body["requirement_count"]) == (2, 10)
+    assert large_body["requirement_completed_percent"] == 10.0
+    assert sum(large_body["requirements_by_status"].values()) == 10
+    assert large.count == small.count, (small.count, large.count)
+
+
+def test_requirement_links_query_count_does_not_grow_with_the_link_count(client, admin_token):
+    """A hub requirement's link list resolves its link types, other requirements and their names in a fixed
+    number of statements, in both directions, with the same fields a single link shows."""
+    org, token = create_org_admin_in(client, admin_token, "Link Cost Co")
+    project = create_project(client, token, org["id"], "Link Cost Project")
+    component_id, category_id = create_component_and_category(client, token, project["id"])
+    base = f"/api/v1/projects/{project['id']}/requirements"
+    ids = _create_requirements(client, token, project["id"], component_id, category_id, 14, "Linked")
+    hub, others = ids[0], ids[1:]
+    link_type = client.get(f"/api/v1/orgs/{org['id']}/link-types", headers=auth_headers(token)).json()[0]
+
+    def link(source, target):
+        resp = client.post(f"{base}/{source}/links", json={"target_requirement_id": target, "link_type_id": link_type["id"]},
+                           headers=auth_headers(token))
+        assert resp.status_code == 201, resp.text
+        return resp.json()
+
+    for other in others[:2]:
+        link(hub, other)
+    with _QueryCounter() as small:
+        few = client.get(f"{base}/{hub}/links", headers=auth_headers(token)).json()
+    for other in others[2:7]:
+        link(hub, other)
+    for other in others[7:]:
+        link(other, hub)
+    with _QueryCounter() as large:
+        many = client.get(f"{base}/{hub}/links", headers=auth_headers(token)).json()
+
+    assert (len(few), len(many)) == (2, len(others))
+    assert large.count == small.count, (small.count, large.count)
+    assert {l["direction"] for l in many} == {"outgoing", "incoming"}
+    by_other = {l["other_requirement_id"]: l for l in many}
+    for other_id in others:
+        detail = client.get(f"{base}/{other_id}", headers=auth_headers(token)).json()
+        got = by_other[other_id]
+        assert (got["other_requirement_name"], got["other_requirement_unique_code"]) == (detail["name"], detail["unique_code"])
+        assert got["display_name"] == (link_type["forward_name"] if got["direction"] == "outgoing" else link_type["reverse_name"])
+
+
 def test_my_roles_endpoint(client, admin_token):
     org, token = create_org_admin_in(client, admin_token, "My Roles Co")
     project = create_project(client, token, org["id"], "My Roles Project")

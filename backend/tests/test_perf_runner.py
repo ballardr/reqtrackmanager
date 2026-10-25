@@ -332,9 +332,18 @@ def test_headroom_preflight_names_each_shortfall():
     assert resources.preflight_headroom(caps, total_requirements=1000, disk_path=Path("/"), **ok) == []
     busy = resources.preflight_headroom(caps, total_requirements=1000, disk_path=Path("/"), **{**ok, "load": lambda: 3.0})
     low_memory = resources.preflight_headroom(caps, total_requirements=1000, disk_path=Path("/"), **{**ok, "available": lambda: 4.5})
-    swapping = resources.preflight_headroom(caps, total_requirements=1000, disk_path=Path("/"), **{**ok, "swap": lambda: 3.0})
+    swapping = resources.preflight_headroom(caps, total_requirements=1000, disk_path=Path("/"), **{**ok, "swap": lambda: 3.0, "available": lambda: 8.0})
     full = resources.preflight_headroom(caps, total_requirements=20000, disk_path=Path("/"), **{**ok, "free_disk": lambda p: 8.0})
     assert "busy" in busy[0] and "memory" in low_memory[0] and "swap" in swapping[0] and "disk" in full[0]
+
+
+def test_existing_swap_is_accepted_when_memory_after_the_caps_could_absorb_it():
+    """A long-running server holds idle pages in swap; that alone is not pressure. 2 GiB of swap, 21 GiB available."""
+    caps = resources.plan_caps(8, 32, max_mem_gib=7, max_cpus=4)
+    ok = dict(load=lambda: 0.1, available=lambda: 21.0, swap=lambda: 2.0, free_disk=lambda p: 100.0)
+    assert resources.preflight_headroom(caps, total_requirements=1000, disk_path=Path("/"), **ok) == []
+    tight = resources.preflight_headroom(caps, total_requirements=1000, disk_path=Path("/"), **{**ok, "available": lambda: 9.0})
+    assert tight and "swap" in tight[0]
 
 
 def test_watchdog_trips_on_each_pressure_signal_and_calls_back_once():
@@ -343,13 +352,26 @@ def test_watchdog_trips_on_each_pressure_signal_and_calls_back_once():
     for name, reader, text in (
         ("load", lambda: 5.0, "load"),
         ("available", lambda: 0.2, "memory"),
-        ("swap", lambda: 5.0, "swap"),
         ("free_disk", lambda p: 1.0, "disk"),
     ):
         dog = resources.Watchdog(resources.Thresholds(), Path("/"), readers={**base, name: reader}, on_trip=tripped.append)
         assert text in dog.check_once() and dog.tripped
     healthy = resources.Watchdog(resources.Thresholds(), Path("/"), readers=base)
     assert healthy.check_once() is None and not healthy.tripped
+
+
+def test_watchdog_trips_on_swap_growth_not_on_swap_already_in_use():
+    swap = [2.0]
+    readers = {"load": lambda: 0.1, "available": lambda: 20.0, "swap": lambda: swap[0], "free_disk": lambda p: 50.0}
+    dog = resources.Watchdog(resources.Thresholds(), Path("/"), readers=readers)
+    assert dog.check_once() is None, "2 GiB already in swap when sampling began is the baseline, not pressure"
+    swap[0] = 2.1
+    assert dog.check_once() is None, "growth inside the allowance"
+    swap[0] = 2.6
+    assert "grew" in dog.check_once() and dog.tripped
+    # The baseline can be given up front (the runner takes it when sampling starts).
+    started = resources.Watchdog(resources.Thresholds(), Path("/"), readers={**readers, "swap": lambda: 5.0}, swap_baseline=1.0)
+    assert "grew" in started.check_once()
 
 
 def test_watchdog_aborts_after_consecutive_slow_probes_of_the_watched_url():

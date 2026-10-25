@@ -1,0 +1,59 @@
+tier,scenario,rank,node,relation,index,filtered,est_rows,plan_cost
+T1,browse,1,Seq Scan,requirement_versions,,yes,100,25.4
+T1,browse,1,Seq Scan,requirements,,yes,90,25.4
+T1,browse,2,Seq Scan,requirement_versions,,yes,50,31.8
+T1,browse,3,Seq Scan,artefact_tags,,yes,89,16.2
+T1,browse,3,Seq Scan,tags,,no,25,16.2
+T1,browse,4,Seq Scan,users,,yes,1,1.1
+T1,browse,5,Seq Scan,audit_events,,yes,1,35.9
+T1,list_filtered,1,Seq Scan,requirement_versions,,yes,100,25.4
+T1,list_filtered,1,Seq Scan,requirements,,yes,90,25.4
+T1,list_filtered,2,Seq Scan,requirement_versions,,yes,43,30.2
+T1,list_filtered,3,Seq Scan,artefact_tags,,yes,77,14.6
+T1,list_filtered,3,Seq Scan,tags,,no,25,14.6
+T1,list_filtered,4,Seq Scan,requirement_versions,,yes,50,31.8
+T1,list_filtered,5,Seq Scan,requirement_versions,,yes,10,23.0
+T1,links,1,Seq Scan,requirement_versions,,yes,100,29.9
+T1,links,1,Seq Scan,requirements,,yes,41,29.9
+T1,links,2,Seq Scan,requirement_versions,,yes,100,28.7
+T1,links,2,Seq Scan,requirements,,yes,32,28.7
+T1,links,3,Seq Scan,users,,yes,1,1.1
+T1,links,4,Seq Scan,requirement_versions,,yes,100,29.4
+T1,links,4,Seq Scan,requirements,,yes,37,29.4
+T1,links,5,Seq Scan,requirement_versions,,yes,100,25.4
+T1,links,5,Seq Scan,requirements,,yes,90,25.4
+T2,browse,1,Seq Scan,requirement_versions,,yes,1000,279.0
+T2,browse,1,Seq Scan,requirements,,yes,946,279.0
+T2,browse,2,Seq Scan,audit_events,,yes,1,356.4
+T2,browse,3,Bitmap Heap Scan,requirement_versions,,yes,50,243.7
+T2,browse,3,Bitmap Index Scan,,requirement_versions_requirement_id_version_number_key,no,100,243.7
+T2,browse,4,Bitmap Heap Scan,artefact_tags,,yes,86,78.4
+T2,browse,4,Bitmap Index Scan,,ix_artefact_tags_record,no,86,78.4
+T2,browse,4,Seq Scan,tags,,no,25,78.4
+T2,browse,5,Bitmap Heap Scan,review_comments,,yes,107,108.5
+T2,browse,5,Bitmap Index Scan,,ix_review_comments_target,no,107,108.5
+T2,list_filtered,1,Seq Scan,requirement_versions,,yes,1000,279.0
+T2,list_filtered,1,Seq Scan,requirements,,yes,946,279.0
+T2,list_filtered,2,Bitmap Heap Scan,artefact_tags,,yes,86,78.4
+T2,list_filtered,2,Bitmap Index Scan,,ix_artefact_tags_record,no,86,78.4
+T2,list_filtered,2,Seq Scan,tags,,no,25,78.4
+T2,list_filtered,3,Bitmap Heap Scan,requirement_versions,,yes,50,243.7
+T2,list_filtered,3,Bitmap Index Scan,,requirement_versions_requirement_id_version_number_key,no,100,243.7
+T2,list_filtered,4,Bitmap Heap Scan,review_comments,,yes,107,108.5
+T2,list_filtered,4,Bitmap Index Scan,,ix_review_comments_target,no,107,108.5
+T2,list_filtered,5,Seq Scan,requirements,,yes,946,34.9
+T2,links,1,Seq Scan,requirement_versions,,yes,1000,412.7
+T2,links,1,Index Scan,requirements,requirements_pkey,yes,241,412.7
+T2,links,2,Index Scan,requirements,requirements_project_id_unique_code_key,yes,946,146.3
+T2,links,2,Index Scan,requirement_versions,requirement_versions_requirement_id_version_number_key,yes,1,146.3
+T2,links,3,Seq Scan,requirement_versions,,yes,1000,386.2
+T2,links,3,Bitmap Heap Scan,requirements,,yes,195,386.2
+T2,links,3,Bitmap Index Scan,,requirements_pkey,no,195,386.2
+T2,links,4,Seq Scan,requirement_versions,,yes,1000,334.2
+T2,links,4,Bitmap Heap Scan,requirements,,yes,121,334.2
+T2,links,4,Bitmap Index Scan,,requirements_pkey,no,121,334.2
+T2,links,5,Bitmap Heap Scan,artefact_links,,yes,258,296.5
+T2,links,5,Bitmap Index Scan,,uq_artefact_links_typed,no,79,296.5
+T2,links,5,Bitmap Index Scan,,ix_artefact_links_target,no,182,296.5
+T2,links,5,Bitmap Index Scan,,uq_artefact_links_typed,no,1,296.5
+T2,links,5,Bitmap Index Scan,,ix_artefact_links_target,no,3,296.5

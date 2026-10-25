@@ -56,6 +56,7 @@ from app.services.rbac import get_effective_project_roles, require_project_view
 from app.services.requirements import (
     OPEN_CR_STATUSES,
     ListPrefetch,
+    ListSortKeys,
     RequirementFilters,
     archive_requirement,
     create_requirement,
@@ -64,6 +65,7 @@ from app.services.requirements import (
     get_current_version,
     get_keywords,
     is_locked,
+    prefetch_for_list,
     unarchive_requirement,
     version_people,
 )
@@ -272,25 +274,39 @@ def list_requirements(
         target_stage_id=target_stage_id, has_comments=has_comments, only_watched=only_watched,
     )
 
-    def rows_for(pid: UUID) -> list[RequirementOut]:
-        nonlocal unfiltered
-        found = filter_requirements(db, pid, current_user.id, filters, structural_order=not sort)
-        unfiltered += found.unfiltered
-        prefetch = found.prefetch
-        return [_to_out(db, req, prefetch.versions[req.id], current_user.id, prefetch) for req in found.requirements]
+    sort_keys: dict[UUID, ListSortKeys] = {}
 
-    out = project_scope.collect(db, db.get(Project, project_id), current_user.id, "requirement", rows_for)
+    def rows_for(pid: UUID) -> list[Requirement]:
+        nonlocal unfiltered
+        found = filter_requirements(db, pid, current_user.id, filters, structural_order=not sort, prefetch=False)
+        unfiltered += found.unfiltered
+        sort_keys.update(found.sort_keys)
+        return found.requirements
+
+    rows = project_scope.collect(db, db.get(Project, project_id), current_user.id, "requirement", rows_for)
     response.headers["X-Total-Unfiltered-Count"] = str(unfiltered)
 
     if sort:
-        def _sort_value(item: RequirementOut):
-            value = getattr(item, sort)
+        def _sort_value(req: Requirement):
+            value = sort_keys[req.id].name if sort == "name" else (
+                sort_keys[req.id].status if sort == "status" else getattr(req, sort)
+            )
             return value.lower() if isinstance(value, str) else value
-        out.sort(key=_sort_value, reverse=(order == "desc"))
+        rows.sort(key=_sort_value, reverse=(order == "desc"))
 
-    response.headers["X-Total-Count"] = str(len(out))
+    response.headers["X-Total-Count"] = str(len(rows))
     if limit is not None:
-        out = out[offset:offset + limit]
+        rows = rows[offset:offset + limit]
+    # Only the rows returned are serialised: their versions, people, keywords and counts are loaded for
+    # this page alone, so a page of 50 costs the same in a project of 20,000.
+    prefetch = prefetch_for_list(db, [r.id for r in rows], current_user.id)
+    out = []
+    for req in rows:
+        item = _to_out(db, req, prefetch.versions[req.id], current_user.id, prefetch)
+        item.from_project_id = getattr(req, "from_project_id", None)
+        item.from_project_name = getattr(req, "from_project_name", None)
+        item.from_project_code = getattr(req, "from_project_code", None)
+        out.append(item)
     return out
 
 

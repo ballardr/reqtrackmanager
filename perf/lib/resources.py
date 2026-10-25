@@ -227,7 +227,9 @@ class Thresholds:
     Attributes:
         max_load_per_core: Load average per core.
         min_available_gib: Least available memory (Linux).
-        max_swap_gib: Most swap in use (Linux).
+        max_swap_growth_gib: Most the swap in use may grow during the run (Linux). Swap already in use when the
+            run starts is not pressure by itself (a long-running server holds idle pages there); growth during the
+            run is.
         min_free_disk_gib: Least free disk where the stack stores data.
         watch_max_seconds: Slowest acceptable answer from `--watch-url`.
         watch_failures: Consecutive slow or failed probes that trip it.
@@ -235,7 +237,7 @@ class Thresholds:
 
     max_load_per_core: float = 1.5
     min_available_gib: float = 1.0
-    max_swap_gib: float = 1.0
+    max_swap_growth_gib: float = 0.25
     min_free_disk_gib: float = 5.0
     watch_max_seconds: float = 3.0
     watch_failures: int = 3
@@ -265,9 +267,14 @@ def preflight_headroom(
     free = available()
     if free is not None and free - caps.memory_gib < limits.min_available_gib:
         reasons.append(f"only {free:.1f} GiB of memory is available; the {caps.memory_gib:.1f} GiB budget would leave under {limits.min_available_gib:g} GiB")
+    # Existing swap is only a problem when the memory left after the caps could not take it back: then the
+    # first pressure would push the kernel to kill something, and it may not be the perf stack.
     used_swap = swap()
-    if used_swap is not None and used_swap > limits.max_swap_gib:
-        reasons.append(f"the host is already using {used_swap:.1f} GiB of swap")
+    if used_swap and free is not None and free - caps.memory_gib < used_swap + limits.min_available_gib:
+        reasons.append(
+            f"the host is using {used_swap:.1f} GiB of swap and only {free - caps.memory_gib:.1f} GiB of memory would be left "
+            f"after the {caps.memory_gib:.1f} GiB budget, which could not absorb it"
+        )
     need = estimate_disk_gib(total_requirements)
     disk = free_disk(disk_path)
     if disk - need < limits.min_free_disk_gib:
@@ -289,6 +296,8 @@ class Watchdog:
 
     Attributes:
         reason: Why it tripped, or None.
+        swap_baseline: Swap in use (GiB) when sampling began; growth beyond `max_swap_growth_gib` trips. Taken from
+            the first sample when not given.
     """
 
     thresholds: Thresholds
@@ -298,6 +307,7 @@ class Watchdog:
     readers: dict = field(default_factory=dict)
     on_trip: Optional[Callable[[str], None]] = None
     reason: Optional[str] = None
+    swap_baseline: Optional[float] = None
 
     def __post_init__(self) -> None:
         self._stop = threading.Event()
@@ -334,8 +344,13 @@ class Watchdog:
         if free is not None and free < limits.min_available_gib:
             return self._trip(f"available memory {free:.1f} GiB is below {limits.min_available_gib:g}")
         swap = reader("swap", swap_used_gib)()
-        if swap is not None and swap > limits.max_swap_gib:
-            return self._trip(f"swap use {swap:.1f} GiB exceeds {limits.max_swap_gib:g}")
+        if swap is not None:
+            if self.swap_baseline is None:
+                self.swap_baseline = swap
+            if swap - self.swap_baseline > limits.max_swap_growth_gib:
+                return self._trip(
+                    f"swap use grew by {swap - self.swap_baseline:.2f} GiB during the run (limit {limits.max_swap_growth_gib:g})"
+                )
         disk = reader("free_disk", disk_free_gib)(self.disk_path)
         if disk < limits.min_free_disk_gib:
             return self._trip(f"free disk {disk:.1f} GiB is below {limits.min_free_disk_gib:g}")
@@ -359,7 +374,9 @@ class Watchdog:
                 return
 
     def start(self) -> None:
-        """Starts sampling on a background thread."""
+        """Starts sampling on a background thread, taking the swap baseline now so growth is measured from the start."""
+        if self.swap_baseline is None:
+            self.swap_baseline = self.readers.get("swap", swap_used_gib)()
         self._thread = threading.Thread(target=self._loop, name="perf-watchdog", daemon=True)
         self._thread.start()
 
