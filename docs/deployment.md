@@ -85,13 +85,13 @@ The full list of backend environment variables, with defaults, is documented in 
 
 ### Obtaining container images
 
-CI (`.github/workflows/ci.yml`) builds the production `backend`, `frontend`, `mcp-server`, and `docs` images on every change and, once the `frontend`, `backend-tests`, `e2e-tests` and `dependency-scan` jobs pass on a push to `main`, pushes all four to `ghcr.io/<owner>/<repo>-{backend,frontend,mcp-server,docs}` (see [development.md's Continuous integration](development.md#continuous-integration) section). Pull requests still build every image, proving the Dockerfiles work, but never push — only a merge to `main` publishes.
+CI (`.github/workflows/ci.yml`) builds the production `backend`, `backup`, `frontend`, `mcp-server`, and `docs` images on every change, for both `linux/amd64` and `linux/arm64`, and, once the `frontend`, `backend-tests`, `e2e-tests`, `dependency-scan`, `image-scan` and `restore-test` jobs pass on a push to `main`, publishes all five to `ghcr.io/<owner>/<repo>-{backend,backup,frontend,mcp-server,docs}` (see [development.md's Continuous integration](development.md#continuous-integration) section). Pull requests still build every image on both architectures, proving the Dockerfiles work, but never push — only a merge to `main` publishes.
 
 Each image is tagged three ways:
 
 - **`latest`** — always the most recent build from `main`. What `IMAGE_TAG` defaults to below.
 - **`<git sha>`** — the exact commit it was built from, for pinning to a specific build without needing a release version.
-- **a SemVer** (e.g. `1.4.0`) — computed by [GitVersion](https://gitversion.net/) (`GitVersion.yml`, repo root) from the commit graph in `Mainline` mode: every merge to `main` is a release, so the version increments automatically without anyone pushing a git tag by hand.
+- **a SemVer** (e.g. `1.4.0`) — computed by [GitVersion](https://gitversion.net/) (`GitVersion.yml`, repo root) from the commit graph in `ContinuousDeployment` mode: every merge to `main` is a release, so the version increments automatically without anyone pushing a git tag by hand.
 
 `docker-compose.yml` declares both `image:` (pointing at these published tags) and `build:` (a local Dockerfile build) for `backend`/`frontend`/`mcp-server`. This means:
 
@@ -100,7 +100,16 @@ Each image is tagged three ways:
 
 If your images live in a different registry/namespace (e.g. a private mirror), override `GHCR_IMAGE_PREFIX` in your `.env` instead of editing `docker-compose.yml`.
 
-**Checking what's actually deployed.** The same SemVer/commit SHA used to tag an image is also baked into it at build time (`APP_VERSION`/`GIT_SHA`/`BUILD_DATE` build args, set by the `docker-build` CI job — see `backend/Dockerfile` and `frontend/Dockerfile`), so a running instance can report its own build identity without shell access to the host: the signed-in nav rail shows both the frontend's own bundled version and the backend's, fetched from `GET /api/v1/system/version`. A local `docker compose build` with no `--build-arg`s (the default for the two paths above) reports placeholder `dev`/`unknown` values instead of failing — only images built by CI carry a real version.
+**Checking what's actually deployed.** The same SemVer/commit SHA used to tag an image is also baked into it at build time (`APP_VERSION`/`GIT_SHA`/`BUILD_DATE` build args, set by the `docker-build` CI jobs — see `backend/Dockerfile` and `frontend/Dockerfile`), so a running instance can report its own build identity without shell access to the host: the signed-in nav rail shows both the frontend's own bundled version and the backend's, fetched from `GET /api/v1/system/version`. A local `docker compose build` with no `--build-arg`s (the default for the two paths above) reports placeholder `dev`/`unknown` values instead of failing — only images built by CI carry a real version.
+
+**Supported platforms.** Each tag is a multi-arch manifest, so `docker compose pull` fetches the right image for the host with no configuration:
+
+| Host | Supported | Notes |
+|------|-----------|-------|
+| x86-64 Linux, Docker Desktop on Intel | `linux/amd64` | Fully tested (unit, backend and end-to-end suites). |
+| Apple silicon, arm64 Linux servers, Raspberry Pi 4/5 | `linux/arm64` | Built natively and smoke tested in CI (the backend starts, migrates and answers authenticated requests); the full test suites are not run on arm. A Raspberry Pi needs a **64-bit** OS (64-bit Raspberry Pi OS or Ubuntu); 32-bit images are not published. Minimum RAM for a Pi has not been measured yet. |
+
+CI runners use 4 KB memory pages while a Raspberry Pi 5 uses 16 KB, which some native libraries mishandle; CI cannot catch that, so check a first run on a Pi with `docker compose ps` and the backend logs. The optional MailHog mail catcher in the development stack ([tests/container/](../tests/container/docker-compose.yml)) is amd64-only upstream and is not part of the production stack.
 
 ### Hosting the documentation internally
 

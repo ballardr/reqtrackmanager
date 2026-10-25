@@ -57,7 +57,7 @@ flowchart TD
 
 ## Obtaining container images
 
-CI builds the production `backend`, `frontend`, `mcp-server`, and `docs` images on every change and, once tests pass on a push to `main`, pushes all four to `ghcr.io/<owner>/<repo>-{backend,frontend,mcp-server,docs}`. Pull requests still build every image, proving the Dockerfiles work, but never push — only a merge to `main` publishes.
+CI builds the production `backend`, `backup`, `frontend`, `mcp-server`, and `docs` images on every change, for both `linux/amd64` and `linux/arm64`, and, once tests pass on a push to `main`, pushes all five to `ghcr.io/<owner>/<repo>-{backend,backup,frontend,mcp-server,docs}`. Pull requests still build every image on both architectures, proving the Dockerfiles work, but never push — only a merge to `main` publishes.
 
 Each image is tagged three ways:
 
@@ -73,6 +73,17 @@ Each image is tagged three ways:
 If your images live in a different registry/namespace (e.g. a private mirror), override `GHCR_IMAGE_PREFIX` in your `.env` instead of editing `docker-compose.yml`.
 
 **Checking what's actually deployed.** The same SemVer/commit SHA used to tag an image is baked into it at build time, so a running instance can report its own build identity without shell access to the host: the signed-in nav rail shows both the frontend's and the backend's version, fetched from `GET /api/v1/system/version`. A local `docker compose build` with no build args (the default for both paths above) reports placeholder `dev`/`unknown` values instead of failing — only images built by CI carry a real version.
+
+### Supported platforms
+
+Each tag is a multi-arch manifest, so `docker compose pull` fetches the right image for the host with no configuration.
+
+| Host | Architecture | Notes |
+|------|--------------|-------|
+| x86-64 Linux, Docker Desktop on Intel | `linux/amd64` | Fully tested (unit, backend and end-to-end suites). |
+| Apple silicon, arm64 Linux servers, Raspberry Pi 4/5 | `linux/arm64` | Built natively and smoke tested in CI: the backend starts, migrates and answers authenticated requests. The full test suites are not run on arm. A Raspberry Pi needs a **64-bit** OS (64-bit Raspberry Pi OS or Ubuntu); 32-bit images are not published. Minimum RAM for a Pi has not been measured yet. |
+
+A Raspberry Pi 5 uses 16 KB memory pages and CI runners use 4 KB, which some native libraries mishandle and CI cannot catch. After a first start on a Pi, check `docker compose ps` and the backend logs.
 
 ## Hosting the documentation internally
 

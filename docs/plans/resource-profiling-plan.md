@@ -4,11 +4,11 @@
 
 ## Status / Resume Here
 
-0 / 8 phases complete. **Start order (Decided by: User, 2026-10-23): Phase 0 first**, so arm64 images exist before any Pi run; it does not block the other phases, which can follow in order 1, 2, 3, 4, 4b, 5, 6. Phases 2–4 each save their results under `perf/results/<host-label>/<date>-<commit>/` (summarised CSV/JSON) so Phase 6 can plot them; each phase is independently useful, so stopping after any one is fine. Every scenario runs at every dataset tier (see "Dataset tiers"), so results are keyed by data volume as well as host.
+1 / 8 phases complete (Phase 0 built 2026-10-25; its real arm64 CI run and the merge-to-`main` manifest check are still to do, see its entry in `docs/decisions.md`). **Start order (Decided by: User, 2026-10-23): Phase 0 first**, so arm64 images exist before any Pi run; it does not block the other phases, which can follow in order 1, 2, 3, 4, 4b, 5, 6. Phases 2–4 each save their results under `perf/results/<host-label>/<date>-<commit>/` (summarised CSV/JSON) so Phase 6 can plot them; each phase is independently useful, so stopping after any one is fine. Every scenario runs at every dataset tier (see "Dataset tiers"), so results are keyed by data volume as well as host.
 
 | # | Phase | Status |
 |---|-------|--------|
-| 0 | Multi-arch (amd64 + arm64) production images in CI | [ ] |
+| 0 | Multi-arch (amd64 + arm64) production images in CI | [x] built 2026-10-25; awaiting first CI run |
 | 1 | Container-level metrics (cAdvisor → Prometheus → Grafana) | [ ] |
 | 2 | Load generator and baseline scenarios | [ ] |
 | 3 | In-process profiling of the backend (memory + CPU) | [ ] |

@@ -56,8 +56,10 @@ def test_images_are_scanned_before_any_push():
 
 
 def test_every_pushed_image_is_scanned():
-    """Each image docker-build pushes is built and named in the Trivy loop of image-scan."""
-    pushed = re.findall(r"Build and push ([a-z-]+) image", _job("docker-build"))
+    """Each image docker-build pushes (its matrix) is built and named in the Trivy loop of image-scan."""
+    matrix = re.search(r"^\s+image: \[([^\]]+)\]", _job("docker-build"), re.M)
+    assert matrix, "docker-build has no image matrix"
+    pushed = [name.strip() for name in matrix.group(1).split(",")]
     assert {"backend", "backup", "frontend", "mcp-server", "docs"} <= set(pushed)
     scan_job = _job("image-scan")
     loop = re.search(r"for image in ([^;]+); do", scan_job)

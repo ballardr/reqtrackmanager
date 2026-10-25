@@ -1,6 +1,6 @@
 # GitHub Actions CI pipeline.
 #
-# Eight jobs, run on every push to main, every pull request, and on demand:
+# Twelve jobs, run on every push to main, every pull request, and on demand:
 #   1. frontend          - lint, type-check, production build, then the
 #                          Storybook/Vitest suite (real Chromium) with
 #                          coverage
@@ -42,15 +42,27 @@
 #                          (frontend, Playwright; the docs site is reported
 #                          only) against the pinned dependency files. Runs in
 #                          parallel with the test jobs; docker-build needs it.
-#   6. docker-build      - builds the production backend, frontend,
-#                          mcp-server and docs-site images, gated on jobs 1-3
-#                          and dependency-scan passing; scans every image with
-#                          Trivy (HIGH/CRITICAL with a fix fail the job) before
-#                          anything is pushed; tags each with GitVersion's
-#                          computed SemVer plus the commit SHA and `latest`, and
-#                          pushes all to ghcr.io — except on pull_request runs,
-#                          which still build (proving the Dockerfiles work) but
-#                          never push
+#   5b. image-scan      - builds the production images (amd64) and scans
+#                          each with Trivy; starts with the test jobs so a
+#                          vulnerable image fails the run early.
+#   5c. restore-test    - disaster-recovery backup/restore self-check on
+#                          throwaway stacks; docker-build needs it.
+#   5d. version         - GitVersion SemVer + build date, computed once for
+#                          every image leg and the manifest job.
+#   6. docker-build      - one leg per production image (backend, backup,
+#                          frontend, mcp-server, docs) and CPU architecture
+#                          (amd64, arm64), each on a native runner. Gated on
+#                          jobs 1-3, dependency-scan, image-scan and the
+#                          version job. Every leg builds on every run; the
+#                          arm64 legs also smoke test the image
+#                          (scripts/smoke_test_image.sh) and Trivy scan it,
+#                          and only a passing leg pushes its digest -
+#                          never on pull_request runs. Needs the version job
+#                          (GitVersion SemVer + build date, computed once).
+#   6b. docker-publish   - main only, after every docker-build leg passed:
+#                          assembles each image's digests into a multi-arch
+#                          manifest tagged with the SemVer, commit SHA and
+#                          `latest` on ghcr.io, and verifies both platforms.
 #   7. docs              - builds docs/website/ (Docusaurus) and fails on any
 #                          broken internal link/anchor (onBrokenLinks/
 #                          onBrokenAnchors: 'throw'), on every push and PR —
@@ -80,6 +92,10 @@ on:
 
 permissions:
   contents: read
+
+env:
+  # Pinned once; used by image-scan (amd64 images) and docker-build's arm64 legs so both apply the same scanner.
+  TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.75.0
 
 jobs:
   frontend:
@@ -423,9 +439,10 @@ jobs:
       # silent scheduler, a restore-test eight days old), using promtool from the Prometheus image the stack runs.
       - name: Disaster-recovery alert rules (promtool)
         run: |
-          for command in "check rules /o/alerts/disaster-recovery.rules.yml" "test rules /o/alerts/tests/disaster-recovery.test.yml"; do
-            docker run --rm --entrypoint promtool -v "$PWD/observability:/o:ro" prom/prometheus:v2.54.1 $command
-          done
+          docker run --rm --entrypoint promtool -v "$PWD/observability:/o:ro" prom/prometheus:v2.54.1 \
+            check rules /o/alerts/disaster-recovery.rules.yml
+          docker run --rm --entrypoint promtool -v "$PWD/observability:/o:ro" prom/prometheus:v2.54.1 \
+            test rules /o/alerts/tests/disaster-recovery.test.yml
 
       - name: Backend coverage summary
         working-directory: tests/container
@@ -637,7 +654,7 @@ jobs:
         working-directory: tests/container
         run: |
           docker compose restart backend
-          for i in $(seq 1 40); do
+          for _ in $(seq 1 40); do
             status=$(docker compose ps backend --format json | python3 -c "import sys,json; print(json.load(sys.stdin).get('Health','unknown'))")
             [ "$status" = "healthy" ] && break
             sleep 3
@@ -971,7 +988,7 @@ jobs:
       - name: Smoke test docs image
         run: |
           docker run -d --name docs-smoke -p 8081:8080 docs-smoke:test
-          for i in $(seq 1 30); do curl -sf http://localhost:8081/health && break; sleep 1; done
+          for _ in $(seq 1 30); do curl -sf http://localhost:8081/health && break; sleep 1; done
           curl -sf http://localhost:8081/docs/ -o /dev/null
           curl -sf http://localhost:8081/docs/installation-deployment/overview -o /dev/null
           code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8081/docs/no-such-page)
@@ -1033,7 +1050,7 @@ jobs:
             docker run --rm \
               -e TRIVY_DB_REPOSITORY -e TRIVY_JAVA_DB_REPOSITORY \
               -v /var/run/docker.sock:/var/run/docker.sock \
-              ghcr.io/aquasecurity/trivy:0.75.0 image \
+              "$TRIVY_IMAGE" image \
               --severity HIGH,CRITICAL --ignore-unfixed --scanners vuln \
               --exit-code 1 --no-progress "$image" || status=1
             echo "::endgroup::"
@@ -1069,23 +1086,18 @@ jobs:
           path: restore-test-reports
           retention-days: 14
 
-  docker-build:
-    name: Build, version, and push production container images
+  # Computes the release identity once, so every image leg below (and the manifest job) tags and labels with the
+  # same SemVer and build date instead of each installing GitVersion and computing its own. No `needs`: it is
+  # cheap and the image legs wait for it alongside the test gates.
+  version:
+    name: Determine version
     runs-on: ubuntu-latest
-    needs: [frontend, backend-tests, e2e-tests, dependency-scan, image-scan, restore-test]
-    # Normal runs finish in ~5 minutes (four image builds and the push); see backend-tests' timeout-minutes comment for why every job
-    # here now has a ceiling.
-    timeout-minutes: 30
-    # Builds and tags on every run (proving all three production Dockerfiles
-    # still build cleanly), but only pushes to ghcr.io when this isn't a
-    # pull_request run — a same-repo PR's GITHUB_TOKEN could technically
-    # push, but a feature branch has no business publishing `:latest` (or
-    # any tag) to the registry a real deployment pulls from. No extra secret
-    # is needed to push: GITHUB_TOKEN already has `packages: write` (granted
-    # below) and ghcr.io accepts it directly.
+    timeout-minutes: 10
     permissions:
       contents: read
-      packages: write
+    outputs:
+      semver: ${{ steps.gitversion.outputs.semVer }}
+      build_date: ${{ steps.builddate.outputs.date }}
     steps:
       # fetch-depth: 0 (full history, including tags) is required for
       # GitVersion below to compute a version from the repo's actual commit
@@ -1109,87 +1121,209 @@ jobs:
         id: gitversion
         uses: gittools/actions/gitversion/execute@v3
 
-      # Feeds both images' APP_VERSION/GIT_SHA/BUILD_DATE build args below —
-      # otherwise GitVersion's SemVer only ever lived in the image *tag*,
-      # with no way for a running instance to report its own build identity
-      # (GET /api/v1/system/version, the nav rail's version footer).
+      # Feeds the APP_VERSION/GIT_SHA/BUILD_DATE build args of the images that
+      # report their own build identity (GET /api/v1/system/version, the nav
+      # rail's version footer) — otherwise GitVersion's SemVer would only ever
+      # live in the image *tag*.
       - name: Determine build date
         id: builddate
         run: echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
+  # One leg per image and CPU architecture, each on a runner of that architecture. arm64 is built natively
+  # (not under QEMU emulation, which is several times slower for the pip and npm builds) so Raspberry Pi and other
+  # arm hosts get a real image; amd64 is unchanged. Every leg builds on every run, pull requests included, so an
+  # arch-specific build break fails the PR. The arm64 legs additionally smoke test the image they just built and
+  # scan it, and only a leg that passes pushes its digest, so a broken or vulnerable arm image can never receive
+  # a tag. Unit, backend and end-to-end tests stay amd64-only; the smoke test is the arm gate.
+  #
+  # Pushes happen by digest (untagged); `docker-publish` below assembles the tags once every leg has succeeded.
+  # No `cache-from/to`: the build args at the top of each Dockerfile change on every commit and invalidate every
+  # later layer, so a shared cache would never hit, and the builder's own cache already covers the load-then-push
+  # rebuild within a leg.
+  docker-build:
+    name: Build ${{ matrix.image }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    needs: [frontend, backend-tests, e2e-tests, dependency-scan, image-scan, restore-test, version]
+    # Normal runs finish in ~5 minutes; the arm64 backend leg adds the smoke test (a database, migrations, a login).
+    timeout-minutes: 30
+    # Pushes digests to ghcr.io only when this isn't a pull_request run — a same-repo PR's GITHUB_TOKEN could
+    # technically push, but a feature branch has no business publishing to the registry a real deployment pulls
+    # from. No extra secret is needed: GITHUB_TOKEN already has `packages: write` (granted below) and ghcr.io
+    # accepts it directly.
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+        image: [backend, backup, frontend, mcp-server, docs]
+        include:
+          - image: backend
+            context: ./backend
+            version_args: true
+          - image: backup
+            context: ./backend
+            target: backup
+            version_args: true
+          - image: frontend
+            context: ./frontend
+            version_args: true
+          - image: mcp-server
+            context: ./mcp-server
+          - image: docs
+            context: ./docs/website
+            file: ./docs/website/Dockerfile.prod
+    env:
+      PUSH: ${{ github.event_name != 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v7
+
       - uses: docker/setup-buildx-action@v4
 
       - name: Log in to ghcr.io
-        if: github.event_name != 'pull_request'
+        if: env.PUSH == 'true'
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push backend image
-        uses: docker/build-push-action@v7
-        with:
-          context: ./backend
-          push: ${{ github.event_name != 'pull_request' }}
-          build-args: |
-            APP_VERSION=${{ steps.gitversion.outputs.semVer }}
-            GIT_SHA=${{ github.sha }}
-            BUILD_DATE=${{ steps.builddate.outputs.date }}
-          tags: |
-            ghcr.io/${{ github.repository }}-backend:${{ steps.gitversion.outputs.semVer }}
-            ghcr.io/${{ github.repository }}-backend:${{ github.sha }}
-            ghcr.io/${{ github.repository }}-backend:latest
+      # Only the images that declare the build identity ARGs get them; passing an unused build arg is a Docker
+      # warning. A multi-line step output keeps one build step for all five images.
+      - name: Compose build arguments
+        id: args
+        env:
+          VERSION_ARGS: ${{ matrix.version_args }}
+          APP_VERSION: ${{ needs.version.outputs.semver }}
+          BUILD_DATE: ${{ needs.version.outputs.build_date }}
+        run: |
+          {
+            echo 'build_args<<BUILD_ARGS_EOF'
+            if [ "$VERSION_ARGS" = "true" ]; then
+              echo "APP_VERSION=$APP_VERSION"
+              echo "GIT_SHA=$GITHUB_SHA"
+              echo "BUILD_DATE=$BUILD_DATE"
+            fi
+            echo 'BUILD_ARGS_EOF'
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Build and push backup image
+      # Proves the Dockerfile builds on this architecture. On arm64 the image is also loaded into the runner's
+      # Docker so the smoke test and scan below can run it.
+      - name: Build image
         uses: docker/build-push-action@v7
         with:
-          context: ./backend
-          target: backup
-          push: ${{ github.event_name != 'pull_request' }}
-          build-args: |
-            APP_VERSION=${{ steps.gitversion.outputs.semVer }}
-            GIT_SHA=${{ github.sha }}
-            BUILD_DATE=${{ steps.builddate.outputs.date }}
-          tags: |
-            ghcr.io/${{ github.repository }}-backup:${{ steps.gitversion.outputs.semVer }}
-            ghcr.io/${{ github.repository }}-backup:${{ github.sha }}
-            ghcr.io/${{ github.repository }}-backup:latest
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          target: ${{ matrix.target }}
+          platforms: linux/${{ matrix.arch }}
+          build-args: ${{ steps.args.outputs.build_args }}
+          load: ${{ matrix.arch == 'arm64' }}
+          push: false
+          tags: smoke-${{ matrix.image }}:ci
 
-      - name: Build and push frontend image
-        uses: docker/build-push-action@v7
-        with:
-          context: ./frontend
-          push: ${{ github.event_name != 'pull_request' }}
-          build-args: |
-            APP_VERSION=${{ steps.gitversion.outputs.semVer }}
-            GIT_SHA=${{ github.sha }}
-            BUILD_DATE=${{ steps.builddate.outputs.date }}
-          tags: |
-            ghcr.io/${{ github.repository }}-frontend:${{ steps.gitversion.outputs.semVer }}
-            ghcr.io/${{ github.repository }}-frontend:${{ github.sha }}
-            ghcr.io/${{ github.repository }}-frontend:latest
+      # arm64 only: start the image and exercise it (backend: PostgreSQL, migrations, login, authenticated lists;
+      # see the script). Fails the leg, and so the digest push and the manifest job, if the image does not work.
+      - name: Smoke test image (arm64)
+        if: matrix.arch == 'arm64'
+        run: ./scripts/smoke_test_image.sh "${{ matrix.image }}" "smoke-${{ matrix.image }}:ci" arm64
 
-      - name: Build and push mcp-server image
-        uses: docker/build-push-action@v7
-        with:
-          context: ./mcp-server
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: |
-            ghcr.io/${{ github.repository }}-mcp-server:${{ steps.gitversion.outputs.semVer }}
-            ghcr.io/${{ github.repository }}-mcp-server:${{ github.sha }}
-            ghcr.io/${{ github.repository }}-mcp-server:latest
+      # The same HIGH/CRITICAL-with-a-fix gate `image-scan` applies to the amd64 images, so an arm64-only
+      # finding (a different wheel or package build) also blocks the push.
+      - name: Scan image for HIGH/CRITICAL vulnerabilities (Trivy, arm64)
+        if: matrix.arch == 'arm64'
+        env:
+          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2
+          TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1,ghcr.io/aquasecurity/trivy-java-db:1
+        run: |
+          docker run --rm \
+            -e TRIVY_DB_REPOSITORY -e TRIVY_JAVA_DB_REPOSITORY \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            "$TRIVY_IMAGE" image \
+            --severity HIGH,CRITICAL --ignore-unfixed --scanners vuln \
+            --exit-code 1 --no-progress "smoke-${{ matrix.image }}:ci"
 
-      - name: Build and push docs image
+      - name: Push image by digest
+        id: push
+        if: env.PUSH == 'true'
         uses: docker/build-push-action@v7
         with:
-          context: ./docs/website
-          file: ./docs/website/Dockerfile.prod
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: |
-            ghcr.io/${{ github.repository }}-docs:${{ steps.gitversion.outputs.semVer }}
-            ghcr.io/${{ github.repository }}-docs:${{ github.sha }}
-            ghcr.io/${{ github.repository }}-docs:latest
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          target: ${{ matrix.target }}
+          platforms: linux/${{ matrix.arch }}
+          build-args: ${{ steps.args.outputs.build_args }}
+          outputs: type=image,name=ghcr.io/${{ github.repository }}-${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        if: env.PUSH == 'true'
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+
+      - name: Upload digest
+        if: env.PUSH == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ matrix.image }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Assembles each image's per-architecture digests into one multi-arch manifest list under the `semVer`, commit
+  # SHA and `latest` tags, so `docker compose pull` gets the right image on any host. Runs only when every leg
+  # above (including the arm64 smoke tests) passed, and only off pull requests. Verifies both platforms are in
+  # the result.
+  docker-publish:
+    name: Publish multi-arch image tags
+    runs-on: ubuntu-latest
+    needs: [docker-build, version]
+    if: github.event_name != 'pull_request'
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: digests-*
+          path: ${{ runner.temp }}/digests
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and verify manifest lists
+        env:
+          REPOSITORY: ghcr.io/${{ github.repository }}
+          SEMVER: ${{ needs.version.outputs.semver }}
+        run: |
+          cd "$RUNNER_TEMP/digests"
+          for image in backend backup frontend mcp-server docs; do
+            repo="$REPOSITORY-$image"
+            sources=""
+            for file in "digests-$image-"*/*; do
+              sources="$sources $repo@sha256:$(basename "$file")"
+            done
+            echo "::group::$image"
+            # shellcheck disable=SC2086
+            docker buildx imagetools create \
+              -t "$repo:$SEMVER" -t "$repo:$GITHUB_SHA" -t "$repo:latest" $sources
+            inspected="$(docker buildx imagetools inspect "$repo:$GITHUB_SHA")"
+            echo "$inspected"
+            for platform in linux/amd64 linux/arm64; do
+              echo "$inspected" | grep -q "Platform: *$platform\$" \
+                || { echo "::error::$repo:$GITHUB_SHA is missing $platform"; exit 1; }
+            done
+            echo "::endgroup::"
+          done
 
   docs:
     name: Build documentation website
