@@ -14,8 +14,9 @@ on (requirements in `services.reports`, any module's report in
   tenant-checked image lookup every renderer's images come through. The
   neutral document model and its Markdown reader live in `services.report_model`;
   the renderers are `report_pdf` and `report_docx`.
-- `safe`, `styled_table`: ReportLab-markup escaping and the accent-coloured
-  table builder.
+- `safe`, `styled_table`: ReportLab-markup escaping (which also switches characters
+  Helvetica cannot print to the bundled Unicode font, `report_fonts`) and the
+  accent-coloured table builder.
 
 Design decisions:
 - ReportLab's `Paragraph` parses markup, so every user-supplied string must go
@@ -29,7 +30,7 @@ Design decisions:
 - A template's intro, chapters and appendices are requirement-report content
   and are not part of this shell; only its branding is shared.
 
-Dependencies: ReportLab, markdown-it-py, `services.files`, `services.branding`.
+Dependencies: ReportLab, markdown-it-py, `services.files`, `services.branding`, `services.report_fonts`.
 """
 
 from __future__ import annotations
@@ -59,6 +60,7 @@ from app.models.file import FileAsset
 from app.models.organization import Organization, ReportTemplate
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX, readable_on_white
 from app.services.files import read_file
+from app.services.report_fonts import draw_centred, mark_fallback, needs_fallback
 from app.services.report_model import TONE_FILL, text_on
 
 STYLES = getSampleStyleSheet()
@@ -66,7 +68,7 @@ _MAX_IMAGE_WIDTH = A4[0] - 4 * cm  # matches SimpleDocTemplate's leftMargin+righ
 _ATTACHMENT_REF = re.compile(r"attachment:([0-9a-fA-F-]{36})")
 
 
-def safe(text: str) -> str:
+def safe(text: str, *, bold: bool = False) -> str:
     """Escapes `&`/`<`/`>` before handing text to a ReportLab `Paragraph`.
 
     ReportLab's `Paragraph` does not treat its `text` argument as plain
@@ -80,13 +82,17 @@ def safe(text: str) -> str:
     member generating a report. Escaping neutralises this: the text renders
     literally instead of being interpreted as markup.
 
+    Characters Helvetica cannot print (Cyrillic, Polish letters, Greek, ...) are wrapped in a
+    Unicode `<font>` tag, the only markup this adds (`report_fonts.mark_fallback`).
+
     Args:
         text: Untrusted text.
+        bold: `True` when the paragraph's style is bold, so those characters are bold too.
 
     Returns:
         The text with markup characters escaped.
     """
-    return _xml_escape(text)
+    return mark_fallback(_xml_escape(text), bold=bold)
 
 
 @dataclass
@@ -168,11 +174,11 @@ def title_flowables(title: str, branding: ReportBranding | None) -> list:
                 story.append(Spacer(1, 1 * cm))
             except Exception:  # noqa: BLE001 - a malformed/unsupported logo image must never break report generation
                 pass
-        story.append(Paragraph(safe(title), cover_style))
+        story.append(Paragraph(safe(title, bold=True), cover_style))
         story.append(PageBreak())
         story.append(Spacer(1, 0.5 * cm))
     else:
-        story.append(Paragraph(safe(title), STYLES["Title"]))
+        story.append(Paragraph(safe(title, bold=True), STYLES["Title"]))
         story.append(Spacer(1, 0.5 * cm))
     return story
 
@@ -196,8 +202,7 @@ def build_pdf(story: list, *, footer_text: str | None = None, pagesize=A4, **doc
         if not footer_text:
             return
         canvas.saveState()
-        canvas.setFont("Helvetica", 7)
-        canvas.drawCentredString(doc_.pagesize[0] / 2, 1 * cm, footer_text)
+        draw_centred(canvas, doc_.pagesize[0] / 2, 1 * cm, footer_text, 7)
         canvas.restoreState()
 
     doc.build(story, onFirstPage=_draw_footer, onLaterPages=_draw_footer)
@@ -246,6 +251,31 @@ def header_text_color(accent_color):
     return colors.HexColor(f"#{text_on(f'{r:02X}{g:02X}{b:02X}')}")
 
 
+def _unicode_cell(cell, header: bool, accent_color):
+    """A plain string cell holding characters Helvetica cannot print, as a Paragraph that can.
+
+    A table draws a string cell in Helvetica, which prints those characters as black boxes. Any other
+    cell (a flowable, or a string Helvetica can print) is returned as it was, so existing tables look
+    the same.
+
+    Args:
+        cell: The cell.
+        header: Whether it is in the header row (in the header text colour; the table draws its other
+            header strings in regular weight, so this stays regular too).
+        accent_color: The header fill, for the header text colour.
+
+    Returns:
+        The cell, or a Paragraph standing in for it.
+    """
+    if not isinstance(cell, str) or not needs_fallback(cell):
+        return cell
+    style = ParagraphStyle(
+        "unicode_cell", parent=STYLES["BodyText"], fontSize=10, leading=12,
+        fontName="Helvetica", textColor=header_text_color(accent_color) if header else colors.black,
+    )
+    return Paragraph(safe(cell), style)
+
+
 def styled_table(data: list[list], *, col_widths: list[float], accent_color, compact: bool = False) -> Table:
     """An accent-headed table with a repeating header row.
 
@@ -261,6 +291,7 @@ def styled_table(data: list[list], *, col_widths: list[float], accent_color, com
     Returns:
         The table flowable.
     """
+    data = [[_unicode_cell(cell, r == 0, accent_color) for cell in row] for r, row in enumerate(data)]
     table = Table(data, repeatRows=1, colWidths=col_widths)
     if compact:
         table.setStyle(TableStyle([

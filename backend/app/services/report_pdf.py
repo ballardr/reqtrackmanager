@@ -12,7 +12,7 @@ Design decisions:
 - Page setup follows orientation: portrait is A4 with 2 cm top and bottom
   margins, landscape is A4 with 1.5 cm all round.
 
-Dependencies: ReportLab, `services.report_document`, `services.report_model`.
+Dependencies: ReportLab, `services.report_document`, `services.report_fonts`, `services.report_model`.
 """
 
 from __future__ import annotations
@@ -21,7 +21,6 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
-from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.platypus import ListFlowable, ListItem, Spacer
 from reportlab.platypus import PageBreak as RlPageBreak
 from reportlab.platypus import Paragraph as RlParagraph
@@ -38,6 +37,7 @@ from app.services.report_document import (
     title_flowables,
     toned_paragraph,
 )
+from app.services.report_fonts import text_width
 from app.services.report_model import (
     BulletList,
     Gap,
@@ -83,10 +83,10 @@ def _content_widths(block: Table, usable_width: float) -> list[float]:
     for index, heading in enumerate(block.columns):
         cells = [str(row[index]) for row in block.rows if index < len(row)]
         words = max(
-            (stringWidth(word, "Helvetica-Bold", _CELL_FONT_SIZE) for word in heading.split()), default=0.0,
+            (text_width(word, _CELL_FONT_SIZE, bold=True) for word in heading.split()), default=0.0,
         )
-        words = max([words, *(stringWidth(word, "Helvetica", _CELL_FONT_SIZE) for cell in cells for word in cell.split())])
-        whole = max((stringWidth(cell, "Helvetica", _CELL_FONT_SIZE) for cell in cells), default=0.0)
+        words = max([words, *(text_width(word, _CELL_FONT_SIZE) for cell in cells for word in cell.split())])
+        whole = max((text_width(cell, _CELL_FONT_SIZE) for cell in cells), default=0.0)
         needs.append(max(min(words, _MAX_WORD_POINTS), min(whole, _MAX_CELL_POINTS)) + _CELL_PADDING_POINTS)
     if sum(needs) >= usable_width:
         return [usable_width * need / sum(needs) for need in needs]
@@ -104,7 +104,7 @@ def _table(block: Table, accent, usable_width: float):
         widths = [usable_width / len(block.columns)] * len(block.columns)
     body_style = _CELL if block.compact else _PLAIN_CELL
     head_style = ParagraphStyle("report_head_text", parent=_HEAD, textColor=header_text_color(accent))
-    data = [[RlParagraph(safe(c), head_style) for c in block.columns]] if block.compact else [list(block.columns)]
+    data = [[RlParagraph(safe(c, bold=True), head_style) for c in block.columns]] if block.compact else [list(block.columns)]
     data += [
         [toned_paragraph(cell, body_style, block.tone_at(r, c)) for c, cell in enumerate(row)]
         for r, row in enumerate(block.rows)
@@ -130,7 +130,7 @@ def render_pdf_document(document: ReportDocument) -> bytes:
     story: list = title_flowables(document.title, branding)
     for block in document.blocks:
         if isinstance(block, Heading):
-            story.append(RlParagraph(safe(block.text), STYLES[f"Heading{min(max(block.level, 1), 4)}"]))
+            story.append(RlParagraph(safe(block.text, bold=True), STYLES[f"Heading{min(max(block.level, 1), 4)}"]))
         elif isinstance(block, Paragraph):
             story.append(RlParagraph(safe(block.text), STYLES["BodyText"]))
         elif isinstance(block, Note):
