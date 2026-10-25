@@ -41,6 +41,26 @@ def _fernet() -> Fernet:
     return Fernet(_derive_fernet_key(get_settings().app_secret_encryption_key))
 
 
+def decrypts_with_current_key(ciphertext: str) -> bool:
+    """Whether `ciphertext` is a valid token under the configured `APP_SECRET_ENCRYPTION_KEY`.
+
+    `EncryptedString` hides a failed decrypt as `None`, so a restored database read with the wrong key
+    looks like "no secret configured". Disaster-recovery verification calls this on the raw stored value
+    to tell those two cases apart; the plaintext is never returned.
+
+    Args:
+        ciphertext: The raw value stored in an `EncryptedString` column.
+
+    Returns:
+        True when the configured key decrypts it, False otherwise.
+    """
+    try:
+        _fernet().decrypt(ciphertext.encode())
+    except InvalidToken:
+        return False
+    return True
+
+
 class EncryptedString(TypeDecorator):
     """A `String` column whose value is encrypted at rest.
 

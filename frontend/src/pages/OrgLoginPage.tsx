@@ -145,6 +145,9 @@ export function OrgLoginPage() {
               <button className="btn btn-primary" type="submit" disabled={submitting}>
                 {submitting ? "…" : strings.login.submit}
               </button>
+              <a className="text-muted" href="/forgot-password" style={{ textAlign: "center" }}>
+                {strings.passwordReset.forgotLink}
+              </a>
             </form>
           )}
         </div>

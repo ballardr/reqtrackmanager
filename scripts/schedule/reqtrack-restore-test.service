@@ -1,0 +1,18 @@
+# systemd service for one restore-test: restores the latest backup into a throwaway stack and checks it
+# (docs/disaster-recovery.md, "Restore test"). Low priority, since it competes with the platform for CPU and disk.
+# Needs RESTORE_TEST_SOURCE_ENV and BACKUP_STATUS_VOLUME in /etc/reqtrack/dr.env (see scripts/dr-scheduled.sh).
+[Unit]
+Description=ReqTrackManager disaster-recovery restore test
+Wants=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+User=reqtrack
+WorkingDirectory=/opt/reqtrackmanager
+ExecStart=/opt/reqtrackmanager/scripts/dr-scheduled.sh restore-test
+# 75: a backup or restore was running; the timer tries again next week and the staleness alert covers a long gap.
+SuccessExitStatus=75
+TimeoutStartSec=3h
+Nice=15
+IOSchedulingClass=idle

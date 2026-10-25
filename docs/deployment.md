@@ -186,7 +186,7 @@ What is already in place: a single bucket-scoped identity, no published ports, a
 - The filer, master and volume ports are no longer reachable from other containers. Tooling that called `storage:8888` or `storage:9333` across the network must run inside the container instead.
 - `storage` can take up to 30 seconds to report healthy after a restart.
 
-Steps: back up (`scripts/backup.sh` for the database, a snapshot of `reqtrack_storage_data` for files); **replace your `docker-compose.yml` with the new one** (`git pull`, or copy it; `docker compose pull` fetches images only, and the storage configuration lives in this file, so pulling alone leaves the old, unscoped setup running; re-apply any local edits you made to the file); then `docker compose pull && docker compose up -d`. This needs Docker Compose 2.23.1 or newer (`docker compose version`), for inline `configs`. Check that `docker compose ps` shows `storage` and `backend` healthy and that an existing attachment opens. Optionally rename `STORAGE_ROOT_USER` / `STORAGE_ROOT_PASSWORD` to `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY`.
+Steps: back up (`./scripts/dr-backup.sh`, see [disaster-recovery.md](disaster-recovery.md); it covers the database and the stored files); **replace your `docker-compose.yml` with the new one** (`git pull`, or copy it; `docker compose pull` fetches images only, and the storage configuration lives in this file, so pulling alone leaves the old, unscoped setup running; re-apply any local edits you made to the file); then `docker compose pull && docker compose up -d`. This needs Docker Compose 2.23.1 or newer (`docker compose version`), for inline `configs`. Check that `docker compose ps` shows `storage` and `backend` healthy and that an existing attachment opens. Optionally rename `STORAGE_ROOT_USER` / `STORAGE_ROOT_PASSWORD` to `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY`.
 
 | Symptom | Cause and fix |
 |---------|---------------|
@@ -259,20 +259,35 @@ This pattern was verified against a real reverse proxy (not just described): an 
 
 ### Database
 
-PostgreSQL is not started with automatic backups. Use the provided scripts on a schedule (cron, a systemd timer, or your orchestrator's job scheduler):
+PostgreSQL and the stored files are not backed up unless you schedule it. The supported tool is the whole-platform backup in [disaster-recovery.md](disaster-recovery.md): one command takes the database, the attachments (SeaweedFS or local), a manifest and, optionally, the encrypted `.env`, as an encrypted, deduplicated restic snapshot copied to your off-site destinations, pruned to a retention policy and integrity-checked.
 
 ```bash
-./scripts/backup.sh [output-dir]     # pg_dump (gzip'd) + local file storage (tar.gz, if STORAGE_BACKEND=local), timestamped
-./scripts/restore.sh <backup-file>   # restores a .sql.gz into db, or a reqtrack-files-*.tar.gz into backend
+./scripts/dr-backup.sh                              # take a backup (needs BACKUP_REPO_PASSWORD_FILE; see the runbook)
+./scripts/restore.sh list                           # the sets available
+./scripts/restore.sh fresh|in-place [--set ID]      # restore, verified against the set's manifest before anything is replaced
+./scripts/restore-test.sh --repository-volume ...   # prove the latest set restores into a working platform
 ```
 
-`backup.sh` covers everything in one run for the common case: it always dumps the database, and additionally archives `reqtrack_local_files` when the running deployment has `STORAGE_BACKEND=local`. If you use `STORAGE_BACKEND=s3` (the Compose default, via the bundled SeaweedFS service), back up the `reqtrack_storage_data` volume with SeaweedFS's own backup/replication tooling instead — it isn't a plain file tree this script can tar up.
+```mermaid
+flowchart LR
+    S["Schedule: systemd, cron or backup-scheduler"] --> B["dr-backup.sh"]
+    B --> P[("Primary repository")]
+    B -->|"copy"| O[("Off-site destinations")]
+    B -->|"status and metrics"| M["Prometheus alerts"]
+    P --> R["restore.sh"]
+    O --> R
+    R --> D[("PostgreSQL and storage")]
+    P --> T["restore-test.sh, weekly"]
+    T -->|"result"| M
+```
 
-Test restores periodically — a backup that has never been restored is not a verified backup.
+Schedule it with the `backup-scheduler` Compose service, systemd timers or cron (ready-made files in `scripts/schedule/`), and set `BACKUP_DESTINATIONS` to at least one copy off the host: the default repository is a volume on the same host. A backup that has never been restored is not a verified backup, so schedule `restore-test.sh` too; it restores on a throwaway Compose project, starts the application, compares every table count and statistic with the manifest, signs in, searches and exports, and exits non-zero on any difference. The backend setting `EMAIL_DELIVERY=disabled` (default `smtp`) makes every send fail before a connection is opened; the restore test uses it so a restored copy can never email real users.
+
+The older `./scripts/backup.sh [output-dir]` (a gzip'd `pg_dump`, plus the local-files volume when `STORAGE_BACKEND=local`, and nothing for SeaweedFS objects or the `.env`) is kept for one-off dumps only, and `./scripts/restore.sh FILE` still restores its `.sql.gz` and `reqtrack-files-*.tar.gz` output into an empty database.
 
 ### Migrations
 
-The backend runs `alembic upgrade head` automatically on every startup (see [decisions.md](decisions.md) for why). Upgrading to a new ReqTrackManager version is: pull the new image, `docker compose up -d backend` — no manual migration step is required. Because of this, always take a database backup before upgrading, since the migration runs immediately and automatically on container start.
+The backend runs `alembic upgrade head` automatically on every startup (see [decisions.md](decisions.md) for why). Upgrading to a new ReqTrackManager version is: pull the new image, `docker compose up -d backend` — no manual migration step is required. Because of this, always take a backup (`./scripts/dr-backup.sh`) before upgrading, since the migration runs immediately and automatically on container start; a restore needs the image the set was taken with, which the manifest names.
 
 ### Adding an external module by mounting a directory
 

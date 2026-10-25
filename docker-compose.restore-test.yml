@@ -1,0 +1,34 @@
+# Override for an ISOLATED copy of the stack: the disaster-recovery restore-test (scripts/restore-test.sh) and
+# its self-check (scripts/restore-test-selfcheck.sh) run `docker compose -p <throwaway project> -f
+# docker-compose.yml -f docker-compose.restore-test.yml`. It makes the project unable to collide with, or
+# reach, a running deployment:
+#   - no published ports (the checks run inside the containers), so nothing clashes with the real stack and
+#     nothing outside the host can reach the scratch copy;
+#   - no fixed container name (the base file names the storage container, which a second project could not
+#     also use);
+#   - email delivery disabled in the application itself (a mistyped SMTP host could otherwise send real mail);
+#   - a patient health check: restoring happens on whatever host the test runs on (a small one, with the
+#     application, the database and the restore sharing it), so the backend gets minutes, not seconds, to answer;
+#   - the bootstrap server administrator is off by default: it would add a user the backup does not hold, so
+#     the restored statistics could never match. The self-check turns it on for the source stack it seeds.
+#   - object storage without disk preallocation: SeaweedFS reserves about 1 GB for each of the first seven volumes
+#     at the first upload, so a throwaway stack holding three small files took 5 to 15 GB and two such stacks plus
+#     a development stack filled a 58 GB Docker VM disk. The flag below only stops the reservation; it changes
+#     nothing about what is stored.
+# The restore-test also writes a second, generated override that mounts the repository read-only (see
+# docs/disaster-recovery.md, "Restore test").
+services:
+  storage:
+    container_name: !reset null
+    command: >-
+      server -dir=/data -ip=127.0.0.1 -ip.bind=127.0.0.1
+      -s3 -s3.port=9000 -s3.ip.bind=:: -s3.config=/etc/seaweedfs/s3.json
+      -master.volumePreallocate=false
+  backend:
+    ports: !reset []
+    environment:
+      EMAIL_DELIVERY: ${RESTORE_TEST_EMAIL_DELIVERY:-disabled}
+      SERVER_ADMIN_ENABLED: ${RESTORE_TEST_SERVER_ADMIN_ENABLED:-false}
+    healthcheck:
+      start_period: 300s
+      retries: 30

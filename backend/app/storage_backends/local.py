@@ -96,6 +96,14 @@ class LocalFileStorageBackend:
         path = Path(self._confine(key))
         path.unlink(missing_ok=True)
 
+    def exists(self, key: str) -> bool:
+        """Whether a file is stored under `key`.
+
+        Raises:
+            ValueError: If `key` is not a valid storage key (see `_confine`).
+        """
+        return Path(self._confine(key)).is_file()
+
     def disk_usage_percent(self) -> float:
         """Returns the percentage of disk space used on the storage volume (I-M-11)."""
         import shutil

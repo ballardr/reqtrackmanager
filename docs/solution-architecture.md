@@ -444,12 +444,68 @@ The database layer should include:
 - schema migration support
 - versioned schema changes
 - transactional integrity for workflow steps
-- backup and restore procedures
+- backup, restore and restore-test procedures (see Stateful Components and Backup Verification below and [disaster-recovery.md](disaster-recovery.md))
 
 ### File Storage Layer
 Files such as supporting documents and uploaded attachments are stored in a configurable backend. The initial deployment can use local filesystem storage, while the design should allow later migration to object storage such as S3 or MinIO.
 
 **Implementation note (Pelion v2):** `backend/app/storage_backends/` defines a small `FileStorageBackend` protocol with two real implementations — `LocalFileStorageBackend` (filesystem) and `S3CompatibleFileStorageBackend` (boto3, works against any S3-compatible server or real S3) — selected via `STORAGE_BACKEND=local|s3`. The default Docker Compose stack runs the bundled SeaweedFS S3 gateway (formerly MinIO — see [decisions.md](decisions.md)'s "Storage backend: MinIO images no longer pullable, replaced with SeaweedFS" entry) and defaults to the `s3` backend so the object-storage path is exercised for real rather than only implemented in the abstract. The bundled gateway accepts a single S3 identity that may act on the application bucket only (the backend's credential), and everything except the S3 gateway listens on loopback because SeaweedFS's filer and master APIs are unauthenticated; both are plain compose configuration (see [deployment.md](deployment.md) §Storage credential scope and its hardening guide).
+
+### Stateful Components and Backup Verification
+
+Everything a disaster recovery must restore lives in exactly three Compose volumes plus the operator's `.env`; every other service is rebuilt from its image.
+
+| Component | State | Where | In a backup set |
+|-----------|-------|-------|-----------------|
+| `db` (PostgreSQL) | All records, users, hashes, encrypted secrets, audit | volume `reqtrack_db_data` | `pg_dump` |
+| `storage` (SeaweedFS) | Uploaded files when `STORAGE_BACKEND=s3` (default) | volume `reqtrack_storage_data` | object mirror |
+| `backend` local files | Uploaded files when `STORAGE_BACKEND=local` | volume `reqtrack_local_files` | tar |
+| Operator `.env` | `APP_SECRET_ENCRYPTION_KEY`, `JWT_SECRET`, credentials | host | optional, separate key |
+| `frontend`, `mcp-server`, `docs` | None (no volumes, no files written) | n/a | no |
+| `prometheus`, `loki`, `tempo`, `grafana`, `alloy` | Telemetry only, optional profile | container filesystem | no |
+
+**Recovery objectives.** The recovery point is the backup interval (nightly by default; no point-in-time recovery). Retention defaults to 7 daily, 4 weekly and 12 monthly sets, applied to every repository, so an erased record leaves backup media only when the last set holding it expires. Backup repositories, the staging volume and the restore-test scratch stack hold the same Confidential data as production and are protected accordingly; key custody is in [disaster-recovery.md](disaster-recovery.md#key-custody).
+
+A backup records a manifest (`manifest.json`, schema in [schemas/backup-manifest.schema.json](schemas/backup-manifest.schema.json)) that embeds a statistics document produced by `backend/app/services/dr_stats.py`. The same code recomputes it on a restored stack, so "the restore matches the source" has one definition.
+
+```mermaid
+flowchart LR
+    DB[("db")] -->|"REPEATABLE READ snapshot"| D["pg_dump"]
+    DB -->|"same snapshot"| S["dr_stats"]
+    ST[("storage")] -->|"exists per file record"| S
+    S --> M["manifest.json"]
+    D --> M
+    M --> V["restored stack: dr_stats again"]
+    V --> C{"compare_stats equal and probes clean?"}
+```
+
+The document holds the Alembic revision, an exact row count of every table found in the database catalogue (a table added by a module needs no edit), business counts (records per registered artefact type, users, projects, groups, links, file records), and two integrity probes: every file record has a stored object, and every `EncryptedString` column decrypts with the configured key. It contains counts and ids only, never row content.
+
+A restore (`backend/app/services/dr_restore.py`, run through `scripts/restore.sh`) never writes into the live database: it restores the set into a scratch database, recomputes the statistics there, compares them with the manifest and only then renames the scratch database into place, keeping the replaced one under a new name. Objects are put back before the swap and only ever added. The statistics are computed by the application's own models, so a restore needs the image the set was taken with; see [disaster-recovery.md](disaster-recovery.md).
+
+The restore test (`scripts/restore_test.py`, wrapped by `scripts/restore-test.sh`) proves that chain on a throwaway Compose project: it runs on the host (it drives `docker compose`; the backup and restore tools stay free of the Docker socket), starts `db` and `storage` in an isolated project (own volumes and network, no published ports, `EMAIL_DELIVERY=disabled`, generated credentials, the repository mounted read-only), restores the set with the real restore tool, starts the backend on the result and runs `backend/scripts/dr_verify.py` inside it (migrations, statistics, stored objects, encrypted columns, email, API smoke). Fault injection (`--inject`) and `scripts/restore-test-selfcheck.sh` prove each check can fail; CI runs the self-check as the `restore-test` job, a prerequisite of `docker-build`.
+
+**Credential reset and recovery.** A native password is reset only with a single-use, expiring link emailed to the account's own address (`backend/app/services/credential_reset.py`, `credential_reset_tokens`: SHA-256 of a 256-bit secret, carried in the URL fragment). The credential epoch is `users.token_version`, which every reset increments, so all earlier sessions fail the existing token check; `users.must_reset_credentials` blocks native sign-in after a forced reset until a new password is chosen. Four entry points share the one service: the signed-out "forgot password" flow, an organisation or server administrator sending a link (the administrator never sees it), a server admin's forced reset, and the command line (`python -m app.cli.credentials`, which needs only the database and no application sign-in or email, for when every administrator is locked out). `restore.sh --force-reset` applies the same reset to a restored copy before it replaces anything, and the restore test proves it with a `credential-recovery` check. See [website/docs/workflows/password-reset-and-credential-recovery.md](website/docs/workflows/password-reset-and-credential-recovery.md).
+
+```mermaid
+flowchart LR
+    H["Host: restore_test.py"] -->|"docker compose -p reqtrack-drtest-ts"| P["Scratch project"]
+    R[("Backup repository, read-only")] --> P
+    P --> V["dr_verify.py in the restored backend"]
+    V --> O["report.json, report.md, status and metrics files"]
+    H -->|"down -v"| P
+```
+
+**Scheduling and monitoring.** Backups run from one of three schedulers, all calling the same tools: the optional `backup-scheduler` Compose service (`dr_backup.py schedule`, `backend/app/services/dr_schedule.py`: a daily wall-clock time in an IANA zone, or `every Nh`; catches up once at start; no Docker socket), systemd timers, or cron (`scripts/schedule/`, via `scripts/dr-scheduled.sh`). The restore-test is scheduled from the host only, because it drives Docker. Each tool writes `status.json` and Prometheus textfiles (`reqtrack-*.prom`) atomically to one status directory (`BACKUP_STATUS_VOLUME`); Grafana Alloy's textfile collector forwards them to Prometheus (remote write), whose alert rules (`observability/alerts/`, unit-tested with `promtool` in CI) read the intervals the tools publish, so a schedule change needs no rule edit. A backup that cannot even start (database or object store unreachable) is recorded as a failed run, not left silent.
+
+```mermaid
+flowchart LR
+    SCH["backup-scheduler, systemd timer or cron"] --> B["Backup / restore-test"]
+    B -->|"status.json, reqtrack-*.prom"| D[("Status directory")]
+    D -->|"textfile collector"| A["Grafana Alloy"]
+    A -->|"remote write"| P["Prometheus"]
+    P --> R["Alert rules"]
+```
 
 ### Observability Layer
 The architecture includes observability services for metrics, logs, and traces:

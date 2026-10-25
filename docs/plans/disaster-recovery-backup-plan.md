@@ -1,20 +1,21 @@
 # Disaster Recovery: Backup, Restore and Restore-Test — Plan
 
-**Status:** planned 2026-10-20, not started. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. **Decided by: User** (2026-10-20): wants documentation and scripts for a whole-platform backup that suits disaster recovery, runs from cron, has matching recovery instructions and scripts, and can be tested by restoring to a temporary system and checking the platform is stable and its statistics (users, projects, records) are correct. Everything below about *how* is **Decided by: Agent** until the user signs off the open decisions in §2.
+**Status:** planned 2026-10-20; Phase 0 decisions signed off 2026-10-24, spike B closed 2026-10-25; Phases 1, 2, 3, 3b and 4 done 2026-10-24; Phase 5 done 2026-10-25; Phase 6 done 2026-10-25. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. **Decided by: User** (2026-10-20): wants documentation and scripts for a whole-platform backup that suits disaster recovery, runs from cron, has matching recovery instructions and scripts, and can be tested by restoring to a temporary system and checking the platform is stable and its statistics (users, projects, records) are correct. Everything below about *how* is **Decided by: Agent** until the user signs off the open decisions in §2.
 
 ## Status / Resume Here
 
-0 / 9 phases complete. Phases 1–4 are the tooling and are each useful alone; 5–7 wrap it for operators and auditors.
+8 / 9 phases complete (Phase 0 done: spike B closed 2026-10-25, SeaweedFS 3.97 cannot express a read-only identity, so the bundled backup uses the application's identity; see `docs/decisions.md`). Phases 1–5 including 3b are the tooling and are each useful alone; 6 wraps it for operators and auditors and 7 proves it cold. Next: Phase 7 (game day on a clean machine; needs the user or a delegate to run it).
 
 | # | Phase | Status |
 |---|-------|--------|
-| 0 | Sign-off on open decisions and three spikes | [ ] |
-| 1 | Backup-set format, manifest and `dr_stats` | [ ] |
-| 2 | Backup tool (DB, objects, config, encryption, retention, off-site) | [ ] |
-| 3 | Restore tool (fresh host, in place, scratch) | [ ] |
-| 4 | Restore-test harness and CI job | [ ] |
-| 5 | Scheduling and monitoring | [ ] |
-| 6 | Runbook, docs website, SOC 2 and architecture docs | [ ] |
+| 0 | Sign-off on open decisions and spikes | [x] decisions signed off, spikes A, B, C, D done (see §2) |
+| 1 | Backup-set format, manifest and `dr_stats` | [x] done 2026-10-24: `services/dr_stats.py`, `services/dr_manifest.py`, `scripts/dr_stats.py`, `docs/schemas/backup-manifest.schema.json`, 18 tests in `tests/test_dr_stats.py` |
+| 2 | Backup tool (DB, objects, config, encryption, retention, off-site) | [x] done 2026-10-24: `services/dr_backup.py`, `dr_restic.py`, `dr_object_mirror.py`, `scripts/dr_backup.py`, `backup` Dockerfile target + Compose profile, `scripts/dr-backup.sh`, CI job; 48 tests in `tests/test_dr_backup.py`, run in the `backup` image and on a throwaway Compose project (seeded, config and `none` modes, destination copy, bundle, wrong password) |
+| 3 | Restore tool (fresh host, in place, scratch) | [x] done 2026-10-24: `services/dr_restore.py`, `scripts/dr_restore.py`, `scripts/restore.sh` (list, config, fresh, in-place, legacy files), `restore` Compose service; restores into a scratch database, verifies against the manifest, then renames into place; 35 tests in `tests/test_dr_restore.py`; run on a real Compose project (destroyed volumes, fresh restore, in-place restore). Scratch-stack orchestration was left to Phase 4 and the `--force-reset` hook came with 3b (see `docs/decisions.md`) |
+| 3b | Credential reset: CLI, reset links, credential epoch | [x] done 2026-10-24: `services/credential_reset.py`, `models/credential_reset.py` + migration 0106 (`credential_reset_tokens`, `users.must_reset_credentials`; the epoch is `token_version`), `app/cli/credentials.py` (`force-reset`, `issue-link`), `POST /auth/forgot-password` and `/auth/reset-password`, admin send endpoints (organisation and server tier), `POST /system/credentials/force-reset`, `restore.sh --force-reset`, UI (forgot/reset pages, `SendPasswordResetDialog`, `ForceCredentialResetModal`, `AuthCard`), docs website page, SOC 2 updates; 37 tests in `tests/test_credential_reset.py`, restore/verifier/harness tests, Storybook and a Playwright spec; the forced-reset and locked-out-administrator cases run on real Compose projects |
+| 4 | Restore-test harness and CI job | [x] done 2026-10-24: `scripts/restore_test.py` + `restore-test.sh`, `docker-compose.restore-test.yml`, `services/dr_verify.py` + `scripts/dr_verify.py`, `EMAIL_DELIVERY=smtp\|disabled`, fault injection (`--inject`), `scripts/restore-test-selfcheck.sh`, CI job `restore-test` (a prerequisite of `docker-build`); 31+ harness tests, 25 verifier tests; run on real Compose projects (positive, recovery without the key, four faults). The two reset cases arrived with 3b as one run (`--force-reset all`) plus the `unmarked-account` fault (see `docs/decisions.md`) |
+| 5 | Scheduling and monitoring | [x] done 2026-10-25: `services/dr_schedule.py` + `dr_backup.py schedule\|health`, `backup-scheduler` Compose service (profile `backup-schedule`), `scripts/dr-scheduled.sh`, `scripts/schedule/` (crontab, systemd service+timer pairs), `observability/alerts/` rules with `promtool` unit tests (CI step), Alloy textfile pipeline to Prometheus remote write, `BACKUP_STATUS_VOLUME`, published expected-interval metrics; 66 tests in `tests/test_dr_schedule.py` and `tests/test_dr_monitoring.py`; run on a real Compose project (catch-up, health, SIGTERM, storage down) and on real Alloy and Prometheus containers. Found and fixed: a backup that could not start left no status and kept reporting success (see `docs/decisions.md`) |
+| 6 | Runbook, docs website, SOC 2 and architecture docs | [x] done 2026-10-25: `docs/disaster-recovery.md` (RPO/RTO, key custody, decision flowchart, troubleshooting), `deployment.md` and README rewritten around `dr-backup.sh`, website page `installation-deployment/backup-and-disaster-recovery.md` (+ storage, production, observability, configuration reference, SOC 2 posture, encryption pages), SOC 2 policies (system operations, retention, classification, encryption, access control) and control matrix, architecture recovery objectives; erasure-persists-in-backups recorded as a residual gap; RTO stated as unmeasured until Phase 7 (see `docs/decisions.md`) |
 | 7 | DR game day on a clean machine | [ ] |
 
 ```mermaid
@@ -47,7 +48,26 @@ flowchart LR
 | DB dump and file store taken at different moments, with no defined order | A restored row can reference an object the archive does not contain |
 | Nothing verifies a restore | "A backup that has never been restored is not a verified backup" is stated in the docs but not enforced |
 
-## 2. Open decisions (need user sign-off in Phase 0)
+## 2. Decisions (signed off 2026-10-24) and spike results
+
+Q2, Q5 and Q6 take the recommendation (**Decided by: Agent**, revisable). Q1, Q3, Q4, Q7 are **Decided by: User** as below; the full account is in `docs/decisions.md` ("Disaster recovery Phase 0").
+
+| Q | Answer |
+|---|--------|
+| Q1 | restic is the one engine, fanning each snapshot out to several destinations (`restic copy`), plus an optional `bundle` command that writes an age-encrypted tar of the latest set for scp or any manual copy |
+| Q3 | Compose `backup` service plus host wrappers |
+| Q4 | S3-compatible, SFTP (also serves scp hosts), local/NFS, Azure Blob |
+| Q7 | Both controls approved |
+
+| Spike | Result |
+|-------|--------|
+| A snapshot dump | Confirmed: `pg_dump --snapshot` and counts via `SET TRANSACTION SNAPSHOT` match exactly under concurrent writes; no drift tolerance needed |
+| B SeaweedFS mirror | Closed 2026-10-25. The incremental mirror is sound against real SeaweedFS 3.97: a listing of 2,124 keys follows every page, the ETag is the object's MD5 (single put, including 6 MB), a same-size overwrite changes the ETag and is re-fetched, a deleted key is flagged then removed. **A read-only identity is impossible in 3.97**: an identity without `Write:<bucket>` is denied everything (all action forms tried), so the bundled backup keeps the application's identity; an external S3 service takes `BACKUP_STORAGE_*` read-only credentials. See `docs/decisions.md` |
+| C scratch sends nothing | One email choke point (`services/email.py`, deployment-wide `SMTP_*`); no webhooks; add a generic `EMAIL_DELIVERY=smtp\|disabled` setting in Phase 4 |
+| D reset hooks | None exist; `token_version` is reusable as the credential epoch; the bootstrap admin password is never re-applied to a restored database |
+
+### Original questions
+
 
 | # | Question | Recommendation |
 |---|----------|----------------|

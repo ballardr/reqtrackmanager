@@ -1,6 +1,11 @@
 global:
   scrape_interval: 15s
 
+# Disaster-recovery alerts (backup failed or stale, restore-test failed or stale). There is no Alertmanager in
+# this stack: the rules show as alerts in Prometheus and Grafana; point `alerting` at your Alertmanager to be paged.
+rule_files:
+  - /etc/prometheus/alerts/*.rules.yml
+
 scrape_configs:
   - job_name: reqtrackmanager-backend
     static_configs:

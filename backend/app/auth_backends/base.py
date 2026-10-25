@@ -27,11 +27,14 @@ class AuthResult:
         success: Whether authentication succeeded.
         user: The authenticated User, if success is True.
         error: A human-readable failure reason, if success is False.
+        reset_required: The password was correct but a forced credential reset is pending, so no session
+            is issued (the login endpoint answers 403 instead of 401).
     """
 
     success: bool
     user: User | None = None
     error: str | None = None
+    reset_required: bool = False
 
 
 class AuthBackend(Protocol):

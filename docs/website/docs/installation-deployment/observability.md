@@ -67,7 +67,30 @@ Two counters answer "how busy is the API and database". Ask for the window you w
 
 Grafana Alloy ships container logs to Loki, and exposes an OTLP receiver on port `4317` ready to forward traces to Tempo once the backend is instrumented with OpenTelemetry — this instrumentation is not yet done (see [Architecture overview → Known limitations](../reference/architecture-overview.md#known-limitations)), so the tracing pipeline is wired and ready but currently receives no application traces. Prometheus is pre-configured with a scrape target for the backend's `/metrics` endpoint. Grafana starts with no data sources or dashboards provisioned: add Prometheus (`http://prometheus:9090`), Loki and Tempo under **Connections → Data sources**, then use the queries above in Explore or your own dashboards.
 
-The repo's `observability/` directory holds the raw configuration this profile runs from (`prometheus.yml`, `alloy.river`, `tempo.yaml`), if you want to see or adapt exactly what's being scraped and shipped.
+The repo's `observability/` directory holds the raw configuration this profile runs from (`prometheus.yml`, `alloy.river`, `tempo.yaml`, and `alerts/` for the backup alert rules), if you want to see or adapt exactly what's being scraped and shipped.
+
+## Backup and restore-test monitoring
+
+The backup tool, its optional in-container scheduler and the restore-test each write a small Prometheus metrics file (`reqtrack-*.prom`) next to their `status.json`, in the backup status directory. With the `observability` profile, Alloy reads that directory and forwards the metrics to Prometheus, which loads alert rules for them from `observability/alerts/`.
+
+```mermaid
+flowchart LR
+    T["Backup, scheduler, restore-test"] -->|"reqtrack-*.prom"| D[("Status directory")]
+    D -->|"textfile collector"| A["Alloy"]
+    A -->|"remote write"| P["Prometheus"]
+    P --> R["Alert rules"]
+```
+
+| Alert | Fires when |
+|-------|-----------|
+| `ReqTrackBackupFailed` | The last backup failed |
+| `ReqTrackBackupStale` | No successful backup for 1.5 times its scheduled interval |
+| `ReqTrackBackupDestinationDown` | The copy to an off-site destination failed |
+| `ReqTrackBackupSchedulerDown` | The in-container scheduler stopped reporting |
+| `ReqTrackRestoreTestFailed` / `ReqTrackRestoreTestStale` | The last restore-test failed, or none has passed for the weekly schedule plus a day |
+| `ReqTrackBackupMetricsMissing` | Nothing reports a backup run, so none may be scheduled |
+
+The bundled stack has no Alertmanager: the alerts show in Prometheus and Grafana, and you add an `alerting:` section to `observability/prometheus.yml` to be paged. The staleness thresholds follow the interval each tool publishes, so changing a backup schedule needs no rule edits. How to schedule backups and the weekly restore-test (a Compose service, systemd timers or cron) is in [Backup and disaster recovery](./backup-and-disaster-recovery.md).
 
 ## Next steps
 

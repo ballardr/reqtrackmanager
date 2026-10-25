@@ -10,6 +10,7 @@ External dependencies: pydantic-settings.
 """
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -46,6 +47,10 @@ class Settings(BaseSettings):
         storage_local_dir: Filesystem directory for the local backend.
         storage_s3_*: Connection details for the S3-compatible backend.
         smtp_*: SMTP connection details for outgoing email (C-N-03).
+        email_delivery: "smtp" sends mail through `smtp_*`; "disabled" makes every send fail with
+            `EmailDeliveryDisabled` before any connection is opened, so a copy of the platform that must
+            never reach real recipients (the disaster-recovery restore-test stack) cannot, whatever
+            `smtp_host` says. Callers already treat a failed send as "not emailed".
         deployment_notification_email: Address (or group address) notified
             of deployment-level events such as low disk space or database
             connectivity failures (I-M-09).
@@ -157,6 +162,13 @@ class Settings(BaseSettings):
         user_create_rate_limit_burst: Most accounts or invites one server administrator may create in a
             burst from Server Management (a token bucket per user and per worker process). 0 disables it.
         user_create_rate_limit_per_minute: The sustained creations per minute, per worker process.
+        credential_reset_token_minutes: How long an emailed password-reset link works (5 to 1440 minutes).
+            A link issued from the command line may ask for longer, up to 1440, with `--ttl-minutes`.
+        public_auth_rate_limit_burst / public_auth_rate_limit_per_minute: Token bucket per client address
+            and per worker process for the unauthenticated "forgot password" and "reset password" calls.
+            0 disables it.
+        credential_reset_send_rate_limit_burst / credential_reset_send_rate_limit_per_minute: Token bucket
+            per administrator and per worker process for sending reset links to other people. 0 disables it.
         allow_external_modules: Deployment-level opt-in for the modular
             feature system's third-party discovery sources
             (`app.modules.registry`'s Python entry-point scan and
@@ -239,6 +251,7 @@ class Settings(BaseSettings):
     storage_s3_secret_key: str = "minioadmin"
     storage_s3_region: str = "us-east-1"
 
+    email_delivery: Literal["smtp", "disabled"] = "smtp"
     smtp_host: str = "mailhog"
     smtp_port: int = 1025
     smtp_use_tls: bool = False
@@ -273,6 +286,11 @@ class Settings(BaseSettings):
     search_rate_limit_per_minute: int = 120
     user_create_rate_limit_burst: int = 20
     user_create_rate_limit_per_minute: int = 30
+    credential_reset_token_minutes: int = Field(default=60, ge=5, le=1440)
+    public_auth_rate_limit_burst: int = 10
+    public_auth_rate_limit_per_minute: int = 10
+    credential_reset_send_rate_limit_burst: int = 20
+    credential_reset_send_rate_limit_per_minute: int = 30
     allow_external_modules: bool = False
     extra_modules_path: str | None = None
     module_frame_allowed_origins: str = ""

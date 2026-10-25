@@ -1,0 +1,18 @@
+# systemd service for one disaster-recovery backup (docs/disaster-recovery.md, "Scheduling and monitoring").
+# Install:  sudo cp scripts/schedule/reqtrack-*.{service,timer} /etc/systemd/system/
+#           sudo systemctl daemon-reload && sudo systemctl enable --now reqtrack-backup.timer
+# Adjust WorkingDirectory/ExecStart to where the repository is checked out, and User to a user that may run Docker.
+[Unit]
+Description=ReqTrackManager disaster-recovery backup
+Wants=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+User=reqtrack
+WorkingDirectory=/opt/reqtrackmanager
+ExecStart=/opt/reqtrackmanager/scripts/dr-scheduled.sh backup
+# 75: another backup was already running. Not a failure of this unit; the run that holds the lock reports itself.
+SuccessExitStatus=75
+TimeoutStartSec=6h
+Nice=10

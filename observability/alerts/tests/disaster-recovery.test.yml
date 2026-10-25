@@ -1,0 +1,178 @@
+# Samples are 4 minutes apart so each stays inside the 5 minute lookback and an alert's `for` can elapse.
+# Unit tests for ../disaster-recovery.rules.yml: run with
+#   promtool test rules observability/alerts/tests/disaster-recovery.test.yml
+# (from the repository root; promtool is in the prom/prometheus image).
+rule_files:
+  - ../disaster-recovery.rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    name: a failed backup alerts after ten minutes, a good one does not
+    input_series:
+      - series: 'reqtrack_backup_last_run_success{job="b"}'
+        values: "1 1 0+0x20"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: ReqTrackBackupFailed
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: ReqTrackBackupFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: b
+            exp_annotations:
+              summary: "The last backup failed"
+              description: "The most recent backup run failed. Read status.json in the backup status volume for the failed step; the previous good set is still in the repository."
+
+  - interval: 4m
+    name: staleness follows the published interval (1.5 times)
+    input_series:
+      # Last success at t=0; a 24 h schedule goes stale after 36 h, a 6 h schedule after 9 h.
+      - series: 'reqtrack_backup_last_success_timestamp_seconds{job="daily"}'
+        values: "0+0x700"
+      - series: 'reqtrack_backup_expected_interval_seconds{job="daily"}'
+        values: "86400+0x700"
+      - series: 'reqtrack_backup_last_success_timestamp_seconds{job="sixh"}'
+        values: "0+0x700"
+      - series: 'reqtrack_backup_expected_interval_seconds{job="sixh"}'
+        values: "21600+0x700"
+    alert_rule_test:
+      - eval_time: 8h
+        alertname: ReqTrackBackupStale
+        exp_alerts: []
+      - eval_time: 12h
+        alertname: ReqTrackBackupStale
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: sixh
+            exp_annotations:
+              summary: "No successful backup for more than 1.5 times the scheduled interval"
+              description: "The last successful backup is older than 1.5 times its schedule (or there has never been one). Check that the schedule is running and that the last run did not fail."
+      - eval_time: 40h
+        alertname: ReqTrackBackupStale
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: daily
+            exp_annotations:
+              summary: "No successful backup for more than 1.5 times the scheduled interval"
+              description: "The last successful backup is older than 1.5 times its schedule (or there has never been one). Check that the schedule is running and that the last run did not fail."
+          - exp_labels:
+              severity: critical
+              job: sixh
+            exp_annotations:
+              summary: "No successful backup for more than 1.5 times the scheduled interval"
+              description: "The last successful backup is older than 1.5 times its schedule (or there has never been one). Check that the schedule is running and that the last run did not fail."
+
+  - interval: 1m
+    name: a destination that is down alerts, naming it
+    input_series:
+      - series: 'reqtrack_backup_destination_up{destination="1"}'
+        values: "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+      - series: 'reqtrack_backup_destination_up{destination="2"}'
+        values: "0+0x14"
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: ReqTrackBackupDestinationDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              destination: "2"
+            exp_annotations:
+              summary: "The last backup could not be copied to destination 2"
+              description: "The set was stored in the primary repository but the copy to the off-site destination failed, so a lost host would lose it."
+
+  - interval: 1m
+    name: missing backup metrics alert after thirty minutes
+    input_series:
+      - series: 'something_else{job="x"}'
+        values: "1+0x60"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ReqTrackBackupMetricsMissing
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: ReqTrackBackupMetricsMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "No backup metrics are being reported"
+              description: "Nothing has reported a backup run: backups may not be scheduled, or Alloy cannot read the backup status directory. Remove this rule only if you deliberately take no backups."
+
+  - interval: 1m
+    name: a scheduler that stops beating alerts
+    input_series:
+      # Heartbeats until minute 5, then nothing new (the textfile keeps its last value).
+      - series: 'reqtrack_backup_scheduler_heartbeat_timestamp_seconds{job="s"}'
+        values: "0 30 60 90 120 150 180 210 240 270 300 300+0x20"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: ReqTrackBackupSchedulerDown
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: ReqTrackBackupSchedulerDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: s
+            exp_annotations:
+              summary: "The in-container backup scheduler has stopped reporting"
+              description: "The backup-scheduler service has not written its heartbeat for five minutes: it is stopped, stuck or cannot write to the status volume. Backups are not running."
+
+  - interval: 4m
+    name: a weekly restore-test goes stale after eight days, not before
+    input_series:
+      - series: 'reqtrack_restore_test_last_success_timestamp_seconds{job="r"}'
+        values: "0+0x3200"
+      - series: 'reqtrack_restore_test_expected_interval_seconds{job="r"}'
+        values: "604800+0x3200"
+    alert_rule_test:
+      - eval_time: 190h
+        alertname: ReqTrackRestoreTestStale
+        exp_alerts: []
+      - eval_time: 210h
+        alertname: ReqTrackRestoreTestStale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: r
+            exp_annotations:
+              summary: "No restore-test has passed for more than a day beyond its schedule (8 days when weekly)"
+              description: "Backups are not being proven restorable. Check that the restore-test timer or cron entry is running on the host."
+
+  - interval: 1m
+    name: a failed restore-test alerts
+    input_series:
+      - series: 'reqtrack_restore_test_last_run_success{job="r"}'
+        values: "0+0x20"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: ReqTrackRestoreTestFailed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: r
+            exp_annotations:
+              summary: "The last restore-test failed"
+              description: "The latest backup did not restore into a working platform with matching numbers. Read the report in restore-test-reports/; treat the backups as unproven until a restore-test passes."
+
+  - interval: 1m
+    name: an unreadable metrics file alerts
+    input_series:
+      - series: 'node_textfile_scrape_error{job="reqtrack-backup"}'
+        values: "1+0x20"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: ReqTrackBackupMetricsUnreadable
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: reqtrack-backup
+            exp_annotations:
+              summary: "A backup metrics file cannot be read"
+              description: "The textfile collector failed to parse a file in the backup status directory, so backup alerts may be working from stale data."

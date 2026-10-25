@@ -40,6 +40,10 @@ flowchart TB
 
 Every credential the application needs — `JWT_SECRET`, `APP_SECRET_ENCRYPTION_KEY`, the database password, SMTP credentials, object storage credentials, the bootstrap server-admin password — is sourced exclusively from environment variables, never hardcoded. The production Compose stack refuses to start if any required secret is left at its insecure default, which is a real, fail-fast check rather than a documented expectation someone could accidentally skip. See [Installation & Deployment → Configuration reference](../installation-deployment/configuration-reference.md) for the full environment-variable table.
 
+## Keys and backups
+
+A database backup holds password hashes and the encrypted columns, so the backup repository is Confidential and is itself encrypted. Whether it also holds the keys is your choice (`BACKUP_SECRETS_MODE`): `config` stores the `.env` encrypted to a key only you hold, `none` stores no key material at all, for keys provisioned from a vault. The restored application needs the original `APP_SECRET_ENCRYPTION_KEY`, and a restore checks that every encrypted value decrypts with the key it is given. See [Backup and disaster recovery](../installation-deployment/backup-and-disaster-recovery.md#keep-the-keys-safe).
+
 ## Where this fits
 
 - [Configuration reference](../installation-deployment/configuration-reference.md) — every secret-bearing environment variable, in one table.

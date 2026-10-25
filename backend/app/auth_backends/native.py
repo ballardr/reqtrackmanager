@@ -20,6 +20,10 @@ from app.models.organization import Organization, UserOrgRole
 from app.models.user import User
 from app.security import hash_password, verify_password
 
+RESET_REQUIRED_MESSAGE = (
+    "Your password must be reset before you can sign in. Choose \"Forgot your password?\" to get a reset link."
+)
+
 # A fixed, valid bcrypt hash with no corresponding real password, verified
 # against on every not-found/wrong-backend login attempt purely to spend the
 # same amount of time bcrypt verification normally takes — otherwise that
@@ -65,7 +69,12 @@ class NativeAuthBackend:
             return AuthResult(success=False, error="Invalid email or password.")
         if not user.is_active or user.is_archived:
             return AuthResult(success=False, error="Invalid email or password.")
-        if _all_orgs_sso_only(db, user.id):
+        if user.must_reset_credentials:
+            # Like the SSO message below, only reachable after a correct password, so it reveals nothing to
+            # someone enumerating accounts. The old password is suspect (forced reset), so no session is
+            # issued; the person gets a reset link instead.
+            return AuthResult(success=False, user=user, error=RESET_REQUIRED_MESSAGE, reset_required=True)
+        if all_orgs_sso_only(db, user.id):
             # Deliberately a distinct, specific message rather than the
             # generic one above: the caller already proved they know the
             # correct password, so telling them to use SSO instead leaks
@@ -76,7 +85,7 @@ class NativeAuthBackend:
         return AuthResult(success=True, user=user)
 
 
-def _all_orgs_sso_only(db: Session, user_id: uuid.UUID) -> bool:
+def all_orgs_sso_only(db: Session, user_id: uuid.UUID) -> bool:
     """Whether every organisation `user_id` belongs to has `sso_only=True`.
 
     Used to enforce `Organization.sso_only` at the one place it previously

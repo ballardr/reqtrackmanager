@@ -466,6 +466,59 @@ export const TestEmailSendFailure: Story = {
 export const LightTheme: Story = { ...AccessReviewOrphanedAccounts, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...AccessReviewOrphanedAccounts, globals: { theme: "dark" } };
 
+/** Any account can be sent a reset link by a server administrator (Tier 1 confirm, toast). */
+export const AccessReviewSendsAPasswordResetLink: Story = {
+  beforeEach: () => {
+    mockServerManagementApis([systemUser({})]);
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Orphan User's actions" }));
+    await userEvent.click(within(document.body).getByRole("menuitem", { name: "Send password reset link" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "Send a password reset link to Orphan User?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Send link" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/v1/system/users/u1/password-reset"));
+    await expect(await within(document.body).findByText("Password reset link sent to Orphan User")).toBeInTheDocument();
+  },
+};
+
+/** Requiring one person to choose a new password goes through the force-reset endpoint with the user scope. */
+export const AccessReviewRequiresANewPassword: Story = {
+  beforeEach: () => {
+    mockServerManagementApis([systemUser({})]);
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Orphan User's actions" }));
+    await userEvent.click(within(document.body).getByRole("menuitem", { name: "Require new password" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "Require a new password?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Require new password" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/api/v1/system/credentials/force-reset", {
+        scope: "user", user_id: "u1", reset_2fa: false, send_links: true,
+      }),
+    );
+  },
+};
+
+export const ForceCredentialResetButtonOpensTheDialog: Story = {
+  beforeEach: () => {
+    mockServerManagementApis([systemUser({})]);
+    const base = api.get as unknown as (path: string) => Promise<unknown>;
+    spyOn(api, "get").mockImplementation(async (path: string) => (path === "/api/v1/orgs" ? [] : base(path)));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Force a credential reset…" }));
+    await expect(within(document.body).getByRole("dialog", { name: "Force a credential reset" })).toBeInTheDocument();
+  },
+};
+
 export const AddUserButtonOpensTheDialog: Story = {
   beforeEach: () => {
     mockServerManagementApis([systemUser({})]);

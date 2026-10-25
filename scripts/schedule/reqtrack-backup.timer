@@ -1,0 +1,13 @@
+# Runs reqtrack-backup.service every night. Persistent=true runs a missed night's backup at the next boot.
+# If you change the frequency, set BACKUP_EXPECTED_INTERVAL_HOURS in /etc/reqtrack/dr.env to match.
+[Unit]
+Description=Nightly ReqTrackManager backup
+
+[Timer]
+# The host's local time; append a zone to pin it (OnCalendar=*-*-* 02:30:00 Australia/Sydney).
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+Unit=reqtrack-backup.service
+
+[Install]
+WantedBy=timers.target

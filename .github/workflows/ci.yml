@@ -397,6 +397,35 @@ jobs:
         working-directory: tests/container
         run: docker compose exec -T backend ruff check .
 
+      # The backup tool's tests need restic, age and pg_dump 16, which only the `backup` image
+      # has; REQUIRE_DR_TOOLS makes a missing binary fail the test instead of skipping it, so the
+      # tests cannot quietly stop running. They run against the same test database and network as
+      # the suite above, after it has finished.
+      - name: Backup tool tests (backup image)
+        working-directory: tests/container
+        run: |
+          docker build --target backup -t container-backup:ci ../../backend
+          docker run --rm --network container_default \
+            -v "$PWD/../../docs:/docs:ro" \
+            -v "$PWD/../../scripts:/scripts:ro" \
+            -v "$PWD/../../observability:/observability:ro" \
+            -v "$PWD/../../docker-compose.yml:/docker-compose.yml:ro" \
+            -e REQUIRE_DR_TOOLS=1 \
+            -e DATABASE_URL=postgresql://reqtrack:reqtrack@db:5432/reqtrack_test \
+            -e JWT_SECRET=test-secret-not-for-production \
+            -e APP_SECRET_ENCRYPTION_KEY=test-encryption-key-not-for-production \
+            --entrypoint python container-backup:ci \
+            -m pytest tests/test_dr_backup.py tests/test_dr_stats.py tests/test_dr_restore.py tests/test_dr_verify.py \
+            tests/test_restore_test_harness.py tests/test_dr_schedule.py tests/test_dr_monitoring.py -q -p no:cacheprovider
+
+      # The backup and restore-test alert rules: syntax, then their unit tests (a failed backup, a stale one, a
+      # silent scheduler, a restore-test eight days old), using promtool from the Prometheus image the stack runs.
+      - name: Disaster-recovery alert rules (promtool)
+        run: |
+          for command in "check rules /o/alerts/disaster-recovery.rules.yml" "test rules /o/alerts/tests/disaster-recovery.test.yml"; do
+            docker run --rm --entrypoint promtool -v "$PWD/observability:/o:ro" prom/prometheus:v2.54.1 $command
+          done
+
       - name: Backend coverage summary
         working-directory: tests/container
         run: |
@@ -961,6 +990,15 @@ jobs:
           push: false
           tags: scan-backend:ci
 
+      - name: Build backup image for scanning
+        uses: docker/build-push-action@v7
+        with:
+          context: ./backend
+          target: backup
+          load: true
+          push: false
+          tags: scan-backup:ci
+
       - name: Build frontend image for scanning
         uses: docker/build-push-action@v7
         with:
@@ -989,7 +1027,7 @@ jobs:
           TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1,ghcr.io/aquasecurity/trivy-java-db:1
         run: |
           status=0
-          for image in scan-backend:ci scan-frontend:ci scan-mcp-server:ci docs-smoke:test; do
+          for image in scan-backend:ci scan-backup:ci scan-frontend:ci scan-mcp-server:ci docs-smoke:test; do
             echo "::group::Trivy $image"
             docker run --rm \
               -e TRIVY_DB_REPOSITORY -e TRIVY_JAVA_DB_REPOSITORY \
@@ -1001,10 +1039,39 @@ jobs:
           done
           exit $status
 
+  restore-test:
+    name: Disaster recovery restore test
+    runs-on: ubuntu-latest
+    # Builds a throwaway source stack, seeds the end-to-end dataset, takes a real backup, restores it into a
+    # second throwaway stack and checks the result matches (scripts/restore-test-selfcheck.sh), then proves
+    # each check can fail: a deleted row, a deleted object, a wrong encryption key and a damaged repository
+    # must all be caught. No `needs`: it builds its own images and shares nothing with the other jobs, so it
+    # runs beside them; docker-build needs it, so a backup that cannot be restored is never published.
+    # Roughly 20 to 30 minutes (the seed and six restores dominate).
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Backup, restore, verify and prove the checks fail
+        env:
+          DRCHECK_OUTPUT: restore-test-reports
+        run: ./scripts/restore-test-selfcheck.sh
+
+      - name: Upload restore-test reports
+        uses: actions/upload-artifact@v7
+        if: always()
+        continue-on-error: true
+        with:
+          name: restore-test-reports
+          path: restore-test-reports
+          retention-days: 14
+
   docker-build:
     name: Build, version, and push production container images
     runs-on: ubuntu-latest
-    needs: [frontend, backend-tests, e2e-tests, dependency-scan, image-scan]
+    needs: [frontend, backend-tests, e2e-tests, dependency-scan, image-scan, restore-test]
     # Normal runs finish in ~5 minutes (four image builds and the push); see backend-tests' timeout-minutes comment for why every job
     # here now has a ceiling.
     timeout-minutes: 30
@@ -1072,6 +1139,21 @@ jobs:
             ghcr.io/${{ github.repository }}-backend:${{ steps.gitversion.outputs.semVer }}
             ghcr.io/${{ github.repository }}-backend:${{ github.sha }}
             ghcr.io/${{ github.repository }}-backend:latest
+
+      - name: Build and push backup image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./backend
+          target: backup
+          push: ${{ github.event_name != 'pull_request' }}
+          build-args: |
+            APP_VERSION=${{ steps.gitversion.outputs.semVer }}
+            GIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ steps.builddate.outputs.date }}
+          tags: |
+            ghcr.io/${{ github.repository }}-backup:${{ steps.gitversion.outputs.semVer }}
+            ghcr.io/${{ github.repository }}-backup:${{ github.sha }}
+            ghcr.io/${{ github.repository }}-backup:latest
 
       - name: Build and push frontend image
         uses: docker/build-push-action@v7

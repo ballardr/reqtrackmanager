@@ -29,6 +29,7 @@ This table is ported from the project [README](https://github.com/ballardr/reqtr
 | `STORAGE_S3_BUCKET` / `STORAGE_S3_ENDPOINT_URL` / `STORAGE_S3_ACCESS_KEY` | see `docker-compose.yml` | — | Connection details for the `s3` storage backend |
 | `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY` | `minioadmin` / — | **Yes** | The one S3 identity of the bundled storage service, limited to the application bucket; the backend uses the same pair. Earlier `STORAGE_ROOT_USER` / `STORAGE_ROOT_PASSWORD` still work. See [Production deployment](./production-deployment.md#hardening-the-bundled-storage-further) |
 | `SMTP_HOST` | — | **Yes** | Outgoing SMTP host — a real provider in production, MailHog in the dev/eval stack |
+| `EMAIL_DELIVERY` | `smtp` | No | `smtp` sends mail through the SMTP settings; `disabled` sends none at all (every send is refused before a connection is made), for a copy of the platform that must never reach real recipients, such as a restore test |
 | `SMTP_PORT` / `SMTP_USE_TLS` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM_ADDRESS` | see `docker-compose.yml` | Recommended | Remaining SMTP connection details |
 | `DEPLOYMENT_NOTIFICATION_EMAIL` | unset | — | Address notified of deployment-level events such as low disk space |
 | `DISK_USAGE_WARNING_THRESHOLD_PERCENT` | `90` | — | Disk usage monitor threshold for the `local` storage backend |
@@ -42,9 +43,25 @@ This table is ported from the project [README](https://github.com/ballardr/reqtr
 | `OIDC_INTERNAL_BASE_URL_OVERRIDE` | unset | — | Dev/test-only escape hatch for a containerized identity provider whose public URL isn't reachable from inside the backend's own container. Leave unset in production. |
 | `OIDC_ALLOW_PRIVATE_NETWORK_TARGETS` | `false` | — | Set `true` only if every organisation on this deployment runs its own trusted, internally-hosted identity provider with no public IP. Disables the SSRF guard that otherwise rejects an org's `oidc_issuer_url` resolving to a private/internal address. Leave `false` on any deployment serving mutually-untrusted organisations. |
 | `SEARCH_RATE_LIMIT_BURST` / `SEARCH_RATE_LIMIT_PER_MINUTE` | `60` / `120` | — | How fast one person may search, counted in requests (each pause in typing in the live dropdown is one, so a query is several): a token bucket that starts full and refills at the per-minute rate, so the burst is not a time window; over it the search answers 429 and the UI asks them to wait. Each backend worker process keeps its own bucket, so a person's real ceiling is the limit times the number of workers. `0` for the burst turns the limit off |
+| `CREDENTIAL_RESET_TOKEN_MINUTES` | `60` | — | How long an emailed password-reset link works, from 5 to 1440 minutes. A link printed by the command line (`python -m app.cli.credentials issue-link`) may ask for longer, up to 1440, with `--ttl-minutes`. See [Password resets and credential recovery](../workflows/password-reset-and-credential-recovery.md) |
+| `PUBLIC_AUTH_RATE_LIMIT_BURST` / `PUBLIC_AUTH_RATE_LIMIT_PER_MINUTE` | `10` / `10` | — | How fast one client address may call the signed-out "forgot password" and "reset password" endpoints: a token bucket kept per backend worker process; over it the request answers 429. `0` for the burst turns it off |
+| `CREDENTIAL_RESET_SEND_RATE_LIMIT_BURST` / `CREDENTIAL_RESET_SEND_RATE_LIMIT_PER_MINUTE` | `20` / `30` | — | How fast one administrator may send reset links to other people, as a token bucket per administrator and per worker process. `0` for the burst turns it off |
 | `USER_CREATE_RATE_LIMIT_BURST` / `USER_CREATE_RATE_LIMIT_PER_MINUTE` | `20` / `30` | — | How fast one server admin may add users from Server Management → Add user (accounts and invites together): a token bucket per administrator, kept per backend worker process. Over it the request answers 429. `0` for the burst turns the limit off |
 | `HELP_ENABLED` / `HELP_URL` | `true` / the public docs site | — | The header Help link opens `HELP_URL` in a new tab; `HELP_ENABLED=false` removes the link (and `/help` shows "Help is not configured"). Point `HELP_URL` at an internally hosted copy for air-gapped installs — see [Hosting the documentation internally](./production-deployment.md#hosting-the-documentation-internally) |
 | `IMAGE_TAG` / `GHCR_IMAGE_PREFIX` | `latest` / `ghcr.io/ballardr/reqtrackmanager` | — | Which published container image tag `docker-compose.yml` pulls (a SemVer, a commit SHA, or `latest`) and from where — see [Obtaining container images](./production-deployment.md#obtaining-container-images) |
+
+## Backup variables
+
+Read by the `backup`, `backup-scheduler` and `restore` services, not the application. The full list, with defaults, is in the [disaster-recovery runbook](https://github.com/ballardr/reqtrackmanager/blob/main/docs/disaster-recovery.md#configuration).
+
+| Variable | Default | Required | Purpose |
+|----------|---------|----------|---------|
+| `BACKUP_REPO_PASSWORD_FILE` | — | **Yes** | File holding the repository password. Losing it makes every backup unreadable |
+| `BACKUP_DESTINATIONS` | unset | Recommended | Comma-separated off-host repositories each backup is copied to (`s3:`, `sftp:`, `azure:` or a path). Without one, backups stay on this host |
+| `BACKUP_SECRETS_MODE` | `config` | — | `config` also stores the `.env`, encrypted to `BACKUP_CONFIG_AGE_RECIPIENT`; `none` keeps all key material out of the backup |
+| `BACKUP_SCHEDULE` / `BACKUP_SCHEDULE_TIMEZONE` | unset / `UTC` | — | For the `backup-scheduler` service: `HH:MM` daily in the named IANA zone, or `every Nh` |
+| `BACKUP_KEEP_DAILY` / `_WEEKLY` / `_MONTHLY` | `7` / `4` / `12` | — | Retention. Erased records stay in older sets until these expire |
+| `BACKUP_STATUS_VOLUME` | `reqtrack_backup_status` | — | Where status files and metrics are written; the observability stack reads them from here |
 
 ## Frontend configuration
 

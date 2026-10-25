@@ -1,0 +1,424 @@
+{
+  "$defs": {
+    "AppIdentity": {
+      "description": "The build that produced the set (`app.version`), so a restore can pull the same image.",
+      "properties": {
+        "version": {
+          "title": "Version",
+          "type": "string"
+        },
+        "git_sha": {
+          "title": "Git Sha",
+          "type": "string"
+        },
+        "image_tag": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Tag"
+        }
+      },
+      "required": [
+        "version",
+        "git_sha"
+      ],
+      "title": "AppIdentity",
+      "type": "object"
+    },
+    "BusinessStats": {
+      "description": "Counts a person recognises: what the platform holds, not how it is stored.",
+      "properties": {
+        "organizations": {
+          "title": "Organizations",
+          "type": "integer"
+        },
+        "users": {
+          "$ref": "#/$defs/UserStats"
+        },
+        "projects": {
+          "title": "Projects",
+          "type": "integer"
+        },
+        "groups": {
+          "$ref": "#/$defs/GroupStats"
+        },
+        "records": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "Records per registered artefact type, archived ones included.",
+          "title": "Records",
+          "type": "object"
+        },
+        "uncounted_types": {
+          "description": "Registered artefact types with no search provider, so not counted here.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Uncounted Types",
+          "type": "array"
+        },
+        "links": {
+          "title": "Links",
+          "type": "integer"
+        },
+        "files": {
+          "$ref": "#/$defs/FileStats"
+        }
+      },
+      "required": [
+        "organizations",
+        "users",
+        "projects",
+        "groups",
+        "records",
+        "uncounted_types",
+        "links",
+        "files"
+      ],
+      "title": "BusinessStats",
+      "type": "object"
+    },
+    "ComponentEntry": {
+      "description": "One stored component: where it sits in the set and its integrity digest.\n\nAttributes:\n    path: Path within the set (relative, no `..`).\n    sha256: Lowercase hex SHA-256 of the component (of the archive for a directory component).\n    bytes: Size in bytes.",
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "bytes": {
+          "minimum": 0,
+          "title": "Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "bytes"
+      ],
+      "title": "ComponentEntry",
+      "type": "object"
+    },
+    "DrStats": {
+      "description": "The complete statistics document (see the module docstring).",
+      "properties": {
+        "stats_version": {
+          "default": 1,
+          "title": "Stats Version",
+          "type": "integer"
+        },
+        "alembic_revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The `alembic_version` row; null when the table is absent or empty.",
+          "title": "Alembic Revision"
+        },
+        "tables": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "Exact row count of every base table in the `public` schema.",
+          "title": "Tables",
+          "type": "object"
+        },
+        "business": {
+          "$ref": "#/$defs/BusinessStats"
+        },
+        "probes": {
+          "$ref": "#/$defs/Probes"
+        }
+      },
+      "required": [
+        "alembic_revision",
+        "tables",
+        "business",
+        "probes"
+      ],
+      "title": "DrStats",
+      "type": "object"
+    },
+    "EncryptedColumnProbe": {
+      "description": "Decrypt result for one encrypted column (`table.column`).",
+      "properties": {
+        "rows": {
+          "description": "Non-null values stored.",
+          "title": "Rows",
+          "type": "integer"
+        },
+        "undecryptable": {
+          "description": "Values the configured key cannot decrypt.",
+          "title": "Undecryptable",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rows",
+        "undecryptable"
+      ],
+      "title": "EncryptedColumnProbe",
+      "type": "object"
+    },
+    "FileProbe": {
+      "description": "Whether every file record resolves to a stored object.\n\nAttributes:\n    checked: Records probed (those held by the configured storage backend).\n    missing: Records whose object is absent.\n    other_backend: Records held by a backend other than the configured one; not probed.\n    missing_file_ids: Ids of up to `MAX_LISTED_IDS` missing records (ids only, never keys or names).\n    skipped: True when the probe was not run (no storage access), in which case it neither passes nor fails.",
+      "properties": {
+        "checked": {
+          "title": "Checked",
+          "type": "integer"
+        },
+        "missing": {
+          "title": "Missing",
+          "type": "integer"
+        },
+        "other_backend": {
+          "title": "Other Backend",
+          "type": "integer"
+        },
+        "missing_file_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing File Ids",
+          "type": "array"
+        },
+        "skipped": {
+          "default": false,
+          "title": "Skipped",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "checked",
+        "missing",
+        "other_backend",
+        "missing_file_ids"
+      ],
+      "title": "FileProbe",
+      "type": "object"
+    },
+    "FileStats": {
+      "description": "File records and the bytes they declare (from the database, not measured from storage).",
+      "properties": {
+        "records": {
+          "title": "Records",
+          "type": "integer"
+        },
+        "bytes": {
+          "title": "Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "records",
+        "bytes"
+      ],
+      "title": "FileStats",
+      "type": "object"
+    },
+    "GroupStats": {
+      "description": "Organisation and project group counts.",
+      "properties": {
+        "organization": {
+          "title": "Organization",
+          "type": "integer"
+        },
+        "project": {
+          "title": "Project",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "organization",
+        "project"
+      ],
+      "title": "GroupStats",
+      "type": "object"
+    },
+    "ObjectsSummary": {
+      "description": "The object-store mirror's size at backup time.",
+      "properties": {
+        "count": {
+          "minimum": 0,
+          "title": "Count",
+          "type": "integer"
+        },
+        "bytes": {
+          "minimum": 0,
+          "title": "Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "count",
+        "bytes"
+      ],
+      "title": "ObjectsSummary",
+      "type": "object"
+    },
+    "Probes": {
+      "description": "Integrity probes; a restore is healthy only when `probe_failures` is empty.",
+      "properties": {
+        "files": {
+          "$ref": "#/$defs/FileProbe"
+        },
+        "encrypted_columns": {
+          "additionalProperties": {
+            "$ref": "#/$defs/EncryptedColumnProbe"
+          },
+          "title": "Encrypted Columns",
+          "type": "object"
+        }
+      },
+      "required": [
+        "files",
+        "encrypted_columns"
+      ],
+      "title": "Probes",
+      "type": "object"
+    },
+    "SecretsMode": {
+      "description": "Whether the set holds the operator's `.env` (`config`) or no keys at all (`none`).",
+      "enum": [
+        "config",
+        "none"
+      ],
+      "title": "SecretsMode",
+      "type": "string"
+    },
+    "UserStats": {
+      "description": "User headcount. `server_admins` is a subset of `total`.",
+      "properties": {
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        },
+        "active": {
+          "title": "Active",
+          "type": "integer"
+        },
+        "inactive": {
+          "title": "Inactive",
+          "type": "integer"
+        },
+        "server_admins": {
+          "title": "Server Admins",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total",
+        "active",
+        "inactive",
+        "server_admins"
+      ],
+      "title": "UserStats",
+      "type": "object"
+    }
+  },
+  "description": "The manifest of one backup set.\n\nAttributes:\n    manifest_version: Format version (`MANIFEST_VERSION`).\n    set_id: Unique, sortable id of the set (`20261024T020000Z`).\n    created_at / finished_at: UTC instants the run began and ended (timezone-aware).\n    tool_version: Version of the backup tool.\n    app: The producing build.\n    alembic_revision: The database's schema revision, repeated from `stats` for the restore's version guard.\n    postgres_version: Server version of the dumped database (`16.4`).\n    storage_backend: `s3` or `local`, the backend the file records point at.\n    secrets_mode: Whether an `.env` snapshot is in the set.\n    components: The stored parts, by kind, with digests.\n    objects: Object-mirror size; null when `STORAGE_BACKEND=local`.\n    stats: The `dr_stats` document taken in the dump's snapshot; a restore is verified against it.",
+  "properties": {
+    "manifest_version": {
+      "default": 1,
+      "title": "Manifest Version",
+      "type": "integer"
+    },
+    "set_id": {
+      "pattern": "^[0-9]{8}T[0-9]{6}Z$",
+      "title": "Set Id",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "finished_at": {
+      "format": "date-time",
+      "title": "Finished At",
+      "type": "string"
+    },
+    "tool_version": {
+      "title": "Tool Version",
+      "type": "string"
+    },
+    "app": {
+      "$ref": "#/$defs/AppIdentity"
+    },
+    "alembic_revision": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Alembic Revision"
+    },
+    "postgres_version": {
+      "title": "Postgres Version",
+      "type": "string"
+    },
+    "storage_backend": {
+      "title": "Storage Backend",
+      "type": "string"
+    },
+    "secrets_mode": {
+      "$ref": "#/$defs/SecretsMode"
+    },
+    "components": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ComponentEntry"
+      },
+      "title": "Components",
+      "type": "object"
+    },
+    "objects": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ObjectsSummary"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "stats": {
+      "$ref": "#/$defs/DrStats"
+    }
+  },
+  "required": [
+    "set_id",
+    "created_at",
+    "finished_at",
+    "tool_version",
+    "app",
+    "alembic_revision",
+    "postgres_version",
+    "storage_backend",
+    "secrets_mode",
+    "components",
+    "stats"
+  ],
+  "title": "ReqTrack backup set manifest",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

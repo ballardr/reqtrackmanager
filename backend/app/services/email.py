@@ -20,6 +20,12 @@ embed an inline branding logo (if any) as a `multipart/related` `cid:`
 attachment under the HTML part, so outgoing mail never depends on loading
 an externally-hosted image (see `services/email_templates.py` for how the
 HTML/text bodies themselves are rendered).
+
+`Settings.email_delivery == "disabled"` is a deployment-wide kill switch: every send, including the
+organisation test-email action and an explicit `SmtpOverride`, raises `EmailDeliveryDisabled` before a
+connection is opened. It is for copies of the platform that must not contact anyone (the disaster-recovery
+restore-test stack). A raised error is the honest signal: notifications are not marked as emailed and the
+test-email actions report why nothing was sent.
 """
 
 from __future__ import annotations
@@ -37,6 +43,10 @@ settings = get_settings()
 InlineImages = dict[str, tuple[bytes, str]]
 """Maps a `cid:` name (e.g. `"brand_logo"`, referenced in HTML as
 `src="cid:brand_logo"`) to `(raw_bytes, content_type)`."""
+
+
+class EmailDeliveryDisabled(RuntimeError):
+    """Raised instead of sending when `EMAIL_DELIVERY=disabled`; nothing was sent and no connection was made."""
 
 
 @dataclass
@@ -91,7 +101,12 @@ async def send_email_async(
             passes this, and so always uses the deployment-wide SMTP_HOST;
             see docs/decisions.md's "SMTP/SSO organisation settings are a
             storage-only seam" entry for why.
+
+    Raises:
+        EmailDeliveryDisabled: If `EMAIL_DELIVERY=disabled`; nothing was sent.
     """
+    if settings.email_delivery == "disabled":
+        raise EmailDeliveryDisabled("email delivery is disabled on this deployment (EMAIL_DELIVERY=disabled)")
     message = EmailMessage()
     message["From"] = settings.smtp_from_address
     message["To"] = to

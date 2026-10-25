@@ -34,6 +34,8 @@ import { RequirementDetailPage } from "./pages/RequirementDetailPage";
 import { RequirementsPage } from "./pages/RequirementsPage";
 import { ServerManagementPage } from "./pages/ServerManagementPage";
 import { ServerOrganisationsPage } from "./pages/ServerOrganisationsPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { SignupPage } from "./pages/SignupPage";
 
 function ProtectedRoutes() {
@@ -158,6 +160,8 @@ export function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/login/:slug" element={<OrgLoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/oidc-complete" element={<OidcCompletePage />} />
       <Route path="/*" element={<ProtectedRoutes />} />
     </Routes>

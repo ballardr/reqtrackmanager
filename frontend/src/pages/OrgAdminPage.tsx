@@ -1,5 +1,5 @@
 import { useMutation } from "../hooks/useMutation";
-import { Download, Eye, Lock, Pencil, Plus, Send, Trash2, Unlock, Upload } from "lucide-react";
+import { Download, Eye, KeyRound, Lock, Pencil, Plus, Send, Trash2, Unlock, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -64,6 +64,7 @@ import { AddMembersModal } from "../components/AddMembersModal";
 import { AddToGroupControl } from "../components/AddToGroupControl";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { SendPasswordResetDialog } from "../components/SendPasswordResetDialog";
 import { GroupInUseDialog } from "../components/GroupInUseDialog";
 import { DefinitionList } from "../components/DefinitionList";
 import type { DirectoryColumn } from "../components/DirectoryTable";
@@ -232,6 +233,7 @@ export function OrgAdminPage() {
   // "Remove from {org}" (Users table Actions column) — the user
   // pending confirmation in the `ConfirmDialog` below, or null when none.
   const [confirmRemoveUser, setConfirmRemoveUser] = useState<OrgUser | null>(null);
+  const [resetLinkUser, setResetLinkUser] = useState<OrgUser | null>(null);
   const [userAccess, setUserAccess] = useState<UserAccess | null>(null);
   const [userAccessError, setUserAccessError] = useState<string | null>(null);
   // "View access" panel: each
@@ -2463,6 +2465,11 @@ export function OrgAdminPage() {
                   icon: u.display_name_locked ? <Lock size={14} /> : <Unlock size={14} />,
                   onSelect: () => toggleDisplayNameLock(u),
                 },
+                // Emails the person a single-use reset link; the admin never sees it. Not offered on the
+                // caller's own row (they use the sign-in page's "Forgot your password?").
+                ...(isSelf
+                  ? []
+                  : [{ label: strings.passwordReset.sendLinkAction, icon: <KeyRound size={14} />, onSelect: () => setResetLinkUser(u) }]),
                 // Not offered on the caller's own row — self-removal has
                 // its own, already-guarded path ("Leave organisation" on
                 // Preferences), matching the backend's own self-targeting
@@ -4115,6 +4122,13 @@ export function OrgAdminPage() {
           ))}
       </ResourceMenu>
 
+      {resetLinkUser && (
+        <SendPasswordResetDialog
+          userName={resetLinkUser.display_name}
+          endpoint={`/api/v1/orgs/${org.id}/users/${resetLinkUser.user_id}/password-reset`}
+          onClose={() => setResetLinkUser(null)}
+        />
+      )}
       {confirmRemoveUser && (
         <ConfirmDialog
           title={strings.orgAdmin.removeFromOrgConfirmTitle(confirmRemoveUser.display_name)}

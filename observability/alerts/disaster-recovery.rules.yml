@@ -1,0 +1,82 @@
+# Alert rules for the disaster-recovery backup and restore-test (docs/disaster-recovery.md, "Scheduling and
+# monitoring"). The metrics come from the textfiles the tools write to the backup status directory, read by
+# Grafana Alloy (observability/alloy.river). Staleness thresholds follow the interval each tool publishes
+# (BACKUP_EXPECTED_INTERVAL_HOURS, derived from BACKUP_SCHEDULE by the in-container scheduler;
+# --expected-interval-hours for the restore-test), so changing a schedule needs no edit here.
+#
+# Check with: promtool check rules observability/alerts/*.rules.yml
+# Unit tests:  promtool test rules observability/alerts/tests/*.test.yml
+groups:
+  - name: reqtrack-disaster-recovery
+    rules:
+      - alert: ReqTrackBackupFailed
+        expr: reqtrack_backup_last_run_success == 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "The last backup failed"
+          description: "The most recent backup run failed. Read status.json in the backup status volume for the failed step; the previous good set is still in the repository."
+
+      - alert: ReqTrackBackupStale
+        expr: time() - reqtrack_backup_last_success_timestamp_seconds > 1.5 * reqtrack_backup_expected_interval_seconds
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No successful backup for more than 1.5 times the scheduled interval"
+          description: "The last successful backup is older than 1.5 times its schedule (or there has never been one). Check that the schedule is running and that the last run did not fail."
+
+      - alert: ReqTrackBackupDestinationDown
+        expr: reqtrack_backup_destination_up == 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "The last backup could not be copied to destination {{ $labels.destination }}"
+          description: "The set was stored in the primary repository but the copy to the off-site destination failed, so a lost host would lose it."
+
+      - alert: ReqTrackBackupMetricsMissing
+        expr: absent(reqtrack_backup_last_run_timestamp_seconds)
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No backup metrics are being reported"
+          description: "Nothing has reported a backup run: backups may not be scheduled, or Alloy cannot read the backup status directory. Remove this rule only if you deliberately take no backups."
+
+      - alert: ReqTrackBackupMetricsUnreadable
+        expr: node_textfile_scrape_error == 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "A backup metrics file cannot be read"
+          description: "The textfile collector failed to parse a file in the backup status directory, so backup alerts may be working from stale data."
+
+      - alert: ReqTrackBackupSchedulerDown
+        expr: time() - reqtrack_backup_scheduler_heartbeat_timestamp_seconds > 300
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "The in-container backup scheduler has stopped reporting"
+          description: "The backup-scheduler service has not written its heartbeat for five minutes: it is stopped, stuck or cannot write to the status volume. Backups are not running."
+
+      - alert: ReqTrackRestoreTestFailed
+        expr: reqtrack_restore_test_last_run_success == 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "The last restore-test failed"
+          description: "The latest backup did not restore into a working platform with matching numbers. Read the report in restore-test-reports/; treat the backups as unproven until a restore-test passes."
+
+      - alert: ReqTrackRestoreTestStale
+        expr: time() - reqtrack_restore_test_last_success_timestamp_seconds > reqtrack_restore_test_expected_interval_seconds + 86400
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No restore-test has passed for more than a day beyond its schedule (8 days when weekly)"
+          description: "Backups are not being proven restorable. Check that the restore-test timer or cron entry is running on the host."
