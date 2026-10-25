@@ -12158,3 +12158,33 @@ A cheap count pre-pass (record counts per `each` source, multiplied through nest
 
 *Authentication, RBAC, secrets, audit, retention, tenant isolation:* untouched. *Modules:* no module file changed; the fix is in core services. *Seed scripts, codes, search, bundles, parity, time, MCP skill:* no model or tool changed. *IPv6:* no listener. *UI:* no frontend change, so no Storybook or Playwright addition.
 
+## Custom reports Phase 1: report field registry and traversal (2026-10-26)
+
+**Decided by: Agent** (design); the field-registry-per-type and traversal-through-the-link-graph shape is in the plan, decided by the User.
+
+### What was built
+
+- `ModuleDefinition.report_fields` / `not_reportable` (`ReportFieldProvider`, `ReportField`) with `get_report_field_providers()`; core types in `services/report_fields_core.py`, each module's in its own `report_fields.py` (decisions, risk, context & strategy, stakeholders, compliance). All 20 registered artefact types are reportable.
+- `services/report_fields.py`: builders, `field_catalogue`, `load_records` (one query per type plus people and tags) and `format_value`.
+- `services/report_traversal.py`: `root_records` and `linked_records`, both through the link graph's `ArtefactResolver`.
+- Tests: `backend/tests/test_report_fields.py` (coverage, declaration rules, every field executed as SQL, values, query count, module boundary) and `test_report_traversal.py` (roots, both directions, link-type filter, hidden/unavailable/dormant, caps, query count, the example shape).
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **A provider is SQL expressions, not Python getters.** It reuses the type's search declaration (`from_search`) for joins, current-version filter and identity columns, so a versioned type is joined in one place and a batch is one query; typed fields are layered on top. Rejected: per-record getter functions (one query per record or a hand-written batch loader per type, 20 times). | Agent |
+| 2 | **Search text fields come across by default, typed fields are added explicitly.** The search's list is already an opt-in, vetted set, so a new type gets usable text fields with no second list to keep in step; `search_fields=False` opts out. | Agent |
+| 3 | **`load_records` does not authorise; traversal is the one gate.** Authorisation is not re-implemented: `ArtefactResolver` decides, the loader only reads ids it was given. Hidden records are counted per parent, never named, never traversed through. | Agent |
+| 4 | **People fields show a name, never an email.** `principal_field` uses `principal_labels`/`principal_text` (a user's name, `Name (Org group)` for a group), so an owner and an assignee are on parity and no address leaks into a report. | Agent |
+| 5 | **Personal and consent-sensitive columns are omitted.** No engagement participant, consent or retention column is a field; the Stakeholders provider carries only text the search already treats as opt-in, a persona weight and an engagement date. | Agent |
+| 6 | **Not fields yet:** Pain Point per-persona scores and Risk ratings (one value per persona, or a score computed from a scoring model) belong to the module reports and to widgets, not to a flat field. | Agent |
+| 7 | **No `math` flag on a field yet.** The plan marks fields math-capable for the math phase; adding the attribute now would be dead code, so it is added there. | Agent |
+
+### Review (identify, verify, remediate)
+
+*Identify:* a layout reaching a record the caller cannot read (the main risk of any report engine); a column leaking personal data; a loader called with unchecked ids; unbounded traversal. *Verify:* tests show a record in another project, with `view` removed, in a disabled module, and over a dormant cross-project link is counted and not named or traversed (`test_report_traversal.py`); a test asserts no personal-data column is a field; the query count is constant in the number of records and parents. *Remediate:* the single-gate design above, the caps, and omission of sensitive columns. No regression against an adopted policy.
+
+### Not applicable, checked
+
+*Authentication, RBAC, secrets, audit, retention:* no endpoint, permission or stored data yet (those are Phases 3 and 5), so no audit event or policy change. *Migrations, seed scripts, bundles, search, codes, MCP skill, docs website, UI (Storybook/Playwright):* no model, tool or user-visible surface changed. *Nested projects / organisation defaults:* no project-scoped config table added. *Time:* `instant` fields are past UTC instants, `date` fields are plain dates; boundary tests are in `test_report_fields.py`.

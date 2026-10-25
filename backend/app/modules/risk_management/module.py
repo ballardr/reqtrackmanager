@@ -78,6 +78,7 @@ from app.modules.risk_management.alerts import NOTIFICATION_TYPES
 from app.modules.risk_management.mcp_tools import build_mcp_tools
 from app.modules.risk_management.models import RiskVersion
 from app.modules.risk_management.record_tables import RECORD_TABLES
+from app.modules.risk_management.report_fields import REPORT_FIELDS
 from app.modules.risk_management.reports import REPORT_DEFINITIONS
 from app.modules.risk_management.scoring import RISK_SCORING_SCHEME
 from app.modules.risk_management.search import SEARCH_PROVIDERS
@@ -207,6 +208,7 @@ MODULE_DEFINITION = ModuleDefinition(
     artefact_ids_in_organization=_artefact_ids_in_organization,
     artefact_summary_providers={RISK_ARTEFACT_TYPE: RISK_SUMMARY_PROVIDER},
     search_providers=SEARCH_PROVIDERS,
+    report_fields=REPORT_FIELDS,
     record_tables=RECORD_TABLES,
     link_type_seeds=LINK_TYPE_SEEDS,
     sub_components=(ModuleSubComponentDefinition(key=RISK_SUBCOMPONENT_KEY, name="Risks", default_enabled=True),),

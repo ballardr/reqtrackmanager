@@ -371,6 +371,8 @@ class ModuleDefinition:
     search_scopes: dict[str, SearchScope] = {}  # extra places the search can be scoped to (§4j)
     record_tables: dict[str, RecordTableProvider] = {}  # a type's list as an exportable, importable table (§4l)
     not_importable: dict[str, str] = {}  # artefact types whose records import cannot author, with the reason (§4l)
+    report_fields: dict[str, ReportFieldProvider] = {}  # fields a custom report layout may use for a type (§4m)
+    not_reportable: dict[str, str] = {}  # artefact types deliberately outside custom reports, with the reason (§4m)
     link_type_seeds: tuple[LinkTypeSeed, ...] = ()  # link types you ship; any artefact links to any by default (§4f-bis)
     reports: tuple[ReportDefinition, ...] = ()  # reports core serves for you (§4g)
     notification_types: tuple[NotificationTypeDefinition, ...] = ()  # notification kinds you send (§4h)
@@ -1221,6 +1223,39 @@ Read left to right: the same provider defines the columns of the file out and th
 - **PDF and Word: the Record list report.** A provider's table is also a report (`GET /projects/{id}/reports/record-list?record_type=<type>&format=json|pdf|docx|csv`, `services/record_list_report.py`), listed in the report catalogue under the platform (`module_key` `platform`), not a module, with one `record_type` parameter holding exactly the types the caller may list. It adds no code per type: it renders `build_table`, so it shows the columns and rows the CSV export would. `format=csv` is the export's file byte for byte; a file (not the on-screen run) is audited as `records_exported`. A column colours its cells in PDF and Word with `RecordColumn.tones` (`{cell text: tone}`, tones as `report_model.TONE_FILL`); the text still names the value. The same MCP tool (`get_record_list_report`) serves every type.
 - **The bulk edit grid.** The same provider feeds the grid of a list (`GET /projects/{id}/records/{type}/grid`, `PATCH .../records/{type}/rows/{code}`; `build_grid` / `update_row` in `services/record_tables.py`, `components/RecordGrid.tsx`). A column is a grid cell when it is `editable`, importable and a closed-value kind (`enum`, `number`, `date`, `bool`); free text stays in the form. A save changes only the cells that differ from the value the grid loaded (`expected`; a cell changed since is refused with 409 and its current value), calls the provider's `update` in a savepoint and commits per row, so the type's own lock, validation and audit event apply and no second audit event is written. Two optional hooks say why something cannot be edited, as a courtesy to the person (the save is refused with the type's own message either way): `RecordTableProvider.read_only_reason(prepared, record)` for a whole row (a Requirement that is approved, a Pain Point at a terminal outcome) and `RecordColumn.cell_lock(prepared, record)` for one cell (a Pain Point scored per persona has no single severity). Rows of a related project (widened scope) and organisation-owned rows are read-only here. A list page offers the grid with `ViewToggle showGridOption` and `<RecordGrid projectId recordType filters contextKeys recordHref />`; the grid exists for the project tier only.
 - **Registration is required.** A type with no provider is listed in `PENDING_RECORD_TABLES` in `backend/tests/test_record_tables.py` (the list only shrinks). A type whose records import cannot author (produced by a workflow) still registers a provider for export (no `create`/`update`) and gives a reason in `not_importable`; a core type's reason is in `CORE_NOT_IMPORTABLE` (`services/record_tables_core.py`, change requests). Do not add per-type export or import code to a core file.
+
+### 4m. Custom reports: report fields and traversal (Module 10 Phase 1)
+
+A custom report layout (a tree a person authors) reads records through two core pieces, so a layout never
+hand-queries a table and a module adds no report code to a core file.
+
+```mermaid
+flowchart LR
+    R["root_records(type)"] --> V["ArtefactResolver<br/>(the link graph's authorisation)"]
+    L["linked_records(parents, type)"] --> V
+    V -->|"visible ids only"| F["load_records(type, ids, fields)<br/>one query per type"]
+    V -->|"not visible"| C["counted per parent,<br/>never named or traversed"]
+    P["ReportFieldProvider<br/>(your fields)"] --> F
+```
+
+- `report_fields[artefact_type] = ReportFieldProvider(from_clause, columns, fields, where, status_labels)`. Build
+  it with `services.report_fields.from_search(SEARCH_PROVIDERS[type], *typed_fields)`: the joins, current-version
+  filter, identity columns and status labels come from the type's search declaration, and its vetted text fields
+  come across. Add typed fields with `date_field`, `enum_field`, `bool_field`, `number_field`, `instant_field`,
+  `principal_field` (a user or group, shown by name) and `name_lookup_field` (a foreign key as the row's name).
+- Fields are **opt-in**. A column that is not declared cannot be reached from a layout, so a Restricted or
+  consent-sensitive column (an email address, a participant, a consent record) is excluded by omission. `code`,
+  `title`, `status` and `tags` are reserved: the engine builds them.
+- A type that cannot be reported gives a reason in `not_reportable`. `backend/tests/test_report_fields.py` fails
+  for a registered type with neither, for a reserved or repeated key, and for one key with two labels.
+- `load_records` does **not** authorise. It is given only ids that `root_records` or `linked_records` returned;
+  both run every candidate through `ArtefactResolver`, the same rule as the link graph (project membership, module
+  enabled, `view` on the type in the record's own project, nesting). A record that fails is counted per parent, never
+  named, and never a stepping stone to the next hop; a type no module can display is counted apart (`unavailable`).
+- Work is bounded: `MAX_ROOTS` and `MAX_LINKED` set `truncated` rather than fail, and the number of queries does not
+  grow with the number of records.
+- Time: an `instant` field is a past UTC `datetime`, a `date` field is a plain calendar date; neither is converted
+  on the server.
 
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 

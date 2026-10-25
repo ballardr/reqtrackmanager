@@ -1468,6 +1468,61 @@ class ArtefactSearchProvider:
     comments: SearchComments | None = None
 
 
+#: The value kinds a report field may have; the renderer formats each (`services.report_fields.format_value`).
+REPORT_FIELD_KINDS = ("text", "number", "date", "instant", "bool", "enum", "principal")
+
+
+@dataclass(frozen=True)
+class ReportField:
+    """One field of a record type that a custom report layout may print, filter or group by.
+
+    Report fields are opt-in, like search fields: a column not declared is never reachable from a
+    layout, so a Restricted-classified or consent-sensitive column is excluded by omission.
+
+    Attributes:
+        key: Stable identifier a layout names (`{{record.description}}`); a field shared by several
+            types reuses one key and label. `"code"`, `"title"`, `"status"` and `"tags"` are reserved
+            for what the engine builds itself from the provider's `SearchColumns`.
+        label: User-facing name for the field picker.
+        column: A SQL expression over `ReportFieldProvider.from_clause`. For a `principal` field, the
+            `<name>_type` column.
+        kind: One of `REPORT_FIELD_KINDS`. `date` is a calendar date, `instant` a past UTC time.
+        labels: For an `enum`, `{stored value: display label}`; a value is never shown raw.
+        id_column: For a `principal` field, the `<name>_id` column (a user or a group).
+    """
+
+    key: str
+    label: str
+    column: Any
+    kind: str = "text"
+    labels: Mapping[str, str] = field(default_factory=dict)
+    id_column: Any | None = None
+
+
+@dataclass(frozen=True)
+class ReportFieldProvider:
+    """How a module makes one of its `artefact_types` reportable by a custom report layout.
+
+    The provider describes the SQL (what the records are, which fields exist); the engine
+    (`services.report_fields`) owns batching, formatting and the rule that it is only ever asked
+    for records the caller was already shown by the link graph's authorisation.
+
+    Attributes:
+        from_clause: The table or join the records are read from (a version table joined in
+            for a versioned type, restricted to the current version by `where`).
+        columns: The record's identity and display columns (the shape the search uses).
+        fields: The fields a layout may use beyond code, title, status and tags.
+        where: Conditions that always apply (`valid_to IS NULL` for a versioned type).
+        status_labels: `{status value: display label}`.
+    """
+
+    from_clause: Any
+    columns: SearchColumns
+    fields: tuple[ReportField, ...] = ()
+    where: tuple[Any, ...] = ()
+    status_labels: Mapping[str, str] = field(default_factory=dict)
+
+
 @dataclass(frozen=True)
 class ScopeResolution:
     """What a module-defined search scope covers.
@@ -2402,6 +2457,12 @@ class ModuleDefinition:
             Scope filter (Compliance: one standard). Addressed in a request as
             `<module_key>:<scope_key>:<ref_id>`; a scope of a module that is off for the
             caller's project is neither offered nor accepted.
+        report_fields: Maps one of this module's own `artefact_types` to a `ReportFieldProvider`, making
+            its records usable by custom report layouts (selectable as a source, traversable by link,
+            printable by field). Read via `get_report_field_providers`. Registration is required of
+            every artefact type: one that cannot be reported says why in `not_reportable`.
+        not_reportable: `{artefact type: reason}` for a type deliberately left out of custom reports. A
+            backend test fails for a type that has neither.
         record_tables: Maps one of this module's own `artefact_types` to a `RecordTableProvider`, making its
             list exportable (CSV, PDF, Word) and, where the provider has `create`/`update`, importable from the
             list itself. Read via `get_record_table_providers`. Registration is required of every artefact
@@ -2499,6 +2560,8 @@ class ModuleDefinition:
     search_providers: dict[str, ArtefactSearchProvider] = field(default_factory=dict)
     not_searchable: dict[str, str] = field(default_factory=dict)
     search_scopes: dict[str, SearchScope] = field(default_factory=dict)
+    report_fields: dict[str, ReportFieldProvider] = field(default_factory=dict)
+    not_reportable: dict[str, str] = field(default_factory=dict)
     record_tables: dict[str, RecordTableProvider] = field(default_factory=dict)
     not_importable: dict[str, str] = field(default_factory=dict)
 
@@ -4129,6 +4192,27 @@ def get_not_searchable_types() -> dict[str, str]:
     reasons: dict[str, str] = {}
     for definition in get_module_registry().values():
         reasons.update(definition.not_searchable)
+    return reasons
+
+
+def get_report_field_providers() -> dict[str, ReportFieldProvider]:
+    """Every registered artefact type's `ReportFieldProvider`: the core types'
+    (`services.report_fields_core`) plus each module's `report_fields`. A type claimed twice keeps
+    the first registration."""
+    from app.services.report_fields_core import CORE_REPORT_FIELDS
+
+    merged: dict[str, ReportFieldProvider] = dict(CORE_REPORT_FIELDS)
+    for definition in get_module_registry().values():
+        for artefact_type, provider in definition.report_fields.items():
+            merged.setdefault(artefact_type, provider)
+    return merged
+
+
+def get_not_reportable_types() -> dict[str, str]:
+    """`{artefact type: reason}` for every type a module declared not reportable."""
+    reasons: dict[str, str] = {}
+    for definition in get_module_registry().values():
+        reasons.update(definition.not_reportable)
     return reasons
 
 
