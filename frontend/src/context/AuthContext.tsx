@@ -1,6 +1,6 @@
 import { useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 
-import { AUTH_UNAUTHORIZED_EVENT, api, loadStoredToken, setAuthToken } from "../api/client";
+import { AUTH_UNAUTHORIZED_EVENT, api, ensureMediaToken, loadStoredToken, setAuthToken } from "../api/client";
 import type { UiPreferenceValue, User } from "../api/types";
 import { applyUiPreferencePatch } from "./uiPreferencePatch";
 import { AuthContext, type AuthContextValue, type LoginResult } from "./AuthContextValue";
@@ -27,6 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshUser = useCallback(async () => {
     try {
       const me = await api.get<User>("/api/v1/auth/me");
+      await ensureMediaToken();
       setUser(me);
     } catch {
       setAuthToken(null);
@@ -47,6 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { requires2fa: true, challengeToken: result.challenge_token };
     }
     setAuthToken(result.access_token);
+    await ensureMediaToken();
     setUser(result.user);
     return { requires2fa: false, user: result.user };
   }, []);
@@ -60,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         invite_token: inviteToken || undefined,
       });
       setAuthToken(result.access_token);
+      await ensureMediaToken();
       setUser(result.user);
       return result.user;
     },
@@ -73,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       LOGIN_TIMEOUT_MS,
     );
     setAuthToken(result.access_token);
+    await ensureMediaToken();
     setUser(result.user);
     return result.user;
   }, []);

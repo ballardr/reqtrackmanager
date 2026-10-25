@@ -17,8 +17,6 @@ storage at all.
 
 from __future__ import annotations
 
-import ipaddress
-import socket
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
@@ -28,6 +26,7 @@ from joserfc.jwk import KeySet
 from joserfc.jwt import JWTClaimsRegistry
 
 from app.config import get_settings
+from app.services.net_guard import assert_public_host
 
 _HTTP_TIMEOUT = 10.0
 
@@ -79,16 +78,9 @@ def _assert_safe_external_url(url: str) -> None:
     if parts.scheme not in ("http", "https") or not parts.hostname:
         raise ValueError(f"Refusing to fetch {url!r}: not a valid http(s) URL.")
     try:
-        addr_infos = socket.getaddrinfo(parts.hostname, None)
-    except socket.gaierror as exc:
-        raise ValueError(f"Could not resolve OIDC endpoint host {parts.hostname!r}: {exc}") from exc
-    for _family, _, _, _, sockaddr in addr_infos:
-        ip = ipaddress.ip_address(sockaddr[0])
-        if not ip.is_global:
-            raise ValueError(
-                f"Refusing to fetch {url!r}: {parts.hostname!r} resolves to a non-public address ({ip}), "
-                "which is not permitted for org-configured OIDC endpoints."
-            )
+        assert_public_host(parts.hostname)
+    except ValueError as exc:
+        raise ValueError(f"Refusing to fetch {url!r}: {exc}") from exc
 
 
 def _internal_url(url: str) -> str:

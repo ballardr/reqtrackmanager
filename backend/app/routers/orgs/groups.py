@@ -26,6 +26,7 @@ from app.modules.registry import run_org_group_deletion_hooks, run_org_group_mem
 from app.schemas.org import OrgGroupCreate, OrgGroupMemberAdd, OrgGroupOut, OrgGroupUpdate
 from app.schemas.principal import PrincipalRef, PrincipalUsageOut
 from app.services.audit import log_event
+from app.services.org_membership import assert_account_active
 from app.services.principals import compute_usage, prepare_group_deletion
 from app.services.rbac import (
     get_effective_org_roles,
@@ -345,6 +346,7 @@ def add_org_group_member(
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST, "The user must be a member of this organisation first."
             )
+        assert_account_active(db, payload.user_id)
         existing = db.scalar(
             select(OrgGroupMember).where(
                 OrgGroupMember.org_group_id == group_id, OrgGroupMember.user_id == payload.user_id

@@ -164,6 +164,34 @@ def get_current_user(
     return _resolve_user_from_token(token, db, request)
 
 
+def get_current_session_user(
+    request: Request, token: str | None = Depends(oauth2_scheme), db: Session = Depends(get_db)
+) -> User:
+    """Like `get_current_user`, but accepts only an interactive session token, never a Personal Access Token.
+
+    For the endpoints that manage the account's own credentials (password, second factor, access tokens). A
+    PAT is a scoped, long-lived, headless credential; if it could mint another PAT or rewrite the second
+    factor, its organisation and project scope and its expiry would only be a suggestion to whoever holds it.
+
+    Args:
+        request: The incoming request.
+        token: The bearer token from the Authorization header.
+        db: An active database session.
+
+    Returns:
+        The authenticated, active User.
+
+    Raises:
+        HTTPException: 401 as `get_current_user`; 403 when the credential is a Personal Access Token.
+    """
+    if token and token.startswith(PAT_PREFIX):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Personal access tokens cannot manage account security or other access tokens; sign in to do this.",
+        )
+    return _resolve_user_from_token(token, db, request)
+
+
 def get_current_user_or_module_frame(module_key: str):
     """FastAPI dependency factory accepting either a normal session/PAT
     bearer token (delegates entirely to `_resolve_user_from_token`, exactly
@@ -225,21 +253,49 @@ def get_current_user_or_module_frame(module_key: str):
     return _dependency
 
 
+def resolve_user_from_media_token(token: str, db: Session) -> User:
+    """Resolves a short-lived media token (`security.create_media_token`) to the active user it names.
+
+    Args:
+        token: The token from a `?token=` query parameter.
+        db: Active database session.
+
+    Returns:
+        The authenticated, active, non-archived user.
+
+    Raises:
+        HTTPException: 401 if the token is invalid, expired, not a media token (a session token or a PAT in
+            a URL is refused on purpose) or the user's `token_version` has moved on.
+    """
+    claims = decode_access_token(token)
+    if not claims or "sub" not in claims or claims.get("purpose") != "media":
+        raise _UNAUTHORIZED
+    user = db.get(User, UUID(claims["sub"]))
+    if user is None or not user.is_active or user.is_archived or claims.get("tv", 0) != user.token_version:
+        raise _UNAUTHORIZED
+    return user
+
+
 def get_current_user_header_or_query(
     request: Request,
     query_token: str | None = Query(default=None, alias="token"),
     token: str | None = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
-    """Like `get_current_user`, but also accepts the token as a `?token=`
-    query parameter when no Authorization header is present.
+    """Like `get_current_user`, but also accepts a short-lived media token as a `?token=` query parameter
+    when no Authorization header is present.
 
     Only used for endpoints whose responses are rendered via HTML tags that
     cannot set custom headers (e.g. `<img src>` for avatars/logos/file
     downloads) — everywhere else, the Authorization header path should be
-    preferred.
+    preferred. The query form accepts only `security.create_media_token` tokens, never a session token or a
+    PAT: a URL is logged and remembered, so what it carries must be worthless for anything but loading files.
     """
-    return _resolve_user_from_token(token or query_token, db, request)
+    if token:
+        return _resolve_user_from_token(token, db, request)
+    if query_token:
+        return resolve_user_from_media_token(query_token, db)
+    raise _UNAUTHORIZED
 
 
 def get_current_user_header_or_query_optional(
@@ -258,10 +314,11 @@ def get_current_user_header_or_query_optional(
     at all" case, so a caller with a broken session doesn't silently fall
     back to being treated as anonymous.
     """
-    resolved = token or query_token
-    if not resolved:
-        return None
-    return _resolve_user_from_token(resolved, db, request)
+    if token:
+        return _resolve_user_from_token(token, db, request)
+    if query_token:
+        return resolve_user_from_media_token(query_token, db)
+    return None
 
 
 def get_client_ip(request: Request) -> str:

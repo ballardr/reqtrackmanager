@@ -23,6 +23,8 @@ The token's value is shown once, at creation — it isn't retrievable again afte
 
 Pass the token as `Authorization: Bearer <token>` on API requests. From the same Personal Access Tokens page, an existing token can be revoked at any time, immediately invalidating it.
 
+A token is a scoped, headless credential, so it cannot manage credentials: creating, listing or revoking tokens, changing the password and enrolling or disabling two-factor authentication all need an interactive sign-in (the API answers 403 to a token). Otherwise a token limited to one project could mint one with everything its owner can reach. A token also cannot ride in a URL; to download a file from a script, send the token in the `Authorization` header.
+
 ## Where this fits
 
 See [API & Integrations → Authenticating](../api-integrations/authenticating.md) for how a PAT is used to call the REST API or connect an MCP client, and [Workflows → Preferences and help](../workflows/preferences-and-help.md) for the end-to-end task walkthrough.

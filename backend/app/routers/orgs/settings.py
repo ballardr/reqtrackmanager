@@ -60,6 +60,7 @@ from app.services.codes import change_organization_code, set_policy
 from app.services.email import SmtpOverride, send_email
 from app.services.email_branding import resolve_email_branding
 from app.services.email_templates import render_email
+from app.services.net_guard import assert_public_host
 from app.services.rbac import require_org_module_enabled_dynamic, require_org_role
 
 router = APIRouter(tags=["organizations-settings"])
@@ -511,6 +512,13 @@ def send_org_test_email(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
     if not org.smtp_host:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This organisation has no SMTP host configured.")
+    if not settings.org_smtp_allow_private_network_targets:
+        # The relay is chosen by this organisation's administrator, not the deployment's operator: it must
+        # not be able to aim the server's own connection at the platform's network (`services.net_guard`).
+        try:
+            assert_public_host(org.smtp_host)
+        except ValueError as err:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"SMTP host refused: {err}") from err
     to_email = payload.to_email or current_user.email
     branding = resolve_email_branding(db, organization_id=organization_id)
     html_body, text_body = render_email(

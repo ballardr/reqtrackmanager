@@ -9,7 +9,7 @@ import pytest
 
 from app.database import SessionLocal
 from app.models.enums import OrgRole
-from app.models.organization import Organization
+from app.models.organization import Organization, UserOrgRole
 from app.security import create_oidc_state_token
 from app.services.oidc_provisioning import (
     find_or_provision_user,
@@ -22,6 +22,12 @@ from tests.test_access_review import _make_orphaned_user
 
 ISSUER_A = "https://idp-a.example.com/realms/tenant"
 ISSUER_B = "https://idp-b.example.com/realms/other-tenant"
+
+
+def _transient_org() -> Organization:
+    """An organisation object for the calls that only create a brand-new account (never persisted, never read
+    for linking)."""
+    return Organization(name="Transient SSO Org", oidc_issuer_url=ISSUER_A, sso_enabled=True)
 
 
 def _patch_fake_oidc(monkeypatch, *, email: str, subject: str = "fake-subject") -> None:
@@ -38,6 +44,20 @@ def _patch_fake_oidc(monkeypatch, *, email: str, subject: str = "fake-subject") 
         "app.services.oidc_client.verify_id_token",
         lambda discovery, id_token, **kwargs: {"sub": subject, "email": email, "email_verified": True},
     )
+
+
+def _give_membership(user_id: str, org_id: str) -> None:
+    """Gives an account a role in the organisation directly, so the SSO link check (which needs the
+    organisation to have a claim on the account) passes and the later account-status checks are what the
+    test exercises."""
+    from uuid import UUID
+
+    db = SessionLocal()
+    try:
+        db.add(UserOrgRole(user_id=UUID(user_id), organization_id=UUID(org_id), role=OrgRole.MEMBER))
+        db.commit()
+    finally:
+        db.close()
 
 
 def _sso_org(client, admin_token, org_id, slug: str) -> None:
@@ -57,8 +77,7 @@ def test_find_or_provision_user_creates_a_new_oidc_user():
     try:
         user = find_or_provision_user(
             db, {"sub": "idp-subject-1", "email": "newsso@example.com", "email_verified": True, "name": "New SSO"},
-            issuer=ISSUER_A,
-        )
+            issuer=ISSUER_A, org=_transient_org())
         db.commit()
         assert user.auth_backend == "oidc"
         assert user.external_subject == "idp-subject-1"
@@ -73,12 +92,10 @@ def test_find_or_provision_user_resolves_by_subject_on_repeat_login():
     db = SessionLocal()
     try:
         first = find_or_provision_user(
-            db, {"sub": "idp-subject-2", "email": "repeat@example.com", "email_verified": True}, issuer=ISSUER_A,
-        )
+            db, {"sub": "idp-subject-2", "email": "repeat@example.com", "email_verified": True}, issuer=ISSUER_A, org=_transient_org())
         db.commit()
         second = find_or_provision_user(
-            db, {"sub": "idp-subject-2", "email": "repeat@example.com", "email_verified": True}, issuer=ISSUER_A,
-        )
+            db, {"sub": "idp-subject-2", "email": "repeat@example.com", "email_verified": True}, issuer=ISSUER_A, org=_transient_org())
         db.commit()
         assert first.id == second.id
     finally:
@@ -93,13 +110,11 @@ def test_find_or_provision_user_does_not_collide_across_different_issuers_with_t
     try:
         first = find_or_provision_user(
             db, {"sub": "shared-subject-value", "email": "tenant-a-user@example.com", "email_verified": True},
-            issuer=ISSUER_A,
-        )
+            issuer=ISSUER_A, org=_transient_org())
         db.commit()
         second = find_or_provision_user(
             db, {"sub": "shared-subject-value", "email": "tenant-b-user@example.com", "email_verified": True},
-            issuer=ISSUER_B,
-        )
+            issuer=ISSUER_B, org=_transient_org())
         db.commit()
         assert first.id != second.id
         assert first.oidc_issuer == ISSUER_A
@@ -118,8 +133,7 @@ def test_find_or_provision_user_does_not_link_to_existing_account_via_unverified
     try:
         with pytest.raises(ValueError):
             find_or_provision_user(
-                db, {"sub": "attacker-subject", "email": "admin@example.com", "email_verified": False}, issuer=ISSUER_A,
-            )
+                db, {"sub": "attacker-subject", "email": "admin@example.com", "email_verified": False}, issuer=ISSUER_A, org=_transient_org())
         db.rollback()
 
         # Confirm the real admin account was left completely untouched.
@@ -145,8 +159,7 @@ def test_sync_org_roles_from_claims_grants_mapped_role():
         db.add(OrgGroup(organization_id=org.id, name="Admins", idp_synced_group_name="admins", granted_org_role=OrgRole.ORG_ADMIN))
         db.flush()
         user = find_or_provision_user(
-            db, {"sub": "role-sync-subject", "email": "rolesync@example.com", "email_verified": True}, issuer=ISSUER_A,
-        )
+            db, {"sub": "role-sync-subject", "email": "rolesync@example.com", "email_verified": True}, issuer=ISSUER_A, org=_transient_org())
         sync_org_roles_from_claims(db, user, org, {"groups": ["admins"]})
         db.commit()
 
@@ -173,8 +186,7 @@ def test_sync_org_roles_grants_nothing_when_no_group_matches():
         db.add(OrgGroup(organization_id=org.id, name="Admins", idp_synced_group_name="admins", granted_org_role=OrgRole.ORG_ADMIN))
         db.flush()
         user = find_or_provision_user(
-            db, {"sub": "no-match-subject", "email": "nomatch@example.com", "email_verified": True}, issuer=ISSUER_A,
-        )
+            db, {"sub": "no-match-subject", "email": "nomatch@example.com", "email_verified": True}, issuer=ISSUER_A, org=_transient_org())
         sync_org_roles_from_claims(db, user, org, {"groups": ["unrelated-group"]})
         db.commit()
 
@@ -207,8 +219,7 @@ def test_sync_org_roles_revokes_role_once_matching_group_claim_disappears():
         db.add(OrgGroup(organization_id=org.id, name="Admins", idp_synced_group_name="admins", granted_org_role=OrgRole.ORG_ADMIN))
         db.flush()
         user = find_or_provision_user(
-            db, {"sub": "sync-down-subject", "email": "syncdown@example.com", "email_verified": True}, issuer=ISSUER_A,
-        )
+            db, {"sub": "sync-down-subject", "email": "syncdown@example.com", "email_verified": True}, issuer=ISSUER_A, org=_transient_org())
         sync_org_roles_from_claims(db, user, org, {"groups": ["admins"]})
         db.commit()
         roles = db.scalars(
@@ -246,8 +257,7 @@ def test_sync_org_roles_never_touches_a_role_outside_the_mapping_vocabulary():
         db.add(OrgGroup(organization_id=org.id, name="Admins", idp_synced_group_name="admins", granted_org_role=OrgRole.ORG_ADMIN))
         db.flush()
         user = find_or_provision_user(
-            db, {"sub": "manual-role-subject", "email": "manualrole@example.com", "email_verified": True}, issuer=ISSUER_A,
-        )
+            db, {"sub": "manual-role-subject", "email": "manualrole@example.com", "email_verified": True}, issuer=ISSUER_A, org=_transient_org())
         # Manually granted, outside any role-granting group.
         db.add(UserOrgRole(user_id=user.id, organization_id=org.id, role=OrgRole.PROJECT_CREATOR))
         db.commit()
@@ -282,8 +292,7 @@ def test_sync_org_roles_leaves_existing_roles_alone_when_idp_asserts_no_groups_c
         db.add(OrgGroup(organization_id=org.id, name="Admins", idp_synced_group_name="admins", granted_org_role=OrgRole.ORG_ADMIN))
         db.flush()
         user = find_or_provision_user(
-            db, {"sub": "no-claim-subject", "email": "noclaim@example.com", "email_verified": True}, issuer=ISSUER_A,
-        )
+            db, {"sub": "no-claim-subject", "email": "noclaim@example.com", "email_verified": True}, issuer=ISSUER_A, org=_transient_org())
         sync_org_roles_from_claims(db, user, org, {"groups": ["admins"]})
         db.commit()
 
@@ -312,8 +321,7 @@ def test_sync_org_groups_from_claims_grants_membership_in_a_synced_group():
         db.add(group)
         db.flush()
         user = find_or_provision_user(
-            db, {"sub": "group-sync-subject", "email": "groupsync@example.com", "email_verified": True}, issuer=ISSUER_A,
-        )
+            db, {"sub": "group-sync-subject", "email": "groupsync@example.com", "email_verified": True}, issuer=ISSUER_A, org=_transient_org())
         sync_org_groups_from_claims(db, user, org, {"groups": ["eng-team"]})
         db.commit()
 
@@ -339,8 +347,7 @@ def test_sync_org_groups_grants_nothing_when_no_group_matches():
         db.add(group)
         db.flush()
         user = find_or_provision_user(
-            db, {"sub": "group-no-match-subject", "email": "groupnomatch@example.com", "email_verified": True}, issuer=ISSUER_A,
-        )
+            db, {"sub": "group-no-match-subject", "email": "groupnomatch@example.com", "email_verified": True}, issuer=ISSUER_A, org=_transient_org())
         sync_org_groups_from_claims(db, user, org, {"groups": ["unrelated-group"]})
         db.commit()
 
@@ -366,7 +373,8 @@ def test_sync_org_groups_revokes_membership_once_matching_group_claim_disappears
         db.add(group)
         db.flush()
         user = find_or_provision_user(
-            db, {"sub": "group-sync-down-subject", "email": "groupsyncdown@example.com", "email_verified": True}, issuer=ISSUER_A,
+            db, {"sub": "group-sync-down-subject", "email": "groupsyncdown@example.com", "email_verified": True},
+            issuer=ISSUER_A, org=_transient_org(),
         )
         sync_org_groups_from_claims(db, user, org, {"groups": ["eng-team"]})
         db.commit()
@@ -410,8 +418,7 @@ def test_sync_org_groups_never_touches_an_unsynced_group_or_nested_group_edges()
         db.commit()
 
         user = find_or_provision_user(
-            db, {"sub": "unmanaged-subject", "email": "unmanaged@example.com", "email_verified": True}, issuer=ISSUER_A,
-        )
+            db, {"sub": "unmanaged-subject", "email": "unmanaged@example.com", "email_verified": True}, issuer=ISSUER_A, org=_transient_org())
         db.add(OrgGroupMember(org_group_id=manual_group.id, user_id=user.id))
         db.commit()
 
@@ -445,8 +452,7 @@ def test_sync_org_groups_leaves_existing_membership_alone_when_idp_asserts_no_gr
         db.add(group)
         db.flush()
         user = find_or_provision_user(
-            db, {"sub": "group-no-claim-subject", "email": "groupnoclaim@example.com", "email_verified": True}, issuer=ISSUER_A,
-        )
+            db, {"sub": "group-no-claim-subject", "email": "groupnoclaim@example.com", "email_verified": True}, issuer=ISSUER_A, org=_transient_org())
         sync_org_groups_from_claims(db, user, org, {"groups": ["eng-team"]})
         db.commit()
 
@@ -616,6 +622,7 @@ def test_oidc_callback_rejects_a_deactivated_account(client, admin_token, org_id
         f"/api/v1/system/users/{orphaned_id}/status", json={"action": "deactivate"}, headers=auth_headers(admin_token)
     )
     assert deactivate_resp.status_code == 204
+    _give_membership(orphaned_id, org_id)
 
     _patch_fake_oidc(monkeypatch, email=email)
     state = create_oidc_state_token(org_id, "x" * 16)
@@ -659,6 +666,7 @@ def test_oidc_callback_rejects_a_banned_account_and_grants_no_pending_invite(cli
     # first), which then gets banned.
     orphaned_id = _make_orphaned_user(client, admin_token, org_id, email)
     assert client.post(f"/api/v1/system/users/{orphaned_id}/status", json={"action": "ban"}, headers=auth_headers(admin_token)).status_code == 204
+    _give_membership(orphaned_id, org_id)
 
     _patch_fake_oidc(monkeypatch, email=email)
     state = create_oidc_state_token(org_id, "x" * 16)
@@ -668,3 +676,128 @@ def test_oidc_callback_rejects_a_banned_account_and_grants_no_pending_invite(cli
 
     org_users = client.get(f"/api/v1/orgs/{other_org['id']}/users", headers=auth_headers(other_org_admin_token)).json()
     assert not any(u["email"] == email for u in org_users), "banned account must not gain the pending invite's org role"
+
+
+# --- an organisation's identity provider may only link accounts the organisation has a claim on -----------
+
+
+def test_idp_cannot_link_an_account_outside_its_organisation(client, admin_token, org_id):
+    """A tenant's own IdP asserting a verified address must not take over a platform account (here the
+    bootstrap server administrator) that is not that tenant's: the account stays native and unlinked."""
+    from sqlalchemy import select
+
+    from app.models.user import User
+
+    db = SessionLocal()
+    try:
+        attacker_org = Organization(name="Attacker Org", oidc_issuer_url=ISSUER_B, sso_enabled=True)
+        db.add(attacker_org)
+        db.flush()
+        with pytest.raises(ValueError):
+            find_or_provision_user(
+                db, {"sub": "attacker-subject", "email": "admin@example.com", "email_verified": True},
+                issuer=ISSUER_B, org=attacker_org,
+            )
+        db.rollback()
+        admin = db.scalar(select(User).where(User.email == "admin@example.com"))
+        assert admin.auth_backend == "native" and admin.external_subject is None
+    finally:
+        db.close()
+
+
+def test_idp_cannot_link_a_member_account_that_also_belongs_to_a_non_sso_organisation(client, admin_token, org_id):
+    """Membership alone is not enough: a person who also belongs to an organisation that does not use this
+    IdP would hand that organisation's access to this IdP's owner."""
+    from app.models.user import User
+
+    db = SessionLocal()
+    try:
+        sso_org = Organization(name="SSO Tenant", oidc_issuer_url=ISSUER_B, sso_enabled=True)
+        plain_org = Organization(name="Plain Tenant")
+        db.add_all([sso_org, plain_org])
+        db.flush()
+        person = User(email="twoorgs@example.com", display_name="Two Orgs", auth_backend="native", password_hash="x")
+        db.add(person)
+        db.flush()
+        db.add_all([
+            UserOrgRole(user_id=person.id, organization_id=sso_org.id, role=OrgRole.MEMBER),
+            UserOrgRole(user_id=person.id, organization_id=plain_org.id, role=OrgRole.MEMBER),
+        ])
+        db.flush()
+        with pytest.raises(ValueError):
+            find_or_provision_user(
+                db, {"sub": "s", "email": "twoorgs@example.com", "email_verified": True}, issuer=ISSUER_B, org=sso_org,
+            )
+    finally:
+        db.rollback()
+        db.close()
+
+
+def test_idp_links_a_member_account_of_its_own_organisation(client, admin_token, org_id):
+    """The supported migration path still works: a native member of the SSO organisation signs in through its
+    IdP and keeps the account."""
+    from app.models.user import User
+
+    db = SessionLocal()
+    try:
+        sso_org = Organization(name="SSO Tenant 2", oidc_issuer_url=ISSUER_B, sso_enabled=True)
+        db.add(sso_org)
+        db.flush()
+        person = User(email="member@example.com", display_name="Member", auth_backend="native", password_hash="x")
+        db.add(person)
+        db.flush()
+        db.add(UserOrgRole(user_id=person.id, organization_id=sso_org.id, role=OrgRole.MEMBER))
+        db.flush()
+        linked = find_or_provision_user(
+            db, {"sub": "m", "email": "member@example.com", "email_verified": True}, issuer=ISSUER_B, org=sso_org,
+        )
+        assert linked.id == person.id and linked.auth_backend == "oidc" and linked.oidc_issuer == ISSUER_B
+    finally:
+        db.rollback()
+        db.close()
+
+
+def test_idp_cannot_take_an_account_bound_to_another_identity(client, admin_token, org_id):
+    """An account already bound to one (issuer, subject) is never handed to a different identity."""
+    from app.models.user import User
+
+    db = SessionLocal()
+    try:
+        org_b = Organization(name="Org B", oidc_issuer_url=ISSUER_B, sso_enabled=True)
+        db.add(org_b)
+        db.flush()
+        bound = User(
+            email="bound@example.com", display_name="Bound", auth_backend="oidc", external_subject="orig",
+            oidc_issuer=ISSUER_A,
+        )
+        db.add(bound)
+        db.flush()
+        db.add(UserOrgRole(user_id=bound.id, organization_id=org_b.id, role=OrgRole.MEMBER))
+        db.flush()
+        with pytest.raises(ValueError):
+            find_or_provision_user(
+                db, {"sub": "other", "email": "bound@example.com", "email_verified": True}, issuer=ISSUER_B, org=org_b,
+            )
+    finally:
+        db.rollback()
+        db.close()
+
+
+def test_callback_refuses_a_foreign_account_and_issues_no_token(client, admin_token, monkeypatch):
+    """End to end through the real callback: a tenant admin's own IdP naming the server administrator is
+    refused with the generic not-provisioned redirect, no token, and the administrator can still sign in."""
+    attacker_org, attacker_token = create_org_admin_in(client, admin_token, "Attacker Org Cb")
+    resp = client.put(
+        f"/api/v1/orgs/{attacker_org['id']}/sso-config",
+        json={"slug": "attacker-cb", "sso_enabled": True, "oidc_issuer_url": "https://idp.attacker.example/x", "oidc_client_id": "c"},
+        headers=auth_headers(attacker_token),
+    )
+    assert resp.status_code == 200, resp.text
+    _patch_fake_oidc(monkeypatch, email="admin@example.com", subject="attacker-chosen")
+    state = create_oidc_state_token(attacker_org["id"], "n" * 16)
+    cb = client.get(f"/api/v1/auth/oidc/callback?code=x&state={state}", follow_redirects=False)
+    assert cb.status_code == 302
+    location = cb.headers["location"]
+    assert "error=not_provisioned" in location and "token=" not in location
+    # The platform administrator is untouched.
+    assert login(client, "admin@example.com", "ChangeMe123!")

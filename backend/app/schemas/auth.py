@@ -69,6 +69,14 @@ class TokenResponse(BaseModel):
     user: UserOut
 
 
+class MediaTokenResponse(BaseModel):
+    """A short-lived credential for loading files into `<img>`/`<a>` tags and opening the live-update socket,
+    the only places a token has to travel in a URL (`security.create_media_token`)."""
+
+    token: str
+    expires_in_seconds: int
+
+
 class TwoFactorChallengeResponse(BaseModel):
     """Returned instead of `TokenResponse` when the account has 2FA enabled."""
 

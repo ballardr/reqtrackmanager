@@ -216,6 +216,13 @@ def auth_headers(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
+def media_token(client: TestClient, session_token: str) -> str:
+    """Helper: mints the short-lived media token a `?token=` URL (file download, WebSocket) must carry."""
+    resp = client.post("/api/v1/auth/media-token", headers=auth_headers(session_token))
+    assert resp.status_code == 200, resp.text
+    return resp.json()["token"]
+
+
 @pytest.fixture
 def admin_token(client) -> str:
     return login(client, "admin@example.com", "ChangeMe123!")

@@ -12,9 +12,19 @@ against MailHog in docs/decisions.md's manual verification), matching
 
 from unittest.mock import Mock, patch
 
+import pytest
+
 from app.routers.orgs import settings as orgs_settings_router
 from app.routers.system import config as system_config_router
 from tests.conftest import auth_headers, create_org_user, login
+
+
+@pytest.fixture(autouse=True)
+def _smtp_host_resolves_publicly(monkeypatch):
+    """The example SMTP hosts used below do not resolve (and the suite must not need DNS); the real
+    public-host guard is covered in `test_net_guard.py`."""
+    monkeypatch.setattr(orgs_settings_router, "assert_public_host", lambda host: None)
+
 
 # ---------------------------------------------------------------------------
 # Organisation rename

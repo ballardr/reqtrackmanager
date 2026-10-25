@@ -66,6 +66,14 @@ def test_merge_with_no_conflicts_adds_users_groups_projects_and_templates(client
     assert template_resp.status_code == 201, template_resp.text
 
     target_org, target_token = create_org_admin_in(client, admin_token, "Merge Target Org Clean")
+    # The bundle's member already has an account in the source organisation, so the target has to allow
+    # external users before a merge may add them (`services.org_membership`; refusal is tested in
+    # test_org_membership_boundary.py).
+    opened = client.put(
+        f"/api/v1/orgs/{target_org['id']}/advanced-settings", json={"external_user_policy": "anyone"},
+        headers=auth_headers(target_token),
+    )
+    assert opened.status_code == 200, opened.text
     bundle_bytes = _export(client, source_token, source_org["id"])
 
     conflicts = _preview(client, target_token, target_org["id"], bundle_bytes)

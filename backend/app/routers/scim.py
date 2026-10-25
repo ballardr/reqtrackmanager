@@ -50,6 +50,7 @@ from app.models.project import ProjectGroupMember
 from app.models.user import User
 from app.security import hash_pat
 from app.services.audit import log_event
+from app.services.org_membership import assert_may_add_account, belongs_elsewhere, remove_member_from_organization
 from app.services.rbac import get_effective_org_roles
 
 router = APIRouter(prefix="/scim/v2", tags=["scim"])
@@ -183,11 +184,54 @@ def _list_response(resources: list[dict[str, Any]], *, start_index: int, total: 
 def _get_org_user(db: Session, org: Organization, user_id: UUID) -> User:
     """Loads a User and 404s unless they actually belong to `org` — without
     this, a SCIM token for org A could read/modify any user in the entire
-    deployment by guessing/enumerating ids."""
+    deployment by guessing/enumerating ids. A server administrator is the platform's own account, never an
+    organisation's to manage, so it reads as absent here too."""
     user = db.get(User, user_id)
-    if user is None or not get_effective_org_roles(db, user.id, org.id):
+    if user is None or user.is_server_admin or not get_effective_org_roles(db, user.id, org.id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found.")
     return user
+
+
+def _set_active(db: Session, org: Organization, user: User, active: bool) -> bool:
+    """Applies a SCIM `active` change, within what one organisation's token may do to a global account.
+
+    Deactivating an account only this organisation holds ends the account. For one another organisation also
+    holds (a deactivation would end it in every organisation) it deprovisions the account *from this
+    organisation*: its roles, project access and group membership here are removed
+    (`org_membership.remove_member_from_organization`, committed) and the account stays active elsewhere.
+    Reactivating never lifts a ban a server administrator set.
+
+    Args:
+        db: Active session.
+        org: The organisation whose token made the call.
+        user: The account (already confirmed to belong to `org`).
+        active: The requested state.
+
+    Returns:
+        True when the account was removed from the organisation instead of deactivated (the caller reports
+        it as inactive here; it is no longer visible to this token).
+
+    Raises:
+        HTTPException: 409 when the removal is blocked because the person is the sole manager of a project;
+            403 when reactivating a banned account.
+    """
+    if active == user.is_active:
+        return False
+    if not active:
+        if belongs_elsewhere(db, user.id, org.id):
+            remove_member_from_organization(db, org.id, user.id, actor_id=None, action="scim_deactivated_in_organization")
+            return True
+        user.is_active = False
+        return False
+    if user.is_banned:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This account has been banned and cannot be reactivated.")
+    user.is_active = True
+    return False
+
+
+def _scim_user_out(user: User, removed: bool) -> dict[str, Any]:
+    """The SCIM representation of `user`, reported inactive when it was just removed from the organisation."""
+    return _user_to_scim(user) | ({"active": False} if removed else {})
 
 
 def _get_org_group(db: Session, org: Organization, group_id: UUID) -> OrgGroup:
@@ -263,7 +307,7 @@ def list_users(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     org_user_ids = set(db.scalars(select(UserOrgRole.user_id).where(UserOrgRole.organization_id == org.id)).all())
-    query = select(User).where(User.id.in_(org_user_ids))
+    query = select(User).where(User.id.in_(org_user_ids), User.is_server_admin.is_(False))
     parsed = _parse_simple_eq_filter(filter)
     if parsed:
         attr, value = parsed
@@ -281,11 +325,13 @@ def create_user(
     payload: dict[str, Any] = Body(...), org: Organization = Depends(require_scim_org), db: Session = Depends(get_db)
 ) -> dict[str, Any]:
     """Provisions a user into this organisation — `find-or-create` by
-    email, matching `services.oidc_provisioning.find_or_provision_user`'s
-    reuse-by-email approach, but without an email-verification gate: the
+    email, but without an email-verification gate: the
     entire SCIM channel is already privileged (only reachable with a token
     an org admin explicitly generated), unlike OIDC's public login flow
-    where any caller could otherwise claim an arbitrary email.
+    where any caller could otherwise claim an arbitrary email. Privileged
+    to *this organisation*, though: an account another organisation holds
+    is added only if this one allows external users
+    (`services.org_membership.assert_may_add_account`).
 
     Grants baseline `OrgRole.MEMBER` if the resolved user holds no role in
     this org yet — a SCIM `Users` resource is inherently org-scoped, so
@@ -302,8 +348,11 @@ def create_user(
     display_name = payload.get("displayName") or (payload.get("name") or {}).get("formatted") or email.split("@")[0]
 
     user = db.scalar(select(User).where(User.email == email))
-    if user is not None and user.is_banned:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "This account has been banned and cannot be provisioned.")
+    if user is not None:
+        # An existing account is pulled in only under the same rule as every other grant by an administrator
+        # (`services.org_membership`): not banned, not a platform administrator, and not held by another
+        # organisation unless this one allows external users.
+        assert_may_add_account(db, org, user)
     if user is None:
         user = User(email=email, display_name=display_name, auth_backend="scim", password_hash=None)
         db.add(user)
@@ -329,13 +378,14 @@ def replace_user(
     org: Organization = Depends(require_scim_org), db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     user = _get_org_user(db, org, user_id)
+    removed = False
     if payload.get("displayName"):
         user.display_name = payload["displayName"]
     if "active" in payload:
-        user.is_active = bool(payload["active"])
+        removed = _set_active(db, org, user, bool(payload["active"]))
     log_event(db, entity_type="user", entity_id=user.id, action="scim_replaced", actor_id=None, organization_id=org.id)
     db.commit()
-    return _user_to_scim(user)
+    return _scim_user_out(user, removed)
 
 
 @router.patch("/Users/{user_id}")
@@ -347,18 +397,19 @@ def patch_user(
     user: `active` (deactivation, C-U-04 — never a hard delete) and
     `displayName`. See module docstring for the scope limitation."""
     user = _get_org_user(db, org, user_id)
+    removed = False
     for op in payload.get("Operations", []):
         value = op.get("value")
         path = (op.get("path") or "").strip()
         if path == "active" or (not path and isinstance(value, dict) and "active" in value):
-            user.is_active = bool(value if not isinstance(value, dict) else value.get("active"))
+            removed = _set_active(db, org, user, bool(value if not isinstance(value, dict) else value.get("active"))) or removed
         elif path == "displayName" and isinstance(value, str):
             user.display_name = value
         elif not path and isinstance(value, dict) and "displayName" in value:
             user.display_name = value["displayName"]
     log_event(db, entity_type="user", entity_id=user.id, action="scim_patched", actor_id=None, organization_id=org.id)
     db.commit()
-    return _user_to_scim(user)
+    return _scim_user_out(user, removed)
 
 
 @router.delete("/Users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -366,7 +417,7 @@ def delete_user(user_id: UUID, org: Organization = Depends(require_scim_org), db
     """Deactivates rather than hard-deletes (C-U-04/C-U-05) — consistent
     with every other user-removal path in this app."""
     user = _get_org_user(db, org, user_id)
-    user.is_active = False
+    _set_active(db, org, user, False)
     log_event(db, entity_type="user", entity_id=user.id, action="scim_deactivated", actor_id=None, organization_id=org.id)
     db.commit()
 

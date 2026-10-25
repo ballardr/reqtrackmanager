@@ -35,6 +35,12 @@ def _backdate(pat_id, *, created_at=None, expires_at_ceiling=None):
 
 
 def _add_role(client, granter_token, org_id, user_id, role="member"):
+    # The user already belongs to another organisation, so the granting organisation has to allow external
+    # users first (`services.org_membership`): a user id alone is not consent.
+    opened = client.put(
+        f"/api/v1/orgs/{org_id}/advanced-settings", json={"external_user_policy": "anyone"}, headers=auth_headers(granter_token),
+    )
+    assert opened.status_code == 200, opened.text
     resp = client.post(
         f"/api/v1/orgs/{org_id}/users/{user_id}/roles",
         json={"user_id": user_id, "role": role},

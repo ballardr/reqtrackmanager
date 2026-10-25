@@ -39,6 +39,7 @@ from app.services.membership_notifications import (
     notify_managers_of_member_change,
 )
 from app.services.notifications import notify
+from app.services.org_membership import assert_account_active
 from app.services.rbac import (
     _descendant_org_group_ids,
     get_effective_org_roles,
@@ -216,6 +217,7 @@ def assign_project_role_by_email(
     existing_user = db.scalar(select(User).where(User.email == email))
 
     if existing_user is not None:
+        assert_account_active(db, existing_user.id)
         already_in_org = bool(get_effective_org_roles(db, existing_user.id, org.id))
         if not already_in_org:
             if org.external_user_policy == ExternalUserPolicy.DISABLED:

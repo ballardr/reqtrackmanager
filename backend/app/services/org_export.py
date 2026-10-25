@@ -126,6 +126,7 @@ from app.services.custom_role_presets import seed_custom_role_presets
 from app.services.definitions import seed_link_types, seed_project_statuses
 from app.services.files import read_file
 from app.services.invites import create_pending_invite
+from app.services.org_membership import external_account_refusal, holds_org_role
 from app.services.project_export import (
     PROJECT_BUNDLE_FORMAT_VERSION,
     apply_project_data,
@@ -364,6 +365,14 @@ def _import_members(
     for m in data.get("members", []):
         existing = find_user(m["email"])
         if existing is not None:
+            if not reassign_acting_user:
+                # A merge runs as the target organisation's own administrator, and a bundle is data they
+                # supplied: it may add an existing account only on the terms any administrator-initiated
+                # grant has (`services.org_membership`), and says so in the warnings when it may not.
+                refusal = external_account_refusal(db, org, existing)
+                if refusal is not None:
+                    warnings.add(f"Member '{m['email']}' was not added: {refusal}")
+                    continue
             if existing.is_banned:
                 # Same invariant `assign_org_role`/`assign_project_role_by_email`
                 # enforce (see `User.is_banned`'s docstring: a ban "survives"
@@ -430,6 +439,7 @@ def _import_org_groups(
         existing_by_name = {g.name.strip().lower(): g for g in existing_groups}
         existing_idp_synced_names = {g.idp_synced_group_name for g in existing_groups if g.idp_synced_group_name}
     groups_by_bundle_name: dict[str, OrgGroup] = {}
+    db.flush()  # the memberships `_import_members` just added must be visible to the role check below
     for g in data.get("org_groups", []):
         group = existing_by_name.get(g["name"].strip().lower()) if merge_by_name else None
         existing_member_ids: set[UUID] = set()
@@ -487,6 +497,10 @@ def _import_org_groups(
             existing = find_user(email)
             if existing is not None and existing.is_banned:
                 warnings.add(f"Member '{email}' has been banned by a server admin and was not added to group '{g['name']}'.")
+            elif existing is not None and not holds_org_role(db, existing.id, org.id):
+                # Group membership grants project access with no role check of its own, so a group list is
+                # not a back door into an organisation the account was never admitted to above.
+                warnings.add(f"Member '{email}' is not a member of this organisation and was not added to group '{g['name']}'.")
             elif existing is not None and existing.id not in existing_member_ids:
                 db.add(OrgGroupMember(org_group_id=group.id, user_id=existing.id))
         groups_by_bundle_name[g["name"].strip().lower()] = group

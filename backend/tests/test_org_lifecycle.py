@@ -235,6 +235,11 @@ def test_delete_cascades_through_everything_including_non_fk_references(client, 
     # A second, two-org user + PAT — must survive, minus just this org's id.
     other_org_id = other_org["id"]
     two_org_user_id = create_org_user(client, org_admin_token, org["id"], "two_org_user@example.com", role="member")
+    # An account another organisation holds joins only where external users are allowed.
+    assert client.put(
+        f"/api/v1/orgs/{other_org_id}/advanced-settings", json={"external_user_policy": "anyone"},
+        headers=auth_headers(other_org_admin_token),
+    ).status_code == 200
     grant_resp = client.post(
         f"/api/v1/orgs/{other_org_id}/users/{two_org_user_id}/roles",
         json={"user_id": two_org_user_id, "role": "member"}, headers=auth_headers(other_org_admin_token),

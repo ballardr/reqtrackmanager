@@ -18,7 +18,7 @@ See `_user_session_still_valid` and the handshake check in `routers/ws.py`.
 from fastapi import WebSocketDisconnect
 
 from app.routers.ws import _user_session_still_valid
-from tests.conftest import auth_headers, create_project, login
+from tests.conftest import auth_headers, create_project, login, media_token
 
 
 def test_password_change_immediately_blocks_a_new_websocket_connection(client, admin_token, org_id):
@@ -27,9 +27,10 @@ def test_password_change_immediately_blocks_a_new_websocket_connection(client, a
     provides via deps.py, now also covered here."""
     project = create_project(client, admin_token, org_id)
     old_token = admin_token
+    old_media_token = media_token(client, old_token)
 
     # The pre-change token can open a connection.
-    with client.websocket_connect(f"/ws/projects/{project['id']}?token={old_token}") as ws:
+    with client.websocket_connect(f"/ws/projects/{project['id']}?token={old_media_token}") as ws:
         ws.close()
 
     resp = client.post(
@@ -42,14 +43,14 @@ def test_password_change_immediately_blocks_a_new_websocket_connection(client, a
     # The pre-change token — now stale — must be rejected at handshake,
     # not allowed to open a live socket.
     try:
-        with client.websocket_connect(f"/ws/projects/{project['id']}?token={old_token}"):
+        with client.websocket_connect(f"/ws/projects/{project['id']}?token={old_media_token}"):
             raise AssertionError("Expected the stale, password-changed token to be rejected at handshake.")
     except WebSocketDisconnect as exc:
         assert exc.code == 4401
 
     # A fresh token (from a fresh login with the new password) still works.
     new_token = login(client, "admin@example.com", "NewPassword123!")
-    with client.websocket_connect(f"/ws/projects/{project['id']}?token={new_token}") as ws:
+    with client.websocket_connect(f"/ws/projects/{project['id']}?token={media_token(client, new_token)}") as ws:
         ws.close()
 
 
@@ -87,20 +88,20 @@ def test_new_websocket_connection_rejected_after_org_disabled(client, admin_toke
     project = create_project(client, org_admin_token, org["id"])
 
     # Works fine while the org is active.
-    with client.websocket_connect(f"/ws/projects/{project['id']}?token={org_admin_token}") as ws:
+    with client.websocket_connect(f"/ws/projects/{project['id']}?token={media_token(client, org_admin_token)}") as ws:
         ws.close()
 
     assert client.post(f"/api/v1/orgs/{org['id']}/disable", headers=auth_headers(admin_token)).status_code == 200
 
     try:
-        with client.websocket_connect(f"/ws/projects/{project['id']}?token={org_admin_token}"):
+        with client.websocket_connect(f"/ws/projects/{project['id']}?token={media_token(client, org_admin_token)}"):
             raise AssertionError("Expected a new connection to a disabled org's project to be rejected.")
     except WebSocketDisconnect as exc:
         assert exc.code == 4403
 
     # Re-enabling restores it.
     assert client.post(f"/api/v1/orgs/{org['id']}/enable", headers=auth_headers(admin_token)).status_code == 200
-    with client.websocket_connect(f"/ws/projects/{project['id']}?token={org_admin_token}") as ws:
+    with client.websocket_connect(f"/ws/projects/{project['id']}?token={media_token(client, org_admin_token)}") as ws:
         ws.close()
 
 

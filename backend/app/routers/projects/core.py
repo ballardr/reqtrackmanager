@@ -70,6 +70,7 @@ from app.services.changes import get_project_changes
 from app.services.codes import assign_project_code, change_project_code
 from app.services.definitions import get_default_project_status_id, seed_action_types
 from app.services.downloads import filename_safe
+from app.services.org_membership import assert_account_active
 from app.services.project_access import accessible_project_ids as _accessible_project_ids
 from app.services.project_export import build_project_bundle, import_project_bundle
 from app.services.project_hierarchy import build_project_tree, would_create_project_cycle
@@ -177,6 +178,7 @@ def _require_user_in_org(db: Session, user_id: UUID, organization_id: UUID) -> N
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, "The user must be a member of this project's organisation first."
         )
+    assert_account_active(db, user_id)
 
 
 @router.post("", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)

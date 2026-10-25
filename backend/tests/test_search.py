@@ -278,6 +278,26 @@ def test_a_statement_timeout_answers_408_with_a_narrow_the_search_message(world,
     assert resp.status_code == 408 and "Narrow the search" in resp.json()["detail"]
 
 
+def test_a_statement_timeout_while_working_out_who_may_search_what_is_also_a_408(world, monkeypatch):
+    """The timeout applies to every statement of a search, not only the matching queries: one that trips while the
+    caller's permissions are being resolved (the phase before any matching query, and the one a busy CI runner
+    tripped in a 50 ms test) must be the same 408, never a 500."""
+    from sqlalchemy.exc import OperationalError
+
+    from app.services import search as search_service
+
+    class _Cancelled(Exception):
+        pgcode = "57014"
+
+    def cancelled(*args, **kwargs):
+        raise OperationalError("SELECT 1", {}, _Cancelled("canceling statement due to statement timeout"))
+
+    project = world.project()
+    monkeypatch.setattr(search_service, "_authorised_projects", cancelled)
+    resp = _search(world, {"q": "anything", **_scope_project(project)})
+    assert resp.status_code == 408 and "Narrow the search" in resp.json()["detail"]
+
+
 def test_the_number_of_queries_does_not_grow_with_the_number_of_results(world):
     from sqlalchemy import event
 

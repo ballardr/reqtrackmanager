@@ -30,7 +30,41 @@ export function setAuthToken(token: string | null): void {
     localStorage.setItem("reqtrack_token", token);
   } else {
     localStorage.removeItem("reqtrack_token");
+    clearMediaToken();
   }
+}
+
+/** The short-lived credential file URLs carry (see `fileUrl`); never the session token. */
+let mediaToken: string | null = null;
+let mediaRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+/** Renewed well inside the server's 15-minute lifetime so a URL built at any moment still has minutes left. */
+const MEDIA_TOKEN_REFRESH_MS = 10 * 60 * 1000;
+
+function clearMediaToken(): void {
+  mediaToken = null;
+  if (mediaRefreshTimer !== undefined) clearTimeout(mediaRefreshTimer);
+  mediaRefreshTimer = undefined;
+}
+
+/**
+ * Fetches the media token for the current session and schedules its renewal. Awaited before the signed-in
+ * UI first renders (`AuthContext`), so no `<img>` is built with an empty credential. A failure leaves file
+ * URLs without a token (they 401 until the next renewal) and never breaks the session itself.
+ */
+export async function ensureMediaToken(): Promise<void> {
+  if (mediaRefreshTimer !== undefined) clearTimeout(mediaRefreshTimer);
+  mediaRefreshTimer = undefined;
+  if (!authToken) {
+    mediaToken = null;
+    return;
+  }
+  try {
+    const result = await request<{ token: string }>("/api/v1/auth/media-token", { method: "POST" });
+    mediaToken = result.token;
+  } catch {
+    mediaToken = null;
+  }
+  if (authToken) mediaRefreshTimer = setTimeout(() => void ensureMediaToken(), MEDIA_TOKEN_REFRESH_MS);
 }
 
 export function loadStoredToken(): string | null {
@@ -189,10 +223,12 @@ export function wsBaseUrl(): string {
 }
 
 /** Builds a viewable/downloadable URL for a stored file, e.g. for <img src>,
- * which cannot send an Authorization header, so the token travels as a
- * query param instead (backend/app/deps.py::get_current_user_header_or_query). */
+ * which cannot send an Authorization header, so a credential travels as a
+ * query param instead (backend/app/deps.py::get_current_user_header_or_query).
+ * That credential is the short-lived media token (`ensureMediaToken`), never the
+ * session token: a URL is written to server logs and browser history. */
 export function fileUrl(fileId: string): string {
-  return `${BASE_URL}/api/v1/files/${fileId}?token=${encodeURIComponent(authToken ?? "")}`;
+  return `${BASE_URL}/api/v1/files/${fileId}?token=${encodeURIComponent(mediaToken ?? "")}`;
 }
 
 export function getAuthToken(): string | null {

@@ -163,7 +163,24 @@ def oidc_callback(code: str, state: str, request_ip: str = Depends(get_client_ip
             status_code=status.HTTP_302_FOUND,
         )
 
-    user = find_or_provision_user(db, claims, issuer=org.oidc_issuer_url)
+    try:
+        user = find_or_provision_user(db, claims, issuer=org.oidc_issuer_url, org=org)
+    except ValueError:
+        # The claims name an account this organisation's identity provider may not sign in as (see
+        # `oidc_provisioning._assert_may_link`) or carry no usable email. The audit row names the refusal but
+        # not the address or the reason text (which would tell an organisation administrator whether an
+        # address already has an account elsewhere); the browser gets the same message as a required-group
+        # refusal.
+        db.rollback()
+        log_event(db, entity_type="organization", entity_id=org.id, action="oidc_login_denied_link_refused",
+                  actor_id=None, organization_id=org.id, detail={"subject": claims.get("sub")})
+        log_login(db, user_id=None, email_attempted=claims.get("email") or "(unknown)", ip_address=request_ip, success=False)
+        db.commit()
+        message = f"{org.name} has not provisioned you access."
+        return RedirectResponse(
+            f"{redirect_base}?error=not_provisioned&message={quote(message)}&client_nonce={quote(client_nonce)}",
+            status_code=status.HTTP_302_FOUND,
+        )
     if not user.is_active or user.is_archived:
         # Hardening-review finding: this was the one login path that never
         # checked account status at all — NativeAuthBackend.authenticate

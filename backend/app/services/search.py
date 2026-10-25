@@ -663,7 +663,7 @@ def _run(db: Session, statement: Any) -> list[Any]:
     try:
         return list(db.execute(statement).all())
     except OperationalError as exc:
-        if getattr(exc.orig, "pgcode", None) == "57014":
+        if _is_statement_timeout(exc):
             db.rollback()
             raise SearchTimeout from exc
         raise
@@ -949,8 +949,17 @@ def _validate(params: SearchParams) -> None:
         )
 
 
+def _is_statement_timeout(exc: OperationalError) -> bool:
+    """Whether a database error is PostgreSQL cancelling a statement for running past `statement_timeout`."""
+    return getattr(exc.orig, "pgcode", None) == "57014"
+
+
 def run_search(db: Session, user: User, params: SearchParams) -> SearchResult:
     """Runs a search for `user`.
+
+    The statement timeout applies to every statement of the search, not just the matching queries, so a
+    timeout in any phase (working out which projects the caller may search, fetching, counting, shaping the
+    hits) is the same `SearchTimeout`; only some phases used to translate it, and a timeout elsewhere was a 500.
 
     Args:
         db: Active session (read only).
@@ -964,6 +973,17 @@ def run_search(db: Session, user: User, params: SearchParams) -> SearchResult:
         HTTPException: 404 the scope or project is not found or not allowed; 422 a malformed request.
         SearchTimeout: The search ran past the statement timeout.
     """
+    try:
+        return _run_search(db, user, params)
+    except OperationalError as exc:
+        if not _is_statement_timeout(exc):
+            raise
+        db.rollback()
+        raise SearchTimeout from exc
+
+
+def _run_search(db: Session, user: User, params: SearchParams) -> SearchResult:
+    """`run_search` without the timeout translation."""
     _validate(params)
     started = time.monotonic()
     db.execute(text(f"SET LOCAL statement_timeout = {STATEMENT_TIMEOUT_MS}"))

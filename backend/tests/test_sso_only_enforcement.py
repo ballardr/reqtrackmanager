@@ -42,6 +42,10 @@ def test_native_login_still_works_with_a_second_non_sso_only_org(client, admin_t
     # I-M-05: the server admin has no role of its own in a freshly created
     # org, so granting a role there requires that org's own admin.
     org_b, org_b_admin_token = create_org_admin_in(client, admin_token, "PlainOrg")
+    assert client.put(
+        f"/api/v1/orgs/{org_b['id']}/advanced-settings", json={"external_user_policy": "anyone"},
+        headers=auth_headers(org_b_admin_token),
+    ).status_code == 200
     resp = client.post(
         f"/api/v1/orgs/{org_b['id']}/users/{user_id}/roles",
         json={"user_id": user_id, "role": "member"}, headers=auth_headers(org_b_admin_token),
