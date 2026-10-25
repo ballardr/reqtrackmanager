@@ -1,8 +1,10 @@
 # Performance results
 
-One directory per run: `<host-label>/<date>-<commit>/`, written by `perf/run_profile.sh`. Summarised
+One directory per run: `<host-label>/<date>-<commit>/` (`-2`, `-3` for a repeat on the same day and commit), written by
+`perf/run_profile.sh`. **Results are git-ignored** (only this file is tracked): each host keeps its own, and an
+anonymised archive is copied between machines. Summarised
 measurements only (no raw request logs, no real data), anonymised by construction and checked by
-`python3 perf/scrub_check.py` (also a repository test and part of the pre-commit hook).
+`python3 perf/scrub_check.py` (also a repository test, and part of the pre-commit hook for a bundle that is deliberately force-added).
 
 | File | Contents |
 |------|----------|

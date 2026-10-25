@@ -1,9 +1,0 @@
-tier,scenario,repeat,role,index,rss_mib,pss_mib,private_mib,shared_mib
-T3,idle,0,single,1,450.1,441.7,439.1,10.9
-T3,browse,1,single,1,463.7,455.4,452.9,10.8
-T3,list_filtered,1,single,1,470.6,462.2,459.7,10.9
-T3,links,1,single,1,494.3,485.9,483.4,10.9
-T4,idle,0,single,1,450.2,441.8,439.2,11.0
-T4,browse,1,single,1,464.2,455.9,453.4,10.8
-T4,list_filtered,1,single,1,474.9,466.6,464.0,10.9
-T4,links,1,single,1,524.5,516.1,513.5,11.0

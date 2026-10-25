@@ -1,7 +1,0 @@
-tier,scenario,connections_peak,idle_in_transaction_peak,cache_hit_percent,temp_files,temp_mib,deadlocks
-T1,browse,6,1,99.9,0,0.0,0
-T1,list_filtered,7,4,100.0,0,0.0,0
-T1,links,7,4,100.0,0,0.0,0
-T2,browse,6,2,99.9,0,0.0,0
-T2,list_filtered,7,4,99.99,0,0.0,0
-T2,links,7,3,100.0,0,0.0,0

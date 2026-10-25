@@ -33,7 +33,7 @@ if git diff --cached --name-only | grep -qE '\.(md|py|ts|tsx|css|ya?ml|sh|txt)$|
   }
 fi
 
-# Performance results are committed to a public repository: nothing identifying may ride along; see perf/scrub_check.py.
+# Performance results are git-ignored; one force-added to a public repository must carry nothing identifying (perf/scrub_check.py).
 if git diff --cached --name-only | grep -qE '^perf/results/'; then
   python3 "$(git rev-parse --show-toplevel)/perf/scrub_check.py" || {
     echo "pre-commit: remove the identifying content above from perf/results/, re-stage, and retry." >&2

@@ -202,3 +202,11 @@ frontend/storybook-static/
 .playwright-mcp/*
 
 mcp-server/.ruff_cache/*
+
+# Performance run results are kept out of the repository: they are bulky, specific to the host that produced them,
+# and the runner writes a new directory for every run. Only the folder's README is tracked. Share a bundle by
+# copying its archive (the runner prints its path); a curated set for a published page is added deliberately with
+# `git add -f`.
+perf/results/*
+!perf/results/README.md
+
