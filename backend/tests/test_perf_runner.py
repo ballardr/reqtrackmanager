@@ -22,6 +22,7 @@ import re
 import subprocess
 import sys
 import tarfile
+import threading
 from pathlib import Path
 
 import pytest
@@ -789,3 +790,291 @@ def test_budgets_file_parses_and_names_known_classes():
     budgets = yaml.safe_load((_PERF / "budgets.yaml").read_text())
     assert {rule["class"] for rule in budgets["rules"]} <= set(budgets["classes"])
     assert budgets["classes"]["interactive"]["p95_ms"] == 300 and budgets["classes"]["heavy"]["p95_ms"] == 30000
+
+
+# --- backend profiling: statements per request, process memory, CPU and heap modes -------------------------
+
+
+def _profile_run(printed=None, **argv_extra):
+    options = run_profile.parse_args(["rpi5-8g", "--plan", "--tiers", "T1", *argv_extra.get("argv", [])])
+    return run_profile.ProfileRun(options, say=(printed.append if printed is not None else (lambda line: None)))
+
+
+class _SnapshotDocker:
+    """Answers the runner's `profile_tools.py snapshot` exec with scripted readings, one per call."""
+
+    def __init__(self, snapshots):
+        self.snapshots = iter(snapshots)
+        self.calls: list = []
+
+    def compose(self, *args, **options):
+        self.calls.append(args)
+        return compose.Result(0, json.dumps(next(self.snapshots)), "")
+
+
+def _route(requests, queries, db_ms=0.0, repeat_statement="", repeat_count=0):
+    return {
+        "requests": requests,
+        "queries": queries,
+        "db_ms": db_ms,
+        "max_queries": 0,
+        "repeat_statement": repeat_statement,
+        "repeat_count": repeat_count,
+    }
+
+
+def _worker(index, private, shared=30.0):
+    return {
+        "role": "worker",
+        "index": index,
+        "rss_mib": private + shared,
+        "pss_mib": private + shared / 2,
+        "private_mib": private,
+        "shared_mib": shared,
+    }
+
+
+def test_each_scenario_is_credited_only_with_the_statements_run_since_the_previous_snapshot(monkeypatch):
+    monkeypatch.setattr(run_profile, "QUERY_FLUSH_SECONDS", 0)
+    run = _profile_run()
+    run.docker = _SnapshotDocker(
+        [
+            {"processes": [_worker(1, 400.0)], "queries": {"POST /login": _route(2, 4)}},
+            {"processes": [_worker(1, 410.0)], "queries": {"POST /login": _route(2, 4), "GET /items": _route(10, 30, 50.0, "select 1", 3)}},
+            {"processes": [_worker(1, 415.0)], "queries": {"POST /login": _route(2, 4), "GET /items": _route(14, 50, 90.0, "select 1", 5)}},
+        ]
+    )
+    run.record_snapshot("T1", "idle", 0, wait=False)
+    run.record_snapshot("T1", "browse", 1)
+    run.record_snapshot("T1", "edit", 1)
+    rows = {(r["scenario"], r["request"]): r for r in run.query_rows()}
+    assert set(rows) == {("browse", "GET /items"), ("edit", "GET /items")}, "login ran before browse and is not browse's"
+    assert rows[("browse", "GET /items")]["queries_per_request"] == 3.0 and rows[("browse", "GET /items")]["db_ms_per_request"] == 5.0
+    assert rows[("edit", "GET /items")]["requests"] == 4 and rows[("edit", "GET /items")]["queries_per_request"] == 5.0
+    assert [(r["scenario"], r["private_mib"]) for r in run.process_rows] == [("idle", 400.0), ("browse", 410.0), ("edit", 415.0)]
+    assert run.suspects["GET /items"] == {"statement": "select 1", "count": 5}
+
+
+def test_an_image_without_profiling_tools_gives_empty_results_and_one_note(monkeypatch):
+    class Failing:
+        def compose(self, *args, **options):
+            return compose.Result(1, "", "No such file")
+
+    monkeypatch.setattr(run_profile, "QUERY_FLUSH_SECONDS", 0)
+    run = _profile_run()
+    run.docker = Failing()
+    for scenario in ("idle", "browse"):
+        run.record_snapshot("T1", scenario, 1, wait=False)
+    assert run.query_rows() == [] and run.process_rows == []
+    assert len([n for n in run.notes if "profiling tools" in n]) == 1
+
+
+def test_profiling_modes_merge_the_profile_override_and_only_then():
+    assert _profile_run().compose_files() == run_profile.COMPOSE_FILES
+    files = _profile_run(argv=["--profiling", "cpu"]).compose_files()
+    assert files == run_profile.COMPOSE_FILES + (run_profile.PROFILE_COMPOSE_FILE,)
+    docker = compose.PerfDocker(files, Path("/tmp/perf.env"), run_profile.REPO_ROOT, runner=_fake(), environ={})
+    compose.validate_argv(docker.compose_argv("exec", "-T", "-u", "root", "backend", "py-spy", "record"), [str(f) for f in files] + ["/tmp/perf.env"])
+    with pytest.raises(compose.UnsafeCommand):  # the profile file is only allowed when this run named it
+        compose.validate_argv(docker.compose_argv("up"), COMPOSE_FILES + ["/tmp/perf.env"])
+
+
+def test_a_profiling_run_always_builds_the_profile_image_and_says_it_changes_latency():
+    printed: list = []
+    run = _profile_run(printed, argv=["--profiling", "cpu"])
+    image, source = run.choose_images({"arch": "amd64"}, {"commit": "a" * 40, "dirty": False})
+    assert (image, source) == (run_profile.PROFILE_IMAGE, "built")
+    plan = "\n".join(
+        run.plan_lines({"arch": "amd64", "docker_cores": 8, "docker_ram_gib": 16}, resources.plan_caps(8, 16, max_mem_gib=5), "backend built")
+    )
+    assert "Profiling         : cpu" in plan and "latency is not comparable" in plan and "docker-compose.profile.yml" in plan
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--profiling", "heap"],  # no tier named
+        ["--profiling", "heap", "--tiers", "T0,T1"],  # a capture covers one backend start
+        ["--profiling", "heap", "--tiers", "T1", "--workers", "4"],
+        ["--profiling", "cpu", "--images", "pull"],  # a published image has no profilers
+    ],
+)
+def test_profiling_options_that_cannot_work_are_refused(argv):
+    with pytest.raises(SystemExit):
+        run_profile.parse_args(["rpi5-8g", *argv])
+
+
+def test_heap_mode_runs_one_worker_and_asks_the_backend_to_start_under_memray():
+    options = run_profile.parse_args(["rpi5-8g", "--profiling", "heap", "--tiers", "T1"])
+    assert options.workers == 1
+    caps = resources.plan_caps(8, 16, max_mem_gib=5, workers=1)
+    heap = run_profile.stack_environment(caps=caps, workers=1, backend_image="x", loadgen_image="y", profiling="heap")
+    plain = run_profile.stack_environment(caps=caps, workers=1, backend_image="x", loadgen_image="y")
+    assert heap["PROFILE_MEMRAY"] == "1" and "PROFILE_MEMRAY" not in plain
+
+
+def test_the_perf_override_turns_profile_mode_on_without_a_port_or_endpoint():
+    text = (_PERF / "docker-compose.perf.yml").read_text()
+    assert 'PROFILE_MODE: "true"' in text and "PROFILE_OUTPUT_DIR: /tmp/profile" in text
+
+
+def test_a_profiling_bundle_with_every_new_file_passes_the_check_and_a_leaky_flamegraph_does_not(tmp_path):
+    directory = tmp_path / "linux-vm-4c8g" / "2026-10-25-aaaaaaaa"
+    bundle.write_bundle(
+        directory,
+        host=hostinfo.collect(storage="ssd", run=_docker_info_runner()),
+        run={
+            "schema_version": 1,
+            "host_label": "linux-vm-4c8g",
+            "commit": "a" * 40,
+            "date": "2026-10-25",
+            "mode": "quick",
+            "tiers": ["T1"],
+            "scenarios": ["browse"],
+            "notes": [],
+            "profiling": "heap",
+            "heap_live_mib": 301.5,
+            "heap_peak_mib": 340.2,
+        },
+        datasets=[],
+        samples=[],
+        latency=[],
+        queries=[
+            {
+                "tier": "T1",
+                "scenario": "browse",
+                "request": "GET /api/v1/projects/{project_id}/requirements",
+                "requests": 40,
+                "queries_per_request": 3.5,
+                "db_ms_per_request": 4.2,
+            }
+        ],
+        processes=[
+            {
+                "tier": "T1",
+                "scenario": "idle",
+                "repeat": 0,
+                "role": "worker",
+                "index": 1,
+                "rss_mib": 450.0,
+                "pss_mib": 430.0,
+                "private_mib": 415.0,
+                "shared_mib": 35.0,
+            }
+        ],
+        heap=[{"kind": "package", "name": "site-packages/pydantic", "mib": 80.5, "allocations": 1000}],
+        profiles={"cpu-t1-browse-u4.svg": "<svg><title>get (site-packages/fastapi/routing.py:290)</title></svg>"},
+    )
+    assert scrub.scan_tree(directory, identities=["someoneelse"]) == []
+    assert (directory / "profiles" / "cpu-t1-browse-u4.svg").is_file() and (directory / "heap.csv").is_file()
+    for bad in ("<svg><title>run (/Users/jane/x.py:1)</title></svg>", "<svg>password=hunter2hunter2</svg>"):
+        (directory / "profiles" / "cpu-t1-browse-u4.svg").write_text(bad)
+        assert scrub.scan_tree(directory, identities=["someoneelse"])
+    with pytest.raises(bundle.BundleError):
+        bundle.write_bundle(
+            tmp_path / "x",
+            host=hostinfo.collect(storage="ssd", run=_docker_info_runner()),
+            run={},
+            datasets=[],
+            samples=[],
+            latency=[],
+            profiles={"../escape.svg": "<svg/>"},
+        )
+
+
+def test_source_paths_in_a_flamegraph_are_shortened_before_it_is_kept(tmp_path):
+    run = _profile_run()
+    run.work = tmp_path
+
+    class Docker:
+        def compose(self, *args, **options):
+            if args[0] == "cp":
+                Path(args[2]).write_text(
+                    "<svg><title>serve (/app/app/main.py:10)</title>"
+                    "<title>x (/usr/local/lib/python3.12/site-packages/starlette/routing.py:5)</title></svg>"
+                )
+            return compose.Result(0, "", "")
+
+    run.docker = Docker()
+    thread = threading.Thread(target=lambda: None)
+    thread.start()
+    run.finish_cpu_profile(thread, "cpu-t1-browse-u4.svg", {"warmup_seconds": 0, "measure_seconds": 1, "min_requests": 0})
+    text = run.profile_files["cpu-t1-browse-u4.svg"]
+    assert "(app/main.py:10)" in text and "(site-packages/starlette/routing.py:5)" in text and "/usr/local" not in text and "/app/" not in text
+
+
+def test_the_heap_summary_becomes_package_and_location_rows_and_run_totals():
+    run = _profile_run()
+
+    class Docker:
+        def compose(self, *args, **options):
+            if args[0] == "stop":
+                return compose.Result(0, "", "")
+            return compose.Result(
+                0,
+                json.dumps(
+                    {
+                        "live_mib": 301.5,
+                        "peak_mib": 340.2,
+                        "by_package": [{"name": "site-packages/pydantic", "mib": 80.5, "allocations": 1000}],
+                        "by_location": [{"name": "pydantic/main.py:40 build", "mib": 12.0, "allocations": 50}],
+                    }
+                ),
+                "",
+            )
+
+    run.docker = Docker()
+    run.finish_heap()
+    assert run.heap_totals == {"heap_live_mib": 301.5, "heap_peak_mib": 340.2}
+    assert [(r["kind"], r["name"]) for r in run.heap_rows] == [("package", "site-packages/pydantic"), ("location", "pydantic/main.py:40 build")]
+
+
+def test_a_route_whose_statements_grow_with_the_data_is_an_n_plus_one_suspect():
+    analyse = _analyse()
+    rows = [
+        {"scenario": "browse", "request": request, "tier": tier, "queries_per_request": str(value)}
+        for request, values in (
+            ("GET /requirements (paged)", {"T0": 4, "T1": 4, "T2": 4, "T3": 4.05}),
+            ("GET /requirements", {"T0": 6, "T1": 14, "T2": 104, "T3": 504}),
+        )
+        for tier, value in values.items()
+    ]
+    found = {r["request"]: r for r in analyse.query_scaling(rows, SIZES, {})}
+    assert found["GET /requirements (paged)"]["label"] == "flat" and found["GET /requirements (paged)"]["finding"] is None
+    assert found["GET /requirements"]["label"] in ("linear", "superlinear") and "N+1" in found["GET /requirements"]["finding"]
+    assert analyse.query_scaling(rows[:2], SIZES, {})[0]["label"] == "insufficient data"
+
+
+def test_worker_memory_reports_private_and_shared_per_worker_from_the_heaviest_reading():
+    analyse = _analyse()
+
+    def row(scenario, index, private, pss, role="worker"):
+        return {
+            "tier": "T1",
+            "scenario": scenario,
+            "repeat": "1",
+            "role": role,
+            "index": str(index),
+            "rss_mib": str(private + 30),
+            "pss_mib": str(pss),
+            "private_mib": str(private),
+            "shared_mib": "30",
+        }
+
+    rows = [
+        row("idle", 1, 380, 395),
+        row("idle", 2, 380, 395),
+        row("browse", 1, 400, 415),
+        row("browse", 2, 410, 425),
+        row("browse", 1, 2, 3, role="parent"),
+    ]
+    assert analyse.worker_memory(rows) == {
+        "T1": {"workers": 2, "private_mib_per_worker": 405.0, "shared_mib_per_worker": 30.0, "pss_total_mib": 843.0}
+    }
+
+
+def test_recorded_caps_are_rounded_so_a_float_tail_is_not_mistaken_for_a_serial_number(tmp_path):
+    caps = resources.plan_caps(12, 7.7, max_mem_gib=3.2, workers=2).as_dict()
+    assert "000000000000" not in json.dumps(caps)
+    (tmp_path / "run.json").write_text(json.dumps({"caps": caps}, indent=2))
+    assert not [f for f in scrub.scan_file(tmp_path / "run.json", tmp_path, []) if "serial" in f.rule]

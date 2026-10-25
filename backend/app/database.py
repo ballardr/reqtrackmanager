@@ -13,6 +13,7 @@ from collections.abc import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
+from app import profiling
 from app.config import get_settings
 from app.metrics import instrument_engine
 
@@ -22,6 +23,8 @@ settings = get_settings()
 # (notably the /health probe) instead of waiting on the OS TCP timeout.
 engine = create_engine(settings.database_url, pool_pre_ping=True, future=True, connect_args={"connect_timeout": 5})
 instrument_engine(engine)
+if settings.profile_mode:
+    profiling.instrument_engine(engine)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
 

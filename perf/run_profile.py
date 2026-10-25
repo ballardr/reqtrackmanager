@@ -13,6 +13,10 @@ Responsibilities:
   tier the requested number of times with the load generator while sampling container memory and CPU.
 - Write the bundle under `perf/results/<host-label>/<date>-<commit>/`, check it for anything identifying, and
   create the archive; always tear the stack down (success, failure, Ctrl-C, watchdog abort).
+- After every scenario, read the backend's per-route database statement counts and per-process memory
+  (`queries.csv`, `processes.csv`); with `--profiling cpu`, sample the backend with py-spy during the highest-load
+  run of each scenario (`profiles/*.svg`); with `--profiling heap`, run one worker under memray and report what it
+  still held at the end (`heap.csv`).
 
 Design decisions:
 - It has no option that names a database, API URL, project or compose file: it can only create and destroy its own
@@ -23,6 +27,8 @@ Design decisions:
   otherwise built from the working tree (recorded in `run.json`, because a local build changes a Pi's profile).
 - A bundle from a shared host (the default; `--dedicated` says otherwise) is flagged: latency is not comparable
   with a dedicated host's, memory per service still is.
+- Profiling modes use the `profile` image target (memray, py-spy; `docker-compose.profile.yml`), always built from
+  the working tree. Their latency is not comparable, so the run says so in `run.json`; the stack is still isolated.
 - Python 3.9+, standard library only, so it runs on a bare Raspberry Pi.
 
 Dependencies: Docker with the Compose plugin (2.24 or newer, for `!reset`), Python 3.9+, git.
@@ -39,6 +45,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -51,6 +58,16 @@ sys.path.insert(0, str(REPO_ROOT))
 from perf.lib import bundle, catalog, compose, hostinfo, resources, sampler  # noqa: E402
 
 COMPOSE_FILES = (REPO_ROOT / "docker-compose.yml", REPO_ROOT / "perf" / "docker-compose.perf.yml")
+PROFILE_COMPOSE_FILE = REPO_ROOT / "docker-compose.profile.yml"
+PROFILE_IMAGE = "reqtrack-perf-backend:profile"
+PROFILING_MODES = ("none", "cpu", "heap")
+QUERY_FLUSH_SECONDS = 2.5
+"""Longer than the backend's flush interval, so a scenario's last requests are in the files before they are read."""
+CPU_SAMPLE_HZ = 100
+HEAP_STOP_SECONDS = 180
+SOURCE_PATH_REPLACEMENTS = (
+    ("/usr/local/lib/python3.12/site-packages/", "site-packages/"), ("/usr/local/lib/python3.12/", "stdlib/"), ("/app/", ""),
+)
 PROFILES_FILE = REPO_ROOT / "perf" / "datasets" / "profiles.yaml"
 RESULTS_ROOT = REPO_ROOT / "perf" / "results"
 DEFAULT_CACHE = Path.home() / ".cache" / "reqtrack-perf"
@@ -101,6 +118,7 @@ class Options:
         cache_dir: Where dataset snapshots live (outside the repository).
         watch_url: A read-only health URL to poll and abort on (production's `/health`).
         scenarios: Explicit scenario names, or None for the mode's set.
+        profiling: `none`, `cpu` (py-spy flamegraphs) or `heap` (one worker under memray; one tier).
     """
 
     label: str
@@ -125,6 +143,7 @@ class Options:
     cache_dir: Path = DEFAULT_CACHE
     watch_url: Optional[str] = None
     scenarios: Optional[list] = None
+    profiling: str = "none"
 
 
 # --- pure helpers ----------------------------------------------------------------------------------------
@@ -195,20 +214,30 @@ def parse_args(argv: list) -> Options:
     parser.add_argument("--keep", action="store_true", help="leave the stack running afterwards")
     parser.add_argument("--out", type=Path, default=RESULTS_ROOT, help=argparse.SUPPRESS)
     parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE, help="where dataset snapshots are kept (default ~/.cache/reqtrack-perf)")
+    parser.add_argument(
+        "--profiling", default="none", choices=PROFILING_MODES,
+        help="cpu: py-spy flamegraph per scenario; heap: one worker under memray, one tier (both build the profile image; latency is not comparable)",
+    )
     parser.add_argument("--watch-url", help="a health URL (production's /health) to poll with GET; the run aborts if it slows or fails")
     args = parser.parse_args(argv)
     if args.workers != "auto" and not (args.workers.isdigit() and int(args.workers) >= 1):
         parser.error("--workers must be a positive number or 'auto'")
+    if args.profiling == "heap" and (not args.tiers or len(args.tiers.split(",")) != 1):
+        parser.error("--profiling heap needs exactly one tier (--tiers T1): the capture covers one backend start")
+    if args.profiling == "heap" and args.workers not in ("auto", "1"):
+        parser.error("--profiling heap runs one worker; omit --workers or use 1")
+    if args.profiling != "none" and args.images == "pull":
+        parser.error("--profiling builds the profile image from the working tree; it cannot use --images pull")
     if args.quick and args.full:
         parser.error("choose --quick or --full, not both")
     if not args.label and not args.cleanup:
         parser.error("a host label is required")
     return Options(
         label=args.label or "cleanup", mode="full" if args.full else "quick", tiers=args.tiers.split(",") if args.tiers else [],
-        breadth=args.breadth, density=args.density, seed=args.seed, repeats=args.repeats, workers=None if args.workers == "auto" else int(args.workers), max_cpus=args.max_cpus,
+        breadth=args.breadth, density=args.density, seed=args.seed, repeats=args.repeats, workers=1 if args.profiling == "heap" else (None if args.workers == "auto" else int(args.workers)), max_cpus=args.max_cpus,
         max_mem=args.max_mem, dedicated=args.dedicated, allow_heavy=args.allow_heavy or args.dedicated, soak_minutes=args.soak_minutes,
         plan=args.plan, cleanup=args.cleanup, images=args.images, storage=args.storage, keep=args.keep, out=args.out,
-        cache_dir=args.cache_dir, watch_url=args.watch_url, scenarios=args.scenarios.split(",") if args.scenarios else None,
+        cache_dir=args.cache_dir, watch_url=args.watch_url, scenarios=args.scenarios.split(",") if args.scenarios else None, profiling=args.profiling,
     )
 
 
@@ -224,6 +253,7 @@ def render_env_file(env: dict) -> str:
 
 def stack_environment(
     *, caps: resources.Caps, workers: int, backend_image: str, loadgen_image: str, generate: Callable[[], str] = lambda: secrets.token_urlsafe(24),
+    profiling: str = "none",
 ) -> dict:
     """The perf stack's environment: fresh throwaway credentials, images, caps and worker count. Nothing is read
     from the operator's environment or any `.env`.
@@ -233,6 +263,7 @@ def stack_environment(
         workers: `BACKEND_WORKERS`.
         backend_image / loadgen_image: Image references (perf-only names, or a pulled published tag).
         generate: Source of random secrets (replaced in tests).
+        profiling: The profiling mode; `heap` starts the backend as one worker under memray.
 
     Returns:
         The variables for the env file; `SECRET_KEYS` names those to mask.
@@ -246,6 +277,8 @@ def stack_environment(
         "PERF_USER_PASSWORD": generate(), "PERF_BACKEND_IMAGE": backend_image, "PERF_LOADGEN_IMAGE": loadgen_image,
     }
     env.update(caps.env())
+    if profiling == "heap":
+        env["PROFILE_MEMRAY"] = "1"
     return env
 
 
@@ -305,6 +338,13 @@ class ProfileRun:
         self._noted: set = set()
         self.workers = options.workers or resources.DEFAULT_WORKERS
         self.latency: list = []
+        self.process_rows: list = []
+        self.profile_files: dict = {}
+        self.heap_rows: Optional[list] = None
+        self.heap_totals: dict = {}
+        self.suspects: dict = {}
+        self._queries_before: dict = {}
+        self._query_totals: dict = {}
         self.datasets: list = []
         self.dataset_details: list = []
         self.env: dict = {}
@@ -350,7 +390,7 @@ class ProfileRun:
         worker_text = f"{caps.workers}, chosen from the budget" if caps.workers_auto else str(caps.workers)
         lines = [
             f"Plan for host label '{self.options.label}' ({self.options.mode} mode)",
-            f"  Compose project   : {compose.PROJECT} (files: docker-compose.yml + perf/docker-compose.perf.yml; no published ports)",
+            f"  Compose project   : {compose.PROJECT} (files: docker-compose.yml + perf/docker-compose.perf.yml" + (" + docker-compose.profile.yml" if self.options.profiling != "none" else "") + "; no published ports)",
             f"  Services          : db, storage, backend (workers={worker_text}), plus a load generator container per scenario",
             f"  Images            : {image_source}",
             f"  Caps              : {caps.cpus:g} CPUs, {caps.memory_gib:.1f} GiB memory, no swap (backend {caps.per_service['backend']['mem']}, db {caps.per_service['db']['mem']})",
@@ -364,14 +404,22 @@ class ProfileRun:
             "  Will NOT touch    : any other container, volume, network or image; any .env, secret, port or database of another stack; no docker prune",
             "  Shared host       : " + ("no (--dedicated)" if self.options.dedicated else "yes: bundle is flagged shared-host; latency is not comparable with a dedicated host"),
         ]
+        if self.options.profiling != "none":
+            what = ("py-spy samples the backend at the highest load of each scenario" if self.options.profiling == "cpu"
+                    else "one backend worker runs under memray (slow); its live heap is reported at the end")
+            lines.append(f"  Profiling         : {self.options.profiling}: {what}; adds SYS_PTRACE inside the perf backend container only; latency is not comparable")
         if self.options.watch_url:
             lines.append("  Watch URL         : polled with GET only; the run aborts if it slows or fails")
         return lines
 
     # docker plumbing ------------------------------------------------------
 
+    def compose_files(self) -> tuple:
+        """The compose files this run merges: the isolated stack, plus the profile override in a profiling mode."""
+        return COMPOSE_FILES + ((PROFILE_COMPOSE_FILE,) if self.options.profiling != "none" else ())
+
     def _docker_for_cleanup(self) -> compose.PerfDocker:
-        return compose.PerfDocker(COMPOSE_FILES, None, REPO_ROOT, runner=self._runner)
+        return compose.PerfDocker(self.compose_files(), None, REPO_ROOT, runner=self._runner)
 
     def _require(self, result: compose.Result, what: str) -> compose.Result:
         if not result.ok:
@@ -404,6 +452,8 @@ class ProfileRun:
         Returns:
             `(backend image reference, source)` with `source` `pulled` or `built`.
         """
+        if self.options.profiling != "none":
+            return PROFILE_IMAGE, "built"
         built = ("reqtrack-perf-backend:build", "built")
         if self.options.images == "build":
             return built
@@ -494,6 +544,133 @@ class ProfileRun:
         done = self._exec("db", "psql", "-U", DB_USER, "-d", DB_NAME, "-tAc", f"select pg_database_size('{DB_NAME}')")
         return int(done.out.strip()) if done.ok and done.out.strip().isdigit() else 0
 
+    # profiling ------------------------------------------------------------
+
+    def snapshot(self) -> Optional[dict]:
+        """The backend's per-process memory and per-route statement totals, or None when the image cannot say.
+
+        An image built before profile mode existed has no `scripts/profile_tools.py`; the run then has no
+        `queries.csv` or `processes.csv` rows and says so once.
+        """
+        done = self._exec("backend", "python", "scripts/profile_tools.py", "snapshot", timeout=120)
+        if done.ok and done.out.strip().startswith("{"):
+            return json.loads(done.out)
+        if "snapshot" not in self._noted:
+            self._noted.add("snapshot")
+            self.notes.append("the backend image has no profiling tools (built before profile mode): queries.csv and processes.csv are empty")
+        return None
+
+    def record_snapshot(self, tier: str, scenario: str, repeat: int, *, wait: bool = True) -> None:
+        """Records process memory and the statements run since the previous snapshot, against this scenario.
+
+        Args:
+            tier / scenario / repeat: What just ran (`idle` and repeat 0 for the start of a tier).
+            wait: Let the backend's files catch up first (not needed before any load has run).
+        """
+        if wait:
+            time.sleep(QUERY_FLUSH_SECONDS)
+        snap = self.snapshot()
+        if snap is None:
+            return
+        for process in snap["processes"]:
+            self.process_rows.append({"tier": tier, "scenario": scenario, "repeat": repeat, **process})
+        if scenario != "idle":  # the start-of-tier reading is a baseline: what came before it is dataset setup, not a scenario
+            totals = self._query_totals.setdefault((tier, scenario), {})
+            for route, now in snap["queries"].items():
+                before = self._queries_before.get(route, {"requests": 0, "queries": 0, "db_ms": 0.0, "repeat_count": 0})
+                requests = now["requests"] - before["requests"]
+                if requests <= 0:
+                    continue
+                entry = totals.setdefault(route, {"requests": 0, "queries": 0, "db_ms": 0.0})
+                entry["requests"] += requests
+                entry["queries"] += now["queries"] - before["queries"]
+                entry["db_ms"] += now["db_ms"] - before["db_ms"]
+                # The backend keeps the worst repeat since it started, so only a higher count belongs to this scenario.
+                if now["repeat_count"] > before["repeat_count"] and now["repeat_count"] > self.suspects.get(route, {}).get("count", 0):
+                    self.suspects[route] = {"statement": now["repeat_statement"], "count": now["repeat_count"]}
+        self._queries_before = snap["queries"]
+
+    def query_rows(self) -> list:
+        """`queries.csv` rows: mean statements and database milliseconds per request, by tier, scenario and route."""
+        rows = []
+        for (tier, scenario), routes in self._query_totals.items():
+            for route, entry in sorted(routes.items()):
+                rows.append({
+                    "tier": tier, "scenario": scenario, "request": route, "requests": entry["requests"],
+                    "queries_per_request": round(entry["queries"] / entry["requests"], 2), "db_ms_per_request": round(entry["db_ms"] / entry["requests"], 2),
+                })
+        return rows
+
+    def cpu_profile_seconds(self, params: dict) -> int:
+        """How long py-spy samples for a scenario run: its warm-up and measured period, longer for a slow, closed-loop scenario."""
+        measured = max(params["measure_seconds"], 60 if params["min_requests"] else 0)
+        return int(min(600, params["warmup_seconds"] + measured))
+
+    def start_cpu_profile(self, tier: str, scenario: str, params: dict) -> tuple:
+        """Starts py-spy on the backend's process tree in the background.
+
+        py-spy runs as root inside the container: a non-root `exec` process does not inherit the added `SYS_PTRACE`
+        capability, and the kernel's ptrace scope would refuse it otherwise.
+
+        Returns:
+            `(thread, file name)`; join the thread when the load has finished.
+        """
+        name = f"cpu-{tier.lower()}-{scenario}-u{params['users']}.svg"
+        seconds = self.cpu_profile_seconds(params)
+
+        def sample() -> None:
+            self.docker.compose(
+                "exec", "-T", "-u", "root", "backend", "py-spy", "record", "--pid", "1", "--subprocesses", "--nonblocking", "--rate", str(CPU_SAMPLE_HZ),
+                "--duration", str(seconds), "--format", "flamegraph", "--output", f"/profile/{name}", timeout=seconds + 180,
+            )
+
+        thread = threading.Thread(target=sample, daemon=True)
+        thread.start()
+        return thread, name
+
+    def finish_cpu_profile(self, thread: threading.Thread, name: str, params: dict) -> None:
+        """Waits for py-spy, copies its flamegraph out and keeps it with the source paths shortened."""
+        thread.join(timeout=self.cpu_profile_seconds(params) + 200)
+        destination = self.work / name
+        copied = self.docker.compose("cp", f"backend:/profile/{name}", str(destination), timeout=120)
+        if not copied.ok or not destination.exists():
+            self.notes.append(f"no CPU profile for {name}: py-spy produced nothing (see the plan output for the ptrace requirement)")
+            return
+        text = destination.read_text(errors="replace")
+        for old, new in SOURCE_PATH_REPLACEMENTS:
+            text = text.replace(old, new)
+        self.profile_files[name] = text
+
+    def finish_heap(self) -> None:
+        """Stops the backend so memray finalises its capture, then summarises what the worker still held.
+
+        Heap rows are `package` (by source area) and `location` (by line); the HTML flamegraph is left in the
+        profile volume until teardown, since only summarised numbers are kept.
+        """
+        stopped = self.docker.compose("stop", "-t", str(HEAP_STOP_SECONDS), "backend", timeout=HEAP_STOP_SECONDS + 120)
+        if not stopped.ok:
+            self.notes.append("the backend did not stop cleanly; no heap profile")
+            return
+        done = self.docker.compose(
+            "run", "--rm", "--no-deps", "-T", "backend", "python", "scripts/profile_tools.py", "--dir", "/profile", "heap", "/profile/heap.bin", timeout=1800,
+        )
+        if not done.ok or not done.out.strip().startswith("{"):
+            self.notes.append("no heap profile: memray's capture could not be read")
+            return
+        result = json.loads(done.out)
+        self.heap_totals = {"heap_live_mib": result["live_mib"], "heap_peak_mib": result["peak_mib"]}
+        self.heap_rows = (
+            [{"kind": "package", "name": e["name"], "mib": e["mib"], "allocations": e["allocations"]} for e in result["by_package"]]
+            + [{"kind": "location", "name": e["name"], "mib": e["mib"], "allocations": e["allocations"]} for e in result["by_location"]]
+        )
+
+    def report_suspects(self) -> None:
+        """Prints the routes whose requests repeat one statement most (N+1 suspects). Parameterised text only."""
+        worst = sorted(self.suspects.items(), key=lambda item: -item[1]["count"])[:5]
+        for route, found in worst:
+            if found["count"] >= 10:
+                self.say(f"  N+1 suspect {route}: one request ran the same statement {found['count']} times: {found['statement'][:160]}")
+
     # scenarios ------------------------------------------------------------
 
     def run_loadgen(self, manifest: dict, scenario: str, params: dict) -> dict:
@@ -529,13 +706,20 @@ class ProfileRun:
         per_project = self.summary["tiers"][tier]
         soak_minutes = self.options.soak_minutes if self.options.soak_minutes is not None else 30
         for name in names:
-            for params in catalog.parameters(name, self.options.mode, per_project):
+            all_params = catalog.parameters(name, self.options.mode, per_project)
+            levels = [p["users"] for p in all_params]
+            for params in all_params:
                 if name == "soak":
                     params = dict(params, measure_seconds=soak_minutes * 60, warmup_seconds=120)
                 for repeat in range(1, (1 if name == "soak" else self.repeats()) + 1):
                     self.say(f"  {tier} {name} users={params['users']} repeat={repeat}")
                     self.sampler.tag(tier=tier, scenario=name, repeat=repeat)
+                    cpu = None
+                    if self.options.profiling == "cpu" and repeat == 1 and params["users"] == levels[-1]:
+                        cpu = self.start_cpu_profile(tier, name, params)
                     summary = self.run_loadgen(manifest, name, params)
+                    if cpu:
+                        self.finish_cpu_profile(*cpu, params)
                     for row in summary["requests"]:
                         self.latency.append({
                             "tier": tier, "scenario": name, "repeat": repeat, "users": params["users"], "request": row["name"],
@@ -544,6 +728,7 @@ class ProfileRun:
                             "rps": row["rps"], "bytes_mean": row["bytes_mean"],
                         })
                     self.check_backend_health(tier, name)
+                    self.record_snapshot(tier, name, repeat)
 
     # the run --------------------------------------------------------------
 
@@ -596,11 +781,11 @@ class ProfileRun:
 
         self.work = Path(tempfile.mkdtemp(prefix=f"{compose.PROJECT}-"))
         self.work.chmod(0o700)
-        self.env = stack_environment(caps=caps, workers=caps.workers, backend_image=backend_image, loadgen_image="reqtrack-perf-loadgen:build", generate=self._generate)
+        self.env = stack_environment(caps=caps, workers=caps.workers, backend_image=backend_image, loadgen_image="reqtrack-perf-loadgen:build", generate=self._generate, profiling=options.profiling)
         env_file = self.work / "perf.env"
         env_file.write_text(render_env_file(self.env))
         env_file.chmod(0o600)
-        self.docker = compose.PerfDocker(COMPOSE_FILES, env_file, REPO_ROOT, secrets=[self.env[k] for k in SECRET_KEYS], runner=self._runner)
+        self.docker = compose.PerfDocker(self.compose_files(), env_file, REPO_ROOT, secrets=[self.env[k] for k in SECRET_KEYS], runner=self._runner)
         self.sampler = sampler.Sampler(self.docker)
         self.watchdog = resources.Watchdog(
             resources.Thresholds(), options.cache_dir, watch_url=options.watch_url, on_trip=self._on_watchdog,
@@ -623,6 +808,7 @@ class ProfileRun:
                 manifest, details = self.prepare_dataset(tier)
                 self.datasets.append(self._dataset_entry(tier, manifest, details))
                 self.dataset_details.append(details)
+                self.record_snapshot(tier, "idle", 0, wait=False)
                 self.run_scenarios(tier, manifest, names)
         except Interrupted:
             self.aborted = self.aborted or "interrupted"
@@ -639,6 +825,9 @@ class ProfileRun:
                 signal.signal(sig, handler)
             self.watchdog.stop()
             self.sampler.stop()
+            if options.profiling == "heap" and status == 0:
+                self.finish_heap()
+            self.report_suspects()
             if not options.keep:
                 self.teardown()
         written = self.write_results(host, git, caps, image_source, started, tiers, names)
@@ -683,6 +872,8 @@ class ProfileRun:
         if self.aborted:
             reasons.append("aborted")
         details = self.dataset_details
+        if self.options.profiling != "none":
+            self.notes.append(f"profiling run ({self.options.profiling}): the profiler slows the backend, so latency and throughput are not comparable with an unprofiled run; memory and query counts are")
         if caps.workers_auto and self.options.mode == "full":
             self.notes.append(f"workers chosen automatically ({caps.workers}); not comparable with a run at a different worker count")
         host_doc = dict(host)
@@ -695,11 +886,15 @@ class ProfileRun:
             "repeats": self.repeats(), "workers": caps.workers, "workers_auto": caps.workers_auto, "image_source": image_source, "caps": caps.as_dict(),
             "shared_host": not self.options.dedicated, "non_publishable": bool(reasons), "non_publishable_reasons": reasons,
             "aborted": self.aborted, "snapshot_used": [d["snapshot_used"] for d in details],
-            "startup_seconds": [d["startup_seconds"] for d in details], "notes": self.notes,
+            "startup_seconds": [d["startup_seconds"] for d in details], "profiling": self.options.profiling, "notes": self.notes,
+            **self.heap_totals,
         }
         directory = bundle.bundle_dir(self.options.out, self.options.label, run_doc["date"], git["commit"] or "0" * 7)
         samples = [row for row in self.sampler.rows if "scenario" in row]
-        bundle.write_bundle(directory, host=host_doc, run=run_doc, datasets=self.datasets, samples=samples, latency=self.latency)
+        bundle.write_bundle(
+            directory, host=host_doc, run=run_doc, datasets=self.datasets, samples=samples, latency=self.latency, queries=self.query_rows(),
+            processes=self.process_rows, heap=self.heap_rows, profiles=self.profile_files,
+        )
         archive = bundle.make_archive(directory, self.options.cache_dir / f"{directory.name}.tar.gz")
         self.say(f"archive: {archive}")
         return directory

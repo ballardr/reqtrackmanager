@@ -15,4 +15,9 @@ export PROMETHEUS_MULTIPROC_DIR="${PROMETHEUS_MULTIPROC_DIR:-/tmp/prometheus-mul
 rm -rf "$PROMETHEUS_MULTIPROC_DIR"
 mkdir -p "$PROMETHEUS_MULTIPROC_DIR"
 # `::` is dual-stack on Linux (accepts IPv4 and IPv6); 0.0.0.0 would be IPv4 only.
+# One worker is served in-process, where uvicorn's `--host ::` ends up IPv6 only (asyncio sets IPV6_V6ONLY), so that
+# case binds its own dual-stack socket (app/serve.py). Extra uvicorn arguments apply to the multi-worker path only.
+if [ "${BACKEND_WORKERS:-4}" -le 1 ]; then
+    exec python -m app.serve
+fi
 exec uvicorn app.main:app --host :: --port 8000 --workers "${BACKEND_WORKERS:-4}" "$@"

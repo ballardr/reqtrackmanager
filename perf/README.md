@@ -9,6 +9,8 @@ perf/run_profile.sh <host-label> --plan          # read what it will create and 
 perf/run_profile.sh mac-docker-desktop --quick   # T0 + T1, one repeat, minutes
 perf/run_profile.sh rpi5-8g --full --dedicated   # all tiers, repeats, soak (overnight on a Pi)
 perf/run_profile.sh <host-label> --cleanup       # remove leftovers of a crashed run
+perf/run_profile.sh <host-label> --quick --tiers T1 --profiling cpu    # + a py-spy flamegraph per scenario
+perf/run_profile.sh <host-label> --quick --tiers T1 --profiling heap   # one worker under memray: what it holds
 python3 perf/analyse.py perf/results/<label>/<date>-<commit>
 ```
 
@@ -45,6 +47,46 @@ flowchart LR
 ## Backend workers
 
 `--workers auto` (the default) picks the most the CPU and memory budget supports, at most 4 (the production default), at about 0.5 GiB per worker plus 0.5 GiB for the parent. A budget that cannot run one worker is refused. The chosen count and `workers_auto` are recorded in `run.json`; a full run with an automatic count carries a note, because the headline comparison between hosts needs the same count: name it (`--workers 2`) for runs you intend to compare.
+
+## Profiling the backend (memory, CPU, statements per request)
+
+Container metrics say *that* memory or CPU is high; these say *where*. Every run records the first two; the
+profilers are opt-in because they slow the backend.
+
+| Question | What answers it | Where it lands |
+|----------|-----------------|----------------|
+| How much does each worker cost, and how much of it is shared? | `scripts/profile_tools.py memory` reads `/proc/<pid>/smaps_rollup` after every scenario (private, shared, proportional) | `processes.csv`; `analyse.py` prints private and shared MiB per worker |
+| Does a route run one statement per row (an N+1)? | Profile mode (`backend/app/profiling.py`) counts statements per request by route template; the runner diffs the totals per scenario | `queries.csv` (statements and database ms per request); `analyse.py` flags a count that grows with the data; the run prints the statement a request repeated most |
+| Where is CPU going? | `--profiling cpu`: py-spy samples the backend's process tree during the highest-load run of each scenario | `profiles/cpu-<tier>-<scenario>-u<users>.svg` (source paths shortened) |
+| What does a worker hold, by source line and package? | `--profiling heap`: one worker runs under memray (slow); after the run it is stopped and the capture summarised | `heap.csv` (by package and by line), `heap_live_mib` and `heap_peak_mib` in `run.json` |
+| Is something leaking after warm-up? | `PROFILE_TRACEMALLOC=true`: lines whose allocations grew since a baseline taken after warm-up (or on `SIGUSR2`) | `tracemalloc_<pid>.json` in the profile output directory (manual use) |
+
+```mermaid
+flowchart LR
+    BE["backend (PROFILE_MODE)"] -->|"query_stats_pid.json<br/>every 2 s"| F[("/tmp/profile")]
+    F -->|"exec profile_tools.py snapshot"| R["run_profile.py"]
+    PS["/proc smaps_rollup"] -->|"memory"| R
+    SPY["py-spy (root, SYS_PTRACE)"] -->|"flamegraph .svg"| R
+    MR["memray (1 worker)"] -->|"heap.bin, summarised"| R
+    R --> B["bundle: queries.csv, processes.csv,<br/>profiles/*.svg, heap.csv"]
+```
+
+- **No new surface.** Profile mode writes files in the container and adds no endpoint, metric or log line; it is off
+  unless `PROFILE_MODE=true`, which only the perf override and `docker-compose.profile.yml` set. The output holds
+  route templates, counts and parameterised statement text, never a bound value or a record.
+- **The profile image** (`--target profile` of `backend/Dockerfile`: the API image plus memray and py-spy) is built
+  only by the profiling modes or `docker-compose.profile.yml`, with its own image name, and is never published.
+  py-spy needs `SYS_PTRACE`, granted to the perf backend container only (its own PID namespace).
+- **Profiled latency is not comparable.** A profiling run says so in `run.json`; memory and statement counts are.
+- **On the development stack** (not the isolated perf stack):
+  `docker compose -f docker-compose.yml -f docker-compose.profile.yml up -d --build backend`, then
+  `docker compose exec backend python scripts/profile_tools.py snapshot` (memory and statements) or
+  `docker compose exec -u root backend py-spy record -p 1 --subprocesses -d 60 -o /profile/cpu.svg`. Set
+  `PROFILE_MEMRAY=1` to start one worker under memray; `docker compose stop backend` finalises `/profile/heap.bin`
+  (`memray flamegraph --leaks`, or `profile_tools.py heap`).
+- **Heap profiling covers one tier** (one backend start). Allocations made while a module is imported are
+  attributed to the first frame outside the import machinery, so a library loaded by a module is counted under the
+  importing code when the library allocates from C.
 
 ## Dataset tiers
 
@@ -96,7 +138,8 @@ per service still is.
 ## What is in a bundle (and what never is)
 
 `host.json` (architecture, cores, RAM, Docker VM allocation, OS family, storage class, generic CPU family),
-`run.json`, `dataset.json`, `samples.csv`, `latency.csv`. Built from an allowlist; never recorded: hostname,
+`run.json`, `dataset.json`, `samples.csv`, `latency.csv`, `queries.csv`, `processes.csv`, and for a profiling run
+`heap.csv` and `profiles/*.svg`. Built from an allowlist; never recorded: hostname,
 username, paths, serials, MAC or IP addresses, Docker or container ids, environment variables, git author or branch
 names. A dirty tree or a commit not on a remote branch marks the run `non_publishable`.
 `python3 perf/scrub_check.py` (also a repository test and part of the pre-commit hook) scans `perf/results/`;
@@ -113,8 +156,8 @@ memory numbers are never gated in CI: they are read, from a run.
 - Dataset generators for the module record types (`ModuleDefinition.perf_generators`); the gap list in
   `test_perf_dataset.py` shrinks as they land. Attachments, and a frontend page-load scenario at T2 and T3 (a
   Playwright-driven browser run), are not part of the first runner.
-- Per-request query counts, `pg_stat_statements` and in-process profiling arrive with the in-process backend and
-  PostgreSQL profiling work; `queries.csv` and `pgstat.csv` are written empty until then.
+- `pg_stat_statements` arrives with the PostgreSQL profiling work; `pgstat.csv` is written empty until then.
+- Statements run while a streamed response body is produced (some exports) are not counted in `queries.csv`.
 - `compare.py` (run-to-run diff) and the plotting script come with the baseline-recording and website work.
 
 ## Re-measure when

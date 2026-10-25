@@ -15,6 +15,7 @@ import logging
 import math
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
@@ -22,6 +23,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app import profiling
 from app.body_limit import BodySizeLimitMiddleware
 from app.config import get_settings
 from app.database import SessionLocal, engine
@@ -142,7 +144,15 @@ async def lifespan(_: FastAPI):
     leadership_task = asyncio.create_task(run_leadership_loop(start_singletons, stop_singletons))
     # Per worker (not leader-only): each process reports its own memory and pool usage.
     worker_gauge_task = asyncio.create_task(run_worker_gauge_loop(engine))
+    profile_task = None
+    if settings.profile_mode:
+        logger.warning("profile mode is on: per-route database statistics are written to %s", settings.profile_output_dir)
+        profile_task = asyncio.create_task(profiling.run_profile_loop(
+            Path(settings.profile_output_dir), tracemalloc_enabled=settings.profile_tracemalloc, baseline_seconds=settings.profile_baseline_seconds,
+        ))
     yield
+    if profile_task is not None:
+        profile_task.cancel()
     worker_gauge_task.cancel()
     leadership_task.cancel()
     stop_singletons()
@@ -297,6 +307,10 @@ async def metrics_middleware(request: Request, call_next):
     http_request_duration_seconds.labels(method=method, path=path).observe(duration)
     return response
 
+
+if settings.profile_mode:
+    # Developer profiling only (app.profiling): outermost, so it sees every request. Never set by the production Compose file.
+    app.middleware("http")(profiling.profile_middleware)
 
 app.include_router(health.router)
 app.include_router(auth.router)

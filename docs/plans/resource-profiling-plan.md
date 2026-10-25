@@ -4,14 +4,14 @@
 
 ## Status / Resume Here
 
-3 / 9 phases complete (Phase 7, CI test duration, added 2026-10-25 at the user's request; it is independent of the others and can run at any point, **Decided by: User** that it be added, **Decided by: Agent** that it sits last in numbering so no existing phase is renumbered; Phase 0 built 2026-10-25; its real arm64 CI run and the merge-to-`main` manifest check are still to do, see its entry in `docs/decisions.md`; Phase 1 built 2026-10-25, see its decisions entry for what was and was not verified; Phase 2 built 2026-10-25 and run end to end on Docker Desktop at T0 and T1, with the Linux, Raspberry Pi and larger-tier runs, the module-type generators, attachments and the frontend page-load scenario still to do: see its decisions entry). Next: Phase 3. **Start order (Decided by: User, 2026-10-23): Phase 0 first**, so arm64 images exist before any Pi run; it does not block the other phases, which can follow in order 1, 2, 3, 4, 4b, 5, 6. Phases 2–4 each save their results under `perf/results/<host-label>/<date>-<commit>/` (summarised CSV/JSON) so Phase 6 can plot them; each phase is independently useful, so stopping after any one is fine. Every scenario runs at every dataset tier (see "Dataset tiers"), so results are keyed by data volume as well as host.
+4 / 9 phases complete (Phase 3 built 2026-10-25, see its decisions entry for the worker-memory and N+1 findings and the three bugs found on the way; Phase 7, CI test duration, added 2026-10-25 at the user's request; it is independent of the others and can run at any point, **Decided by: User** that it be added, **Decided by: Agent** that it sits last in numbering so no existing phase is renumbered; Phase 0 built 2026-10-25; its real arm64 CI run and the merge-to-`main` manifest check are still to do, see its entry in `docs/decisions.md`; Phase 1 built 2026-10-25, see its decisions entry for what was and was not verified; Phase 2 built 2026-10-25 and run end to end on Docker Desktop at T0 and T1, with the Linux, Raspberry Pi and larger-tier runs, the module-type generators, attachments and the frontend page-load scenario still to do: see its decisions entry). Next: Phase 4. **Start order (Decided by: User, 2026-10-23): Phase 0 first**, so arm64 images exist before any Pi run; it does not block the other phases, which can follow in order 1, 2, 3, 4, 4b, 5, 6. Phases 2–4 each save their results under `perf/results/<host-label>/<date>-<commit>/` (summarised CSV/JSON) so Phase 6 can plot them; each phase is independently useful, so stopping after any one is fine. Every scenario runs at every dataset tier (see "Dataset tiers"), so results are keyed by data volume as well as host.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 0 | Multi-arch (amd64 + arm64) production images in CI | [x] built 2026-10-25; awaiting first CI run |
 | 1 | Container-level metrics (cAdvisor → Prometheus → Grafana) | [x] built 2026-10-25 |
 | 2 | Load generator and baseline scenarios | [x] built 2026-10-25; T0/T1 run on Docker Desktop |
-| 3 | In-process profiling of the backend (memory + CPU) | [ ] |
+| 3 | In-process profiling of the backend (memory + CPU) | [x] built 2026-10-25 |
 | 4 | PostgreSQL profiling | [ ] |
 | 4b | Scaling findings and fixes | [ ] |
 | 5 | Record baselines, set limits, document sizing | [ ] |

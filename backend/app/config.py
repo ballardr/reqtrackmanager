@@ -250,6 +250,13 @@ class Settings(BaseSettings):
             (logs and returns `None`) — mechanically enforced, not trusted
             from the module's own declaration, mirroring the
             path-prefix enforcement for MCP tools.
+        profile_mode: Developer profiling (`app.profiling`): counts database statements per request by route and
+            writes the totals to `profile_output_dir`. Off by default and never set by the production Compose
+            file; it adds no endpoint.
+        profile_output_dir: Where profile mode writes its files (one per worker process).
+        profile_tracemalloc: In profile mode, also track Python allocations and write the lines that grew since a
+            baseline taken `profile_baseline_seconds` after the worker started (or on `SIGUSR2`).
+        profile_baseline_seconds: Worker age at which the allocation baseline is taken, after warm-up.
     """
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -322,6 +329,11 @@ class Settings(BaseSettings):
     allow_external_modules: bool = False
     extra_modules_path: str | None = None
     module_frame_allowed_origins: str = ""
+
+    profile_mode: bool = False
+    profile_output_dir: str = "/tmp/profile"
+    profile_tracemalloc: bool = False
+    profile_baseline_seconds: int = Field(default=120, ge=0)
 
     def weak_secret_problems(self) -> list[str]:
         """Lists the secrets that are still the built-in placeholder or too short to protect anything.

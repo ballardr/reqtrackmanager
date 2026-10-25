@@ -1,0 +1,32 @@
+# Developer profiling override. Merge over the normal stack (and, for the performance runner, over its isolated
+# override as well); it is NEVER part of the production compose path:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.profile.yml up -d --build backend
+#   PROFILE_MEMRAY=1 docker compose -f docker-compose.yml -f docker-compose.profile.yml up -d backend   # one worker under memray
+#
+# What it adds, and why each is safe to leave out of production:
+#   - the `profile` image target: the application plus memray and py-spy (a separate image name, so a build can never
+#     retag the production image);
+#   - PROFILE_MODE=true: per-route database statement totals (and, with PROFILE_TRACEMALLOC=true, allocation growth)
+#     written as files under /profile. No endpoint, no metric;
+#   - SYS_PTRACE, so py-spy can sample the workers. The capability applies inside this container's PID namespace only;
+#   - a volume for the output, so captures survive a container stop.
+# Read the results with `docker compose exec backend python scripts/profile_tools.py snapshot`; see perf/README.md.
+services:
+  backend:
+    image: ${PERF_BACKEND_IMAGE:-${PROFILE_BACKEND_IMAGE:-reqtrack-profile-backend:dev}}
+    build:
+      context: ./backend
+      target: profile
+    cap_add:
+      - SYS_PTRACE
+    environment:
+      PROFILE_MODE: "true"
+      PROFILE_OUTPUT_DIR: /profile
+      PROFILE_TRACEMALLOC: ${PROFILE_TRACEMALLOC:-false}
+      PROFILE_MEMRAY: ${PROFILE_MEMRAY:-0}
+    volumes:
+      - profile_output:/profile
+
+volumes:
+  profile_output:

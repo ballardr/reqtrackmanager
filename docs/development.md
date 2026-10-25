@@ -130,6 +130,8 @@ Changing `docs/website/package.json` follows the same lockfile-sync discipline a
 
 [perf/README.md](../perf/README.md) describes the portable profiling runner (`perf/run_profile.sh <host-label> --plan|--quick|--full`): an isolated Compose project, dataset tiers from 30 to 20,000 requirements per project, Locust scenarios, and anonymised results bundles under `perf/results/`. It is run by hand on the hosts that matter; CI never runs timed performance tests, only the tests that pin its safety and the dataset generator (`backend/tests/test_perf_runner.py`, `test_perf_dataset.py`).
 
+To see where the backend's memory, CPU or database statements go, add `--profiling cpu|heap` to a run or merge `docker-compose.profile.yml` over the development stack (the `profile` image target with memray and py-spy, and `PROFILE_MODE`, which writes per-route statement counts as files and adds no endpoint); see "Profiling the backend" in [perf/README.md](../perf/README.md). The tests that pin it are `backend/tests/test_profiling.py` and `test_perf_runner.py`.
+
 ## End-to-end tests
 
 Requires the dev/test stack running:

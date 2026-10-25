@@ -1,5 +1,5 @@
-# Stages: `base` (application code and dependencies), `backup` (base plus the disaster-recovery tools) and
-# `backend`, the last stage and so the default target, which is the API image every existing build produces.
+# Stages: `base` (application code and dependencies), `backup` (base plus the disaster-recovery tools), `profile`
+# (base plus the profilers, for developers) and `backend`, the last stage and so the default target, which is the API image every existing build produces.
 FROM python:3.12-slim AS base
 
 # Build identity (GET /api/v1/system/version, app/version.py): supplied via
@@ -59,6 +59,18 @@ USER app
 HEALTHCHECK NONE
 ENTRYPOINT ["python", "scripts/dr_backup.py"]
 CMD ["run"]
+
+# Developer profiling image (docker-compose.profile.yml, perf/README.md): the application image plus memray (heap
+# profiler) and py-spy (sampling CPU profiler). Built only with `--target profile`, never published and never part of
+# the production compose path. Both tools attach to or wrap the Python process, so they stay out of the API image.
+# /profile is created here so a fresh named volume inherits the app user's ownership.
+FROM base AS profile
+USER root
+RUN pip install --no-cache-dir memray==1.20.0 py-spy==0.4.2 \
+    && mkdir -p /profile && chown app:app /profile \
+    && chmod +x /app/scripts/profile_entrypoint.sh
+USER app
+CMD ["./scripts/profile_entrypoint.sh"]
 
 FROM base AS backend
 EXPOSE 8000

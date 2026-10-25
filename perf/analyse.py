@@ -10,6 +10,8 @@ Responsibilities:
   is anything superlinear.
 - Judge each request against `budgets.yaml` per tier (`budget_findings`).
 - Report peak memory per service by tier and the backend's memory slope after warm-up in the soak (`memory_*`).
+- Fit statements per request (`queries.csv`) against requirements per project: a route whose statement count grows
+  with the data is an N+1 by definition (`query_scaling`), and report each worker's private memory (`processes.csv`).
 
 Usage:
     python3 perf/analyse.py perf/results/<host-label>/<date>-<commit> [--json]
@@ -90,6 +92,60 @@ def scaling_table(latency: list, sizes: dict, budgets: dict) -> list:
     return rows
 
 
+def query_scaling(queries: list, sizes: dict, budgets: dict) -> list:
+    """One row per (scenario, route): statements per request by tier, slope, label, and a finding when it grows.
+
+    Statement counts are small integers, so the "flat" bound is tighter than for latency (`query_flat_slope`). A
+    route that runs more statements per request on a bigger project is repeating a statement per row (an N+1).
+
+    Args:
+        queries: Rows of `queries.csv` (strings).
+        sizes: `{tier: requirements per project}`.
+        budgets: The parsed `budgets.yaml`.
+
+    Returns:
+        Dicts with `scenario`, `request`, `per_request` (`{tier: statements}`), `slope`, `label`, `finding`.
+    """
+    grouped: dict = defaultdict(dict)
+    for row in queries:
+        grouped[(row["scenario"], row["request"])][row["tier"]] = float(row["queries_per_request"])
+    rows = []
+    for (scenario, request), by_tier in sorted(grouped.items()):
+        value = slope([(sizes[t], v) for t, v in by_tier.items() if t in sizes])
+        label = classify(value, budgets.get("query_flat_slope", 0.1), budgets.get("superlinear_slope", 1.3))
+        finding = "statements per request grow with the data (N+1 suspect)" if label in ("linear", "superlinear") else None
+        rows.append({"scenario": scenario, "request": request, "per_request": by_tier, "slope": value, "label": label, "finding": finding})
+    return rows
+
+
+def worker_memory(processes: list) -> dict:
+    """Private and shared memory of the backend's processes, by tier: the evidence for how much each worker costs.
+
+    Args:
+        processes: Rows of `processes.csv` (strings).
+
+    Returns:
+        `{tier: {"workers", "private_mib_per_worker", "shared_mib_per_worker", "pss_total_mib"}}` from the largest
+        reading of each tier (after the heaviest scenario), with means across workers.
+    """
+    by_tier: dict = defaultdict(lambda: defaultdict(list))
+    for row in processes:
+        by_tier[row["tier"]][(row["scenario"], row["repeat"])].append(row)
+    result = {}
+    for tier, readings in by_tier.items():
+        best = max(readings.values(), key=lambda rows: sum(float(r["pss_mib"]) for r in rows))
+        serving = [r for r in best if r["role"] in ("worker", "single")]
+        if not serving:
+            continue
+        result[tier] = {
+            "workers": len(serving),
+            "private_mib_per_worker": round(statistics.fmean(float(r["private_mib"]) for r in serving), 1),
+            "shared_mib_per_worker": round(statistics.fmean(float(r["shared_mib"]) for r in serving), 1),
+            "pss_total_mib": round(sum(float(r["pss_mib"]) for r in best), 1),
+        }
+    return result
+
+
 def request_class(request: str, budgets: dict) -> Optional[str]:
     """The budget class of a request name (first matching rule), or None."""
     for rule in budgets.get("rules", []):
@@ -158,10 +214,14 @@ def analyse(directory: Path, budgets: dict) -> dict:
     samples = read_csv(directory / "samples.csv")
     table = scaling_table(latency, sizes, budgets)
     peaks = memory_peaks(samples)
+    queries = query_scaling(read_csv(directory / "queries.csv"), sizes, budgets)
     return {
         "tiers": sizes,
         "scaling": table,
         "scaling_findings": [r for r in table if r["finding"]],
+        "query_scaling": queries,
+        "query_findings": [r for r in queries if r["finding"]],
+        "worker_memory": worker_memory(read_csv(directory / "processes.csv")),
         "budget_findings": budget_findings(table, budgets),
         "peak_memory_mib": {f"{tier}/{service}": value for (tier, service), value in sorted(peaks.items())},
         "soak_backend_mib_per_hour": {tier: memory_slope_mib_per_hour(samples, tier) for tier in sizes},
@@ -186,6 +246,11 @@ def main(argv: list) -> int:
         for row in result["scaling"]:
             tiers = ", ".join(f"{t} {v:.0f}ms" for t, v in sorted(row["p95"].items()))
             print(f"{row['label']:>17}  {row['scenario']:<14} u={row['users']:<3} {row['request']}  [{tiers}]" + (f"  <-- {row['finding']}" if row["finding"] else ""))
+        for row in result["query_findings"]:
+            counts = ", ".join(f"{t} {v:g}" for t, v in sorted(row["per_request"].items()))
+            print(f"N+1 SUSPECT {row['scenario']:<14} {row['request']}  statements per request [{counts}]")
+        for tier, memory in sorted(result["worker_memory"].items()):
+            print(f"workers {tier}: {memory['workers']} x {memory['private_mib_per_worker']:.0f} MiB private + {memory['shared_mib_per_worker']:.0f} MiB shared each; {memory['pss_total_mib']:.0f} MiB total")
         for finding in result["budget_findings"]:
             print(f"OVER BUDGET {finding['request']} u={finding['users']} {finding['tier']}: p95 {finding['p95_ms']:.0f}ms > {finding['budget_ms']}ms ({finding['class']})")
         for key, value in result["peak_memory_mib"].items():
@@ -193,7 +258,7 @@ def main(argv: list) -> int:
         for tier, value in result["soak_backend_mib_per_hour"].items():
             if value is not None:
                 print(f"soak backend memory slope {tier}: {value:+.1f} MiB/hour")
-    return 1 if result["scaling_findings"] or result["budget_findings"] else 0
+    return 1 if result["scaling_findings"] or result["budget_findings"] or result["query_findings"] else 0
 
 
 if __name__ == "__main__":

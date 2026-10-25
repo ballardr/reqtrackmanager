@@ -15,6 +15,8 @@ downloads/
 eggs/
 .eggs/
 lib/
+# The Python-template rule above would otherwise hide the performance runner's library (perf/lib).
+!perf/lib/
 lib64/
 parts/
 sdist/
