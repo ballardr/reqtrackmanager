@@ -4,7 +4,7 @@
 
 ## Status / Resume Here
 
-4 / 9 phases complete (Phase 3 built 2026-10-25, see its decisions entry for the worker-memory and N+1 findings and the three bugs found on the way; Phase 7, CI test duration, added 2026-10-25 at the user's request; it is independent of the others and can run at any point, **Decided by: User** that it be added, **Decided by: Agent** that it sits last in numbering so no existing phase is renumbered; Phase 0 built 2026-10-25; its real arm64 CI run and the merge-to-`main` manifest check are still to do, see its entry in `docs/decisions.md`; Phase 1 built 2026-10-25, see its decisions entry for what was and was not verified; Phase 2 built 2026-10-25 and run end to end on Docker Desktop at T0 and T1, with the Linux, Raspberry Pi and larger-tier runs, the module-type generators, attachments and the frontend page-load scenario still to do: see its decisions entry). Next: Phase 4. **Start order (Decided by: User, 2026-10-23): Phase 0 first**, so arm64 images exist before any Pi run; it does not block the other phases, which can follow in order 1, 2, 3, 4, 4b, 5, 6. Phases 2–4 each save their results under `perf/results/<host-label>/<date>-<commit>/` (summarised CSV/JSON) so Phase 6 can plot them; each phase is independently useful, so stopping after any one is fine. Every scenario runs at every dataset tier (see "Dataset tiers"), so results are keyed by data volume as well as host.
+5 / 9 phases complete (Phase 4 built 2026-10-25, see its decisions entry for the findings, the `GENERIC_PLAN` deviation and the new pool settings; Phase 3 built 2026-10-25, see its decisions entry for the worker-memory and N+1 findings and the three bugs found on the way; Phase 7, CI test duration, added 2026-10-25 at the user's request; it is independent of the others and can run at any point, **Decided by: User** that it be added, **Decided by: Agent** that it sits last in numbering so no existing phase is renumbered; Phase 0 built 2026-10-25; its real arm64 CI run and the merge-to-`main` manifest check are still to do, see its entry in `docs/decisions.md`; Phase 1 built 2026-10-25, see its decisions entry for what was and was not verified; Phase 2 built 2026-10-25 and run end to end on Docker Desktop at T0 and T1, with the Linux, Raspberry Pi and larger-tier runs, the module-type generators, attachments and the frontend page-load scenario still to do: see its decisions entry). Next: Phase 4b (scaling findings and fixes; the first finding, the paged requirement list reading the whole project, is already evidenced). **Start order (Decided by: User, 2026-10-23): Phase 0 first**, so arm64 images exist before any Pi run; it does not block the other phases, which can follow in order 1, 2, 3, 4, 4b, 5, 6. Phases 2–4 each save their results under `perf/results/<host-label>/<date>-<commit>/` (summarised CSV/JSON) so Phase 6 can plot them; each phase is independently useful, so stopping after any one is fine. Every scenario runs at every dataset tier (see "Dataset tiers"), so results are keyed by data volume as well as host.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -12,7 +12,7 @@
 | 1 | Container-level metrics (cAdvisor → Prometheus → Grafana) | [x] built 2026-10-25 |
 | 2 | Load generator and baseline scenarios | [x] built 2026-10-25; T0/T1 run on Docker Desktop |
 | 3 | In-process profiling of the backend (memory + CPU) | [x] built 2026-10-25 |
-| 4 | PostgreSQL profiling | [ ] |
+| 4 | PostgreSQL profiling | [x] built 2026-10-25 |
 | 4b | Scaling findings and fixes | [ ] |
 | 5 | Record baselines, set limits, document sizing | [ ] |
 | 6 | Docs website: results, plots, test-method diagrams | [ ] |
@@ -189,7 +189,7 @@ Breadth profiles combine with a tier (for example 50 projects at T1 each, or a n
 
 - Enable `pg_stat_statements` in the profile override; report top queries by total time and calls after each load scenario.
 - Check connection count per worker against `max_connections`; document the pool settings and the formula (workers × pool size + overflow) in the sizing guidance.
-- `EXPLAIN (ANALYZE, BUFFERS)` on the worst few; add indexes via normal migrations if justified (migration ids are one global sequence across core and module directories).
+- `EXPLAIN (GENERIC_PLAN)` on the worst few (a stored statement has no parameter values to `ANALYZE` with; flagged statements get a manual `EXPLAIN (ANALYZE, BUFFERS)` with real parameters); add indexes via normal migrations if justified (migration ids are one global sequence across core and module directories).
 - Review `shared_buffers`/`work_mem` against the measured working set; do not tune blindly.
 
 ## 5a. Phase 4b — Scaling findings and fixes

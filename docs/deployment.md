@@ -375,7 +375,7 @@ Each backend container runs `BACKEND_WORKERS` uvicorn worker processes (default 
 - **WebSocket broadcasts** fan out to every process via `LISTEN`/`NOTIFY`, so a client receives events whichever process it's connected to.
 - **Metrics:** `/metrics` aggregates all workers of one container (Prometheus multi-process mode); scrape each replica separately.
 
-Sizing: each worker holds up to 15 database connections (SQLAlchemy's default pool) plus two dedicated ones, so keep `BACKEND_WORKERS × replicas × ~17` under Postgres's `max_connections` (default 100), and budget roughly 150–250 MB of memory per worker. `BACKEND_WORKERS=1` restores single-process behaviour (served by `app/serve.py` on a dual-stack socket). Measured on a 100-requirement project, each worker holds about 400 MiB of private memory (workers share almost nothing), so budget about 0.5 GiB per worker rather than 150-250 MB.
+Sizing: each worker holds up to `DB_POOL_SIZE + DB_MAX_OVERFLOW` database connections (default 5 + 10 = 15) plus two dedicated ones (the `LISTEN` listener and the leadership lock), so keep `BACKEND_WORKERS × replicas × (DB_POOL_SIZE + DB_MAX_OVERFLOW + 2)` (68 for the defaults) under Postgres's `max_connections` (default 100), and budget roughly 150–250 MB of memory per worker. `BACKEND_WORKERS=1` restores single-process behaviour (served by `app/serve.py` on a dual-stack socket). Measured on a 100-requirement project, each worker holds about 400 MiB of private memory (workers share almost nothing), so budget about 0.5 GiB per worker rather than 150-250 MB.
 
 ## Troubleshooting
 

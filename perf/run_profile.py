@@ -17,6 +17,11 @@ Responsibilities:
   (`queries.csv`, `processes.csv`); with `--profiling cpu`, sample the backend with py-spy during the highest-load
   run of each scenario (`profiles/*.svg`); with `--profiling heap`, run one worker under memray and report what it
   still held at the end (`heap.csv`).
+- Profile the database: the perf stack's PostgreSQL loads `pg_stat_statements`; for each scenario the runner resets
+  it, polls client connection counts while the load runs, and afterwards keeps the costliest statements
+  (`pgstat.csv`), what the database did (`pgdb.csv`: connection peak, cache hit rate, temp files, deadlocks) and
+  the planner's scans for the worst few (`plans.csv`), with the server's memory settings and the pool ceiling in
+  `run.json`.
 
 Design decisions:
 - It has no option that names a database, API URL, project or compose file: it can only create and destroy its own
@@ -55,7 +60,7 @@ from typing import Callable, Optional
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from perf.lib import bundle, catalog, compose, hostinfo, resources, sampler  # noqa: E402
+from perf.lib import bundle, catalog, compose, hostinfo, pgprofile, resources, sampler  # noqa: E402
 
 COMPOSE_FILES = (REPO_ROOT / "docker-compose.yml", REPO_ROOT / "perf" / "docker-compose.perf.yml")
 PROFILE_COMPOSE_FILE = REPO_ROOT / "docker-compose.profile.yml"
@@ -345,6 +350,14 @@ class ProfileRun:
         self.suspects: dict = {}
         self._queries_before: dict = {}
         self._query_totals: dict = {}
+        self.pg_enabled = False
+        self.pg_settings: dict = {}
+        self.db_pool: dict = {}
+        self.pgstat_rows: list = []
+        self.pgdb_rows: list = []
+        self.plan_rows: list = []
+        self._pg_before: dict = {}
+        self._pg_poller: Optional[pgprofile.ConnectionPoller] = None
         self.datasets: list = []
         self.dataset_details: list = []
         self.env: dict = {}
@@ -537,12 +550,88 @@ class ProfileRun:
             manifest_path.write_text(json.dumps(manifest))
             used = False
         self._require(self._backend_python("prepare_run.py", timeout=900), "setting this run's passwords")
+        self.pg_prepare()
         return manifest, {"snapshot_used": used, "generation_seconds": round(generation, 1), "startup_seconds": round(startup, 1)}
 
     def database_bytes(self) -> int:
         """The database's size in bytes."""
         done = self._exec("db", "psql", "-U", DB_USER, "-d", DB_NAME, "-tAc", f"select pg_database_size('{DB_NAME}')")
         return int(done.out.strip()) if done.ok and done.out.strip().isdigit() else 0
+
+
+    # PostgreSQL profiling ---------------------------------------------------
+
+    def _psql(self, sql: str, timeout: float = 300) -> compose.Result:
+        """Runs SQL in the perf database (statements are sent on standard input, never on a command line)."""
+        return self._exec("db", "psql", "-U", DB_USER, "-d", DB_NAME, "-X", "-tA", "-v", "ON_ERROR_STOP=1", "-f", "-", input=sql, timeout=timeout)
+
+    def _read_connections(self) -> Optional[tuple]:
+        done = self._psql(pgprofile.CONNECTIONS_SQL, timeout=30)
+        return pgprofile.parse_connections(done.out) if done.ok else None
+
+    def pg_prepare(self) -> None:
+        """Loads `pg_stat_statements`, refreshes planner statistics and records the server's settings (once per run).
+
+        `ANALYZE` stands in for the autovacuum a restored or bulk-loaded database would get within a minute in
+        real use; without it the planner's estimates (and so `plans.csv`) describe an empty database. A database
+        that cannot load the extension (an old override) is noted once and the PostgreSQL files stay empty.
+        """
+        done = self._psql(pgprofile.SETUP_SQL)
+        self.pg_enabled = done.ok
+        if not done.ok:
+            if "pg_stat_statements" not in self._noted:
+                self._noted.add("pg_stat_statements")
+                self.notes.append("pg_stat_statements could not be loaded: pgstat.csv, pgdb.csv and plans.csv are empty")
+            return
+        if self.pg_settings:
+            return
+        settings = pgprofile.parse_json(self._psql(pgprofile.SETTINGS_SQL, timeout=30).out)
+        if isinstance(settings, dict):
+            self.pg_settings = settings
+        pool = self._backend_python_code("from app.config import get_settings as g; s = g(); print(s.db_pool_size, s.db_max_overflow)")
+        sizes = pool.out.split() if pool.ok else []
+        if len(sizes) == 2 and all(part.isdigit() for part in sizes):
+            size, overflow = int(sizes[0]), int(sizes[1])
+            self.db_pool = {"pool_size": size, "max_overflow": overflow, "connection_ceiling": pgprofile.connection_ceiling(self.workers, size, overflow)}
+
+    def _backend_python_code(self, code: str) -> compose.Result:
+        return self._exec("backend", "python", "-c", code, timeout=120)
+
+    def pg_begin(self) -> None:
+        """Zeroes the statement totals and starts polling connections, at the start of a scenario."""
+        if not self.pg_enabled:
+            return
+        self._psql(pgprofile.RESET_SQL, timeout=60)
+        before = pgprofile.parse_json(self._psql(pgprofile.DATABASE_STATS_SQL, timeout=60).out)
+        self._pg_before = before if isinstance(before, dict) else {}
+        self._pg_poller = pgprofile.ConnectionPoller(self._read_connections)
+        self._pg_poller.start()
+
+    def pg_end(self, tier: str, scenario: str) -> None:
+        """Keeps what the database did during the scenario: costliest statements, its own counters, the worst plans."""
+        poller, self._pg_poller = self._pg_poller, None
+        if not self.pg_enabled or poller is None:
+            return
+        poller.stop()
+        time.sleep(QUERY_FLUSH_SECONDS)
+        after = pgprofile.parse_json(self._psql(pgprofile.DATABASE_STATS_SQL, timeout=60).out)
+        if isinstance(after, dict) and self._pg_before:
+            self.pgdb_rows.append(pgprofile.database_row(tier, scenario, self._pg_before, after, poller.peak, poller.idle_in_transaction_peak))
+        statements = pgprofile.parse_json(self._psql(pgprofile.TOP_STATEMENTS_SQL, timeout=120).out)
+        if not isinstance(statements, list):
+            return
+        self.pgstat_rows.extend(pgprofile.statement_rows(tier, scenario, statements))
+        planned = 0
+        for item in statements:
+            if planned >= pgprofile.PLANNED_STATEMENTS:
+                break
+            sql = pgprofile.explain_sql(item.get("query", ""))
+            if not sql:
+                continue
+            planned += 1
+            done = self._psql(sql, timeout=120)
+            rows = pgprofile.plan_rows(tier, scenario, planned, pgprofile.parse_json(done.out)) if done.ok else []
+            self.plan_rows.extend(rows)
 
     # profiling ------------------------------------------------------------
 
@@ -708,6 +797,7 @@ class ProfileRun:
         for name in names:
             all_params = catalog.parameters(name, self.options.mode, per_project)
             levels = [p["users"] for p in all_params]
+            self.pg_begin()
             for params in all_params:
                 if name == "soak":
                     params = dict(params, measure_seconds=soak_minutes * 60, warmup_seconds=120)
@@ -729,6 +819,7 @@ class ProfileRun:
                         })
                     self.check_backend_health(tier, name)
                     self.record_snapshot(tier, name, repeat)
+            self.pg_end(tier, name)
 
     # the run --------------------------------------------------------------
 
@@ -887,13 +978,14 @@ class ProfileRun:
             "shared_host": not self.options.dedicated, "non_publishable": bool(reasons), "non_publishable_reasons": reasons,
             "aborted": self.aborted, "snapshot_used": [d["snapshot_used"] for d in details],
             "startup_seconds": [d["startup_seconds"] for d in details], "profiling": self.options.profiling, "notes": self.notes,
+            **({"postgres": self.pg_settings} if self.pg_settings else {}), **({"db_pool": self.db_pool} if self.db_pool else {}),
             **self.heap_totals,
         }
         directory = bundle.bundle_dir(self.options.out, self.options.label, run_doc["date"], git["commit"] or "0" * 7)
         samples = [row for row in self.sampler.rows if "scenario" in row]
         bundle.write_bundle(
             directory, host=host_doc, run=run_doc, datasets=self.datasets, samples=samples, latency=self.latency, queries=self.query_rows(),
-            processes=self.process_rows, heap=self.heap_rows, profiles=self.profile_files,
+            pgstat=self.pgstat_rows, pgdb=self.pgdb_rows, plans=self.plan_rows, processes=self.process_rows, heap=self.heap_rows, profiles=self.profile_files,
         )
         archive = bundle.make_archive(directory, self.options.cache_dir / f"{directory.name}.tar.gz")
         self.say(f"archive: {archive}")

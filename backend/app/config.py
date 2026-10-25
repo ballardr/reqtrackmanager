@@ -250,6 +250,10 @@ class Settings(BaseSettings):
             (logs and returns `None`) — mechanically enforced, not trusted
             from the module's own declaration, mirroring the
             path-prefix enforcement for MCP tools.
+        db_pool_size: Connections each worker process keeps in its database pool (SQLAlchemy `pool_size`).
+        db_max_overflow: Extra connections a worker may open above `db_pool_size` under load, closed again when
+            returned. A worker holds at most `db_pool_size + db_max_overflow` pooled connections, plus two dedicated
+            ones; keep `workers x replicas x (that + 2)` below PostgreSQL's `max_connections`.
         profile_mode: Developer profiling (`app.profiling`): counts database statements per request by route and
             writes the totals to `profile_output_dir`. Off by default and never set by the production Compose
             file; it adds no endpoint.
@@ -329,6 +333,9 @@ class Settings(BaseSettings):
     allow_external_modules: bool = False
     extra_modules_path: str | None = None
     module_frame_allowed_origins: str = ""
+
+    db_pool_size: int = Field(default=5, ge=1)
+    db_max_overflow: int = Field(default=10, ge=0)
 
     profile_mode: bool = False
     profile_output_dir: str = "/tmp/profile"

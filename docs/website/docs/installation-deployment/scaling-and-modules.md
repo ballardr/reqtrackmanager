@@ -71,7 +71,7 @@ flowchart LR
 - Live-update WebSocket events reach clients whichever worker they're connected to.
 - `/metrics` combines all workers in a container; scrape each replica separately.
 
-Keep `BACKEND_WORKERS × replicas × 17` below PostgreSQL's `max_connections` (100 by default), and allow roughly 150–250 MB of memory per worker. Set `BACKEND_WORKERS=1` to run a single process.
+Keep `BACKEND_WORKERS × replicas × (DB_POOL_SIZE + DB_MAX_OVERFLOW + 2)` (17 per worker by default) below PostgreSQL's `max_connections` (100 by default, 3 reserved), and allow about 0.5 GiB of memory per worker (each holds roughly 400 MiB of private memory; workers share almost nothing). Set `BACKEND_WORKERS=1` to run a single process.
 
 ## Next steps
 

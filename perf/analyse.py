@@ -12,6 +12,9 @@ Responsibilities:
 - Report peak memory per service by tier and the backend's memory slope after warm-up in the soak (`memory_*`).
 - Fit statements per request (`queries.csv`) against requirements per project: a route whose statement count grows
   with the data is an N+1 by definition (`query_scaling`), and report each worker's private memory (`processes.csv`).
+- Judge the database: the connection peak and the backend's pool ceiling against `max_connections`, cache hit rate
+  and temp files against the memory settings, the costliest statements, and scans of large tables the planner
+  does with a filter and no index (`database_findings`, `plan_findings`).
 
 Usage:
     python3 perf/analyse.py perf/results/<host-label>/<date>-<commit> [--json]
@@ -146,6 +149,81 @@ def worker_memory(processes: list) -> dict:
     return result
 
 
+def top_statements(pgstat: list, per_scenario: int = 3) -> dict:
+    """The costliest statements of each `(tier, scenario)`, by total time, from `pgstat.csv` rows.
+
+    Returns:
+        `{(tier, scenario): [row, ...]}` with at most `per_scenario` rows each (numbers converted).
+    """
+    grouped: dict = defaultdict(list)
+    for row in pgstat:
+        grouped[(row["tier"], row["scenario"])].append({**row, "total_ms": float(row["total_ms"]), "calls": int(row["calls"]), "mean_ms": float(row["mean_ms"])})
+    return {key: sorted(rows, key=lambda r: -r["total_ms"])[:per_scenario] for key, rows in sorted(grouped.items())}
+
+
+def parse_size_mib(text: str) -> Optional[float]:
+    """MiB in a PostgreSQL size setting such as `128MB`, `4GB` or `512kB`; None when it is not one."""
+    units = {"kb": 1 / 1024, "mb": 1.0, "gb": 1024.0, "tb": 1024.0 * 1024}
+    text = str(text).strip().lower()
+    for unit, factor in units.items():
+        if text.endswith(unit) and text[: -len(unit)].strip().replace(".", "", 1).isdigit():
+            return float(text[: -len(unit)]) * factor
+    return None
+
+
+def database_findings(pgdb: list, run: dict, hit_floor: float = 99.0) -> list:
+    """Connection, cache and temp-file findings from `pgdb.csv` and the run's recorded settings.
+
+    Args:
+        pgdb: Rows of `pgdb.csv` (strings).
+        run: `run.json` (`postgres` settings and `db_pool` ceiling, when recorded).
+        hit_floor: Buffer cache hit rate (percent) below which a scenario is reported.
+
+    Returns:
+        Dicts with `kind` (`connections`, `cache`, `work_mem`, `deadlock`), `where` and `detail`.
+    """
+    findings = []
+    settings = run.get("postgres", {})
+    usable = int(settings["max_connections"]) - 3 if str(settings.get("max_connections", "")).isdigit() else None
+    ceiling = run.get("db_pool", {}).get("connection_ceiling")
+    if usable and ceiling and ceiling > usable:
+        findings.append({"kind": "connections", "where": "configuration", "detail": f"the backend can hold {ceiling} connections (workers x (pool + overflow + 2)), more than the {usable} PostgreSQL allows clients"})
+    for row in pgdb:
+        where = f"{row['tier']}/{row['scenario']}"
+        if usable and int(row["connections_peak"]) > 0.8 * usable:
+            findings.append({"kind": "connections", "where": where, "detail": f"peak {row['connections_peak']} of {usable} client connections"})
+        if row["cache_hit_percent"] not in ("", None) and float(row["cache_hit_percent"]) < hit_floor:
+            findings.append({"kind": "cache", "where": where, "detail": f"buffer cache hit rate {row['cache_hit_percent']}% (shared_buffers {settings.get('shared_buffers', '?')})"})
+        if int(row["temp_files"]) > 0:
+            findings.append({"kind": "work_mem", "where": where, "detail": f"{row['temp_files']} temporary files, {row['temp_mib']} MiB spilled to disk (work_mem {settings.get('work_mem', '?')})"})
+        if int(row["deadlocks"]) > 0:
+            findings.append({"kind": "deadlock", "where": where, "detail": f"{row['deadlocks']} deadlock(s)"})
+    return findings
+
+
+def plan_findings(plans: list, sizes: dict, min_rows: int = 1000) -> list:
+    """Sequential scans the planner chose for a filtered read of a table it expects to be large.
+
+    Args:
+        plans: Rows of `plans.csv` (strings).
+        sizes: `{tier: requirements per project}`, to order the tiers.
+        min_rows: Estimated rows at or above which a filtered `Seq Scan` is reported.
+
+    Returns:
+        Dicts with `relation`, `tier`, `scenario`, `rank`, `est_rows`, deduplicated by relation and scenario at the
+        largest tier that shows it.
+    """
+    seen: dict = {}
+    for row in plans:
+        if row["node"] != "Seq Scan" or row["filtered"] != "yes" or int(row["est_rows"]) < min_rows:
+            continue
+        key = (row["relation"], row["scenario"])
+        candidate = {"relation": row["relation"], "tier": row["tier"], "scenario": row["scenario"], "rank": int(row["rank"]), "est_rows": int(row["est_rows"])}
+        if key not in seen or sizes.get(row["tier"], 0) > sizes.get(seen[key]["tier"], 0):
+            seen[key] = candidate
+    return sorted(seen.values(), key=lambda r: (-r["est_rows"], r["relation"]))
+
+
 def request_class(request: str, budgets: dict) -> Optional[str]:
     """The budget class of a request name (first matching rule), or None."""
     for rule in budgets.get("rules", []):
@@ -215,7 +293,16 @@ def analyse(directory: Path, budgets: dict) -> dict:
     table = scaling_table(latency, sizes, budgets)
     peaks = memory_peaks(samples)
     queries = query_scaling(read_csv(directory / "queries.csv"), sizes, budgets)
+    run_file = directory / "run.json"
+    run = json.loads(run_file.read_text()) if run_file.is_file() else {}
+    pgdb = database_findings(read_csv(directory / "pgdb.csv"), run)
+    plans = plan_findings(read_csv(directory / "plans.csv"), sizes)
     return {
+        "postgres": run.get("postgres", {}),
+        "db_pool": run.get("db_pool", {}),
+        "top_statements": {f"{tier}/{scenario}": rows for (tier, scenario), rows in top_statements(read_csv(directory / "pgstat.csv")).items()},
+        "database_findings": pgdb,
+        "plan_findings": plans,
         "tiers": sizes,
         "scaling": table,
         "scaling_findings": [r for r in table if r["finding"]],
@@ -251,6 +338,17 @@ def main(argv: list) -> int:
             print(f"N+1 SUSPECT {row['scenario']:<14} {row['request']}  statements per request [{counts}]")
         for tier, memory in sorted(result["worker_memory"].items()):
             print(f"workers {tier}: {memory['workers']} x {memory['private_mib_per_worker']:.0f} MiB private + {memory['shared_mib_per_worker']:.0f} MiB shared each; {memory['pss_total_mib']:.0f} MiB total")
+        if result["postgres"]:
+            print("postgres settings: " + ", ".join(f"{k}={v}" for k, v in result["postgres"].items()))
+        if result["db_pool"]:
+            print(f"backend pool: {result['db_pool']['pool_size']} + {result['db_pool']['max_overflow']} per worker, ceiling {result['db_pool']['connection_ceiling']} connections")
+        for key, rows in result["top_statements"].items():
+            for row in rows:
+                print(f"top statement {key}: {row['total_ms']:.0f} ms over {row['calls']} calls ({row['mean_ms']:.2f} ms each): {row['query'][:110]}")
+        for finding in result["database_findings"]:
+            print(f"DATABASE {finding['kind']} {finding['where']}: {finding['detail']}")
+        for finding in result["plan_findings"]:
+            print(f"SEQ SCAN {finding['relation']} (~{finding['est_rows']} rows, filtered) in {finding['tier']}/{finding['scenario']} statement #{finding['rank']}: check for a missing index")
         for finding in result["budget_findings"]:
             print(f"OVER BUDGET {finding['request']} u={finding['users']} {finding['tier']}: p95 {finding['p95_ms']:.0f}ms > {finding['budget_ms']}ms ({finding['class']})")
         for key, value in result["peak_memory_mib"].items():
@@ -258,7 +356,8 @@ def main(argv: list) -> int:
         for tier, value in result["soak_backend_mib_per_hour"].items():
             if value is not None:
                 print(f"soak backend memory slope {tier}: {value:+.1f} MiB/hour")
-    return 1 if result["scaling_findings"] or result["budget_findings"] or result["query_findings"] else 0
+    findings = ("scaling_findings", "budget_findings", "query_findings", "database_findings", "plan_findings")
+    return 1 if any(result[name] for name in findings) else 0
 
 
 if __name__ == "__main__":

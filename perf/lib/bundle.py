@@ -5,7 +5,7 @@ Writes a results bundle and its archive.
 
 Responsibilities:
 - Write `host.json`, `run.json`, `dataset.json`, `samples.csv`, `latency.csv`, `queries.csv`, `processes.csv`,
-  `pgstat.csv` (and `heap.csv` and `profiles/*.svg` for a profiling run) into
+  `pgstat.csv`, `pgdb.csv`, `plans.csv` (and `heap.csv` and `profiles/*.svg` for a profiling run) into
   `perf/results/<host-label>/<date>-<commit>/` from in-memory results.
 - Run the anonymisation check on the finished directory and refuse to produce an archive if it finds anything.
 - Create the `.tar.gz` with numeric owners zeroed, normalised modification times and sorted entries, so no
@@ -66,7 +66,7 @@ def _write_csv(path: Path, columns: Iterable, rows: Iterable) -> None:
 
 def write_bundle(
     directory: Path, *, host: dict, run: dict, datasets: Iterable, samples: Iterable, latency: Iterable,
-    queries: Iterable = (), pgstat: Iterable = (), processes: Iterable = (), heap: Optional[Iterable] = None,
+    queries: Iterable = (), pgstat: Iterable = (), pgdb: Iterable = (), plans: Iterable = (), processes: Iterable = (), heap: Optional[Iterable] = None,
     profiles: Optional[dict] = None,
 ) -> list:
     """Writes the bundle's files and checks them.
@@ -77,7 +77,7 @@ def write_bundle(
         run: The `run.json` document.
         datasets: One entry per tier run (the dataset spec, row counts, link-degree histogram and size), written under
             `datasets` in `dataset.json`.
-        samples / latency / queries / pgstat / processes: Rows for the CSV files.
+        samples / latency / queries / pgstat / pgdb / plans / processes: Rows for the CSV files.
         heap: Rows for `heap.csv`, or None to write no such file (only a heap-profiling run has one).
         profiles: `{file name: SVG text}` written under `profiles/` (CPU flamegraphs of a profiling run).
 
@@ -103,6 +103,8 @@ def write_bundle(
     _write_csv(directory / "latency.csv", scrub.LATENCY_COLUMNS, latency)
     _write_csv(directory / "queries.csv", scrub.QUERY_COLUMNS, queries)
     _write_csv(directory / "pgstat.csv", scrub.PGSTAT_COLUMNS, pgstat)
+    _write_csv(directory / "pgdb.csv", scrub.PGDB_COLUMNS, pgdb)
+    _write_csv(directory / "plans.csv", scrub.PLAN_COLUMNS, plans)
     _write_csv(directory / "processes.csv", scrub.PROCESS_COLUMNS, processes)
     if heap is not None:
         _write_csv(directory / "heap.csv", scrub.HEAP_COLUMNS, heap)

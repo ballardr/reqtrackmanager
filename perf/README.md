@@ -88,6 +88,47 @@ flowchart LR
   attributed to the first frame outside the import machinery, so a library loaded by a module is counted under the
   importing code when the library allocates from C.
 
+## Profiling the database (always on)
+
+The perf stack's PostgreSQL loads `pg_stat_statements` (the perf override only; never the production or
+development compose files). For every scenario the runner resets it, polls client connections while the load runs,
+and afterwards keeps what the database did.
+
+| Question | What answers it | Where it lands |
+|----------|-----------------|----------------|
+| Which statements cost the most? | `pg_stat_statements`, top 15 by total time per scenario: calls, total and mean ms, rows, blocks read, temp blocks. DML only, literals already replaced by `$n`, `::type` casts dropped | `pgstat.csv` |
+| How many connections does the backend really hold, and is the cache big enough? | `pg_stat_activity` counts every 2 s (peak, idle-in-transaction peak, no query text); `pg_stat_database` deltas: buffer cache hit rate, temp files and MiB spilled, deadlocks | `pgdb.csv` |
+| Does the pool fit `max_connections`? | The backend's pool settings and `workers x (pool + overflow + 2)` against the server's `max_connections` | `run.json` (`db_pool`, `postgres`); `analyse.py` flags a ceiling above the usable connections |
+| Are `shared_buffers` and `work_mem` adequate? | Hit rate below 99 % names `shared_buffers`; any temp file names `work_mem`. Defaults are only changed on this evidence | `pgdb.csv`, `run.json` (`postgres`: the five relevant settings) |
+| Which scans does the planner choose for the worst statements? | `EXPLAIN (GENERIC_PLAN, FORMAT JSON)` of the five costliest statements per scenario: scan type, table, index, estimated rows (filter text is not kept); a filtered `Seq Scan` over 1,000+ estimated rows is flagged as a possible missing index | `plans.csv` |
+
+```mermaid
+flowchart LR
+    S["scenario starts"] --> R["pg_stat_statements_reset()<br/>+ counters snapshot"]
+    R --> L["load runs;<br/>connections polled every 2 s"]
+    L --> T["top statements,<br/>counter deltas, peaks"]
+    T --> P["EXPLAIN (GENERIC_PLAN)<br/>of the worst five"]
+    T --> B["pgstat.csv, pgdb.csv"]
+    P --> B2["plans.csv"]
+```
+
+- **Analyse before planning.** After the dataset is loaded the runner runs `ANALYZE`, standing in for the autovacuum a
+  real database would get within a minute; without it the planner's estimates describe an empty database.
+- **Plans are estimates.** `GENERIC_PLAN` needs no parameter values and executes nothing, so it is safe and its output
+  holds no literal, but it shows the planner's choice, not actual time (that is in `pgstat.csv`). For an
+  `EXPLAIN (ANALYZE, BUFFERS)` of a flagged statement, run it by hand with real parameters against the kept stack
+  (`--keep`, then `docker compose -p reqtrack-perf ... exec db psql`); do not commit the output.
+- **Same on every run.** The extension is always loaded, so its small overhead is in every number and runs stay
+  comparable. It is never loaded outside the perf stack. A database that cannot load it leaves the three files empty
+  and says so in `run.json`'s notes.
+- **No new surface and no identifying text.** Only DML is kept (a utility statement such as `SET` or `CREATE ROLE`
+  keeps its literals in `pg_stat_statements`), `pg_stat_activity` is read for counts only, and the anonymisation
+  check still gates the bundle.
+- **Pool settings.** `DB_POOL_SIZE` (default 5) and `DB_MAX_OVERFLOW` (default 10) bound each worker's connections;
+  with two dedicated ones (the `LISTEN` listener and the leadership lock) a worker holds at most 17, so the default
+  four workers hold at most 68 of PostgreSQL's 97 usable connections. Raise workers or replicas and the sum must stay
+  below `max_connections` (default 100, 3 reserved).
+
 ## Dataset tiers
 
 Requirements per project; every tier also scales the other record types and the links between them
@@ -138,8 +179,8 @@ per service still is.
 ## What is in a bundle (and what never is)
 
 `host.json` (architecture, cores, RAM, Docker VM allocation, OS family, storage class, generic CPU family),
-`run.json`, `dataset.json`, `samples.csv`, `latency.csv`, `queries.csv`, `processes.csv`, and for a profiling run
-`heap.csv` and `profiles/*.svg`. Built from an allowlist; never recorded: hostname,
+`run.json`, `dataset.json`, `samples.csv`, `latency.csv`, `queries.csv`, `processes.csv`, `pgstat.csv`, `pgdb.csv`,
+`plans.csv`, and for a profiling run `heap.csv` and `profiles/*.svg`. Built from an allowlist; never recorded: hostname,
 username, paths, serials, MAC or IP addresses, Docker or container ids, environment variables, git author or branch
 names. A dirty tree or a commit not on a remote branch marks the run `non_publishable`.
 `python3 perf/scrub_check.py` (also a repository test and part of the pre-commit hook) scans `perf/results/`;
@@ -156,7 +197,7 @@ memory numbers are never gated in CI: they are read, from a run.
 - Dataset generators for the module record types (`ModuleDefinition.perf_generators`); the gap list in
   `test_perf_dataset.py` shrinks as they land. Attachments, and a frontend page-load scenario at T2 and T3 (a
   Playwright-driven browser run), are not part of the first runner.
-- `pg_stat_statements` arrives with the PostgreSQL profiling work; `pgstat.csv` is written empty until then.
+- Statements run by a streamed response or by a utility command are not in `pgstat.csv` (DML only, by design).
 - Statements run while a streamed response body is produced (some exports) are not counted in `queries.csv`.
 - `compare.py` (run-to-run diff) and the plotting script come with the baseline-recording and website work.
 

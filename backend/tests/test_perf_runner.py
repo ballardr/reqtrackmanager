@@ -1078,3 +1078,375 @@ def test_recorded_caps_are_rounded_so_a_float_tail_is_not_mistaken_for_a_serial_
     assert "000000000000" not in json.dumps(caps)
     (tmp_path / "run.json").write_text(json.dumps({"caps": caps}, indent=2))
     assert not [f for f in scrub.scan_file(tmp_path / "run.json", tmp_path, []) if "serial" in f.rule]
+
+
+# --- PostgreSQL profiling: statement totals, connections, settings and plans --------------------------------
+
+
+def _pg():
+    from perf.lib import pgprofile
+
+    return pgprofile
+
+
+def test_only_the_perf_stack_loads_pg_stat_statements():
+    root = _PERF.parent
+    assert "shared_preload_libraries=pg_stat_statements" in (_PERF / "docker-compose.perf.yml").read_text()
+    for name in ("docker-compose.yml", "docker-compose.profile.yml", "tests/container/docker-compose.yml"):
+        assert "pg_stat_statements" not in (root / name).read_text(), f"{name} must not load the extension"
+
+
+def test_the_statement_list_keeps_only_dml_collapses_whitespace_and_cuts_long_text():
+    rows = _pg().statement_rows(
+        "T1",
+        "browse",
+        [
+            {
+                "calls": 10,
+                "total_ms": 5.5,
+                "mean_ms": 0.55,
+                "row_count": 40,
+                "read_blocks": 1,
+                "temp_blocks": 0,
+                "query": "SELECT a\n   FROM t WHERE id = $1",
+            },
+            {
+                "calls": 1,
+                "total_ms": 1.0,
+                "mean_ms": 1.0,
+                "row_count": 0,
+                "read_blocks": 0,
+                "temp_blocks": 0,
+                "query": "ALTER ROLE reqtrack PASSWORD 'hunter2hunter2'",
+            },
+            {"calls": 1, "total_ms": 1.0, "mean_ms": 1.0, "row_count": 0, "read_blocks": 0, "temp_blocks": 0, "query": "select " + "x, " * 300},
+        ],
+    )
+    assert rows[0]["query"] == "SELECT a FROM t WHERE id = $1" and rows[1]["query"].startswith("select x, x, x")
+    assert _pg().collapse("where a = $1::uuid and b = $2::numeric(10, 2) and c = any($3::text[])") == "where a = $1 and b = $2 and c = any($3)"
+    assert rows[0]["rows"] == 40 and len(rows[1]["query"]) == _pg().QUERY_LIMIT and rows[1]["query"].endswith("…")
+
+
+def test_the_database_row_reports_hit_rate_temp_spill_and_deadlocks_for_the_scenario_only():
+    before = {"blks_hit": 1000, "blks_read": 10, "temp_files": 2, "temp_bytes": 1 * 2**20, "deadlocks": 0}
+    after = {"blks_hit": 1990, "blks_read": 20, "temp_files": 5, "temp_bytes": 7 * 2**20, "deadlocks": 1}
+    row = _pg().database_row("T2", "list_unpaged", before, after, 41, 3)
+    assert row == {
+        "tier": "T2",
+        "scenario": "list_unpaged",
+        "connections_peak": 41,
+        "idle_in_transaction_peak": 3,
+        "cache_hit_percent": 99.0,
+        "temp_files": 3,
+        "temp_mib": 6.0,
+        "deadlocks": 1,
+    }
+    assert _pg().database_row("T0", "idle", before, before, 0, 0)["cache_hit_percent"] == "", "no block activity: no rate"
+
+
+@pytest.mark.parametrize(
+    "query,planned",
+    [
+        ("select * from t where id = $1", True),
+        ("with x as (select 1) select * from x", True),
+        ("update t set a = $1 where id = $2", True),
+        ("select 1; drop table t", False),
+        ("drop table t", False),
+        ("select * from t where a = E'\\x41'", False),
+        ("create role r password 'x'", False),
+    ],
+)
+def test_only_a_single_dml_statement_is_planned_and_never_executed(query, planned):
+    sql = _pg().explain_sql(query)
+    assert bool(sql) is planned
+    if planned:
+        assert sql.startswith("EXPLAIN (GENERIC_PLAN, FORMAT JSON) ") and "ANALYZE" not in sql
+
+
+def test_plan_rows_list_each_scan_without_filter_text():
+    plan = [
+        {
+            "Plan": {
+                "Node Type": "Nested Loop",
+                "Total Cost": 123.456,
+                "Plans": [
+                    {"Node Type": "Seq Scan", "Relation Name": "requirements", "Plan Rows": 5000, "Filter": "(project_id = $1)"},
+                    {"Node Type": "Index Scan", "Relation Name": "projects", "Index Name": "projects_pkey", "Plan Rows": 1},
+                ],
+            }
+        }
+    ]
+    rows = _pg().plan_rows("T2", "browse", 1, plan)
+    assert [(r["node"], r["relation"], r["index"], r["filtered"], r["est_rows"]) for r in rows] == [
+        ("Seq Scan", "requirements", "", "yes", 5000),
+        ("Index Scan", "projects", "projects_pkey", "no", 1),
+    ]
+    assert all(r["plan_cost"] == 123.5 for r in rows) and "$1" not in json.dumps(rows)
+    assert _pg().plan_rows("T2", "browse", 1, {"not": "a plan"}) == []
+
+
+def test_the_connection_ceiling_is_workers_times_pool_plus_overflow_plus_two_dedicated():
+    pgprofile = _pg()
+    assert pgprofile.connection_ceiling(4, 5, 10) == 68
+    assert pgprofile.connection_ceiling(4, 5, 10, replicas=2) == 136
+    assert pgprofile.connection_ceiling(1, 2, 0) == 4
+
+
+def test_the_default_pool_keeps_the_default_four_workers_inside_postgres_default_max_connections():
+    from app.config import Settings
+
+    settings = Settings()
+    ceiling = _pg().connection_ceiling(resources.DEFAULT_WORKERS, settings.db_pool_size, settings.db_max_overflow)
+    assert ceiling <= 100 - _pg().RESERVED_CONNECTIONS, "documented formula: workers x (pool + overflow + 2) under max_connections"
+
+
+def test_the_engine_pool_is_sized_from_the_pool_settings():
+    from app import database
+    from app.config import get_settings
+
+    settings = get_settings()
+    assert database.engine.pool.size() == settings.db_pool_size and database.engine.pool._max_overflow == settings.db_max_overflow
+    assert (settings.db_pool_size, settings.db_max_overflow) == (5, 10), "defaults unchanged unless the environment sets them"
+
+
+def test_the_connection_poller_keeps_the_highest_reading_and_ignores_a_failed_one():
+    readings = iter([(3, 0), None, (9, 2), (5, 1)])
+    poller = _pg().ConnectionPoller(lambda: next(readings), interval=0)
+    for _ in range(4):
+        poller.sample()
+    assert (poller.peak, poller.idle_in_transaction_peak, poller.readings) == (9, 2, 3)
+    assert _pg().parse_connections("12 3\n") == (12, 3) and _pg().parse_connections("garbage") is None
+
+
+def test_a_bundle_with_the_database_files_passes_the_check_and_a_leaked_literal_does_not(tmp_path):
+    directory = tmp_path / "linux-vm-4c8g" / "2026-10-25-aaaaaaaa"
+    statement = (
+        "SELECT requirements.id::uuid, requirements.created_at::timestamptz FROM requirements "
+        "WHERE requirements.project_id = $1::uuid AND requirements.title ILIKE $2 ORDER BY requirements.unique_code LIMIT $3 OFFSET $4"
+    )
+    bundle.write_bundle(
+        directory,
+        host=hostinfo.collect(storage="ssd", run=_docker_info_runner()),
+        run={
+            "schema_version": 1,
+            "host_label": "linux-vm-4c8g",
+            "commit": "a" * 40,
+            "date": "2026-10-25",
+            "notes": [],
+            "postgres": {"max_connections": "100", "shared_buffers": "128MB", "work_mem": "4MB"},
+            "db_pool": {"pool_size": 5, "max_overflow": 10, "connection_ceiling": 68},
+        },
+        datasets=[],
+        samples=[],
+        latency=[],
+        pgstat=_pg().statement_rows(
+            "T1", "browse", [{"calls": 9, "total_ms": 4.0, "mean_ms": 0.4, "row_count": 9, "read_blocks": 0, "temp_blocks": 0, "query": statement}]
+        ),
+        pgdb=[_pg().database_row("T1", "browse", {}, {"blks_hit": 9, "blks_read": 1}, 12, 0)],
+        plans=_pg().plan_rows(
+            "T1", "browse", 1, [{"Plan": {"Node Type": "Seq Scan", "Relation Name": "requirements", "Plan Rows": 100, "Filter": "x"}}]
+        ),
+    )
+    assert scrub.scan_tree(directory, identities=["someoneelse"]) == []
+    leaked = directory / "pgstat.csv"
+    leaked.write_text(leaked.read_text() + "T1,browse,1,1,1,1,0,0,\"select * from users where email = 'jane@example.com'\"\n")
+    assert scrub.scan_tree(directory, identities=["someoneelse"])
+
+
+class _PsqlDocker:
+    """Answers the runner's `psql` execs by SQL text and records every statement it was sent."""
+
+    def __init__(self, answers, fail=()):
+        self.answers = answers
+        self.fail = fail
+        self.sent: list = []
+
+    def compose(self, *args, **options):
+        if "psql" not in args:
+            return compose.Result(0, "", "")
+        sql = options.get("input", "")
+        self.sent.append(sql)
+        if any(token in sql for token in self.fail):
+            return compose.Result(1, "", "boom")
+        for token, out in self.answers.items():
+            if token in sql:
+                return compose.Result(0, out, "")
+        return compose.Result(0, "", "")
+
+
+def test_a_scenarios_database_results_cover_statements_counters_and_plans_for_dml_only(monkeypatch):
+    monkeypatch.setattr(run_profile, "QUERY_FLUSH_SECONDS", 0)
+    statements = [
+        {
+            "calls": 50,
+            "total_ms": 90.0,
+            "mean_ms": 1.8,
+            "row_count": 500,
+            "read_blocks": 0,
+            "temp_blocks": 0,
+            "query": "select * from requirements where project_id = $1",
+        },
+        {"calls": 2, "total_ms": 5.0, "mean_ms": 2.5, "row_count": 2, "read_blocks": 0, "temp_blocks": 0, "query": "SET search_path = x"},
+        {"calls": 5, "total_ms": 4.0, "mean_ms": 0.8, "row_count": 5, "read_blocks": 0, "temp_blocks": 0, "query": "select 1; select 2"},
+    ]
+    plan = [
+        {"Plan": {"Node Type": "Seq Scan", "Relation Name": "requirements", "Plan Rows": 2000, "Total Cost": 80.0, "Filter": "(project_id = $1)"}}
+    ]
+    stats = iter(
+        [
+            {"blks_hit": 0, "blks_read": 0, "temp_files": 0, "temp_bytes": 0, "deadlocks": 0},
+            {"blks_hit": 99, "blks_read": 1, "temp_files": 0, "temp_bytes": 0, "deadlocks": 0},
+        ]
+    )
+
+    class Docker(_PsqlDocker):
+        def compose(self, *args, **options):
+            sql = options.get("input", "")
+            if "psql" in args and "blks_hit" in sql:
+                self.sent.append(sql)
+                return compose.Result(0, json.dumps(next(stats)), "")
+            return super().compose(*args, **options)
+
+    run = _profile_run()
+    run.docker = Docker(
+        {"pg_stat_statements_reset": "", "total_exec_time": json.dumps(statements), "GENERIC_PLAN": json.dumps(plan), "pg_stat_activity": "4 0"}
+    )
+    run.pg_enabled = True
+    run.pg_begin()
+    run.pg_end("T1", "browse")
+    assert [r["query"] for r in run.pgstat_rows] == ["select * from requirements where project_id = $1", "select 1; select 2"]
+    assert run.pgdb_rows[0]["cache_hit_percent"] == 99.0 and run.pgdb_rows[0]["connections_peak"] == 4
+    assert [(r["relation"], r["filtered"], r["est_rows"]) for r in run.plan_rows] == [("requirements", "yes", 2000)]
+    planned = [sql for sql in run.docker.sent if "GENERIC_PLAN" in sql]
+    assert len(planned) == 1 and all(
+        "ANALYZE" not in sql for sql in run.docker.sent if "EXPLAIN" in sql
+    ), "only the one DML statement is planned, never executed"
+
+
+def test_a_database_that_cannot_load_the_extension_gives_empty_files_and_one_note():
+    run = _profile_run()
+    run.docker = _PsqlDocker({}, fail=("create extension",))
+    run.pg_prepare()
+    run.pg_prepare()
+    run.pg_begin()
+    run.pg_end("T1", "browse")
+    assert not run.pg_enabled and run.pgstat_rows == [] and run.pgdb_rows == [] and run.plan_rows == []
+    assert len([n for n in run.notes if "pg_stat_statements" in n]) == 1
+
+
+def test_the_servers_settings_and_the_pool_ceiling_are_recorded_once_per_run():
+    class Docker(_PsqlDocker):
+        def compose(self, *args, **options):
+            if "python" in args:
+                return compose.Result(0, "5 10\n", "")
+            return super().compose(*args, **options)
+
+    run = _profile_run(argv=["--workers", "2"])
+    run.workers = 2
+    run.docker = Docker({"current_setting": json.dumps({"max_connections": "100", "work_mem": "4MB"})})
+    run.pg_prepare()
+    assert run.pg_enabled and run.pg_settings["max_connections"] == "100"
+    assert run.db_pool == {"pool_size": 5, "max_overflow": 10, "connection_ceiling": 2 * 17}
+    sent = len(run.docker.sent)
+    run.pg_prepare()
+    assert not any("current_setting" in sql for sql in run.docker.sent[sent:]), "settings are read once per run"
+
+
+def test_database_findings_flag_connections_cache_spill_and_deadlocks():
+    analyse = _analyse()
+
+    run = {"postgres": {"max_connections": "100", "shared_buffers": "128MB", "work_mem": "4MB"}, "db_pool": {"connection_ceiling": 140}}
+    rows = [
+        {
+            "tier": "T2",
+            "scenario": "browse",
+            "connections_peak": "90",
+            "idle_in_transaction_peak": "0",
+            "cache_hit_percent": "98.5",
+            "temp_files": "4",
+            "temp_mib": "12.0",
+            "deadlocks": "1",
+        },
+        {
+            "tier": "T2",
+            "scenario": "edit",
+            "connections_peak": "10",
+            "idle_in_transaction_peak": "0",
+            "cache_hit_percent": "",
+            "temp_files": "0",
+            "temp_mib": "0",
+            "deadlocks": "0",
+        },
+    ]
+    kinds = sorted((f["kind"], f["where"]) for f in analyse.database_findings(rows, run))
+    assert kinds == [
+        ("cache", "T2/browse"),
+        ("connections", "T2/browse"),
+        ("connections", "configuration"),
+        ("deadlock", "T2/browse"),
+        ("work_mem", "T2/browse"),
+    ]
+    assert analyse.database_findings(rows[1:], {"postgres": run["postgres"], "db_pool": {"connection_ceiling": 68}}) == []
+
+
+def test_plan_findings_report_a_filtered_seq_scan_of_a_large_table_at_its_largest_tier_once():
+    analyse = _analyse()
+
+    def plan(tier, relation, node, filtered, est):
+        return {
+            "tier": tier,
+            "scenario": "browse",
+            "rank": "1",
+            "node": node,
+            "relation": relation,
+            "index": "",
+            "filtered": filtered,
+            "est_rows": str(est),
+            "plan_cost": "1",
+        }
+
+    rows = [
+        plan("T1", "requirements", "Seq Scan", "yes", 1200),
+        plan("T2", "requirements", "Seq Scan", "yes", 9000),
+        plan("T2", "projects", "Seq Scan", "yes", 40),
+        plan("T2", "audit_events", "Seq Scan", "no", 50000),
+        plan("T2", "comments", "Index Scan", "yes", 50000),
+    ]
+    found = analyse.plan_findings(rows, {"T1": 100, "T2": 1000})
+    assert [(f["relation"], f["tier"], f["est_rows"]) for f in found] == [("requirements", "T2", 9000)]
+
+
+def test_top_statements_are_the_costliest_per_scenario_and_sizes_parse():
+    analyse = _analyse()
+
+    def row(total, name):
+        return {
+            "tier": "T1",
+            "scenario": "browse",
+            "calls": "2",
+            "total_ms": str(total),
+            "mean_ms": "1",
+            "rows": "1",
+            "read_blocks": "0",
+            "temp_blocks": "0",
+            "query": name,
+        }
+
+    top = analyse.top_statements([row(5, "a"), row(50, "b"), row(20, "c"), row(1, "d")], per_scenario=2)
+    assert [r["query"] for r in top[("T1", "browse")]] == ["b", "c"]
+    assert analyse.parse_size_mib("128MB") == 128.0 and analyse.parse_size_mib("4GB") == 4096.0 and analyse.parse_size_mib("512kB") == 0.5
+    assert analyse.parse_size_mib("on") is None
+
+
+def test_a_long_database_identifier_is_not_mistaken_for_a_secret_but_a_random_token_still_is(tmp_path):
+    identifier = "requirement_versions_requirement_id_version_number_key"
+    token = "Zk3Xq9LmP2vB7nRt5YcW8dFhJ1sAeGuO4iKxN6bVq0TyHrCl"
+    assert len(identifier) >= 48 and len(token) >= 48
+    (tmp_path / "plans.csv").write_text(
+        f"tier,scenario,rank,node,relation,index,filtered,est_rows,plan_cost\nT2,browse,1,Index Scan,requirement_versions,{identifier},no,9,1\n"
+    )
+    assert scrub.scan_tree(tmp_path, identities=["someoneelse"]) == []
+    (tmp_path / "plans.csv").write_text(
+        f"tier,scenario,rank,node,relation,index,filtered,est_rows,plan_cost\nT2,browse,1,Index Scan,requirement_versions,{token},no,9,1\n"
+    )
+    assert [f.rule for f in scrub.scan_tree(tmp_path, identities=["someoneelse"])] == ["long opaque string (possible secret)"]

@@ -42,7 +42,7 @@ ALLOWED_FILES: dict = {
         "schema_version", "host_label", "commit", "date", "mode", "tiers", "breadth", "density", "seed", "profiles_version",
         "scenarios", "repeats", "workers", "workers_auto", "image_source", "caps", "shared_host", "non_publishable", "non_publishable_reasons",
         "aborted", "comparable_with", "durations_s", "scenario_users", "warmup_s", "measure_s", "snapshot_used", "startup_seconds",
-        "migrations_applied", "notes", "profiling", "heap_live_mib", "heap_peak_mib",
+        "migrations_applied", "notes", "profiling", "heap_live_mib", "heap_peak_mib", "postgres", "db_pool",
     },
     "dataset.json": {"schema_version", "datasets"},
     "samples.csv": {"tier", "scenario", "repeat", "service", "t_seconds", "mem_mib", "mem_limit_mib", "cpu_percent"},
@@ -53,7 +53,9 @@ ALLOWED_FILES: dict = {
     "queries.csv": {"tier", "scenario", "request", "requests", "queries_per_request", "db_ms_per_request"},
     "processes.csv": {"tier", "scenario", "repeat", "role", "index", "rss_mib", "pss_mib", "private_mib", "shared_mib"},
     "heap.csv": {"kind", "name", "mib", "allocations"},
-    "pgstat.csv": {"tier", "scenario", "calls", "total_ms", "mean_ms", "rows", "query"},
+    "pgstat.csv": {"tier", "scenario", "calls", "total_ms", "mean_ms", "rows", "read_blocks", "temp_blocks", "query"},
+    "pgdb.csv": {"tier", "scenario", "connections_peak", "idle_in_transaction_peak", "cache_hit_percent", "temp_files", "temp_mib", "deadlocks"},
+    "plans.csv": {"tier", "scenario", "rank", "node", "relation", "index", "filtered", "est_rows", "plan_cost"},
 }
 #: Keys of each entry in `dataset.json`'s `datasets` list (one per tier run).
 DATASET_ENTRY_KEYS = {"tier", "spec", "rows", "link_degree_histogram", "integrity_problems", "database_bytes", "generation_seconds"}
@@ -65,7 +67,9 @@ LATENCY_COLUMNS = (
 QUERY_COLUMNS = ("tier", "scenario", "request", "requests", "queries_per_request", "db_ms_per_request")
 PROCESS_COLUMNS = ("tier", "scenario", "repeat", "role", "index", "rss_mib", "pss_mib", "private_mib", "shared_mib")
 HEAP_COLUMNS = ("kind", "name", "mib", "allocations")
-PGSTAT_COLUMNS = ("tier", "scenario", "calls", "total_ms", "mean_ms", "rows", "query")
+PGSTAT_COLUMNS = ("tier", "scenario", "calls", "total_ms", "mean_ms", "rows", "read_blocks", "temp_blocks", "query")
+PGDB_COLUMNS = ("tier", "scenario", "connections_peak", "idle_in_transaction_peak", "cache_hit_percent", "temp_files", "temp_mib", "deadlocks")
+PLAN_COLUMNS = ("tier", "scenario", "rank", "node", "relation", "index", "filtered", "est_rows", "plan_cost")
 ALLOWED_SUFFIXES = (".svg",)
 ROOT_FILES = ("README.md", ".gitkeep")
 
@@ -89,6 +93,10 @@ _PATTERNS = (
     ("password assignment", re.compile(r"(?i)(?:password|secret|token|api[_-]?key)\s*[:=]\s*[^\s,;]{6,}")),
 )
 _OPAQUE_STRING = re.compile(r"\b[A-Za-z0-9_-]{48,}\b")
+#: A long snake_case name (a database index or alias such as `requirement_versions_requirement_id_version_number_key`)
+#: is not a secret: random tokens are mixed-case or hex, and one made only of lowercase words joined by underscores
+#: would also have to be 48+ characters of that shape by chance.
+_SNAKE_IDENTIFIER = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+){2,}$")
 
 
 @dataclass(frozen=True)
@@ -132,7 +140,7 @@ def _scan_text(rel: str, text: str, identities: Iterable, *, opaque: bool) -> li
         for rule, pattern in _PATTERNS:
             if pattern.search(line):
                 findings.append(Finding(rel, number, rule))
-        if opaque and _OPAQUE_STRING.search(line):
+        if opaque and any(not _SNAKE_IDENTIFIER.match(token) for token in _OPAQUE_STRING.findall(line)):
             findings.append(Finding(rel, number, "long opaque string (possible secret)"))
     return findings
 
