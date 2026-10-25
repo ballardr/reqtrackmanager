@@ -2,7 +2,7 @@
 
 See [future-modules-2026-09-index.md](future-modules-2026-09-index.md) for cross-cutting architecture. Source requirement: [overview §47](completed/future-modules-2026-09-overview.md) (read-only; `docs/requirements.md` stays authoritative).
 
-**Status:** Re-planned 2026-10-20 (supersedes the 2026-09 plan, which predated the core report framework). Not started. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`.
+**Status:** Re-planned 2026-10-20 (supersedes the 2026-09 plan, which predated the core report framework). Phase 0 done 2026-10-26. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`.
 
 ## What this module is now
 
@@ -37,9 +37,9 @@ Three orthogonal axes, kept separate: **layout** (what is reported), **branding 
 | D4 | Group 1 = coded templating (text view + live preview). Group 2 = WYSIWYG editing the same tree, library chosen in its own Phase 0. | User |
 | D5 | Widgets sit on their own line, `[[widget.key param=value]]`; parameters validated by the widget's existing `ReportParamDefinition`s; run with the runner's permissions. | User |
 | D6 | Output formats: PDF, DOCX, ODT, HTML, CSV, XLSX, ODS, as pluggable renderers. DOCX and XLSX ship first; ODT/ODS follow once the renderer interface has proved itself (staging is **Agent**; the user listed all seven for release one — confirm). | User / Agent |
-| D7 | PDF engine decided by a Phase 0 bake-off, not up front. User leans HTML→PDF with per-format renderers kept as visually similar as possible. | User (lean), Agent (bake-off) |
+| D7 | **PDF engine: stay on ReportLab.** The Phase 0 bake-off measured WeasyPrint at up to 14 times the memory (2.2 GB at 20,000 rows) and 3 to 10 times the time, so it was rejected; ReportLab embeds equations and SVG figures as vector through `svglib` (tested). HTML preview and the HTML format get their own renderer over the same neutral model. Known PDF limit: no Arabic/Indic shaping, and CJK needs a CJK font (`docs/decisions.md`, "Custom reports Phase 0"). | User |
 | D8 | Rejected: Jinja/Liquid/Handlebars. They emit text, not the block model, and open template injection and unvalidated field access. The parser is ours: each, if, field, widget; no expressions. | Agent |
-| D9 | Math: delimiters `\( \)` and `$$ $$`, never bare `$`. Recognised in authored text **and in record fields a provider marks math-capable**. Record-sourced math goes through a restricted-TeX sanitiser (no links, no includes, capped macro expansion). | User (scope), Agent (delimiters, sanitiser) |
+| D9 | Math: delimiters `\( \)` and `$$ $$`, never bare `$`. Recognised in authored text **and in record fields a provider marks math-capable**. TeX is untrusted: a command allow-list runs before conversion (no links, no includes). PDF/HTML show a server-made `ziamath` SVG (plain SVG 1 mode; the PDF embeds it through `svglib`), DOCX a tested OMML subset with an image fallback. | User (scope), Agent (delimiters, sanitiser, renderers) |
 | D10 | Every artefact type declares report fields or a stated reason, enforced by a test (same pattern as global search). Fields are opt-in; Restricted and consent-sensitive columns are excluded by omission. | User |
 | D11 | Provenance: a `GeneratedReport` row per run (layout id+version, params, scope, caller, UTC time, engine version, format, widgets used, record counts and, for versioned types, record versions; baseline optional until Module 8). No output at rest for synchronous runs. | User (row only), Agent (fields) |
 | D12 | Layouts live at organisation **and** project level from day one. | User |
@@ -50,18 +50,18 @@ Three orthogonal axes, kept separate: **layout** (what is reported), **branding 
 
 ## Status / Resume Here
 
-0 / 16 phases complete. Phase 0 is next.
+1 / 16 phases complete (Phase 0, 2026-10-26; findings in `docs/decisions.md`, "Custom reports Phase 0"). Phase 1 is next. D6, D15 and D16 still need user sign-off before Phases 3 and 12.
 
 | # | Phase | Group | Status |
 |---|-------|-------|--------|
-| 0 | Exploratory: PDF-engine bake-off, math, ODF libraries, tree schema | 1 | [ ] |
+| 0 | Exploratory: PDF-engine bake-off, math, ODF libraries, tree schema | 1 | [x] |
 | 1 | Report field registry and traversal | 1 | [ ] |
 | 2 | Layout model, tree schema, versioning, evaluator | 1 | [ ] |
 | 3 | Tiers, permission, hide/restore, bundle export/import | 1 | [ ] |
 | 4 | Text view: parser, serialiser, round-trip | 1 | [ ] |
 | 5 | Run pipeline: caps, provenance, catalogue and MCP merge | 1 | [ ] |
 | 6 | Widgets | 1 | [ ] |
-| 7 | Renderers: interface, HTML, CSV/XLSX, DOCX, PDF (7b: migrate existing reports if the engine changes) | 1 | [ ] |
+| 7 | Renderers: interface, HTML, CSV/XLSX, DOCX, PDF | 1 | [ ] |
 | 8 | Designer UI (text view, field picker, live preview) | 1 | [ ] |
 | 9 | Math | 1 | [ ] |
 | 10 | Async runs, expiring output, notification | 1 | [ ] |
@@ -92,7 +92,7 @@ flowchart LR
 
 Each phase: **Why** (risk addressed) and **Outcome**. Every phase also carries the standing checklist below.
 
-**0 — Exploratory.** Bake-off of three PDF paths: ReportLab with equation images, WeasyPrint on HTML, headless Chromium on HTML. Criteria: fidelity to the HTML view, image weight, lock-down of fetches (no `file://`, no network; images only as pre-resolved bytes), effort to migrate the 30+ existing reports, header/footer/page-number/landscape/repeating-header support, and SVG figures (needed by [Module 16](module-16-workflow-capture-plan.md)'s diagrams): inline-SVG fidelity per engine, the rasteriser DOCX needs because `python-docx` cannot embed SVG, bundled fonts and label wrapping. Also: LaTeX→OMML for DOCX (`latex2mathml` + Office's `MML2OMML.XSL`, whose redistribution terms need checking), ODF libraries for ODT/ODS, the draft tree vocabulary, how a Pain Point's affected Stakeholders are stored (assumed `ArtefactLink`; verify), and the sync/async threshold method. *Why:* the engine choice is expensive to reverse and switching engines alone does not solve math without a browser. *Outcome:* signed-off decisions in `docs/decisions.md`.
+**0 — Exploratory.** Bake-off of three PDF paths: ReportLab with equation images, WeasyPrint on HTML, headless Chromium on HTML. Criteria: fidelity to the HTML view, image weight, lock-down of fetches (no `file://`, no network; images only as pre-resolved bytes), effort to migrate the 30+ existing reports, header/footer/page-number/landscape/repeating-header support, and SVG figures (needed by [Module 16](module-16-workflow-capture-plan.md)'s diagrams): inline-SVG fidelity per engine, the rasteriser DOCX needs because `python-docx` cannot embed SVG, bundled fonts and label wrapping. Also: LaTeX→OMML for DOCX (`latex2mathml` + Office's `MML2OMML.XSL`, whose redistribution terms need checking), ODF libraries for ODT/ODS, the draft tree vocabulary, how a Pain Point's affected Stakeholders are stored (assumed `ArtefactLink`; verify), and the sync/async threshold method. *Why:* the engine choice is expensive to reverse and switching engines alone does not solve math without a browser. *Outcome:* decisions in `docs/decisions.md` (done: stay on ReportLab, `ziamath` + `svglib`, OMML subset with image fallback, `resvg-py`, `odfpy`, `openpyxl`).
 
 **1 — Field registry and traversal.** A generic `ModuleDefinition.report_fields[type]` provider (modelled on `search_providers`): opt-in fields with label, kind (text, number, date, enum with label map, math-capable text) and getter; batch loader; codes via `ctx.code`/`org_code`, tags via `ctx.tag_text`. Traversal reuses `link_graph` as the single authorisation point; hidden nodes are counted, never named. Coverage test with `not_reportable` reasons. *Why:* without a registry each layout would hand-query tables, leak columns or break the module boundary. *Outcome:* every registered type is selectable in a layout or has a recorded reason.
 
@@ -106,11 +106,11 @@ Each phase: **Why** (risk addressed) and **Outcome**. Every phase also carries t
 
 **6 — Widgets.** Adapter exposing any `ReportDefinition` result (sections, metrics, notes) as blocks; per-widget parameter forms; widget keys listed in the designer. *Why:* D1/D5, reuse of existing computed reports. *Outcome:* `[[widget.gap-analysis]]` embeds in a document layout.
 
-**7 — Renderers.** Pluggable renderer interface over the neutral model; HTML (also the live preview), CSV (zip when multi-table), XLSX, DOCX, PDF per Phase 0. Spreadsheet cells go through `csv_safe`-equivalent formula guards. The neutral `Image` block gains an SVG-source form that each renderer converts (today it holds raster bytes only), so modules can contribute vector figures without importing an engine. If the engine changes, 7b moves existing reports behind golden-file comparison and retires ReportLab only after parity. *Why:* formats must not drift. *Outcome:* one layout, every shipped format, visually consistent documents.
+**7 — Renderers.** Pluggable renderer interface over the neutral model; HTML (also the live preview), CSV (zip when multi-table), XLSX, DOCX, PDF stays on ReportLab, with a separate HTML renderer for the preview and format; equations and SVG figures embed as vector through `svglib` (SVG rejected if it contains a DOCTYPE or entity; `resvg-py` PNG if `svglib` raises). A bundled Unicode font is registered, and the same font directory goes to `resvg-py`. Spreadsheet cells go through `csv_safe`-equivalent formula guards. The neutral `Image` block gains an SVG-source form that each renderer converts (today it holds raster bytes only), so modules can contribute vector figures without importing an engine. Existing reports keep their ReportLab path. *Why:* formats must not drift. *Outcome:* one layout, every shipped format, visually consistent documents.
 
 **8 — Designer UI.** Create/edit/version/compare, text editor with parse errors, field picker (`{{…}}` insertion), widget picker, live preview, shared `Tabs`/`Toast`/confirm patterns, `help` text on non-obvious fields. *Outcome:* a non-developer can reproduce the example report.
 
-**9 — Math.** `Equation` block; KaTeX for screen and HTML; DOCX native equations; PDF per Phase 0; sanitiser for record-sourced TeX; fallback shows the source. *Why:* annotations; TeX in data is an injection path. *Outcome:* equations render in every document format or degrade to source.
+**9 — Math.** `Equation` block; KaTeX for screen and HTML; PDF equations from `ziamath` with `svg2 = False`; DOCX native equations for the subset a golden test pins (square roots need `<m:deg>` added to `mathml2omml` output) with the equation image otherwise; verify one sample in Word and LibreOffice (with `libreoffice-math`) before release; command allow-list before TeX conversion and element allow-list on the SVG; fallback shows the source. *Why:* annotations; TeX in data is an injection path. *Outcome:* equations render in every document format or degrade to source.
 
 **10 — Async runs.** Job state on `GeneratedReport` (queued, running, ready, expired, failed), object-storage output, a notification type, an organisation setting for retention (with a platform ceiling), a singleton expiry job started through the lifespan's `start_singletons`, download that re-checks caller and access, deletion with the organisation. Update the data-retention and classification policies and note any encryption gap. *Why:* D14; stored output is Confidential data at rest. *Outcome:* a large run notifies when ready and disappears on schedule.
 
@@ -138,7 +138,7 @@ Each phase: **Why** (risk addressed) and **Outcome**. Every phase also carries t
 
 | Risk | Mitigation |
 |------|------------|
-| Engine switch regresses existing PDFs | Golden-file parity before ReportLab is retired (7b) |
+| ReportLab cannot shape Arabic/Indic text | Accepted limit; DOCX, ODT and HTML are unaffected; revisit if such users appear |
 | Text view and JSON drift | Single declaration per block type; round-trip property test |
 | Unbounded traversal or huge output | Depth, node and row caps; async path; timeout |
 | Layout author reads data they should not | Runs with the runner's permissions; hidden nodes counted not named |
@@ -147,12 +147,12 @@ Each phase: **Why** (risk addressed) and **Outcome**. Every phase also carries t
 
 ## Open questions
 
-1. Final tree vocabulary and the text syntax's exact grammar (Phase 0).
+1. Tree vocabulary drafted in Phase 0; the text syntax's exact grammar is Phase 4's.
 2. Sync/async threshold: a cheap count pre-pass against a limit is proposed (an in-flight hand-off across workers is not) — **Agent**, tune with data.
 3. D15 (additive project visibility) and D16 (layouts are not artefact types) need sign-off.
 4. D6 staging of ODT/ODS: confirm Phase 12 is acceptable for release one.
 5. Whether the manage permission is separate for org and project tiers (proposed: one permission, scoped by where it is granted).
-6. Restricted-TeX subset and macro-expansion limit (Phase 0).
+6. Restricted-TeX subset: `latex2mathml` has no macros, so the sanitiser allow-lists commands rather than capping expansion; the exact allow-list is Phase 9's.
 
 ## Acceptance criteria (overview §48, plus this plan)
 

@@ -12056,3 +12056,105 @@ An end-to-end audit (authentication, authorisation, tenant isolation, files, out
 ### Not applicable, checked
 
 *Seed scripts, codes, search, bundles, parity, time, modules, MCP skill:* no model, record type or tool changed. *Module boundary:* no core file imports a module; `org_membership` and `net_guard` are core services with no per-module cases. *IPv6:* the new middleware adds no listener. *Time:* no stored time; token lifetimes are UTC `exp` claims.
+
+## Custom reports Phase 0: PDF engine, math, ODF and tree bake-off (2026-10-26)
+
+Exploratory; the one shipped change is the PDF font fix recorded in the next entry. Prototypes ran in throwaway `python:3.12-slim` containers (the backend image's base) against shared samples (title, equations, inline SVG, hostile `<img>` sources, long tables with repeating header, a named landscape `@page`, page-number footer, a data-URI font).
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **PDF engine: stay on ReportLab.** WeasyPrint was rejected on its measured memory (553 MB at 5,000 rows, 2.2 GB at 20,000, against 71 MB and 156 MB) and speed; ReportLab also handles equations and SVG figures (below). The document family gets an HTML renderer for the preview and the HTML format, separate from the PDF renderer; each is about 150 lines over the neutral model. | User |
+| 2 | **Math in PDF and HTML: server-side TeX to SVG with `ziamath`** (pure Python, MIT, about 3 MB, 10 to 40 ms an equation), configured for plain SVG 1 output (`zm.config.svg2 = False`); the PDF embeds it as vector through `svglib`. | Agent |
+| 3 | **Math in DOCX: OMML from `latex2mathml` + `mathml2omml` (both MIT) for a tested subset, an image of the same SVG for anything outside it.** | Agent |
+| 4 | **SVG figures: vector into the PDF through `svglib`** (LGPL-3.0, compatible with this GPL-3 project; needs `lxml`, `tinycss2`, `cssselect2`); **PNG through `resvg-py` for DOCX and as the PDF fallback**, always given an explicit font directory. | Agent |
+| 5 | **ODT/ODS: `odfpy`** (Apache-2.0); **XLSX: `openpyxl`** write-only (MIT). | Agent |
+| 6 | **Register a bundled Unicode TrueType font for PDFs.** The PDF renderer only ever used the built-in Helvetica, so text outside Latin-1 printed as black boxes (fixed, next entry). | Agent |
+
+### PDF engine comparison (WeasyPrint measured; the ReportLab column is today's behaviour plus the tests below)
+
+| Criterion | ReportLab (today) | WeasyPrint 70 | Headless Chromium |
+|---|---|---|---|
+| Math in the PDF | Equation images | Not rendered from MathML (flattened to text), so SVG images are used | Native MathML |
+| Inline SVG | Needs conversion | Renders | Renders |
+| Repeating header, landscape section, page-number margin box, bundled font | Hand-built | Verified (font via `data:` URI embeds as a subset) | Verified |
+| Fetch lock-down | None by construction | `URLFetcher` subclass: `file://`, `http://` and metadata-IP requests reached it and were refused; `data:` only | Interception aborted all; JavaScript off; sandbox on as an unprivileged user |
+| Image weight over base | 0 | about 20 MB | about 460 MB |
+| Files to change to migrate | n/a | 5 (`report_pdf.py`, `report_document.py`, `report_framework.py`, `reports.py`, `modules/compliance/reports.py`); every other report already uses the neutral model | Same 5 |
+
+### Scale (same 4-column wrapped-text table; time / peak memory)
+
+| Rows (pages) | ReportLab | WeasyPrint |
+|---|---|---|
+| 500 | 0.4 s / 45 MB | 4.0 s / 118 MB |
+| 5,000 (162) | 5.8 s / 71 MB | 38 s / 553 MB |
+| 20,000 (646) | 52 s / 156 MB | 178 s / 2.2 GB |
+
+WeasyPrint was 3 to 10 times slower and 2 to 14 times heavier than ReportLab, which is why it was rejected: a run would need a row cap, an async path, and a limited subprocess to stay safe. Chromium was not scale-tested.
+
+### ReportLab with equations, figures and Unicode (tested)
+
+- **Equations (vector):** `ziamath` SVG embedded through `svglib` renders correctly (fractions, roots, sums, integrals, matrices, Greek, operators) in 3 to 27 ms **only with `zm.config.svg2 = False`**; ziamath's default SVG 2 output (`symbol`/`use`) rendered garbled in `svglib`. Equations render as SVG-to-PNG through `resvg-py` as well (3x zoom, 3 to 9 KB each); that is the fallback if `svglib` raises. `\hat` and `\lim_{x\to 0}` render in both.
+- **Figures:** the sample diagram (shapes, text, a curve) rendered through `svglib` in vector. Untested: markers, gradients, filters; any `svglib` failure falls back to the `resvg-py` PNG.
+- **Hostile SVG through `svglib`** (loaded from a string, so there is no base path): `file://` and `http://` image references were not fetched (an error was logged), an external entity expanded to nothing, and a billion-laughs style entity chain produced no text. Defence in depth still applies: reject any SVG containing `<!DOCTYPE` or `<!ENTITY` before parsing.
+- **Existing defect found: PDFs use only the built-in Helvetica** (no `registerFont` anywhere in `backend/app`), so Cyrillic and letters such as Polish `ł` print as black boxes today (Latin-1 and the euro sign are fine). A registered Unicode TrueType font fixes Latin Extended, Cyrillic and Greek; **Arabic and Hindi are not shaped, and CJK needs a CJK font**, so those remain a known PDF limitation (DOCX, ODT and HTML are unaffected). WeasyPrint (Pango) would have handled shaping; this is the one capability given up.
+
+### Math
+
+- **TeX is untrusted input.** `latex2mathml` is lenient: `\href{http://x}{y}` became `<mrow href="http://x">` and `\input{/etc/passwd}` passed through as text, so a command allow-list runs before conversion.
+- **`ziamath` output is safe by construction:** for `\href`, `\url`, `\input`, `\includegraphics` and a `<script>` string the SVG contained only `svg`, `symbol`, `use`, `path` and `rect` elements and one internal reference (`#STIXTwoMath`); glyphs are paths, so no font is needed. The renderer still allow-lists elements and attributes of the SVG it embeds. Inline equations should use text style and be sized in `em` (a display-style sum rendered too small inline). A parse error (`\text{<img ...>}`) raised and degrades to the source text. A matrix, `cases` and `aligned` all rendered; matplotlib's math renderer failed on all three, so it is rejected.
+- **DOCX, verified in LibreOffice only (Word is not checked and cannot be automated):** `mathml2omml` output is valid for fractions, sums, integrals, matrices, Greek letters and operators, but emits `<m:rad>` without the required `<m:deg>`, so every square root rendered as an empty box; adding `<m:radPr><m:degHide m:val="1"/></m:radPr><m:deg/>` fixed it. `\hat{x}` and `\lim_{x\to 0}` still render a missing-glyph marker. Hence the supported subset is fixed by a golden test, and anything outside it falls back to the equation image. A person must open one sample in Word before release.
+- LibreOffice drops OMML silently unless `libreoffice-math` is installed; only the test environment needs LibreOffice, never production.
+- Microsoft's `MML2OMML.XSL` is not used, so its redistribution terms do not matter.
+
+### SVG figures
+
+- `python-docx` cannot embed SVG; DOCX figures are rasterised with `resvg-py`, which draws shapes but **omits all text unless given fonts** (`font_dirs`), so the renderer bundles and passes a font directory. `cairosvg` (LGPL, needs `libcairo`) crashed on an SVG with an undefined marker, so it is rejected.
+- SVG text does not wrap and `foreignObject` is not relied on: a module producing a diagram (Module 16) must wrap its own labels.
+
+### ODF and spreadsheets
+
+`odfpy` wrote an ODT and a multi-row ODS; LibreOffice opened the ODT (to PDF) and read the ODS back correctly (to CSV). Formula-injection guards (`csv_safe`) apply to XLSX and ODS cells too.
+
+### Data model facts
+
+- A Stakeholder's Pain Points are `ArtefactLink` rows of the module-registered relationship kind `experiences_pain_point` (`modules/stakeholders/relationships.py`); the example report traverses the generic link graph and needs no module-specific query.
+- The neutral model has eight blocks (`Heading`, `Paragraph`, `Note`, `BulletList`, `Image`, `Table`, `Gap`, `PageBreak`); `Image` holds raster bytes only and gains an SVG form.
+
+### Draft tree vocabulary
+
+`schema_version`, then a list of nodes. Document family: `heading(level,text)`, `text(restricted markdown)`, `table(source,columns)`, `each(record_type, where, children)` (nested over link kinds), `if(field, op, value, children)`, `widget(key, params)`, `equation(tex)`, `image(asset)`, `page_break`, `section(orientation)`. Table family: `sheet(name, source, columns)`. Values are `{{record.field}}` only: no expressions, no raw HTML node. Text grammar: one directive per line, `@each requirement` / `@end`, `[[widget.key a=b]]`, `{{field}}`; the exact grammar is for the text-view phase.
+
+### Sync/async threshold
+
+A cheap count pre-pass (record counts per `each` source, multiplied through nesting) compared with an organisation-tunable limit chooses synchronous or queued before any rendering. ReportLab built 20,000 rows in 52 s and 156 MB, so the limit is set by time, not memory; tune with the profiling dataset tiers.
+
+### Review (identify, verify, remediate)
+
+*Identify:* hostile-input paths a report engine adds: URL fetches from record text, TeX in data, SVG in data, a lenient TeX converter, a renderer exhausting memory. *Verify:* each was exercised (fetch attempts observed and refused; `\href` leak observed in `latex2mathml`; `ziamath` output inspected for dangerous elements; `cairosvg` crash and `resvg` text omission observed; `svglib` fetch and entity behaviour observed; WeasyPrint memory measured to 2.2 GB). *Remediate:* carried into the phase specs as requirements (command allow-list before conversion, SVG element allow-list and DOCTYPE rejection, no raw HTML node, rasteriser failures degrade to a placeholder). No regression against an adopted policy.
+
+### Not applicable, checked
+
+*Seed scripts, codes, search, bundles, parity, time, modules, MCP skill, docs website:* no model, record type, tool or user-visible surface changed.
+
+## PDF reports: text outside Latin-1 printed as black boxes (2026-10-26)
+
+**Decided by: Agent** (the approach: keep Helvetica, switch only unprintable characters); **User** asked for the fix to be made now.
+
+**Defect (found while testing ReportLab for custom reports):** the PDF renderer used only the built-in Helvetica and registered no font, so Cyrillic, Polish letters such as `ł` and similar printed as black boxes in every PDF (requirements report, module reports, Compliance reports, record-list report). Latin-1 text and the euro sign were fine.
+
+**Fix:** `services/report_fonts.py` registers the bundled DejaVu Sans (regular and bold, `app/assets/fonts`, Bitstream Vera / DejaVu licence alongside; 1.4 MB). `report_document.safe` wraps each run of characters Helvetica cannot encode (Windows-1252) in a `<font>` tag after escaping, so every Paragraph (headings, text, notes, lists, table cells, Compliance's own cells) is covered at one choke point; `styled_table` turns a plain string cell that needs it into a Paragraph; the footer is drawn run by run; column sizing measures each character in its own font. Text Helvetica can print is not touched, so existing reports look as before (a heading or header cell keeps its bold weight in the fallback run). Italic maps to regular (no oblique shipped).
+
+**Known limit (recorded in the README, the architecture document and the docs website):** ReportLab does not shape or reorder text, so Arabic and Indic scripts are not supported in PDFs, and CJK needs a font that is not shipped; those characters still print as missing-glyph boxes. The Word export stores the text as written.
+
+**Tests:** `backend/tests/test_report_fonts.py` (escaping survives, runs wrapped once, bold variant, widths, the PDF embeds the Unicode font only when text needs it, every block type and the footer, plain-cell conversion, footer centring). The existing report suites (155 tests) and the Compliance and report-code tests (40) pass; a rendered sample was inspected by eye (Cyrillic and Polish heading, paragraph, both table styles, footer).
+
+### Review (identify, verify, remediate)
+
+*Identify:* every place text reaches a ReportLab surface: Paragraph (through `safe`), plain table strings (`styled_table`), the canvas footer, string-width measurement, and document metadata (ReportLab encodes it itself). Compliance and the framework use the same helpers, so no per-module change was needed. *Verify:* the escaping test shows `<img src="file://...">` stays escaped and only the `<font>` tag is added; the Latin-1 test shows unchanged output. *Remediate:* the above. A new binary asset was added; its licence file ships with it.
+
+### Not applicable, checked
+
+*Authentication, RBAC, secrets, audit, retention, tenant isolation:* untouched. *Modules:* no module file changed; the fix is in core services. *Seed scripts, codes, search, bundles, parity, time, MCP skill:* no model or tool changed. *IPv6:* no listener. *UI:* no frontend change, so no Storybook or Playwright addition.
+
