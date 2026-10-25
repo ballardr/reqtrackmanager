@@ -160,6 +160,9 @@ services:
       STORAGE_S3_SECRET_KEY: ${STORAGE_SECRET_KEY:-reqtrackapp}
       SMTP_HOST: mailhog
       SMTP_PORT: 1025
+      # An organisation's own SMTP relay must resolve to a public address by default; the suite points one at
+      # this stack's MailHog, which is on the private Docker network.
+      ORG_SMTP_ALLOW_PRIVATE_NETWORK_TARGETS: "true"
       DEPLOYMENT_NOTIFICATION_EMAIL: ${DEPLOYMENT_NOTIFICATION_EMAIL:-}
       PUBLIC_BACKEND_URL: ${PUBLIC_BACKEND_URL:-http://localhost:8000}
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}

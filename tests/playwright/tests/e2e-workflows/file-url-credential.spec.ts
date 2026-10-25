@@ -23,7 +23,7 @@ test.describe("file URL credential", () => {
           multipart: { file: { name: "avatar.png", mimeType: "image/png", buffer: Buffer.from("fake-png-bytes") } },
         });
         expect(upload.ok()).toBeTruthy();
-        await page.reload();
+        await page.goto("/preferences/profile");
         await expect(page.locator('img[src*="/api/v1/files/"]').first()).toBeAttached();
       });
 
