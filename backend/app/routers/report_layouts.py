@@ -24,6 +24,7 @@ modules the organisation (or project) can use, for the designer's widget picker.
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -35,10 +36,17 @@ from app.models.organization import Organization
 from app.models.project import Project
 from app.models.report_layout import ReportLayout, ReportLayoutVersion
 from app.models.user import User
+from app.routers.custom_reports import guard_run
 from app.schemas.report_layout import (
+    ReportFieldCatalogueOut,
+    ReportFieldOut,
+    ReportFieldTypeOut,
     ReportLayoutCreate,
     ReportLayoutDetailOut,
     ReportLayoutOut,
+    ReportLayoutPreviewOut,
+    ReportLayoutPreviewRequest,
+    ReportLayoutPreviewSheetOut,
     ReportLayoutRestore,
     ReportLayoutRestoreOut,
     ReportLayoutSave,
@@ -53,7 +61,7 @@ from app.schemas.report_layout import (
     ReportLayoutVisibilitySet,
     ReportWidgetOut,
 )
-from app.services import report_layout_scope, report_layout_text, report_layouts
+from app.services import report_layout_designer, report_layout_scope, report_layout_text, report_layouts
 from app.services.rbac import (
     MANAGE_ORG_REPORT_LAYOUTS,
     MANAGE_PROJECT_REPORT_LAYOUTS,
@@ -141,6 +149,50 @@ def _widgets_out(widgets: list[WidgetInfo]) -> list[ReportWidgetOut]:
         )
         for w in widgets
     ]
+
+
+def _catalogue_out(catalogue: report_layout_designer.FieldCatalogue) -> ReportFieldCatalogueOut:
+    """The field catalogue as the designer's picker reads it."""
+    return ReportFieldCatalogueOut(
+        types=[
+            ReportFieldTypeOut(
+                type=t.type, label=t.label,
+                fields=[
+                    ReportFieldOut(key=f.key, label=f.label, kind=f.kind, reserved=f.reserved, choices=list(f.choices))
+                    for f in t.fields
+                ],
+            )
+            for t in catalogue.types
+        ],
+        placeholders=list(catalogue.placeholders), group_fields=catalogue.group_fields, schema_version=catalogue.schema_version,
+    )
+
+
+def _draft(body: ReportLayoutPreviewRequest) -> tuple[dict[str, Any] | None, ReportLayoutPreviewOut | None]:
+    """The tree to preview: the given one, or the text's. A draft with problems answers `(None, <not ok outcome>)`.
+
+    Raises:
+        HTTPException: 422 a given tree that is not valid.
+    """
+    if body.tree is not None:
+        return body.tree, None
+    assert body.text is not None
+    parsed = _parse_text(ReportLayoutTextParse(text=body.text))
+    if not parsed.ok or parsed.tree is None:
+        return None, ReportLayoutPreviewOut(ok=False, errors=parsed.errors)
+    return parsed.tree, None
+
+
+def _preview_out(preview: report_layout_designer.Preview) -> ReportLayoutPreviewOut:
+    """A finished preview as the response."""
+    return ReportLayoutPreviewOut(
+        ok=True, family=preview.family, html=preview.html,
+        sheets=[
+            ReportLayoutPreviewSheetOut(name=s.name, columns=s.columns, rows=s.rows, total_rows=s.total_rows)
+            for s in preview.sheets
+        ],
+        warnings=preview.warnings, records_read=preview.records_read, duration_ms=preview.duration_ms, projects=preview.projects,
+    )
 
 
 def _get_owned(db: Session, layout_id: UUID, *, organization_id: UUID, project_id: UUID | None) -> ReportLayout:
@@ -241,6 +293,43 @@ def parse_org_layout_text(body: ReportLayoutTextParse, current_user: User = Depe
 def format_org_layout_text(body: ReportLayoutTextFormat, current_user: User = Depends(manage_org_layouts)) -> ReportLayoutTextOut:
     """Writes a valid tree as its text view; stores nothing."""
     return _format_text(body)
+
+
+@org_router.get("/fields", response_model=ReportFieldCatalogueOut)
+def list_org_fields(
+    organization_id: UUID, current_user: User = Depends(manage_org_layouts), db: Session = Depends(get_db),
+) -> ReportFieldCatalogueOut:
+    """The record types and fields an organisation layout may name: those of modules the organisation has enabled."""
+    return _catalogue_out(report_layout_designer.catalogue_for_organization(db, organization_id))
+
+
+@org_router.post("/preview", response_model=ReportLayoutPreviewOut)
+def preview_org_layout(
+    organization_id: UUID, body: ReportLayoutPreviewRequest,
+    current_user: User = Depends(manage_org_layouts), db: Session = Depends(get_db),
+) -> ReportLayoutPreviewOut:
+    """Evaluates an unsaved draft as an organisation-wide run would (once per project the caller can read, merged).
+
+    Stores, audits and logs nothing. A draft with text problems answers 200 with `ok` false and the positioned errors.
+
+    Raises:
+        HTTPException: 404 the organisation, or no project to run for; 422 an invalid tree or oversized selection;
+            413/408 a run over its limits.
+    """
+    organization = db.get(Organization, organization_id)
+    if organization is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    tree, failed = _draft(body)
+    if failed is not None or tree is None:
+        assert failed is not None
+        return failed
+    try:
+        preview = guard_run(lambda: report_layout_designer.preview_for_organization(
+            db, current_user, organization, tree=tree, name=body.name, project_ids=body.project_ids,
+        ))
+    except InvalidLayoutError as exc:
+        raise _bad_request(exc) from exc
+    return _preview_out(preview)
 
 
 @org_router.get("/widgets", response_model=list[ReportWidgetOut])
@@ -400,6 +489,40 @@ def format_project_layout_text(
 ) -> ReportLayoutTextOut:
     """Writes a valid tree as its text view; stores nothing."""
     return _format_text(body)
+
+
+@project_router.get("/fields", response_model=ReportFieldCatalogueOut)
+def list_project_fields(
+    project_id: UUID, current_user: User = Depends(manage_project_layouts), db: Session = Depends(get_db),
+) -> ReportFieldCatalogueOut:
+    """The record types and fields a project layout may name: those of modules enabled for the project."""
+    return _catalogue_out(report_layout_designer.catalogue_for_project(db, _project_or_404(db, project_id)))
+
+
+@project_router.post("/preview", response_model=ReportLayoutPreviewOut)
+def preview_project_layout(
+    project_id: UUID, body: ReportLayoutPreviewRequest,
+    current_user: User = Depends(manage_project_layouts), db: Session = Depends(get_db),
+) -> ReportLayoutPreviewOut:
+    """Evaluates an unsaved draft for this project as a run would, with the caller's own read access.
+
+    Stores, audits and logs nothing. A draft with text problems answers 200 with `ok` false and the positioned errors.
+
+    Raises:
+        HTTPException: 404 the project; 422 an invalid tree; 413/408 a run over its limits.
+    """
+    project = _project_or_404(db, project_id)
+    tree, failed = _draft(body)
+    if failed is not None or tree is None:
+        assert failed is not None
+        return failed
+    try:
+        preview = guard_run(lambda: report_layout_designer.preview_for_project(
+            db, current_user, project, tree=tree, name=body.name, include_children=body.include_children,
+        ))
+    except InvalidLayoutError as exc:
+        raise _bad_request(exc) from exc
+    return _preview_out(preview)
 
 
 @project_router.get("/widgets", response_model=list[ReportWidgetOut])

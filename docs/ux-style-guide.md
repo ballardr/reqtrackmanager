@@ -1127,6 +1127,18 @@ Read left to right: each changed row is its own request, so one refusal never bl
 - Result feedback is one `Toast`: "N saved, M failed". A failed row keeps its changes and shows its message in place. The toolbar is a **Columns** icon menu (`Columns3`), an undo icon (**Discard changes**, restores the saved values) and **Save**, on the same row as the view toggle and before it, with a divider between the two groups (`<columns> <discard> <save> | <list> <grid>`): the page gives `RecordGrid` a `toolbarHost` element on that row and the grid renders its controls into it; the record count stays above the table; there is no Reload (the version lock catches a record changed elsewhere, and a page refresh reads the list again).
 - The list is cut at 500 rows and says so; narrow the filters to reach the rest. The grid is offered only to a person who may update the type's records.
 
+## Pattern: text designer (report layout designer)
+
+A record the author writes as text, not fills in as a form (a report layout), opens in a **designer page**, not a dialog, because the text, its problems, a preview and the tools that insert into it must sit side by side. First use: report layouts (`ReportLayoutDesigner`).
+
+- **Header and tabs.** `RecordHeader` (back link, name, kind and unsaved-changes badges, version, Edit details, object actions), then `Tabs`: **Design** and **History**. Left, the text; right, a `Tabs` aside of the tools (Preview, then pickers). The aside stacks under the text below 1100px. A layout shared from elsewhere is read-only with a note and **Make a copy** in the actions; its editing tools are not drawn.
+- **Check as you pause, list problems by line.** The text is checked by the server a moment after typing stops; each problem is one button, "Line 5, column 1: message", that moves the cursor there. A status line says "Checking…" or "The text is valid." Save and Preview are disabled until the text is valid, and say why (never colour alone).
+- **Pickers only insert.** A field, widget or block shortcut inserts text at the cursor (the end when the cursor was never placed, never before the first line); the author can still type what a picker does not offer, and the server decides what is valid.
+- **Save is a new version.** One primary **Save new version** with an optional note; no autosave. A concurrent save is reported with a **Reload** that confirms before it discards the author's text; leaving with unsaved changes uses a `ConfirmDialog`.
+- **Preview is explicit and sandboxed.** It runs on demand, never per keystroke; an HTML document shows in an iframe with an empty `sandbox` attribute.
+- **History compares by text.** Two selects choose the versions; added lines start with `+` and removed with `-` as well as being tinted.
+- The text box is the one place a monospace, non-wrapping `AutoGrowTextarea` is right; the shared field components are otherwise unchanged.
+
 ## Tokens
 
 `frontend/src/styles/theme.css` is already, functionally, the design system — CSS custom properties for colour, a working light/dark split, and a named spacing and radius scale. This section documents it as one, rather than proposing a new palette; every value below is already in the codebase.

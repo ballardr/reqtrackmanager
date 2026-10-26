@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.services.report_framework import ReportParamOut
 from app.services.report_layout_text import MAX_TEXT_VIEW_CHARS
@@ -177,3 +177,84 @@ class ReportWidgetOut(BaseModel):
     module_key: str
     module_name: str
     params: list[ReportParamOut]
+
+
+class ReportFieldOut(BaseModel):
+    """One field of a record type as the field picker shows it (`reserved` fields are the engine's own)."""
+
+    key: str
+    label: str
+    kind: str
+    reserved: bool = False
+    choices: list[str] = []
+
+
+class ReportFieldTypeOut(BaseModel):
+    """A reportable record type with its fields; `type` is what a block's source names."""
+
+    type: str
+    label: str
+    fields: list[ReportFieldOut]
+
+
+class ReportFieldCatalogueOut(BaseModel):
+    """What a layout may name: the record types the scope can use with their fields, the global `{{placeholders}}`
+    and the fields every group exposes (`{{group.value}}`, `{{group.count}}`) with their kinds."""
+
+    types: list[ReportFieldTypeOut]
+    placeholders: list[str]
+    group_fields: dict[str, str]
+    schema_version: int
+
+
+class ReportLayoutPreviewRequest(BaseModel):
+    """A draft to evaluate: its text view or its tree (exactly one).
+
+    Attributes:
+        text / tree: The draft.
+        name: The report title to print.
+        include_children: Project scope only: also read readable child projects.
+        project_ids: Organisation scope only: narrow the fan-out to these projects.
+    """
+
+    text: str | None = Field(default=None, max_length=MAX_TEXT_VIEW_CHARS)
+    tree: dict[str, Any] | None = None
+    name: str = Field(default="", max_length=200)
+    include_children: bool = False
+    project_ids: list[UUID] | None = Field(default=None, max_length=200)
+
+    @model_validator(mode="after")
+    def _one_draft(self) -> ReportLayoutPreviewRequest:
+        if (self.text is None) == (self.tree is None):
+            raise ValueError("Send either text or tree.")
+        return self
+
+
+class ReportLayoutPreviewSheetOut(BaseModel):
+    """One sheet of a table preview, capped; `total_rows` is the real count."""
+
+    name: str
+    columns: list[str]
+    rows: list[list[str]]
+    total_rows: int
+
+
+class ReportLayoutPreviewOut(BaseModel):
+    """The outcome of a preview. When the text has problems `ok` is false, `errors` names them and nothing was run.
+
+    Attributes:
+        html: A standalone, script-free HTML page (document family) to show in a sandboxed frame.
+        sheets: Capped sheets (table family).
+        warnings: Things the reader should know.
+        records_read / duration_ms / projects: Counters of the run.
+    """
+
+    ok: bool
+    errors: list[ReportLayoutTextError] = []
+    family: str | None = None
+    html: str | None = None
+    sheets: list[ReportLayoutPreviewSheetOut] = []
+    warnings: list[str] = []
+    records_read: int = 0
+    duration_ms: int = 0
+    projects: int = 0

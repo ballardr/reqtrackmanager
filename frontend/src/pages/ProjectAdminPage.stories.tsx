@@ -35,6 +35,7 @@ import {
   withTerminology,
   withToast,
 } from "../testing/storybook-helpers";
+import { buildLayoutSummary } from "../testing/reportLayoutFixtures";
 import { buildUsage, buildVocabulary } from "../testing/tagsFixtures";
 import { ProjectAdminPage } from "./ProjectAdminPage";
 
@@ -143,6 +144,7 @@ function mockProjectAdminApis(
       { key: "context_strategy.r1", title: "Pain point register", module_name: "Context & Strategy" },
     ];
     if (path.includes("/report-config")) return overrides.reportConfig ?? { default_report_template_id: null, content: [] };
+    if (path.endsWith("/report-layouts")) return [buildLayoutSummary({ project_id: PROJECT_ID })];
     if (path.includes("/report-templates")) return [];
     // Hierarchical projects (docs/decisions.md). Checked before the plain
     // "/users" check below — /orgs/{id}/users also matches that.
@@ -1161,6 +1163,22 @@ export const ReportSetupTab: Story = {
     );
     // Principle 7 — every mutation ends with feedback.
     await expect(within(document.body).getByText("Report setup saved.")).toBeInTheDocument();
+  },
+};
+
+/** Report Setup lists the project's report layouts, each opening in the designer. */
+export const ReportSetupListsTheReportLayouts: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Report Setup" }));
+    const table = await canvas.findByRole("table", { name: "Report layouts" });
+    await expect(within(table).getByRole("link", { name: /Requirements by component/ })).toHaveAttribute(
+      "href", expect.stringContaining("/report-layouts/layout-1"),
+    );
+    await expect(canvas.getByRole("button", { name: "New layout" })).toBeInTheDocument();
   },
 };
 

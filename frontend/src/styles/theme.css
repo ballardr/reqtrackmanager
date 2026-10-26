@@ -2746,3 +2746,93 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 .form-grid-wrap:has(.field-required) > .form-required-legend {
   display: block;
 }
+
+/* Report layout designer: the text editor and its tools side by side from 1100px, stacked below. */
+.layout-designer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+@media (min-width: 1100px) {
+  .layout-designer {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  }
+}
+
+/* The layout text: monospace, never wrapped so a line number in an error stays a line of the text. */
+.layout-editor {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  white-space: pre;
+  overflow-x: auto;
+  tab-size: 2;
+}
+
+.layout-problems {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.layout-problems button {
+  all: unset;
+  cursor: pointer;
+  color: var(--color-danger);
+  font-size: 0.85rem;
+}
+
+.layout-problems button:hover,
+.layout-problems button:focus-visible {
+  text-decoration: underline;
+}
+
+/* The preview page is untrusted markup in a sandboxed frame; it gets a white paper so its own styles read as printed. */
+.layout-preview-frame {
+  width: 100%;
+  height: 70vh;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: #ffffff;
+}
+
+.layout-field-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.layout-diff {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-alt);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.layout-diff-line {
+  display: block;
+  white-space: pre;
+}
+
+.layout-diff-line--add {
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+.layout-diff-line--remove {
+  background: color-mix(in srgb, var(--color-danger) 20%, transparent);
+}

@@ -1,6 +1,6 @@
 import { useMutation } from "../hooks/useMutation";
 import { ArrowDown, ArrowUp, Check, Download, Pencil, Plus, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
@@ -76,7 +76,9 @@ import { installedModules } from "../modules/registry";
 import { loadProjectSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { describeCodePolicy, normaliseProjectCode } from "../utils/codePolicy";
 import { downloadBlob } from "../utils/download";
+import { reportLayoutApi } from "../api/reportLayouts";
 import { Badge } from "../components/Badge";
+import { ReportLayoutsPanel } from "../components/ReportLayoutsPanel";
 import { CheckboxField, InlineTextInput, TextAreaField, TextField, ToggleField } from "../components/FormFields";
 import { InlineSelect, LabeledSelect } from "../components/LabeledSelect";
 import { FormActions } from "../components/FormActions";
@@ -164,6 +166,7 @@ export function ProjectAdminPage() {
   const run = useMutation();
   const strings = useStrings();
   const { projectId, group: groupParam } = useParams<{ projectId: string; group?: string }>();
+  const layoutApi = useMemo(() => (projectId ? reportLayoutApi({ kind: "project", id: projectId }) : null), [projectId]);
   const navigate = useNavigate();
   const orgLabel = useOrgLabel();
   const { showToast } = useToast();
@@ -2737,6 +2740,11 @@ export function ProjectAdminPage() {
               placeholder={strings.reports.noTemplate}
               hint={strings.admin.defaultReportTemplateHint}
             />
+          </CollapsibleSection>
+        )}
+        {layoutApi && (
+          <CollapsibleSection sectionKey="projectAdmin.reportSetup.layouts" title={strings.reportLayouts.title} defaultCollapsed={false}>
+            <ReportLayoutsPanel api={layoutApi} />
           </CollapsibleSection>
         )}
         <CollapsibleSection sectionKey="projectAdmin.reportSetup.content" title={strings.admin.reportContent} defaultCollapsed={false}>
