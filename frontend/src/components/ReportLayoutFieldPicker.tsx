@@ -95,7 +95,7 @@ export function ReportLayoutFieldPicker({
                   >
                     {field.label}
                   </button>
-                  <span className="text-muted" style={{ fontSize: "0.8rem" }}>{field.kind}</span>
+                  <span className="text-muted" style={{ fontSize: "0.8rem" }}>{field.math ? `${field.kind}, ${text.fieldsMath}` : field.kind}</span>
                 </li>
               ))}
             </ul>

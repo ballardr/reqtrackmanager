@@ -159,6 +159,7 @@ export const BLOCK_SNIPPETS: BlockSnippet[] = [
   { key: "group", families: ["document"], text: "@group requirement by status as grp\n  @heading level=2 {{grp.value}} ({{grp.count}})\n@end" },
   { key: "table", families: ["document"], text: "@table requirement sort title\n  @column code\n  @column title \"Requirement\"\n@end" },
   { key: "if", families: ["document"], text: "@if req.status eq Approved\n  Approved.\n@else\n  Not approved yet.\n@end" },
+  { key: "equation", families: ["document"], text: "@equation \\frac{a}{b} = c" },
   { key: "page_break", families: ["document"], text: "@page_break" },
   { key: "sheet", families: ["table"], text: "@sheet \"Requirements\" requirement sort title\n  @column code\n  @column title\n@end" },
 ];

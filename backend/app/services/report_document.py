@@ -212,7 +212,7 @@ def build_pdf(story: list, *, footer_text: str | None = None, pagesize=A4, **doc
 _TONED_STYLES: dict[tuple[int, str], tuple[ParagraphStyle, ParagraphStyle]] = {}
 
 
-def toned_paragraph(text: str, style: ParagraphStyle, tone: str | None) -> Paragraph:
+def toned_paragraph(text: str, style: ParagraphStyle, tone: str | None, markup: str | None = None) -> Paragraph:
     """A table-cell paragraph whose cell `styled_table` fills with the tone's colour.
 
     The text colour is chosen by contrast with the fill (`report_model.text_on`). A cell with no (or an
@@ -222,17 +222,20 @@ def toned_paragraph(text: str, style: ParagraphStyle, tone: str | None) -> Parag
         text: Untrusted cell text (escaped here).
         style: The cell's normal style.
         tone: A key of `report_model.TONE_FILL`, or `None`.
+        markup: Ready Paragraph markup to use instead of the escaped `text` (a cell with equations in it, built by
+            `report_pdf`, which escapes its own text).
 
     Returns:
         The paragraph; a toned one carries `tone_fill` (a ReportLab colour) for `styled_table`.
     """
+    body = safe(text) if markup is None else markup
     if tone not in TONE_FILL:
-        return Paragraph(safe(text), style)
+        return Paragraph(body, style)
     cached = _TONED_STYLES.get((id(style), tone))
     if cached is None:
         toned = ParagraphStyle(f"{style.name}_{tone}", parent=style, textColor=colors.HexColor(f"#{text_on(TONE_FILL[tone])}"))
         cached = _TONED_STYLES[(id(style), tone)] = (style, toned)  # holds `style` so its id is never reused
-    paragraph = Paragraph(safe(text), cached[1])
+    paragraph = Paragraph(body, cached[1])
     paragraph.tone_fill = colors.HexColor(f"#{TONE_FILL[tone]}")  # type: ignore[attr-defined]
     return paragraph
 

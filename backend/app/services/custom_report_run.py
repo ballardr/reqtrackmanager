@@ -91,6 +91,7 @@ from app.services.report_layout_eval import (
 from app.services.report_model import (
     Block,
     BulletList,
+    Equation,
     Gap,
     Heading,
     Note,
@@ -369,7 +370,7 @@ def _sections_of_document(blocks: Sequence[Block]) -> tuple[list[ReportSection],
         if isinstance(block, Heading):
             trail = [(level, text) for level, text in trail if level < block.level] + [(block.level, block.text)]
             unused.append(block.text)
-        elif isinstance(block, Paragraph | Note):
+        elif isinstance(block, Paragraph | Note | Equation):  # an equation is shown as written
             lines.append(block.text)
         elif isinstance(block, BulletList):
             lines += [f"• {item}" for item in block.items]

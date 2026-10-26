@@ -109,6 +109,8 @@ export interface ReportFieldInfo {
   /** The engine's own field (code, title, status, tags). */
   reserved: boolean;
   choices: string[];
+  /** A text field in which equations (`\( x \)`, `$$ x $$`) are drawn when a text block prints it. */
+  math?: boolean;
 }
 
 /** A reportable record type with its fields. */

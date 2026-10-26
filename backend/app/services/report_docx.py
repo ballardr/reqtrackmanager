@@ -20,19 +20,23 @@ Security decisions:
   fixed `PAGE` number in the footer, and the model carries no links.
 - The accent colour reaches an XML attribute, so it is checked against a hex
   pattern and falls back to the default.
+- Equations are Word's own (editable) equation objects when `report_math.omml` has a tested translation, built
+  from the converter's markup after its element allow-list; otherwise a PNG of the same drawing, and if even that
+  fails the TeX as the author wrote it. No equation text reaches the XML except as `m:t` text the converter escaped.
 - Images are the pre-resolved, tenant-checked bytes in the model; an image
   python-docx cannot decode is skipped.
 - Core properties carry the title, a fixed author and the creation time only,
   never a person's name or email.
 
 Dependencies: python-docx, `services.report_model`, `services.report_document`
-(branding type), `services.branding` (default accent).
+(branding type), `services.branding` (default accent), `services.report_math` (equations).
 """
 
 from __future__ import annotations
 
 import io
 import re
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 from docx import Document
@@ -40,14 +44,17 @@ from docx.document import Document as DocxDocument
 from docx.enum.section import WD_ORIENT
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement
+from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import qn
 from docx.shared import Cm, Emu, Pt, RGBColor
+from docx.text.run import Run
 
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX, readable_on_white
+from app.services.report_math import OMML_NS, omml, png_of, typeset
 from app.services.report_model import (
     TONE_FILL,
     BulletList,
+    Equation,
     Gap,
     Heading,
     Image,
@@ -57,6 +64,7 @@ from app.services.report_model import (
     ReportDocument,
     Table,
     text_on,
+    text_runs,
 )
 from app.services.report_svg import svg_png
 
@@ -167,6 +175,62 @@ def _picture(doc: DocxDocument, data: bytes, max_width_cm: float, *, fixed_width
     return True
 
 
+_POINTS_PER_CM = 28.3465
+
+
+def _inline_equation(paragraph, equation: Equation) -> None:
+    """Appends an inline equation to `paragraph`: a Word equation, else a picture on the baseline, else its source."""
+    native = omml(equation.tex)
+    if native:
+        paragraph._p.append(parse_xml(native))
+        return
+    drawn = typeset(equation.tex, False)
+    png = png_of(drawn) if drawn is not None else None
+    if drawn is None or png is None:
+        paragraph.add_run(clean_text(equation.text))
+        return
+    run = paragraph.add_run()
+    try:
+        run.add_picture(io.BytesIO(png), width=Pt(drawn.width), height=Pt(drawn.height))
+    except Exception:  # noqa: BLE001 - a picture python-docx cannot read must never break report generation
+        paragraph._p.remove(run._r)
+        paragraph.add_run(clean_text(equation.text))
+        return
+    if drawn.descent:
+        offset = OxmlElement("w:position")
+        offset.set(qn("w:val"), str(-round(drawn.descent * 2)))  # half-points below the baseline
+        run._r.get_or_add_rPr().append(offset)
+
+
+def _add_text(paragraph, value: str, style: Callable[[Run], None] | None = None) -> list[Run]:
+    """Appends model text to `paragraph`: a run per plain piece (given `style`), a Word equation or picture per
+    inline equation. Returns the plain runs."""
+    runs = []
+    for part in text_runs(value):
+        if isinstance(part, str):
+            run = paragraph.add_run(clean_text(part))
+            if style is not None:
+                style(run)
+            runs.append(run)
+        else:
+            _inline_equation(paragraph, part)
+    return runs
+
+
+def _display_equation(doc: DocxDocument, equation: Equation, usable_cm: float) -> None:
+    """Adds a display equation: a centred Word equation, else a centred picture, else its source."""
+    native = omml(equation.tex)
+    if native:
+        doc.add_paragraph()._p.append(parse_xml(f'<m:oMathPara xmlns:m="{OMML_NS}">{native}</m:oMathPara>'))
+        return
+    drawn = typeset(equation.tex, True)
+    png = png_of(drawn) if drawn is not None else None
+    if drawn is not None and png is not None and _picture(doc, png, usable_cm, fixed_width_cm=drawn.width / _POINTS_PER_CM):
+        doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+        return
+    doc.add_paragraph(clean_text(equation.text))
+
+
 def _cover(doc: DocxDocument, document: ReportDocument, accent: str, usable_cm: float) -> None:
     """The opening block: a branded cover page (logo, accent title, page
     break) when branding asks for one, otherwise a plain title line."""
@@ -203,16 +267,22 @@ def _table(doc: DocxDocument, block: Table, accent: str, usable_cm: float) -> No
     def fill(cells, values, *, header: bool = False, shade: str | None = None, row_index: int = 0) -> None:
         for column, (cell, value, width) in enumerate(zip(cells, values, widths, strict=False)):
             cell.width = Cm(width * scale)
-            run = cell.paragraphs[0].add_run(clean_text(value))
-            run.font.size = font_size
             tone = None if header else block.tone_at(row_index, column)
+
+            def style(run: Run, header: bool = header, tone: str | None = tone) -> None:
+                run.font.size = font_size
+                if header:
+                    run.font.bold = True
+                    run.font.color.rgb = RGBColor.from_string(text_on(accent))  # white or black, whichever the accent needs
+                elif tone:
+                    # A tone overrides the zebra stripe; the text colour is chosen by contrast with the tint.
+                    run.font.color.rgb = RGBColor.from_string(text_on(TONE_FILL[tone]))
+
+            if not _add_text(cell.paragraphs[0], value, style):
+                style(cell.paragraphs[0].add_run(""))  # an all-equation cell still gets its size
             if header:
-                run.font.bold = True
-                run.font.color.rgb = RGBColor.from_string(text_on(accent))  # white or black, whichever the accent needs
                 _shade(cell, accent)
             elif tone:
-                # A tone overrides the zebra stripe; the text colour is chosen by contrast with the tint.
-                run.font.color.rgb = RGBColor.from_string(text_on(TONE_FILL[tone]))
                 _shade(cell, TONE_FILL[tone])
             elif shade:
                 _shade(cell, shade)
@@ -249,9 +319,11 @@ def render_docx_document(document: ReportDocument) -> bytes:
 
     for block in document.blocks:
         if isinstance(block, Heading):
-            doc.add_heading(clean_text(block.text), level=min(max(block.level, 1), 4))
+            _add_text(doc.add_heading("", level=min(max(block.level, 1), 4)), block.text)
         elif isinstance(block, Paragraph):
-            doc.add_paragraph(clean_text(block.text))
+            _add_text(doc.add_paragraph(), block.text)
+        elif isinstance(block, Equation):
+            _display_equation(doc, block, usable_cm)
         elif isinstance(block, Note):
             run = doc.add_paragraph().add_run(clean_text(block.text))
             run.italic = True
@@ -259,7 +331,7 @@ def render_docx_document(document: ReportDocument) -> bytes:
             run.font.color.rgb = _NOTE_GREY
         elif isinstance(block, BulletList):
             for item in block.items:
-                doc.add_paragraph(clean_text(item), style="List Bullet")
+                _add_text(doc.add_paragraph(style="List Bullet"), item)
         elif isinstance(block, Image):
             _picture(doc, _svg_png(block.svg) if block.svg is not None else block.data, usable_cm)
         elif isinstance(block, Table):

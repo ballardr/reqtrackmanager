@@ -315,7 +315,13 @@ textarea {
   background: var(--color-header-hover-bg);
 }
 
-.app-header .text-muted {
+.app-header .math-text--display {
+  display: block;
+  margin: var(--space-2) 0;
+  overflow-x: auto;
+}
+
+.text-muted {
   color: var(--color-header-text-muted);
 }
 

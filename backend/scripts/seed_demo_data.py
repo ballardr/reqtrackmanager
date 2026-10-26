@@ -528,6 +528,19 @@ CONTEXT_OVERVIEW_LAYOUT = {
 """A custom report layout that embeds Context & Strategy report tables as widgets; its headings and prose are its own."""
 
 
+DESIGN_FORMULAE_LAYOUT = {
+    "schema_version": 1, "family": "document", "orientation": "portrait",
+    "nodes": [
+        {"type": "heading", "text": "{{report_title}}"},
+        {"type": "text", "text": "Design formulae for **{{project_name}}**. The stress \\(\\sigma = F / A\\) must stay below the yield strength."},
+        {"type": "equation", "tex": "\\sigma = \\frac{F}{A}"},
+        {"type": "text", "text": "Fatigue life follows $$N = \\left(\\frac{S_f}{\\sigma_a}\\right)^{1/b}$$"},
+        {"type": "equation", "tex": "\\sum_{i=1}^{n} w_i x_i \\leq \\sqrt{\\frac{m}{k}}"},
+    ],
+}
+"""A custom report layout with an equation block and equations written inside text, as the designer's Equation shortcut and text view produce."""
+
+
 def create_report_layout(headers: dict, path: str, name: str, description: str, tree: dict) -> dict:
     """Creates a custom report layout at one tier: `/orgs/{id}` or `/projects/{id}` (followed by `/report-layouts`)."""
     r = httpx.post(
@@ -2122,6 +2135,9 @@ def main() -> None:
     hide_report_layout(h_pm, avionics["id"], org_layout["id"])
     create_report_layout(
         h_pm, f"/orgs/{org['id']}", "Context overview", "Context & Strategy figures and tables, embedded as widgets.", CONTEXT_OVERVIEW_LAYOUT,
+    )
+    create_report_layout(
+        h_pm, f"/orgs/{org['id']}", "Design formulae", "Equations in a text block and as blocks of their own.", DESIGN_FORMULAE_LAYOUT,
     )
     avionics_components = {"SN": create_component(h_pm, avionics["id"], "Sensors", "SN")}
     avionics_categories = create_categories_for_components(h_pm, avionics["id"], avionics_components, {"SN": ["PERF", "SAF", "FN"]})

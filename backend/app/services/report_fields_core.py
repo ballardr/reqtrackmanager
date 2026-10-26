@@ -54,6 +54,7 @@ CORE_REPORT_FIELDS: dict[str, ReportFieldProvider] = {
         date_field("review_date", "Review date", RequirementVersion.review_date),
         bool_field("is_completed", "Completed", Requirement.is_completed),
         instant_field("completed_at", "Completed at", Requirement.completed_at),
+        math_fields=("description", "reasoning", "clarification"),
     ),
     "requirement_action": from_search(
         CORE_SEARCH_PROVIDERS["requirement_action"],

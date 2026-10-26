@@ -161,6 +161,17 @@ export const BlockShortcutsInsertAtTheCaretOnTheirOwnLines: Story = {
   },
 };
 
+export const TheEquationShortcutInsertsAnEquationBlock: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const editor = await editorOf(canvasElement);
+    editor.focus();
+    editor.setSelectionRange(editor.value.length, editor.value.length);
+    await userEvent.click(canvas.getByRole("button", { name: "Insert block: Equation" }));
+    await expect(editor.value).toBe(`${LAYOUT_TEXT}@equation \\frac{a}{b} = c\n`);
+  },
+};
+
 export const FieldsInsertUsingTheNameInScopeAtTheCaret: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
