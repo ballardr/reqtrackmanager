@@ -35,7 +35,9 @@ from sqlalchemy.orm import Session
 
 from app.models.project import Project
 from app.models.report_layout import LAYOUT_FAMILIES, ReportLayout, ReportLayoutVersion
+from app.services import definition_suppression
 from app.services.audit import log_event
+from app.services.report_layout_scope import LAYOUT_KIND
 from app.services.report_layout_tree import TREE_SCHEMA_VERSION, assert_valid, tree_hash
 
 MAX_NAME_CHARS = 200
@@ -241,12 +243,13 @@ def update_details(
 
 
 def delete_layout(db: Session, layout: ReportLayout, *, actor_id: uuid.UUID | None) -> None:
-    """Deletes a layout and every version of it."""
+    """Deletes a layout and every version of it, and every project's tombstone that hid it."""
     log_event(
         db, entity_type="report_layout", entity_id=layout.id, action="deleted", actor_id=actor_id,
         organization_id=layout.organization_id, project_id=layout.project_id,
         detail={"family": layout.family, "versions": layout.current_version},
     )
+    definition_suppression.forget_definition(db, LAYOUT_KIND, layout.id)  # no foreign key holds a project's tombstone
     db.delete(layout)
     db.flush()
 

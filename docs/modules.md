@@ -1285,9 +1285,29 @@ flowchart LR
   named, forward or reverse, so a layout moves between projects) or `{group: alias}` (a group's members), plus
   `where`, `sort` and `include_archived`. `group` buckets records by a field; `{{group.value}}` and `{{group.count}}`
   are its values.
+- **Sheets (table family).** A `sheet` is a root source plus up to five left `joins` along links
+  (`{as, source: {record_type, linked_from}}`); a column names the record it reads with `from`. One row per
+  combination, blank cells where nothing is linked, so nothing drops out of an export.
 - **Placeholders.** `{{alias.field}}` and the global `{{project_name}}`, `{{report_title}}`, `{{generated_on}}`,
   `{{organisation}}`. They are validated at save time against the field registry and the aliases in scope, and
   substituted into already-parsed blocks at run time, so a record value can never become Markdown or a placeholder.
+- **Tiers and visibility.** A layout is owned by an organisation or a project (`routers/report_layouts.py`:
+  `/orgs/{id}/report-layouts`, `/projects/{id}/report-layouts`). A project sees its own, its ancestors' (nearest
+  first) and the organisation's, de-duplicated by name with the nearest winning (`services/report_layout_scope.py`):
+  additive, not the Action Types "own rows, else the ancestor's" rule, which would hide every inherited layout as soon
+  as a project made one. A project hides an inherited layout with a `ProjectDefinitionSuppression` tombstone (kind
+  `report_layout`, per project, not inherited downwards; a hidden layout still holds its name) and restores it;
+  deleting the layout drops every tombstone. Platform starter layouts join as a read-only tier below the
+  organisation when they exist.
+- **Permissions.** Two administrative atoms, `manage_org_report_layouts` and `manage_project_report_layouts`
+  (`services/permissions.py`), grantable to users and groups through custom roles. Organisation admins hold both;
+  project administrators (and so managers) hold the project one in their project. Listing needs only membership;
+  reading a tree, versions or writing needs the atom, and an inherited layout is read-only where it is inherited.
+  Running a layout needs neither.
+- **Bundles.** `services/report_layout_bundle.py` adds `report_layouts` (every version) and `report_layouts_hidden`
+  (by name) to `project.json` and `report_layouts` to `org.json`; an import validates every tree again, drops a
+  version that is not valid here, renumbers 1..n, makes the importer the author, and never overwrites a layout in a
+  merge (a taken name imports as "<name> (imported)").
 - **Authorisation.** None of its own: every record comes from `root_records`/`linked_records`, so the caller's link
   graph decides. Unseen records are counted in a note ("2 records not shown ...") and never named; a block with a
   `where` says "Up to N" because the count precedes the filter.

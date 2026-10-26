@@ -12216,11 +12216,18 @@ A cheap count pre-pass (record counts per `each` source, multiplied through nest
 | 9 | **Limits.** Authoring caps in the validator (depth 8, 500 blocks, 30 columns, 20,000 characters per text, 512 KB per tree). Run caps raise `LayoutLimitError`: 200,000 record visits, 100,000 output blocks plus rows, 60 s. A traversal cap only warns. The sync/async threshold stays a later phase. | Agent |
 | 10 | **Versioning.** A save names the version it started from and is refused if the layout moved on (`LayoutConflictError`); an identical tree stores nothing; the layout row is locked while the number is chosen; an ORM guard refuses to update a version. | Agent |
 | 11 | **Audit** carries ids, the version, the tree hash and the block count, never the layout's text. Written in the service so every caller records it; permission is checked by the caller (endpoints arrive with tiers and permission). | Agent |
-| 12 | **A layout is not an artefact type** (D16, still to be signed off): no code, link or search entry; deleted with its owner by foreign key, not by `org_deletion`. | Agent (proposed) |
+| 12 | **A layout is not an artefact type** (D16, signed off below): no code, link or search entry; deleted with its owner by foreign key, not by `org_deletion`. | Agent |
 
-### Needs a decision from the User
+### Signed off by the User (2026-10-26)
 
-- **A sheet is one flat table of one record type.** The example (requirement, then its Pain Points, then their Stakeholders) cannot be one CSV or XLSX sheet, because a joined row (one per requirement, Pain Point and Stakeholder combination) is not expressible yet. Document layouts can express it. Options: accept (use PDF/DOCX/HTML for nested reports), or add a `join` to a sheet source in a later phase. Recommend accepting for release one.
+| # | Decision | By |
+|---|---|---|
+| 13 | **D15: project visibility of layouts is additive** (platform starters + organisation + nearest ancestors' + own, de-duplicated by name; a project can hide an inherited one and restore it), not the Action Types "own rows, else ancestor's" rule. | User |
+| 14 | **D16: a layout is configuration for now, but must stay promotable to an artefact type.** Nothing in the model blocks it: a UUID key, an owner (organisation or project), a name unique per owner, a version history and an audit trail. Promotion later adds a `unique_code` column with a backfill, a registered artefact summary, search provider and record table, and bundle hooks; no existing column needs to change. Hence no layout-specific shortcut (a name used as a key, an id baked into a stored tree) is allowed. | User |
+| 15 | **D6: ODT and ODS follow the other five formats** (the renderer interface proves itself first). | User |
+| 16 | **Sheets join along links, as a left join.** A `sheet` has a root source and up to `MAX_JOINS` (5) `joins`, each `{as, source: {record_type, linked_from: <earlier name>, ...}}`; a column reads a field of any name in the sheet with `from`. One row per combination (requirement x Pain Point x Stakeholder); a record with nothing linked keeps its row with blank cells and a join following a blank one stays blank, so nothing silently drops out of an export. A parent that appears in many rows has its unseen records counted once. Row explosion is stopped by the output cap. | User (left join, now), Agent (shape) |
+| 17 | **The manage-layouts permission is two permissions** (organisation layouts, project layouts), not one scoped by grant. Built with tiers and permission. | User |
+| 18 | **Seeds and bundle hooks for layouts wait for tiers and permission**, when a layout can first be created; round-trip tested then. | User |
 
 ### Review (identify, verify, remediate)
 
@@ -12228,4 +12235,41 @@ A cheap count pre-pass (record counts per `each` source, multiplied through nest
 
 ### Not applicable, checked
 
-*Authentication, RBAC, secrets:* no endpoint, no permission and no credential yet (the manage permission and the endpoints are the next phases); the service trusts its caller and says so. *Seed scripts, bundles, search, codes, MCP skill, docs website, UI (Storybook/Playwright):* the new tables are not reachable by anyone yet, so there is nothing to demonstrate, export or document for users; the seeds, the project and organisation bundle hooks and the first user-facing pages ship with tiers, run and designer. *Nested projects / organisation defaults:* the tier and hide rules (D15) are decided when layouts become visible lists. *Time:* run times are UTC instants, `instant` conditions compare as UTC whatever zone the literal carries (tested at 09:00 UTC+10 and 23:00 UTC-8), `date` conditions compare plain dates, no future schedule is stored. *Users and groups parity:* no person-valued field is introduced; person fields in the registry already show users and groups alike. *IPv6:* no listener.
+*Authentication, RBAC, secrets:* no endpoint, no permission and no credential yet (the manage permission and the endpoints are the next phases); the service trusts its caller and says so. *Seed scripts, bundles, search, codes, MCP skill, docs website, UI (Storybook/Playwright):* the new tables are not reachable by anyone yet, so there is nothing to demonstrate, export or document for users; the seeds and the project and organisation bundle hooks ship with tiers and permission (decision 18, **Decided by: User**), the first user-facing pages with run and designer. *Nested projects / organisation defaults:* the tier and hide rules (D15) are decided when layouts become visible lists. *Time:* run times are UTC instants, `instant` conditions compare as UTC whatever zone the literal carries (tested at 09:00 UTC+10 and 23:00 UTC-8), `date` conditions compare plain dates, no future schedule is stored. *Users and groups parity:* no person-valued field is introduced; person fields in the registry already show users and groups alike. *IPv6:* no listener.
+
+
+## Custom reports Phase 3: tiers, permissions, hide and restore, bundles (2026-10-26)
+
+**Decided by: Agent** (design), within D12/D13/D15/D16 and decisions 17 and 18 of the previous entry, which the User signed off.
+
+### What was built
+
+- `routers/report_layouts.py`: organisation (`/orgs/{id}/report-layouts`) and project (`/projects/{id}/report-layouts`) endpoints: list, create, read, version list and read, save a version, rename, delete; for a project also `PUT .../{id}/visibility` and `POST .../restore`.
+- `services/report_layout_scope.py`: the project's effective set and the hide/restore tombstones (`ProjectDefinitionSuppression`, kind `report_layout`).
+- Two administrative permission atoms, `manage_org_report_layouts` and `manage_project_report_layouts` (`services/permissions.py`, `services/rbac.py`).
+- `services/report_layout_bundle.py`, wired into `project_export`, `org_export` (fresh import and merge).
+- Seeds: `seed_demo_data.py` (organisation layout, Falcon-3 layout, Avionics hides the organisation's) and `seed_e2e_dataset.py` (Gamma organisation layout, Gamma-5 layout, Gamma-6 hides the organisation's).
+- No migration: the tables came with the model phase, and a tombstone reuses an existing table.
+- Tests: `test_report_layout_tiers.py` (permissions, endpoints, additive view, hide/restore, bundles).
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Two atoms, held as the plan said.** Organisation admins hold both; a project administrator holds the project atom in their project. Because a project manager implies an administrator (`_normalize`), managers hold it too. A custom or module role can grant either to a user or an organisation group (tested for both). | User (two atoms), Agent (who holds them) |
+| 2 | **Server administrators are not exempt.** `require_permission` bypasses for a server admin by design; a layout is Confidential customer content and the server role gives no data access inside an organisation, so `require_permission` gained `server_admin_bypass=False` and both gates use it (tested: 403 on every layout route). | Agent |
+| 3 | **Additive visibility (D15), de-duplicated by name, nearest wins.** Own, then ancestors nearest first, then the organisation. A hidden layout keeps its name, so hiding does not let a farther layout of the same name show through. Hiding is per project and not inherited downwards (as the other organisation defaults). Only an inherited layout can be hidden; a project's own is deleted. | User (additive), Agent (name rule) |
+| 4 | **Who sees what.** Any organisation member lists organisation layouts; any project member lists the effective set (summaries, no tree). A tree, a version or any write needs the atom. A hidden layout is listed (flagged) only to a manager, so a runner never sees it. | Agent |
+| 5 | **An inherited layout is read-only where it is inherited.** A project manager can read it (to see what it hides or to copy) but a write is 403; it is changed where it is owned. A "clone into this project" action arrives with the designer. | Agent |
+| 6 | **Deleting a layout drops every project's tombstone for it** (`forget_definition`); no foreign key holds one. A deleted ancestor project can leave a descendant's tombstone orphaned; ids are never reused, so it is inert. | Agent |
+| 7 | **Bundles.** A project bundle carries its own layouts (every version, original author email and save time as information only) and the inherited layouts it hides, by name. An organisation bundle carries the organisation's layouts. An import validates every tree again against this installation's registry, drops a version that is not valid (warning), skips a layout with no valid version (warning), renumbers versions 1..n and makes the importer the author. Hides are re-applied by name after the organisation's layouts are in; a name with no inherited layout is a warning. | Agent |
+| 8 | **A merge never overwrites a layout.** A name already in the target organisation imports as "<name> (imported)" (skipped with a warning if that is taken too). It is not a merge conflict kind, so the merge dialog is unchanged; a user choice (keep/replace) could be added with the designer if wanted. | Agent |
+| 9 | **Nested-project check (new project-scoped definition table).** Decided: additive, not "own rows, else the ancestor's" (D15). Organisation-defaults check: a project can hide and restore (API now; the project panel arrives with the designer). | User (D15) |
+
+### Review (identify, verify, remediate)
+
+*Identify:* a project reading or changing another project's or another organisation's layout; a project administrator changing organisation layouts; a project changing an inherited layout under the owner; a server administrator reading customer layouts; a bundle planting a tree that this installation would never accept (unknown field, wrong family, hostile block); a hidden layout leaking to a runner; layout text in the audit trail; a stale tombstone hiding a different layout. *Verify:* tests cover another project's id (404), another organisation's admin (403/404), a project administrator on the organisation route (403) and on another project (403), inherited write/delete (403), a server administrator on every route (403), a plain member (list only), the audit events for hide and restore (ids, no text), deletion clearing tombstones, the bundle revalidation (a corrupted version dropped, an all-invalid layout skipped, a hide with no match reported), and that a merge keeps the existing layout untouched. *Remediate:* one defect found and fixed during the review: the shared permission gate let a server administrator through (decision 2). One wrong assumption in my own test corrected (a manager does hold the project atom). No policy regression: the access-control policy gained the two atoms (item 9).
+
+### Not applicable, checked
+
+*Time:* no new time field; a version's save time is a past instant in UTC. *Users and groups parity:* the atoms are grantable to a group (tested); no person field added. *Search, codes, MCP:* a layout is still not an artefact type (D16); MCP tools arrive with the run pipeline. *UI, Playwright, Storybook, website:* no screen yet (the designer is a later phase), so there is nothing to render or test in a browser; the role-management page lists the two atoms because they appear in the permission list. *Seeds:* extended as above (written against the API; not run against a fresh stack in this change). *IPv6:* no listener.

@@ -637,12 +637,51 @@ def _eval_if(run: _Run, node: dict[str, Any], scope: Scope) -> None:
 
 
 def _eval_sheet(run: _Run, node: dict[str, Any], scope: Scope) -> None:
-    found = run.source(node, scope)
-    labels, rows = _table_cells(run, node, scope, found.records)
+    """One sheet: a row per root record, widened by each left join to a row per linked record.
+
+    A root or joined record with nothing linked still yields its row, with blank cells for the join;
+    a join that follows a blank one stays blank. Rows are in root order, then each join's sort.
+    """
+    root = run.source(node, scope)
+    root_alias = node.get("as", DEFAULT_RECORD_ALIAS)
+    types = {root_alias: node["source"]["record_type"]}
+    rows_of: list[dict[str, ReportRecord | None]] = [{root_alias: r} for r in root.records]
+    unseen = 0
+    counted: set[tuple[str, uuid.UUID]] = set()
+    for join in node.get("joins", []):
+        alias, parent_alias = join["as"], join["source"]["linked_from"]
+        types[alias] = join["source"]["record_type"]
+        widened: list[dict[str, ReportRecord | None]] = []
+        for combo in rows_of:
+            run.tick()
+            parent = combo.get(parent_alias)
+            if parent is None:
+                widened.append({**combo, alias: None})
+                continue
+            found = run.source(join, {name: Bound("record", rec.artefact_type, record=rec) for name, rec in combo.items() if rec is not None})
+            if (alias, parent.id) not in counted:  # a parent that appears in many rows is counted once
+                counted.add((alias, parent.id))
+                unseen += found.hidden + found.unavailable
+            if found.records:
+                widened.extend({**combo, alias: child} for child in found.records)
+            else:
+                widened.append({**combo, alias: None})
+            if len(widened) > MAX_OUTPUT:
+                raise LayoutLimitError("The report is too large. Narrow the layout with a filter, or run it asynchronously.")
+        rows_of = widened
+
+    columns = node["columns"]
+    labels = [c.get("label") or run.catalogue(types[c.get("from", root_alias)])[c["field"]].label for c in columns]
+    rows = []
+    for combo in rows_of:
+        run.tick()
+        rows.append([
+            run.text_of(record, c["field"]) if (record := combo[c.get("from", root_alias)]) is not None else "" for c in columns
+        ])
     run.stats.rows += len(rows)
     run._count_output(1 + len(rows))
     run.sheets.append(Sheet(node["name"], labels, rows))
-    count = found.hidden + found.unavailable
+    count = root.hidden + root.unavailable + unseen
     if count:
         run.warn(f'Sheet "{node["name"]}": {count} record(s) not shown (not accessible to you, or not available).')
 

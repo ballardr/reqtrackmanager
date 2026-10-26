@@ -492,6 +492,45 @@ def create_artefact_link(
     return r.json()
 
 
+REQUIREMENTS_BY_COMPONENT_LAYOUT = {
+    "schema_version": 1, "family": "document", "orientation": "portrait",
+    "nodes": [
+        {"type": "heading", "text": "{{report_title}}"},
+        {"type": "text", "text": "Requirements of **{{project_name}}** by component, generated {{generated_on}}."},
+        {
+            "type": "group", "source": {"record_type": "requirement"}, "by": "component", "as": "comp",
+            "children": [
+                {"type": "heading", "level": 2, "text": "{{comp.value}} ({{comp.count}})"},
+                {
+                    "type": "table", "source": {"group": "comp", "sort": [{"field": "title"}]},
+                    "columns": [{"field": "code", "label": "Code"}, {"field": "title", "label": "Requirement"}],
+                    "empty_text": "No requirements.",
+                },
+            ],
+        },
+    ],
+}
+"""A small custom report layout: the project's requirements grouped by component."""
+
+
+def create_report_layout(headers: dict, path: str, name: str, description: str, tree: dict) -> dict:
+    """Creates a custom report layout at one tier: `/orgs/{id}` or `/projects/{id}` (followed by `/report-layouts`)."""
+    r = httpx.post(
+        f"{BASE}{path}/report-layouts", json={"name": name, "description": description, "family": "document", "tree": tree},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def hide_report_layout(headers: dict, project_id: str, layout_id: str) -> None:
+    """Hides an inherited report layout in one project."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/report-layouts/{layout_id}/visibility", json={"hidden": True}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
 def create_project_link_type(
     headers: dict, project_id: str, *, forward_name: str, reverse_name: str, flow: str = "none",
 ) -> dict:
@@ -2058,6 +2097,14 @@ def main() -> None:
          "chapters": [{"title": "Scope", "body": "Covers the airframe, avionics, ground station and fleet backend."}],
          "appendices": []},
     ])
+    print("Seeding custom report layouts: an organisation layout every project inherits, Falcon-3's own, and Avionics hiding the organisation's...")
+    org_layout = create_report_layout(
+        h_pm, f"/orgs/{org['id']}", "Requirements by component", "Every requirement, grouped by component.", REQUIREMENTS_BY_COMPONENT_LAYOUT,
+    )
+    create_report_layout(
+        h_pm, f"/projects/{drone['id']}", "Falcon-3 requirements", "Falcon-3's requirements by component.", REQUIREMENTS_BY_COMPONENT_LAYOUT,
+    )
+    hide_report_layout(h_pm, avionics["id"], org_layout["id"])
     avionics_components = {"SN": create_component(h_pm, avionics["id"], "Sensors", "SN")}
     avionics_categories = create_categories_for_components(h_pm, avionics["id"], avionics_components, {"SN": ["PERF", "SAF", "FN"]})
     avionics_reqs = seed_project(

@@ -3082,6 +3082,16 @@ admin opts in" rationale, applied here to `OrgRole` instead.
 EXPORT_PERSONAL_DATA = "export_personal_data"
 """The administrative permission that lets a person include or import personal-data record columns."""
 
+MANAGE_ORG_REPORT_LAYOUTS = "manage_org_report_layouts"
+"""The administrative permission that lets a person manage the organisation's custom report layouts."""
+
+MANAGE_PROJECT_REPORT_LAYOUTS = "manage_project_report_layouts"
+"""The administrative permission that lets a person manage a project's custom report layouts."""
+
+_PROJECT_REPORT_LAYOUT_ROLES = frozenset({ProjectRole.PROJECT_ADMINISTRATOR})
+"""Project roles that hold `MANAGE_PROJECT_REPORT_LAYOUTS` in their project (organisation admins hold it
+through `_ORG_ROLE_PERMISSIONS`; anyone else needs a custom or module role that lists it)."""
+
 _PERSONAL_DATA_EXPORT_PROJECT_ROLES = frozenset({ProjectRole.PROJECT_ADMINISTRATOR, ProjectRole.PROJECT_MANAGER})
 """Project roles that hold `EXPORT_PERSONAL_DATA` in their project (organisation admins hold it through
 `_ORG_ROLE_PERMISSIONS`; anyone else needs a custom or module role that lists it)."""
@@ -3466,6 +3476,8 @@ def get_effective_permissions(
             permissions |= _artefact_permissions_for_levels(_PROJECT_ROLE_LEVELS.get(role, ()))
         if project_roles & _PERSONAL_DATA_EXPORT_PROJECT_ROLES:
             permissions.add(EXPORT_PERSONAL_DATA)
+        if project_roles & _PROJECT_REPORT_LAYOUT_ROLES:
+            permissions.add(MANAGE_PROJECT_REPORT_LAYOUTS)
 
     permissions |= _module_role_permission_grants(
         db, user_id, organization_id=organization_id, project_id=project_id,
@@ -3512,7 +3524,7 @@ def permission_satisfied(held: set[str], required: str) -> bool:
     return encode_permission(ALL_ARTEFACT_TYPES, level) in held
 
 
-def require_permission(*allowed: str, entity_scope: str | None = None):
+def require_permission(*allowed: str, entity_scope: str | None = None, server_admin_bypass: bool = True):
     """FastAPI dependency factory requiring at least one of the given
     Fine-Grained Access Control permission atoms, resolved via
     `get_effective_permissions`/`permission_satisfied` — coexisting with,
@@ -3541,7 +3553,9 @@ def require_permission(*allowed: str, entity_scope: str | None = None):
     silently checking nothing.
 
     Server admins bypass every check, consistent with every existing
-    `require_*` dependency in this module — but only after `_enforce_
+    `require_*` dependency in this module (unless `server_admin_bypass=False`, for
+    customer content a server admin must not reach: such a route treats them like any
+    other caller) — but only after `_enforce_
     module_frame_scope` has already run for the resolved scope (see the inner `_dependency`'s own docstring): a mis-scoped
     Tier B `<ModuleFrame>` token must never be rescued by the fact that
     the underlying real user happens to be a server admin (or to hold a
@@ -3574,6 +3588,9 @@ def require_permission(*allowed: str, entity_scope: str | None = None):
             module-gated dependency's "module disabled or entity absent ->
             404" posture. `None` (the default) is every existing call
             site's shape — completely unaffected.
+        server_admin_bypass: `False` makes a server admin subject to the same
+            permission resolution as everyone else (no data access inside an
+            organisation by virtue of the server role alone). Default `True`.
     """
 
     def _dependency(
@@ -3643,7 +3660,7 @@ def require_permission(*allowed: str, entity_scope: str | None = None):
                 _enforce_module_frame_scope(request, organization_id=organization_id)
                 check_pat_scope(request, organization_id)
 
-        if current_user.is_server_admin:
+        if server_admin_bypass and current_user.is_server_admin:
             return current_user
 
         if organization_id is not None:
