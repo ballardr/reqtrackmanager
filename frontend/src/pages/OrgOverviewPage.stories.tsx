@@ -40,6 +40,7 @@ function mockOrgOverviewApis(
     if (path === `/api/v1/orgs/${ORG_ID}/report-catalogue`) return overrides.reports ?? [];
     if (path.includes("/reports/")) return buildReportResult({ title: "Org fixture report", scope_label: "Acme Corp" });
     if (path.includes("/report-templates")) return [];
+    if (path.startsWith("/api/v1/report-runs")) return [];
     if (path === `/api/v1/orgs/${ORG_ID}`) return overrides.org ?? org;
     if (path.includes("/overview-stats")) return overrides.stats ?? fullTotalStats;
     if (path.includes("/modules")) return overrides.modules ?? [];

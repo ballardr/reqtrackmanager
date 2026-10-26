@@ -23,6 +23,7 @@ import { useSearchParams } from "react-router-dom";
 import type { ReportCatalogueEntry } from "../api/reports";
 import { LabeledSelect } from "./LabeledSelect";
 import { ReportRunner } from "./ReportRunner";
+import { ReportRunsPanel } from "./ReportRunsPanel";
 
 /** A report offered in the picker that is not a catalogue entry. */
 export interface ExtraReportEntry {
@@ -86,6 +87,7 @@ export function ReportCatalogue({
           key={entry.path} entry={entry} scope={scope} organizationId={organizationId}
           focusSection={searchParams.get("section") ?? undefined}
         />}
+      <ReportRunsPanel organizationId={organizationId} />
     </div>
   );
 }

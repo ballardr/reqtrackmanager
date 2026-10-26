@@ -100,6 +100,12 @@ class Settings(BaseSettings):
             hasn't set its own `Organization.pat_max_lifetime_days` —
             guarantees no PAT is ever unboundedly long-lived even if no org
             admin ever touches that per-org setting.
+        report_output_default_retention_days: How long the stored output of a background custom report is kept
+            when the organisation has not set `Organization.report_output_retention_days`.
+        report_output_max_retention_days: Platform ceiling on that retention; an organisation's own value is capped
+            by it (`services.report_run_jobs.effective_retention_days`).
+        report_run_record_retention_days: How long the provenance row of a custom report run is kept
+            (`services.report_run_jobs.expire`); the row holds identifiers and counts, never report content.
         oidc_internal_base_url_override: Dev/test-only escape hatch for a
             common containerized-IdP problem: an org's `oidc_issuer_url`
             must be the identity provider's browser-reachable public URL
@@ -299,6 +305,9 @@ class Settings(BaseSettings):
     frontend_base_url: str = "http://localhost:3000"
     mcp_server_public_url: str = "http://localhost:8100"
     pat_default_max_lifetime_days: int = 90
+    report_output_default_retention_days: int = 7
+    report_output_max_retention_days: int = 30
+    report_run_record_retention_days: int = 400
     two_factor_max_failed_attempts: int = 5
     two_factor_lockout_minutes: int = 15
     oidc_internal_base_url_override: str | None = None

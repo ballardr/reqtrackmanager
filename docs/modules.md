@@ -1442,7 +1442,8 @@ flowchart LR
   SHA-256 `source_digest` over all the records in the report (type, id, last-change time). It holds identifiers, counts and keys only, no layout text or cell value, and survives the
   layout's deletion. Layout runs are recorded here rather than in `audit_events`, as a report read is for the module
   reports.
-- **Limits.** `LayoutLimitError` answers 413 and a timeout 408; both write nothing.
+- **Limits.** `LayoutLimitError` answers 413 and a timeout 408 for the on-screen (`json`) form; for a file format it
+  answers 409 `{"detail": {"code": "async_required"}}` (§4s). Both write nothing.
 - **MCP.** `list_report_layouts`, `get_report_layout`, `run_custom_report`, `parse_report_layout_text`,
   `format_report_layout_text`, `list_report_widgets` and, in write mode, `create_report_layout`, `save_report_layout_version`,
   `update_report_layout`, `delete_report_layout` (`mcp-server/server.py`, skill `reqtrack-mcp`). `run_custom_report`
@@ -1600,6 +1601,52 @@ flowchart LR
   TeX, so the same equation per record is typeset once.
 - **Extending.** A new renderer (ODT) calls `typeset`, `omml`, `png_of`, `source_of` and `report_model.text_runs`; nothing
   else in the layout needs to change. A provider marks a field math-capable with `text_field(..., math=True)` or `from_search(..., math_fields=)`.
+
+### 4s. Custom reports: background runs (Module 10 Phase 10)
+
+A file run that passes the synchronous limits is produced in the background, stored for a limited time and announced
+with a notification. The job is the run's own provenance row (`GeneratedReport`), so there is one table and one history.
+
+```mermaid
+flowchart LR
+    R["GET .../run?format=pdf"] -->|"over the limits"| X["409 async_required"]
+    X --> Q["POST .../runs<br/>(queued row)"]
+    Q --> L["leader: run_job_loop<br/>FOR UPDATE SKIP LOCKED"]
+    L --> J["run_job: as the requester,<br/>background limits x5, 10 min"]
+    J --> S["object store<br/>report-runs/ORG/RUN.ext"]
+    J --> N["notification<br/>report_run_finished"]
+    S --> D["GET /report-runs/ID/download<br/>(requester only)"]
+    E["expiry pass (15 min)"] --> S
+```
+
+- **Hand-off.** There is no cost estimate: the synchronous run is attempted with its normal limits and the `LayoutLimitError`
+  it raises for a file format becomes a 409 `async_required` (the on-screen `json` form keeps 413/408, there being no file
+  to queue). `ReportRunner` answers it with `POST .../custom-reports/{layout}/runs` (project and organisation; body
+  `format`, `report_template_id`, `include_children` or `project_ids`), which pins the layout's current version and the
+  request on a `queued` row (202). At most `MAX_ACTIVE_PER_USER` (5) rows per requester are queued or running (429).
+- **Job state** is `GeneratedReport.status`: `completed` (a synchronous run), `queued`, `running`, `ready`, `failed`,
+  `expired`; with `started_at`, `finished_at`, `expires_at`, `output_key`, `output_filename`, `output_size` and a fixed-sentence
+  `error` (never an exception message).
+- **The queue** is worked by `services/report_run_jobs.run_job_loop`, started through the lifespan's `start_singletons`, so
+  one process works it. It claims the oldest queued row with `FOR UPDATE SKIP LOCKED` and runs one job at a time in a worker
+  thread. A job still `running` past `ASYNC_TIMEOUT_SECONDS` plus two minutes (the leader died) is marked `failed`, never
+  re-run.
+- **Limits.** A background run uses `ASYNC_LIMIT_SCALE` (5) times the work and output limits and `ASYNC_TIMEOUT_SECONDS`
+  (600 s) (`evaluate_layout(limit_scale=)`, `run_*_layout(background=True)`); a stored file over `MAX_OUTPUT_BYTES`
+  (200 MB) fails.
+- **Authorisation.** The job runs with the requester's resolver, after re-checking that the account is active, the
+  organisation is active, they still hold a role in the project or organisation and the layout is still reachable and not
+  hidden. Only the requester lists (`GET /api/v1/report-runs[?organization_id=]`), reads, downloads or deletes a run; another
+  person's run is a 404. Download re-checks the same access and the expiry.
+- **Retention.** `effective_retention_days`: `Organization.report_output_retention_days` (Org Admin > Templates & reports >
+  Background reports), else `report_output_default_retention_days` (7), never above `report_output_max_retention_days` (30).
+  The expiry pass (every 15 minutes) deletes the object of a `ready` row past `expires_at` and marks it `expired` (file
+  columns cleared, provenance kept), and deletes provenance rows older than `report_run_record_retention_days` (400) that are
+  not queued, running or ready. Deleting an organisation deletes its stored objects (`org_deletion`).
+- **Notification** type `report_run_finished` (core `NotificationType`): title "Report ready: <layout>" or "Report could not
+  be produced: <layout>", body the expiry time or the failure sentence; no report content.
+- **Not in MCP.** `run_custom_report` returns the on-screen JSON; a file has no MCP form, so there are no MCP tools for
+  background runs.
 
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 

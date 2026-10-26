@@ -110,6 +110,10 @@ MAX_WORK = 200_000
 #: Most output blocks plus table rows one run may produce.
 MAX_OUTPUT = 100_000
 DEFAULT_TIMEOUT_SECONDS = 60.0
+#: A background run's limits are the synchronous ones times this, with `ASYNC_TIMEOUT_SECONDS` of wall-clock time.
+ASYNC_LIMIT_SCALE = 5
+_NARROW_OR_BACKGROUND = "Narrow it with a filter, or download it as a file, which can be prepared in the background."
+ASYNC_TIMEOUT_SECONDS = 600.0
 EMPTY_GROUP_LABEL = "(none)"
 #: Most equations one run draws; further ones are shown as written.
 MAX_EQUATIONS = 1_000
@@ -237,6 +241,7 @@ def evaluate_layout(
     placeholders: Mapping[str, str] | None = None,
     project_ids: list[uuid.UUID] | None = None,
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+    limit_scale: int = 1,
 ) -> EvaluatedLayout:
     """Runs a layout for the caller behind `resolver`.
 
@@ -251,6 +256,8 @@ def evaluate_layout(
             `generated_on`, `organisation`).
         project_ids: Projects whose records a root source reads; defaults to `ctx.projects`.
         timeout_seconds: Wall-clock limit.
+        limit_scale: Multiplier on the work and output limits; 1 for a synchronous run, `ASYNC_LIMIT_SCALE` for a
+            background run.
 
     Returns:
         The evaluated layout.
@@ -263,7 +270,7 @@ def evaluate_layout(
     if ctx.root_project is None:
         raise ValueError("A layout runs for one project; ctx.root_project is required.")
     analysis = assert_valid(tree)
-    run = _Run(db, resolver, ctx, ctx.root_project, analysis.refs, title, placeholders, project_ids, timeout_seconds)
+    run = _Run(db, resolver, ctx, ctx.root_project, analysis.refs, title, placeholders, project_ids, timeout_seconds, limit_scale)
     for node in tree["nodes"]:
         run.evaluate(node, {})
     document = None
@@ -290,6 +297,7 @@ class _Run:
         placeholders: Mapping[str, str] | None,
         project_ids: list[uuid.UUID] | None,
         timeout_seconds: float,
+        limit_scale: int = 1,
     ) -> None:
         self.db, self.resolver, self.ctx, self.project, self.refs = db, resolver, ctx, project, refs
         self.project_ids = project_ids or [p.id for p in ctx.projects] or [project.id]
@@ -299,6 +307,8 @@ class _Run:
             **(placeholders or {}),
         }
         self.deadline = time.monotonic() + timeout_seconds
+        self.max_work = MAX_WORK * limit_scale
+        self.max_output = MAX_OUTPUT * limit_scale
         self.blocks: list[Block] = []
         self.sheets: list[Sheet] = []
         self.warnings: list[str] = []
@@ -366,13 +376,13 @@ class _Run:
 
         Raises:
             LayoutTimeoutError: Past the deadline.
-            LayoutLimitError: Past `MAX_WORK`.
+            LayoutLimitError: Past the work limit (`MAX_WORK` scaled for the run).
         """
         self._work += 1
-        if self._work > MAX_WORK:
-            raise LayoutLimitError("The layout visits too many records. Narrow it with a filter, or run it asynchronously.")
+        if self._work > self.max_work:
+            raise LayoutLimitError(f"The layout visits too many records. {_NARROW_OR_BACKGROUND}")
         if time.monotonic() > self.deadline:
-            raise LayoutTimeoutError("The layout took too long to run. Narrow it with a filter, or run it asynchronously.")
+            raise LayoutTimeoutError(f"The layout took too long to run. {_NARROW_OR_BACKGROUND}")
 
     def emit(self, *blocks: Block) -> None:
         """Appends blocks to the document, enforcing the output limit."""
@@ -385,8 +395,8 @@ class _Run:
 
     def _count_output(self, amount: int) -> None:
         self._output += amount
-        if self._output > MAX_OUTPUT:
-            raise LayoutLimitError("The report is too large. Narrow the layout with a filter, or run it asynchronously.")
+        if self._output > self.max_output:
+            raise LayoutLimitError(f"The report is too large. {_NARROW_OR_BACKGROUND}")
 
     def warn(self, message: str) -> None:
         """Records a warning once."""
@@ -887,8 +897,8 @@ def _eval_sheet(run: _Run, node: dict[str, Any], scope: Scope) -> None:
                 widened.extend({**combo, alias: child} for child in found.records)
             else:
                 widened.append({**combo, alias: None})
-            if len(widened) > MAX_OUTPUT:
-                raise LayoutLimitError("The report is too large. Narrow the layout with a filter, or run it asynchronously.")
+            if len(widened) > run.max_output:
+                raise LayoutLimitError(f"The report is too large. {_NARROW_OR_BACKGROUND}")
         rows_of = widened
 
     columns = node["columns"]
@@ -962,7 +972,8 @@ for _key, _fn in (
     register_evaluator(_key, _fn)
 
 __all__ = [
-    "DEFAULT_TIMEOUT_SECONDS", "EMPTY_GROUP_LABEL", "MAX_EQUATIONS", "MAX_OUTPUT", "MAX_RECORDED_VERSIONS", "MAX_WORK",
+    "ASYNC_LIMIT_SCALE", "ASYNC_TIMEOUT_SECONDS", "DEFAULT_TIMEOUT_SECONDS", "EMPTY_GROUP_LABEL", "MAX_EQUATIONS",
+    "MAX_OUTPUT", "MAX_RECORDED_VERSIONS", "MAX_WORK",
     "EvalStats", "EvaluatedLayout",
     "LayoutLimitError", "LayoutTimeoutError", "evaluate_layout", "matches_condition", "matches_value", "register_evaluator",
 ]

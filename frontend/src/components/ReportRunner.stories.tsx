@@ -243,6 +243,26 @@ export const DownloadFailureShowsToast: Story = {
   },
 };
 
+/** A file run that is too big for a request is queued in the background and the person is told so. */
+export const TooBigDownloadIsQueuedInTheBackground: Story = {
+  args: { entry: buildReportCatalogueEntry({ path: "/api/v1/projects/project-1/custom-reports/layout-1/run" }) },
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => (path.includes("/report-templates") ? [] : buildReportResult()));
+    spyOn(api, "getForBlob").mockRejectedValue(
+      new ApiError(409, "Too big.", { code: "async_required", message: "Too big." }),
+    );
+    spyOn(api, "post").mockResolvedValue({ id: "run-1", status: "queued" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Download PDF report" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(expect.stringMatching(/\/runs$/), expect.objectContaining({ format: "pdf" })));
+    await waitFor(() => expect(within(document.body).getByText(/being prepared in the background/)).toBeInTheDocument());
+  },
+};
+
 /** A failed run shows an inline error, not a blank page. */
 export const RunFailureShowsError: Story = {
   beforeEach: () => {

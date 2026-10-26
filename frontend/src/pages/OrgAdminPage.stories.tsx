@@ -28,7 +28,8 @@ const orgUser: OrgUser = {
 
 const advanced: OrgAdvancedSettings = {
   smtp_host: null, smtp_port: null, smtp_username: null, smtp_use_tls: true,
-  pat_max_lifetime_days: null, require_2fa: false, allow_self_signup: false, auto_accept_email_domain: null,
+  pat_max_lifetime_days: null, report_output_retention_days: null, report_output_default_retention_days: 7,
+  report_output_max_retention_days: 30, require_2fa: false, allow_self_signup: false, auto_accept_email_domain: null,
   external_user_policy: "disabled", allow_relaxed_child_project_creation: true,
   force_require_change_request_for_approved_links: false,
   allow_ai_approvals: false,
@@ -1333,6 +1334,29 @@ export const AdvancedSettingsAllowRelaxedChildProjectCreation: Story = {
       expect(api.put).toHaveBeenCalledWith(
         `/api/v1/orgs/${ORG_ID}/advanced-settings`,
         expect.objectContaining({ allow_relaxed_child_project_creation: false })
+      )
+    );
+  },
+};
+
+/** The retention of stored background reports is set in Templates & reports, shows the platform default and
+ * ceiling, and is saved with the organisation's advanced settings. */
+export const ReportOutputRetentionIsSaved: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "put").mockResolvedValue(advanced);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Templates & reports" }));
+    const field = await canvas.findByLabelText("Keep background report files for (days)");
+    await expect(canvas.getByText(/platform default of 7 days/)).toBeInTheDocument();
+    await userEvent.type(field, "3");
+    await userEvent.click(canvas.getByRole("button", { name: "Save background report settings" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(
+        `/api/v1/orgs/${ORG_ID}/advanced-settings`,
+        expect.objectContaining({ report_output_retention_days: 3 })
       )
     );
   },

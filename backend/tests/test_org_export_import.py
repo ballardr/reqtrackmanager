@@ -222,3 +222,30 @@ def test_import_rejects_a_bundle_whose_declared_uncompressed_size_exceeds_the_ca
         headers=auth_headers(admin_token),
     )
     assert resp.status_code == 413
+
+
+def test_the_report_output_retention_setting_round_trips_through_the_bundle(client, admin_token):
+    import uuid
+
+    from tests.conftest import create_org_admin_in
+
+    org, org_admin = create_org_admin_in(client, admin_token, f"Retention Org {uuid.uuid4().hex[:6]}")
+    settings_url = f"/api/v1/orgs/{org['id']}/advanced-settings"
+    current = client.get(settings_url, headers=auth_headers(org_admin)).json()
+    saved = client.put(settings_url, json={**current, "report_output_retention_days": 5}, headers=auth_headers(org_admin))
+    assert saved.status_code == 200, saved.text
+
+    exported = client.get(f"/api/v1/orgs/{org['id']}/export", headers=auth_headers(org_admin))
+    assert exported.status_code == 200, exported.text
+    imported = client.post(
+        "/api/v1/orgs/import", data={"name": f"Retention Copy {uuid.uuid4().hex[:6]}"},
+        files={"file": ("bundle.zip", exported.content, "application/zip")}, headers=auth_headers(admin_token),
+    )
+    assert imported.status_code == 201, imported.text
+
+    from app.database import SessionLocal
+    from app.models.organization import Organization
+
+    with SessionLocal() as db:
+        copy = db.get(Organization, uuid.UUID(imported.json()["organization"]["id"]))
+        assert copy is not None and copy.report_output_retention_days == 5

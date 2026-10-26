@@ -39,6 +39,7 @@ const en = {
       stage_review_auto_approved: "{Stage} review deadline passed — auto-approved",
       project_members_changed_by_org: "Project members changed by someone who is not a project manager",
       system_storage_alert: "File storage alert (server admins)",
+      report_run_finished: "Background report ready or failed",
       compliance_required_action_due_soon: "Compliance required action due soon",
       compliance_required_action_overdue: "Compliance required action overdue",
       compliance_target_date_approaching: "Compliance target date approaching",
@@ -1427,6 +1428,12 @@ const en = {
     logoRemoved: "Logo reset to the platform default.",
     pats: "Personal Access Tokens",
     patMaxLifetime: "Maximum Personal Access Token lifetime (days)",
+    reportOutputTitle: "Background reports",
+    reportOutputRetention: "Keep background report files for (days)",
+    reportOutputRetentionHint: (platformDefault: number, platformMax: number) =>
+      `Leave blank to use the platform default of ${platformDefault} days. The platform allows at most ${platformMax} days; a larger value is treated as ${platformMax}.`,
+    saveReportOutput: "Save background report settings",
+    advancedSaved: "Settings saved.",
     patMaxLifetimeHint: (org: string) => `Leave blank to use the deployment default. Lowering this immediately shortens the effective lifetime of tokens already issued for this ${org}, not just new ones.`,
     require2fa: "Require two-factor authentication",
     require2faHint: (org: string) => `Blocks every member of this ${org}, including its own admins, from any of its projects or settings until they enable 2FA in Preferences. They can still enrol themselves at any time to regain access immediately — no admin action needed.`,
@@ -1795,6 +1802,35 @@ const en = {
     reportSetupSaved: "Report setup saved.",
     reportDefaultsSaved: "Report defaults saved.",
     effectiveLoading: "Loading inherited content…",
+  },
+  // Background runs of custom reports: the panel on the Reports pages.
+  reportRuns: {
+    title: "Background reports",
+    description:
+      "Reports too big to produce while you wait are prepared in the background and you are notified when they are ready. Only you can download one, and the file is deleted when it expires.",
+    listLabel: "Background reports",
+    reportHeading: "Report",
+    formatHeading: "Format",
+    statusHeading: "Status",
+    requestedHeading: "Requested",
+    expiresHeading: "Available until",
+    actionsHeading: "Actions",
+    download: "Download",
+    remove: "Delete file",
+    cancel: "Cancel",
+    removed: "The report file was deleted.",
+    cancelled: "The report was cancelled.",
+    downloaded: (name: string) => `Downloaded ${name}.`,
+    downloadFailed: "Could not download the report.",
+    loadFailed: "Your background reports could not be loaded.",
+    queued: (title: string) =>
+      `${title} is too big to produce while you wait. It is being prepared in the background and you will be notified when it is ready.`,
+    queueFailed: "Could not start the report in the background.",
+    notReady: "—",
+    confirmRemove: (name: string, waiting: boolean) =>
+      waiting
+        ? `Cancel ${name}? It has not started, and you can request it again later.`
+        : `Delete the stored file for ${name}? You can produce the report again at any time.`,
   },
   // Custom report layouts: the list (Org Admin and Project Admin "Report layouts") and the designer.
   reportLayouts: {
@@ -2450,6 +2486,7 @@ const en = {
     requirementReviewer: "The person or group who carries out the periodic review of this {requirement} and is notified when it falls due.",
     requirementPrefix: "A short code that starts the identifiers of everything under it, for example SW in SW-PERF-014.",
     // Reports
+    reportOutputRetention: "How long a report prepared in the background stays available to download before its file is deleted. Blank uses the platform default; the platform also sets a maximum.",
     reportBrandingTemplate: "The branding applied to the export: logo, colours, cover page and footer. Leave it unset to use the default.",
     reportChapterLayout: "Whether the report starts a new chapter for each {component} or runs on continuously. Automatic follows the chosen template.",
     reportChapterDefault: "New reports start a chapter for each {component} unless the person exporting chooses a continuous layout.",

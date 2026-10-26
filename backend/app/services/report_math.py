@@ -25,7 +25,8 @@ Design decisions:
 - **Word gets native equations only for a tested subset.** `mathml2omml` output is unwrapped from its empty
   `m:box` wrappers, a square root gets the `m:deg` Word requires, and anything using an element outside
   `OMML_ELEMENTS` (accents, limits written under an operator, aligned equations) or a limit operator such as
-  `\\lim` is refused so the caller draws the picture instead. The subset was checked in LibreOffice (decisions log, "PDF engine, math, ODF and tree bake-off"); a person must open a sample in Word.
+  `\\lim` is refused so the caller draws the picture instead. The subset was checked in LibreOffice (decisions log,
+  "PDF engine, math, ODF and tree bake-off") and opened in Word by a person.
 - **Failure degrades to source, never to an error**: a TeX parse failure, an unsupported construct or a converter
   exception returns `None` and the renderer prints the author's own text.
 - `ziamath` keeps module-level font state, so typesetting is serialised by a lock; results are cached because a

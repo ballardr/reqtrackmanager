@@ -45,6 +45,7 @@ const template: ReportTemplate = {
 function mockReportsApis(opts: { templates?: ReportTemplate[]; resources?: unknown[]; catalogue?: ReportCatalogueEntry[] } = {}) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path.endsWith("/report-catalogue")) return opts.catalogue ?? [];
+    if (path.startsWith("/api/v1/report-runs")) return [];
     if (path.includes("/modules/")) return buildReportResult();
     if (path.includes("/components")) return [];
     if (path.includes("/categories")) return [];

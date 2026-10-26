@@ -249,6 +249,7 @@ def build_org_bundle(db: Session, org: Organization, exported_by: User) -> bytes
         "source_sso_enabled": org.sso_enabled, "source_sso_only": org.sso_only,
         "oidc_issuer_url": org.oidc_issuer_url, "oidc_client_id": org.oidc_client_id,
         "oidc_required_group": org.oidc_required_group, "pat_max_lifetime_days": org.pat_max_lifetime_days,
+        "report_output_retention_days": org.report_output_retention_days,
         "report_content": [e.model_dump() for e in org_content], "report_images": report_images,
         "logo_file_ref": f"{logo_asset.id}_{logo_asset.filename}" if logo_asset else None,
         "logo_content_type": logo_asset.content_type if logo_asset else None,
@@ -669,6 +670,7 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
         sso_enabled=False, sso_only=False,
         oidc_issuer_url=data.get("oidc_issuer_url"), oidc_client_id=data.get("oidc_client_id"),
         oidc_required_group=data.get("oidc_required_group"), pat_max_lifetime_days=data.get("pat_max_lifetime_days"),
+        report_output_retention_days=data.get("report_output_retention_days"),
     )
     db.add(org)
     db.flush()

@@ -89,6 +89,22 @@ export const REQUIREMENT_ACTION_OUTCOME_LABEL: Record<RequirementActionOutcome, 
 // badge should have a *_TONE map here alongside its *_LABEL map, never an
 // inline colour at the call site.
 export type BadgeTone = "muted" | "info" | "accent" | "warning" | "danger";
+/** Where a background custom report run is (`GeneratedReport.status`). */
+export type ReportRunStatus = "queued" | "running" | "ready" | "failed" | "expired";
+export const REPORT_RUN_STATUS_LABEL: Record<ReportRunStatus, string> = {
+  queued: "Waiting",
+  running: "Preparing",
+  ready: "Ready",
+  failed: "Failed",
+  expired: "Expired",
+};
+export const REPORT_RUN_STATUS_TONE: Record<ReportRunStatus, BadgeTone> = {
+  queued: "muted",
+  running: "info",
+  ready: "accent",
+  failed: "danger",
+  expired: "muted",
+};
 export const REQUIREMENT_STATUS_TONE: Record<RequirementStatus, BadgeTone> = {
   draft: "muted",
   reviewed: "info",
@@ -316,6 +332,7 @@ export type CoreNotificationType =
   | "stage_review_auto_approved"
   | "project_members_changed_by_org"
   | "system_storage_alert"
+  | "report_run_finished"
   | "compliance_required_action_due_soon"
   | "compliance_required_action_overdue"
   | "compliance_target_date_approaching"
@@ -1833,6 +1850,11 @@ export interface OrgAdvancedSettings {
   smtp_username: string | null;
   smtp_use_tls: boolean;
   pat_max_lifetime_days: number | null;
+  /** Days a background report's file is kept; `null` uses the platform default. */
+  report_output_retention_days: number | null;
+  /** Read-only: the platform default and ceiling for `report_output_retention_days`. */
+  report_output_default_retention_days: number;
+  report_output_max_retention_days: number;
   require_2fa: boolean;
   allow_self_signup: boolean;
   auto_accept_email_domain: string | null;

@@ -12535,3 +12535,48 @@ A cheap count pre-pass (record counts per `each` source, multiplied through nest
 ### Not applicable, checked
 
 *Authentication, RBAC, secrets, audit, retention, tenant isolation:* untouched (no endpoint, permission, stored row or column; the tree is the existing JSON). *Time:* no time field. *Search, codes, bundles:* no record type or table; a layout's tree carries equations like any block. *Users and groups parity:* no person field. *Nested projects / organisation defaults:* no definition table. *Modules:* the field flag and the block are generic extension points; no module file changed and no core file names a module. *MCP skill:* no tool changed (a layout's tree is the existing JSON argument). *Core tables and constants keyed by kind:* none added. *IPv6:* no listener.
+
+## Custom reports Phase 10: background runs (2026-10-27)
+
+**Decided by: User** (D14: a run expected to exceed a threshold becomes a background job, the person is notified when the download is ready, only background output is stored, and it expires after an organisation-set limit capped by a platform ceiling). **Decided by: Agent** for the mechanism below.
+
+### What was built
+
+- `GeneratedReport` is also the job row: `status` (`completed` for a synchronous run, then `queued`, `running`, `ready`, `failed`, `expired`), `started_at`, `finished_at`, `expires_at`, `output_key`, `output_filename`, `output_size`, `error` (migration 0110); `Organization.report_output_retention_days` (Org Admin > Templates & reports > Background reports, with the platform default and ceiling shown beside it).
+- `services/report_run_jobs.py`: `enqueue`, `run_job`/`run_next` (claim with `FOR UPDATE SKIP LOCKED`, run as the requester, store, notify), `expire` (files, lost jobs, old provenance rows), the requester's `list_for`/`get_for`/`read_output`/`delete_output`, and `run_job_loop`, started through the lifespan's `start_singletons`.
+- Routes: a file run over the synchronous limits answers 409 `{"code": "async_required"}`; `POST /projects/{id}/custom-reports/{layout}/runs` and `POST /orgs/{id}/custom-reports/{layout}/runs` queue it (202); `GET /api/v1/report-runs[?organization_id=]`, `GET .../{id}`, `GET .../{id}/download`, `DELETE .../{id}` are the requester's own.
+- `evaluate_layout(limit_scale=)` and `run_project_layout`/`run_organization_layout(background=True)`: 5 times the work and output limits and a 600 s deadline (`ASYNC_LIMIT_SCALE`, `ASYNC_TIMEOUT_SECONDS`); `custom_report_run.render_file`, `file_stem` and `provenance_fields` were extracted so the request and the job render and record a run identically.
+- Notification type `report_run_finished`; org deletion deletes stored objects; frontend `ReportRunsPanel` (under the report on both Reports pages), `useReportRuns`, the 409 hand-off in `ReportRunner`, the retention field, stories and `custom-report-background-run.spec.ts`.
+- Settings: `REPORT_OUTPUT_DEFAULT_RETENTION_DAYS` (7), `REPORT_OUTPUT_MAX_RETENTION_DAYS` (30), `REPORT_RUN_RECORD_RETENTION_DAYS` (400).
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **No cost estimate: attempt the run, hand off on a limit.** The plan proposed a cheap count pre-pass; an estimate that is wrong either way (nested sources, widgets, fan-out) costs a bad refusal or a bad wait, while the attempt is bounded by the existing 60 s timeout. A `LayoutLimitError` on a file format becomes 409 `async_required`; the on-screen `json` form keeps 413/408 because there is no file to queue. Revisit with data. | Agent |
+| 2 | **The job is the provenance row**, not a second table: one history per run, one place the retention and the organisation cascade already apply. The request (layout version, format, parameters) is pinned on the row at queue time so the job runs the layout as it was asked for. | Agent |
+| 3 | **Run by the leader, one at a time, in a worker thread.** The leader-election mechanism already exists for singleton jobs; `SKIP LOCKED` keeps the claim safe if that ever changes. Cost: one background run at a time per deployment and its CPU shares the leader process's GIL. Accepted for the first version; the queue is the seam to change it. | Agent |
+| 4 | **Limits are 5 times the synchronous ones and 10 minutes**, and a stored file is capped at 200 MB (`MAX_OUTPUT_BYTES`): the whole rendered file is held in memory and written in one call. | Agent |
+| 5 | **Only the requester can list, download or delete a run**, administrators included; another person's run is a 404. Stored output is Confidential and the requester's access was the only thing the run was checked against. | Agent |
+| 6 | **Access is re-checked when the job runs and when the file is downloaded** (active account and organisation, a role in the project or organisation, the layout still reachable and not hidden), so a report never holds more than the requester can read at that moment, and a person removed from the project cannot take an earlier file with them. | Agent |
+| 7 | **A job left `running` past its deadline plus two minutes is marked failed, never re-run.** A re-run could produce a file the requester no longer expects and doubles the load that probably killed the process. | Agent |
+| 8 | **Retention: the organisation's setting, else a platform default, never above a platform ceiling.** Expiry deletes the object first and clears the row's file columns after, so a failed delete is retried. The row stays as `expired`. | User (D14), Agent (7 and 30 day values) |
+| 9 | **Provenance rows are now expired too** (400 days, not while queued, running or ready), closing the retention policy's gap 3. A platform setting, not an organisation one: the row holds no content and the period is about evidence, not data protection. | Agent |
+| 10 | **At most 5 queued or running runs per person** (429): the queue is shared, so one person or script must not be able to fill it. | Agent |
+| 11 | **Failure messages are fixed sentences**, never an exception string, and only the exception type is logged. The row is readable by the requester and a message or traceback can quote record content. | Agent |
+| 12 | **No MCP tools.** A file has no MCP form (`run_custom_report` returns the on-screen JSON), so there is nothing to queue from an assistant. | Agent |
+| 13 | **The queueing request is the same download the person just made**, sent again to `.../runs` with a toast saying so, with no extra confirmation dialog: they have already asked for the file. | Agent |
+| 14 | **The organisation bundle carries `report_output_retention_days`; run rows and stored files do not** (provenance and short-lived output are not organisation content to move). | Agent |
+| 15 | **Time shapes.** `created_at`, `started_at`, `finished_at` are past instants (UTC). `expires_at` is a derived deadline computed from the UTC finish time plus a number of days; it is not a time a person scheduled, so it carries no IANA zone. Boundary hours do not apply: nothing here uses a calendar date or a wall-clock time; tests pin the retention arithmetic and expiry comparisons against injected instants. | Agent |
+
+### Review (identify, verify, remediate)
+
+*Identify:* another person fetching or deleting a run; access that changes between queueing and running or downloading; a queue filled by one person; a job stuck `running` after a crash; stored objects outliving the organisation; exception text with record content reaching logs or the row; storage keys built from user text; stored output outliving its retention; the download path serving a file after expiry; an administrator reaching a run.
+
+*Verify and remediate:* a run is looked up by `requested_by` and everything else is a 404 (tests: another member, a project manager, a server administrator); access is re-checked at run time and on download (tests: an archived requester gets a failure, not a file, and cannot download a ready one); the cap of five returns 429; `expire` marks an over-age `running` job failed; **found: deleting an organisation left its stored objects behind** (the rows cascade, the objects are named only on the rows), fixed in `org_deletion` with a test; **found: the run failure paths logged `logger.exception`**, whose message and traceback can quote record content, now `type(exc).__name__` only; keys are `report-runs/<org id>/<run id>.<extension of the renderer>`, no user text; the download checks `expires_at` as well as the status, so an expired file is refused before the expiry pass reaches it (test). **Found and fixed on the way: `api.getForBlob` threw away the response body, so a structured error (the 409 code) could not be read by the client; it now uses the shared request path.** The advanced settings save had no success feedback (the style guide's feedback rule); it now toasts. A Phase 9 docstring line in `report_math.py` exceeded the line limit and was wrapped.
+
+*Residual, recorded:* stored output is in the object store and so in the object mirror and backup sets taken while it exists (retention policy, new gap 3); one background run at a time per deployment; the rendered file is held in memory (200 MB cap); the sync attempt spends up to 60 s before handing off.
+
+### Not applicable, checked
+
+*Modules:* nothing per module in a core file; the job is generic and the notification type is a core one. *Core tables and constants keyed by kind:* none added. *Search, codes:* no record type. *Users and groups parity:* the run is for the requesting user; the retention setting is organisation-wide. *Nested projects / organisation defaults:* no definition table. *Bundles:* see decision 14. *Seeds:* no new feature data to demonstrate (a run is made by using the product). *IPv6:* no listener.

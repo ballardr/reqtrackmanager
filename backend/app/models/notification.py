@@ -48,6 +48,8 @@ class NotificationType(str, enum.Enum):
     PROJECT_MEMBERS_CHANGED_BY_ORG = "project_members_changed_by_org"
     # Deployment health alert sent to server admins (services/storage_health.py, services/disk_monitor.py).
     SYSTEM_STORAGE_ALERT = "system_storage_alert"
+    # A background custom report finished or failed (services/report_run_jobs.py).
+    REPORT_RUN_FINISHED = "report_run_finished"
 
     # Compliance Module (§18) — every event §18 lists. These
     # predate the registry-backed mechanism below and stay here; a module added
