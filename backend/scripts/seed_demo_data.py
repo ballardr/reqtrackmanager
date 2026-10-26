@@ -513,6 +513,21 @@ REQUIREMENTS_BY_COMPONENT_LAYOUT = {
 """A small custom report layout: the project's requirements grouped by component."""
 
 
+CONTEXT_OVERVIEW_LAYOUT = {
+    "schema_version": 1, "family": "document", "orientation": "landscape",
+    "nodes": [
+        {"type": "heading", "text": "{{report_title}}"},
+        {"type": "text", "text": "Context & Strategy for **{{project_name}}**, built from report widgets."},
+        {"type": "heading", "level": 2, "text": "Headline figures"},
+        {"type": "widget", "key": "context_strategy.summary.figures", "params": {"stale_months": 12}},
+        {"type": "heading", "level": 2, "text": "Pain Points by type and status"},
+        {"type": "text", "text": "Open and closed Pain Points, as counted by the Pain Point coverage report."},
+        {"type": "widget", "key": "context_strategy.pain-point-coverage.matrix", "empty_text": "No Pain Points yet."},
+    ],
+}
+"""A custom report layout that embeds Context & Strategy report tables as widgets; its headings and prose are its own."""
+
+
 def create_report_layout(headers: dict, path: str, name: str, description: str, tree: dict) -> dict:
     """Creates a custom report layout at one tier: `/orgs/{id}` or `/projects/{id}` (followed by `/report-layouts`)."""
     r = httpx.post(
@@ -2105,6 +2120,9 @@ def main() -> None:
         h_pm, f"/projects/{drone['id']}", "Falcon-3 requirements", "Falcon-3's requirements by component.", REQUIREMENTS_BY_COMPONENT_LAYOUT,
     )
     hide_report_layout(h_pm, avionics["id"], org_layout["id"])
+    create_report_layout(
+        h_pm, f"/orgs/{org['id']}", "Context overview", "Context & Strategy figures and tables, embedded as widgets.", CONTEXT_OVERVIEW_LAYOUT,
+    )
     avionics_components = {"SN": create_component(h_pm, avionics["id"], "Sensors", "SN")}
     avionics_categories = create_categories_for_components(h_pm, avionics["id"], avionics_components, {"SN": ["PERF", "SAF", "FN"]})
     avionics_reqs = seed_project(

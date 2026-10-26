@@ -21,6 +21,7 @@ Twenty-two read tools, always available:
 | `list_report_layouts` | The custom report layouts a project can run (its own, a parent's and the organisation's, each with its origin) or an organisation's own |
 | `get_report_layout` | A layout with its tree or one saved version (needs the layout-management permission) |
 | `run_custom_report` | Runs a layout and returns the report as data: one project (optionally with child projects), or an organisation layout once per project the caller can read (optionally limited with `project_ids`). Only what the caller can read; unseen records are counted in `notes`. Every run is recorded for provenance |
+| `list_report_widgets` | The report components (a table, the headline figures, the notes) a layout can embed as a `[[widget.<module>.<report>.<part> name=value]]` line, with the report's parameters (needs the layout-management permission) |
 | `parse_report_layout_text` / `format_report_layout_text` | Convert a layout between its text view and its tree, with positioned errors; store nothing |
 | `list_requirements` | Requirements in a project, with the same filters the UI's filter panel offers (status, component, category, keyword, tags, or a name/code search) |
 | `get_requirement` | A single requirement's full current detail |

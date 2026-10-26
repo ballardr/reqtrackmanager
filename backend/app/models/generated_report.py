@@ -62,7 +62,7 @@ class GeneratedReport(UUIDPKMixin, Base):
         engine_version: The layout engine's version (changes when evaluation semantics change).
         params: Run parameters: `report_template_id`, `include_children`, `requested_project_ids`.
         scope_project_ids: The projects the run covered.
-        widgets: The widgets the layout embedded (keys), `[]` until layouts can embed widgets.
+        widgets: Keys of the widgets that ran (`<module key>.<report slug>`, distinct, sorted); `[]` for a layout with none.
         record_counts: Records read, by artefact type.
         stats: `blocks`, `rows`, `hidden`, `unavailable`, `warnings`, `duration_ms`.
         source_digest: SHA-256 hex over the records in the report (see the module docstring).

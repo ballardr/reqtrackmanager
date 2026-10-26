@@ -34,9 +34,19 @@ Grammar (one statement per line; indentation is cosmetic):
 - A block opens with `@name ...`; `each`, `group`, `if` (with `@else`), `table`, `sheet` and an explicit
   `@text` end with `@end`. `heading`, `page_break` and the quoted `@text "..."` are one line.
 - A source is a record type, or `in <group name>`, followed by clauses in any order: `from <name>`,
-  `via "<link type>", ...`, `direction <d>`, `archived true|false`, `where <field> <op> [value, ...]`,
+  `via "<link type>", ...`, `direction <d>`, `archived true|false`, `where <condition>`,
   `sort <field> [asc|desc]`; a block adds `as <name>`, `by <field>` or `empty "<text>"` where its
   validator takes them. `none` after `via`, `where` or `sort` writes an empty list.
+- A condition is a test of one field, `<field> <op> [value, ...]` (`eq ne contains gt gte lt lte empty not_empty`, and
+  `in` / `not_in` with a comma-separated list), or tests combined with `and`, `or`, `not` and brackets: `not` binds
+  tightest, then `and`, then `or`. Several `where` clauses must all hold. A bare `and`, `or` or `not` is never a value
+  (write it in quotes), and a bracket is never part of a bare word.
+- A widget is one component of a report (a table, its headline figures or its notes) on a line of its own,
+  `[[widget.<module>.<report>.<part> name=value ... sort <column> [asc|desc] ... empty "<text>"]]`: a bare word,
+  number, `true` or `false` is read as such, anything else is quoted (`since="2026-10-01"`); `sort` orders the table by
+  a column heading (up to three, most significant first); `empty` is the text shown when the component has
+  nothing in it. A line starting `[[widget` is always a widget (and an error if malformed), so prose that needs
+  one writes it inside `@text`.
 - Any line that is not a directive is text; consecutive such lines are one text block. A line whose first
   character is `@` is written `@@` in text. Text that cannot be written as plain lines (carriage
   returns, edge blank lines, directly after another text block) uses `@text ... @end` or `@text "..."`.
@@ -63,6 +73,8 @@ from typing import Any
 
 from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE
 from app.services.report_layout_tree import (
+    LIST_OPERATORS,
+    MAX_CONDITION_DEPTH,
     MAX_DEPTH,
     MAX_ERRORS,
     MAX_NODES,
@@ -72,13 +84,17 @@ from app.services.report_layout_tree import (
 )
 
 MAX_TEXT_VIEW_CHARS = 1_000_000
+#: Words that join conditions; a bare one is never a value.
+LOGIC_WORDS = ("and", "or", "not")
+#: Brackets that may be open at once in a condition.
+MAX_BRACKET_DEPTH = 8
 INDENT = "  "
 ORIENTATION_WORDS = ("portrait", "landscape")
 SOURCE_CLAUSES = ("from", "via", "direction", "archived", "where", "sort")
 EXTRA_CLAUSES = ("as", "by", "empty")
 
 _STRING_TOKEN = re.compile(r'"(?:[^"\\]|\\.)*"')
-_WORD_TOKEN = re.compile(r'[^\s,"]+')
+_WORD_TOKEN = re.compile(r'[^\s,"()]+')
 _NUMBER = re.compile(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?")
 _BARE = re.compile(r"[A-Za-z_][A-Za-z0-9_\-]*")
 _LEVEL_ATTR = re.compile(r"level=(\S*)(?:\s+|$)")
@@ -137,7 +153,7 @@ class _Halt(Exception):
 
 @dataclass(frozen=True)
 class _Token:
-    kind: str  # "str" (quoted), "word" or "comma"
+    kind: str  # "str" (quoted), "word", "comma" or "paren"
     value: str
     column: int
 
@@ -168,6 +184,9 @@ def _tokenize(rest: str, offset: int) -> list[_Token]:
             pos = match.end()
         elif rest[pos] == ",":
             tokens.append(_Token("comma", ",", column))
+            pos += 1
+        elif rest[pos] in "()":
+            tokens.append(_Token("paren", rest[pos], column))
             pos += 1
         else:
             match = _WORD_TOKEN.match(rest, pos)
@@ -212,6 +231,8 @@ class _Cursor:
         token = self.take(what)
         if token.kind == "comma":
             raise _Syntax(f"Expected {what}, found a comma.", token.column)
+        if token.kind == "paren":
+            raise _Syntax(f"Expected {what}, found {token.value}. Put text with brackets in quotes.", token.column)
         return token.value
 
     def value(self, what: str) -> Any:
@@ -221,6 +242,10 @@ class _Cursor:
             return token.value
         if token.kind == "comma":
             raise _Syntax(f"Expected {what}, found a comma.", token.column)
+        if token.kind == "paren":
+            raise _Syntax(f"Expected {what}, found {token.value}. Put text with brackets in quotes.", token.column)
+        if token.value in LOGIC_WORDS:
+            raise _Syntax(f'A bare "{token.value}" is logic, not a value: write "{token.value}" in quotes to use it as one.', token.column)
         if token.value in ("true", "false"):
             return token.value == "true"
         if _NUMBER.fullmatch(token.value):
@@ -234,6 +259,52 @@ class _Cursor:
             self._i += 1
             return token.value
         return None
+
+    def condition(self, leaf: Callable[[_Cursor], dict[str, Any]], depth: int = 0) -> dict[str, Any]:
+        """A condition: `leaf` tests joined by `and` / `or` / `not` and brackets (`not` > `and` > `or`).
+
+        Brackets are kept as structure, so `a and (b and c)` reads back as the same tree it was written from.
+
+        Args:
+            leaf: Reads one test from the cursor.
+            depth: How many brackets are open.
+
+        Returns:
+            The condition as the tree stores it: a test, `{"all": [...]}`, `{"any": [...]}` or `{"not": ...}`.
+        """
+        items = [self._conjunction(leaf, depth)]
+        while self.accept("or"):
+            items.append(self._conjunction(leaf, depth))
+        return items[0] if len(items) == 1 else {"any": items}
+
+    def _conjunction(self, leaf: Callable[[_Cursor], dict[str, Any]], depth: int) -> dict[str, Any]:
+        items = [self._negation(leaf, depth)]
+        while self.accept("and"):
+            items.append(self._negation(leaf, depth))
+        return items[0] if len(items) == 1 else {"all": items}
+
+    def _negation(self, leaf: Callable[[_Cursor], dict[str, Any]], depth: int) -> dict[str, Any]:
+        nots = 0
+        while (token := self.peek()) is not None and token.kind == "word" and token.value == "not":
+            self._i += 1
+            nots += 1
+            if nots > MAX_CONDITION_DEPTH:
+                raise _Syntax(f"Too many nots in a row (the limit is {MAX_CONDITION_DEPTH}).", token.column)
+        token = self.peek()
+        if token is not None and token.kind == "paren" and token.value == "(":
+            if depth >= MAX_BRACKET_DEPTH:
+                raise _Syntax(f"Brackets are nested too deeply (the limit is {MAX_BRACKET_DEPTH}).", token.column)
+            self._i += 1
+            node = self.condition(leaf, depth + 1)
+            closing = self.peek()
+            if closing is None or closing.kind != "paren" or closing.value != ")":
+                raise _Syntax("This bracket is never closed.", token.column)
+            self._i += 1
+        else:
+            node = leaf(self)
+        for _ in range(nots):
+            node = {"not": node}
+        return node
 
     def comma_list(self, item: Callable[[], Any]) -> list[Any]:
         """`item (, item)*`."""
@@ -259,16 +330,38 @@ def _cursor(rest: str, offset: int, line_length: int) -> _Cursor:
 
 def _condition_tail(cur: _Cursor, cond: dict[str, Any]) -> None:
     """Reads `<op> [value, ...]` into `cond` (`op` and, unless the operator takes none, `value`)."""
-    cond["op"] = cur.word("an operator (eq, ne, gt, gte, lt, lte, contains, in, empty, not_empty)")
+    cond["op"] = cur.word("an operator (eq, ne, gt, gte, lt, lte, contains, in, not_in, empty, not_empty)")
     if cond["op"] in ("empty", "not_empty"):
         return
-    if cond["op"] == "in":
+    if cond["op"] in LIST_OPERATORS:
         cond["value"] = cur.comma_list(lambda: cur.value("a value"))
         return
     cond["value"] = cur.value("a value")
     following = cur.peek()
     if following is not None and following.kind == "comma":
-        raise _Syntax('Only "in" takes several values.', following.column)
+        raise _Syntax('Only "in" and "not_in" take several values.', following.column)
+
+
+def _test_subject(cur: _Cursor, what: str) -> str:
+    """The field (or `name.field`) a test is about; a word of logic here means a test is missing."""
+    token = cur.peek()
+    if token is not None and token.kind == "word" and token.value in LOGIC_WORDS:
+        raise _Syntax(f'Expected {what}, found "{token.value}": a test is missing before or after it.', token.column)
+    return cur.word(what)
+
+
+def _where_leaf(cur: _Cursor) -> dict[str, Any]:
+    """One `<field> <op> [value, ...]` test of a `where`."""
+    cond: dict[str, Any] = {"field": _test_subject(cur, "a field name")}
+    _condition_tail(cur, cond)
+    return cond
+
+
+def _if_leaf(cur: _Cursor) -> dict[str, Any]:
+    """One `<name.field> <op> [value, ...]` test of an `@if`."""
+    cond: dict[str, Any] = {"ref": _test_subject(cur, "name.field, for example record.status")}
+    _condition_tail(cur, cond)
+    return cond
 
 
 def _source(cur: _Cursor, extras: tuple[str, ...]) -> tuple[dict[str, Any], dict[str, str]]:
@@ -295,7 +388,8 @@ def _source(cur: _Cursor, extras: tuple[str, ...]) -> tuple[dict[str, Any], dict
     sort: list[dict[str, Any]] | None = None
     while (token := cur.peek()) is not None:
         if token.kind != "word" or token.value not in (*SOURCE_CLAUSES, *EXTRA_CLAUSES):
-            raise _Syntax(f"Unexpected {token.shown()}. Expected one of: {', '.join(allowed)}.", token.column)
+            hint = " If it is part of a value, put the value in quotes." if token.kind == "paren" else ""
+            raise _Syntax(f"Unexpected {token.shown()}. Expected one of: {', '.join(allowed)}.{hint}", token.column)
         keyword = cur.take("a clause").value
         if keyword not in allowed:
             raise _Syntax(f'"{keyword}" is not used here. This block takes: {", ".join(allowed)}.', token.column)
@@ -310,9 +404,7 @@ def _source(cur: _Cursor, extras: tuple[str, ...]) -> tuple[dict[str, Any], dict
                     raise _Syntax(f'"{keyword} none" cannot be combined with other {keyword} clauses.', token.column)
                 items = [*(items or [])]
                 if keyword == "where":
-                    cond: dict[str, Any] = {"field": cur.word("a field name")}
-                    _condition_tail(cur, cond)
-                    items.append(cond)
+                    items.append(cur.condition(_where_leaf))
                 else:
                     key: dict[str, Any] = {"field": cur.word("a field name")}
                     direction = cur.accept("asc", "desc")
@@ -352,7 +444,7 @@ def _source(cur: _Cursor, extras: tuple[str, ...]) -> tuple[dict[str, Any], dict
 
 def _bare_or_quoted(value: str) -> str:
     """`value` unquoted when it reads back as the same text, else as quoted text."""
-    return value if _BARE.fullmatch(value) and value not in ("true", "false") else _quote(value)
+    return value if _BARE.fullmatch(value) and value not in ("true", "false", *LOGIC_WORDS) else _quote(value)
 
 
 def _quote(value: str) -> str:
@@ -378,6 +470,36 @@ def _condition_text(cond: dict[str, Any]) -> str:
     return out
 
 
+def _where_leaf_text(cond: dict[str, Any]) -> str:
+    return f"{cond['field']} {_condition_text(cond)}"
+
+
+def _if_leaf_text(cond: dict[str, Any]) -> str:
+    return f"{cond['ref']} {_condition_text(cond)}"
+
+
+def _logic_text(node: dict[str, Any], leaf: Callable[[dict[str, Any]], str], parent: str | None = None) -> str:
+    """A condition as text, with only the brackets that keep it reading back as the same tree.
+
+    A nested `all` / `any` is bracketed under any other boolean node (so `a and (b and c)` stays distinct from
+    `a and b and c`), except an `all` directly under an `any`, where `and` already binds tighter. `not` needs
+    none: it binds tightest.
+
+    Args:
+        node: The condition.
+        leaf: Writes one test.
+        parent: The kind of boolean node it sits in (`all`, `any`, `not`), `None` at the top.
+    """
+    if "not" in node:
+        return "not " + _logic_text(node["not"], leaf, "not")
+    for kind, word in (("all", " and "), ("any", " or ")):
+        if kind in node:
+            text = word.join(_logic_text(child, leaf, kind) for child in node[kind])
+            bracket = parent is not None and not (kind == "all" and parent == "any")
+            return f"({text})" if bracket else text
+    return leaf(node)
+
+
 def _source_text(source: dict[str, Any]) -> str:
     parts = ["in " + source["group"] if "group" in source else source["record_type"]]
     if "linked_from" in source:
@@ -396,7 +518,7 @@ def _source_text(source: dict[str, Any]) -> str:
             parts.append(f"{clause} none")
         for item in source[key]:
             if key == "where":
-                parts.append(f"where {item['field']} {_condition_text(item)}")
+                parts.append(f"where {_logic_text(item, _where_leaf_text)}")
             else:
                 parts.append(f"sort {item['field']}" + ("" if "descending" not in item else " desc" if item["descending"] else " asc"))
     return " ".join(parts)
@@ -430,11 +552,14 @@ class TextForm:
         key: The block's `type` and the directive name (`@key`).
         parse: `(parser, directive)` — reads the rest of the line and adds the block to the parser.
         write: `(writer, node, depth)` — emits the block's lines.
+        bracketed: Whether the block is a line of its own, `[[key.…]]`, rather than an `@key` directive. The
+            directive's `rest` is then what follows `[[key.` up to the closing `]]`.
     """
 
     key: str
     parse: Callable[[_Parser, _Directive], None]
     write: Callable[[_Writer, dict[str, Any], int], None]
+    bracketed: bool = False
 
 
 TEXT_FORMS: dict[str, TextForm] = {}
@@ -468,6 +593,16 @@ class _Directive:
 
 def _is_directive(stripped: str) -> bool:
     return stripped.startswith("@") and not stripped.startswith("@@")
+
+
+_BRACKET_START = re.compile(r"\[\[([a-z_]+)(?![a-z_0-9])")
+
+
+def _bracketed_form(stripped: str) -> TextForm | None:
+    """The `[[name.…]]` form a (left-stripped) line opens, or `None` when it is ordinary text."""
+    match = _BRACKET_START.match(stripped)
+    form = TEXT_FORMS.get(match.group(1)) if match else None
+    return form if form is not None and form.bracketed else None
 
 
 def _escape(line: str) -> str:
@@ -541,6 +676,9 @@ class _Parser:
             if _is_directive(stripped):
                 self._flush_run()
                 self._guarded(self._directive, raw, stripped, line_no)
+            elif _bracketed_form(stripped) is not None:
+                self._flush_run()
+                self._guarded(self._bracketed, raw, stripped, line_no)
             else:
                 self._prose(raw, line_no)
         self._flush_run()
@@ -602,8 +740,11 @@ class _Parser:
             self._sub_directive(top, directive, indent)
             return
         form = TEXT_FORMS.get(name)
+        if form is not None and form.bracketed:
+            raise _Syntax(f"Write a {name} on a line of its own as [[{name}.…]], not as @{name}.", indent + 1)
         if form is None:
-            known = ", ".join(sorted({*TEXT_FORMS, "end"} | ({"else"} if top.node.get("type") == "if" else set())))
+            directives = {key for key, f in TEXT_FORMS.items() if not f.bracketed}
+            known = ", ".join(sorted({*directives, "end"} | ({"else"} if top.node.get("type") == "if" else set())))
             raise _Syntax(f"Unknown directive @{name}. Use one of: {known}.", indent + 1)
         before = len(self.frames)
         try:
@@ -614,6 +755,23 @@ class _Parser:
                 scratch: dict[str, Any] = {"type": name, "children": [], "columns": []}
                 self._push(_Frame("container" if name in ("each", "group", "if") else name, scratch, "", line_no))
             raise
+
+    def _bracketed(self, raw: str, stripped: str, line_no: int) -> None:
+        """A `[[name.…]]` line (a widget): checks its frame and closing brackets, then hands the inside to its form."""
+        indent = len(raw) - len(stripped)
+        form = _bracketed_form(stripped)
+        assert form is not None  # the caller matched it
+        if self.frames[-1].kind in ("table", "sheet"):
+            raise _Syntax(f"Inside @{self.frames[-1].node['type']} use @column or @end, not a {form.key}.", indent + 1)
+        body = stripped.rstrip()
+        if not body.endswith("]]"):
+            raise _Syntax(f"A [[{form.key}.…]] line must end with ]] and have nothing after it.", indent + len(body) + 1)
+        opening = f"[[{form.key}"
+        inner = body[len(opening):-2]
+        if not inner.startswith("."):
+            raise _Syntax(f"Write [[{form.key}.<name> …]], with a dot after {form.key}.", indent + len(opening) + 1)
+        directive = _Directive(form.key, inner[1:], indent + len(opening) + 1, line_no, len(raw))
+        form.parse(self, directive)
 
     def _sub_directive(self, frame: _Frame, directive: _Directive, indent: int) -> None:
         name = directive.name
@@ -876,7 +1034,8 @@ def _write_text(w: _Writer, node: dict[str, Any], depth: int) -> None:
         w.prev_implicit_text = False
         return
     lines = text.split("\n")
-    if not w.prev_implicit_text and lines[0].strip() and lines[-1].strip():
+    reads_as_block = any(_bracketed_form(line.lstrip(" \t")) is not None for line in lines)
+    if not w.prev_implicit_text and lines[0].strip() and lines[-1].strip() and not reads_as_block:
         for line in lines:
             w.lines.append(INDENT * depth + _escape(line) if line else "")
         w.prev_implicit_text = True
@@ -956,15 +1115,13 @@ def _write_group(w: _Writer, node: dict[str, Any], depth: int) -> None:
 
 def _parse_if(p: _Parser, d: _Directive) -> None:
     cur = d.cursor()
-    when: dict[str, Any] = {"ref": cur.word("name.field, for example record.status")}
-    _condition_tail(cur, when)
+    when = cur.condition(_if_leaf)
     cur.expect_end()
     p.open({"type": "if", "when": when, "children": []}, d.line_no)
 
 
 def _write_if(w: _Writer, node: dict[str, Any], depth: int) -> None:
-    when = node["when"]
-    w.line(depth, f"@if {when['ref']} {_condition_text(when)}")
+    w.line(depth, f"@if {_logic_text(node['when'], _if_leaf_text)}")
     w.blocks(node["children"], depth + 1)
     if "else_children" in node:
         w.line(depth, "@else")
@@ -994,6 +1151,120 @@ def _write_sheet(w: _Writer, node: dict[str, Any], depth: int) -> None:
     w.line(depth, "@end")
 
 
+_PARAM_NAME = re.compile(r"([a-z][a-z0-9_]*)=")
+_EMPTY_CLAUSE = re.compile(r'empty\s+(?=")')
+_SORT_CLAUSE = re.compile(r"sort(?:\s+|$)")
+_DIRECTION = re.compile(r"\s+(asc|desc)(?=\s|$)")
+_BARE_VALUE = re.compile(r'[^\s"]+')
+_WIDGET_BARE = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_\-.:]*")
+
+
+def _parse_widget(p: _Parser, d: _Directive) -> None:
+    rest = d.rest
+    key = re.match(r"\S+", rest)
+    if key is None:
+        raise _Syntax("Name the component: [[widget.<module>.<report>.<part>]].", d.offset + 1)
+    node: dict[str, Any] = {"type": "widget", "key": key.group()}
+    params: dict[str, Any] = {}
+    pos, n = key.end(), len(rest)
+    while True:
+        while pos < n and rest[pos] in " \t":
+            pos += 1
+        if pos >= n:
+            break
+        column = d.offset + pos + 1
+        empty = _EMPTY_CLAUSE.match(rest, pos)
+        if empty is not None:
+            if "empty_text" in node:
+                raise _Syntax('"empty" is given twice.', column)
+            quoted = _STRING_TOKEN.match(rest, empty.end())
+            if quoted is None:
+                raise _Syntax("This quoted text is never closed.", d.offset + empty.end() + 1)
+            try:
+                node["empty_text"] = json.loads(quoted.group())
+            except ValueError:
+                raise _Syntax('Not valid quoted text (write \\" for a quote and \\\\ for a backslash).', d.offset + empty.end() + 1) from None
+            pos = quoted.end()
+            continue
+        sorting = _SORT_CLAUSE.match(rest, pos)
+        if sorting is not None:
+            pos = _parse_widget_sort(node, rest, sorting.end(), d.offset)
+            continue
+        name = _PARAM_NAME.match(rest, pos)
+        if name is None:
+            raise _Syntax(f"Expected name=value, found {rest[pos:].split()[0]!r}.", column)
+        if name.group(1) in params:
+            raise _Syntax(f'"{name.group(1)}" is given twice.', column)
+        pos = name.end()
+        if pos >= n or rest[pos] in " \t":
+            raise _Syntax(f'"{name.group(1)}=" needs a value.', d.offset + pos + 1)
+        if rest[pos] == '"':
+            quoted = _STRING_TOKEN.match(rest, pos)
+            if quoted is None:
+                raise _Syntax("This quoted text is never closed.", d.offset + pos + 1)
+            try:
+                value: Any = json.loads(quoted.group())
+            except ValueError:
+                raise _Syntax('Not valid quoted text (write \\" for a quote and \\\\ for a backslash).', d.offset + pos + 1) from None
+            pos = quoted.end()
+        else:
+            word = _BARE_VALUE.match(rest, pos)
+            assert word is not None  # not whitespace or a quote, so at least one character
+            text = word.group()
+            value = text == "true" if text in ("true", "false") else json.loads(text) if _NUMBER.fullmatch(text) else text
+            pos = word.end()
+        params[name.group(1)] = value
+    if params:
+        node["params"] = params
+    p.add(node, d.line_no)
+
+
+def _parse_widget_sort(node: dict[str, Any], rest: str, pos: int, offset: int) -> int:
+    """Reads `<column> [asc|desc]` after a widget's `sort`, adds the key to `node["sort"]` and returns the new position."""
+    if pos >= len(rest):
+        raise _Syntax("Sort needs a column heading, for example sort Name or sort \"Next review\" desc.", offset + pos + 1)
+    if rest[pos] == '"':
+        quoted = _STRING_TOKEN.match(rest, pos)
+        if quoted is None:
+            raise _Syntax("This quoted text is never closed.", offset + pos + 1)
+        try:
+            column = json.loads(quoted.group())
+        except ValueError:
+            raise _Syntax('Not valid quoted text (write \\" for a quote and \\\\ for a backslash).', offset + pos + 1) from None
+        pos = quoted.end()
+    else:
+        word = _BARE_VALUE.match(rest, pos)
+        assert word is not None  # not whitespace or a quote
+        column, pos = word.group(), word.end()
+    key: dict[str, Any] = {"column": column}
+    direction = _DIRECTION.match(rest, pos)
+    if direction is not None:
+        key["descending"] = direction.group(1) == "desc"
+        pos = direction.end()
+    node.setdefault("sort", []).append(key)
+    return pos
+
+
+def _widget_literal(value: Any) -> str:
+    """A parameter value as text: bare when it reads back as the same value, else quoted."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int | float):
+        return _literal(value)
+    bare = _WIDGET_BARE.fullmatch(value) and value not in ("true", "false") and not _NUMBER.fullmatch(value)
+    return value if bare else _quote(value)
+
+
+def _write_widget(w: _Writer, node: dict[str, Any], depth: int) -> None:
+    settings = "".join(f" {name}={_widget_literal(value)}" for name, value in node.get("params", {}).items())
+    sorting = "".join(
+        f" sort {_bare_or_quoted(k['column'])}" + ("" if "descending" not in k else " desc" if k["descending"] else " asc")
+        for k in node.get("sort", [])
+    )
+    empty = f" empty {_quote(node['empty_text'])}" if "empty_text" in node else ""
+    w.line(depth, f"[[widget.{node['key']}{settings}{sorting}{empty}]]")
+
+
 for _form in (
     TextForm("heading", _parse_heading, _write_heading),
     TextForm("text", _parse_text, _write_text),
@@ -1003,6 +1274,7 @@ for _form in (
     TextForm("group", _parse_group, _write_group),
     TextForm("if", _parse_if, _write_if),
     TextForm("sheet", _parse_sheet, _write_sheet),
+    TextForm("widget", _parse_widget, _write_widget, bracketed=True),
 ):
     register_text_form(_form)
 

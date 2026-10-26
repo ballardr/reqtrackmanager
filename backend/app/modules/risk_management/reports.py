@@ -52,7 +52,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
-from app.modules.registry import ReportDefinition, ReportParamDefinition
+from app.modules.registry import ReportDefinition, ReportParamDefinition, ReportPartDefinition
 from app.modules.risk_management.enums import RiskStatus, TreatmentAssessmentStatus
 from app.modules.risk_management.labels import (
     RISK_STATUS_LABEL,
@@ -599,24 +599,45 @@ _REPORTS: tuple[ReportDefinition, ...] = (
         "rk1", "risk-register", "Risk register",
         "Every Risk with its type, status, owner, strategy, inherent and residual rating, and next review.",
         collect_risk_register, subcomponent=RISK_SUBCOMPONENT_KEY, params=(_STATUS, _RISK_TYPE, _INCLUDE_ARCHIVED),
+        parts=(
+            ReportPartDefinition("register", "Risks"),
+            ReportPartDefinition("by_status", "By status"),
+            ReportPartDefinition("by_inherent", "By inherent rating"),
+            ReportPartDefinition("by_residual", "By residual rating"),
+        ),
         record_types=("risk",),
     ),
     ReportDefinition(
         "rk2", "risk-exposure", "Risk exposure",
         "Inherent against residual rating across live Risks, the highest remaining Risks, and Risks with no rating.",
         collect_risk_exposure, subcomponent=RISK_SUBCOMPONENT_KEY,
+        parts=(
+            ReportPartDefinition("by_rating", "Inherent against residual"),
+            ReportPartDefinition("top_residual", "Highest residual risks"),
+            ReportPartDefinition("not_rated", "Not rated"),
+        ),
         record_types=("risk",),
     ),
     ReportDefinition(
         "rk3", "treatment-coverage", "Treatment coverage",
         "Risks expected to be treated that have no effective treatment, or rest on a verdict to reassess.",
         collect_treatment_coverage, subcomponent=RISK_SUBCOMPONENT_KEY,
+        parts=(
+            ReportPartDefinition("untreated", "No effective treatment"),
+            ReportPartDefinition("needs_reassessment", "Resting on a verdict to reassess"),
+            ReportPartDefinition("verdicts", "Treatment links by verdict"),
+        ),
         record_types=("risk",),
     ),
     ReportDefinition(
         "rk4", "review-schedule", "Review schedule",
         "Overdue and upcoming Risk reviews, and assessed Risks with no review scheduled.",
         collect_review_schedule, subcomponent=RISK_SUBCOMPONENT_KEY, params=(_DUE_WITHIN,),
+        parts=(
+            ReportPartDefinition("overdue", "Overdue reviews"),
+            ReportPartDefinition("due_soon", "Due soon"),
+            ReportPartDefinition("unscheduled", "No review scheduled"),
+        ),
         record_types=("risk",),
     ),
 )

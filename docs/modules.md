@@ -1331,10 +1331,33 @@ flowchart LR
   Grammar: first line `@layout document [portrait|landscape]` or `@layout table`; a block is `@name …` and
   `each`, `group`, `if` (with `@else`), `table`, `sheet` and `@text` close with `@end`. A source is a record type or
   `in <group>` then any of `from <name>`, `via "<link type>", …`, `direction <d>`, `archived true|false`,
-  `where <field> <op> [value, …]`, `sort <field> [asc|desc]`, plus the block's `as`, `by`, `empty "<text>"`
+  `where <condition>`, `sort <field> [asc|desc]`, plus the block's `as`, `by`, `empty "<text>"`
   (`none` after `via`, `where`, `sort` is an empty list). Table and sheet columns and joins are `@column
   [name.]field "label"` and `@join <source> as <name>` lines. A line that is not a directive is text; a text line
-  starting `@` is written `@@`.
+  starting `@` is written `@@`. A widget is the one block written as a line of its own, `[[widget.<module>.<report>.<part>
+  name=value]]` (§4p).
+
+  **Conditions.** A `where` clause (and an `@if`) holds a condition: a test of one field, `<field> <op> [value, …]`, or
+  tests combined with `and`, `or`, `not` and brackets. `not` binds tightest, then `and`, then `or`; several `where`
+  clauses must all hold. Operators by kind of field: text and person `eq ne contains in not_in empty not_empty`; enum
+  the same without `contains`; number and date `eq ne gt gte lt lte in not_in empty not_empty`; instant the
+  comparisons and `empty`; yes/no `eq ne`. `in` and `not_in` take a comma-separated list (`where category in
+  Safety, Security`), of any kind that has an `eq`. An empty value matches only `empty`, `ne` and `not_in`, so "everything
+  except General" keeps records with no category. The tree stores a test as `{field, op, value}` and a combination as
+  `{"all": [...]}`, `{"any": [...]}` (two or more) or `{"not": ...}`; a `where` list is an implicit `all`, so trees
+  saved before combinations existed are unchanged. At most `MAX_CONDITIONS` tests per `where` and
+  `MAX_CONDITION_DEPTH` levels of nesting. The writer brackets only what keeps the tree reading back identically (a
+  nested `all` or `any` is bracketed, an `all` inside an `any` is not), and quotes a value that is `and`, `or`, `not`,
+  `true`, `false` or holds a bracket; a bare `and` / `or` / `not` as a value is a syntax error that says so.
+
+```
+@group requirement by category as cat where category not_in General, Legacy and (status eq approved or owner not_empty)
+  @heading {{cat.value}}
+  @table in cat sort title
+    @column title
+  @end
+@end
+```
 
 ```
 @layout document
@@ -1348,7 +1371,7 @@ flowchart LR
   @end
 @end
 ```
-- **Extending.** A later block type (widget, equation) calls `report_layout_tree.register_block_spec` (its
+- **Extending.** A later block type (equation) calls `report_layout_tree.register_block_spec` (its
   validator), `report_layout_eval.register_evaluator` (its evaluation) and `report_layout_text.register_text_form`
   (its text form); `backend/tests/test_report_layout_eval.py` and `test_report_layout_text.py` fail when one exists
   without the others. No core file is edited per block type.
@@ -1413,7 +1436,7 @@ flowchart LR
   layout of that name the scope can reach; layouts are imported before report content for that reason.
 - **Provenance** (`models/generated_report.py`). Every run writes one `generated_reports` row after rendering succeeds
   (so a refused or failed run leaves none): layout id, name, version and tree hash, caller, UTC time, engine version,
-  format, parameters, the projects covered, widgets (none yet), records read per type, block/row/hidden counts, the
+  format, parameters, the projects covered, the widgets that ran (§4p), records read per type, block/row/hidden counts, the
   version number of every versioned record in the report (`record_versions`, from `SearchColumns.version`, which
   `versioned_provider` sets; bounded at `MAX_RECORDED_VERSIONS`, `record_versions_truncated` when cut) and a
   SHA-256 `source_digest` over all the records in the report (type, id, last-change time). It holds identifiers, counts and keys only, no layout text or cell value, and survives the
@@ -1421,9 +1444,65 @@ flowchart LR
   reports.
 - **Limits.** `LayoutLimitError` answers 413 and a timeout 408; both write nothing.
 - **MCP.** `list_report_layouts`, `get_report_layout`, `run_custom_report`, `parse_report_layout_text`,
-  `format_report_layout_text` and, in write mode, `create_report_layout`, `save_report_layout_version`,
+  `format_report_layout_text`, `list_report_widgets` and, in write mode, `create_report_layout`, `save_report_layout_version`,
   `update_report_layout`, `delete_report_layout` (`mcp-server/server.py`, skill `reqtrack-mcp`). `run_custom_report`
   always returns the `json` form.
+
+### 4p. Custom reports: widgets (Module 10 Phase 6)
+
+A `widget` block embeds one **component** of a module report (§4g) in a document layout: one of its tables, its
+headline figures, or its caveat notes. A widget is only the component. It never adds a heading or a sentence, so the
+layout owns every word around it and the same table can sit under different explanations in different reports.
+
+```mermaid
+flowchart LR
+    D["ReportDefinition.parts<br/>(table keys the module declares)<br/>+ figures · notes on every report"] --> C["report_widgets.list_widgets<br/>key = module . slug . part"]
+    C --> V["validator: key + the report's parameters"]
+    C --> L["GET …/report-layouts/widgets<br/>designer picker · MCP"]
+    V --> E["_eval_widget"]
+    G["widget_available<br/>module / sub-component enabled<br/>for this project"] --> E
+    E --> R["report's own collector<br/>(run once per report + settings)"]
+    R --> B["part_blocks:<br/>one table · figures · notes"]
+    B --> O["layout document<br/>(headings and prose are the layout's)"]
+    E --> P["provenance:<br/>widget keys + output digest"]
+```
+
+- **Declaring components.** A module lists the tables of a report it wants embeddable in
+  `ReportDefinition.parts` (`ReportPartDefinition(key, title)`, `key` being the `ReportSection.key` the collector
+  gives the table). Every report also offers `figures` (a `Measure | Value` table, with a `Group` column when the
+  report groups them) and `notes` without declaring them. A table whose key depends on the data (the summary pack's
+  re-listed gap tables, the risk matrices) is not embeddable. A registry test fails when a collector produces a table
+  that is not declared, or a declaration names a table the collector does not produce.
+- **Key.** `<module key>.<report slug>.<part>` (`risk_management.risk-register.register`). A slug is unique only within
+  its module, so a bare slug could turn ambiguous and change what a stored layout means; all three segments are stable.
+- **Text.** `[[widget.context_strategy.summary.figures stale_months=12]]` on a line of its own, optionally with
+  `sort <column> [asc|desc]` (up to three, most significant first) and ending `empty "No risks recorded."`. A value is a bare word, number, `true` or `false`, or quoted text; anything that would
+  read back differently (`"1"`, `"true"`, a date with a space) is quoted. A line starting `[[widget` is always a widget,
+  and a syntax error when malformed, so prose that needs such a line writes it inside `@text`. `@widget` is not accepted.
+- **Sorting.** `sort` orders a table or the figures by the heading of one of its columns (`"sort": [{"column": "Next
+  review", "descending": true}]`), reading each cell as a person would: numbers as numbers, ISO dates as dates, anything
+  else as text ignoring case, empty cells last either way. A report's ratings are text, so "High" sorts alphabetically
+  and not by severity; use the report's own order when severity matters. A heading the table does not have is a
+  run-time warning and is skipped (a table's columns are only known when the report runs). Without `sort`, the order is
+  the report's own. For a plain list of records, prefer a `table` block, which sorts and filters by the record's fields.
+- **Tree.** `{"type": "widget", "key": "...", "params": {"name": value}, "sort": [...], "empty_text": "..."}`; `params`,
+  `sort` and `empty_text` are left out when unused. Parameters belong to the report, so every component of a report takes the same
+  ones; values are JSON literals of the declared type (date and id as text) checked against its
+  `ReportParamDefinition`s, with bounds and choices. There are no placeholders or expressions in a parameter; `empty_text`
+  may use the global placeholders (`{{project_name}}`). Document family only.
+- **Running.** The report's own collector runs with a `ReportContext` over the same organisation and projects as the
+  layout run, for the project being evaluated (an organisation-wide run runs it once per project), **once per report
+  and set of parameters** however many of its components the layout embeds. At most `MAX_WIDGET_REPORTS` (20) such runs
+  per layout. A component with nothing in it shows `empty_text`, or nothing. The widget runs only where the report's
+  module, and its sub-component if it declares one, is enabled for that project (`widget_available`, the gate the
+  report's own project route applies); elsewhere the layout says so in a note and a warning and carries on. A report that
+  rejects its parameters (4xx) is shown the same way, never as a failed layout; any other error is a bug and propagates.
+- **Provenance.** `generated_reports.widgets` lists the widget keys that ran. Their data is not read through the field
+  registry, so no record versions are recorded for it; instead a SHA-256 of each report's output is folded into
+  `source_digest`, so a change in what a widget reports changes the digest.
+- **Designer and agents.** `GET .../report-layouts/widgets` (organisation and project tier, manage permission) and the
+  `list_report_widgets` MCP tool list the components whose module the organisation or project can use, with the report's
+  parameters. Saving does not check availability (an organisation layout runs in many projects); each run does.
 
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 
@@ -1525,6 +1604,7 @@ REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
   JSON carry the text only, so a toned cell's text also names the band ("2 (High ×2) · Critical"), which keeps
   a greyscale print readable. A matrix is an ordinary table whose cells are toned (Pain Point R1's
   Severity × Frequency, Risk RK2's Likelihood × Consequence).
+- **Embeddable tables: declare `parts`.** `ReportDefinition.parts` lists the tables of the report a custom report layout can embed on its own (§4p), by the `ReportSection.key` the collector gives them. A test fails when a collector produces a table that is not declared; a table whose key depends on the data cannot be.
 - **Status badges: declare, don't loop.** `ReportDefinition.cell_tones` maps a column heading to
   `{label: tone}` (`{"Status": tones_by_label((RISK_STATUS_LABEL, RISK_STATUS_TONE))}`), and the framework tones
   every matching cell in every section of the report, so a collector needs no change. Keep a `*_TONE` map beside

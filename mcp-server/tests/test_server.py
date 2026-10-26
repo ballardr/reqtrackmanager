@@ -57,6 +57,7 @@ READ_ONLY_TOOLS = {
     "get_record_list_report",
     # Custom report layouts: listing, reading, running, and the two text-view converters (which store nothing).
     "list_report_layouts", "get_report_layout", "run_custom_report", "parse_report_layout_text", "format_report_layout_text",
+    "list_report_widgets",
 }
 WRITE_TOOLS = {
     "create_requirement", "update_requirement", "create_artefact_link", "delete_artefact_link",
@@ -941,6 +942,9 @@ async def test_custom_report_tools_validate_arguments_and_run_a_layout(admin_tok
                 "run_custom_report",
                 {"layout_id": str(uuid.uuid4()), "organization_id": str(uuid.uuid4()), "project_ids": ["x"]},
             )
+
+        with pytest.raises(ToolError, match="either project_id or organization_id"):
+            await client.call_tool("list_report_widgets", both)
 
         projects = (await client.call_tool("list_projects", {})).data
         if not projects:

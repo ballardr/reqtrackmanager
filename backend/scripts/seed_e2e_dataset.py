@@ -289,6 +289,21 @@ REQUIREMENTS_BY_COMPONENT_LAYOUT = {
 """A small custom report layout: the project's requirements grouped by component."""
 
 
+CONTEXT_OVERVIEW_LAYOUT = {
+    "schema_version": 1, "family": "document", "orientation": "landscape",
+    "nodes": [
+        {"type": "heading", "text": "{{report_title}}"},
+        {"type": "text", "text": "Context & Strategy for **{{project_name}}**, built from report widgets."},
+        {"type": "heading", "level": 2, "text": "Headline figures"},
+        {"type": "widget", "key": "context_strategy.summary.figures", "params": {"stale_months": 12}},
+        {"type": "heading", "level": 2, "text": "Pain Points by type and status"},
+        {"type": "text", "text": "Open and closed Pain Points, as counted by the Pain Point coverage report."},
+        {"type": "widget", "key": "context_strategy.pain-point-coverage.matrix", "empty_text": "No Pain Points yet."},
+    ],
+}
+"""A custom report layout that embeds Context & Strategy report tables as widgets; its headings and prose are its own."""
+
+
 def create_report_layout(headers: dict, path: str, name: str, description: str, tree: dict) -> dict:
     """Creates a custom report layout at one tier: `/orgs/{id}` or `/projects/{id}` (followed by `/report-layouts`)."""
     r = httpx.post(
@@ -1029,6 +1044,9 @@ def main() -> None:
         h_g, f"/projects/{gamma5['id']}", "E2E Gamma-5 layout", "Gamma-5's own layout.", REQUIREMENTS_BY_COMPONENT_LAYOUT,
     )
     hide_report_layout(h_g, gamma6["id"], org_layout["id"])
+    create_report_layout(
+        h_g, f"/orgs/{gamma['id']}", "E2E Widget layout", "Embeds Context & Strategy report tables as widgets.", CONTEXT_OVERVIEW_LAYOUT,
+    )
     parent_type = create_project_link_type(
         h_g, gamma5["id"], forward_name=LINK_TYPES_PARENT_VERB, reverse_name="E2E Parent reverse", flow="forward_is_upstream",
     )

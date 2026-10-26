@@ -56,7 +56,7 @@ from app.models.project import Project
 from app.models.relationship import ArtefactLink
 from app.models.requirement import Requirement, RequirementVersion
 from app.models.scoring import ScoringLevel
-from app.modules.registry import ReportDefinition, ReportParamDefinition, is_module_enabled_for_project
+from app.modules.registry import ReportDefinition, ReportParamDefinition, ReportPartDefinition, is_module_enabled_for_project
 from app.modules.stakeholders import groups as grp
 from app.modules.stakeholders.engagements import (
     COVERS_FORWARD,
@@ -1005,6 +1005,13 @@ _REPORTS: tuple[ReportDefinition, ...] = (
         "Stakeholders on Influence × Interest, grouped into Manage closely, Keep satisfied, Keep informed and Monitor, "
         "with unscored Stakeholders listed apart.",
         collect_power_interest_grid, subcomponent=STAKEHOLDER_SUBCOMPONENT, params=(_GROUP_ID, _GROUP_BY),
+        parts=(
+            ReportPartDefinition("manage_closely", "Manage closely"),
+            ReportPartDefinition("keep_satisfied", "Keep satisfied"),
+            ReportPartDefinition("keep_informed", "Keep informed"),
+            ReportPartDefinition("monitor", "Monitor"),
+            ReportPartDefinition("unscored", "Not scored"),
+        ),
         record_types=("stakeholder",),
     ),
     ReportDefinition(
@@ -1012,12 +1019,20 @@ _REPORTS: tuple[ReportDefinition, ...] = (
         "The evidence behind each Persona (linked Stakeholders, engagements, anonymous participants, findings), flagging "
         "Personas that are assumptions together with their weight.",
         collect_persona_validation, subcomponent=PERSONA_SUBCOMPONENT,
+        parts=(
+            ReportPartDefinition("evidence", "Evidence by Persona"),
+            ReportPartDefinition("assumptions", "Assumptions"),
+        ),
         record_types=("persona",),
     ),
     ReportDefinition(
         "s3", "need-coverage", "Need coverage",
         "Needs no Requirement came from, and Requirements that trace to no Need, Stakeholder or Persona.",
         collect_need_coverage, subcomponent=NEED_SUBCOMPONENT,
+        parts=(
+            ReportPartDefinition("needs_without_requirement", "Needs with no Requirement"),
+            ReportPartDefinition("requirements_without_origin", "Requirements tracing to no Need, Stakeholder or Persona"),
+        ),
         record_types=("stakeholder_need", "requirement"),
     ),
     ReportDefinition(
@@ -1025,6 +1040,11 @@ _REPORTS: tuple[ReportDefinition, ...] = (
         "Stakeholders overdue for engagement against their own target cadence (or never engaged), sorted by Influence, "
         "Stakeholders with no cadence, and Personas not engaged lately.",
         collect_engagement_staleness, subcomponent=STAKEHOLDER_SUBCOMPONENT, params=(_GROUP_ID, _GROUP_BY, _PERSONA_MONTHS),
+        parts=(
+            ReportPartDefinition("overdue", "Overdue for engagement"),
+            ReportPartDefinition("no_cadence", "No target cadence set"),
+            ReportPartDefinition("personas_not_engaged", "Personas not recently engaged"),
+        ),
         record_types=("stakeholder", "persona"),
     ),
     ReportDefinition(
@@ -1032,6 +1052,12 @@ _REPORTS: tuple[ReportDefinition, ...] = (
         "Engagements by channel and Persona, and what they produced: findings, Pain Points, Needs and Open Questions "
         "raised, against engagements that produced nothing.",
         collect_engagement_yield, params=(_SINCE,),
+        parts=(
+            ReportPartDefinition("yield", "Yield"),
+            ReportPartDefinition("by_channel", "Engagements by channel"),
+            ReportPartDefinition("by_persona", "Engagements by Persona"),
+            ReportPartDefinition("no_outcome", "Engagements with no outcome"),
+        ),
         record_types=("persona", "engagement"),
     ),
 )

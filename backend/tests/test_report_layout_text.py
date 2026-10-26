@@ -416,7 +416,7 @@ def test_each_syntax_mistake_points_at_its_column():
         "@each requirement empty \n@end": (2, "Expected the text to show when there are no records."),
         "@each requirement as a as b\n@end": (2, '"as" is given twice.'),
         "@each requirement by title\n@end": (2, '"by" is not used here. This block takes: from, via, direction, archived, where, sort, as, empty.'),
-        "@each requirement where status eq a, b\n@end": (2, 'Only "in" takes several values.'),
+        "@each requirement where status eq a, b\n@end": (2, 'Only "in" and "not_in" take several values.'),
         "@each requirement where none where title eq x\n@end": (2, '"where none" cannot be combined with other where clauses.'),
         "@each\n@end": (2, "Expected a record type (for example requirement) or in <group name>."),
         "@page_break now": (2, "@page_break takes nothing after it."),

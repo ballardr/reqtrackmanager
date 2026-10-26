@@ -12383,6 +12383,78 @@ A cheap count pre-pass (record counts per `each` source, multiplied through nest
 *Authentication, RBAC, audit:* no new endpoint or permission (formats on the existing run route; provenance records the format). *Time:* no time field. *Search, codes, bundles, seeds:* no model or record type. *Nested projects:* no definition table. *MCP:* tools return `json` only. *Not yet exercised by a layout:* no layout block produces an `Image` or equation until Math, so SVG figures are reachable today only by a module building a `ReportDocument`; their renderers are covered directly. *Word and LibreOffice fidelity of an SVG PNG* and *Excel opening the workbook* were not checked in the real applications (openpyxl reads it back; LibreOffice is not installed here).
 
 
+## Custom reports Phase 6: widgets (2026-10-26)
+
+**Decided by: Agent** (design), within D1 and D5, and the User's correction below. The first build embedded a whole report (its headings, notes and every table) per widget; the **User corrected it the same day**: a widget should be a component such as a table, with the general text written in the layout, so the components can be reused in other reports. This entry describes the corrected design.
+
+### What was built
+
+- `ReportDefinition.parts` (`ReportPartDefinition(key, title, description)`, `modules/registry.py`): the tables of a report a layout can embed, named by the `ReportSection.key` the collector uses; validated with the rest of the declaration. All 22 reports declare theirs (the four modules' `reports.py`).
+- `services/report_widgets.py`: the widget catalogue (every declared part, plus `figures` and `notes` on every report), keyed `<module key>.<slug>.<part>`; availability per organisation and project; parameter validation and typing.
+- `services/report_widget_run.py`: runs the report's own collector with a `ReportContext` over the layout run's projects and returns one component as blocks (`part_blocks`); `output_digest`.
+- The `widget` block in all three registries: validator (`report_layout_tree`), evaluator (`report_layout_eval._eval_widget`, collecting each report once per parameter set), text form `[[widget.<key> name=value ... empty "text"]]` (`report_layout_text`, `TextForm.bracketed`).
+- `GET /orgs/{id}/report-layouts/widgets` and `GET /projects/{id}/report-layouts/widgets` (manage permission), the `list_report_widgets` MCP tool, skill and generated reference.
+- Provenance: `generated_reports.widgets` holds the widget keys that ran; a digest of each report's output joins `source_digest`.
+- Seeds: a "Context overview" layout (demo) and "E2E Widget layout" (e2e) built from widgets under their own headings.
+- Tests: `tests/test_report_widgets.py` (catalogue, parameters, validator, text round trip and malformed lines, blocks, evaluator, provenance, routes, and a test that each report's declared parts equal the tables its collector produces), a Playwright step in `custom-report-run.spec.ts`, an MCP server test.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **A widget is a component of a report, never prose.** It produces a table, the headline figures or the caveat notes; no heading, no section note, no "None." text. The layout writes every word around it, so the same component can be reused under different explanations in other reports. Replaces the first build (whole report per widget). | User (the principle), Agent (design) |
+| 2 | **Components are declared on the report** (`ReportDefinition.parts`), not discovered by running it, so the designer can list them, a typo is caught on save, and a registry test (`test_every_report_declares_the_tables_its_collector_produces`) fails when a declaration and its collector disagree. Every report also offers `figures` and `notes` without declaring them. A table whose key depends on the data (the summary pack's re-listed gap tables, the risk matrices) cannot be declared and so is not embeddable. | User (chose declared parts over run-time discovery), Agent (built-ins, exemptions) |
+| 3 | **The key is `<module key>.<slug>.<part>`.** Slugs are unique only within a module, so a bare slug could become ambiguous and silently change what a stored layout means. | Agent |
+| 4 | **Parameters belong to the report**, are literal JSON values of the declared type checked at save time (bounds, choices; date and id as text), and have no placeholder or expression. Every component of a report takes the same ones. `params` is left out when empty. | Agent |
+| 5 | **One run per report and parameter set.** A report is collected once per layout run however many of its components are embedded; different settings run again. The cap is therefore on distinct runs (`MAX_WIDGET_REPORTS`, 20), not on widget blocks. This is also why widgets inside `each`/`group`/`if` are allowed: repeats cost no further collector run (an earlier draft refused them; the output cap bounds the rest). | Agent |
+| 6 | **Empty components.** A component with no rows gives no blocks; the block's optional `empty_text` (text form `empty "..."`, global placeholders only) says what to show instead, as `table` blocks do. The text form uses a trailing `empty "..."` clause rather than a parameter name so no report parameter can clash with it. | Agent |
+| 7 | **Document family only.** A table layout's only block is `sheet`. A widget as a sheet is a later extension if wanted. | Agent |
+| 8 | **Gated as the report's own project route is, per project.** A widget runs only where the report's module (and sub-component) is enabled for the project being evaluated (`widget_available`); elsewhere the layout carries on with a note and a warning, because an organisation layout runs in many projects. A collector that refuses its parameters (4xx) is shown the same way; any other exception is a bug and propagates. An organisation-wide run runs a report once per project at project level; the report's `org_role_key` belongs to its own organisation route and does not apply. | Agent |
+| 9 | **Save-time validation is by registry key; the designer's list is narrowed.** Saving does not check availability (as for record types and fields), but the widget list omits modules the organisation or project has no entitlement for or has disabled. | Agent |
+| 10 | **Provenance.** Widget keys that ran go in `generated_reports.widgets` (existing column, no migration). Widget data is not read through the field registry, so no record versions are recorded for it; a SHA-256 of each report's output is folded into `source_digest` instead. Rows are hashed, never stored. | Agent |
+| 11 | **Text syntax.** `[[widget.<key> name=value ...]]` on a line of its own (D5). A line starting `[[widget` is always a widget and a syntax error when malformed; prose that needs one writes it inside `@text` (the writer does this, so the round trip stays exact). `@widget` is rejected with a pointer. Bare values only where they read back as the same value. | Agent |
+| 12 | **A table's own heading and one-line note are not carried.** They are prose; the layout's author writes the equivalent. A report's `notes` component carries the report-level caveats; a section-level note (for example a quadrant's explanation) has no component. Raise it if a caveat there turns out to matter. | Agent |
+
+### Review (identify, verify, remediate)
+
+*Identify:* a widget running where the report's module is off or the caller has no role; an organisation-wide run widening what a report covers; a layout author passing a parameter (a group id) that reaches data outside the project; widgets multiplying work; report text becoming markup; a collector error hiding a defect or failing the whole layout; widget data escaping provenance; layout or parameter text in logs; the list showing modules an organisation cannot use; a declaration drifting from what a collector produces. *Verify:* tests show a module that is off leaves a note and no run (and over HTTP for an organisation layout); the context carries the run's projects, the module's own key and typed parameters; a refused parameter becomes a note while a bug propagates; many components of one report collect once and different settings collect again; the 21st distinct run is refused; the output cap applies; the provenance digest changes when the data changes and not otherwise; every key, parameter type, bound, choice and unknown name is validated; the list omits an unenabled module and needs the manage permission; the text round trip holds for awkward values, `empty` clauses and prose that looks like a widget line; and the declared parts equal the produced tables for every report. The stakeholder group parameter was read: the collector resolves the group inside each project's own group set and answers 404 otherwise, so an id from elsewhere reaches nothing. *Remediate:* the nested-widget amplification worry from the first build is removed by decision 5 rather than by a restriction. No policy regression: widgets add no data class (the output is the Confidential report data the report already returns to the same caller), no permission and no audit event; the module gate of the access-control policy is the one applied.
+
+### Not applicable, checked
+
+*Time:* date parameters are literal calendar dates the author wrote; a report that uses today uses the run's reference date, as standalone. *Users and groups parity:* no person field added. *Module boundary:* nothing per module in a core file; `parts` is a generic field on `ReportDefinition`, each module declares its own. *Search, codes, bundles:* a layout stays configuration (D16); the bundle carries the tree, an import revalidates it, so a key the target lacks drops that version with the existing message. *Nested projects / organisation defaults:* no definition table. *UI, Storybook:* no screen; the designer's widget picker (Phase 8) is the first UI caller of the list endpoint. *IPv6:* no listener.
+
+## Custom reports: conditions with in / not_in, and / or / not, and widget sort (2026-10-26)
+
+**Decided by: User** (asked for `in`, `not in`, brackets with `or` and `and`, sort options, and for it to work on any field, not only categories); the shape is **Agent**'s.
+
+### What was built
+
+- `in` and `not_in` on every kind of field that has a value to compare (text, person, enum, number, date), each value checked against the field's kind. Before, `in` existed only for enums.
+- Conditions combine with `and`, `or`, `not` and brackets, in a `where` and in an `@if`. Tree form: a test stays `{field, op, value}`; a combination is `{"all": [...]}`, `{"any": [...]}` (two or more) or `{"not": ...}`; a `where` list is an implicit `all`.
+- Widgets take `sort <column> [asc|desc]` (up to three) to order a table or the figures by a column heading.
+- Tests: `tests/test_report_conditions.py` (operators per kind, validator, truth tables, text precedence, a round trip for every nesting shape plus 100 random conditions, end-to-end runs on real requirements, widget sort); `docs/modules.md` §4n and §4p, the website page and the MCP skill.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Backward compatible, no schema bump.** A combination is a new kind of entry inside the existing `where` list, and an `if`'s `when` may be a test or a combination, so every stored tree, bundle and seed is valid and hashes unchanged. | Agent |
+| 2 | **Text precedence is `not` > `and` > `or`**, with brackets. Brackets are structure, not decoration: `a and (b and c)` reads back as a nested `all`, distinct from `a and b and c`, so the text view stays lossless (parse(format(tree)) == tree, tested for every shape and 100 random conditions). The writer brackets only what it must (a nested `all`/`any`, except an `all` directly inside an `any`). | Agent |
+| 3 | **Words of logic are not values.** A bare `and`, `or`, `not` as a value is a syntax error that says to quote it, the writer quotes them, and brackets are no longer part of a bare word (a value with a bracket is quoted). Text written by hand before this, containing such a bare word or bracket, now needs quotes. | Agent |
+| 4 | **An empty value is never "in" and always "not in"** (as `ne` already treated it), so "everything except General" keeps records with no category. | Agent |
+| 5 | **`in` is allowed for every kind that has an `eq` other than yes/no and instants**, with typed values (a number list is numbers, a date list is dates). | User (generalise beyond categories), Agent (kinds) |
+| 6 | **Bounds.** At most 10 tests per `where` however nested (`MAX_CONDITIONS`), 4 levels of nesting (`MAX_CONDITION_DEPTH`), 20 values per list; the text parser caps `not` chains at the same 4 and open brackets at 8, so hostile text cannot recurse deeply. | Agent |
+| 7 | **Widget sort reads cells as a person would**: numbers as numbers, ISO dates as dates, other text ignoring case, empty last either way; multi-key and stable. A report's ratings are text, so "High" sorts alphabetically, not by severity. The column names of a report's table are only known when it runs, so a missing heading is a run warning, not a save error; the notes component cannot be sorted (warning). I had advised against widget sorting for the ordering reasons above; the User asked for it, and the limits are documented rather than hidden. | User (asked), Agent (design) |
+| 8 | **Not done: ordering of groups** (`group` still lists groups by the group field's value, empty last). Raise it if wanted. | Agent |
+
+### Review (identify, verify, remediate)
+
+*Identify:* a condition reading a field the registry omits (Restricted or consent-sensitive) through a nested path; unbounded work or recursion from nested conditions (validator, parser, evaluator); a text view that reads back as a different tree; a value that changes meaning when written as text (`and`, `or`, `not`, brackets, `true`); a stored tree no longer valid; empty values silently dropping records; the sort re-ordering a report's cell colours against its rows. *Verify:* nested fields go through the same `record_field` check, so an omitted column is refused with its position, and nested fields join the references the evaluator loads (tested); depth and test counts are capped in the validator and the parser (tests for 5 levels, 11 tests, 5 `not`s and 9 brackets); a round trip is tested for every nesting of `all`, `any`, `not`, for lists, and for 100 seeded random conditions; reserved words and brackets in values are tested both ways; the old `where` shape is tested valid; the empty-value rule and typed lists are tested; sorting keeps tones with their rows and leaves the report's own rows untouched. *Remediate:* two defects found by those tests and fixed: a lone `sort` at the end of a widget line was reported as a missing parameter, and a leftover `or` was accepted as a field name, giving a confusing error two tokens later. No policy regression: conditions only select among records the runner can already see (the link graph still decides visibility) and add no data class.
+
+### Not applicable, checked
+
+*Time:* date lists are plain calendar dates, instants still have no `in`. *Users and groups parity:* `in` works on person fields, which hold users and groups alike. *Module boundary:* nothing per module. *Bundles, seeds, search, codes:* no new table or column. *UI, Storybook:* the text editor is Phase 8; the tree shape is what its condition builder will edit. *IPv6:* no listener.
+
 ## Backend type checking: mypy with a ratchet baseline (2026-10-26)
 
 **Decided by: User** (asked for type checking to be added and set up); the baseline approach is **Agent**'s.

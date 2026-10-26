@@ -1892,6 +1892,28 @@ RESERVED_REPORT_PARAM_NAMES: frozenset[str] = frozenset({
 })
 _REPORT_SLUG_PATTERN = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
 _REPORT_PARAM_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+_REPORT_PART_KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+# Parts every report offers without declaring them: its headline figures and its caveat notes.
+BUILT_IN_REPORT_PARTS: tuple[str, ...] = ("figures", "notes")
+
+
+@dataclass(frozen=True)
+class ReportPartDefinition:
+    """One table of a report that a custom report layout can embed on its own (a widget).
+
+    A widget is a component, not a whole report: the layout supplies the headings and prose around it.
+
+    Attributes:
+        key: The `ReportSection.key` the collector gives the table (`[a-z][a-z0-9_]*`, unique within the report,
+            not `figures` or `notes`, which every report offers).
+        title: Short name shown in the layout designer's widget list.
+        description: Optional one line about what the table holds.
+    """
+
+    key: str
+    title: str
+    description: str = ""
+
 
 
 @dataclass(frozen=True)
@@ -1972,6 +1994,10 @@ class ReportDefinition:
             report, as the screen's badge does. Build the inner maps with `report_framework.tones_by_label` from the
             module's label and tone maps. A cell whose text is not listed is left plain. Ratings are toned by the
             collector (`ReportSection.tones`), which wins over this.
+        parts: The report's tables a custom report layout can embed one at a time (widgets), by the
+            `ReportSection.key` the collector gives them. Declare every table whose key is fixed; a table whose
+            key depends on the data is not embeddable. Every report also offers `figures` (its headline figures)
+            and `notes` (its caveats) without declaring them.
     """
 
     key: str
@@ -1986,6 +2012,7 @@ class ReportDefinition:
     params: tuple[ReportParamDefinition, ...] = field(default=())
     record_types: tuple[str, ...] = field(default=())
     cell_tones: Mapping[str, Mapping[str, str]] = field(default_factory=dict, compare=False)
+    parts: tuple[ReportPartDefinition, ...] = field(default=())
 
 
 @dataclass(frozen=True)
@@ -3984,7 +4011,7 @@ def validate_report_definitions(
     """Splits report declarations into the valid ones and a list of problems.
 
     A report is excluded (never partially served) when its key or slug repeats
-    an earlier one, its slug or parameters are malformed, `org_level` has no
+    an earlier one, its slug, parameters or parts are malformed, `org_level` has no
     `org_role_key`, or `org_scope` is unknown. When the registry facts are
     supplied it is also excluded for naming a sub-component the module does not
     declare, or an `org_role_key` that is not one of the module's org-scoped
@@ -4023,8 +4050,15 @@ def validate_report_definitions(
             problem = f"'{report.org_role_key}' is not an org-scoped role of this module"
         else:
             names = [p.name for p in report.params]
+            part_keys = [p.key for p in report.parts]
             if len(set(names)) != len(names):
                 problem = "duplicate parameter name"
+            elif len(set(part_keys)) != len(part_keys):
+                problem = "duplicate part key"
+            elif any(not _REPORT_PART_KEY_PATTERN.match(k) or k in BUILT_IN_REPORT_PARTS for k in part_keys):
+                problem = f"invalid part key (lower-case words joined by _, not {' or '.join(BUILT_IN_REPORT_PARTS)})"
+            elif any(not p.title.strip() for p in report.parts):
+                problem = "a part has no title"
             else:
                 problem = next((m for m in (_report_param_problem(p) for p in report.params) if m), None)
         if problem is not None:
