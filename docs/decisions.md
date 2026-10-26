@@ -12167,3 +12167,10 @@ An end-to-end audit (authentication, authorisation, tenant isolation, files, out
 - **How results travel (Decided by: Agent).** A run prints the path of its anonymised `.tar.gz` (`~/.cache/reqtrack-perf/`); copy it between machines and extract it under `perf/results/<label>/`. `analyse.py` and the repository's scrub test read whatever is there. Bundles committed before this change remain in git history; they passed the anonymisation check, and the history was not rewritten.
 - **Consequence for the website work.** The plot script reads `perf/results/`, which is no longer shared through git. A published page needs a curated set of bundles, added on purpose (`git add -f`, scrub check in the pre-commit hook) or a small summary file kept with the website; which one is decided when that work starts.
 
+
+## Resource profiling Phase 4b (third part): the three-host run (2026-10-26)
+
+- **What ran.** Full runs (T0 to T4, three repeats) on a Linux server (4 workers, shared with production), a Dell workstation under WSL2 (4 workers) and a Raspberry Pi 5 (1 worker), at the commit that held the SQL-paged list. Results are summarised in `docs/performance.md`; the bundles are local (git-ignored).
+- **What it confirmed.** The paged list, record read, search, comments, links and dashboard are flat in project size on the x86 hosts (page of 50 at 20,000 requirements: 94-100 ms). The Pi has the same shape at 5-20x the latency.
+- **What it found and was fixed (Decided by: Agent).** Creating a requirement read every id of the project to count them (F7); project import repeated organisation-role and tag-list reads per record (F8); `analyse.py` merged snapshots from different user levels (F9). Each has a guard test.
+- **What stays open.** Heavy requests still scale with the project and hold it in memory (PDF 39 s, worker peak near 1 GiB at 20,000: O7), the buffer cache at 20,000 requirements under writes (O4), and hub link views (O8). These are design-level changes or need a tuning experiment, so they are recorded with their evidence rather than changed here.

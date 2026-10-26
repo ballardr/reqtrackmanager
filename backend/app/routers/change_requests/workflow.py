@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -485,7 +485,7 @@ def decide_change_request(
                 if default_stage is None:
                     raise HTTPException(status.HTTP_400_BAD_REQUEST, "This project has no stages; cannot assign a target.")
                 target_stage_id = default_stage.id
-            count = len(db.scalars(select(Requirement.id).where(Requirement.project_id == project_id)).all())
+            count = db.scalar(select(func.count()).select_from(Requirement).where(Requirement.project_id == project_id)) or 0
             requirement = create_requirement(
                 db, project, component, category, current_user,
                 name=version.proposed_name, reasoning=version.proposed_reasoning or "",

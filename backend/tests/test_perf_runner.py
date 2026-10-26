@@ -1511,3 +1511,19 @@ def test_load_limit_defaults_by_host_kind_and_honours_the_operator():
     assert limit("--dedicated") == run_profile.DEDICATED_MAX_LOAD_PER_CORE
     assert limit("--max-load-per-core", "2.5") == 2.5
     assert limit("--dedicated", "--max-load-per-core", "2.5") == 2.5
+
+
+def test_worker_memory_tells_snapshots_at_different_user_levels_apart():
+    """`processes.csv` has one snapshot per user level with the same scenario and repeat; they must not be merged."""
+    analyse = _analyse()
+
+    def snapshot(private):
+        return [
+            {"tier": "T1", "scenario": "browse", "repeat": "1", "role": "parent", "index": "1",
+             "pss_mib": "19", "private_mib": "18", "shared_mib": "10"},
+            *[{"tier": "T1", "scenario": "browse", "repeat": "1", "role": "worker", "index": str(i), "pss_mib": str(private + 10),
+               "private_mib": str(private), "shared_mib": "35"} for i in (1, 2)],
+        ]
+
+    memory = analyse.worker_memory(snapshot(400) + snapshot(450) + snapshot(420))
+    assert memory["T1"]["workers"] == 2 and memory["T1"]["private_mib_per_worker"] == 450

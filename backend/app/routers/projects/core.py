@@ -65,6 +65,7 @@ from app.schemas.project import (
     StageProgressOut,
     TerminologyUpdate,
 )
+from app.services import tags as tag_service
 from app.services.audit import log_event
 from app.services.changes import get_project_changes
 from app.services.codes import assign_project_code, change_project_code
@@ -393,9 +394,12 @@ async def import_project(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only org admins or project creators may create projects.")
 
     zip_bytes = await file.read()
-    project, warnings = import_project_bundle(
-        db, organization_id=organization_id, name=name, summary=summary, zip_bytes=zip_bytes, current_user=current_user
-    )
+    # The import tags and names thousands of records in one organisation and project: each organisation role and
+    # each scope's tag list is read once, not once per record.
+    with memoize_user_lookups(), tag_service.reuse_offered_tags():
+        project, warnings = import_project_bundle(
+            db, organization_id=organization_id, name=name, summary=summary, zip_bytes=zip_bytes, current_user=current_user
+        )
     return ProjectImportResult(project=ProjectOut.model_validate(project), warnings=warnings)
 
 

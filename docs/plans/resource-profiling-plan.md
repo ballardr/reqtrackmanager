@@ -13,7 +13,7 @@
 | 2 | Load generator and baseline scenarios | [x] built 2026-10-25; T0/T1 run on Docker Desktop |
 | 3 | In-process profiling of the backend (memory + CPU) | [x] built 2026-10-25 |
 | 4 | PostgreSQL profiling | [x] built 2026-10-25 |
-| 4b | Scaling findings and fixes | [~] first fixes done 2026-10-25 (F1-F4 in `docs/performance.md`); T3/T4 and dedicated-host findings pending |
+| 4b | Scaling findings and fixes | [~] F1-F9 fixed with guards, three-host T0-T4 run analysed 2026-10-26 (`docs/performance.md`); open: heavy-request memory and time (O7), `shared_buffers` experiment (O4), hub link views (O8), re-measure F7/F8 on the hosts |
 | 5 | Record baselines, set limits, document sizing | [ ] |
 | 6 | Docs website: results, plots, test-method diagrams | [ ] |
 | 7 | CI test duration: why it doubled (22 → 45+ min), and cut it | [ ] |

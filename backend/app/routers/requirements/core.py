@@ -18,7 +18,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -189,7 +189,7 @@ def create_requirement_endpoint(
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a project manager can assign the creator.")
         creator_override_id = payload.creator_id
 
-    count = len(db.scalars(select(Requirement.id).where(Requirement.project_id == project_id)).all())
+    count = db.scalar(select(func.count()).select_from(Requirement).where(Requirement.project_id == project_id)) or 0
     requirement = create_requirement(
         db, project, component, category, current_user,
         name=payload.name, reasoning=payload.reasoning, clarification=payload.clarification,

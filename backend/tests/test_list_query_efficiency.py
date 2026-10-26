@@ -418,6 +418,53 @@ def test_requirement_comments_statements_do_not_grow_with_the_thread(client, adm
     assert all(c["author_display_name"] and c["attachments"] == [] for c in many)
 
 
+def test_creating_a_requirement_does_not_read_the_projects_requirement_ids(client, admin_token):
+    """Numbering a new requirement counts the project's rows in the database; reading every id back to count
+    them cost 0.4 s at 5,000 requirements."""
+    org, token = create_org_admin_in(client, admin_token, "Create Cost Co")
+    project = create_project(client, token, org["id"], "Create Cost Project")
+    component_id, category_id = create_component_and_category(client, token, project["id"])
+    base = f"/api/v1/projects/{project['id']}/requirements"
+    _create_requirements(client, token, project["id"], component_id, category_id, 12, "Existing")
+
+    rows = []
+
+    def count_id_rows(_conn, cursor, statement, *_args, **_kwargs):
+        if statement.lstrip().startswith("SELECT requirements.id FROM requirements WHERE requirements.project_id"):
+            rows.append(cursor.rowcount)
+
+    event.listen(engine, "after_cursor_execute", count_id_rows)
+    try:
+        resp = client.post(base, json={"name": "One more", "component_id": component_id, "category_id": category_id},
+                           headers=auth_headers(token))
+    finally:
+        event.remove(engine, "after_cursor_execute", count_id_rows)
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["sort_order"] == 12
+    assert sum(rows) == 0, rows
+
+
+def test_project_import_statements_per_requirement_stay_small(client, admin_token):
+    """Importing a bundle reads each organisation role and each tag list once, so statements per requirement
+    stay at the few the import must write (versions, audit events, tags), not a dozen."""
+    org, token = create_org_admin_in(client, admin_token, "Import Cost Co")
+    project = create_project(client, token, org["id"], "Import Cost Project")
+    component_id, category_id = create_component_and_category(client, token, project["id"])
+    headers = auth_headers(token)
+    _create_requirements(client, token, project["id"], component_id, category_id, 30, "Bundled")
+    exported = client.get(f"/api/v1/projects/{project['id']}/export", headers=headers)
+    assert exported.status_code == 200
+
+    with _QueryCounter() as counter:
+        resp = client.post("/api/v1/projects/import", data={"organization_id": org["id"], "name": "Copy"},
+                           files={"file": ("bundle.zip", exported.content, "application/zip")}, headers=headers)
+    assert resp.status_code == 201, resp.text
+    imported = client.get(f"/api/v1/projects/{resp.json()['project']['id']}/requirements", headers=headers).json()
+    assert sorted(r["name"] for r in imported) == sorted(f"Bundled {i}" for i in range(30))
+    assert all(sorted(r["keywords"]) == sorted(["shared", f"kw{r['name'].split()[1]}"]) for r in imported)
+    assert counter.count / 30 < 9, counter.count
+
+
 def test_my_roles_endpoint(client, admin_token):
     org, token = create_org_admin_in(client, admin_token, "My Roles Co")
     project = create_project(client, token, org["id"], "My Roles Project")

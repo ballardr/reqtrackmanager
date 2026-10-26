@@ -131,12 +131,21 @@ def worker_memory(processes: list) -> dict:
         `{tier: {"workers", "private_mib_per_worker", "shared_mib_per_worker", "pss_total_mib"}}` from the largest
         reading of each tier (after the heaviest scenario), with means across workers.
     """
-    by_tier: dict = defaultdict(lambda: defaultdict(list))
+    # A reading is one snapshot of every process. The file has no user-level column, so consecutive snapshots of the
+    # same scenario and repeat (one per user level) are told apart by a process index appearing a second time.
+    by_tier: dict = defaultdict(list)
+    current: dict = {}
     for row in processes:
-        by_tier[row["tier"]][(row["scenario"], row["repeat"])].append(row)
+        key = (row["tier"], row["scenario"], row["repeat"])
+        process = (row["role"], row["index"])
+        if current.get("key") != key or process in current["seen"]:
+            current = {"key": key, "seen": set(), "rows": []}
+            by_tier[row["tier"]].append(current["rows"])
+        current["seen"].add(process)
+        current["rows"].append(row)
     result = {}
     for tier, readings in by_tier.items():
-        best = max(readings.values(), key=lambda rows: sum(float(r["pss_mib"]) for r in rows))
+        best = max(readings, key=lambda rows: sum(float(r["pss_mib"]) for r in rows))
         serving = [r for r in best if r["role"] in ("worker", "single")]
         if not serving:
             continue

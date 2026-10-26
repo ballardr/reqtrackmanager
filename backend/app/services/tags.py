@@ -36,10 +36,12 @@ External dependencies: `models.tag`, `services.link_graph` (record visibility),
 
 from __future__ import annotations
 
+import contextvars
 import re
 import uuid
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal, TypeVar
@@ -472,6 +474,35 @@ class TagFilter:
 
 # --- attaching --------------------------------------------------------------------------------
 
+_offered_cache: contextvars.ContextVar[dict[TagScope, dict[str, Tag]] | None] = contextvars.ContextVar(
+    "tags_offered_cache", default=None,
+)
+
+
+@contextmanager
+def reuse_offered_tags() -> Iterator[None]:
+    """Reads each scope's offered tag list once for the block, instead of once per record tagged.
+
+    For a bulk import that tags thousands of records in one scope: the list is read on the first record and every
+    tag the block creates is added to it, so later records see it. Nothing else may change a scope's tags inside
+    the block (a bundle import is the only caller)."""
+    token = _offered_cache.set({})
+    try:
+        yield
+    finally:
+        _offered_cache.reset(token)
+
+
+def _offered_for(db: Session, scope: TagScope) -> dict[str, Tag]:
+    """`offered_tags(db, scope)`, reused while `reuse_offered_tags` is active (the same dict, so a tag created
+    by `_resolve_names` is visible to the next record)."""
+    cache = _offered_cache.get()
+    if cache is None:
+        return offered_tags(db, scope)
+    if scope not in cache:
+        cache[scope] = offered_tags(db, scope)
+    return cache[scope]
+
 
 def _resolve_names(
     db: Session, *, scope: TagScope, actor_id: uuid.UUID | None, names: list[str], attached: dict[str, Tag],
@@ -489,7 +520,7 @@ def _resolve_names(
         tag = attached.get(key)
         if tag is None:
             if offered is None:
-                offered = offered_tags(db, scope)
+                offered = _offered_for(db, scope)
             tag = offered.get(key)
         if tag is None:
             if mode is None:
