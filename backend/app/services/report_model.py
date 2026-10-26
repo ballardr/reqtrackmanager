@@ -7,7 +7,7 @@ The neutral report document every renderer consumes . A report is built once, as
 place rather than once per output format.
 
 Responsibilities:
-- Block types: `Heading`, `Paragraph`, `Note`, `BulletList`, `Image`, `Table`,
+- Block types: `Heading`, `Paragraph`, `Note`, `BulletList`, `Image` (raster bytes or SVG markup), `Table`,
   `Gap`, `PageBreak`, and the `ReportDocument` that holds them with the
   title, branding and page orientation.
 - `Sheet`: one named table of a table-family report (CSV, XLSX, ODS); not a
@@ -29,8 +29,8 @@ Design decisions:
   path exists to attack; richer inline text would be a change to both
   renderers together.
 - Images arrive pre-resolved as bytes (`report_document.resolve_report_images`
-  does the tenant check), so this module and the renderers never fetch
-  anything.
+  does the tenant check) or as SVG markup (sanitised by `report_svg` in each renderer), so this module
+  and the renderers never fetch anything.
 - A tone is a name (the same five as the on-screen `BadgeTone`), never a colour,
   so a collector cannot put an arbitrary value into PDF or Word XML. The text of
   a toned cell still carries its meaning (the band name), so a greyscale print
@@ -151,10 +151,21 @@ class BulletList:
 
 @dataclass(frozen=True)
 class Image:
-    """An image, already resolved to bytes. A renderer that cannot decode it
-    skips it: a bad image never breaks report generation."""
+    """An image: raster bytes already resolved (`data`), or vector markup (`svg`).
 
-    data: bytes
+    A renderer that cannot decode it skips it: a bad image never breaks report generation.
+
+    Attributes:
+        data: Raster image bytes (tenant-checked by `report_document.resolve_report_images`); empty for an SVG.
+        svg: SVG markup for a vector figure (a diagram, an equation). It is untrusted until
+            `report_svg.sanitize_svg` has allow-listed it, which every renderer does itself, so a module
+            can hand over its markup without importing an engine. PDF and HTML keep it vector, Word gets a PNG.
+        alt: Text alternative (HTML `aria-label`); not printed.
+    """
+
+    data: bytes = b""
+    svg: str | None = None
+    alt: str = ""
 
 
 @dataclass(frozen=True)

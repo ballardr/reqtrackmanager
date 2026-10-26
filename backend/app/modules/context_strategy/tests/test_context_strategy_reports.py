@@ -227,6 +227,13 @@ def test_r1_group_data_carries_cell_ratings_by_level_name_for_a_severity_x_frequ
     assert other["cell_ratings"] == []
 
 
+def _fill(cell) -> str | None:
+    """The `w:fill` colour of a Word table cell's shading, or `None` when it has none."""
+    tc_pr = cell._tc.tcPr
+    shading = tc_pr.find(qn("w:shd")) if tc_pr is not None else None
+    return shading.get(qn("w:fill")) if shading is not None else None
+
+
 def test_r1_word_export_keeps_the_band_colours_of_the_screen(client, admin_token):
     """Band cells in the ranking and the Severity x Frequency matrix are filled with the band's tone, pinned cells included."""
     org, project, token = _setup(client, admin_token, "R1 Tone Co")
@@ -256,11 +263,11 @@ def test_r1_word_export_keeps_the_band_colours_of_the_screen(client, admin_token
     columns = [c.text for c in matrix.rows[0].cells]
     pinned = next(r for r in matrix.rows[1:] if r.cells[1].text == "Major").cells[columns.index("Constant")]
     assert pinned.text == "1 (High ×1) · Critical"  # count, confidence, then the band that colours it
-    assert pinned._tc.tcPr.find(qn("w:shd")).get(qn("w:fill")) == TONE_FILL[bands["Critical"]]
+    assert _fill(pinned) == TONE_FILL[bands["Critical"]]
     for row in matrix.rows[1:]:
         for cell in row.cells[2:]:
             assert cell.text.split(" · ")[-1] in bands  # every cell, empty ones too, names its band
-            assert cell._tc.tcPr.find(qn("w:shd")).get(qn("w:fill")) in set(TONE_FILL.values())
+            assert _fill(cell) in set(TONE_FILL.values())
 
 
 def test_r1_ranks_and_segregates_blockers_unscored_and_intentional(client, admin_token):

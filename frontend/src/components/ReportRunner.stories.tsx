@@ -113,6 +113,33 @@ export const OrganisationReportCanBeNarrowedToOneProject: Story = {
   },
 };
 
+/** A custom table report offers its own formats (Excel, CSV) and asks the server for exactly the one chosen. */
+export const CustomTableReportOffersExcelAndCsv: Story = {
+  args: {
+    entry: buildReportCatalogueEntry({
+      module_key: "custom_reports", slug: "custom-sheet-1", supports_include_children: true, params: [],
+      formats: ["json", "csv", "xlsx"], path: "/api/v1/projects/project-1/custom-reports/layout-2/run",
+    }),
+  },
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.includes("/report-templates")) return [];
+      if (path.startsWith("/api/v1/projects/project-1/custom-reports/layout-2/run")) return buildReportResult();
+      throw new Error(`Unmocked GET: ${path}`);
+    });
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["x"], { type: "application/zip" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
+    await expect(within(document.body).queryByRole("button", { name: "Download PDF report" })).not.toBeInTheDocument();
+    await userEvent.click(within(document.body).getByRole("button", { name: "Download Excel report" }));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("format=xlsx")));
+    await waitFor(() => expect(within(document.body).getByText("Downloaded Fixture report (Excel workbook).")).toBeInTheDocument());
+  },
+};
+
 /** A custom report run once per project: choosing projects re-runs it with `project_ids`, and downloads carry the same selection. */
 export const OrganisationCustomReportChoosesProjects: Story = {
   args: {

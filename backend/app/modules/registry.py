@@ -1390,6 +1390,8 @@ class SearchColumns:
         organization_id: The owning organisation, for a type that can be organisation-owned.
         owner_id: The id of the record to open instead, for a type without a page of its own
             (see `ArtefactSearchProvider.open_owner_type`).
+        version: The current version number, for a versioned type (`None` for one with no versions). A
+            generated report records it so the report names the exact version of each record it shows.
     """
 
     id: Any
@@ -1401,6 +1403,7 @@ class SearchColumns:
     updated_at: Any
     organization_id: Any | None = None
     owner_id: Any | None = None
+    version: Any | None = None
 
 
 @dataclass(frozen=True)

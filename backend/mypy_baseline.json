@@ -193,7 +193,6 @@
  "app/modules/context_strategy/tests/test_context_strategy_principals.py|union-attr|Item \"None\" of \"OpenQuestion | None\" has no attribute \"owner_id\"": 2,
  "app/modules/context_strategy/tests/test_context_strategy_principals.py|union-attr|Item \"None\" of \"OpenQuestion | None\" has no attribute \"owner_type\"": 2,
  "app/modules/context_strategy/tests/test_context_strategy_record_tables.py|func-returns-value|\"append\" of \"list\" does not return a value (it only ever returns None)": 3,
- "app/modules/context_strategy/tests/test_context_strategy_reports.py|union-attr|Item \"None\" of \"CT_TcPr | None\" has no attribute \"find\"": 2,
  "app/modules/decisions/export.py|arg-type|Argument 1 to \"get\" of \"dict\" has incompatible type \"UUID | None\"; expected \"UUID\"": 1,
  "app/modules/decisions/module.py|arg-type|Argument 1 to \"dict\" has incompatible type \"Sequence[Row[tuple[UUID, str]]]\"; expected \"Iterable[tuple[Never, Never]]\"": 1,
  "app/modules/decisions/module.py|var-annotated|Need type annotation for \"names\" (hint: \"names: dict[<type>, <type>] = ...\")": 1,

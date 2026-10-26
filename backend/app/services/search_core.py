@@ -103,6 +103,7 @@ def versioned_provider(
             is_archived=is_archived if is_archived is not None else model.is_archived,
             updated_at=func.greatest(model.updated_at, getattr(version_model, "created_at", model.updated_at)),
             organization_id=model.organization_id if (organization_owned or organization_subcomponent) else None,
+            version=version_model.version_number,
         ),
         fields=fields,
         status_labels=status_labels or {},
@@ -161,6 +162,7 @@ def _change_request_provider() -> ArtefactSearchProvider:
             status=ChangeRequest.status,
             is_archived=literal(False, type_=Boolean),
             updated_at=ChangeRequest.updated_at,
+            version=latest(ChangeRequestVersion.version_number),
         ),
         fields=(
             SearchField("reason", "Reason", latest(ChangeRequestVersion.reason)),

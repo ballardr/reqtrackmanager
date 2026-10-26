@@ -17,9 +17,12 @@ Design decisions:
   copied, so the row still says what was run after the layout (and its versions) is deleted. The
   organisation foreign key cascades, so deleting the organisation removes its provenance; the project
   key is `SET NULL` because `scope_project_ids` already names every project covered.
-- **Counts and a digest, not record lists.** `source_digest` is a SHA-256 over every record read
-  (type, id, last-change time, which for a versioned record is its current version's time), so a later
-  run can tell whether the source data changed, without storing up to 200,000 identifiers per run.
+- **Versions for versioned records, a digest for all.** `record_versions` names the version of every
+  versioned record in the report (`{type: {record id: version number}}`), bounded by
+  `report_layout_eval.MAX_RECORDED_VERSIONS` (`record_versions_truncated` says when it was cut).
+  `source_digest` is a SHA-256 over every record in the report (type, id, last-change time, which for a
+  versioned record is its current version's time), so a later run can tell whether the data changed even
+  when the list was cut.
 - Contains no record content, layout text or cell value: only identifiers, counts and keys.
 """
 
@@ -29,7 +32,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -62,7 +65,9 @@ class GeneratedReport(UUIDPKMixin, Base):
         widgets: The widgets the layout embedded (keys), `[]` until layouts can embed widgets.
         record_counts: Records read, by artefact type.
         stats: `blocks`, `rows`, `hidden`, `unavailable`, `warnings`, `duration_ms`.
-        source_digest: SHA-256 hex over the records read (see the module docstring).
+        source_digest: SHA-256 hex over the records in the report (see the module docstring).
+        record_versions: `{type: {record id: version number}}` of the versioned records in the report.
+        record_versions_truncated: Whether `record_versions` was cut at the bound (the digest still covers all).
     """
 
     __tablename__ = "generated_reports"
@@ -90,3 +95,5 @@ class GeneratedReport(UUIDPKMixin, Base):
     record_counts: Mapped[dict[str, int]] = mapped_column(JSONB, default=dict)
     stats: Mapped[dict[str, int]] = mapped_column(JSONB, default=dict)
     source_digest: Mapped[str] = mapped_column(String(64))
+    record_versions: Mapped[dict[str, dict[str, int]]] = mapped_column(JSONB, default=dict, server_default="{}")
+    record_versions_truncated: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

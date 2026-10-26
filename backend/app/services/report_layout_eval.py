@@ -84,6 +84,8 @@ MAX_WORK = 200_000
 MAX_OUTPUT = 100_000
 DEFAULT_TIMEOUT_SECONDS = 60.0
 EMPTY_GROUP_LABEL = "(none)"
+#: Most versioned records whose version a run records; a larger report keeps its digest and flags the list incomplete.
+MAX_RECORDED_VERSIONS = 20_000
 
 Key = tuple[str, uuid.UUID]
 Scope = dict[str, "Bound"]
@@ -126,8 +128,13 @@ class EvaluatedLayout:
         sheets: The sheets (table family), else empty.
         warnings: Things the reader should know (a cap truncated a read, a link type name matched nothing).
         stats: Counters.
-        source_digest: SHA-256 hex over every record read (type, id, last-change time), so two runs can be
-            compared for "did the source data change" without storing the records.
+        source_digest: SHA-256 hex over every record in the report (type, id, last-change time), so two runs can
+            be compared for "did the source data change" without storing the records.
+        record_versions: `{type: {record id: version number}}` for the versioned records in the report, so the
+            report names the exact version of each (at most `MAX_RECORDED_VERSIONS` records; see
+            `record_versions_truncated`).
+        record_versions_truncated: Whether more versioned records than `MAX_RECORDED_VERSIONS` were in the
+            report, so `record_versions` is incomplete (the digest still covers every record).
     """
 
     family: str
@@ -136,6 +143,8 @@ class EvaluatedLayout:
     warnings: list[str]
     stats: EvalStats
     source_digest: str = ""
+    record_versions: dict[str, dict[str, int]] = field(default_factory=dict)
+    record_versions_truncated: bool = False
 
 
 @dataclass
@@ -229,7 +238,8 @@ def evaluate_layout(
     document = None
     if tree["family"] == FAMILY_DOCUMENT:
         document = ReportDocument(title=title, blocks=run.blocks, landscape=tree.get("orientation") == "landscape")
-    return EvaluatedLayout(tree["family"], document, run.sheets, run.warnings, run.stats, run.source_digest())
+    versions, truncated = run.record_versions()
+    return EvaluatedLayout(tree["family"], document, run.sheets, run.warnings, run.stats, run.source_digest(), versions, truncated)
 
 
 class _Run:
@@ -279,6 +289,21 @@ class _Run:
             for artefact_type, records in self._pool.items() for record in records.values()
         )
         return hashlib.sha256("\n".join(lines).encode()).hexdigest()
+
+    def record_versions(self) -> tuple[dict[str, dict[str, int]], bool]:
+        """The version number of each versioned record in the report, and whether the list was cut at
+        `MAX_RECORDED_VERSIONS` (records in a stable order, so the cut is repeatable)."""
+        out: dict[str, dict[str, int]] = {}
+        count = 0
+        for artefact_type in sorted(self._pool):
+            for record in sorted(self._pool[artefact_type].values(), key=lambda r: str(r.id)):
+                if record.version is None:
+                    continue
+                if count >= MAX_RECORDED_VERSIONS:
+                    return out, True
+                out.setdefault(artefact_type, {})[str(record.id)] = record.version
+                count += 1
+        return out, False
 
     # --- dispatch and limits ---------------------------------------------------------------
 
@@ -708,6 +733,6 @@ for _key, _fn in (
     register_evaluator(_key, _fn)
 
 __all__ = [
-    "DEFAULT_TIMEOUT_SECONDS", "EMPTY_GROUP_LABEL", "MAX_OUTPUT", "MAX_WORK", "EvalStats", "EvaluatedLayout",
+    "DEFAULT_TIMEOUT_SECONDS", "EMPTY_GROUP_LABEL", "MAX_OUTPUT", "MAX_RECORDED_VERSIONS", "MAX_WORK", "EvalStats", "EvaluatedLayout",
     "LayoutLimitError", "LayoutTimeoutError", "evaluate_layout", "matches_value", "register_evaluator",
 ]

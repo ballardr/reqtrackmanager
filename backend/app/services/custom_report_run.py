@@ -14,7 +14,7 @@ Responsibilities:
   page break between projects; a table layout's sheets of the same name are concatenated with a leading
   `Project` column.
 - Output: `result_for` (on-screen), `document_for` (branding, introduction/chapters/appendices),
-  `csv_for`, `available_formats`.
+  `render_input_for`, `available_formats`.
 - Provenance: `record_run` writes the `GeneratedReport` row (D11).
 - Catalogue: `project_entries` / `org_entries` describe the runnable layouts like any other report.
 
@@ -31,8 +31,9 @@ Design decisions:
 - **The on-screen form is a table view of the document.** Each table becomes a section titled by the
   headings above it, with the text between them as its note; text after the last table becomes a report
   note. The PDF and Word are the faithful forms.
-- **Formats follow the layout family.** A document layout gives `json`, `pdf` and `docx`; a table layout
-  gives `json`, and `csv` when it has exactly one sheet (several sheets need the multi-sheet formats).
+- **Formats follow the layout family and come from the renderer registry** (`services.report_render`): a
+  document layout gives `json` plus `pdf`, `docx`, `html`; a table layout `json` plus `csv` (a zip when it has
+  several sheets) and `xlsx`. A new format is one registration there.
 - **Content tiers key on the layout id** (`custom.<layout id>`), so a layout has its own introduction,
   chapters and appendices across template, project and organisation like a module report.
 
@@ -69,7 +70,6 @@ from app.services.report_content import (
 )
 from app.services.report_document import ReportBranding
 from app.services.report_framework import (
-    REPORT_FORMATS,
     ReportCatalogueEntryOut,
     ReportContext,
     ReportMetric,
@@ -77,11 +77,11 @@ from app.services.report_framework import (
     ReportResult,
     ReportSection,
     readable_projects,
-    render_csv,
 )
 from app.services.report_layout_eval import (
     DEFAULT_TIMEOUT_SECONDS,
     MAX_OUTPUT,
+    MAX_RECORDED_VERSIONS,
     EvalStats,
     EvaluatedLayout,
     LayoutLimitError,
@@ -100,6 +100,7 @@ from app.services.report_model import (
     Sheet,
     Table,
 )
+from app.services.report_render import RenderInput, formats_for
 
 ENGINE_VERSION = "1"
 """Bumped when evaluation semantics change, so a provenance row says which engine produced a report."""
@@ -120,10 +121,6 @@ class NoProjectsToRunError(LookupError):
 
 class FanOutTooLargeError(ValueError):
     """More than `MAX_FANOUT_PROJECTS` projects were asked for."""
-
-
-class UnsupportedFormatError(ValueError):
-    """The layout cannot be produced in the requested format."""
 
 
 def content_key(layout_id: uuid.UUID) -> str:
@@ -168,22 +165,18 @@ class LayoutRun:
         return self.evaluated.family
 
 
-def available_formats(family: str, tree: dict[str, Any]) -> list[str]:
-    """The formats a layout can be produced in (see the module docstring).
+def available_formats(family: str, tree: dict[str, Any] | None = None) -> list[str]:
+    """The formats a layout can be produced in: `json` (the on-screen run) then every renderer of its family.
 
     Args:
         family: The layout's family.
-        tree: Its tree (a table layout's sheet count decides CSV).
+        tree: Unused by the shipped renderers (kept so a format that depends on the layout's shape, such as
+            one needing a single sheet, can decide from it).
 
     Returns:
-        A subset of `REPORT_FORMATS`, `json` first.
+        `json` first, then `services.report_render.formats_for(family)`.
     """
-    if family == FAMILY_DOCUMENT:
-        return [f for f in REPORT_FORMATS if f in ("json", "pdf", "docx")]
-    formats = ["json"]
-    if len(tree.get("nodes", [])) == 1:
-        formats.append("csv")
-    return formats
+    return ["json", *formats_for(family)]
 
 
 # --- running ---------------------------------------------------------------------------------------------
@@ -317,6 +310,21 @@ def merge_evaluations(parts: Sequence[tuple[Project, EvaluatedLayout]], title: s
         stats.unavailable += part.stats.unavailable
         warnings += [f"{project.name}: {w}" for w in part.warnings]
     digest = hashlib.sha256("\n".join(f"{p.id}:{e.source_digest}" for p, e in parts).encode()).hexdigest()
+    versions: dict[str, dict[str, int]] = {}
+    truncated = any(part.record_versions_truncated for _, part in parts)
+    for _, part in parts:
+        for record_type, found in part.record_versions.items():
+            versions.setdefault(record_type, {}).update(found)  # a record shown under two projects is one record
+    if sum(len(v) for v in versions.values()) > MAX_RECORDED_VERSIONS:
+        keep = MAX_RECORDED_VERSIONS
+        trimmed: dict[str, dict[str, int]] = {}
+        for record_type in sorted(versions):
+            for record_id in sorted(versions[record_type]):
+                if keep == 0:
+                    break
+                trimmed.setdefault(record_type, {})[record_id] = versions[record_type][record_id]
+                keep -= 1
+        versions, truncated = trimmed, True
     document = None
     sheets: list[Sheet] = []
     if family == FAMILY_DOCUMENT:
@@ -335,7 +343,7 @@ def merge_evaluations(parts: Sequence[tuple[Project, EvaluatedLayout]], title: s
                 target = merged.setdefault(sheet.name, Sheet(sheet.name, ["Project", *sheet.columns], []))
                 target.rows.extend([project.name, *row] for row in sheet.rows)
         sheets = list(merged.values())
-    return EvaluatedLayout(family, document, sheets, warnings, stats, digest)
+    return EvaluatedLayout(family, document, sheets, warnings, stats, digest, versions, truncated)
 
 
 # --- output ------------------------------------------------------------------------------------------------
@@ -439,20 +447,13 @@ def content_blocks_for(
     return content_blocks(db, run.organization.id, content, placeholders)
 
 
-def csv_for(run: LayoutRun) -> bytes:
-    """The single sheet of a table-family run as CSV (formula-neutralised by `render_csv`).
-
-    Raises:
-        UnsupportedFormatError: The run has no sheet or several (use `available_formats`).
-    """
-    if len(run.evaluated.sheets) != 1:
-        raise UnsupportedFormatError("CSV needs a layout with exactly one sheet.")
-    sheet = run.evaluated.sheets[0]
-    result = ReportResult(
-        key=str(run.layout.id), title=run.layout.name, scope_label=run.scope_label, generated_at=run.generated_at,
-        notes=[], sections=[ReportSection("sheet", sheet.name, sheet.columns, sheet.rows)],
-    )
-    return render_csv(result)
+def render_input_for(
+    run: LayoutRun, *, branding: ReportBranding | None = None, before: Sequence[Block] = (), after: Sequence[Block] = (),
+) -> RenderInput:
+    """What the renderers are given for a run: the document (with branding and content) or the sheets."""
+    if run.family == FAMILY_DOCUMENT:
+        return RenderInput(run.layout.name, document=document_for(run, branding=branding, before=before, after=after))
+    return RenderInput(run.layout.name, sheets=run.evaluated.sheets)
 
 
 # --- provenance ----------------------------------------------------------------------------------------------
@@ -497,7 +498,8 @@ def record_run(
             "blocks": stats.blocks, "rows": stats.rows, "hidden": stats.hidden, "unavailable": stats.unavailable,
             "warnings": len(run.evaluated.warnings), "duration_ms": run.duration_ms,
         },
-        source_digest=run.evaluated.source_digest,
+        source_digest=run.evaluated.source_digest, record_versions=run.evaluated.record_versions,
+        record_versions_truncated=run.evaluated.record_versions_truncated,
     )
     db.add(row)
     return row
@@ -551,7 +553,7 @@ def org_entries(db: Session, user: User, organization_id: uuid.UUID) -> list[Rep
 
 __all__ = [
     "ENGINE_VERSION", "MAX_FANOUT_PROJECTS", "MODULE_KEY", "FanOutTooLargeError", "LayoutRun",
-    "NoProjectsToRunError", "ProjectsNotInScopeError", "UnsupportedFormatError", "available_formats", "content_blocks_for",
-    "content_key", "csv_for", "document_for", "merge_evaluations", "org_entries",
+    "NoProjectsToRunError", "ProjectsNotInScopeError", "available_formats", "content_blocks_for",
+    "content_key", "document_for", "render_input_for", "merge_evaluations", "org_entries",
     "project_entries", "record_run", "result_for", "run_organization_layout", "run_project_layout", "slug_for",
 ]

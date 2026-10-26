@@ -180,16 +180,63 @@ def test_a_layout_is_only_produced_in_formats_its_family_allows(world):
     project = world.project()
     document = make_layout(world, document_tree(), "Doc", project=project)
     sheet = make_layout(world, sheet_tree("A"), "Sheet", project=project)
-    sheets = make_layout(world, sheet_tree("A", "B"), "Two sheets", project=project)
 
-    assert project_run(world, project, document, format="csv").status_code == 400
-    assert project_run(world, project, sheet, format="pdf").status_code == 400
-    refused = project_run(world, project, sheets, format="csv")
-    assert refused.status_code == 400 and "json" in refused.json()["detail"]
-    assert project_run(world, project, sheets).status_code == 200  # json is always offered
-    assert custom_report_run.available_formats("table", sheet_tree("A", "B")) == ["json"]
-    assert custom_report_run.available_formats("table", sheet_tree("A")) == ["json", "csv"]
-    assert custom_report_run.available_formats("document", document_tree()) == ["json", "pdf", "docx"]
+    for fmt in ("csv", "xlsx"):
+        refused = project_run(world, project, document, format=fmt)
+        assert refused.status_code == 400 and "json, pdf, docx, html" in refused.json()["detail"]
+    for fmt in ("pdf", "docx", "html"):
+        refused = project_run(world, project, sheet, format=fmt)
+        assert refused.status_code == 400 and "json, csv, xlsx" in refused.json()["detail"]
+    assert project_run(world, project, document, format="odt").status_code == 422  # not a known format at all
+    assert custom_report_run.available_formats("table") == ["json", "csv", "xlsx"]
+    assert custom_report_run.available_formats("document") == ["json", "pdf", "docx", "html"]
+
+
+def test_html_is_a_standalone_script_free_page_that_escapes_record_text(world):
+    project = world.project()
+    world.requirement(project, "<script>alert(1)</script> & co")
+    layout = make_layout(world, document_tree("{{record.title}}"), "Doc", project=project)
+
+    resp = project_run(world, project, layout, format="html")
+
+    assert resp.status_code == 200 and resp.headers["content-type"].startswith("text/html")
+    assert "attachment" in resp.headers["content-disposition"] and resp.headers["content-disposition"].endswith('.html"')
+    page = resp.text
+    assert "<script" not in page and "&lt;script&gt;alert(1)&lt;/script&gt; &amp; co" in page
+    assert "Content-Security-Policy" in page and "default-src 'none'" in page
+
+
+def test_a_table_layout_downloads_as_xlsx_with_text_cells_and_one_tab_per_sheet(world):
+    import openpyxl
+
+    project = world.project()
+    world.requirement(project, "=1+1 formula")
+    layout = make_layout(world, sheet_tree("Reqs", "Other"), "Two", project=project)
+
+    resp = project_run(world, project, layout, format="xlsx")
+
+    assert resp.status_code == 200 and resp.content.startswith(b"PK")
+    workbook = openpyxl.load_workbook(io.BytesIO(resp.content))
+    assert workbook.sheetnames == ["Reqs", "Other"]
+    rows = list(workbook["Reqs"].iter_rows(values_only=True))
+    assert rows[0] == ("Code", "Title") and rows[1][1] == "'=1+1 formula"
+    assert workbook["Reqs"].cell(2, 2).data_type == "s"
+
+
+def test_a_table_layout_with_several_sheets_downloads_as_a_zip_of_csv_files(world):
+    import zipfile
+
+    project = world.project()
+    world.requirement(project, "One")
+    layout = make_layout(world, sheet_tree("First", "Second"), "Two", project=project)
+
+    resp = project_run(world, project, layout, format="csv")
+
+    assert resp.status_code == 200 and resp.headers["content-type"] == "application/zip"
+    assert resp.headers["content-disposition"].endswith('.zip"')
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as archive:
+        assert sorted(archive.namelist()) == ["First.csv", "Second.csv"]
+        assert archive.read("First.csv").decode().splitlines()[0] == "Code,Title"
 
 
 def test_an_invalid_branding_template_is_refused(world):
@@ -543,6 +590,68 @@ def test_the_source_digest_changes_only_when_the_data_does(world, db):
     assert len(a.source_digest) == 64 and a.source_digest == b.source_digest and b.source_digest != c.source_digest
 
 
+def test_the_provenance_names_the_version_of_every_versioned_record(world, db):
+    project = world.project()
+    req_id = world.requirement(project, "Original")
+    world.action(project, "An action")  # a type with no versions is counted but not listed
+    tree = {
+        **empty_tree("document"),
+        "nodes": [
+            {"type": "each", "source": {"record_type": REQ}, "children": [{"type": "text", "text": "{{record.title}}"}]},
+            {"type": "each", "source": {"record_type": "requirement_action"}, "children": [{"type": "text", "text": "{{record.title}}"}]},
+        ],
+    }
+    layout = make_layout(world, tree, "Doc", project=project)
+    project_run(world, project, layout)
+    current = world.client.get(f"/api/v1/projects/{project['id']}/requirements/{req_id}", headers=auth_headers(world.token)).json()
+    edit = world.client.put(
+        f"/api/v1/projects/{project['id']}/requirements/{req_id}",
+        json={"name": "Edited", "component_id": project["component_id"], "category_id": project["category_id"], "owner": current["owner"]},
+        headers=auth_headers(world.token),
+    )
+    assert edit.status_code == 200, edit.text
+    project_run(world, project, layout)
+
+    first, second = provenance(db, layout)
+
+    assert first.record_versions == {"requirement": {str(req_id): 1}} and first.record_versions_truncated is False
+    assert second.record_versions == {"requirement": {str(req_id): 2}}
+    assert second.record_counts == {"requirement": 1, "requirement_action": 1}
+
+
+def test_the_recorded_versions_are_bounded_and_say_when_they_were_cut(world, db, monkeypatch):
+    project = world.project()
+    for i in range(3):
+        world.requirement(project, f"Rule {i}")
+    layout = make_layout(world, document_tree(), "Doc", project=project)
+    monkeypatch.setattr(report_layout_eval, "MAX_RECORDED_VERSIONS", 2)
+
+    project_run(world, project, layout)
+
+    (row,) = provenance(db, layout)
+    assert sum(len(v) for v in row.record_versions.values()) == 2 and row.record_versions_truncated is True
+    assert row.record_counts == {"requirement": 3} and len(row.source_digest) == 64  # the digest still covers all three
+
+
+def test_an_organisation_run_lists_each_versioned_record_once(world, db):
+    alpha, beta = world.project("Alpha"), world.project("Beta")
+    a, b = world.requirement(alpha, "A"), world.requirement(beta, "B")
+    layout = make_layout(world, document_tree(), "Everywhere")
+    assert org_run(world, layout).status_code == 200
+
+    (row,) = provenance(db, layout)
+
+    assert row.record_versions == {"requirement": {str(a): 1, str(b): 1}} and row.record_versions_truncated is False
+
+
+def test_every_versioned_report_type_exposes_its_current_version():
+    from app.modules.registry import get_report_field_providers
+
+    versioned = {t: p for t, p in get_report_field_providers().items() if p.where}  # `valid_to IS NULL` marks a versioned type
+    assert "requirement" in versioned and "risk" in versioned
+    assert [t for t, p in versioned.items() if p.columns.version is None] == []
+
+
 def test_an_organisation_run_records_the_selection_and_the_projects_covered(world, db):
     alpha, beta = world.project("Alpha"), world.project("Beta")
     layout = make_layout(world, sheet_tree("Reqs"), "Everywhere")
@@ -583,9 +692,9 @@ def test_the_project_catalogue_lists_runnable_layouts_with_their_formats(world):
     custom = {e["title"]: e for e in entries if e["module_key"] == "custom_reports"}
 
     assert set(custom) == {"Doc", "Sheet"}
-    assert custom["Doc"]["formats"] == ["json", "pdf", "docx"] and custom["Doc"]["scope"] == "project"
+    assert custom["Doc"]["formats"] == ["json", "pdf", "docx", "html"] and custom["Doc"]["scope"] == "project"
     assert custom["Doc"]["path"] == f"/api/v1/projects/{project['id']}/custom-reports/{document['id']}/run"
-    assert custom["Sheet"]["formats"] == ["json", "csv"] and custom["Doc"]["supports_include_children"] is True
+    assert custom["Sheet"]["formats"] == ["json", "csv", "xlsx"] and custom["Doc"]["supports_include_children"] is True
     assert custom["Doc"]["module_name"] == "Custom reports" and custom["Doc"]["params"] == []
     assert len({e["slug"] for e in entries}) == len(entries)
     assert custom["Sheet"]["slug"].startswith("custom-sheet-") and custom["Sheet"]["key"] == sheet["id"]

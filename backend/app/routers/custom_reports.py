@@ -3,7 +3,7 @@ Module: routers.custom_reports
 
 Runs a custom report layout (`services.custom_report_run`):
 
-- `GET /api/v1/projects/{project_id}/custom-reports/{layout_id}/run?format=json|pdf|docx|csv`: a layout the
+- `GET /api/v1/projects/{project_id}/custom-reports/{layout_id}/run?format=json|pdf|docx|html|csv|xlsx`: a layout the
   project can reach (its own, an ancestor's or the organisation's, unless the project hid it), for this
   project and, with `include_children`, its readable child projects.
 - `GET /api/v1/orgs/{organization_id}/custom-reports/{layout_id}/run?format=...&project_ids=a,b`: an
@@ -13,14 +13,16 @@ Access: running needs only what reading the data needs (D13): membership of the 
 each record is then shown only if the caller's own project permissions allow it. Neither route needs the
 manage-layouts permission. Every run writes a provenance row (`GeneratedReport`); no output is stored.
 
-`format` is limited by the layout's family (`services.custom_report_run.available_formats`): 400 otherwise.
+`format` is limited by the layout's family (`services.custom_report_run.available_formats`, which reads the
+renderer registry, `services.report_render`): 400 otherwise. A table layout's `csv` is a zip when it has
+several sheets.
 A run over its work, output or time limit answers 413 (408 for time) and writes nothing.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -30,23 +32,26 @@ from app.database import get_db
 from app.models.enums import OrgRole
 from app.models.organization import Organization, ReportTemplate
 from app.models.project import Project
-from app.models.report_layout import ReportLayout, ReportLayoutVersion
+from app.models.report_layout import FAMILY_DOCUMENT, ReportLayout, ReportLayoutVersion
 from app.models.user import User
-from app.services import custom_report_run, report_layout_scope, report_layouts
+from app.services import custom_report_run, report_layout_scope, report_layouts, report_render
 from app.services.custom_report_run import LayoutRun
 from app.services.downloads import file_response, filename_safe
 from app.services.rbac import require_org_role, require_project_view
 from app.services.report_document import load_report_template, resolve_branding
-from app.services.report_docx import render_docx_document
-from app.services.report_framework import ReportFormat, ReportOut, to_out
+from app.services.report_framework import ReportOut, to_out
 from app.services.report_layout_eval import LayoutLimitError, LayoutTimeoutError
 from app.services.report_model import Block
-from app.services.report_pdf import render_pdf_document
+from app.services.report_render import RenderedFile
 
 project_router = APIRouter(prefix="/api/v1/projects/{project_id}/custom-reports", tags=["custom-reports"])
 org_router = APIRouter(prefix="/api/v1/orgs/{organization_id}/custom-reports", tags=["custom-reports"])
 
-_RESPONSES: dict[int | str, dict[str, Any]] = {200: {"content": {"application/pdf": {}, "text/csv": {}}}}
+CustomReportFormat = Literal["json", "pdf", "docx", "html", "csv", "xlsx"]
+"""Every format any family offers; `available_formats` narrows it per layout (400)."""
+_RESPONSES: dict[int | str, dict[str, Any]] = {
+    200: {"content": {"application/pdf": {}, "text/csv": {}, "text/html": {}, "application/zip": {}}},
+}
 
 
 def _template(db: Session, organization: Organization, template_id: UUID | None) -> ReportTemplate | None:
@@ -104,17 +109,19 @@ def _respond(
     The row is written after rendering succeeds, so a report that could not be produced leaves no record.
     """
     out: ReportOut | None = None
-    content: tuple[bytes, str] | None = None
+    rendered: RenderedFile | None = None
     if fmt == "json":
         out = to_out(custom_report_run.result_for(run))
-    elif fmt == "csv":
-        content = custom_report_run.csv_for(run), "csv"
     else:
-        before: list[Block]
-        after: list[Block]
-        before, after = custom_report_run.content_blocks_for(db, run, template)
-        document = custom_report_run.document_for(run, branding=resolve_branding(db, run.organization, template), before=before, after=after)
-        content = (render_docx_document(document), "docx") if fmt == "docx" else (render_pdf_document(document), "pdf")
+        before: list[Block] = []
+        after: list[Block] = []
+        branding = None
+        if run.family == FAMILY_DOCUMENT:
+            before, after = custom_report_run.content_blocks_for(db, run, template)
+            branding = resolve_branding(db, run.organization, template)
+        rendered = report_render.render(
+            fmt, run.family, custom_report_run.render_input_for(run, branding=branding, before=before, after=after),
+        )
     custom_report_run.record_run(
         db, user, run, fmt, report_template_id=template.id if template else None, include_children=include_children,
         requested_project_ids=requested,
@@ -122,15 +129,15 @@ def _respond(
     db.commit()
     if out is not None:
         return out
-    assert content is not None
+    assert rendered is not None
     stem = f"{filename_safe(run.scope_label, fallback='report')}-{filename_safe(run.layout.name, fallback='report')}"
-    return file_response(content[0], stem, content[1])
+    return file_response(rendered.content, stem, rendered.extension)
 
 
 @project_router.get("/{layout_id}/run", response_model=ReportOut, responses=_RESPONSES)
 def run_project_custom_report(
     project_id: UUID, layout_id: UUID,
-    format: ReportFormat = Query("json", description="json (default), pdf, docx or csv; the layout's family limits it."),
+    format: CustomReportFormat = Query("json", description="json (default), or pdf, docx, html (document layouts) / csv, xlsx (table layouts)."),
     include_children: bool = Query(False, description="Also read the records of readable child projects."),
     report_template_id: UUID | None = Query(None, description="An organisation report template's branding for the PDF and Word."),
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
@@ -175,7 +182,7 @@ def _parse_project_ids(raw: str | None) -> list[UUID] | None:
 @org_router.get("/{layout_id}/run", response_model=ReportOut, responses=_RESPONSES)
 def run_org_custom_report(
     organization_id: UUID, layout_id: UUID,
-    format: ReportFormat = Query("json", description="json (default), pdf, docx or csv; the layout's family limits it."),
+    format: CustomReportFormat = Query("json", description="json (default), or pdf, docx, html (document layouts) / csv, xlsx (table layouts)."),
     project_ids: str | None = Query(
         None, description="Comma-separated projects to include (narrowing only); default every project you can read.",
     ),

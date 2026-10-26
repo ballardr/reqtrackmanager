@@ -31,7 +31,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   reportsApi,
   type ReportCatalogueEntry,
-  type ReportDownloadKind,
+  type ReportFileKind,
   type ReportMetric,
   type ReportResult,
   type ReportRunValues,
@@ -66,7 +66,9 @@ function initialValues(entry: ReportCatalogueEntry): ReportRunValues {
  * @param focusSection A section key to scroll to once the report has loaded (a figure's "see the gap table" link).
  */
 /** How a download kind is named to the user (toasts). */
-const DOWNLOAD_NAME: Record<ReportDownloadKind, string> = { pdf: "PDF", docx: "Word file", csv: "CSV" };
+const DOWNLOAD_NAME: Record<ReportFileKind, string> = {
+  pdf: "PDF", docx: "Word file", csv: "CSV", html: "HTML page", xlsx: "Excel workbook",
+};
 
 export function ReportRunner({
   entry, scope, organizationId, focusSection,
@@ -136,11 +138,12 @@ export function ReportRunner({
     setValues((current) => ({ ...current, [name]: value }));
   }
 
-  async function download(kind: ReportDownloadKind) {
+  async function download(kind: ReportFileKind) {
     const name = DOWNLOAD_NAME[kind];
     try {
       const blob = await reportsApi.download(entry, kind, kind === "csv" ? values : { ...values, report_template_id: templateId });
-      downloadBlob(blob, `${entry.slug}.${kind}`);
+      // A table layout of several sheets comes back as a zip of CSV files, whatever `csv` was asked for.
+      downloadBlob(blob, `${entry.slug}.${blob.type === "application/zip" ? "zip" : kind}`);
       showToast(`Downloaded ${entry.title} (${name}).`, "success");
     } catch (err) {
       showToast(toErrorMessage(err, `Could not generate the ${name} for ${entry.title}.`), "error");
@@ -188,7 +191,7 @@ export function ReportRunner({
               placeholder="No template"
             />
           )}
-          <ReportExportButton onDownload={download} kinds={entry.formats.filter((f): f is ReportDownloadKind => f !== "json")} />
+          <ReportExportButton onDownload={download} kinds={entry.formats.filter((f): f is ReportFileKind => f !== "json")} />
         </div>
       </div>
       {error && (
