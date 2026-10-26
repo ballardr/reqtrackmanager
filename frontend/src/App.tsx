@@ -28,6 +28,7 @@ import { ProjectHistoryPage } from "./pages/ProjectHistoryPage";
 import { ProjectListPage } from "./pages/ProjectListPage";
 import { ProjectOverviewPage } from "./pages/ProjectOverviewPage";
 import { ProjectReviewsDuePage } from "./pages/ProjectReviewsDuePage";
+import { ReportLayoutDesignerPage } from "./pages/ReportLayoutDesignerPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { SearchPage } from "./pages/SearchPage";
 import { RequirementDetailPage } from "./pages/RequirementDetailPage";
@@ -85,6 +86,7 @@ function ProtectedRoutes() {
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/orgs" element={<OrgListPage />} />
         <Route path="/orgs/:orgId/admin/:group?" element={<OrgAdminPage />} />
+        <Route path="/orgs/:orgId/report-layouts/:layoutId" element={<ReportLayoutDesignerPage />} />
         {/* "Organisation Overview" —
             reuses `OrgListPage`'s single-org/multi-org auto-redirect
             convention (`target="overview"`) as its own entry point, the
@@ -120,6 +122,7 @@ function ProtectedRoutes() {
         <Route path="/projects/:projectId/admin/:group?" element={<ProjectAdminPage />} />
         <Route path="/projects/:projectId/history" element={<ProjectHistoryPage />} />
         <Route path="/projects/:projectId/reports" element={<ReportsPage />} />
+        <Route path="/projects/:projectId/report-layouts/:layoutId" element={<ReportLayoutDesignerPage />} />
         <Route path="/projects/:projectId/reviews-due" element={<ProjectReviewsDuePage />} />
         <Route path="/search" element={<SearchPage />} />
         <Route path="/preferences/:group?" element={<PreferencesPage />} />

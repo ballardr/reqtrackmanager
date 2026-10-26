@@ -106,7 +106,39 @@ For any other kind of record, the **Reports** picker offers **Record list**: cho
 
 A **custom report** is a report layout somebody designed: a document (headings, text, tables, and for each record its linked records) or a set of tables. Layouts are written for an organisation, which every project can run, or for one project (a child project also sees its parents'). Each appears in the **Report** picker under **Custom reports**, beside the module reports (a project can hide an organisation layout it does not want to offer). A layout never shows more than you could already read: records you cannot open are counted in a note ("2 record(s) not shown") and never named.
 
-There is no designer screen yet: layouts are created through the REST API, or by an AI assistant that has the [MCP tools](../api-integrations/ai-assistants-mcp/overview.md) in write mode. A layout can have its own introduction, chapters and appendices (the **Report type** drop-down in Report Setup and Report Defaults lists it by name), and a PDF or Word download uses the chosen branding template as for any report.
+Layouts are written in the [designer](#designing-a-layout), opened from **Report layouts** in a project's **Report Setup** or the organisation's **Templates & reports**; they can also be created through the REST API, or by an AI assistant that has the [MCP tools](../api-integrations/ai-assistants-mcp/overview.md) in write mode. A layout can have its own introduction, chapters and appendices (the **Report type** drop-down in Report Setup and Report Defaults lists it by name), and a PDF or Word download uses the chosen branding template as for any report.
+
+### Designing a layout
+
+**Report layouts** lists a project's own layouts, those shared by its parent projects and by the organisation, and, for an organisation, its own. Choose **New layout**, give it a name and say whether it is a **Document** (headings, text and tables, for PDF, Word or HTML) or a **Table** (one or more plain tables, for Excel or CSV); the kind cannot be changed later. A layout shared from elsewhere opens read-only: **Make a copy** to change it for this project, or **Hide in this project** and bring it back with **Add organisation defaults**.
+
+The designer shows the layout as text. Each block is a line starting with `@`, and `{{req.title}}` puts a field of a record in the text.
+
+```text
+@layout document
+
+@heading Requirements of {{project_name}}
+
+@each requirement sort title as req
+  @heading level=2 {{req.code}} {{req.title}}
+@end
+```
+
+```mermaid
+flowchart LR
+    T["Type the text<br/>(or insert a block, field or widget)"] --> C["Checked as you pause<br/>problems listed by line"]
+    C -->|valid| P["Run preview<br/>real records, your access,<br/>nothing stored"]
+    C -->|valid| S["Save new version<br/>(with a note)"]
+    S --> H["History<br/>compare any two versions"]
+    H -->|use an old version| T
+```
+
+- **Problems** are listed by line and column; choosing one puts the cursor there. **Save new version** and **Run preview** wait until the text is valid. A layout's first line must declare its own kind (`@layout document` or `@layout table`).
+- **Insert block** buttons add a heading, text, *for each record*, a group, a table, an *if* or a page break at the cursor (a sheet for a table layout). The **Fields** tab lists what `{{name.field}}` can use at the cursor, using the name after `as` of the block you are in, and the global placeholders such as `{{project_name}}`. The **Widgets** tab lists the report components you can embed, with each report's settings, and inserts the finished line.
+- **Preview** runs the layout as you, on the real records, and shows a document as it will print or a table layout's first rows of each sheet (with the real row count). It stores nothing, and a project preview can include child projects while an organisation preview can be limited to chosen projects.
+- **Saving** adds a version with an optional note. If somebody saved while you were editing, you are told and can reload their version; nothing is overwritten. Leaving with unsaved changes asks first.
+- **History** lists every version and compares any two line by line (added lines start with `+`, removed with `-`). **Use this version as the new text** puts an old version in the editor; saving it adds a new version, so history is never rewritten.
+- Organisation administrators can design organisation layouts, and project administrators their own project's; others can run layouts but not open the designer.
 
 | Run | What you get |
 | --- | --- |

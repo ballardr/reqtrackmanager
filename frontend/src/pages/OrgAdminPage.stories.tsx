@@ -4,6 +4,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { ApiError, api } from "../api/client";
 import type { ArtefactLinkRule, ArtefactTypeOption, CustomRoleDefinition, CustomRolePreset, EntityScope, LinkTypeDefinition, ModuleRoleDefinition, OrgAdvancedSettings, OrgGroup, OrgModule, OrgModuleSubComponent, OrgPendingInvite, OrgPersonalAccessToken, OrgReportDefaults, OrgRole, OrgSsoConfig, OrgUser, Organization, Permission, ProjectStatusDefinition, UserAccess } from "../api/types";
 import { installedModules } from "../modules/registry";
+import { buildLayoutSummary } from "../testing/reportLayoutFixtures";
 import { buildLinkType, buildProjectStatus, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { OrgAdminPage } from "./OrgAdminPage";
 
@@ -115,6 +116,7 @@ function mockOrgAdminApis(overrides: {
     if (path.includes("/groups")) return orgGroups;
     if (path.includes("/resources")) return [];
     if (path.includes("archived=false")) return [];
+    if (path.endsWith("/report-layouts")) return [buildLayoutSummary({ project_id: null, origin: "organization" })];
     if (path.includes("/report-templates")) return [];
     if (path.includes("/report-types")) return [
       { key: "requirements", title: "Requirements report", module_name: null },
@@ -818,6 +820,22 @@ export const NewReportTemplateOpensModalAndCreates: Story = {
       )
     );
     await expect(body.queryByRole("dialog")).not.toBeInTheDocument();
+  },
+};
+
+/** Templates & reports lists the organisation's report layouts, shared with every project. */
+export const TemplatesAndReportsListsTheReportLayouts: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("link", { name: "Templates & reports" }));
+    const table = await canvas.findByRole("table", { name: "Report layouts" });
+    await expect(within(table).getByRole("link", { name: /Requirements by component/ })).toHaveAttribute(
+      "href", expect.stringContaining("/orgs/org-1/report-layouts/layout-1"),
+    );
   },
 };
 

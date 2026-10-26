@@ -1504,6 +1504,46 @@ flowchart LR
   `list_report_widgets` MCP tool list the components whose module the organisation or project can use, with the report's
   parameters. Saving does not check availability (an organisation layout runs in many projects); each run does.
 
+### 4q. Custom reports: the designer (Module 10 Phase 8)
+
+The designer is core UI over the layout API, with no per-module code: modules reach it through the field registry (§4m)
+and widget list (§4p), which it only reads.
+
+```mermaid
+flowchart LR
+    ED["ReportLayoutDesigner<br/>text editor"] -->|"POST …/text/parse (debounced)"| P["parse + validate<br/>positioned errors"]
+    ED -->|"POST …/preview"| V["report_layout_designer.preview_*<br/>transient layout, caller's access,<br/>run caps, nothing stored"]
+    V --> H["document: standalone HTML<br/>table: capped sheets"]
+    ED -->|"PUT …/tree + base_version"| S["report_layouts.save_version<br/>409 if the layout moved on"]
+    F["GET …/fields"] --> FP["field picker"]
+    W["GET …/widgets"] --> WP["widget picker"]
+    FP --> ED
+    WP --> ED
+```
+
+- **Endpoints** (both tiers, manage permission, server administrators excluded as for every layout route):
+  `GET .../report-layouts/fields` returns the record types the scope can use (module and sub-component enabled, the same
+  gate as the widget list) with their fields from `report_fields.field_catalogue`, the global `{{placeholders}}` and the
+  fields of a group; `POST .../report-layouts/preview` takes `text` or `tree` (exactly one) and answers
+  `{ok, errors}` for text with problems (200, nothing run), else a document as one standalone HTML page
+  (`report_html`, script-free, CSP meta) or a table as sheets capped at `PREVIEW_MAX_ROWS` with their real row counts.
+- **A preview is a run that leaves nothing behind.** It goes through `custom_report_run` with an unsaved `ReportLayout`
+  and version that are never added to the session, so the caller's own read access, the work/output/time caps and the
+  fan-out rules apply unchanged; it writes no `generated_reports` row and no audit event (nothing was produced to keep)
+  and never logs the text. Refusals (413, 408, 404, 422) are the run route's (`routers.custom_reports.guard_run`).
+- **Frontend.** `api/reportLayouts.ts` (`ReportLayoutApi`, one injectable interface per scope), `ReportLayoutsPanel` (the
+  list in Project Admin's Report Setup and Org Admin's Templates & reports), `ReportLayoutFormModal` (create and edit share
+  `ReportLayoutFields`), `ReportLayoutDesigner` (page `/projects/:id/report-layouts/:layoutId`, `/orgs/:id/report-layouts/:layoutId`),
+  `ReportLayoutFieldPicker`, `ReportLayoutWidgetPicker` (reuses `ReportParamsForm`), `ReportLayoutPreviewPanel` (a
+  sandboxed frame with an empty `sandbox` attribute for the HTML) and `ReportLayoutHistory` (a line diff of two
+  versions' text views, computed in the browser). `utils/reportLayoutText.ts` only helps a person write (names in scope
+  at the caret, insertion, snippets, the widget line); the server stays the only parser and validator, so the client
+  holds no block model that could drift from the tree.
+- **Kind is fixed.** The server parses text without knowing the layout, so the designer compares the text's `@layout`
+  kind with the layout's and reports a mismatch as a problem before saving.
+- **Extending.** A new block type needs its server pieces (§4n) and, to be offered as a shortcut, an entry in
+  `BLOCK_SNIPPETS`; the editor, pickers and preview need no change.
+
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 
 A module that reports on its records declares a `ReportDefinition` per report on

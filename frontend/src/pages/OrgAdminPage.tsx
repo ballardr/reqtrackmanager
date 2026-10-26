@@ -1,6 +1,6 @@
 import { useMutation } from "../hooks/useMutation";
 import { Download, Eye, KeyRound, Lock, Pencil, Plus, Send, Trash2, Unlock, Upload } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
@@ -99,7 +99,9 @@ import { loadOrgSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { downloadBlob } from "../utils/download";
 import { defaultResolutions } from "../utils/mergeConflicts";
 import { useRequestSequence } from "../hooks/useRequestSequence";
+import { reportLayoutApi } from "../api/reportLayouts";
 import { Badge } from "../components/Badge";
+import { ReportLayoutsPanel } from "../components/ReportLayoutsPanel";
 import { CheckboxField, ColorField, FileField, TextAreaField, TextField, ToggleField, UploadField } from "../components/FormFields";
 import { FormActions } from "../components/FormActions";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
@@ -203,6 +205,7 @@ export function OrgAdminPage() {
   const run = useMutation();
   const strings = useStrings();
   const { orgId, group: groupParam } = useParams<{ orgId: string; group?: string }>();
+  const layoutApi = useMemo(() => (orgId ? reportLayoutApi({ kind: "organization", id: orgId }) : null), [orgId]);
   const { user } = useAuth();
   const { showToast } = useToast();
   const orgLabel = useOrgLabel();
@@ -3351,6 +3354,12 @@ export function OrgAdminPage() {
                 <button className="btn btn-primary" onClick={saveOrgReportDefaults} style={{ alignSelf: "flex-start" }}>
                   {strings.admin.saveSettings}
                 </button>
+              </CollapsibleSection>
+            )}
+
+            {layoutApi && (
+              <CollapsibleSection sectionKey="orgAdmin.reportLayouts" title={strings.reportLayouts.title}>
+                <ReportLayoutsPanel api={layoutApi} />
               </CollapsibleSection>
             )}
 

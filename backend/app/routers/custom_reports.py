@@ -22,7 +22,7 @@ A run over its work, output or time limit answers 413 (408 for time) and writes 
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -43,6 +43,8 @@ from app.services.report_framework import ReportOut, to_out
 from app.services.report_layout_eval import LayoutLimitError, LayoutTimeoutError
 from app.services.report_model import Block
 from app.services.report_render import RenderedFile
+
+T = TypeVar("T")
 
 project_router = APIRouter(prefix="/api/v1/projects/{project_id}/custom-reports", tags=["custom-reports"])
 org_router = APIRouter(prefix="/api/v1/orgs/{organization_id}/custom-reports", tags=["custom-reports"])
@@ -84,8 +86,8 @@ def _check_format(layout: ReportLayout, version: ReportLayoutVersion, fmt: str) 
         )
 
 
-def _run(call: Callable[[], LayoutRun]) -> LayoutRun:
-    """Runs `call`, translating the run's refusals into responses."""
+def guard_run(call: Callable[[], T]) -> T:
+    """Runs `call`, translating the run's refusals into responses (also used by the designer's preview)."""
     try:
         return call()
     except LayoutTimeoutError as exc:
@@ -159,7 +161,7 @@ def run_project_custom_report(
     organization = db.get(Organization, project.organization_id)
     assert organization is not None
     template = _template(db, organization, report_template_id)
-    run = _run(lambda: custom_report_run.run_project_layout(
+    run = guard_run(lambda: custom_report_run.run_project_layout(
         db, current_user, project, scoped.layout, version, include_children=include_children,
     ))
     return _respond(db, current_user, run, format, template, include_children=include_children)
@@ -204,10 +206,10 @@ def run_org_custom_report(
     _check_format(layout, version, format)
     requested = _parse_project_ids(project_ids)
     template = _template(db, organization, report_template_id)
-    run = _run(lambda: custom_report_run.run_organization_layout(
+    run = guard_run(lambda: custom_report_run.run_organization_layout(
         db, current_user, organization, layout, version, project_ids=requested,
     ))
     return _respond(db, current_user, run, format, template, requested=requested)
 
 
-__all__ = ["org_router", "project_router"]
+__all__ = ["guard_run", "org_router", "project_router"]

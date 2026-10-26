@@ -1,0 +1,442 @@
+/**
+ * Module: components/ReportLayoutDesigner
+ *
+ * The report layout designer: where a person writes a layout as text, sees its problems and a live preview, and
+ * saves it as a new version. One component for an organisation's and a project's layouts over `ReportLayoutApi`.
+ *
+ * Responsibilities:
+ * - Load a layout and show its current tree as the text view (`ReportLayoutApi.formatTree`), editable in a
+ *   monospace box with block shortcuts; a layout shared from elsewhere opens read-only with a "make a copy" route.
+ * - Check the text a moment after typing stops (`parseText`) and list every problem by line, each jumping to its
+ *   line; Save is available only for text that parsed cleanly, and sends the parsed tree with the version the
+ *   author started from, so a concurrent save is reported (409) instead of overwritten.
+ * - Offer, beside the editor, the live preview, the field picker and the widget picker, which insert at the caret;
+ *   and, on a second tab, the version history and comparison.
+ * - Warn before leaving with unsaved changes (the Back link and the browser's own unload prompt).
+ *
+ * Design decisions: the text view is the only editing surface here and the server the only parser, so the client
+ * holds no block model that could drift from the tree (the WYSIWYG editor later edits the same tree). The saved
+ * text is the author's own, not re-formatted, so Save never reflows what they typed. Pickers only insert text.
+ */
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+
+import {
+  conflictVersion, copyReportLayout, LAYOUT_FAMILY_LABEL, LAYOUT_ORIGIN_LABEL, reportLayoutPath, treeProblems,
+  type ReportFieldCatalogue, type ReportLayoutApi, type ReportLayoutDetail, type ReportWidget, type TextParseResult,
+} from "../api/reportLayouts";
+import { useStrings } from "../context/TerminologyContext";
+import { toErrorMessage, useToast } from "../context/ToastContext";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { useRequestSequence } from "../hooks/useRequestSequence";
+import {
+  aliasesInScope, asBlock, BLOCK_SNIPPETS, insertAt, insertionRange, lineOfOffset, offsetOfLine,
+} from "../utils/reportLayoutText";
+import { AutoGrowTextarea } from "./AutoGrowTextarea";
+import { Badge } from "./Badge";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { TextField } from "./FormFields";
+import { ReportLayoutFieldPicker } from "./ReportLayoutFieldPicker";
+import { ReportLayoutFormModal } from "./ReportLayoutFormModal";
+import { ReportLayoutHistory } from "./ReportLayoutHistory";
+import { ReportLayoutPreviewPanel } from "./ReportLayoutPreviewPanel";
+import { ReportLayoutWidgetPicker } from "./ReportLayoutWidgetPicker";
+import { RecordHeader } from "./RecordHeader";
+import { Spinner } from "./Spinner";
+import { Tabs, tabPanelProps, type TabDef } from "./Tabs";
+
+/** How long typing must pause before the text is checked. */
+export const TEXT_CHECK_DELAY_MS = 400;
+/** Tallest the editor grows before it scrolls, in lines. */
+const EDITOR_MAX_LINES = 40;
+
+type MainTab = "design" | "history";
+type AsideTab = "preview" | "fields" | "widgets";
+type Dialog = "details" | "delete" | "reload" | "leave";
+
+/** The outcome of checking one exact text. */
+interface Checked {
+  text: string;
+  /** `null` when the check itself could not run. */
+  result: TextParseResult | null;
+}
+
+/**
+ * @param api The calls, bound to the layout's scope.
+ * @param layoutId The layout to open.
+ * @param backTo Where the Back link and a delete lead (the list the layout came from).
+ * @param projectOptions Organisation scope: the projects a preview can be narrowed to.
+ */
+export function ReportLayoutDesigner({
+  api, layoutId, backTo, projectOptions,
+}: {
+  api: ReportLayoutApi;
+  layoutId: string;
+  backTo: string;
+  projectOptions?: { value: string; label: string }[];
+}) {
+  const strings = useStrings();
+  const text = strings.reportLayouts;
+  const { showToast } = useToast();
+  const navigate = useNavigate();
+  const beginCheck = useRequestSequence();
+
+  const [detail, setDetail] = useState<ReportLayoutDetail | null>(null);
+  const [loadFailed, setLoadFailed] = useState<string | null>(null);
+  const [saved, setSaved] = useState("");
+  const [draft, setDraft] = useState("");
+  const [checked, setChecked] = useState<Checked | null>(null);
+  const [catalogue, setCatalogue] = useState<ReportFieldCatalogue | null>(null);
+  const [widgets, setWidgets] = useState<ReportWidget[] | null>(null);
+  const [toolsFailed, setToolsFailed] = useState(false);
+  const [tab, setTab] = useState<MainTab>("design");
+  const [aside, setAside] = useState<AsideTab>("preview");
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveProblems, setSaveProblems] = useState<string[]>([]);
+  const [conflict, setConflict] = useState<number | null>(null);
+  const [caretLine, setCaretLine] = useState(0);
+  const [dialog, setDialog] = useState<Dialog | null>(null);
+  const editor = useRef<HTMLTextAreaElement>(null);
+  const pendingCaret = useRef<number | null>(null);
+  /** Whether the author has put the caret in the text; until then insertions go to the end, not the untouched start. */
+  const caretPlaced = useRef(false);
+
+  const load = useCallback(async () => {
+    try {
+      const loaded = await api.get(layoutId);
+      const written = await api.formatTree(loaded.current.tree);
+      setDetail(loaded);
+      setSaved(written);
+      setDraft(written);
+      setChecked(null);
+      setConflict(null);
+      setSaveProblems([]);
+      setLoadFailed(null);
+    } catch (err) {
+      setLoadFailed(toErrorMessage(err, strings.common.error));
+    }
+  }, [api, layoutId, strings.common.error]);
+
+  const loadTools = useCallback(async () => {
+    try {
+      const [fields, parts] = await Promise.all([api.fields(), api.widgets()]);
+      setCatalogue(fields);
+      setWidgets(parts);
+      setToolsFailed(false);
+    } catch {
+      setToolsFailed(true);
+    }
+  }, [api]);
+
+  useLoadOnChange(load, [api.scope.kind, api.scope.id, layoutId]);
+  useLoadOnChange(loadTools, [api.scope.kind, api.scope.id]);
+
+  const loaded = detail !== null;
+
+  // Check the text once typing pauses; a response for text that has since changed is dropped.
+  useEffect(() => {
+    if (!loaded) return;
+    const timer = setTimeout(() => {
+      const isLatest = beginCheck();
+      api.parseText(draft).then(
+        (result) => { if (isLatest()) setChecked({ text: draft, result }); },
+        () => { if (isLatest()) setChecked({ text: draft, result: null }); },
+      );
+    }, TEXT_CHECK_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [draft, loaded, api, beginCheck]);
+
+  // Put the caret where an insertion left it, once the new text is in the box.
+  useLayoutEffect(() => {
+    const at = pendingCaret.current;
+    const el = editor.current;
+    if (at === null || !el) return;
+    pendingCaret.current = null;
+    el.focus();
+    el.setSelectionRange(at, at);
+  }, [draft]);
+
+  const dirty = loaded && draft !== saved;
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
+  if (loadFailed && !detail) return <p className="text-muted" role="alert">{loadFailed}</p>;
+  if (!detail) return <Spinner />;
+
+  const editable = detail.editable;
+  const current = checked?.text === draft ? checked : null;
+  const wrongKind = current?.result?.tree != null && current.result.tree.family !== detail.family;
+  const problems = [
+    ...(current?.result && !current.result.ok ? current.result.errors : []),
+    // The server parses text without knowing the layout, so a first line naming the other kind is caught here.
+    ...(wrongKind ? [{ line: 1, column: null, message: text.familyMismatch(LAYOUT_FAMILY_LABEL[detail.family].toLowerCase()) }] : []),
+  ];
+  const valid = current?.result?.ok === true && current.result.tree !== null && !wrongKind;
+  const aliases = aliasesInScope(draft, caretLine);
+  const originLabel = LAYOUT_ORIGIN_LABEL[detail.origin];
+
+  /** Inserts `snippet` over the selection, on its own lines when `block`, and leaves the caret after it. */
+  function insert(snippet: string, block: boolean) {
+    const el = editor.current;
+    const placed = caretPlaced.current && el !== null;
+    const range = insertionRange(draft, placed ? el.selectionStart : draft.length, placed ? el.selectionEnd : draft.length);
+    const piece = block ? asBlock(draft, range.start, snippet) : snippet;
+    const next = insertAt(draft, range.start, range.end, piece);
+    pendingCaret.current = next.caret;
+    setDraft(next.text);
+    setCaretLine(lineOfOffset(next.text, next.caret));
+  }
+
+  function jumpTo(line: number) {
+    const el = editor.current;
+    if (!el) return;
+    const at = offsetOfLine(draft, line);
+    el.focus();
+    el.setSelectionRange(at, at);
+    setCaretLine(line - 1);
+  }
+
+  async function save() {
+    if (!current?.result?.tree || !detail) return;
+    setSaving(true);
+    setSaveProblems([]);
+    try {
+      const result = await api.save(layoutId, { tree: current.result.tree, base_version: detail.current_version, comment: note.trim() });
+      showToast(result.current_version === detail.current_version ? text.noChanges : text.saved(result.current_version));
+      setDetail(result);
+      setSaved(draft);
+      setNote("");
+    } catch (err) {
+      const newer = conflictVersion(err);
+      const found = treeProblems(err);
+      if (newer !== null) setConflict(newer);
+      else if (found.length > 0) setSaveProblems(found.map((p) => text.treeProblem(p.path, p.message)));
+      else showToast(toErrorMessage(err, text.saveFailed), "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function leave() {
+    if (dirty) setDialog("leave");
+    else navigate(backTo);
+  }
+
+  async function makeCopy() {
+    try {
+      const created = await copyReportLayout(api, detail as ReportLayoutDetail, text.copyName(detail?.name ?? ""));
+      showToast(text.copied);
+      navigate(reportLayoutPath(api.scope, created.id));
+    } catch (err) {
+      showToast(toErrorMessage(err, strings.common.error), "error");
+    }
+  }
+
+  const asideTabs: TabDef<AsideTab>[] = [
+    { key: "preview", label: text.previewTab },
+    ...(editable ? [{ key: "fields" as const, label: text.fieldsTab }, { key: "widgets" as const, label: text.widgetsTab }] : []),
+  ];
+  const blocks = BLOCK_SNIPPETS.filter((b) => b.families.includes(detail.family));
+
+  return (
+    <div className="stack">
+      <RecordHeader
+        recordLabel={text.recordLabel}
+        title={detail.name}
+        subtitle={detail.description || undefined}
+        badges={
+          <>
+            <Badge>{LAYOUT_FAMILY_LABEL[detail.family]}</Badge>
+            {detail.origin !== "project" && api.scope.kind === "project" && <Badge>{originLabel}</Badge>}
+            {dirty && <Badge tone="warning">{text.unsaved}</Badge>}
+          </>
+        }
+        version={detail.current_version}
+        back={{ onClick: leave, label: text.backToList }}
+        onEdit={editable ? () => setDialog("details") : undefined}
+        actions={[
+          { key: "copy", label: text.makeCopy, onSelect: () => void makeCopy() },
+          editable && { key: "delete", label: text.delete, danger: true, onSelect: () => setDialog("delete") },
+        ]}
+      />
+
+      <Tabs
+        idPrefix="layout-designer"
+        tabs={[{ key: "design", label: text.designTab }, { key: "history", label: text.historyTab }]}
+        active={tab}
+        onChange={setTab}
+      />
+
+      {tab === "history" && (
+        <div {...tabPanelProps("layout-designer", "history")}>
+          <ReportLayoutHistory
+            api={api}
+            layoutId={layoutId}
+            currentVersion={detail.current_version}
+            onUseVersion={editable ? (version, versionText) => {
+              setDraft(versionText);
+              setTab("design");
+              showToast(text.restoredIntoEditor(version));
+            } : undefined}
+          />
+        </div>
+      )}
+
+      {tab === "design" && (
+        <div {...tabPanelProps("layout-designer", "design")} className="layout-designer">
+          <div className="stack">
+            {!editable && (
+              <div className="card" role="note">
+                <span className="text-muted">{text.readOnlyNotice(originLabel.toLowerCase())}</span>
+              </div>
+            )}
+            {conflict !== null && (
+              <div className="card stack" role="alert">
+                <span style={{ color: "var(--color-danger)" }}>{text.conflict(conflict)}</span>
+                <div><button type="button" className="btn" onClick={() => setDialog("reload")}>{text.reload}</button></div>
+              </div>
+            )}
+            {editable && (
+              <div className="row" role="toolbar" aria-label={text.insertBlock} style={{ flexWrap: "wrap" }}>
+                {blocks.map((block) => (
+                  <button
+                    key={block.key} type="button" className="btn btn-sm"
+                    aria-label={`${text.insertBlock}: ${text.blockLabels[block.key]}`}
+                    onClick={() => insert(block.text, true)}
+                  >
+                    {text.blockLabels[block.key]}
+                  </button>
+                ))}
+              </div>
+            )}
+            <AutoGrowTextarea
+              textareaRef={editor}
+              className="input layout-editor"
+              value={draft}
+              onChange={setDraft}
+              rows={16}
+              maxVisibleLines={EDITOR_MAX_LINES}
+              aria-label={text.editorLabel}
+              spellCheck={false}
+              readOnly={!editable}
+              onSelect={(e) => {
+                caretPlaced.current = true;
+                setCaretLine(lineOfOffset(draft, e.currentTarget.selectionStart));
+              }}
+            />
+            <div aria-live="polite">
+              {current === null && <span className="text-muted">{text.checking}</span>}
+              {current && current.result === null && <span role="alert" style={{ color: "var(--color-danger)" }}>{strings.common.error}</span>}
+              {valid && <span className="text-muted">{text.noProblems}</span>}
+              {problems.length > 0 && (
+                <div className="stack" style={{ gap: "var(--space-2)" }}>
+                  <strong>{text.problemsTitle(problems.length)}</strong>
+                  <ul className="layout-problems" aria-label={text.problemsTitle(problems.length)}>
+                    {problems.map((problem, index) => (
+                      <li key={index}>
+                        <button type="button" onClick={() => jumpTo(problem.line)}>
+                          {text.problemLine(problem.line, problem.column)}: {problem.message}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {saveProblems.length > 0 && (
+                <ul className="layout-problems" role="alert">
+                  {saveProblems.map((problem, index) => <li key={index} style={{ color: "var(--color-danger)" }}>{problem}</li>)}
+                </ul>
+              )}
+            </div>
+            {editable && (
+              <div className="row" style={{ alignItems: "flex-end" }}>
+                <TextField helpNotNeeded
+                  label={text.changeNoteLabel} value={note} onChange={setNote} placeholder={text.changeNotePlaceholder}
+                  inputProps={{ maxLength: 500 }}
+                />
+                <button type="button" className="btn btn-primary" disabled={!valid || !dirty || saving} onClick={() => void save()}>
+                  {text.saveVersion}
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="stack" aria-label={text.asideLabel} role="region">
+            <Tabs<AsideTab> idPrefix="layout-designer-tools" tabs={asideTabs} active={editable ? aside : "preview"} onChange={setAside} />
+            <div {...tabPanelProps("layout-designer-tools", "preview")} hidden={editable && aside !== "preview"}>
+              <ReportLayoutPreviewPanel
+                api={api} text={draft} name={detail.name} disabled={!valid} projectOptions={projectOptions}
+              />
+            </div>
+            {editable && toolsFailed && aside !== "preview" && <p className="text-muted" role="alert">{text.loadToolsFailed}</p>}
+            {editable && (
+              <div {...tabPanelProps("layout-designer-tools", "fields")} hidden={aside !== "fields"}>
+                {catalogue ? (
+                  <ReportLayoutFieldPicker catalogue={catalogue} aliases={aliases} onInsert={(snippet) => insert(snippet, false)} />
+                ) : !toolsFailed && <Spinner />}
+              </div>
+            )}
+            {editable && (
+              <div {...tabPanelProps("layout-designer-tools", "widgets")} hidden={aside !== "widgets"}>
+                {widgets ? (
+                  <ReportLayoutWidgetPicker widgets={widgets} onInsert={(line) => insert(line, true)} />
+                ) : !toolsFailed && <Spinner />}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {dialog === "details" && (
+        <ReportLayoutFormModal
+          api={api}
+          layout={detail}
+          onClose={() => setDialog(null)}
+          onSaved={(updated) => {
+            showToast(text.detailsSaved);
+            setDetail({ ...detail, name: updated.name, description: updated.description, updated_at: updated.updated_at });
+          }}
+        />
+      )}
+      {dialog === "delete" && (
+        <ConfirmDialog
+          title={text.deleteTitle(detail.name)}
+          message={text.deleteMessage(detail.current_version)}
+          confirmLabel={text.delete}
+          requireTypedText={detail.name}
+          onCancel={() => setDialog(null)}
+          onConfirm={() => {
+            setDialog(null);
+            void api.remove(layoutId).then(
+              () => { showToast(text.deleted); navigate(backTo); },
+              (err) => showToast(toErrorMessage(err, strings.common.error), "error"),
+            );
+          }}
+        />
+      )}
+      {dialog === "reload" && (
+        <ConfirmDialog
+          title={text.reloadTitle}
+          message={text.reloadMessage}
+          confirmLabel={text.reload}
+          onCancel={() => setDialog(null)}
+          onConfirm={() => { setDialog(null); void load(); }}
+        />
+      )}
+      {dialog === "leave" && (
+        <ConfirmDialog
+          title={text.leaveTitle}
+          message={text.leaveMessage}
+          confirmLabel={text.leaveConfirm}
+          onCancel={() => setDialog(null)}
+          onConfirm={() => { setDialog(null); navigate(backTo); }}
+        />
+      )}
+    </div>
+  );
+}
