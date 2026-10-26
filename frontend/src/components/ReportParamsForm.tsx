@@ -5,7 +5,9 @@
  * for `choices`, a bounded number, a switch, a date, or text for string/uuid),
  * plus the framework-level options: the "include child projects" switch for
  * project reports and, for organisation-wide reports, a "Project" picker that
- * narrows the run to one project (`project_id`, "All projects" when blank). Generated entirely from the catalogue entry, so a new module report
+ * narrows the run to one project (`project_id`, "All projects" when blank), or, for an organisation-wide
+ * custom report that runs once per project, a "Projects" selector choosing which are included
+ * (`project_ids`, comma-separated; none chosen means all). Generated entirely from the catalogue entry, so a new module report
  * needs no UI code for its parameters.
  *
  * Controlled and stateless: values live in the caller (`ReportRunner`); an
@@ -20,6 +22,7 @@
 import type { ReportParam, ReportRunValues } from "../api/reports";
 import { humanise } from "../utils/humanise";
 import { LabeledSelect } from "./LabeledSelect";
+import { MultiSelectDropdown } from "./MultiSelectDropdown";
 import { ToggleSwitch } from "./ToggleSwitch";
 
 /**
@@ -29,9 +32,10 @@ import { ToggleSwitch } from "./ToggleSwitch";
  * @param hidden Parameter names to leave out (owned by a custom view).
  * @param supportsIncludeChildren Whether to offer the framework `include_children` switch.
  * @param projectOptions Projects to offer in the `project_id` picker; omitted hides it.
+ * @param projectMultiOptions Projects to offer in the `project_ids` selector; omitted hides it.
  */
 export function ReportParamsForm({
-  params, values, onChange, hidden = [], supportsIncludeChildren = false, projectOptions,
+  params, values, onChange, hidden = [], supportsIncludeChildren = false, projectOptions, projectMultiOptions,
 }: {
   params: ReportParam[];
   values: ReportRunValues;
@@ -39,9 +43,11 @@ export function ReportParamsForm({
   hidden?: string[];
   supportsIncludeChildren?: boolean;
   projectOptions?: { value: string; label: string }[];
+  projectMultiOptions?: { value: string; label: string }[];
 }) {
   const shown = params.filter((p) => !hidden.includes(p.name));
-  if (shown.length === 0 && !supportsIncludeChildren && !projectOptions) return null;
+  if (shown.length === 0 && !supportsIncludeChildren && !projectOptions && !projectMultiOptions) return null;
+  const chosenProjects = new Set(typeof values.project_ids === "string" ? values.project_ids.split(",").filter(Boolean) : []);
   return (
     <div className="row" style={{ gap: "var(--space-5)", flexWrap: "wrap", alignItems: "flex-end" }} role="group" aria-label="Report options">
       {projectOptions && (
@@ -52,6 +58,34 @@ export function ReportParamsForm({
           options={projectOptions}
           placeholder="All projects"
         />
+      )}
+      {projectMultiOptions && (
+        <div className="stack" style={{ gap: "var(--space-1)" }}>
+          <span>Projects</span>
+          <MultiSelectDropdown
+            triggerLabel="Projects"
+            emptyLabel="All projects"
+            filterable={projectMultiOptions.length > 8}
+            summaryLimit={2}
+            options={projectMultiOptions.map((project) => {
+              const checked = chosenProjects.has(project.value);
+              return {
+                value: project.value,
+                label: project.label,
+                checked,
+                optionLabel: project.label,
+                onToggle: () => {
+                  const next = new Set(chosenProjects);
+                  if (checked) next.delete(project.value);
+                  else next.add(project.value);
+                  // Keep the options' own order so the query (and the saved run) does not depend on click order.
+                  const ordered = projectMultiOptions.map((p) => p.value).filter((v) => next.has(v));
+                  onChange("project_ids", ordered.length === 0 ? null : ordered.join(","));
+                },
+              };
+            })}
+          />
+        </div>
       )}
       {shown.map((param) => (
         <ParamControl key={param.name} param={param} value={values[param.name]} onChange={(v) => onChange(param.name, v)} />

@@ -82,14 +82,17 @@ def export_org_layouts(db: Session, organization_id: uuid.UUID) -> dict[str, Any
 
 def _import_layout(
     db: Session, entry: dict[str, Any], *, organization_id: uuid.UUID, project_id: uuid.UUID | None, actor: User,
-    warnings: BundleImportWarnings, existing_names: set[str] | None = None,
+    warnings: BundleImportWarnings, existing_names: set[str] | None = None, created: dict[str, uuid.UUID] | None = None,
 ) -> bool:
     """Creates one layout from its bundle entry. Returns whether a layout was stored.
 
     `existing_names` (lower-cased names the owner already has) switches on the merge rule: a taken name is
-    imported as "<name> (imported)" instead.
+    imported as "<name> (imported)" instead. `created` receives `{lower-cased bundle name: new layout id}`
+    (the name the bundle used, even when the layout is stored under another), which the report content import
+    binds `custom:<name>` entries to.
     """
     name = str(entry.get("name", "")).strip()
+    bundle_name = name
     family = entry.get("family")
     versions = sorted(
         (v for v in entry.get("versions", []) if isinstance(v, dict) and isinstance(v.get("tree"), dict)),
@@ -126,14 +129,17 @@ def _import_layout(
         return False
     if dropped:
         warnings.add(f'Report layout "{name}": {dropped} version(s) that are not valid in this installation were left out.')
+    if created is not None:
+        created[bundle_name.casefold()] = layout_id
     return True
 
 
 def import_org_layouts(
     db: Session, organization_id: uuid.UUID, data: dict[str, Any], actor: User, warnings: BundleImportWarnings, *,
-    merge: bool,
+    merge: bool, created: dict[str, uuid.UUID] | None = None,
 ) -> int:
-    """Imports the `org.json` layouts. `merge` is true when the organisation already exists.
+    """Imports the `org.json` layouts. `merge` is true when the organisation already exists; `created` collects
+    the layouts stored (see `_import_layout`), for the content import that follows.
 
     Returns:
         How many layouts were stored.
@@ -144,18 +150,28 @@ def import_org_layouts(
         if merge else None
     )
     return sum(
-        _import_layout(db, entry, organization_id=organization_id, project_id=None, actor=actor, warnings=warnings, existing_names=existing)
+        _import_layout(
+            db, entry, organization_id=organization_id, project_id=None, actor=actor, warnings=warnings,
+            existing_names=existing, created=created,
+        )
         for entry in data.get(ORG_KEY, []) if isinstance(entry, dict)
     )
 
 
 def import_project_layouts(
-    db: Session, project: Project, data: dict[str, Any], actor: User, warnings: BundleImportWarnings,
+    db: Session, project: Project, data: dict[str, Any], actor: User, warnings: BundleImportWarnings, *,
+    created: dict[str, uuid.UUID] | None = None,
 ) -> None:
-    """Imports a `project.json`'s own layouts, then re-applies the hides to this project's inherited layouts."""
+    """Imports a `project.json`'s own layouts, then re-applies the hides to this project's inherited layouts.
+
+    `created` collects the layouts stored (see `_import_layout`), for the content import that follows.
+    """
     for entry in data.get(PROJECT_KEY, []):
         if isinstance(entry, dict):
-            _import_layout(db, entry, organization_id=project.organization_id, project_id=project.id, actor=actor, warnings=warnings)
+            _import_layout(
+                db, entry, organization_id=project.organization_id, project_id=project.id, actor=actor, warnings=warnings,
+                created=created,
+            )
     hidden_names = [str(h.get("name", "")) for h in data.get(HIDDEN_KEY, []) if isinstance(h, dict)]
     if not hidden_names:
         return

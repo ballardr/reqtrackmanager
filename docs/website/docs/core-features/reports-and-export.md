@@ -102,6 +102,33 @@ Anything else in double braces is printed as written. Placeholders are plain tex
 
 For any other kind of record, the **Reports** picker offers **Record list**: choose a **Record type** (Requirements, Actions and every other list that has a table), optionally a **Tag**, and, on a project with parent or child projects, which **Projects** to include. The page shows the table, with the record's code first, and **Export** downloads it as a PDF, Word file or CSV. The same PDF and Word files are in each list's own **Export** menu, where they carry that list's current filters. A status or rating that is coloured on screen is coloured in the PDF and Word file too, and also written out in words. Columns holding personal data appear only when your organisation's policy and your role allow it, and the report says when some were left out. A PDF or Word file covers up to 5,000 records; for more, download the CSV or narrow the filters.
 
+## Custom reports
+
+A **custom report** is a report layout somebody designed: a document (headings, text, tables, and for each record its linked records) or a set of tables. Layouts are written for an organisation, which every project can run, or for one project (a child project also sees its parents'). Each appears in the **Report** picker under **Custom reports**, beside the module reports (a project can hide an organisation layout it does not want to offer). A layout never shows more than you could already read: records you cannot open are counted in a note ("2 record(s) not shown") and never named.
+
+There is no designer screen yet: layouts are created through the REST API, or by an AI assistant that has the [MCP tools](../api-integrations/ai-assistants-mcp/overview.md) in write mode. A layout can have its own introduction, chapters and appendices (the **Report type** drop-down in Report Setup and Report Defaults lists it by name), and a PDF or Word download uses the chosen branding template as for any report.
+
+| Run | What you get |
+| --- | --- |
+| A project's Reports page | The layout for that project; **Include child projects** adds the readable child projects |
+| The organisation overview's Reports group | An organisation layout evaluated once for **each project you can read**, merged into one report: a document has a heading and a new page per project, a table layout a leading *Project* column |
+
+```mermaid
+flowchart TD
+    L["Organisation layout"] --> S["Projects selector<br/>(none chosen = all you can read)"]
+    S --> A["Project A<br/>evaluated with your access to A"]
+    S --> B["Project B<br/>evaluated with your access to B"]
+    A --> M["One merged report"]
+    B --> M
+    M --> O["On screen · PDF · Word · CSV (one sheet)"]
+```
+
+- **Formats:** a document layout downloads as PDF or Word; a table layout as CSV when it has one sheet. The on-screen view shows each table of the report as a section, titled by the headings above it.
+- **Choosing projects:** the **Projects** selector lists exactly the projects you hold a role in; downloads carry the same choice as the screen. A project that has hidden the layout is left out, and the report says so.
+- **Limits:** a report that is too large or takes too long is refused with a message to narrow the layout or the project choice; nothing partial is produced.
+- **Provenance:** every run is recorded (which layout and version, who ran it, when, which projects, how many records of each kind, and a fingerprint of the records used) without storing the report's content, so a report can be traced back to what produced it. Layouts are versioned: saving a change adds a version and never rewrites an earlier one.
+- Layouts, and their introductions, chapters and appendices, travel in a project or organisation [export](./zip-export-import.md).
+
 ## CSV export and import
 
 The same Reports page exports requirements as CSV — every field, including custom field values and target stage — and the Requirements page's **List actions** menu (CSV that re-imports and updates records by code) reverse the trip, mapping a spreadsheet's columns back onto a project's fields. See [Requirements management](./requirements-management.md#csv-import-and-export) for the import side.

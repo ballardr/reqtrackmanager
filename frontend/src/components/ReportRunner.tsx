@@ -16,6 +16,8 @@
  * - For an organisation-wide report, offer a "Project" picker (`project_id`)
  *   listing the catalogue entry's `projects`: exactly the ones the report
  *   accepts for this caller, so the picker never offers one that would fail.
+ *   An organisation-wide custom report (run once per project) offers a
+ *   "Projects" selector (`project_ids`) over the same list instead.
  * - Offer an optional branding template for downloads (it never
  *   changes the on-screen result) and download through the shared
  *   `ReportExportButton`, with a toast on success or failure. Downloads send
@@ -170,6 +172,11 @@ export function ReportRunner({
           hidden={view?.ownedParams}
           supportsIncludeChildren={entry.supports_include_children}
           projectOptions={entry.supports_project_filter ? entry.projects.map((p) => ({ value: p.id, label: p.name })) : undefined}
+          projectMultiOptions={
+            entry.supports_project_multi_filter && entry.projects.length > 0
+              ? entry.projects.map((p) => ({ value: p.id, label: p.name }))
+              : undefined
+          }
         />
         <div className="row" style={{ alignItems: "flex-end", gap: "var(--space-4)" }}>
           {templates.length > 0 && (

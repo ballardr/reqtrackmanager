@@ -26,6 +26,7 @@ from app.models.custom_role import (
 from app.models.definition_suppression import ProjectDefinitionSuppression
 from app.models.engagement import CommentReaction, Subscription
 from app.models.file import CommentFile, FileAsset, RequirementActionFile, RequirementFile
+from app.models.generated_report import GeneratedReport
 from app.models.module import OrganizationModuleEnablement, OrganizationModuleEntitlement, ServerModuleDefault
 from app.models.module_role import GroupModuleRole, ModuleRoleDefinitionRow, UserModuleRole
 from app.models.notification import Notification, NotificationPreference
@@ -99,6 +100,7 @@ __all__ = [
     "CommentReaction",
     "Subscription",
     "FileAsset",
+    "GeneratedReport",
     "RequirementFile",
     "RequirementActionFile",
     "CommentFile",

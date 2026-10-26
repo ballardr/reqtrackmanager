@@ -39,7 +39,7 @@ Dependencies: SQLAlchemy, `models.report_content`, `modules.registry`,
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
@@ -47,20 +47,24 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.organization import Organization, ReportTemplate
 from app.models.project import Project
 from app.models.report_content import (
     ALL_REPORTS_KEY,
+    CUSTOM_REPORT_KEY_PREFIX,
+    PORTABLE_CUSTOM_KEY_PREFIX,
     REQUIREMENTS_REPORT_KEY,
     SCOPE_ORGANIZATION,
     SCOPE_PROJECT,
     SCOPE_TEMPLATE,
     ReportContent,
 )
+from app.models.report_layout import ReportLayout
 from app.schemas.report import ReportChapter, ReportContentEntry
+from app.services import report_layout_scope
 from app.services.project_hierarchy import get_project_chain_ids
 from app.services.report_document import resolve_report_images
 from app.services.report_model import Block, markdown_to_blocks
@@ -81,8 +85,12 @@ __all__ = [
     "content_blocks",
     "content_entries",
     "content_markdown",
+    "custom_layout_id",
     "delete_content_for_scopes",
+    "delete_layout_content",
     "get_scope_content",
+    "is_valid_report_key",
+    "portable_entries",
     "replace_scope_content",
     "report_key_for",
     "report_type_options",
@@ -106,6 +114,43 @@ def valid_report_keys() -> set[str]:
     return {REQUIREMENTS_REPORT_KEY, ALL_REPORTS_KEY, *(report_key_for(m, d.key) for m, d in get_all_reports())}
 
 
+def custom_layout_id(report_key: str) -> UUID | None:
+    """The layout id of a `custom.<layout id>` content key, or `None` when `report_key` is not one."""
+    if not report_key.startswith(CUSTOM_REPORT_KEY_PREFIX):
+        return None
+    try:
+        return UUID(report_key[len(CUSTOM_REPORT_KEY_PREFIX):])
+    except ValueError:
+        return None
+
+
+def _scope_layouts(db: Session, scope_type: str, scope_id: UUID) -> list[ReportLayout]:
+    """The layouts content of one scope may be written for.
+
+    A project: the layouts it can reach (its own, its ancestors' and the organisation's, hidden or not, since
+    content may predate a hide). A template or the organisation: the organisation's own layouts, which are the
+    only ones every project of the organisation can reach.
+    """
+    if scope_type == SCOPE_PROJECT:
+        project = db.get(Project, scope_id)
+        return [s.layout for s in report_layout_scope.resolve_project_layouts(db, project)] if project is not None else []
+    if scope_type == SCOPE_TEMPLATE:
+        template = db.get(ReportTemplate, scope_id)
+        organization_id = template.organization_id if template is not None else None
+    else:
+        organization_id = scope_id
+    return report_layout_scope.list_org_layouts(db, organization_id) if organization_id is not None else []
+
+
+def is_valid_report_key(db: Session, report_key: str, scope_type: str, scope_id: UUID) -> bool:
+    """Whether content may be written under `report_key` in the scope: a registered report type, or a custom
+    report layout that scope can reach (`custom.<layout id>`)."""
+    if report_key in valid_report_keys():
+        return True
+    layout_id = custom_layout_id(report_key)
+    return layout_id is not None and any(layout.id == layout_id for layout in _scope_layouts(db, scope_type, scope_id))
+
+
 class ReportTypeOption(BaseModel):
     """A report type content can be written for, as the editors list it."""
 
@@ -114,15 +159,18 @@ class ReportTypeOption(BaseModel):
     module_name: str | None = None
 
 
-def report_type_options(db: Session, organization_id: UUID) -> list[ReportTypeOption]:
-    """The report types an organisation's editors offer: the requirements
-    report, then every module report whose module is enabled for the
-    organisation, in registry order. The "all reports" entry is not listed; the
-    editors add it themselves.
+def report_type_options(db: Session, organization_id: UUID, project: Project | None = None) -> list[ReportTypeOption]:
+    """The report types an editor offers: the requirements report, then every
+    module report whose module is enabled for the organisation, in registry
+    order, then the custom report layouts the editor's scope can reach (a
+    project's effective, not hidden layouts; for the organisation and its
+    templates, the organisation's own). The "all reports" entry is not listed;
+    the editors add it themselves.
 
     Args:
         db: Database session.
         organization_id: The organisation.
+        project: The project whose editor this is, or `None` for the organisation or a template.
 
     Returns:
         The options, requirements first.
@@ -138,6 +186,14 @@ def report_type_options(db: Session, organization_id: UUID) -> list[ReportTypeOp
             key=report_key_for(module_key, definition.key), title=definition.title,
             module_name=module.name if module else module_key,
         ))
+    layouts = (
+        [s.layout for s in report_layout_scope.resolve_project_layouts(db, project) if not s.hidden]
+        if project is not None else report_layout_scope.list_org_layouts(db, organization_id)
+    )
+    options += [
+        ReportTypeOption(key=f"{CUSTOM_REPORT_KEY_PREFIX}{layout.id}", title=layout.name, module_name="Custom reports")
+        for layout in layouts
+    ]
     return options
 
 
@@ -176,6 +232,7 @@ def content_entries(db: Session, scope_type: str, scope_id: UUID) -> list[Report
 
 def replace_scope_content(
     db: Session, scope_type: str, scope_id: UUID, entries: Sequence[ReportContentEntry], *, skip_unknown: bool = False,
+    imported_layouts: Mapping[str, UUID] | None = None,
 ) -> list[str]:
     """Makes the scope's stored content exactly `entries`: rows are created or
     updated for non-blank entries and removed for blank or absent ones.
@@ -189,7 +246,12 @@ def replace_scope_content(
         entries: The desired content, at most one entry per report key.
         skip_unknown: Ignore entries for report types this installation does
             not know (a bundle from a build with a module this one lacks)
-            instead of rejecting them.
+            instead of rejecting them. Also the import mode: a portable
+            `custom:<layout name>` key is resolved to `custom.<layout id>`
+            (see `imported_layouts`) and skipped when no such layout exists.
+        imported_layouts: The layouts the import just created, `{lower-cased bundle name: layout id}`, which a
+            portable key binds to before any same-named layout the scope already reaches (a merge may store a
+            layout under another name).
 
     Returns:
         The report keys skipped as unknown (always empty unless `skip_unknown`).
@@ -197,12 +259,22 @@ def replace_scope_content(
     Raises:
         HTTPException: 400 for an unknown (unless `skip_unknown`) or repeated report key.
     """
-    valid = valid_report_keys()
-    skipped = [e.report_key for e in entries if e.report_key not in valid] if skip_unknown else []
-    entries = [e for e in entries if e.report_key not in skipped]
+    skipped: list[str] = []
+    if skip_unknown:
+        entries = _resolve_portable_keys(db, scope_type, scope_id, entries, imported_layouts or {}, skipped)
+    scope_layouts = {layout.id for layout in _scope_layouts(db, scope_type, scope_id)}
+    static = valid_report_keys()
+
+    def known(key: str) -> bool:
+        layout_id = custom_layout_id(key)
+        return key in static or (layout_id is not None and (layout_id in scope_layouts or layout_id in (imported_layouts or {}).values()))
+
+    if skip_unknown:
+        skipped += [e.report_key for e in entries if not known(e.report_key)]
+        entries = [e for e in entries if known(e.report_key)]
     seen: set[str] = set()
     for entry in entries:
-        if entry.report_key not in valid:
+        if not known(entry.report_key):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown report type '{entry.report_key}'.")
         if entry.report_key in seen:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Report type '{entry.report_key}' appears more than once.")
@@ -222,6 +294,54 @@ def replace_scope_content(
         row.appendices = [c.model_dump() for c in entry.appendices]
     db.flush()
     return skipped
+
+
+def _resolve_portable_keys(
+    db: Session, scope_type: str, scope_id: UUID, entries: Sequence[ReportContentEntry],
+    imported_layouts: Mapping[str, UUID], skipped: list[str],
+) -> list[ReportContentEntry]:
+    """Turns a bundle's `custom:<layout name>` entries into `custom.<layout id>` ones.
+
+    A name resolves to a layout the import created, else to the layout of that name the scope can reach; one
+    that resolves to neither is added to `skipped`.
+    """
+    reachable = {layout.name.casefold(): layout.id for layout in reversed(_scope_layouts(db, scope_type, scope_id))}
+    out: list[ReportContentEntry] = []
+    for entry in entries:
+        if not entry.report_key.startswith(PORTABLE_CUSTOM_KEY_PREFIX):
+            out.append(entry)
+            continue
+        name = entry.report_key[len(PORTABLE_CUSTOM_KEY_PREFIX):].casefold()
+        layout_id = imported_layouts.get(name) or reachable.get(name)
+        if layout_id is None:
+            skipped.append(entry.report_key)
+            continue
+        out.append(entry.model_copy(update={"report_key": f"{CUSTOM_REPORT_KEY_PREFIX}{layout_id}"}))
+    return out
+
+
+def portable_entries(db: Session, scope_type: str, scope_id: UUID) -> list[ReportContentEntry]:
+    """The scope's content for an export bundle: a `custom.<layout id>` entry is written as
+    `custom:<layout name>` (an id means nothing elsewhere); one whose layout no longer exists is left out."""
+    entries = content_entries(db, scope_type, scope_id)
+    layout_ids = {lid for lid in (custom_layout_id(e.report_key) for e in entries) if lid is not None}
+    names = {
+        layout.id: layout.name for layout in db.scalars(select(ReportLayout).where(ReportLayout.id.in_(layout_ids))).all()
+    } if layout_ids else {}
+    out: list[ReportContentEntry] = []
+    for entry in entries:
+        layout_id = custom_layout_id(entry.report_key)
+        if layout_id is None:
+            out.append(entry)
+        elif layout_id in names:
+            out.append(entry.model_copy(update={"report_key": f"{PORTABLE_CUSTOM_KEY_PREFIX}{names[layout_id]}"}))
+    return out
+
+
+def delete_layout_content(db: Session, layout_id: UUID) -> None:
+    """Deletes every scope's content row of a deleted layout (`custom.<layout id>`; scope ids have no foreign key).
+    Does not commit."""
+    db.execute(delete(ReportContent).where(ReportContent.report_key == f"{CUSTOM_REPORT_KEY_PREFIX}{layout_id}"))
 
 
 def bundle_entries(data: dict[str, Any], key: str, legacy_keys: tuple[str, str, str]) -> list[ReportContentEntry]:
@@ -267,9 +387,7 @@ def delete_content_for_scopes(db: Session, scope_type: str, scope_ids: Iterable[
     """
     ids = list(scope_ids)
     if ids:
-        db.execute(ReportContent.__table__.delete().where(
-            ReportContent.scope_type == scope_type, ReportContent.scope_id.in_(ids),
-        ))
+        db.execute(delete(ReportContent).where(ReportContent.scope_type == scope_type, ReportContent.scope_id.in_(ids)))
 
 
 # --- Resolution -------------------------------------------------------------------

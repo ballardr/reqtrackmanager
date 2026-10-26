@@ -32,6 +32,12 @@ Links an artefact to another record of the same project, or of a parent or child
 
 Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `link_type_id*` (string), `direction*` (string), `other_type*` (string), `other_id*` (string), `other_project_id` (string)
 
+## `create_report_layout` (write)
+
+Creates a custom report layout and its version 1. Needs the layout-management permission for the scope.
+
+Parameters: `name*` (string), `family*` (string), `tree*` (object), `description` (string), `comment` (string), `project_id` (string), `organization_id` (string)
+
 ## `create_requirement` (write)
 
 Creates a new requirement. Always starts in "draft" status — there is no way to create one pre-approved, and no tool here can approve it afterward either; use the ReqTrackManager UI for that.
@@ -50,11 +56,23 @@ Removes a link touching an artefact. Irreversible: confirm with the user first.
 
 Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `link_id*` (string)
 
+## `delete_report_layout` (write)
+
+Deletes a layout the scope owns, with every version and the introduction/chapters/appendices written for it. Irreversible: confirm with the user first. (A layout a project only inherits is not deleted here.)
+
+Parameters: `layout_id*` (string), `project_id` (string), `organization_id` (string)
+
 ## `find_artefacts_by_tag` (read)
 
 Finds records of every type that carry some tags: "what is tagged `safety`?" without listing each type.
 
 Parameters: `project_id` (string), `tags*` (list[string]), `tag_mode` (string), `artefact_type` (string)
+
+## `format_report_layout_text` (read)
+
+Writes a valid layout tree as its text view. Stores nothing. Needs the layout-management permission.
+
+Parameters: `tree*` (object), `project_id` (string), `organization_id` (string)
 
 ## `get_artefact_link_graph` (read)
 
@@ -97,6 +115,12 @@ Parameters: `qualified_code*` (string), `organization_id` (string)
 Lists every record of one type in a project as a single table: the "Record list" report.
 
 Parameters: `project_id` (string), `record_type*` (string), `project_scope` (string), `tags` (list[string]), `tag_mode` (string)
+
+## `get_report_layout` (read)
+
+Reads a custom report layout with its tree (needs the layout-management permission for that scope).
+
+Parameters: `layout_id*` (string), `project_id` (string), `organization_id` (string), `version` (integer)
 
 ## `get_requirement` (read)
 
@@ -190,6 +214,12 @@ Lists projects the caller's ReqTrackManager account has a role on, across every 
 
 Parameters: `organization_id` (string), `search` (string), `include_archived` (boolean)
 
+## `list_report_layouts` (read)
+
+Lists the custom report layouts of a project (its own, its parents' and the organisation's) or of an organisation.
+
+Parameters: `project_id` (string), `organization_id` (string)
+
 ## `list_requirement_comments` (read)
 
 Lists the discussion thread on a requirement.
@@ -208,6 +238,12 @@ Lists the tags a project offers and how new tags are treated.
 
 Parameters: `project_id` (string)
 
+## `parse_report_layout_text` (read)
+
+Reads a layout written in its text view into the stored tree, with positioned errors. Stores nothing.
+
+Parameters: `text*` (string), `project_id` (string), `organization_id` (string)
+
 ## `preview_change_request_links` (read)
 
 Previews which of a change request's proposed links would merge if it were approved now.
@@ -219,6 +255,18 @@ Parameters: `project_id` (string), `change_request_id*` (string)
 Removes one tag from a record. The tag stays in the project's list.
 
 Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `tag_id*` (string)
+
+## `run_custom_report` (read)
+
+Runs a custom report layout and returns the report as data.
+
+Parameters: `layout_id*` (string), `project_id` (string), `organization_id` (string), `include_children` (boolean), `project_ids` (list[string])
+
+## `save_report_layout_version` (write)
+
+Saves a new version of a layout the scope owns. Earlier versions stay, and past runs keep naming theirs.
+
+Parameters: `layout_id*` (string), `tree*` (object), `base_version*` (integer), `comment` (string), `project_id` (string), `organization_id` (string)
 
 ## `search_artefact_link_candidates` (read)
 
@@ -237,6 +285,12 @@ Parameters: `query*` (string), `scope` (string), `project_id` (string), `organiz
 Makes a record carry exactly these tags, adding and removing as needed.
 
 Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `tags*` (list[string])
+
+## `update_report_layout` (write)
+
+Renames or re-describes a layout the scope owns (its tree is changed with `save_report_layout_version`).
+
+Parameters: `layout_id*` (string), `name` (string), `description` (string), `project_id` (string), `organization_id` (string)
 
 ## `update_requirement` (write)
 

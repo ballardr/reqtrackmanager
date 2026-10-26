@@ -45,9 +45,14 @@ export interface ReportCatalogueEntry {
   supports_include_children: boolean;
   /** Organisation-level entries accept `project_id` to narrow the run to one project in scope. */
   supports_project_filter: boolean;
+  /**
+   * An organisation-wide custom report is run once per project; it accepts `project_ids` (comma-separated) to
+   * choose which of `projects` are included (none chosen means every one of them).
+   */
+  supports_project_multi_filter: boolean;
   /** Organisation entries: the per-project figures endpoint (`ReportBreakdownOut`); `null` for project entries. */
   breakdown_path: string | null;
-  /** For organisation-level entries: exactly the projects the caller may narrow the report to. */
+  /** For organisation-level entries: exactly the projects the caller may narrow the report to (or choose among). */
   projects: { id: string; name: string }[];
   params: ReportParam[];
 }

@@ -11,10 +11,11 @@ accepts: the owners of the rows delete them explicitly
 (`services.report_content.delete_content_for_scopes`, called from template
 deletion and `services.org_deletion`).
 
-`report_key` is a plain validated string, not an enum: `"requirements"` or
-`"<module_key>.<report_key>"` from the module registry, checked at write time
+`report_key` is a plain validated string, not an enum: `"requirements"`,
+`"<module_key>.<report_key>"` from the module registry (checked at write time
 against `services.report_content.valid_report_keys`, so a module that declares
-a report gains per-type content with no core edit. `ALL_REPORTS_KEY` (`"*"`)
+a report gains per-type content with no core edit), or `"custom.<layout id>"` for a
+custom report layout (checked against the layouts the scope can reach). `ALL_REPORTS_KEY` (`"*"`)
 is the "every report that has no row of its own" entry. It is a sentinel
 rather than NULL so the `(scope_type, scope_id, report_key)` unique constraint
 works (NULLs are distinct in a unique index).
@@ -40,6 +41,10 @@ SCOPE_TYPES: tuple[str, ...] = (SCOPE_TEMPLATE, SCOPE_PROJECT, SCOPE_ORGANIZATIO
 
 REQUIREMENTS_REPORT_KEY = "requirements"
 ALL_REPORTS_KEY = "*"
+CUSTOM_REPORT_KEY_PREFIX = "custom."
+"""A custom report layout's content key is `custom.<layout id>`."""
+PORTABLE_CUSTOM_KEY_PREFIX = "custom:"
+"""In an export bundle the same key is `custom:<layout name>`: a layout id means nothing in the target installation."""
 
 
 class ReportContent(UUIDPKMixin, TimestampMixin, Base):
@@ -49,7 +54,7 @@ class ReportContent(UUIDPKMixin, TimestampMixin, Base):
         scope_type: `template`, `project` or `organization`.
         scope_id: The owning template, project or organisation id (no FK).
         report_key: `REQUIREMENTS_REPORT_KEY`, a `"<module_key>.<report_key>"`
-            module report, or `ALL_REPORTS_KEY`.
+            module report, a `"custom.<layout id>"` layout, or `ALL_REPORTS_KEY`.
         intro: Markdown printed before the chapters.
         chapters: Ordered `{title, body}` chapters printed after the intro.
         appendices: Ordered `{title, body}` chapters printed after the report.
