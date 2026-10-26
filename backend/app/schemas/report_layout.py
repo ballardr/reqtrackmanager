@@ -15,6 +15,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.services.report_layout_text import MAX_TEXT_VIEW_CHARS
+
 
 class ReportLayoutCreate(BaseModel):
     """Payload to create a layout with its first version."""
@@ -39,6 +41,40 @@ class ReportLayoutSave(BaseModel):
     tree: dict[str, Any]
     base_version: int = Field(ge=1)
     comment: str = ""
+
+
+class ReportLayoutTextParse(BaseModel):
+    """Text view to read (`services.report_layout_text`)."""
+
+    text: str = Field(max_length=MAX_TEXT_VIEW_CHARS)
+
+
+class ReportLayoutTextFormat(BaseModel):
+    """A tree to write as its text view."""
+
+    tree: dict[str, Any]
+
+
+class ReportLayoutTextError(BaseModel):
+    """One problem in the text: `column` is set for a syntax error, `None` for a validation error of a whole block."""
+
+    line: int
+    column: int | None
+    message: str
+
+
+class ReportLayoutTextParseOut(BaseModel):
+    """The tree read from the text (`None` after a syntax error) and every problem found; `ok` means it may be saved."""
+
+    ok: bool
+    tree: dict[str, Any] | None
+    errors: list[ReportLayoutTextError]
+
+
+class ReportLayoutTextOut(BaseModel):
+    """A layout's text view."""
+
+    text: str
 
 
 class ReportLayoutVisibilitySet(BaseModel):

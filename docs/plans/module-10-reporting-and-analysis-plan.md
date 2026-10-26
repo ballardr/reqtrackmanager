@@ -2,7 +2,7 @@
 
 See [future-modules-2026-09-index.md](future-modules-2026-09-index.md) for cross-cutting architecture. Source requirement: [overview §47](completed/future-modules-2026-09-overview.md) (read-only; `docs/requirements.md` stays authoritative).
 
-**Status:** Re-planned 2026-10-20 (supersedes the 2026-09 plan, which predated the core report framework). Phases 0 to 3 done 2026-10-26. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`.
+**Status:** Re-planned 2026-10-20 (supersedes the 2026-09 plan, which predated the core report framework). Phases 0 to 4 done 2026-10-26. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`.
 
 ## What this module is now
 
@@ -50,7 +50,7 @@ Three orthogonal axes, kept separate: **layout** (what is reported), **branding 
 
 ## Status / Resume Here
 
-4 / 16 phases complete (Phases 0 to 3, 2026-10-26; findings in `docs/decisions.md`, "Custom reports Phase 0" to "Phase 3"). Phases 4 (text view) and 5 (run pipeline) can start. Phase 3 shipped the tier endpoints, the two manage permissions (server administrators are not exempt), additive visibility with hide/restore, the bundle sections and the seeds; it has **no UI** (the project panel for hide/restore and the designer arrive in Phase 8) and no MCP tools (Phase 5). A merge never overwrites a layout: a taken name imports as "<name> (imported)".
+5 / 16 phases complete (Phases 0 to 4, 2026-10-26; findings in `docs/decisions.md`, "Custom reports Phase 0" to "Phase 4"). Phase 5 (run pipeline) can start; Phase 8 (designer) now has its text view endpoints. Phase 3 shipped the tier endpoints, the two manage permissions (server administrators are not exempt), additive visibility with hide/restore, the bundle sections and the seeds; it has **no UI** (the project panel for hide/restore and the designer arrive in Phase 8) and no MCP tools (Phase 5). A merge never overwrites a layout: a taken name imports as "<name> (imported)".
 
 | # | Phase | Group | Status |
 |---|-------|-------|--------|
@@ -58,7 +58,7 @@ Three orthogonal axes, kept separate: **layout** (what is reported), **branding 
 | 1 | Report field registry and traversal | 1 | [x] |
 | 2 | Layout model, tree schema, versioning, evaluator | 1 | [x] |
 | 3 | Tiers, permission, hide/restore, bundle export/import | 1 | [x] |
-| 4 | Text view: parser, serialiser, round-trip | 1 | [ ] |
+| 4 | Text view: parser, serialiser, round-trip | 1 | [x] |
 | 5 | Run pipeline: caps, provenance, catalogue and MCP merge | 1 | [ ] |
 | 6 | Widgets | 1 | [ ] |
 | 7 | Renderers: interface, HTML, CSV/XLSX, DOCX, PDF | 1 | [ ] |

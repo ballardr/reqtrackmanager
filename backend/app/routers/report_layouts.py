@@ -13,6 +13,10 @@ tree or writes needs the matching manage permission (`manage_org_report_layouts`
 `manage_project_report_layouts`; `services.rbac`). A project's list is its *effective* set (own, ancestors',
 organisation's, de-duplicated by name); an inherited layout can be read by a project manager but only
 changed where it is owned. Running a layout is a later endpoint and needs neither permission.
+
+`POST .../text/parse` and `.../text/format` convert between a tree and its text view
+(`services.report_layout_text`) for the designer; they store nothing, need the manage permission and never
+log the text.
 """
 
 from __future__ import annotations
@@ -35,12 +39,17 @@ from app.schemas.report_layout import (
     ReportLayoutRestore,
     ReportLayoutRestoreOut,
     ReportLayoutSave,
+    ReportLayoutTextError,
+    ReportLayoutTextFormat,
+    ReportLayoutTextOut,
+    ReportLayoutTextParse,
+    ReportLayoutTextParseOut,
     ReportLayoutUpdate,
     ReportLayoutVersionOut,
     ReportLayoutVersionSummaryOut,
     ReportLayoutVisibilitySet,
 )
-from app.services import report_layout_scope, report_layouts
+from app.services import report_layout_scope, report_layout_text, report_layouts
 from app.services.rbac import (
     MANAGE_ORG_REPORT_LAYOUTS,
     MANAGE_PROJECT_REPORT_LAYOUTS,
@@ -50,7 +59,7 @@ from app.services.rbac import (
     require_permission,
     require_project_view_or_manage,
 )
-from app.services.report_layout_scope import ScopedLayout
+from app.services.report_layout_scope import Origin, ScopedLayout
 from app.services.report_layout_tree import InvalidLayoutError
 
 manage_org_layouts = require_permission(MANAGE_ORG_REPORT_LAYOUTS, server_admin_bypass=False)
@@ -61,7 +70,7 @@ org_router = APIRouter(prefix="/api/v1/orgs/{organization_id}/report-layouts", t
 project_router = APIRouter(prefix="/api/v1/projects/{project_id}/report-layouts", tags=["report-layouts"])
 
 
-def _summary(layout: ReportLayout, origin: str, *, hidden: bool = False, editable: bool = True) -> ReportLayoutOut:
+def _summary(layout: ReportLayout, origin: Origin, *, hidden: bool = False, editable: bool = True) -> ReportLayoutOut:
     """A layout's summary as one scope sees it."""
     return ReportLayoutOut(
         id=layout.id, organization_id=layout.organization_id, project_id=layout.project_id, name=layout.name,
@@ -77,7 +86,7 @@ def _version_out(version: ReportLayoutVersion) -> ReportLayoutVersionOut:
     )
 
 
-def _detail(db: Session, layout: ReportLayout, origin: str, *, hidden: bool = False, editable: bool = True) -> ReportLayoutDetailOut:
+def _detail(db: Session, layout: ReportLayout, origin: Origin, *, hidden: bool = False, editable: bool = True) -> ReportLayoutDetailOut:
     current = report_layouts.get_version(db, layout.id, layout.current_version)
     assert current is not None  # a layout always has its current version
     return ReportLayoutDetailOut(**_summary(layout, origin, hidden=hidden, editable=editable).model_dump(), current=_version_out(current))
@@ -87,14 +96,34 @@ def _bad_request(exc: Exception) -> HTTPException:
     """Maps a service error to the response the author should see."""
     if isinstance(exc, InvalidLayoutError):
         return HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             {"message": "The layout is not valid.", "errors": [{"path": e.path, "message": e.message} for e in exc.errors]},
         )
     if isinstance(exc, report_layouts.LayoutNameTakenError):
         return HTTPException(status.HTTP_409_CONFLICT, str(exc))
     if isinstance(exc, report_layouts.LayoutConflictError):
         return HTTPException(status.HTTP_409_CONFLICT, {"message": str(exc), "current_version": exc.current_version})
-    return HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc))
+
+
+def _parse_text(body: ReportLayoutTextParse) -> ReportLayoutTextParseOut:
+    """Reads the text view; the text is never logged or audited (it is customer content)."""
+    result = report_layout_text.parse_text(body.text)
+    return ReportLayoutTextParseOut(
+        ok=result.ok, tree=result.tree, errors=[ReportLayoutTextError(line=e.line, column=e.column, message=e.message) for e in result.errors],
+    )
+
+
+def _format_text(body: ReportLayoutTextFormat) -> ReportLayoutTextOut:
+    """Writes a tree as text.
+
+    Raises:
+        HTTPException: 422 with the positioned errors when the tree is not valid.
+    """
+    try:
+        return ReportLayoutTextOut(text=report_layout_text.format_tree(body.tree))
+    except InvalidLayoutError as exc:
+        raise _bad_request(exc) from exc
 
 
 def _get_owned(db: Session, layout_id: UUID, *, organization_id: UUID, project_id: UUID | None) -> ReportLayout:
@@ -183,6 +212,18 @@ def create_org_layout(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
     layout = _create(db, current_user, body, organization_id=organization_id, project_id=None)
     return _detail(db, layout, "organization")
+
+
+@org_router.post("/text/parse", response_model=ReportLayoutTextParseOut)
+def parse_org_layout_text(body: ReportLayoutTextParse, current_user: User = Depends(manage_org_layouts)) -> ReportLayoutTextParseOut:
+    """Reads a layout's text view into a tree, with positioned errors; stores nothing."""
+    return _parse_text(body)
+
+
+@org_router.post("/text/format", response_model=ReportLayoutTextOut)
+def format_org_layout_text(body: ReportLayoutTextFormat, current_user: User = Depends(manage_org_layouts)) -> ReportLayoutTextOut:
+    """Writes a valid tree as its text view; stores nothing."""
+    return _format_text(body)
 
 
 @org_router.get("/{layout_id}", response_model=ReportLayoutDetailOut)
@@ -318,6 +359,22 @@ def restore_hidden_layouts(
     restored = report_layout_scope.restore_layouts(db, project, ids, actor_id=current_user.id)
     db.commit()
     return ReportLayoutRestoreOut(restored=sorted(restored, key=str))
+
+
+@project_router.post("/text/parse", response_model=ReportLayoutTextParseOut)
+def parse_project_layout_text(
+    project_id: UUID, body: ReportLayoutTextParse, current_user: User = Depends(manage_project_layouts),
+) -> ReportLayoutTextParseOut:
+    """Reads a layout's text view into a tree, with positioned errors; stores nothing."""
+    return _parse_text(body)
+
+
+@project_router.post("/text/format", response_model=ReportLayoutTextOut)
+def format_project_layout_text(
+    project_id: UUID, body: ReportLayoutTextFormat, current_user: User = Depends(manage_project_layouts),
+) -> ReportLayoutTextOut:
+    """Writes a valid tree as its text view; stores nothing."""
+    return _format_text(body)
 
 
 @project_router.get("/{layout_id}", response_model=ReportLayoutDetailOut)
