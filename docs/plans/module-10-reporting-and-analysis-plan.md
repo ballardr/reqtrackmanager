@@ -2,7 +2,7 @@
 
 See [future-modules-2026-09-index.md](future-modules-2026-09-index.md) for cross-cutting architecture. Source requirement: [overview §47](completed/future-modules-2026-09-overview.md) (read-only; `docs/requirements.md` stays authoritative).
 
-**Status:** Re-planned 2026-10-20 (supersedes the 2026-09 plan, which predated the core report framework). Phases 0 and 1 done 2026-10-26. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`.
+**Status:** Re-planned 2026-10-20 (supersedes the 2026-09 plan, which predated the core report framework). Phases 0, 1 and 2 done 2026-10-26. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`.
 
 ## What this module is now
 
@@ -50,13 +50,13 @@ Three orthogonal axes, kept separate: **layout** (what is reported), **branding 
 
 ## Status / Resume Here
 
-2 / 16 phases complete (Phase 0 and Phase 1, 2026-10-26; findings in `docs/decisions.md`, "Custom reports Phase 0" and "Custom reports Phase 1"). Phase 2 is next. D6, D15 and D16 still need user sign-off before Phases 3 and 12.
+3 / 16 phases complete (Phases 0 to 2, 2026-10-26; findings in `docs/decisions.md`, "Custom reports Phase 0", "Phase 1" and "Phase 2"). Phase 3 is next (Phases 4 and 5 can also start). D6, D15 and D16 still need user sign-off before Phases 3 and 12; the Phase 2 entry also asks whether a table-family sheet may stay a flat single-type table. Phase 3 must also ship the seeds and project/organisation bundle hooks for `report_layouts`, which Phase 2 left out because nothing can create a layout yet.
 
 | # | Phase | Group | Status |
 |---|-------|-------|--------|
 | 0 | Exploratory: PDF-engine bake-off, math, ODF libraries, tree schema | 1 | [x] |
 | 1 | Report field registry and traversal | 1 | [x] |
-| 2 | Layout model, tree schema, versioning, evaluator | 1 | [ ] |
+| 2 | Layout model, tree schema, versioning, evaluator | 1 | [x] |
 | 3 | Tiers, permission, hide/restore, bundle export/import | 1 | [ ] |
 | 4 | Text view: parser, serialiser, round-trip | 1 | [ ] |
 | 5 | Run pipeline: caps, provenance, catalogue and MCP merge | 1 | [ ] |

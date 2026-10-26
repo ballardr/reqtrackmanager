@@ -10,6 +10,8 @@ Responsibilities:
 - Block types: `Heading`, `Paragraph`, `Note`, `BulletList`, `Image`, `Table`,
   `Gap`, `PageBreak`, and the `ReportDocument` that holds them with the
   title, branding and page orientation.
+- `Sheet`: one named table of a table-family report (CSV, XLSX, ODS); not a
+  document block, so it is never inside a `ReportDocument`.
 - Cell tones: `Table.tones` marks cells the screen colours (a rating band, a
   matrix cell) and `TONE_FILL` is the one tone-to-colour table both renderers use;
   `text_on` picks black or white text for any fill by contrast.
@@ -199,6 +201,21 @@ class PageBreak:
 
 
 Block = Heading | Paragraph | Note | BulletList | Image | Table | Gap | PageBreak
+
+
+@dataclass(frozen=True)
+class Sheet:
+    """One named table of a table-family report.
+
+    Attributes:
+        name: Sheet (tab) name, at most 31 characters.
+        columns: Header cells.
+        rows: Body rows of plain-text cells; a spreadsheet renderer guards formula injection.
+    """
+
+    name: str
+    columns: list[str]
+    rows: list[list[str]]
 
 
 @dataclass
