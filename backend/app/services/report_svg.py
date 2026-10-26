@@ -128,12 +128,15 @@ def _clean(element: etree._Element) -> None:
             element.attrib[local] = value
 
 
-def svg_png(svg: str, *, width_px: int = 1200) -> bytes:
+def svg_png(svg: str, *, width_px: int = 1200, zoom: float | None = None, background: str | None = "#ffffff") -> bytes:
     """Rasterises an SVG to PNG with `resvg-py`, drawing text with the bundled font.
 
     Args:
         svg: SVG markup (sanitised here first).
-        width_px: Width of the image in pixels.
+        width_px: Width of the image in pixels; ignored when `zoom` is given.
+        zoom: Pixels per SVG user unit (the SVG's own size scaled), for a figure whose size matters more than a
+            fixed pixel width, such as an inline equation.
+        background: A CSS colour behind the drawing, or `None` for a transparent PNG.
 
     Returns:
         PNG bytes.
@@ -142,9 +145,16 @@ def svg_png(svg: str, *, width_px: int = 1200) -> bytes:
         UnsafeSvgError: The markup is not acceptable.
         ValueError: `resvg` could not render it.
     """
+    clean = sanitize_svg(svg)
+    font_dirs = [str(FONT_DIR)]
+    if zoom is not None:
+        return resvg_py.svg_to_bytes(
+            svg_string=clean, zoom=zoom, skip_system_fonts=True, font_dirs=font_dirs, font_family="DejaVu Sans",
+            background=background,
+        )
     return resvg_py.svg_to_bytes(
-        svg_string=sanitize_svg(svg), width=width_px, skip_system_fonts=True, font_dirs=[str(FONT_DIR)],
-        font_family="DejaVu Sans", background="#ffffff",
+        svg_string=clean, width=width_px, skip_system_fonts=True, font_dirs=font_dirs, font_family="DejaVu Sans",
+        background=background,
     )
 
 

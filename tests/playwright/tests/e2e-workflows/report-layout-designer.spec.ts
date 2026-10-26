@@ -102,6 +102,36 @@ test.describe("Report layout designer", () => {
     });
   });
 
+  test("an equation is inserted, drawn in the preview, and a command that is not allowed is refused", async ({ page, request }) => {
+    const { project, suffix } = await setup(page, request);
+    await createFromProjectAdmin(page, project.id, `E2E equation layout ${suffix}`);
+    const editor = page.getByRole("textbox", { name: "Layout text" });
+    const frame = page.frameLocator('iframe[title="Report preview"]');
+
+    await test.step("the Equation shortcut writes an equation block the checker accepts", async () => {
+      await page.getByRole("button", { name: "Insert block: Equation" }).click();
+      await expect(editor).toHaveValue(/@equation \\frac\{a\}\{b\} = c/);
+      await expect(page.getByText("The text is valid.")).toBeVisible();
+    });
+
+    await test.step("the preview draws the block and an equation written inside a text line", async () => {
+      await editor.fill(
+        "@layout document\n\n@equation \\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}\n\nThe load \\(F = m a\\) is the force.\n",
+      );
+      await expect(page.getByText("The text is valid.")).toBeVisible();
+      await page.getByRole("button", { name: "Run preview" }).click();
+      await expect(frame.locator("figure.equation svg")).toBeVisible();
+      await expect(frame.locator("span.math svg")).toBeVisible();
+      await expect(frame.getByText("The load")).toBeVisible();
+    });
+
+    await test.step("a command outside the allowed list is a problem on its line and blocks saving", async () => {
+      await editor.fill("@layout document\n\n@equation \\href{http://example.com}{x}\n");
+      await expect(page.getByRole("button", { name: /^Line 3: .*\\href is not supported/ })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Save new version" })).toBeDisabled();
+    });
+  });
+
   test("a mistake is listed by line, blocks saving and previewing, and a click goes to it", async ({ page, request }) => {
     const { project, suffix } = await setup(page, request);
     await createFromProjectAdmin(page, project.id, `E2E broken layout ${suffix}`);

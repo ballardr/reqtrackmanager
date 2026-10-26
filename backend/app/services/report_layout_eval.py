@@ -35,6 +35,13 @@ Design decisions:
   link queries follows the number of nested blocks, not the number of records.
 - Group order is by the group field's typed value (so dates and numbers sort as such), the empty
   group last as `(none)`; a record with no value for a sort key sorts last in both directions.
+- **Math is switched on where it is written or declared.** `\\( \\)` and `$$ $$` are recognised in the author's own
+  text and in the value of a record field its provider marks math-capable (`ReportField.math`); a delimiter inside
+  any other substituted value stays literal text, so a record's title cannot turn into an equation. Headings,
+  paragraphs, list items and the cells of a document table are scanned (a `$$ $$` where there is no room for a block
+  is drawn inline, in a `MathText`); sheets of the table family show the TeX as written. TeX that
+  fails the allow-list or cannot be drawn is shown as its source with one warning (never the TeX itself), and a run
+  draws at most `MAX_EQUATIONS` equations, so a layout over thousands of records cannot make typesetting unbounded.
 - Past instants stay UTC and dates are plain dates (`format_value`); no server-local time or
   timezone conversion happens here.
 
@@ -48,7 +55,7 @@ Design decisions:
 Dependencies: `services.report_layout_tree` (validation), `services.report_fields`,
 `services.report_traversal`, `services.report_framework.ReportContext` (record codes),
 `services.link_type_scope` (link type names), `services.report_model` (output blocks),
-`services.report_widgets` and `services.report_widget_run` (widgets).
+`services.report_widgets` and `services.report_widget_run` (widgets), `services.report_math` (equations).
 """
 
 from __future__ import annotations
@@ -79,10 +86,13 @@ from app.services.report_layout_tree import (
     PLACEHOLDER_RE,
     assert_valid,
 )
+from app.services.report_math import MathSegment, source_of, split_math, tex_problem, typeset
 from app.services.report_model import (
     Block,
     BulletList,
+    Equation,
     Heading,
+    MathText,
     Note,
     PageBreak,
     Paragraph,
@@ -101,6 +111,8 @@ MAX_WORK = 200_000
 MAX_OUTPUT = 100_000
 DEFAULT_TIMEOUT_SECONDS = 60.0
 EMPTY_GROUP_LABEL = "(none)"
+#: Most equations one run draws; further ones are shown as written.
+MAX_EQUATIONS = 1_000
 #: Most versioned records whose version a run records; a larger report keeps its digest and flags the list incomplete.
 MAX_RECORDED_VERSIONS = 20_000
 
@@ -291,6 +303,7 @@ class _Run:
         self.sheets: list[Sheet] = []
         self.warnings: list[str] = []
         self.stats = EvalStats()
+        self._equations = 0
         self._work = 0
         self._output = 0
         self._catalogues: dict[str, dict[str, FieldInfo]] = {}
@@ -415,22 +428,120 @@ class _Run:
             return value or ""
         return format_value(self.catalogue(record.artefact_type)[key].kind, value)
 
+    def fill_pieces(self, text: str, scope: Scope) -> list[tuple[str, bool]]:
+        """Substitutes `{{...}}` placeholders in already-parsed text, in one pass over `text` only.
+
+        Returns:
+            The text as consecutive pieces, each with whether a math delimiter in it counts: the author's own text
+            and the value of a math-capable record field do, every other substituted value does not.
+        """
+        pieces: list[tuple[str, bool]] = []
+        last = 0
+        for match in PLACEHOLDER_RE.finditer(text):
+            pieces.append((text[last:match.start()], True))
+            pieces.append(self._placeholder(match, scope))
+            last = match.end()
+        pieces.append((text[last:], True))
+        return pieces
+
+    def _placeholder(self, match: re.Match[str], scope: Scope) -> tuple[str, bool]:
+        """The value a `{{...}}` stands for and whether it may hold equations; an unknown name stays literal."""
+        name, member = match.group(1), match.group(2)
+        if member is None:
+            return self.placeholders.get(name, match.group(0)), False
+        bound = scope.get(name)
+        if bound is None:
+            return match.group(0), True
+        if bound.kind == "group":
+            return (bound.label if member == "value" else str(len(bound.members))), False
+        assert bound.record is not None
+        math = member not in RESERVED_FIELD_KEYS and self.catalogue(bound.record.artefact_type)[member].math
+        return self.text_of(bound.record, member), math
+
     def fill(self, text: str, scope: Scope) -> str:
         """Substitutes `{{...}}` placeholders in already-parsed text, in one pass over `text` only."""
+        return "".join(piece for piece, _ in self.fill_pieces(text, scope)) if "{{" in text else text
 
-        def replace(match: re.Match[str]) -> str:
-            name, member = match.group(1), match.group(2)
-            if member is None:
-                return self.placeholders.get(name, match.group(0))
-            bound = scope.get(name)
-            if bound is None:
-                return match.group(0)
-            if bound.kind == "group":
-                return bound.label if member == "value" else str(len(bound.members))
-            assert bound.record is not None
-            return self.text_of(bound.record, member)
+    def math_part(self, tex: str, display: bool, *, written_as_display: bool | None = None) -> Equation | str:
+        """An equation to draw, or its source text (with one warning) when it cannot or may not be drawn.
 
-        return PLACEHOLDER_RE.sub(replace, text) if "{{" in text else text
+        Args:
+            tex: The TeX.
+            display: Whether to draw it as a display equation (a block) or inline.
+            written_as_display: The delimiters the author used, for the source text; defaults to `display`.
+        """
+        if self._equations >= MAX_EQUATIONS:
+            self.warn(f"A run draws at most {MAX_EQUATIONS} equations; the rest are shown as written.")
+        elif tex_problem(tex) is None and typeset(tex, display) is not None:
+            self._equations += 1
+            return Equation(tex, display)
+        else:
+            self.warn("An equation could not be drawn and is shown as written.")
+        return source_of(tex, display=display if written_as_display is None else written_as_display)
+
+    def _segments(self, pieces: list[tuple[str, bool]]) -> list[MathSegment] | None:
+        """The text and equations of filled pieces, or `None` when no delimiter counts (the plain, common case)."""
+        filled = "".join(piece for piece, _ in pieces)
+        if "\\(" not in filled and "$$" not in filled:
+            return None
+        found = split_math(filled, [counts for piece, counts in pieces for _ in piece])
+        return found if any(seg.kind != "text" for seg in found) else None
+
+    def inline_text(self, pieces: list[tuple[str, bool]]) -> str:
+        """Filled text for a place with no room for a block (heading, list item, table cell): a `MathText` when it
+        holds equations, which are all drawn inline (a `$$ $$` here is a small equation, not a block)."""
+        found = self._segments(pieces)
+        if found is None:
+            return "".join(piece for piece, _ in pieces)
+        parts: list[str | Equation] = [
+            seg.value if seg.kind == "text"
+            else self.math_part(seg.value, False, written_as_display=seg.kind == "display")
+            for seg in found
+        ]
+        return MathText(parts) if any(isinstance(p, Equation) for p in parts) else "".join(str(p) for p in parts)
+
+    def rich(self, text: str, scope: Scope) -> str:
+        """`text` with placeholders filled and its equations found, for a heading or a list item."""
+        return self.inline_text(self.fill_pieces(text, scope))
+
+    def cell_of(self, record: ReportRecord, key: str) -> str:
+        """A field as a document table cell: its text, with equations drawn when the field is math-capable."""
+        value = self.text_of(record, key)
+        if key in RESERVED_FIELD_KEYS or not self.catalogue(record.artefact_type)[key].math:
+            return value
+        return self.inline_text([(value, True)])
+
+    def paragraph_blocks(self, text: str, scope: Scope) -> list[Block]:
+        """A text block's paragraph with its placeholders filled and its equations found (see the module docstring).
+
+        Inline equations stay in the paragraph's `MathText`; a display equation ends the paragraph and is a block.
+        """
+        pieces = self.fill_pieces(text, scope)
+        found = self._segments(pieces)
+        if found is None:
+            return [Paragraph("".join(piece for piece, _ in pieces))]
+        blocks: list[Block] = []
+        parts: list[str | Equation] = []
+
+        def flush() -> None:
+            nonlocal parts
+            if any(isinstance(p, Equation) for p in parts):
+                blocks.append(Paragraph(MathText(parts)))
+            elif "".join(str(p) for p in parts).strip():
+                blocks.append(Paragraph("".join(str(p) for p in parts)))
+            parts = []
+
+        for segment in found:
+            if segment.kind == "text":
+                parts.append(segment.value)
+            elif segment.kind == "inline":
+                parts.append(self.math_part(segment.value, False))
+            else:
+                flush()
+                shown = self.math_part(segment.value, True)
+                blocks.append(shown if isinstance(shown, Equation) else Paragraph(shown))
+        flush()
+        return blocks
 
     def text_blocks(self, source: str, scope: Scope) -> list[Block]:
         """Markdown `source` as blocks with placeholders filled (parsed once, filled each time)."""
@@ -439,11 +550,11 @@ class _Run:
         out: list[Block] = []
         for block in self._markdown[source]:
             if isinstance(block, Heading):
-                out.append(Heading(self.fill(block.text, scope), block.level))
+                out.append(Heading(self.rich(block.text, scope), block.level))
             elif isinstance(block, Paragraph):
-                out.append(Paragraph(self.fill(block.text, scope)))
+                out.extend(self.paragraph_blocks(block.text, scope))
             elif isinstance(block, BulletList):
-                out.append(BulletList([self.fill(item, scope) for item in block.items]))
+                out.append(BulletList([self.rich(item, scope) for item in block.items]))
             else:
                 out.append(block)
         return out
@@ -655,11 +766,16 @@ def matches_value(actual: Any, kind: str, op: str, expected: Any) -> bool:
 
 
 def _eval_heading(run: _Run, node: dict[str, Any], scope: Scope) -> None:
-    run.emit(Heading(run.fill(node["text"], scope), node.get("level", 1)))
+    run.emit(Heading(run.rich(node["text"], scope), node.get("level", 1)))
 
 
 def _eval_text(run: _Run, node: dict[str, Any], scope: Scope) -> None:
     run.emit(*run.text_blocks(node["text"], scope))
+
+
+def _eval_equation(run: _Run, node: dict[str, Any], scope: Scope) -> None:
+    shown = run.math_part(node["tex"], True)
+    run.emit(shown if isinstance(shown, Equation) else Paragraph(shown))
 
 
 def _eval_page_break(run: _Run, node: dict[str, Any], scope: Scope) -> None:
@@ -680,7 +796,7 @@ def _table_cells(run: _Run, node: dict[str, Any], scope: Scope, records: list[Re
     rows = []
     for record in records:
         run.tick()
-        rows.append([run.text_of(record, c["field"]) for c in columns])
+        rows.append([run.cell_of(record, c["field"]) for c in columns])
     return labels, rows
 
 
@@ -840,12 +956,13 @@ def _eval_widget(run: _Run, node: dict[str, Any], scope: Scope) -> None:
 
 
 for _key, _fn in (
-    ("heading", _eval_heading), ("text", _eval_text), ("page_break", _eval_page_break), ("table", _eval_table),
+    ("heading", _eval_heading), ("text", _eval_text), ("page_break", _eval_page_break), ("equation", _eval_equation), ("table", _eval_table),
     ("each", _eval_each), ("group", _eval_group), ("if", _eval_if), ("sheet", _eval_sheet), ("widget", _eval_widget),
 ):
     register_evaluator(_key, _fn)
 
 __all__ = [
-    "DEFAULT_TIMEOUT_SECONDS", "EMPTY_GROUP_LABEL", "MAX_OUTPUT", "MAX_RECORDED_VERSIONS", "MAX_WORK", "EvalStats", "EvaluatedLayout",
+    "DEFAULT_TIMEOUT_SECONDS", "EMPTY_GROUP_LABEL", "MAX_EQUATIONS", "MAX_OUTPUT", "MAX_RECORDED_VERSIONS", "MAX_WORK",
+    "EvalStats", "EvaluatedLayout",
     "LayoutLimitError", "LayoutTimeoutError", "evaluate_layout", "matches_condition", "matches_value", "register_evaluator",
 ]

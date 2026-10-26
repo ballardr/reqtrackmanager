@@ -6,7 +6,7 @@ decides whether a tree may be saved or run.
 
 Responsibilities:
 - Define the tree vocabulary (`TREE_SCHEMA_VERSION`): document blocks `heading`, `text`, `table`,
-  `each`, `group`, `if`, `page_break`, `widget` (one component of a module report, by key), and the table-family
+  `each`, `group`, `if`, `page_break`, `equation` (display TeX), `widget` (one component of a module report, by key), and the table-family
   block `sheet` (a root source plus optional left `joins` along links, one row per combination).
 - Validate a tree with positioned errors (`validate_tree`): shape, unknown keys, depth/node/size
   caps, record types and field names against the report field registry, operators and values per
@@ -17,7 +17,9 @@ Responsibilities:
 - Hash a tree (`tree_hash`) for versioning and provenance.
 - Check a `widget` block names a component in the widget catalogue (`services.report_widgets`)
   and sets only parameters that report declares, with values of the declared type.
-- Let other features add block types (`register_block_spec`: equations).
+- Check TeX at save time against the allow-list in `services.report_math` (an `equation` block's `tex`, and the
+  `\\( \\)` / `$$ $$` equations written in a text block); the extension point `register_block_spec` stays open for
+  other block types.
 
 Design decisions:
 - **No expressions.** A value is a `{{alias.field}}` reference or a literal; a condition is one
@@ -33,7 +35,7 @@ Design decisions:
   the link graph's resolver, never at save time (an author may write a layout for a type they
   cannot read).
 
-Dependencies: `services.report_fields` (field catalogue), `services.report_widgets` (widget catalogue),
+Dependencies: `services.report_math` (TeX allow-list), `services.report_fields` (field catalogue), `services.report_widgets` (widget catalogue),
 `modules.registry` (reportable types), `services.report_model` (the allow-listed global placeholder names).
 """
 
@@ -51,6 +53,7 @@ from typing import Any
 from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE, LAYOUT_FAMILIES
 from app.modules.registry import get_report_field_providers
 from app.services.report_fields import FieldInfo, UnknownReportFieldError, field_catalogue
+from app.services.report_math import MAX_TEX_CHARS, split_math, tex_problem
 from app.services.report_model import PLACEHOLDER_NAMES
 from app.services.report_widgets import find_widget, list_widgets, param_problems
 
@@ -675,16 +678,41 @@ def literal_problem(kind: str, value: Any) -> str | None:
 # --- block types -------------------------------------------------------------------------------
 
 
+def _check_authored_math(v: TreeValidator, text: str | None, path: str) -> None:
+    """Errors for authored `\\( \\)` / `$$ $$` equations in `text` that fail the allow-list.
+
+    An equation holding a `{{placeholder}}` is only known at run time, where a failure shows its source.
+    """
+    for segment in split_math(text or ""):
+        if segment.kind != "text" and "{{" not in segment.value and (problem := tex_problem(segment.value)):
+            v.error(path, f"An equation in the text: {problem}")
+
+
 def _validate_heading(v: TreeValidator, node: dict[str, Any], path: str) -> None:
     v.check_keys(node, path, required=("type", "text"), optional=("level",))
-    v.placeholders(v.text(node.get("text", MISSING), f"{path}.text", limit=500), f"{path}.text")
+    text = v.text(node.get("text", MISSING), f"{path}.text", limit=500)
+    v.placeholders(text, f"{path}.text")
+    _check_authored_math(v, text, f"{path}.text")
     if "level" in node and (not isinstance(node["level"], int) or isinstance(node["level"], bool) or not 1 <= node["level"] <= 4):
         v.error(f"{path}.level", "Must be 1 to 4.")
 
 
 def _validate_text(v: TreeValidator, node: dict[str, Any], path: str) -> None:
     v.check_keys(node, path, required=("type", "text"))
-    v.placeholders(v.text(node.get("text", MISSING), f"{path}.text"), f"{path}.text")
+    text = v.text(node.get("text", MISSING), f"{path}.text")
+    v.placeholders(text, f"{path}.text")
+    _check_authored_math(v, text, f"{path}.text")
+
+
+def _validate_equation(v: TreeValidator, node: dict[str, Any], path: str) -> None:
+    v.check_keys(node, path, required=("type", "tex"))
+    tex = v.text(node.get("tex", MISSING), f"{path}.tex", limit=MAX_TEX_CHARS)
+    if tex is None:
+        return
+    if tex != tex.strip() or any(c in tex for c in "\r\n\t"):
+        v.error(f"{path}.tex", "Write the equation on one line, without spaces at either end.")
+    elif problem := tex_problem(tex):
+        v.error(f"{path}.tex", problem)
 
 
 def _validate_page_break(v: TreeValidator, node: dict[str, Any], path: str) -> None:
@@ -843,6 +871,7 @@ for _spec in (
     BlockSpec("heading", (FAMILY_DOCUMENT,), _validate_heading),
     BlockSpec("text", (FAMILY_DOCUMENT,), _validate_text),
     BlockSpec("page_break", (FAMILY_DOCUMENT,), _validate_page_break),
+    BlockSpec("equation", (FAMILY_DOCUMENT,), _validate_equation),
     BlockSpec("table", (FAMILY_DOCUMENT,), _validate_table),
     BlockSpec("each", (FAMILY_DOCUMENT,), _validate_each),
     BlockSpec("group", (FAMILY_DOCUMENT,), _validate_group),

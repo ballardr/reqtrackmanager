@@ -72,6 +72,7 @@ class FieldInfo:
     Attributes:
         key / label / kind: As on `ReportField`; `reserved` fields are the engine's own.
         choices: For an `enum`, the display labels a value can take, else empty.
+        math: Whether the field may hold equations, which a layout's text block then draws.
     """
 
     key: str
@@ -79,6 +80,7 @@ class FieldInfo:
     kind: str
     reserved: bool = False
     choices: tuple[str, ...] = ()
+    math: bool = False
 
 
 @dataclass
@@ -117,9 +119,9 @@ class ReportRecord:
 # --- builders ------------------------------------------------------------------------------------
 
 
-def text_field(key: str, label: str, column: Any) -> ReportField:
-    """A free-text field."""
-    return ReportField(key, label, column, "text")
+def text_field(key: str, label: str, column: Any, *, math: bool = False) -> ReportField:
+    """A free-text field; `math` marks one in which people write equations."""
+    return ReportField(key, label, column, "text", math=math)
 
 
 def date_field(key: str, label: str, column: Any) -> ReportField:
@@ -176,7 +178,9 @@ def name_lookup_field(key: str, label: str, name_column: Any, id_column: Any, fo
     return ReportField(key, label, select(name_column).where(id_column == foreign_key).scalar_subquery(), "text")
 
 
-def from_search(search: ArtefactSearchProvider, *fields: ReportField, search_fields: bool = True) -> ReportFieldProvider:
+def from_search(
+    search: ArtefactSearchProvider, *fields: ReportField, search_fields: bool = True, math_fields: Iterable[str] = (),
+) -> ReportFieldProvider:
     """A `ReportFieldProvider` over a type's search declaration.
 
     The joins, the current-version filter, the identity columns and the status labels come from the
@@ -187,11 +191,15 @@ def from_search(search: ArtefactSearchProvider, *fields: ReportField, search_fie
         search: The type's `ArtefactSearchProvider`.
         *fields: The typed fields on top (dates, enums, people, lookups).
         search_fields: Whether to include the search provider's own text fields.
+        math_fields: Keys of those text fields people write equations in (`ReportField.math`).
 
     Returns:
         The provider.
     """
-    from_search_fields = tuple(text_field(f.key, f.label, f.column) for f in search.fields) if search_fields else ()
+    math_keys = frozenset(math_fields)
+    from_search_fields = (
+        tuple(text_field(f.key, f.label, f.column, math=f.key in math_keys) for f in search.fields) if search_fields else ()
+    )
     seen = {f.key for f in from_search_fields}
     extra = tuple(f for f in fields if f.key not in seen)
     return ReportFieldProvider(
@@ -226,6 +234,8 @@ def validate_provider(artefact_type: str, provider: ReportFieldProvider) -> list
             problems.append(f"{artefact_type}.{f.key}: unknown kind {f.kind!r}")
         if f.kind == "principal" and f.id_column is None:
             problems.append(f"{artefact_type}.{f.key}: principal field without id_column")
+        if f.math and f.kind != "text":
+            problems.append(f"{artefact_type}.{f.key}: only a text field can be math-capable")
         if f.kind == "enum" and not f.labels:
             problems.append(f"{artefact_type}.{f.key}: enum field without labels")
     return problems
@@ -260,7 +270,7 @@ def field_catalogue(artefact_type: str) -> list[FieldInfo]:
         FieldInfo("tags", "Tags", "text", reserved=True),
     ]
     own = [
-        FieldInfo(f.key, f.label, f.kind, choices=tuple(f.labels.values()) if f.kind == "enum" else ())
+        FieldInfo(f.key, f.label, f.kind, choices=tuple(f.labels.values()) if f.kind == "enum" else (), math=f.math)
         for f in provider.fields
     ]
     return reserved + own

@@ -72,7 +72,7 @@ export function buildFieldCatalogue(): ReportFieldCatalogue {
           { key: "code", label: "Code", kind: "text", reserved: true, choices: [] },
           { key: "title", label: "Title", kind: "text", reserved: true, choices: [] },
           { key: "status", label: "Status", kind: "enum", reserved: true, choices: ["Draft", "Approved"] },
-          { key: "description", label: "Description", kind: "text", reserved: false, choices: [] },
+          { key: "description", label: "Description", kind: "text", reserved: false, choices: [], math: true },
         ],
       },
     ],

@@ -7,7 +7,7 @@ The neutral report document every renderer consumes . A report is built once, as
 place rather than once per output format.
 
 Responsibilities:
-- Block types: `Heading`, `Paragraph`, `Note`, `BulletList`, `Image` (raster bytes or SVG markup), `Table`,
+- Block types: `Heading`, `Paragraph`, `Equation` (a display equation), `Note`, `BulletList`, `Image` (raster bytes or SVG markup), `Table`,
   `Gap`, `PageBreak`, and the `ReportDocument` that holds them with the
   title, branding and page orientation.
 - `Sheet`: one named table of a table-family report (CSV, XLSX, ODS); not a
@@ -35,6 +35,11 @@ Design decisions:
   so a collector cannot put an arbitrary value into PDF or Word XML. The text of
   a toned cell still carries its meaning (the band name), so a greyscale print
   reads the same.
+- An equation is TeX source in the model, never a drawing: each renderer asks `report_math` for the form it needs
+  (SVG for PDF and HTML, native markup or a picture for Word) and prints the source when it cannot draw it. Inline
+  equations ride in `MathText`, a `str` subclass, so headings, paragraphs, list items and table cells need no new
+  field and every string-only consumer is unaffected. Only the layout evaluator makes `MathText` and `Equation`,
+  from text where math is switched on, so a module report's ordinary text is never scanned for delimiters.
 - `Gap` is a vertical-whitespace hint kept so the PDF layout is exactly what it
   was before the model existed; the DOCX renderer ignores it and relies on
   paragraph spacing.
@@ -45,7 +50,7 @@ Dependencies: markdown-it-py. `ReportBranding` is imported for typing only.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -136,6 +141,49 @@ class Paragraph:
 
 
 @dataclass(frozen=True)
+class Equation:
+    """An equation as TeX source (see `services.report_math` for what is accepted).
+
+    Attributes:
+        tex: The TeX, without delimiters.
+        display: `True` for a block of its own (centred, larger), `False` when it sits inside a `MathText`.
+    """
+
+    tex: str
+    display: bool = True
+
+    @property
+    def text(self) -> str:
+        """The equation as the author wrote it, with its delimiters (what a text-only consumer shows)."""
+        return f"$${self.tex}$$" if self.display else f"\\({self.tex}\\)"
+
+
+class MathText(str):
+    """Text that holds equations: a `str` whose value is the text as the author wrote it (equations in their
+    delimiters), carrying the same text as `parts` for a renderer that can draw them.
+
+    It is used wherever the model holds text (a heading, a paragraph, a list item, a table cell), so every consumer
+    that only reads strings (CSV, the on-screen result, text-only exports) shows the source unchanged and only a
+    renderer that asks `text_runs` draws the equations.
+
+    Attributes:
+        parts: Plain text runs (`str`) and inline `Equation`s (`display` false), in reading order.
+    """
+
+    parts: tuple[str | Equation, ...]
+
+    def __new__(cls, parts: Sequence[str | Equation]) -> MathText:
+        instance = super().__new__(cls, "".join(part if isinstance(part, str) else part.text for part in parts))
+        instance.parts = tuple(parts)
+        return instance
+
+
+def text_runs(value: str) -> tuple[str | Equation, ...]:
+    """The runs of a piece of model text: the parts of a `MathText`, else the string itself."""
+    return value.parts if isinstance(value, MathText) else (value,)
+
+
+@dataclass(frozen=True)
 class Note:
     """Small, muted explanatory text (scope line, caveats, a section's note)."""
 
@@ -211,7 +259,7 @@ class PageBreak:
     """Starts a new page."""
 
 
-Block = Heading | Paragraph | Note | BulletList | Image | Table | Gap | PageBreak
+Block = Heading | Paragraph | Equation | Note | BulletList | Image | Table | Gap | PageBreak
 
 
 @dataclass(frozen=True)

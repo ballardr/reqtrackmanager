@@ -10,13 +10,16 @@ Design decisions:
   'unsafe-inline'`), so even a defect in escaping could not load anything. Raster images are inlined as
   `data:` URIs of a sniffed type (never the type a record claims), and an SVG figure is inlined only after
   `report_svg.sanitize_svg`.
+- Equations are the server-made SVG from `report_math` (the same drawing the PDF embeds), sized in `em` so they
+  follow the text size; one that cannot be drawn is shown as its source in a `<code>` element. The TeX is the
+  accessible name (`aria-label`).
 - A tone is looked up in `TONE_FILL`, never taken from the model as a colour, as in the PDF and Word renderers.
 - Branding applies as in the other renderers: the accent colour (validated as six hex digits), the logo and
   the footer text; the cover page is a PDF and Word device, so the HTML shows a plain title.
 - One stylesheet, inline and small, with a print rule so printing the page from a browser paginates at
   `PageBreak`.
 
-Dependencies: `services.report_model`, `services.report_svg`, `services.report_document` (branding type).
+Dependencies: `services.report_model`, `services.report_svg`, `services.report_math`, `services.report_document` (branding type).
 """
 
 from __future__ import annotations
@@ -29,9 +32,11 @@ import re
 from PIL import Image as PilImage
 
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX
+from app.services.report_math import INLINE_SIZE_PT, scaled_svg, typeset
 from app.services.report_model import (
     TONE_FILL,
     BulletList,
+    Equation,
     Gap,
     Heading,
     Image,
@@ -41,6 +46,7 @@ from app.services.report_model import (
     ReportDocument,
     Table,
     text_on,
+    text_runs,
 )
 from app.services.report_svg import UnsafeSvgError, sanitize_svg
 
@@ -61,6 +67,8 @@ th, td { border: 1px solid #ccc; padding: .3rem .5rem; vertical-align: top; over
 table.compact td { border-color: #ddd; }
 tbody tr:nth-child(even) td { background-color: #f5f5f5; }
 figure { margin: 1rem 0; } figure img, figure svg { max-width: 100%%; height: auto; }
+figure.equation { text-align: center; overflow-x: auto; } span.math svg { display: inline-block; }
+code.math-source { font-size: .9em; }
 .logo { max-height: 4rem; margin-bottom: .5rem; }
 footer { margin-top: 3rem; color: #666; font-size: .8rem; border-top: 1px solid #ddd; padding-top: .5rem; }
 hr.page-break { border: 0; border-top: 1px dashed #bbb; margin: 2rem 0; }
@@ -89,6 +97,11 @@ def _esc(text: str) -> str:
     return html.escape(text, quote=True)
 
 
+def _rich(value: str) -> str:
+    """Escaped HTML for model text, with its equations drawn inline (a plain string is just escaped)."""
+    return "".join(_esc(run) if isinstance(run, str) else _equation(run) for run in text_runs(value))
+
+
 def _table(block: Table) -> str:
     head = "".join(f"<th>{_esc(c)}</th>" for c in block.columns)
     rows = []
@@ -97,7 +110,7 @@ def _table(block: Table) -> str:
         for c, cell in enumerate(row):
             tone = block.tone_at(r, c)
             style = f' style="background-color:#{TONE_FILL[tone]};color:#{text_on(TONE_FILL[tone])}"' if tone else ""
-            cells.append(f"<td{style}>{_esc(cell)}</td>")
+            cells.append(f"<td{style}>{_rich(cell)}</td>")
         rows.append(f"<tr>{''.join(cells)}</tr>")
     css = ' class="compact"' if block.compact else ""
     return f"<table{css}><thead><tr>{head}</tr></thead><tbody>{''.join(rows)}</tbody></table>"
@@ -112,6 +125,20 @@ def _figure(block: Image) -> str | None:
             return None
     uri = _data_uri(block.data)
     return f'<figure><img src="{uri}" alt="{_esc(block.alt)}"></figure>' if uri else None
+
+
+def _equation(block: Equation) -> str:
+    """One equation as HTML: the SVG (display: in a centred figure, inline: in a span on the text baseline), or its source."""
+    drawn = typeset(block.tex, block.display)
+    label = f' role="img" aria-label="{_esc(block.tex)}"'
+    if drawn is None:
+        return f'<code class="math-source">{_esc(block.text)}</code>' if not block.display else (
+            f'<figure class="equation"><code class="math-source">{_esc(block.text)}</code></figure>'
+        )
+    svg = scaled_svg(drawn, 1 / INLINE_SIZE_PT, "em")
+    if block.display:
+        return f'<figure class="equation"{label}>{svg}</figure>'
+    return f'<span class="math"{label} style="vertical-align:-{drawn.descent / INLINE_SIZE_PT:.3f}em">{svg}</span>'
 
 
 def render_html_document(document: ReportDocument) -> bytes:
@@ -132,13 +159,15 @@ def render_html_document(document: ReportDocument) -> bytes:
             parts.insert(0, f'<img class="logo" src="{uri}" alt="">')
     for block in document.blocks:
         if isinstance(block, Heading):
-            parts.append(f"<h{min(max(block.level, 1), 4) + 1}>{_esc(block.text)}</h{min(max(block.level, 1), 4) + 1}>")
+            parts.append(f"<h{min(max(block.level, 1), 4) + 1}>{_rich(block.text)}</h{min(max(block.level, 1), 4) + 1}>")
         elif isinstance(block, Paragraph):
-            parts.append(f"<p>{_esc(block.text)}</p>")
+            parts.append(f"<p>{_rich(block.text)}</p>")
+        elif isinstance(block, Equation):
+            parts.append(_equation(block))
         elif isinstance(block, Note):
             parts.append(f'<p class="note">{_esc(block.text)}</p>')
         elif isinstance(block, BulletList):
-            parts.append("<ul>" + "".join(f"<li>{_esc(item)}</li>" for item in block.items) + "</ul>")
+            parts.append("<ul>" + "".join(f"<li>{_rich(item)}</li>" for item in block.items) + "</ul>")
         elif isinstance(block, Image):
             figure = _figure(block)
             if figure:

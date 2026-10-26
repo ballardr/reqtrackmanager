@@ -158,7 +158,7 @@ def _catalogue_out(catalogue: report_layout_designer.FieldCatalogue) -> ReportFi
             ReportFieldTypeOut(
                 type=t.type, label=t.label,
                 fields=[
-                    ReportFieldOut(key=f.key, label=f.label, kind=f.kind, reserved=f.reserved, choices=list(f.choices))
+                    ReportFieldOut(key=f.key, label=f.label, kind=f.kind, reserved=f.reserved, choices=list(f.choices), math=f.math)
                     for f in t.fields
                 ],
             )

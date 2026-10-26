@@ -1492,6 +1492,8 @@ class ReportField:
         kind: One of `REPORT_FIELD_KINDS`. `date` is a calendar date, `instant` a past UTC time.
         labels: For an `enum`, `{stored value: display label}`; a value is never shown raw.
         id_column: For a `principal` field, the `<name>_id` column (a user or a group).
+        math: For a `text` field, whether people write equations in it (`\\( x \\)`, `$$ x $$`), so a layout's
+            text block that prints it draws them. Opt-in per field; any other text stays literal.
     """
 
     key: str
@@ -1500,6 +1502,7 @@ class ReportField:
     kind: str = "text"
     labels: Mapping[str, str] = field(default_factory=dict)
     id_column: Any | None = None
+    math: bool = False
 
 
 @dataclass(frozen=True)

@@ -37,6 +37,17 @@ export const InsideAForEachOffersThatTypesFields: Story = {
   },
 };
 
+/** A text field in which equations are drawn says so beside its kind; an ordinary text field does not. */
+export const AMathCapableFieldIsMarked: Story = {
+  args: { aliases: aliasesInScope("@each requirement sort title as req\n  \n@end\n", 1) },
+  play: async ({ canvasElement }) => {
+    const row = within(canvasElement).getByRole("button", { name: "Insert Description" }).closest("li") as HTMLElement;
+    await expect(within(row).getByText("text, equations drawn")).toBeInTheDocument();
+    const status = within(canvasElement).getByRole("button", { name: "Insert Status" }).closest("li") as HTMLElement;
+    await expect(within(status).queryByText(/equations drawn/)).not.toBeInTheDocument();
+  },
+};
+
 export const NothingMatchingTheFilterSaysSo: Story = {
   args: { aliases: aliasesInScope("@each requirement as req\n\n@end\n", 1) },
   play: async ({ canvasElement }) => {

@@ -35,6 +35,7 @@ warn_redundant_casts = true
 check_untyped_defs = true
 
 [[tool.mypy.overrides]]
-# APScheduler 3.x ships no stubs and no `py.typed`, and no stub package exists for it.
-module = ["apscheduler.*"]
+# These libraries ship no stubs and no `py.typed`, and no stub package exists for them: APScheduler 3.x and
+# `mathml2omml` (one function, `convert`, used by `services.report_math`).
+module = ["apscheduler.*", "mathml2omml.*"]
 ignore_missing_imports = true

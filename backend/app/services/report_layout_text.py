@@ -41,6 +41,8 @@ Grammar (one statement per line; indentation is cosmetic):
   `in` / `not_in` with a comma-separated list), or tests combined with `and`, `or`, `not` and brackets: `not` binds
   tightest, then `and`, then `or`. Several `where` clauses must all hold. A bare `and`, `or` or `not` is never a value
   (write it in quotes), and a bracket is never part of a bare word.
+- An equation block is `@equation <TeX>` on one line (`@equation \\frac{a}{b} = c`). Equations inside a text line
+  are written `\\( x \\)` (inline) or `$$ x $$` (display), which are ordinary text to this grammar.
 - A widget is one component of a report (a table, its headline figures or its notes) on a line of its own,
   `[[widget.<module>.<report>.<part> name=value ... sort <column> [asc|desc] ... empty "<text>"]]`: a bare word,
   number, `true` or `false` is read as such, anything else is quoted (`since="2026-10-01"`); `sort` orders the table by
@@ -1057,6 +1059,17 @@ def _write_page_break(w: _Writer, node: dict[str, Any], depth: int) -> None:
     w.line(depth, "@page_break")
 
 
+def _parse_equation(p: _Parser, d: _Directive) -> None:
+    tex = d.rest.strip()
+    if not tex:
+        raise _Syntax("Write the TeX after @equation, on the same line.", d.offset + 1)
+    p.add({"type": "equation", "tex": tex}, d.line_no)
+
+
+def _write_equation(w: _Writer, node: dict[str, Any], depth: int) -> None:
+    w.line(depth, f"@equation {node['tex']}")
+
+
 def _parse_table(p: _Parser, d: _Directive) -> None:
     source, extra = _source(d.cursor(), ("empty",))
     node: dict[str, Any] = {"type": "table", "source": source, "columns": []}
@@ -1269,6 +1282,7 @@ for _form in (
     TextForm("heading", _parse_heading, _write_heading),
     TextForm("text", _parse_text, _write_text),
     TextForm("page_break", _parse_page_break, _write_page_break),
+    TextForm("equation", _parse_equation, _write_equation),
     TextForm("table", _parse_table, _write_table),
     TextForm("each", _parse_each, _write_each),
     TextForm("group", _parse_group, _write_group),

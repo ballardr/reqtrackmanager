@@ -1278,7 +1278,7 @@ flowchart LR
   version through `services.report_layouts.save_version`, which refuses a save based on a stale version
   (`LayoutConflictError`) and stores nothing for an identical tree. An ORM guard refuses to update a saved version.
 - **Tree.** `{schema_version, family, orientation?, nodes}`. Blocks: `heading`, `text` (restricted Markdown),
-  `table`, `each`, `group`, `if`, `page_break` (document); `sheet` (table). Unknown keys are errors. There is no
+  `table`, `each`, `group`, `if`, `page_break`, `equation` (document); `sheet` (table). Unknown keys are errors. There is no
   expression language and no raw HTML block.
 - **Sources.** A block reads records from `{record_type}` (all of a type in the report's projects),
   `{record_type, linked_from: alias, link_types?, direction?}` (records linked to an enclosing record; link types are
@@ -1543,6 +1543,63 @@ flowchart LR
   kind with the layout's and reports a mismatch as a problem before saving.
 - **Extending.** A new block type needs its server pieces (§4n) and, to be offered as a shortcut, an entry in
   `BLOCK_SNIPPETS`; the editor, pickers and preview need no change.
+
+### 4r. Custom reports: math (Module 10 Phase 9)
+
+Equations are TeX in the layout and the neutral model; each renderer asks `services/report_math.py` for the form it
+needs, and shows the author's own text when it cannot draw one.
+
+```mermaid
+flowchart LR
+    A["@equation block, or inline and display math<br/>in a text block or a math-capable field"] --> V["tex_problem<br/>command allow-list"]
+    V -->|"refused"| S["source shown as written<br/>+ one warning"]
+    V --> T["typeset<br/>ziamath → SVG (paths only)"]
+    T --> H["HTML: inline SVG in em"]
+    T --> P["PDF: vector (display), PNG (inline)"]
+    V --> O["omml<br/>latex2mathml → mathml2omml"]
+    O -->|"in the tested subset"| W["Word: native equation"]
+    O -->|"outside it"| I["Word: PNG of the SVG"]
+```
+
+- **Where math is recognised.** `\( x \)` is inline and `$$ x $$` is display. Both are found in the **author's own text**
+  and in the value of a record field its provider marks **math-capable** (`ReportField.math`, `from_search(...,
+  math_fields=...)`; today the requirement's description, reasoning and clarification). A delimiter inside any other
+  substituted value stays text (the evaluator keeps a per-character mask of where a delimiter counts), so a title cannot
+  become an equation; an author may still write `\( k = {{record.title}} \)`. A bare `$` is never a delimiter, and an
+  opener with no closer is ordinary text. Scanned: the paragraphs, headings and list items of a text block, and the
+  cells of a document table whose field is math-capable. A `$$ $$` where there is no room for a block (a heading, an
+  item, a cell) is drawn inline, and a display equation cannot hold a blank line (Markdown ends the paragraph). Sheets
+  of the table family (CSV, XLSX) keep the TeX as text.
+- **The `equation` block** is `{type: "equation", tex}` (a display equation; text view `@equation <TeX>` on one line, no
+  spaces at either end). The neutral model has `Equation(tex, display)` for a block and `MathText`, a `str` subclass whose
+  value is the text as written and whose `parts` are its runs and inline equations, so a heading, paragraph, list item or
+  cell needs no new field and every string-only consumer (CSV, the on-screen result) sees the source; only the
+  evaluator makes either, so a module report's ordinary text is never scanned.
+- **Allow-list, not block-list.** `tex_problem` admits named commands (Greek letters, operators, relations, arrows,
+  fractions, roots, delimiters, `\mathbb`-style fonts, `\text`, a few environments such as `matrix`, `cases`, `aligned`),
+  at most 2,000 characters and ten levels of braces, `&` only inside an environment, plain characters inside `\text{}`,
+  and none of `% # $ ~ "`. `\href`, `\input`, `\includegraphics`, `\def` and the rest are refused, because `latex2mathml` is
+  lenient and would pass some of them through. A save refuses an `equation` block, or an authored equation in a text
+  block, that fails; TeX that arrives at run time (a field value, a placeholder) is checked then.
+- **Drawing.** `ziamath` (plain SVG 1, glyphs as paths, so no font is needed and nothing in the output can fetch) gives the
+  SVG, which still passes `report_svg.sanitize_svg`. HTML sizes it in `em` and lowers it by its descent; the PDF embeds a
+  display equation as vector (`svglib`) and an inline one as a PNG placed with an `<img>` tag, because ReportLab reads an
+  inline image only from a file path (a temporary directory per render, removed afterwards). TeX that fails to parse is
+  shown as its source with the warning "An equation could not be drawn and is shown as written." (never the TeX itself).
+- **Word.** The converter's markup is unwrapped from its empty `m:box` wrappers, a square root gets the hidden degree Word
+  requires, and any element outside `OMML_ELEMENTS` (accents, limit operators, aligned equations) sends the equation to a
+  PNG instead. `tests/test_report_math.py` pins the markup for the supported subset. Checked in LibreOffice (Phase 0);
+  **a person must open a sample in Word before release.**
+- **On screen.** `components/MathText.tsx` draws the same fields on the requirement page (when locked or read-only) and a
+  change request's proposed text with **KaTeX** (`trust: false`, DOMPurify, MathML kept for screen readers). It first applies
+  `utils/mathTex.ts`, a port of the allow-list that reads `utils/mathAllowList.json`, generated by
+  `backend/scripts/generate_math_allowlist.py`; `tests/test_report_math_allowlist.py` fails when the file is stale and both
+  sides run the vectors in `utils/mathTexCases.json`, so the screen and the report accept the same equations and show the
+  rest as written. A new math-capable field is shown with `<MathText text={...} />`.
+- **Bounds.** A run draws at most `MAX_EQUATIONS` (1,000) equations, then shows the rest as written; results are cached per
+  TeX, so the same equation per record is typeset once.
+- **Extending.** A new renderer (ODT) calls `typeset`, `omml`, `png_of`, `source_of` and `report_model.text_runs`; nothing
+  else in the layout needs to change. A provider marks a field math-capable with `text_field(..., math=True)` or `from_search(..., math_fields=)`.
 
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 

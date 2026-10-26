@@ -48,6 +48,7 @@ import { Badge } from "../components/Badge";
 import { TextField } from "../components/FormFields";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { DetailCard } from "../components/DetailCard";
+import { MathText } from "../components/MathText";
 
 /** Change request detail: submit/withdraw/decide and its discussion thread (C-R-01).
  *
@@ -379,16 +380,16 @@ export function ChangeRequestDetailPage() {
         ) : (
           <div className="stack" style={{ gap: "var(--space-3)" }}>
             <p>
-              <strong>{strings.requirements.reasoning}:</strong> {cr.proposed_reasoning}
+              <strong>{strings.requirements.reasoning}:</strong> <MathText text={cr.proposed_reasoning ?? ""} />
             </p>
             {cr.proposed_clarification && (
               <p>
-                <strong>{strings.requirements.clarification}:</strong> {cr.proposed_clarification}
+                <strong>{strings.requirements.clarification}:</strong> <MathText text={cr.proposed_clarification} />
               </p>
             )}
             {cr.proposed_description && (
               <p>
-                <strong>{strings.requirements.description}:</strong> {cr.proposed_description}
+                <strong>{strings.requirements.description}:</strong> <MathText text={cr.proposed_description} />
               </p>
             )}
           </div>

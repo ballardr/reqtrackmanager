@@ -9,14 +9,23 @@ Design decisions:
 - Every string goes through `report_document.safe` before reaching a
   `Paragraph` (ReportLab parses markup, so unescaped user text is an SSRF /
   local-file-read primitive; see that function's docstring).
+- Equations: a display `Equation` is the `report_math` SVG drawn as vector (centred); an inline one is a PNG of the
+  same drawing placed in the paragraph with an `<img>` tag on the text baseline, because ReportLab reads an inline
+  image only from a file path, so the PNGs live in a temporary directory that exists for one render. The `<img>`
+  tags are built here from numbers and a path this module made, never from text; one that cannot be drawn is
+  printed as its source.
 - Page setup follows orientation: portrait is A4 with 2 cm top and bottom
   margins, landscape is A4 with 1.5 cm all round.
 
-Dependencies: ReportLab, `services.report_document`, `services.report_fonts`, `services.report_model`, `services.report_svg`
-(a figure given as SVG is drawn as vector).
+Dependencies: ReportLab, `services.report_document`, `services.report_fonts`, `services.report_math`,
+`services.report_model`, `services.report_svg` (a figure given as SVG is drawn as vector).
 """
 
 from __future__ import annotations
+
+import html
+import tempfile
+from pathlib import Path
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
@@ -39,8 +48,10 @@ from app.services.report_document import (
     toned_paragraph,
 )
 from app.services.report_fonts import text_width
+from app.services.report_math import png_of, typeset
 from app.services.report_model import (
     BulletList,
+    Equation,
     Gap,
     Heading,
     Image,
@@ -49,6 +60,7 @@ from app.services.report_model import (
     Paragraph,
     ReportDocument,
     Table,
+    text_runs,
 )
 from app.services.report_svg import svg_flowable
 
@@ -62,6 +74,56 @@ _MAX_WORD_POINTS = 100.0  # a pasted unbroken string must not claim the page; Re
 _CELL_PADDING_POINTS = 14.0
 _PORTRAIT_MARGINS = {"topMargin": 2 * cm, "bottomMargin": 2 * cm}
 _LANDSCAPE_MARGINS = {"leftMargin": 1.5 * cm, "rightMargin": 1.5 * cm, "topMargin": 1.5 * cm, "bottomMargin": 1.5 * cm}
+
+
+class _InlineImages:
+    """The temporary directory that holds the PNGs of inline equations for one render (see the module docstring)."""
+
+    def __init__(self) -> None:
+        self._directory: tempfile.TemporaryDirectory[str] | None = None
+        self._count = 0
+
+    def add(self, png: bytes) -> str:
+        """Writes `png` and returns the path to give an `<img>` tag."""
+        if self._directory is None:
+            self._directory = tempfile.TemporaryDirectory(prefix="report-math-")
+        self._count += 1
+        path = Path(self._directory.name) / f"eq{self._count}.png"
+        path.write_bytes(png)
+        return str(path)
+
+    def close(self) -> None:
+        """Deletes the directory and everything in it."""
+        if self._directory is not None:
+            self._directory.cleanup()
+            self._directory = None
+
+
+def _inline_equation(equation: Equation, images: _InlineImages) -> str:
+    """Paragraph markup for an inline equation: an `<img>` on the baseline, or the escaped source."""
+    drawn = typeset(equation.tex, False)
+    png = png_of(drawn) if drawn is not None else None
+    if drawn is None or png is None:
+        return safe(equation.text)
+    path = html.escape(images.add(png), quote=True)
+    return f'<img src="{path}" width="{drawn.width:.2f}" height="{drawn.height:.2f}" valign="{-drawn.descent:.2f}"/>'
+
+
+def _markup(value: str, images: _InlineImages, *, bold: bool = False) -> str:
+    """Paragraph markup for model text: its runs escaped, its equations drawn inline."""
+    return "".join(
+        safe(run, bold=bold) if isinstance(run, str) else _inline_equation(run, images) for run in text_runs(value)
+    )
+
+
+def _display_equation(block: Equation, usable_width: float) -> list:
+    """Flowables for a display equation: the centred vector drawing between small gaps, or its source."""
+    drawn = typeset(block.tex, True)
+    drawing = svg_flowable(drawn.svg, usable_width) if drawn is not None else None
+    if drawing is None:
+        return [RlParagraph(safe(block.text), STYLES["BodyText"])]
+    drawing.hAlign = "CENTER"
+    return [Spacer(1, 4), drawing, Spacer(1, 6)]
 
 
 def _content_widths(block: Table, usable_width: float) -> list[float]:
@@ -96,7 +158,7 @@ def _content_widths(block: Table, usable_width: float) -> list[float]:
     return [need + spare * need / sum(needs) for need in needs]
 
 
-def _table(block: Table, accent, usable_width: float):
+def _table(block: Table, accent, usable_width: float, images: _InlineImages):
     """A block table as a styled ReportLab table (compact or plain grid)."""
     if block.col_widths_cm:
         widths = [w * cm for w in block.col_widths_cm]
@@ -108,7 +170,7 @@ def _table(block: Table, accent, usable_width: float):
     head_style = ParagraphStyle("report_head_text", parent=_HEAD, textColor=header_text_color(accent))
     data = [[RlParagraph(safe(c, bold=True), head_style) for c in block.columns]] if block.compact else [list(block.columns)]
     data += [
-        [toned_paragraph(cell, body_style, block.tone_at(r, c)) for c, cell in enumerate(row)]
+        [toned_paragraph(cell, body_style, block.tone_at(r, c), _markup(cell, images)) for c, cell in enumerate(row)]
         for r, row in enumerate(block.rows)
     ]
     return styled_table(data, col_widths=widths, accent_color=accent, compact=block.compact)
@@ -130,25 +192,31 @@ def render_pdf_document(document: ReportDocument) -> bytes:
     usable_width = pagesize[0] - margins.get("leftMargin", 72) - margins.get("rightMargin", 72)
 
     story: list = title_flowables(document.title, branding)
+    images = _InlineImages()
     for block in document.blocks:
         if isinstance(block, Heading):
-            story.append(RlParagraph(safe(block.text, bold=True), STYLES[f"Heading{min(max(block.level, 1), 4)}"]))
+            story.append(RlParagraph(_markup(block.text, images, bold=True), STYLES[f"Heading{min(max(block.level, 1), 4)}"]))
         elif isinstance(block, Paragraph):
-            story.append(RlParagraph(safe(block.text), STYLES["BodyText"]))
+            story.append(RlParagraph(_markup(block.text, images), STYLES["BodyText"]))
+        elif isinstance(block, Equation):
+            story.extend(_display_equation(block, usable_width))
         elif isinstance(block, Note):
             story.append(RlParagraph(safe(block.text), _NOTE))
         elif isinstance(block, BulletList):
-            story.append(ListFlowable([ListItem(RlParagraph(safe(i), STYLES["BodyText"])) for i in block.items], bulletType="bullet"))
+            story.append(ListFlowable([ListItem(RlParagraph(_markup(i, images), STYLES["BodyText"])) for i in block.items], bulletType="bullet"))
         elif isinstance(block, Image):
             flowable = svg_flowable(block.svg, usable_width) if block.svg is not None else image_flowable(block.data)
             if flowable is not None:
                 story.append(flowable)
         elif isinstance(block, Table):
-            story.append(_table(block, accent, usable_width))
+            story.append(_table(block, accent, usable_width, images))
         elif isinstance(block, Gap):
             story.append(Spacer(1, block.cm * cm))
         elif isinstance(block, PageBreak):
             story.append(RlPageBreak())
-    return build_pdf(
-        story, footer_text=branding.footer_text if branding else None, pagesize=pagesize, title=document.title, **margins,
-    )
+    try:
+        return build_pdf(
+            story, footer_text=branding.footer_text if branding else None, pagesize=pagesize, title=document.title, **margins,
+        )
+    finally:
+        images.close()

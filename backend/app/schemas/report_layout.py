@@ -187,6 +187,7 @@ class ReportFieldOut(BaseModel):
     kind: str
     reserved: bool = False
     choices: list[str] = []
+    math: bool = False
 
 
 class ReportFieldTypeOut(BaseModel):
