@@ -255,6 +255,10 @@ class OrgAdvancedSettingsOut(BaseModel):
     smtp_username: str | None = None
     smtp_use_tls: bool = True
     pat_max_lifetime_days: int | None = None
+    report_output_retention_days: int | None = None
+    #: Read-only: the platform default and ceiling the organisation's own value sits between.
+    report_output_default_retention_days: int = 7
+    report_output_max_retention_days: int = 30
     require_2fa: bool = False
     allow_self_signup: bool = False
     auto_accept_email_domain: str | None = None
@@ -271,6 +275,7 @@ class OrgAdvancedSettingsUpdate(BaseModel):
     smtp_password: str | None = None
     smtp_use_tls: bool = True
     pat_max_lifetime_days: int | None = Field(default=None, ge=1, le=3650)
+    report_output_retention_days: int | None = Field(default=None, ge=1, le=3650)
     require_2fa: bool = False
     allow_self_signup: bool = False
     auto_accept_email_domain: str | None = Field(default=None, max_length=255)

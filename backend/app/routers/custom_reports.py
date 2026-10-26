@@ -11,37 +11,49 @@ Runs a custom report layout (`services.custom_report_run`):
 
 Access: running needs only what reading the data needs (D13): membership of the project or organisation;
 each record is then shown only if the caller's own project permissions allow it. Neither route needs the
-manage-layouts permission. Every run writes a provenance row (`GeneratedReport`); no output is stored.
+manage-layouts permission. Every run writes a provenance row (`GeneratedReport`); a synchronous run stores no output.
+
+A file run that passes the synchronous limits answers 409 with `detail.code == "async_required"`; the client then
+queues it in the background:
+
+- `POST .../custom-reports/{layout_id}/runs` (project and organisation): queues the same run (202 + the run).
+- `GET /api/v1/report-runs`, `GET /api/v1/report-runs/{id}`, `GET /api/v1/report-runs/{id}/download`,
+  `DELETE /api/v1/report-runs/{id}`: the caller's own background runs; the file is downloadable only by the
+  requester, until it expires (`services.report_run_jobs`).
 
 `format` is limited by the layout's family (`services.custom_report_run.available_formats`, which reads the
 renderer registry, `services.report_render`): 400 otherwise. A table layout's `csv` is a zip when it has
 several sheets.
-A run over its work, output or time limit answers 413 (408 for time) and writes nothing.
+A run over its work, output or time limit answers 413 (408 for time) for the on-screen form and 409 (see above)
+for a file, and writes nothing.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
 from typing import Any, Literal, TypeVar
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps import get_current_user
 from app.models.enums import OrgRole
+from app.models.generated_report import GeneratedReport
 from app.models.organization import Organization, ReportTemplate
 from app.models.project import Project
-from app.models.report_layout import FAMILY_DOCUMENT, ReportLayout, ReportLayoutVersion
+from app.models.report_layout import ReportLayout, ReportLayoutVersion
 from app.models.user import User
-from app.services import custom_report_run, report_layout_scope, report_layouts, report_render
+from app.services import custom_report_run, report_layout_scope, report_layouts, report_run_jobs
 from app.services.custom_report_run import LayoutRun
-from app.services.downloads import file_response, filename_safe
-from app.services.rbac import require_org_role, require_project_view
-from app.services.report_document import load_report_template, resolve_branding
+from app.services.downloads import file_response
+from app.services.rbac import check_pat_scope, require_org_role, require_project_view
+from app.services.report_document import load_report_template
 from app.services.report_framework import ReportOut, to_out
 from app.services.report_layout_eval import LayoutLimitError, LayoutTimeoutError
-from app.services.report_model import Block
 from app.services.report_render import RenderedFile
 
 T = TypeVar("T")
@@ -86,13 +98,31 @@ def _check_format(layout: ReportLayout, version: ReportLayoutVersion, fmt: str) 
         )
 
 
-def guard_run(call: Callable[[], T]) -> T:
-    """Runs `call`, translating the run's refusals into responses (also used by the designer's preview)."""
+ASYNC_REQUIRED = "async_required"
+
+
+def guard_run(call: Callable[[], T], *, file_format: bool = False) -> T:
+    """Runs `call`, translating the run's refusals into responses (also used by the designer's preview).
+
+    Args:
+        call: The run.
+        file_format: The run is for a file. A file run over the synchronous limits can be produced in the
+            background, so it answers 409 `async_required` instead of 413/408.
+    """
     try:
         return call()
-    except LayoutTimeoutError as exc:
-        raise HTTPException(status.HTTP_408_REQUEST_TIMEOUT, str(exc)) from exc
     except LayoutLimitError as exc:
+        if file_format:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                {
+                    "code": ASYNC_REQUIRED,
+                    "message": "This report is too big to produce while you wait. Prepare it in the background and "
+                    "you will be notified when it is ready.",
+                },
+            ) from exc
+        if isinstance(exc, LayoutTimeoutError):
+            raise HTTPException(status.HTTP_408_REQUEST_TIMEOUT, str(exc)) from exc
         raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, str(exc)) from exc
     except custom_report_run.ProjectsNotInScopeError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "That project is not covered by this report.") from exc
@@ -115,15 +145,7 @@ def _respond(
     if fmt == "json":
         out = to_out(custom_report_run.result_for(run))
     else:
-        before: list[Block] = []
-        after: list[Block] = []
-        branding = None
-        if run.family == FAMILY_DOCUMENT:
-            before, after = custom_report_run.content_blocks_for(db, run, template)
-            branding = resolve_branding(db, run.organization, template)
-        rendered = report_render.render(
-            fmt, run.family, custom_report_run.render_input_for(run, branding=branding, before=before, after=after),
-        )
+        rendered = custom_report_run.render_file(db, run, fmt, template)
     custom_report_run.record_run(
         db, user, run, fmt, report_template_id=template.id if template else None, include_children=include_children,
         requested_project_ids=requested,
@@ -132,8 +154,7 @@ def _respond(
     if out is not None:
         return out
     assert rendered is not None
-    stem = f"{filename_safe(run.scope_label, fallback='report')}-{filename_safe(run.layout.name, fallback='report')}"
-    return file_response(rendered.content, stem, rendered.extension)
+    return file_response(rendered.content, custom_report_run.file_stem(run), rendered.extension)
 
 
 @project_router.get("/{layout_id}/run", response_model=ReportOut, responses=_RESPONSES)
@@ -148,7 +169,8 @@ def run_project_custom_report(
 
     Raises:
         HTTPException: 404 the project or layout is not reachable (or the project hid it); 400 a format the
-            layout cannot produce, or a template of another organisation; 413/408 a run over its limits.
+            layout cannot produce, or a template of another organisation; 413/408 a run over its limits; 409
+            `async_required` a file run over the synchronous limits.
     """
     project = db.get(Project, project_id)
     if project is None:
@@ -163,7 +185,7 @@ def run_project_custom_report(
     template = _template(db, organization, report_template_id)
     run = guard_run(lambda: custom_report_run.run_project_layout(
         db, current_user, project, scoped.layout, version, include_children=include_children,
-    ))
+    ), file_format=format != "json")
     return _respond(db, current_user, run, format, template, include_children=include_children)
 
 
@@ -196,7 +218,8 @@ def run_org_custom_report(
     Raises:
         HTTPException: 404 the layout is not the organisation's, a selected project is not one the caller can
             report on, or no project is left; 400 a format the layout cannot produce or a foreign template;
-            422 a malformed or oversized selection; 413/408 a run over its limits.
+            422 a malformed or oversized selection; 413/408 a run over its limits; 409 `async_required` a file run
+            over the synchronous limits.
     """
     organization = db.get(Organization, organization_id)
     layout = db.get(ReportLayout, layout_id)
@@ -208,8 +231,202 @@ def run_org_custom_report(
     template = _template(db, organization, report_template_id)
     run = guard_run(lambda: custom_report_run.run_organization_layout(
         db, current_user, organization, layout, version, project_ids=requested,
-    ))
+    ), file_format=format != "json")
     return _respond(db, current_user, run, format, template, requested=requested)
 
 
-__all__ = ["guard_run", "org_router", "project_router"]
+# --- background runs ---------------------------------------------------------------------------------------------
+
+
+class ProjectRunRequest(BaseModel):
+    """A request to prepare a project-level custom report in the background."""
+
+    format: CustomReportFormat = Field(description="A file format the layout offers (not json).")
+    include_children: bool = False
+    report_template_id: UUID | None = None
+
+
+class OrgRunRequest(BaseModel):
+    """A request to prepare an organisation-wide custom report in the background."""
+
+    format: CustomReportFormat = Field(description="A file format the layout offers (not json).")
+    project_ids: list[UUID] | None = Field(default=None, max_length=custom_report_run.MAX_FANOUT_PROJECTS)
+    report_template_id: UUID | None = None
+
+
+class ReportRunOut(BaseModel):
+    """One of the caller's background runs."""
+
+    id: UUID
+    organization_id: UUID
+    project_id: UUID | None
+    scope: str
+    layout_name: str
+    layout_version: int
+    format: str
+    status: str
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+    expires_at: datetime | None
+    output_filename: str | None
+    output_size: int | None
+    error: str | None
+
+    @classmethod
+    def of(cls, row: GeneratedReport) -> ReportRunOut:
+        """The API form of a run row."""
+        return cls(
+            id=row.id, organization_id=row.organization_id, project_id=row.project_id, scope=row.scope,
+            layout_name=row.layout_name, layout_version=row.layout_version, format=row.format, status=row.status,
+            created_at=row.created_at, started_at=row.started_at, finished_at=row.finished_at,
+            expires_at=row.expires_at, output_filename=row.output_filename, output_size=row.output_size, error=row.error,
+        )
+
+
+def _queue(
+    db: Session, user: User, organization: Organization, project: Project | None, layout: ReportLayout,
+    version: ReportLayoutVersion, fmt: str, template: ReportTemplate | None, *, include_children: bool = False,
+    requested: list[UUID] | None = None,
+) -> ReportRunOut:
+    """Queues a background run and returns it (the formats were checked by the caller).
+
+    Raises:
+        HTTPException: 400 for `json` (the on-screen form has no file), 429 when the caller has too many queued.
+    """
+    if fmt == "json":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Choose a file format; the on-screen report runs immediately.")
+    try:
+        row = report_run_jobs.enqueue(
+            db, user, organization=organization, project=project, layout=layout, version=version, fmt=fmt,
+            report_template_id=template.id if template else None, include_children=include_children,
+            requested_project_ids=requested,
+        )
+    except report_run_jobs.TooManyActiveRunsError as exc:
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, str(exc)) from exc
+    db.commit()
+    return ReportRunOut.of(row)
+
+
+@project_router.post("/{layout_id}/runs", response_model=ReportRunOut, status_code=status.HTTP_202_ACCEPTED)
+def queue_project_custom_report(
+    project_id: UUID, layout_id: UUID, payload: ProjectRunRequest,
+    current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+) -> ReportRunOut:
+    """Queues a layout the project can reach to be produced in the background for this project.
+
+    The caller is notified when the file is ready (or could not be produced). The same checks as the
+    synchronous run apply now and again when the job runs.
+
+    Raises:
+        HTTPException: 404 the project or layout is not reachable; 400 a format the layout cannot produce or
+            `json`; 429 too many background runs already queued.
+    """
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    scoped = report_layout_scope.reachable_layout(db, project, layout_id)
+    if scoped is None or scoped.hidden:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Layout not found.")
+    version = _current_version(db, scoped.layout)
+    _check_format(scoped.layout, version, payload.format)
+    organization = db.get(Organization, project.organization_id)
+    assert organization is not None
+    template = _template(db, organization, payload.report_template_id)
+    return _queue(
+        db, current_user, organization, project, scoped.layout, version, payload.format, template,
+        include_children=payload.include_children,
+    )
+
+
+@org_router.post("/{layout_id}/runs", response_model=ReportRunOut, status_code=status.HTTP_202_ACCEPTED)
+def queue_org_custom_report(
+    organization_id: UUID, layout_id: UUID, payload: OrgRunRequest,
+    current_user: User = Depends(require_org_role(*OrgRole)), db: Session = Depends(get_db),
+) -> ReportRunOut:
+    """Queues an organisation layout to be produced in the background, once per project the caller can read.
+
+    Raises:
+        HTTPException: 404 the layout is not the organisation's; 400 a format the layout cannot produce, `json`
+            or a foreign template; 429 too many background runs already queued.
+    """
+    organization = db.get(Organization, organization_id)
+    layout = db.get(ReportLayout, layout_id)
+    if organization is None or layout is None or layout.organization_id != organization_id or layout.project_id is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Layout not found.")
+    version = _current_version(db, layout)
+    _check_format(layout, version, payload.format)
+    template = _template(db, organization, payload.report_template_id)
+    return _queue(
+        db, current_user, organization, None, layout, version, payload.format, template, requested=payload.project_ids,
+    )
+
+
+runs_router = APIRouter(prefix="/api/v1/report-runs", tags=["custom-reports"])
+
+
+def _own_run(db: Session, user: User, run_id: UUID, request: Request) -> GeneratedReport:
+    """One of the caller's background runs, or 404 (a run of someone else's looks the same as none)."""
+    try:
+        row = report_run_jobs.get_for(db, user, run_id)
+    except report_run_jobs.RunNotAvailableError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    check_pat_scope(request, row.organization_id)
+    return row
+
+
+@runs_router.get("", response_model=list[ReportRunOut])
+def list_report_runs(
+    organization_id: UUID | None = Query(None, description="Only runs in this organisation."),
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> list[ReportRunOut]:
+    """The caller's own background runs, newest first (nobody else's)."""
+    rows = report_run_jobs.list_for(db, current_user, organization_id)
+    return [ReportRunOut.of(r) for r in rows]
+
+
+@runs_router.get("/{run_id}", response_model=ReportRunOut)
+def get_report_run(
+    run_id: UUID, request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> ReportRunOut:
+    """One of the caller's background runs (404 for anyone else's)."""
+    return ReportRunOut.of(_own_run(db, current_user, run_id, request))
+
+
+@runs_router.get("/{run_id}/download", responses=_RESPONSES)
+def download_report_run(
+    run_id: UUID, request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> Response:
+    """The stored file of a `ready` run, for the person who asked for it, until it expires.
+
+    Raises:
+        HTTPException: 404 not the caller's, not ready, expired, or the caller lost access since it was produced.
+    """
+    _own_run(db, current_user, run_id, request)
+    try:
+        row, content = report_run_jobs.read_output(db, current_user, run_id)
+    except report_run_jobs.RunNotAvailableError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    assert row.output_filename is not None
+    stem, _, extension = row.output_filename.rpartition(".")
+    return file_response(content, stem, extension)
+
+
+@runs_router.delete("/{run_id}", response_model=ReportRunOut)
+def delete_report_run(
+    run_id: UUID, request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> ReportRunOut:
+    """Removes a run's stored file now (or cancels it while queued); the provenance row stays.
+
+    Raises:
+        HTTPException: 404 not the caller's; 409 the report is being prepared right now.
+    """
+    _own_run(db, current_user, run_id, request)
+    try:
+        row = report_run_jobs.delete_output(db, current_user, run_id)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return ReportRunOut.of(row)
+
+
+__all__ = ["guard_run", "org_router", "project_router", "runs_router"]

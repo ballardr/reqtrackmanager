@@ -209,13 +209,8 @@ export const api = {
     if (!response.ok) throw new ApiError(response.status, response.statusText);
     return response.blob();
   },
-  getForBlob: async (path: string): Promise<Blob> => {
-    const headers: Record<string, string> = { "X-Client-Date": localToday() };
-    if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
-    const response = await fetch(`${BASE_URL}${path}`, { headers });
-    if (!response.ok) throw new ApiError(response.status, response.statusText);
-    return response.blob();
-  },
+  /** Downloads a file; a failed response throws the same `ApiError` (message and structured `detail`) as any other call. */
+  getForBlob: async (path: string): Promise<Blob> => (await rawRequest(path)).blob(),
 };
 
 export function wsBaseUrl(): string {

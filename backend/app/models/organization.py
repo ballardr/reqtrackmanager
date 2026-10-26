@@ -250,6 +250,7 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
         nullable=True,
     )
     pat_max_lifetime_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    report_output_retention_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     accent_color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
     header_title: Mapped[str | None] = mapped_column(String(100), nullable=True)

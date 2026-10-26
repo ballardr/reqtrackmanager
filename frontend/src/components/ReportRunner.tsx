@@ -29,6 +29,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import {
+  isAsyncRequired,
   reportsApi,
   type ReportCatalogueEntry,
   type ReportFileKind,
@@ -37,6 +38,7 @@ import {
   type ReportRunValues,
 } from "../api/reports";
 import { api } from "../api/client";
+import { REPORT_RUN_QUEUED_EVENT } from "../hooks/useReportRuns";
 import type { ReportTemplate } from "../api/types";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { getReportView } from "../modules/registry";
@@ -140,12 +142,25 @@ export function ReportRunner({
 
   async function download(kind: ReportFileKind) {
     const name = DOWNLOAD_NAME[kind];
+    const runValues = kind === "csv" ? values : { ...values, report_template_id: templateId };
     try {
-      const blob = await reportsApi.download(entry, kind, kind === "csv" ? values : { ...values, report_template_id: templateId });
+      const blob = await reportsApi.download(entry, kind, runValues);
       // A table layout of several sheets comes back as a zip of CSV files, whatever `csv` was asked for.
       downloadBlob(blob, `${entry.slug}.${blob.type === "application/zip" ? "zip" : kind}`);
       showToast(`Downloaded ${entry.title} (${name}).`, "success");
     } catch (err) {
+      if (isAsyncRequired(err)) {
+        // Too big to produce while the person waits: the same request goes to the background queue and a
+        // notification says when the file is ready.
+        try {
+          await reportsApi.queueRun(entry, kind, runValues);
+          showToast(strings.reportRuns.queued(entry.title), "success");
+          window.dispatchEvent(new Event(REPORT_RUN_QUEUED_EVENT));
+        } catch (queueErr) {
+          showToast(toErrorMessage(queueErr, strings.reportRuns.queueFailed), "error");
+        }
+        return;
+      }
       showToast(toErrorMessage(err, `Could not generate the ${name} for ${entry.title}.`), "error");
     }
   }

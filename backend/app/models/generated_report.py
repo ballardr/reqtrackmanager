@@ -11,8 +11,12 @@ Responsibilities:
   type and a digest of the records read.
 
 Design decisions:
-- **A provenance row, not an output store.** No generated file is kept for a synchronous run; only
-  its description. Stored output for asynchronous runs is a later addition to this table.
+- **A provenance row; output is stored only for a background run.** No generated file is kept for a
+  synchronous run (`status` `completed`); only its description. A background run's row is also its job:
+  `queued` -> `running` -> `ready` (the file is in object storage under `output_key`) or `failed`, and a
+  `ready` row becomes `expired` when the retention passes (`services.report_run_jobs`), the file deleted and the
+  row kept as provenance. The row holds the request (layout version, format, parameters) so the job can run
+  later as the same person.
 - **The layout is named, not linked.** `layout_id` has no foreign key and the name and tree hash are
   copied, so the row still says what was run after the layout (and its versions) is deleted. The
   organisation foreign key cascades, so deleting the organisation removes its provenance; the project
@@ -43,6 +47,13 @@ from app.models.base import UUIDPKMixin, utcnow
 SCOPE_PROJECT = "project"
 SCOPE_ORGANIZATION = "organization"
 
+STATUS_COMPLETED = "completed"
+STATUS_QUEUED = "queued"
+STATUS_RUNNING = "running"
+STATUS_READY = "ready"
+STATUS_FAILED = "failed"
+STATUS_EXPIRED = "expired"
+
 
 class GeneratedReport(UUIDPKMixin, Base):
     """One run of a report layout.
@@ -68,6 +79,11 @@ class GeneratedReport(UUIDPKMixin, Base):
         source_digest: SHA-256 hex over the records in the report (see the module docstring).
         record_versions: `{type: {record id: version number}}` of the versioned records in the report.
         record_versions_truncated: Whether `record_versions` was cut at the bound (the digest still covers all).
+        status: `completed` (a synchronous run), or a background run's `queued`, `running`, `ready`, `failed`, `expired`.
+        started_at / finished_at: When a background run began and ended (UTC); `None` otherwise.
+        expires_at: When a `ready` run's stored output is deleted (UTC).
+        output_key / output_filename / output_size: The stored file's storage key, download name and size in bytes.
+        error: Why a `failed` run failed, in words safe to show the requester (never record content).
     """
 
     __tablename__ = "generated_reports"
@@ -97,3 +113,11 @@ class GeneratedReport(UUIDPKMixin, Base):
     source_digest: Mapped[str] = mapped_column(String(64))
     record_versions: Mapped[dict[str, dict[str, int]]] = mapped_column(JSONB, default=dict, server_default="{}")
     record_versions_truncated: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    status: Mapped[str] = mapped_column(String(12), default=STATUS_COMPLETED, server_default=STATUS_COMPLETED, index=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    output_key: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    output_filename: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    output_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error: Mapped[str | None] = mapped_column(String(500), nullable=True)

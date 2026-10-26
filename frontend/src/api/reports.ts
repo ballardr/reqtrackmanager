@@ -8,7 +8,8 @@
  * the entry's declared parameters. Core UI addresses a report only through
  * its catalogue entry, never by a per-module URL.
  */
-import { api } from "./client";
+import { ApiError, api } from "./client";
+import type { ReportRunStatus } from "./types";
 
 export type ReportParamType = "string" | "integer" | "boolean" | "date" | "uuid";
 
@@ -143,6 +144,39 @@ export function reportQuery(format: "json" | ReportFileKind, values: ReportRunVa
   return query.toString();
 }
 
+/** One of the caller's background runs of a custom report (`ReportRunOut`). */
+export interface ReportRun {
+  id: string;
+  organization_id: string;
+  project_id: string | null;
+  scope: "project" | "organization";
+  layout_name: string;
+  layout_version: number;
+  format: string;
+  status: ReportRunStatus;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  expires_at: string | null;
+  output_filename: string | null;
+  output_size: number | null;
+  error: string | null;
+}
+
+/** The `detail.code` of the 409 a file run answers when it is too big to produce while the person waits. */
+export const ASYNC_REQUIRED = "async_required";
+
+/** Whether `err` is the answer that asks for the report to be prepared in the background. */
+export function isAsyncRequired(err: unknown): boolean {
+  return (
+    err instanceof ApiError &&
+    err.status === 409 &&
+    typeof err.detail === "object" &&
+    err.detail !== null &&
+    (err.detail as { code?: unknown }).code === ASYNC_REQUIRED
+  );
+}
+
 export const reportsApi = {
   projectCatalogue: (projectId: string) => api.get<ReportCatalogueEntry[]>(`/api/v1/projects/${projectId}/report-catalogue`),
   orgCatalogue: (orgId: string) => api.get<ReportCatalogueEntry[]>(`/api/v1/orgs/${orgId}/report-catalogue`),
@@ -157,4 +191,25 @@ export const reportsApi = {
   /** Runs a report and returns the PDF, Word (DOCX) or CSV file. */
   download: (entry: ReportCatalogueEntry, format: ReportFileKind, values: ReportRunValues) =>
     api.getForBlob(`${entry.path}?${reportQuery(format, values)}`),
+  /**
+   * Queues a custom report to be produced in the background (the entry's `run` route becomes `runs`).
+   * `values` are the same run values as a download: `include_children`, `project_ids` (comma-separated) and
+   * `report_template_id`.
+   */
+  queueRun: (entry: ReportCatalogueEntry, format: ReportFileKind, values: ReportRunValues) => {
+    const body: Record<string, unknown> = { format };
+    if (values.include_children) body.include_children = true;
+    if (typeof values.project_ids === "string" && values.project_ids) body.project_ids = values.project_ids.split(",");
+    if (values.report_template_id) body.report_template_id = values.report_template_id;
+    return api.post<ReportRun>(entry.path.replace(/\/run$/, "/runs"), body);
+  },
+};
+
+/** The caller's own background runs. */
+export const reportRunsApi = {
+  list: (organizationId?: string) =>
+    api.get<ReportRun[]>(`/api/v1/report-runs${organizationId ? `?organization_id=${organizationId}` : ""}`),
+  download: (id: string) => api.getForBlob(`/api/v1/report-runs/${id}/download`),
+  /** Deletes the stored file (or cancels a waiting run); returns the run as it now is. */
+  remove: (id: string) => api.delete<ReportRun>(`/api/v1/report-runs/${id}`),
 };

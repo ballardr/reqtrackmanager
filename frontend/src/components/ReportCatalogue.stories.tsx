@@ -16,6 +16,7 @@ const second = buildReportCatalogueEntry({
 function mockApis() {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path.includes("/report-templates")) return [];
+    if (path.startsWith("/api/v1/report-runs")) return [];
     return buildReportResult({ title: path.includes("second-report") ? "Second report" : "Fixture report" });
   });
 }

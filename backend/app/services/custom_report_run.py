@@ -55,20 +55,21 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.models.generated_report import SCOPE_ORGANIZATION, SCOPE_PROJECT, GeneratedReport
+from app.models.generated_report import SCOPE_ORGANIZATION, SCOPE_PROJECT, STATUS_COMPLETED, GeneratedReport
 from app.models.organization import Organization, ReportTemplate
 from app.models.project import Project
 from app.models.report_content import CUSTOM_REPORT_KEY_PREFIX
 from app.models.report_layout import FAMILY_DOCUMENT, ReportLayout, ReportLayoutVersion
 from app.models.user import User
 from app.services import definition_suppression, report_layout_scope, report_layouts
+from app.services.downloads import filename_safe
 from app.services.link_graph import ArtefactResolver
 from app.services.report_content import (
     build_placeholders,
     content_blocks,
     resolve_report_content,
 )
-from app.services.report_document import ReportBranding
+from app.services.report_document import ReportBranding, resolve_branding
 from app.services.report_framework import (
     ReportCatalogueEntryOut,
     ReportContext,
@@ -79,6 +80,8 @@ from app.services.report_framework import (
     readable_projects,
 )
 from app.services.report_layout_eval import (
+    ASYNC_LIMIT_SCALE,
+    ASYNC_TIMEOUT_SECONDS,
     DEFAULT_TIMEOUT_SECONDS,
     MAX_OUTPUT,
     MAX_RECORDED_VERSIONS,
@@ -101,7 +104,7 @@ from app.services.report_model import (
     Sheet,
     Table,
 )
-from app.services.report_render import RenderInput, formats_for
+from app.services.report_render import RenderedFile, RenderInput, formats_for, render
 
 ENGINE_VERSION = "1"
 """Bumped when evaluation semantics change, so a provenance row says which engine produced a report."""
@@ -185,19 +188,20 @@ def available_formats(family: str, tree: dict[str, Any] | None = None) -> list[s
 
 def _evaluate_project(
     db: Session, user: User, organization: Organization, root: Project, projects: Sequence[Project],
-    version: ReportLayoutVersion, title: str, timeout: float,
+    version: ReportLayoutVersion, title: str, timeout: float, limit_scale: int = 1,
 ) -> EvaluatedLayout:
     """Evaluates the tree for one root project with that project's resolver (the authorisation point)."""
     resolver = ArtefactResolver(db, root, user.id, include_related=True)
     ctx = ReportContext(module_key=MODULE_KEY, organization=organization, projects=list(projects), root_project=root)
     return evaluate_layout(
         db, resolver, ctx, version.tree, title=title, project_ids=[p.id for p in projects], timeout_seconds=timeout,
+        limit_scale=limit_scale,
     )
 
 
 def run_project_layout(
     db: Session, user: User, project: Project, layout: ReportLayout, version: ReportLayoutVersion, *,
-    include_children: bool = False,
+    include_children: bool = False, background: bool = False,
 ) -> LayoutRun:
     """Runs a layout for `project`.
 
@@ -208,6 +212,7 @@ def run_project_layout(
         layout: A layout the project can reach (the route checked reachability and hiding).
         version: The version to run (the layout's current one).
         include_children: Also read the project's readable child projects' records.
+        background: Run with the larger limits of a background run (`report_layout_eval.ASYNC_*`).
 
     Returns:
         The run.
@@ -220,7 +225,8 @@ def run_project_layout(
     started = datetime.now(UTC)
     clock = time.monotonic()
     projects = readable_projects(db, user, organization=organization, root_project=project, include_children=include_children)
-    evaluated = _evaluate_project(db, user, organization, project, projects, version, layout.name, DEFAULT_TIMEOUT_SECONDS)
+    scale, timeout = (ASYNC_LIMIT_SCALE, ASYNC_TIMEOUT_SECONDS) if background else (1, DEFAULT_TIMEOUT_SECONDS)
+    evaluated = _evaluate_project(db, user, organization, project, projects, version, layout.name, timeout, scale)
     return LayoutRun(
         layout, version, organization, projects, project, evaluated, started, round((time.monotonic() - clock) * 1000),
     )
@@ -228,7 +234,7 @@ def run_project_layout(
 
 def run_organization_layout(
     db: Session, user: User, organization: Organization, layout: ReportLayout, version: ReportLayoutVersion, *,
-    project_ids: Sequence[uuid.UUID] | None = None,
+    project_ids: Sequence[uuid.UUID] | None = None, background: bool = False,
 ) -> LayoutRun:
     """Runs an organisation layout once per project the caller can read and merges the results.
 
@@ -239,6 +245,7 @@ def run_organization_layout(
         layout: An organisation-level layout of `organization`.
         version: The version to run.
         project_ids: The projects to include (narrowing only); `None` for every project the caller can read.
+        background: Run with the larger limits of a background run (`report_layout_eval.ASYNC_*`).
 
     Returns:
         The merged run; its `projects` are the ones evaluated.
@@ -268,16 +275,17 @@ def run_organization_layout(
     chosen = [p for p in chosen if p.id not in hiding_ids]
     if not chosen:
         raise NoProjectsToRunError("There is no project to run this report for.")
-    deadline = clock + DEFAULT_TIMEOUT_SECONDS
+    scale, timeout = (ASYNC_LIMIT_SCALE, ASYNC_TIMEOUT_SECONDS) if background else (1, DEFAULT_TIMEOUT_SECONDS)
+    deadline = clock + timeout
     parts: list[tuple[Project, EvaluatedLayout]] = []
     produced = 0
     for project in chosen:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise LayoutTimeoutError("The report took too long to run. Select fewer projects or narrow the layout.")
-        part = _evaluate_project(db, user, organization, project, [project], version, layout.name, remaining)
+        part = _evaluate_project(db, user, organization, project, [project], version, layout.name, remaining, scale)
         produced += part.stats.blocks + part.stats.rows
-        if produced > MAX_OUTPUT:
+        if produced > MAX_OUTPUT * scale:
             raise LayoutLimitError("The report is too large. Select fewer projects or narrow the layout.")
         parts.append((project, part))
     notes = []
@@ -458,16 +466,79 @@ def render_input_for(
     return RenderInput(run.layout.name, sheets=run.evaluated.sheets)
 
 
+def render_file(db: Session, run: LayoutRun, fmt: str, template: ReportTemplate | None) -> RenderedFile:
+    """Renders a finished run as a file in `fmt`: a document's branding and content tiers, or the sheets.
+
+    Args:
+        db: Active session (read only).
+        run: A finished run.
+        fmt: A renderer format of the layout's family (not `json`).
+        template: The branding template to apply to a document, if any.
+
+    Returns:
+        The rendered file.
+    """
+    before: list[Block] = []
+    after: list[Block] = []
+    branding = None
+    if run.family == FAMILY_DOCUMENT:
+        before, after = content_blocks_for(db, run, template)
+        branding = resolve_branding(db, run.organization, template)
+    return render(fmt, run.family, render_input_for(run, branding=branding, before=before, after=after))
+
+
+def file_stem(run: LayoutRun) -> str:
+    """The download name (without extension) of a run: scope then layout name, made filename-safe."""
+    return f"{filename_safe(run.scope_label, fallback='report')}-{filename_safe(run.layout.name, fallback='report')}"
+
+
 # --- provenance ----------------------------------------------------------------------------------------------
+
+
+def provenance_fields(
+    run: LayoutRun, *, report_template_id: uuid.UUID | None, include_children: bool = False,
+    requested_project_ids: Sequence[uuid.UUID] | None = None,
+) -> dict[str, Any]:
+    """The columns of a `GeneratedReport` that describe a finished run (everything but who asked and in what format).
+
+    Identifiers, counts and keys only: no layout text, record content or cell value.
+    """
+    stats = run.evaluated.stats
+    counts: dict[str, int] = defaultdict(int)
+    counts.update(stats.records_read)
+    return {
+        "organization_id": run.organization.id, "project_id": run.root_project.id if run.root_project else None,
+        "scope": SCOPE_PROJECT if run.root_project else SCOPE_ORGANIZATION,
+        "layout_id": run.layout.id, "layout_name": run.layout.name, "layout_version": run.version.version,
+        "tree_hash": run.version.tree_hash, "created_at": run.generated_at, "engine_version": ENGINE_VERSION,
+        "params": run_params(report_template_id, include_children, requested_project_ids),
+        "scope_project_ids": [str(p.id) for p in run.projects], "widgets": list(run.evaluated.widgets),
+        "record_counts": dict(counts),
+        "stats": {
+            "blocks": stats.blocks, "rows": stats.rows, "hidden": stats.hidden, "unavailable": stats.unavailable,
+            "warnings": len(run.evaluated.warnings), "duration_ms": run.duration_ms,
+        },
+        "source_digest": run.evaluated.source_digest, "record_versions": run.evaluated.record_versions,
+        "record_versions_truncated": run.evaluated.record_versions_truncated,
+    }
+
+
+def run_params(
+    report_template_id: uuid.UUID | None, include_children: bool, requested_project_ids: Sequence[uuid.UUID] | None,
+) -> dict[str, Any]:
+    """The run parameters stored on the provenance row (and read back to run a background job)."""
+    return {
+        "report_template_id": str(report_template_id) if report_template_id else None,
+        "include_children": include_children,
+        "requested_project_ids": [str(p) for p in requested_project_ids] if requested_project_ids is not None else None,
+    }
 
 
 def record_run(
     db: Session, user: User, run: LayoutRun, fmt: str, *, report_template_id: uuid.UUID | None,
     include_children: bool = False, requested_project_ids: Sequence[uuid.UUID] | None = None,
 ) -> GeneratedReport:
-    """Adds the provenance row of a run (the caller commits).
-
-    The row holds identifiers, counts and keys only: no layout text, record content or cell value.
+    """Adds the provenance row of a synchronous run (the caller commits).
 
     Args:
         db: Active session.
@@ -479,29 +550,14 @@ def record_run(
         requested_project_ids: The selection of an organisation-wide run, `None` for "all readable".
 
     Returns:
-        The new row.
+        The new row (status `completed`).
     """
-    stats = run.evaluated.stats
-    counts: dict[str, int] = defaultdict(int)
-    counts.update(stats.records_read)
     row = GeneratedReport(
-        organization_id=run.organization.id, project_id=run.root_project.id if run.root_project else None,
-        scope=SCOPE_PROJECT if run.root_project else SCOPE_ORGANIZATION,
-        layout_id=run.layout.id, layout_name=run.layout.name, layout_version=run.version.version,
-        tree_hash=run.version.tree_hash, requested_by=user.id, created_at=run.generated_at, format=fmt,
-        engine_version=ENGINE_VERSION,
-        params={
-            "report_template_id": str(report_template_id) if report_template_id else None,
-            "include_children": include_children,
-            "requested_project_ids": [str(p) for p in requested_project_ids] if requested_project_ids is not None else None,
-        },
-        scope_project_ids=[str(p.id) for p in run.projects], widgets=list(run.evaluated.widgets), record_counts=dict(counts),
-        stats={
-            "blocks": stats.blocks, "rows": stats.rows, "hidden": stats.hidden, "unavailable": stats.unavailable,
-            "warnings": len(run.evaluated.warnings), "duration_ms": run.duration_ms,
-        },
-        source_digest=run.evaluated.source_digest, record_versions=run.evaluated.record_versions,
-        record_versions_truncated=run.evaluated.record_versions_truncated,
+        requested_by=user.id, format=fmt, status=STATUS_COMPLETED,
+        **provenance_fields(
+            run, report_template_id=report_template_id, include_children=include_children,
+            requested_project_ids=requested_project_ids,
+        ),
     )
     db.add(row)
     return row
@@ -557,5 +613,6 @@ __all__ = [
     "ENGINE_VERSION", "MAX_FANOUT_PROJECTS", "MODULE_KEY", "FanOutTooLargeError", "LayoutRun",
     "NoProjectsToRunError", "ProjectsNotInScopeError", "available_formats", "content_blocks_for",
     "content_key", "document_for", "render_input_for", "merge_evaluations", "org_entries",
-    "project_entries", "record_run", "result_for", "run_organization_layout", "run_project_layout", "slug_for",
+    "project_entries", "provenance_fields", "record_run", "render_file", "file_stem", "run_params", "result_for",
+    "run_organization_layout", "run_project_layout", "slug_for",
 ]

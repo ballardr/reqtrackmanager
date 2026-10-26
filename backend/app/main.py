@@ -68,6 +68,7 @@ from app.services.disk_monitor import run_disk_monitor_loop
 from app.services.module_defaults import seed_fresh_install_defaults
 from app.services.notifications import run_digest_loop
 from app.services.process_coordination import run_leadership_loop, startup_lock
+from app.services.report_run_jobs import run_job_loop
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.services.scoring import sync_scoring_levels
 from app.services.storage_health import run_storage_health_loop
@@ -135,6 +136,7 @@ async def lifespan(_: FastAPI):
             asyncio.create_task(run_disk_monitor_loop()),
             asyncio.create_task(run_storage_health_loop()),
             asyncio.create_task(run_digest_loop()),
+            asyncio.create_task(run_job_loop()),
         ])
         start_scheduler()
 
@@ -330,6 +332,7 @@ app.include_router(report_layouts.org_router)
 app.include_router(report_layouts.project_router)
 app.include_router(custom_reports.org_router)
 app.include_router(custom_reports.project_router)
+app.include_router(custom_reports.runs_router)
 app.include_router(search.router)
 app.include_router(record_tables.router)
 app.include_router(org_record_tables.router)

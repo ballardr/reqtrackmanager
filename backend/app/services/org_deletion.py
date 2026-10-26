@@ -5,6 +5,8 @@ Application-level cleanup required before an organisation row can be hard-
 deleted (`routers/orgs.py::delete_organization`) — everything a database
 foreign-key cascade can't do on its own:
 
+- Removing the stored output of every background custom report run (`GeneratedReport.output_key`), whose
+  rows a database cascade deletes but whose objects it would leave behind.
 - Removing every uploaded file's actual bytes from storage, not just its
   `FileAsset` row (a DB-only cascade would silently orphan the object in
   S3/local storage — see docs/soc2/policies/data-retention-and-disposal-
@@ -59,6 +61,7 @@ from sqlalchemy.orm import Session
 from app.models.change_request import ChangeRequest, ReviewComment
 from app.models.engagement import Subscription
 from app.models.file import FileAsset
+from app.models.generated_report import GeneratedReport
 from app.models.organization import Organization, ReportTemplate
 from app.models.pat import PersonalAccessToken
 from app.models.project import Project
@@ -72,7 +75,7 @@ from app.models.requirement_link_type import (
     RequirementLinkTypeDefinition,
 )
 from app.modules.registry import get_module_artefact_ids_in_organization
-from app.services.files import delete_file
+from app.services.files import delete_file, get_storage_backend
 from app.services.report_content import delete_content_for_scopes
 
 
@@ -140,6 +143,15 @@ def delete_organization_cascade(db: Session, organization_id: UUID) -> None:
         .where(Organization.id == organization_id)
         .values(logo_file_id=None, login_background_file_id=None)
     )
+
+    # Stored report output is not a FileAsset: its object is named on the provenance row the cascade deletes.
+    storage = get_storage_backend()
+    for output_key in db.scalars(
+        select(GeneratedReport.output_key).where(
+            GeneratedReport.organization_id == organization_id, GeneratedReport.output_key.is_not(None)
+        )
+    ).all():
+        storage.delete(output_key)
 
     file_assets = list(db.scalars(select(FileAsset).where(FileAsset.organization_id == organization_id)).all())
     for file_asset in file_assets:
