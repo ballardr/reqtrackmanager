@@ -23,7 +23,7 @@ Covers all data processed, stored, or transmitted by ReqTrackManager.
 | Class | Definition | Examples in ReqTrackManager |
 | --- | --- | --- |
 | **Restricted** | Would cause severe harm if disclosed; access must be minimized even internally | Password hashes, password-reset link secrets (and the hashes in `credential_reset_tokens`), TOTP secrets, JWT signing secret, OIDC client secrets, SMTP/storage credentials |
-| **Confidential** | Customer-owned business data; disclosure would breach customer trust/contract | Requirement content and reasoning, change requests, review comments, file attachments, report templates, tags and their names — everything scoped to a customer organization |
+| **Confidential** | Customer-owned business data; disclosure would breach customer trust/contract | Requirement content and reasoning, change requests, review comments, file attachments, report templates, report layouts, tags and their names — everything scoped to a customer organization |
 | **Internal** | Not customer data, but not for public release | Audit/login event history, operational metrics, internal architecture documentation |
 | **Public** | Safe for unrestricted release | Product documentation, marketing material |
 

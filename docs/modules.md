@@ -1257,6 +1257,49 @@ flowchart LR
 - Time: an `instant` field is a past UTC `datetime`, a `date` field is a plain calendar date; neither is converted
   on the server.
 
+### 4n. Custom reports: layouts, the tree and the evaluator (Module 10 Phase 2)
+
+A layout is a versioned JSON tree a person authors; the evaluator turns it into the neutral report model for one
+caller. A layout is configuration, not an artefact type: no `PREFIX-nnn` code, not linkable, not searched.
+
+```mermaid
+flowchart LR
+    T["Layout tree<br/>(report_layout_versions.tree)"] --> V["validate_tree<br/>shape · caps · fields · aliases"]
+    V -->|"refs per block"| E["evaluate_layout"]
+    R["root_records / linked_records<br/>(ArtefactResolver)"] --> E
+    F["load_records<br/>(report fields)"] --> E
+    E --> D["ReportDocument<br/>(document family)"]
+    E --> S["Sheet list<br/>(table family)"]
+    E --> W["warnings · stats"]
+```
+
+- **Storage.** `report_layouts` (owner: organisation, or a project when `project_id` is set; `family` `document` or
+  `table`; `current_version`) and `report_layout_versions` (immutable tree, SHA-256 `tree_hash`, comment). Saving appends a
+  version through `services.report_layouts.save_version`, which refuses a save based on a stale version
+  (`LayoutConflictError`) and stores nothing for an identical tree. An ORM guard refuses to update a saved version.
+- **Tree.** `{schema_version, family, orientation?, nodes}`. Blocks: `heading`, `text` (restricted Markdown),
+  `table`, `each`, `group`, `if`, `page_break` (document); `sheet` (table). Unknown keys are errors. There is no
+  expression language and no raw HTML block.
+- **Sources.** A block reads records from `{record_type}` (all of a type in the report's projects),
+  `{record_type, linked_from: alias, link_types?, direction?}` (records linked to an enclosing record; link types are
+  named, forward or reverse, so a layout moves between projects) or `{group: alias}` (a group's members), plus
+  `where`, `sort` and `include_archived`. `group` buckets records by a field; `{{group.value}}` and `{{group.count}}`
+  are its values.
+- **Placeholders.** `{{alias.field}}` and the global `{{project_name}}`, `{{report_title}}`, `{{generated_on}}`,
+  `{{organisation}}`. They are validated at save time against the field registry and the aliases in scope, and
+  substituted into already-parsed blocks at run time, so a record value can never become Markdown or a placeholder.
+- **Authorisation.** None of its own: every record comes from `root_records`/`linked_records`, so the caller's link
+  graph decides. Unseen records are counted in a note ("2 records not shown ...") and never named; a block with a
+  `where` says "Up to N" because the count precedes the filter.
+- **Limits.** Authoring caps in `report_layout_tree` (`MAX_DEPTH`, `MAX_NODES`, `MAX_COLUMNS`, text and size caps);
+  run caps in `report_layout_eval` (`MAX_WORK`, `MAX_OUTPUT`, a wall-clock timeout) raise `LayoutLimitError`; a read that
+  hit a traversal cap adds a warning instead.
+- **Extending.** A later block type (widget, equation) calls `report_layout_tree.register_block_spec` (its
+  validator) and `report_layout_eval.register_evaluator` (its evaluation); `backend/tests/test_report_layout_eval.py`
+  fails when one exists without the other. No core file is edited per block type.
+- **Time.** A layout stores no schedule. Run times are UTC instants; `instant` conditions compare as UTC whatever zone
+  the literal is written in; `date` conditions compare plain dates.
+
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 
 A module that reports on its records declares a `ReportDefinition` per report on

@@ -12188,3 +12188,44 @@ A cheap count pre-pass (record counts per `each` source, multiplied through nest
 ### Not applicable, checked
 
 *Authentication, RBAC, secrets, audit, retention:* no endpoint, permission or stored data yet (those are Phases 3 and 5), so no audit event or policy change. *Migrations, seed scripts, bundles, search, codes, MCP skill, docs website, UI (Storybook/Playwright):* no model, tool or user-visible surface changed. *Nested projects / organisation defaults:* no project-scoped config table added. *Time:* `instant` fields are past UTC instants, `date` fields are plain dates; boundary tests are in `test_report_fields.py`.
+
+## Custom reports Phase 2: layout model, tree schema, versioning and evaluator (2026-10-26)
+
+**Decided by: Agent** (design), within the plan the User signed off (layouts are versioned JSON trees; no expression language; layouts at organisation and project level; the runner's permissions bound every run).
+
+### What was built
+
+- Tables `report_layouts` (organisation- or project-owned, `family`, `current_version`) and `report_layout_versions` (immutable tree, SHA-256, comment), migration 0107, `ON DELETE CASCADE` from organisation and project.
+- `services/report_layout_tree.py`: the vocabulary, the validator (positioned errors, caps, field and alias checks) and `register_block_spec`.
+- `services/report_layout_eval.py`: `evaluate_layout` into a `ReportDocument` or `Sheet`s (`Sheet` added to `report_model`), `register_evaluator`, run caps.
+- `services/report_layouts.py`: create, save a version, rename, delete, read versions, audit.
+- Tests: `test_report_layout_tree.py`, `test_report_layouts.py`, `test_report_layout_eval.py` (the requirements, Pain Points, Stakeholders example runs end to end).
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Strict, expression-free tree.** Unknown keys are errors; a value is a `{{alias.field}}` reference or a literal; a condition is one field, one operator valid for the field's kind, one literal. No raw HTML block. | Agent |
+| 2 | **Validation is by registry key, authorisation is at run time.** An author may write a layout for a type they cannot read; the link graph's resolver decides what the runner sees, so the validator needs no per-user knowledge. | Agent |
+| 3 | **Placeholders are substituted after parsing**, in one non-rescanning pass, so a title such as `# x {{record.code}}` stays literal text (tested). | Agent |
+| 4 | **Aliases and groups.** `each` and `group` bind a name (`as`, default `record` / `group`); a nested block may not reuse an enclosing name. `group` buckets by a field (value, count) and its members are iterated with `source: {group: alias}`, which is how "by component, then by category" is expressed. | Agent |
+| 5 | **Link types are stored by name** (forward or reverse, case-insensitive), resolved for the project at run time; an unmatched name warns instead of silently matching everything. | Agent |
+| 6 | **Page orientation is a root property**, not a `section` block: the neutral `ReportDocument` has one orientation per document, so a mid-document section would promise what no renderer can do. The Phase 0 draft's `image` and `equation` nodes are not in this vocabulary yet (equations arrive with Math, images with the renderers). | Agent |
+| 7 | **Unseen records are counted, never named.** A note says "N records not shown"; a block with a `where` says "Up to N" because the count is taken before the filter. | Agent |
+| 8 | **Linked records are fetched in batches.** The first nested block that needs the records linked to one parent fetches for every record of that type read so far, so link queries follow the number of nested blocks, not records (tested: the same statement count for 2 and 6 requirements). | Agent |
+| 9 | **Limits.** Authoring caps in the validator (depth 8, 500 blocks, 30 columns, 20,000 characters per text, 512 KB per tree). Run caps raise `LayoutLimitError`: 200,000 record visits, 100,000 output blocks plus rows, 60 s. A traversal cap only warns. The sync/async threshold stays a later phase. | Agent |
+| 10 | **Versioning.** A save names the version it started from and is refused if the layout moved on (`LayoutConflictError`); an identical tree stores nothing; the layout row is locked while the number is chosen; an ORM guard refuses to update a version. | Agent |
+| 11 | **Audit** carries ids, the version, the tree hash and the block count, never the layout's text. Written in the service so every caller records it; permission is checked by the caller (endpoints arrive with tiers and permission). | Agent |
+| 12 | **A layout is not an artefact type** (D16, still to be signed off): no code, link or search entry; deleted with its owner by foreign key, not by `org_deletion`. | Agent (proposed) |
+
+### Needs a decision from the User
+
+- **A sheet is one flat table of one record type.** The example (requirement, then its Pain Points, then their Stakeholders) cannot be one CSV or XLSX sheet, because a joined row (one per requirement, Pain Point and Stakeholder combination) is not expressible yet. Document layouts can express it. Options: accept (use PDF/DOCX/HTML for nested reports), or add a `join` to a sheet source in a later phase. Recommend accepting for release one.
+
+### Review (identify, verify, remediate)
+
+*Identify:* a layout reaching data its runner cannot read; a record value becoming Markdown, a placeholder or markup; a layout naming a column the registry omits (a Restricted or consent-sensitive one); unbounded work from nesting; two authors overwriting each other's changes; history rewritten under a run's provenance; layout text in the audit trail. *Verify:* tests show hidden and unavailable records are counted and absent from the output (`test_records_the_caller_cannot_see_are_counted_and_never_named`), hostile titles stay literal (`test_a_record_value_never_becomes_markup_or_a_placeholder`, `test_a_title_that_looks_like_a_placeholder_is_not_substituted_again`), an undeclared field is refused (`test_an_unknown_field_is_named_with_the_type_it_was_asked_of`), the caps stop a run (work, output, time), a stale save is refused, a saved version cannot be updated, and the audit detail never contains the text (`test_every_change_is_audited_without_the_layouts_text`). *Remediate:* the above; one defect found and fixed while testing: a duplicate alias used to delete the enclosing block's alias from scope when the inner block closed, so later errors were wrong. No regression against an adopted policy: the classification policy and system description now list report layouts as Confidential customer content.
+
+### Not applicable, checked
+
+*Authentication, RBAC, secrets:* no endpoint, no permission and no credential yet (the manage permission and the endpoints are the next phases); the service trusts its caller and says so. *Seed scripts, bundles, search, codes, MCP skill, docs website, UI (Storybook/Playwright):* the new tables are not reachable by anyone yet, so there is nothing to demonstrate, export or document for users; the seeds, the project and organisation bundle hooks and the first user-facing pages ship with tiers, run and designer. *Nested projects / organisation defaults:* the tier and hide rules (D15) are decided when layouts become visible lists. *Time:* run times are UTC instants, `instant` conditions compare as UTC whatever zone the literal carries (tested at 09:00 UTC+10 and 23:00 UTC-8), `date` conditions compare plain dates, no future schedule is stored. *Users and groups parity:* no person-valued field is introduced; person fields in the registry already show users and groups alike. *IPv6:* no listener.
