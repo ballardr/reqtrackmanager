@@ -6,7 +6,8 @@ decides whether a tree may be saved or run.
 
 Responsibilities:
 - Define the tree vocabulary (`TREE_SCHEMA_VERSION`): document blocks `heading`, `text`, `table`,
-  `each`, `group`, `if`, `page_break`, and the table-family block `sheet`.
+  `each`, `group`, `if`, `page_break`, and the table-family block `sheet` (a root source plus optional
+  left `joins` along links, one row per combination).
 - Validate a tree with positioned errors (`validate_tree`): shape, unknown keys, depth/node/size
   caps, record types and field names against the report field registry, operators and values per
   field kind, aliases in scope and `{{alias.field}}` placeholders.
@@ -39,7 +40,7 @@ import hashlib
 import json
 import re
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any
@@ -64,6 +65,8 @@ ORIENTATIONS = ("portrait", "landscape")
 DIRECTIONS = ("both", "outgoing", "incoming")
 DEFAULT_RECORD_ALIAS = "record"
 DEFAULT_GROUP_ALIAS = "group"
+DEFAULT_JOIN_ALIAS = "joined"
+MAX_JOINS = 5
 
 #: Operators a field of each kind accepts. `empty`/`not_empty` take no value; `in` takes a list.
 OPERATORS_BY_KIND: dict[str, tuple[str, ...]] = {
@@ -528,8 +531,16 @@ class TreeValidator:
             if "descending" in item and not isinstance(item["descending"], bool):
                 self.error(f"{here}.descending", "Must be true or false.")
 
-    def columns(self, cols: Any, path: str, record_type: str) -> None:
-        """Validates a table's `columns` list of `{field, label?}` over `record_type`."""
+    def columns(self, cols: Any, path: str, record_type: str, *, aliases: dict[str, str] | None = None) -> None:
+        """Validates a table's `columns` list of `{field, label?}` over `record_type`.
+
+        Args:
+            cols: The columns.
+            path: Where they are.
+            record_type: The type a column's field belongs to unless it says otherwise.
+            aliases: For a sheet with joins, `{alias: record type}`; a column may then name the record
+                it reads with `from` (default: the sheet's own records).
+        """
         if not isinstance(cols, list) or not 0 < len(cols) <= MAX_COLUMNS:
             self.error(path, f"Must be a list of 1 to {MAX_COLUMNS} columns.")
             return
@@ -538,8 +549,14 @@ class TreeValidator:
             if not isinstance(col, dict):
                 self.error(here, "Must be an object.")
                 continue
-            self.check_keys(col, here, required=("field",), optional=("label",))
-            self.record_field(record_type, col.get("field"), f"{here}.field")
+            self.check_keys(col, here, required=("field",), optional=("label", "from") if aliases else ("label",))
+            owner = record_type
+            if aliases and "from" in col:
+                if col["from"] not in aliases:
+                    self.error(f"{here}.from", f'"{col["from"]}" is not a name in this sheet. Use one of: {", ".join(aliases)}.')
+                    continue
+                owner = aliases[col["from"]]
+            self.record_field(owner, col.get("field"), f"{here}.field")
             if "label" in col:
                 self.text(col["label"], f"{here}.label", limit=200)
 
@@ -665,7 +682,7 @@ def _validate_if(v: TreeValidator, node: dict[str, Any], path: str) -> None:
 
 
 def _validate_sheet(v: TreeValidator, node: dict[str, Any], path: str) -> None:
-    v.check_keys(node, path, required=("type", "name", "source", "columns"))
+    v.check_keys(node, path, required=("type", "name", "source", "columns"), optional=("as", "joins"))
     name = v.text(node.get("name", MISSING), f"{path}.name", limit=31)
     if name is not None:
         if _SHEET_NAME_BAD.search(name) or name.startswith("'") or name.endswith("'"):
@@ -673,10 +690,35 @@ def _validate_sheet(v: TreeValidator, node: dict[str, Any], path: str) -> None:
         elif name.casefold() in v._sheet_names:
             v.error(f"{path}.name", f'Another sheet is already called "{name}".')
         v._sheet_names.add(name.casefold())
-    with v.collecting(node):
+    with v.collecting(node), ExitStack() as stack:
         record_type = v.source(node.get("source"), f"{path}.source")
-        if record_type is not None:
-            v.columns(node.get("columns"), f"{path}.columns", record_type)
+        root_alias = v.alias(node.get("as"), f"{path}.as", DEFAULT_RECORD_ALIAS)
+        if record_type is None:
+            return
+        aliases = {root_alias: record_type}
+        stack.enter_context(v.binding(root_alias, Binding("record", record_type)))
+        joins = node.get("joins", [])
+        if not isinstance(joins, list) or len(joins) > MAX_JOINS:
+            v.error(f"{path}.joins", f"Must be a list of at most {MAX_JOINS} joins.")
+            joins = []
+        for i, join in enumerate(joins):
+            here = f"{path}.joins[{i}]"
+            if not isinstance(join, dict):
+                v.error(here, "Must be an object.")
+                continue
+            v.check_keys(join, here, required=("as", "source"))
+            # Entered before the join's source so its own where/sort fields, and every column that reads
+            # from it, are attributed to the join and loaded for it.
+            stack.enter_context(v.collecting(join))
+            source = join.get("source")
+            if isinstance(source, dict) and "linked_from" not in source:
+                v.error(f"{here}.source.linked_from", "A join follows links from an earlier name in the sheet.")
+            join_type = v.source(source, f"{here}.source")
+            alias = v.alias(join.get("as"), f"{here}.as", DEFAULT_JOIN_ALIAS)
+            if join_type is not None:
+                aliases[alias] = join_type
+                stack.enter_context(v.binding(alias, Binding("record", join_type)))
+        v.columns(node.get("columns"), f"{path}.columns", record_type, aliases=aliases)
 
 
 for _spec in (
@@ -692,8 +734,8 @@ for _spec in (
     register_block_spec(_spec)
 
 __all__ = [
-    "BLOCK_SPECS", "DEFAULT_GROUP_ALIAS", "DEFAULT_RECORD_ALIAS", "GROUP_FIELDS", "MAX_COLUMNS", "MAX_DEPTH", "MAX_NODES",
-    "MAX_TREE_BYTES", "OPERATORS_BY_KIND", "PLACEHOLDER_RE", "TREE_SCHEMA_VERSION", "Binding", "BlockSpec",
+    "BLOCK_SPECS", "DEFAULT_GROUP_ALIAS", "DEFAULT_JOIN_ALIAS", "DEFAULT_RECORD_ALIAS", "GROUP_FIELDS", "MAX_COLUMNS",
+    "MAX_DEPTH", "MAX_JOINS", "MAX_NODES", "MAX_TREE_BYTES", "OPERATORS_BY_KIND", "PLACEHOLDER_RE", "TREE_SCHEMA_VERSION", "Binding", "BlockSpec",
     "InvalidLayoutError", "Ref", "TreeAnalysis", "TreeError", "TreeValidator", "assert_valid", "empty_tree",
     "literal_problem", "register_block_spec", "tree_hash", "validate_tree",
 ]

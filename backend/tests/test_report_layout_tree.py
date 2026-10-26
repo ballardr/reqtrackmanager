@@ -356,6 +356,54 @@ def test_a_sheet_source_cannot_be_linked_because_nothing_encloses_it():
     assert list(errors(sheets(sheet))) == ["nodes[0].source.linked_from"]
 
 
+def joined_sheet(**overrides: Any) -> dict[str, Any]:
+    sheet = {
+        "type": "sheet", "name": "Impact", "source": {"record_type": REQ}, "as": "req",
+        "joins": [
+            {"as": "pain", "source": {"record_type": PAIN, "linked_from": "req"}},
+            {"as": "who", "source": {"record_type": "stakeholder", "linked_from": "pain", "sort": [{"field": "title"}]}},
+        ],
+        "columns": [{"field": "code"}, {"field": "title", "from": "pain", "label": "Pain point"}, {"field": "role", "from": "who"}],
+    }
+    return sheets({**sheet, **overrides})
+
+
+def test_a_sheet_may_join_along_links_and_read_columns_from_each_record():
+    tree = joined_sheet()
+    analysis = validate_tree(tree, family="table")
+    assert analysis.errors == []
+    sheet = tree["nodes"][0]
+    # The join's own fields and the columns reading from it are attributed to it.
+    assert ("stakeholder", "role") in analysis.refs[id(sheet["joins"][1])]
+    assert ("pain_point", "title") in analysis.refs[id(sheet["joins"][0])]
+
+
+def test_a_join_must_follow_a_link_from_an_earlier_name():
+    bad_source = joined_sheet(joins=[{"as": "pain", "source": {"record_type": PAIN}}])
+    assert "nodes[0].joins[0].source.linked_from" in errors(bad_source)
+    forward_reference = joined_sheet(joins=[
+        {"as": "who", "source": {"record_type": "stakeholder", "linked_from": "pain"}},
+        {"as": "pain", "source": {"record_type": PAIN, "linked_from": "req"}},
+    ])
+    assert "not the name of an enclosing block" in errors(forward_reference)["nodes[0].joins[0].source.linked_from"]
+
+
+def test_join_names_are_unique_and_columns_must_name_a_known_join():
+    clash = joined_sheet(joins=[{"as": "req", "source": {"record_type": PAIN, "linked_from": "req"}}])
+    assert 'The name "req" is already used' in errors(clash)["nodes[0].joins[0].as"]
+    unknown = joined_sheet(columns=[{"field": "title", "from": "nope"}])
+    assert list(errors(unknown)) == ["nodes[0].columns[0].from"]
+    wrong_field = joined_sheet(columns=[{"field": "component", "from": "pain"}])  # a requirement field on a Pain Point
+    assert list(errors(wrong_field)) == ["nodes[0].columns[0].field"]
+
+
+def test_joins_are_capped_and_a_column_can_only_read_from_a_name_in_its_sheet():
+    many = joined_sheet(joins=[{"as": f"j{i}", "source": {"record_type": PAIN, "linked_from": "req"}} for i in range(6)])
+    assert "nodes[0].joins" in errors(many)
+    plain = sheets({"type": "sheet", "name": "S", "source": {"record_type": REQ}, "columns": [{"field": "title", "from": "x"}]})
+    assert list(errors(plain)) == ["nodes[0].columns[0].from"]  # only the sheet's own name ("record") exists
+
+
 # --- hash and helpers -------------------------------------------------------------------------
 
 

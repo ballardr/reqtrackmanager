@@ -2,7 +2,7 @@
 
 See [future-modules-2026-09-index.md](future-modules-2026-09-index.md) for cross-cutting architecture. Source requirement: [overview §47](completed/future-modules-2026-09-overview.md) (read-only; `docs/requirements.md` stays authoritative).
 
-**Status:** Re-planned 2026-10-20 (supersedes the 2026-09 plan, which predated the core report framework). Phases 0, 1 and 2 done 2026-10-26. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`.
+**Status:** Re-planned 2026-10-20 (supersedes the 2026-09 plan, which predated the core report framework). Phases 0 to 3 done 2026-10-26. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`.
 
 ## What this module is now
 
@@ -36,28 +36,28 @@ Three orthogonal axes, kept separate: **layout** (what is reported), **branding 
 | D3 | Canonical stored form is a versioned JSON tree (`schema_version`); a human-readable text view (directives) is generated from it and editable back, kept lossless by a round-trip test. Each block type declares both forms in one place. | User (JSON durable, text readable), Agent (design) |
 | D4 | Group 1 = coded templating (text view + live preview). Group 2 = WYSIWYG editing the same tree, library chosen in its own Phase 0. | User |
 | D5 | Widgets sit on their own line, `[[widget.key param=value]]`; parameters validated by the widget's existing `ReportParamDefinition`s; run with the runner's permissions. | User |
-| D6 | Output formats: PDF, DOCX, ODT, HTML, CSV, XLSX, ODS, as pluggable renderers. DOCX and XLSX ship first; ODT/ODS follow once the renderer interface has proved itself (staging is **Agent**; the user listed all seven for release one — confirm). | User / Agent |
+| D6 | Output formats: PDF, DOCX, ODT, HTML, CSV, XLSX, ODS, as pluggable renderers. DOCX and XLSX ship first; ODT/ODS follow once the renderer interface has proved itself (Phase 12). Signed off 2026-10-26. | User |
 | D7 | **PDF engine: stay on ReportLab.** The Phase 0 bake-off measured WeasyPrint at up to 14 times the memory (2.2 GB at 20,000 rows) and 3 to 10 times the time, so it was rejected; ReportLab embeds equations and SVG figures as vector through `svglib` (tested). HTML preview and the HTML format get their own renderer over the same neutral model. Known PDF limit: no Arabic/Indic shaping, and CJK needs a CJK font (`docs/decisions.md`, "Custom reports Phase 0"). | User |
 | D8 | Rejected: Jinja/Liquid/Handlebars. They emit text, not the block model, and open template injection and unvalidated field access. The parser is ours: each, if, field, widget; no expressions. | Agent |
 | D9 | Math: delimiters `\( \)` and `$$ $$`, never bare `$`. Recognised in authored text **and in record fields a provider marks math-capable**. TeX is untrusted: a command allow-list runs before conversion (no links, no includes). PDF/HTML show a server-made `ziamath` SVG (plain SVG 1 mode; the PDF embeds it through `svglib`), DOCX a tested OMML subset with an image fallback. | User (scope), Agent (delimiters, sanitiser, renderers) |
 | D10 | Every artefact type declares report fields or a stated reason, enforced by a test (same pattern as global search). Fields are opt-in; Restricted and consent-sensitive columns are excluded by omission. | User |
 | D11 | Provenance: a `GeneratedReport` row per run (layout id+version, params, scope, caller, UTC time, engine version, format, widgets used, record counts and, for versioned types, record versions; baseline optional until Module 8). No output at rest for synchronous runs. | User (row only), Agent (fields) |
 | D12 | Layouts live at organisation **and** project level from day one. | User |
-| D13 | New fine-grained permission "manage report layouts", grantable to users and groups; org admins hold it by default; project admins for their own project's layouts. Running needs only access to the report and the data. | User |
+| D13 | New fine-grained permissions "manage organisation report layouts" and "manage project report layouts" (two, signed off 2026-10-26), grantable to users and groups; org admins hold the first by default; project admins the second for their own project. Running needs only access to the report and the data. | User |
 | D14 | Runs are synchronous with node/depth/row caps and a timeout; a run expected to exceed a threshold becomes an async job, the user is notified when the download is ready, and **only async output is stored**, expiring after an organisation-set limit (capped by a platform ceiling). | User, Agent (mechanism) |
-| D15 | Project-level layout visibility is **additive** (platform starters + organisation + nearest ancestors' + own, de-duplicated by name; a project can hide an inherited one). The Action Types "own rows, else ancestor's" rule would hide every inherited layout as soon as a project made one. Needs user sign-off as it departs from the reference implementation. | Agent (proposed) |
-| D16 | A layout is configuration, not an artefact type: no `PREFIX-nnn` code, not linkable, not in global search. Record in `docs/decisions.md` when built. | Agent (proposed) |
+| D15 | Project-level layout visibility is **additive** (platform starters + organisation + nearest ancestors' + own, de-duplicated by name; a project can hide an inherited one). The Action Types "own rows, else ancestor's" rule would hide every inherited layout as soon as a project made one. Signed off 2026-10-26. | User |
+| D16 | A layout is configuration, not an artefact type: no `PREFIX-nnn` code, not linkable, not in global search. Signed off 2026-10-26 with the condition that nothing may prevent promoting a layout to an artefact type later (decisions log, "Custom reports Phase 2", decision 14). | User |
 
 ## Status / Resume Here
 
-3 / 16 phases complete (Phases 0 to 2, 2026-10-26; findings in `docs/decisions.md`, "Custom reports Phase 0", "Phase 1" and "Phase 2"). Phase 3 is next (Phases 4 and 5 can also start). D6, D15 and D16 still need user sign-off before Phases 3 and 12; the Phase 2 entry also asks whether a table-family sheet may stay a flat single-type table. Phase 3 must also ship the seeds and project/organisation bundle hooks for `report_layouts`, which Phase 2 left out because nothing can create a layout yet.
+4 / 16 phases complete (Phases 0 to 3, 2026-10-26; findings in `docs/decisions.md`, "Custom reports Phase 0" to "Phase 3"). Phases 4 (text view) and 5 (run pipeline) can start. Phase 3 shipped the tier endpoints, the two manage permissions (server administrators are not exempt), additive visibility with hide/restore, the bundle sections and the seeds; it has **no UI** (the project panel for hide/restore and the designer arrive in Phase 8) and no MCP tools (Phase 5). A merge never overwrites a layout: a taken name imports as "<name> (imported)".
 
 | # | Phase | Group | Status |
 |---|-------|-------|--------|
 | 0 | Exploratory: PDF-engine bake-off, math, ODF libraries, tree schema | 1 | [x] |
 | 1 | Report field registry and traversal | 1 | [x] |
 | 2 | Layout model, tree schema, versioning, evaluator | 1 | [x] |
-| 3 | Tiers, permission, hide/restore, bundle export/import | 1 | [ ] |
+| 3 | Tiers, permission, hide/restore, bundle export/import | 1 | [x] |
 | 4 | Text view: parser, serialiser, round-trip | 1 | [ ] |
 | 5 | Run pipeline: caps, provenance, catalogue and MCP merge | 1 | [ ] |
 | 6 | Widgets | 1 | [ ] |
@@ -98,7 +98,7 @@ Each phase: **Why** (risk addressed) and **Outcome**. Every phase also carries t
 
 **2 — Layout model and evaluator.** `ReportLayout` and immutable `ReportLayoutVersion` rows (tree + hash; editing creates a version; a run pins one). Tree schema validated on save: depth and node caps, field names against the registry, widget params against declarations, no raw HTML block. Evaluator walks the tree for the caller and emits the neutral model; placeholders are substituted into parsed text blocks, extending the existing rule that a value never becomes markup. *Why:* §47.8 requires versioned templates; injection and unbounded work are the main risks. *Outcome:* the user's example (requirements by component and category → linked Pain Points by title → affected Stakeholders) runs from a layout.
 
-**3 — Tiers, permission, hide/restore, bundle.** Organisation and project scope per D12/D15; the "manage report layouts" permission (users and groups, per the parity rule); hide/restore of inherited layouts via `ProjectDefinitionSuppression`; layouts and their versions travel in the org and project bundles. *Why:* project-level and org-default rules in CLAUDE.md. *Outcome:* a project admin can author, hide an inherited layout and restore it.
+**3 — Tiers, permission, hide/restore, bundle.** Organisation and project scope per D12/D15; two "manage report layouts" permissions, organisation and project (each grantable to users and groups, per the parity rule); hide/restore of inherited layouts via `ProjectDefinitionSuppression`; layouts and their versions travel in the org and project bundles. *Why:* project-level and org-default rules in CLAUDE.md. *Outcome:* a project admin can author, hide an inherited layout and restore it.
 
 **4 — Text view.** Parser and serialiser for the directive syntax; round-trip property test (tree → text → tree) and error positions in messages. *Why:* D3 only holds if the two forms cannot drift. *Outcome:* every block type is editable as text.
 
@@ -149,9 +149,9 @@ Each phase: **Why** (risk addressed) and **Outcome**. Every phase also carries t
 
 1. Tree vocabulary drafted in Phase 0; the text syntax's exact grammar is Phase 4's.
 2. Sync/async threshold: a cheap count pre-pass against a limit is proposed (an in-flight hand-off across workers is not) — **Agent**, tune with data.
-3. D15 (additive project visibility) and D16 (layouts are not artefact types) need sign-off.
-4. D6 staging of ODT/ODS: confirm Phase 12 is acceptable for release one.
-5. Whether the manage permission is separate for org and project tiers (proposed: one permission, scoped by where it is granted).
+3. D15 and D16: signed off 2026-10-26.
+4. D6 staging of ODT/ODS: signed off 2026-10-26.
+5. Manage permission: two separate permissions (organisation layouts, project layouts), signed off 2026-10-26.
 6. Restricted-TeX subset: `latex2mathml` has no macros, so the sanitiser allow-lists commands rather than capping expansion; the exact allow-list is Phase 9's.
 
 ## Acceptance criteria (overview §48, plus this plan)

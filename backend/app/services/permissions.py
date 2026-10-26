@@ -30,6 +30,8 @@ ADMINISTRATIVE_PERMISSIONS: tuple[str, ...] = (
     "manage_integrations",
     "grant_roles",
     "export_personal_data",
+    "manage_org_report_layouts",
+    "manage_project_report_layouts",
 )
 """Short, explicit list of non-artefact administrative permissions — hand-maintained here rather than derived from any registry, since
 these describe fixed organisational admin actions, not a per-artefact-type
@@ -45,6 +47,12 @@ note for that atom's full, deliberately documented scope.
 table (`services.record_policy`) when the organisation's policy also allows them; it grants no
 read access by itself. Held by organisation admins, and in a project by project administrators
 and managers.
+
+`manage_org_report_layouts` and `manage_project_report_layouts` let their holder create, edit, version,
+delete and (for a project) hide or restore custom report layouts at the organisation level and in a project.
+They are two atoms, not one scoped by grant, so a person can be trusted with a project's layouts without
+being able to change the ones every project in the organisation inherits. Running a layout needs neither.
+Organisation admins hold both; project administrators hold the project one in their project.
 """
 
 

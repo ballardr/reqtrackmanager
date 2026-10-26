@@ -476,6 +476,94 @@ def test_a_sheet_reports_unseen_records_as_a_warning(world, db, monkeypatch):
     assert result.warnings == ['Sheet "Pain": 1 record(s) not shown (not accessible to you, or not available).']
 
 
+def impact_sheet(**overrides: Any) -> dict[str, Any]:
+    sheet = {
+        "type": "sheet", "name": "Impact", "source": {"record_type": REQ, "sort": [{"field": "title"}]}, "as": "req",
+        "joins": [
+            {"as": "pain", "source": {"record_type": PAIN, "linked_from": "req", "sort": [{"field": "title"}]}},
+            {"as": "who", "source": {"record_type": STAKEHOLDER, "linked_from": "pain", "sort": [{"field": "title"}]}},
+        ],
+        "columns": [
+            {"field": "title", "label": "Requirement"}, {"field": "title", "from": "pain", "label": "Pain point"},
+            {"field": "title", "from": "who", "label": "Stakeholder"}, {"field": "role", "from": "who"},
+        ],
+    }
+    return {"schema_version": 1, "family": "table", "nodes": [{**sheet, **overrides}]}
+
+
+def test_a_sheet_joins_requirements_pain_points_and_stakeholders_one_row_per_combination(world, db):
+    project = world.project("Join P")
+    a, b, c = (requirement(world, project, t) for t in ("A req", "B req", "C req"))
+    late, lost, noisy = (world.pain_point(project, t) for t in ("Late", "Lost", "Noisy"))
+    pat, sam = stakeholder(world, project, "Pat", "Analyst"), stakeholder(world, project, "Sam", "Buyer")
+    for req, pain in ((a, late), (a, lost), (b, noisy)):
+        world.link((REQ, req), (PAIN, pain))
+    world.link((STAKEHOLDER, pat), (PAIN, late))
+    world.link((STAKEHOLDER, sam), (PAIN, late))
+    world.link((STAKEHOLDER, sam), (PAIN, noisy))
+
+    sheet = run(db, world, project, impact_sheet()).sheets[0]
+
+    assert sheet.columns == ["Requirement", "Pain point", "Stakeholder", "Role"]
+    assert sheet.rows == [
+        ["A req", "Late", "Pat", "Analyst"],     # a pain point with two stakeholders: two rows
+        ["A req", "Late", "Sam", "Buyer"],
+        ["A req", "Lost", "", ""],               # no stakeholders: kept, blank (left join)
+        ["B req", "Noisy", "Sam", "Buyer"],
+        ["C req", "", "", ""],                   # no pain points: kept, everything downstream blank
+    ]
+    assert c  # created, linked to nothing
+
+
+def test_a_join_filters_and_hides_like_any_other_source(world, db, monkeypatch):
+    project = world.project("Join filter P")
+    req = requirement(world, project, "R")
+    world.link((REQ, req), (PAIN, world.pain_point(project, "Keep")))
+    world.link((REQ, req), (PAIN, world.pain_point(project, "Drop")))
+    where = [{"field": "title", "op": "eq", "value": "keep"}]
+    tree = impact_sheet(joins=[{"as": "pain", "source": {"record_type": PAIN, "linked_from": "req", "where": where}}],
+                        columns=[{"field": "title"}, {"field": "title", "from": "pain"}])
+    assert run(db, world, project, tree).sheets[0].rows == [["R", "Keep"]]
+
+    deny(monkeypatch, "pain_point:view")
+    result = run(db, world, project, tree)
+    assert result.sheets[0].rows == [["R", ""]]
+    assert result.warnings == ['Sheet "Impact": 2 record(s) not shown (not accessible to you, or not available).']
+    assert "Keep" not in repr(result.sheets)
+
+
+def test_a_parent_in_many_rows_has_its_unseen_records_counted_once(world, db, monkeypatch):
+    project = world.project("Join count P")
+    req = requirement(world, project, "R")
+    for title in ("One", "Two"):
+        world.link((REQ, req), (PAIN, world.pain_point(project, title)))
+    world.link((STAKEHOLDER, stakeholder(world, project, "Hidden Sam")), (REQ, req))
+    deny(monkeypatch, "stakeholder")
+    tree = impact_sheet(joins=[
+        {"as": "pain", "source": {"record_type": PAIN, "linked_from": "req", "sort": [{"field": "title"}]}},
+        {"as": "who", "source": {"record_type": STAKEHOLDER, "linked_from": "req"}},
+    ], columns=[{"field": "title"}, {"field": "title", "from": "pain"}, {"field": "title", "from": "who"}])
+
+    result = run(db, world, project, tree)
+
+    # The requirement is in two rows (two Pain Points) but its one unseen Stakeholder is counted once.
+    assert result.sheets[0].rows == [["R", "One", ""], ["R", "Two", ""]]
+    assert result.warnings == ['Sheet "Impact": 1 record(s) not shown (not accessible to you, or not available).']
+    assert "Hidden Sam" not in repr(result.sheets)
+
+
+def test_a_join_that_explodes_is_stopped(world, db, monkeypatch):
+    project = world.project("Explode P")
+    req = requirement(world, project, "R")
+    for i in range(4):
+        world.link((REQ, req), (PAIN, world.pain_point(project, f"P{i}")))
+    monkeypatch.setattr(report_layout_eval, "MAX_OUTPUT", 3)
+
+    with pytest.raises(LayoutLimitError, match="too large"):
+        run(db, world, project, impact_sheet(joins=[{"as": "pain", "source": {"record_type": PAIN, "linked_from": "req"}}],
+                                             columns=[{"field": "title"}, {"field": "title", "from": "pain"}]))
+
+
 # --- limits and refusals ----------------------------------------------------------------------
 
 
