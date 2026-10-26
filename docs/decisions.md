@@ -12273,3 +12273,44 @@ A cheap count pre-pass (record counts per `each` source, multiplied through nest
 ### Not applicable, checked
 
 *Time:* no new time field; a version's save time is a past instant in UTC. *Users and groups parity:* the atoms are grantable to a group (tested); no person field added. *Search, codes, MCP:* a layout is still not an artefact type (D16); MCP tools arrive with the run pipeline. *UI, Playwright, Storybook, website:* no screen yet (the designer is a later phase), so there is nothing to render or test in a browser; the role-management page lists the two atoms because they appear in the permission list. *Seeds:* extended as above (written against the API; not run against a fresh stack in this change). *IPv6:* no listener.
+
+
+## Custom reports Phase 4: the text view (2026-10-26)
+
+**Decided by: Agent** (grammar and design), within D3 (the User's decision that the JSON tree is canonical and a readable text view is generated from it and editable back, kept lossless by a round-trip test) and D5/D8 (no expressions, no template language).
+
+### What was built
+
+- `services/report_layout_text.py`: `parse_text` (text to tree, positioned errors) and `format_tree` (tree to text), a registry of per-block text forms (`register_text_form`), grammar documented in the module docstring and `docs/modules.md` §4n.
+- `POST .../report-layouts/text/parse` and `.../text/format` at the organisation and project tier (`routers/report_layouts.py`), behind the same manage permission as reading a tree. They store and audit nothing.
+- Tests: `test_report_layout_text.py` (no database: 227 cases) and `test_report_layout_text_api.py`.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Lossless means exactly equal, not equivalent.** `parse_text(format_tree(t)) == t` for every valid tree, including keys present but empty (`where: []`, `link_types: []`, `else_children: []`, `joins: []`, `descending: false`, `level: 1`), so a layout opened as text and saved unchanged has the same hash and makes no new version. Tested over a hand-made corpus of awkward values and 150 seeded random trees (every one valid by construction; the test fails if the generator stops producing `if` or `group`). Explicit markers (`where none`, `via none`, `sort none`, `@joins none`, `sort x asc`) carry the empty cases. | Agent |
+| 2 | **Directive per line, plain lines are text.** `@name clauses`, closed by `@end` for containers; any other line is Markdown text, so prose is typed as prose. A text line starting `@` is written `@@`. This replaces the Phase 0 sketch's `[[widget …]]`-style line for blocks that are not widgets; widgets (D5, `[[widget.key a=b]]`) register their own text form in Phase 6. | Agent |
+| 3 | **Text that cannot be plain lines has two explicit forms.** Edge blank lines, `\r`, or a text block directly after another use `@text … @end` or `@text "json"`, so nothing is lost and adjacent text blocks stay separate. | Agent |
+| 4 | **Quoting is by need.** Names, fields and enum-like values are bare; anything else is JSON-quoted (`"in review"`, dates, numbers-as-text). A bare `true`/`false`/number is a bool/number, so a text value that looks like one is always written quoted. Headings are the rest of the line unless that is ambiguous. | Agent |
+| 5 | **Syntax first, then meaning.** A syntax error gives line and column and no tree (indexes would be wrong); a clean parse runs `validate_tree` and reports each error at the line of the block (or column/join line) it concerns, with the path relative to that block. The parser never duplicates a rule the validator owns (families, field names, operators per kind). | Agent |
+| 6 | **Bounded input.** 1,000,000 characters; nesting capped at the tree's `MAX_DEPTH` and blocks at `MAX_NODES` while parsing (an iterative frame stack, so hostile nesting cannot recurse); errors stop at 50. Pathological lines (long runs of quotes, backslashes, commas, `@`) are tested. | Agent |
+| 7 | **One text form per block type, enforced.** A test fails if a registered block type has no text form (or the reverse), as for evaluators, so Phases 6 and 9 cannot ship a block the designer cannot show. | Agent |
+| 8 | **The text view is always schema version 1** (the header carries the family and orientation only); a future tree version needs a header token when it exists. | Agent |
+
+### Review (identify, verify, remediate)
+
+*Identify:* hostile or huge text exhausting the parser (deep nesting, millions of blocks, regex backtracking); a text line being read as a directive (injection of a block via a record value is not possible here, since text is author input, but an `@end` line in prose could close a block early); the parser accepting something the validator rejects, or the reverse; layout text in logs or the audit trail; the endpoints reachable without the manage permission. *Verify:* tests for each cap, for 20,000-token and 5,000-character pathological lines, for prose containing `@end`, `@@`, indented `@` and `[[widget` lines, for the permission gate at both tiers (member 403/404, anonymous 401/403) and for the secret phrase appearing neither in the log nor in a new audit row. *Remediate:* three defects found and fixed while testing: an infinite loop when mapping a root-level validator error (`orientation`) to its line, a text block losing its indentation when inside a block's `@text`, and whitespace-only lines inside text being read back as empty. No policy regression: the text is the same Confidential content as the tree (data-classification policy already lists report layouts) and is neither logged nor audited.
+
+### Not applicable, checked
+
+*Time:* no time field; condition values keep the tree's rules (instants are UTC text, dates plain). *Users and groups parity:* no person-valued field (a `principal` field's value is compared as text, as in the tree). *Module boundary:* no per-module code; block text forms register through a generic extension point. *Search, codes, MCP, seeds, bundles:* the text view is a view of data already covered (a bundle carries the tree, not the text); MCP tools arrive with the run pipeline. *UI, Playwright, Storybook, website:* no screen yet; the designer (a later phase) is the first caller of the two endpoints and carries the user-facing syntax reference. *IPv6:* no listener.
+
+
+## Backend type checking: mypy with a ratchet baseline (2026-10-26)
+
+**Decided by: User** (asked for type checking to be added and set up); the baseline approach is **Agent**'s.
+
+- `mypy==2.4.0` and the stub packages for the typed-by-stub libraries (`types-boto3[s3]`, `types-passlib`, `types-qrcode`, `types-reportlab`) are pinned in `backend/requirements.txt` beside `ruff` and `pytest`. APScheduler 3.x has neither a `py.typed` marker nor a stub package, so it alone has an `ignore_missing_imports` override in `backend/pyproject.toml`. `check_untyped_defs`, `warn_unused_ignores` and `warn_redundant_casts` are on.
+- The first run found 1,095 existing errors in about 150 files (mostly `Optional` results used without narrowing, e.g. `db.get(...)`). Fixing them in this change would have touched code unrelated to it, and a gate that starts red is not run, so `backend/scripts/check_mypy.py` is a ratchet in the style of `check_field_help.py`: `backend/mypy_baseline.json` counts findings per file, error code and message; any finding not in it fails, and so does a fixed finding still listed (run `--update`), so the debt only shrinks. It is a CI step after `ruff` in `backend-tests`. The baseline is a record of debt, not a licence: new code is fixed, not baselined, and no `# type: ignore` was added. The Phase 3 and 4 report-layout files are clean (four findings fixed on the way: a `Literal` origin, an untyped scratch dict, an optional user id, a response-model list).
+- Left for later, as its own sweep: burn the baseline down (`python scripts/check_mypy.py --list`), starting with the `union-attr`/`arg-type` families in `app/modules/context_strategy/project_router.py`, `app/modules/compliance/service.py` and `app/routers/change_requests/workflow.py`. A global `mypy` outside the project virtualenv gives meaningless results (missing dependencies, wrong Python), which is why the docs say to use `.venv`.

@@ -23,3 +23,18 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
+
+[tool.mypy]
+# Static type check of the application package (`mypy` from backend/). Existing findings are
+# recorded in `mypy_baseline.json` and `scripts/check_mypy.py` fails on any finding not in it, so
+# the debt can only shrink (a finding is removed from the baseline as it is fixed).
+python_version = "3.12"
+files = ["app"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+# APScheduler 3.x ships no stubs and no `py.typed`, and no stub package exists for it.
+module = ["apscheduler.*"]
+ignore_missing_imports = true

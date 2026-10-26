@@ -9,7 +9,7 @@
 #                          actually needs (db, storage, mailhog, backend — not
 #                          frontend/mcp-server/keycloak, which only
 #                          e2e-tests below exercises); backend pytest with
-#                          coverage + JUnit reporting, ruff lint.
+#                          coverage + JUnit reporting, ruff lint, mypy ratchet.
 #   3. e2e-tests         - the full dev/test stack (adds frontend, mcp-server,
 #                          keycloak on top of backend-tests' subset), the
 #                          mcp-server's own integration test suite, then the
@@ -397,6 +397,12 @@ jobs:
       - name: Lint backend (ruff)
         working-directory: tests/container
         run: docker compose exec -T backend ruff check .
+
+      # Ratchet: fails on any type error not in backend/mypy_baseline.json (and on a fixed one still
+      # listed, so the baseline only shrinks). Run `python scripts/check_mypy.py --update` after fixing.
+      - name: Type-check backend (mypy)
+        working-directory: tests/container
+        run: docker compose exec -T backend python scripts/check_mypy.py
 
       # The backup tool's tests need restic, age and pg_dump 16, which only the `backup` image
       # has; REQUIRE_DR_TOOLS makes a missing binary fail the test instead of skipping it, so the

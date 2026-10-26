@@ -1314,9 +1314,44 @@ flowchart LR
 - **Limits.** Authoring caps in `report_layout_tree` (`MAX_DEPTH`, `MAX_NODES`, `MAX_COLUMNS`, text and size caps);
   run caps in `report_layout_eval` (`MAX_WORK`, `MAX_OUTPUT`, a wall-clock timeout) raise `LayoutLimitError`; a read that
   hit a traversal cap adds a warning instead.
+- **Text view.** `services/report_layout_text.py` reads and writes the tree as lines a person can type
+  (`parse_text`, `format_tree`); `POST .../report-layouts/text/parse` and `.../text/format` expose it at both tiers for
+  the designer (manage permission, nothing stored, the text never logged). `parse_text(format_tree(t))` returns `t`
+  exactly for every valid tree, so editing as text and saving unchanged makes no new version. A syntax error gives a
+  line and column and no tree; otherwise the validator runs and each of its errors is reported at its block's line.
+
+```mermaid
+flowchart LR
+    X["Text view<br/>@each … @end"] -->|"parse_text"| T["Layout tree"]
+    T -->|"format_tree"| X
+    T --> V["validate_tree"]
+    V -->|"errors mapped to lines"| X
+```
+
+  Grammar: first line `@layout document [portrait|landscape]` or `@layout table`; a block is `@name …` and
+  `each`, `group`, `if` (with `@else`), `table`, `sheet` and `@text` close with `@end`. A source is a record type or
+  `in <group>` then any of `from <name>`, `via "<link type>", …`, `direction <d>`, `archived true|false`,
+  `where <field> <op> [value, …]`, `sort <field> [asc|desc]`, plus the block's `as`, `by`, `empty "<text>"`
+  (`none` after `via`, `where`, `sort` is an empty list). Table and sheet columns and joins are `@column
+  [name.]field "label"` and `@join <source> as <name>` lines. A line that is not a directive is text; a text line
+  starting `@` is written `@@`.
+
+```
+@layout document
+@group requirement by component as comp
+  @heading {{comp.value}}
+  @each in comp sort title as req
+    @heading level=3 {{req.code}} {{req.title}}
+    @table stakeholder from req empty "No stakeholders."
+      @column title "Stakeholder"
+    @end
+  @end
+@end
+```
 - **Extending.** A later block type (widget, equation) calls `report_layout_tree.register_block_spec` (its
-  validator) and `report_layout_eval.register_evaluator` (its evaluation); `backend/tests/test_report_layout_eval.py`
-  fails when one exists without the other. No core file is edited per block type.
+  validator), `report_layout_eval.register_evaluator` (its evaluation) and `report_layout_text.register_text_form`
+  (its text form); `backend/tests/test_report_layout_eval.py` and `test_report_layout_text.py` fail when one exists
+  without the others. No core file is edited per block type.
 - **Time.** A layout stores no schedule. Run times are UTC instants; `instant` conditions compare as UTC whatever zone
   the literal is written in; `date` conditions compare plain dates.
 

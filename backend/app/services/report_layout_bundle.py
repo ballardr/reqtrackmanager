@@ -56,7 +56,7 @@ def _layout_json(db: Session, layout: ReportLayout) -> dict[str, Any]:
         "versions": [
             {
                 "version": v.version, "schema_version": v.schema_version, "tree": v.tree, "comment": v.comment,
-                "created_by_email": emails.get(v.created_by), "created_at": v.created_at.isoformat(),
+                "created_by_email": emails.get(v.created_by) if v.created_by else None, "created_at": v.created_at.isoformat(),
             }
             for v in reversed(versions)
         ],

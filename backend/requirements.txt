@@ -61,3 +61,10 @@ apscheduler==3.10.4
 # 10 open Dependabot alerts against it) entirely rather than just patching
 # its version.
 joserfc==1.7.4
+# Static type checking (`mypy` from backend/, gated by scripts/check_mypy.py in CI) and the stub
+# packages for the untyped libraries it checks against (APScheduler has none; see pyproject.toml).
+mypy==2.4.0
+types-boto3[s3]==1.43.118
+types-passlib==1.7.7.20260211
+types-qrcode==8.2.0.20260518
+types-reportlab==5.0.0.20261008
