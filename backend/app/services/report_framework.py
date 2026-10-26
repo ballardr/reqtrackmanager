@@ -1094,7 +1094,8 @@ class ReportCatalogueEntryOut(BaseModel):
     params: list[ReportParamOut]
 
 
-def _param_out(param: ReportParamDefinition) -> ReportParamOut:
+def param_out(param: ReportParamDefinition) -> ReportParamOut:
+    """A declared parameter in the shape the catalogue (and the layout designer's widget list) returns."""
     return ReportParamOut(
         name=param.name, type=param.type, default=param.default,
         choices=list(param.choices) if param.choices is not None else None,
@@ -1114,7 +1115,7 @@ def _entry(
         formats=list(REPORT_FORMATS), supports_include_children=scope == "project", supports_project_filter=scope == "organization",
         breakdown_path=f"{path}/by-project" if scope == "organization" else None,
         projects=[ReportProjectOut(id=p.id, name=p.name) for p in projects],
-        params=[_param_out(p) for p in definition.params],
+        params=[param_out(p) for p in definition.params],
     )
 
 

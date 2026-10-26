@@ -17,6 +17,9 @@ changed where it is owned. Running a layout is a later endpoint and needs neithe
 `POST .../text/parse` and `.../text/format` convert between a tree and its text view
 (`services.report_layout_text`) for the designer; they store nothing, need the manage permission and never
 log the text.
+
+`GET .../widgets` lists the report components a `widget` block can embed (`services.report_widgets`), narrowed to the
+modules the organisation (or project) can use, for the designer's widget picker.
 """
 
 from __future__ import annotations
@@ -48,6 +51,7 @@ from app.schemas.report_layout import (
     ReportLayoutVersionOut,
     ReportLayoutVersionSummaryOut,
     ReportLayoutVisibilitySet,
+    ReportWidgetOut,
 )
 from app.services import report_layout_scope, report_layout_text, report_layouts
 from app.services.rbac import (
@@ -59,8 +63,10 @@ from app.services.rbac import (
     require_permission,
     require_project_view_or_manage,
 )
+from app.services.report_framework import param_out
 from app.services.report_layout_scope import Origin, ScopedLayout
 from app.services.report_layout_tree import InvalidLayoutError
+from app.services.report_widgets import WidgetInfo, widgets_for_organization, widgets_for_project
 
 manage_org_layouts = require_permission(MANAGE_ORG_REPORT_LAYOUTS, server_admin_bypass=False)
 manage_project_layouts = require_permission(MANAGE_PROJECT_REPORT_LAYOUTS, server_admin_bypass=False)
@@ -124,6 +130,17 @@ def _format_text(body: ReportLayoutTextFormat) -> ReportLayoutTextOut:
         return ReportLayoutTextOut(text=report_layout_text.format_tree(body.tree))
     except InvalidLayoutError as exc:
         raise _bad_request(exc) from exc
+
+
+def _widgets_out(widgets: list[WidgetInfo]) -> list[ReportWidgetOut]:
+    """The widget list as the designer shows it, in registry order."""
+    return [
+        ReportWidgetOut(
+            key=w.key, title=w.title, description=w.part.description, kind=w.part.kind, report_title=w.report_title,
+            module_key=w.module_key, module_name=w.module_name, params=[param_out(p) for p in w.params],
+        )
+        for w in widgets
+    ]
 
 
 def _get_owned(db: Session, layout_id: UUID, *, organization_id: UUID, project_id: UUID | None) -> ReportLayout:
@@ -224,6 +241,14 @@ def parse_org_layout_text(body: ReportLayoutTextParse, current_user: User = Depe
 def format_org_layout_text(body: ReportLayoutTextFormat, current_user: User = Depends(manage_org_layouts)) -> ReportLayoutTextOut:
     """Writes a valid tree as its text view; stores nothing."""
     return _format_text(body)
+
+
+@org_router.get("/widgets", response_model=list[ReportWidgetOut])
+def list_org_widgets(
+    organization_id: UUID, current_user: User = Depends(manage_org_layouts), db: Session = Depends(get_db),
+) -> list[ReportWidgetOut]:
+    """The report components an organisation layout can embed: those of modules the organisation is entitled to and has enabled."""
+    return _widgets_out(widgets_for_organization(db, organization_id))
 
 
 @org_router.get("/{layout_id}", response_model=ReportLayoutDetailOut)
@@ -375,6 +400,14 @@ def format_project_layout_text(
 ) -> ReportLayoutTextOut:
     """Writes a valid tree as its text view; stores nothing."""
     return _format_text(body)
+
+
+@project_router.get("/widgets", response_model=list[ReportWidgetOut])
+def list_project_widgets(
+    project_id: UUID, current_user: User = Depends(manage_project_layouts), db: Session = Depends(get_db),
+) -> list[ReportWidgetOut]:
+    """The report components a project layout can embed: those of modules enabled for the project."""
+    return _widgets_out(widgets_for_project(db, _project_or_404(db, project_id)))
 
 
 @project_router.get("/{layout_id}", response_model=ReportLayoutDetailOut)

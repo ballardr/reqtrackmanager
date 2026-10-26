@@ -9,10 +9,15 @@ Responsibilities:
   field registry (`services.report_fields`), and emit `Heading`/`Paragraph`/`Table`/... blocks.
 - Substitute `{{alias.field}}` and the global `{{project_name}}`-style placeholders into the parsed
   text of headings, text blocks, table cells and empty-state lines.
-- Apply `where`, `sort` and `group` in memory over typed values, and `if` on one field.
+- Apply `where`, `sort` and `group` in memory over typed values, and `if` on a condition. A condition is a test
+  of one field (`eq`, `ne`, `contains`, `in`, `not_in`, comparisons, `empty`) or an `all` / `any` / `not` of
+  conditions.
 - Bound the work: iteration, output-row and wall-clock caps raise `LayoutLimitError`; a traversal
   that hit its record cap adds a warning and a visible note instead of failing.
 - Count what the caller could not see (never name it) and report it as a note.
+- Run `widget` blocks: one component (a table, the figures, the notes) of a module report, for the project
+  being evaluated, inserted as blocks (`services.report_widget_run`); the widgets that ran and a digest of
+  what each report produced go into the run's provenance.
 
 Design decisions:
 - **Authorisation is the traversal layer's, nothing here.** Every record this module reads came out of
@@ -33,14 +38,23 @@ Design decisions:
 - Past instants stay UTC and dates are plain dates (`format_value`); no server-local time or
   timezone conversion happens here.
 
+- **A widget is one component of the report's own run, gated as the report is.** A report is collected once
+  per distinct parameter set however many of its components a layout embeds. It runs only where the report's module (and
+  sub-component) is enabled for the project; elsewhere the layout says so in a note and carries on, because
+  an organisation layout runs in many projects and a missing module is a fact about one of them. A report
+  that refuses its parameters (4xx) is shown as a note too, never as a failed layout; any other error is a
+  bug and propagates.
+
 Dependencies: `services.report_layout_tree` (validation), `services.report_fields`,
 `services.report_traversal`, `services.report_framework.ReportContext` (record codes),
-`services.link_type_scope` (link type names), `services.report_model` (output blocks).
+`services.link_type_scope` (link type names), `services.report_model` (output blocks),
+`services.report_widgets` and `services.report_widget_run` (widgets).
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import time
 import uuid
@@ -50,6 +64,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any
 
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
@@ -57,7 +72,7 @@ from app.models.report_layout import FAMILY_DOCUMENT
 from app.services.link_graph import ArtefactResolver
 from app.services.link_type_scope import resolve_link_type_scope
 from app.services.report_fields import RESERVED_FIELD_KEYS, FieldInfo, ReportRecord, field_catalogue, format_value, load_records
-from app.services.report_framework import ReportContext
+from app.services.report_framework import ReportContext, ReportResult
 from app.services.report_layout_tree import (
     DEFAULT_GROUP_ALIAS,
     DEFAULT_RECORD_ALIAS,
@@ -77,6 +92,8 @@ from app.services.report_model import (
     markdown_to_blocks,
 )
 from app.services.report_traversal import MAX_LINKED, MAX_ROOTS, LinkDirection, linked_records, root_records
+from app.services.report_widget_run import collect_widget, output_digest, part_blocks, widget_context
+from app.services.report_widgets import WidgetInfo, find_widget, typed_params, widget_available
 
 #: Most record visits (loop iterations over records, in all nested blocks) one run may make.
 MAX_WORK = 200_000
@@ -135,6 +152,7 @@ class EvaluatedLayout:
             `record_versions_truncated`).
         record_versions_truncated: Whether more versioned records than `MAX_RECORDED_VERSIONS` were in the
             report, so `record_versions` is incomplete (the digest still covers every record).
+        widgets: Keys of the widgets that ran (distinct, sorted); their output is covered by `source_digest`.
     """
 
     family: str
@@ -145,6 +163,7 @@ class EvaluatedLayout:
     source_digest: str = ""
     record_versions: dict[str, dict[str, int]] = field(default_factory=dict)
     record_versions_truncated: bool = False
+    widgets: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -239,7 +258,10 @@ def evaluate_layout(
     if tree["family"] == FAMILY_DOCUMENT:
         document = ReportDocument(title=title, blocks=run.blocks, landscape=tree.get("orientation") == "landscape")
     versions, truncated = run.record_versions()
-    return EvaluatedLayout(tree["family"], document, run.sheets, run.warnings, run.stats, run.source_digest(), versions, truncated)
+    return EvaluatedLayout(
+        tree["family"], document, run.sheets, run.warnings, run.stats, run.source_digest(), versions, truncated,
+        sorted(run.widget_keys),
+    )
 
 
 class _Run:
@@ -278,16 +300,25 @@ class _Run:
         self._linked: dict[int, _Linked] = {}
         #: Every record read so far, by type: the batch a nested linked source fetches for.
         self._pool: dict[str, dict[uuid.UUID, ReportRecord]] = defaultdict(dict)
+        #: Keys of the widgets that ran, and one `widget:<key>:<params>:<output digest>` line per run.
+        self.widget_keys: set[str] = set()
+        self._widget_lines: list[str] = []
+        #: A collected report (or why it could not be) per `<report key>|<params>`: its components share one run.
+        self.widget_results: dict[str, ReportResult | str] = {}
 
     def source_digest(self) -> str:
-        """SHA-256 hex over the records read: `type:id:last-change` per record, sorted.
+        """SHA-256 hex over the records read (`type:id:last-change` each) and what each widget produced, sorted.
 
         A versioned record's last-change time is its current version's, so a new version changes the digest.
+        A widget's data is not read through the record registry, so its output digest stands in for it.
         """
-        lines = sorted(
-            f"{artefact_type}:{record.id}:{record.updated_at.isoformat() if record.updated_at else ''}"
-            for artefact_type, records in self._pool.items() for record in records.values()
-        )
+        lines = sorted([
+            *(
+                f"{artefact_type}:{record.id}:{record.updated_at.isoformat() if record.updated_at else ''}"
+                for artefact_type, records in self._pool.items() for record in records.values()
+            ),
+            *self._widget_lines,
+        ])
         return hashlib.sha256("\n".join(lines).encode()).hexdigest()
 
     def record_versions(self) -> tuple[dict[str, dict[str, int]], bool]:
@@ -420,11 +451,13 @@ class _Run:
     # --- conditions, sort, group -----------------------------------------------------------
 
     def passes(self, record: ReportRecord, conds: list[dict[str, Any]]) -> bool:
-        """Whether `record` satisfies every `where` condition."""
+        """Whether `record` satisfies every `where` entry (each a condition or an `all` / `any` / `not` of them)."""
         info = self.catalogue(record.artefact_type)
-        return all(
-            matches_value(self.raw(record, c["field"]), info[c["field"]].kind, c["op"], c.get("value")) for c in conds
-        )
+
+        def leaf(c: dict[str, Any]) -> bool:
+            return matches_value(self.raw(record, c["field"]), info[c["field"]].kind, c["op"], c.get("value"))
+
+        return all(matches_condition(c, leaf) for c in conds)
 
     def sort_key(self, record: ReportRecord, key: str) -> Any:
         """A comparable form of a field value (text case-insensitively), `None` when empty."""
@@ -562,26 +595,56 @@ class _Run:
             self.emit(Note(f"{lead}{count} {what}{plural} not shown (not accessible to you, or not available)."))
 
 
+def matches_condition(node: dict[str, Any], leaf: Callable[[dict[str, Any]], bool]) -> bool:
+    """Whether a condition holds: a leaf (decided by `leaf`), or an `all` / `any` / `not` of conditions.
+
+    Args:
+        node: The condition (validated, so a boolean node has its list, or its one condition).
+        leaf: Decides one `{field, op, value}` (or `{ref, op, value}`) condition.
+    """
+    if "all" in node:
+        return all(matches_condition(n, leaf) for n in node["all"])
+    if "any" in node:
+        return any(matches_condition(n, leaf) for n in node["any"])
+    if "not" in node:
+        return not matches_condition(node["not"], leaf)
+    return leaf(node)
+
+
+def _typed(kind: str, value: Any) -> Any:
+    """A condition literal as the typed value a field of `kind` compares against."""
+    if kind == "date":
+        return date.fromisoformat(value)
+    if kind == "instant":
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return value
+
+
 def matches_value(actual: Any, kind: str, op: str, expected: Any) -> bool:
-    """Whether a typed value satisfies `op expected` (see `OPERATORS_BY_KIND`)."""
+    """Whether a typed value satisfies `op expected` (see `OPERATORS_BY_KIND`).
+
+    An empty value matches `empty`, `ne` and `not_in` and nothing else, so "everything except General" also keeps
+    the records that have no category.
+    """
     if op == "empty":
         return actual is None or actual == ""
     if op == "not_empty":
         return not (actual is None or actual == "")
     if actual is None or actual == "":
-        return op == "ne"
+        return op in ("ne", "not_in")
+    if op in ("in", "not_in"):
+        if kind in ("text", "principal", "enum"):
+            found = str(actual).casefold() in {str(e).casefold() for e in expected}
+        else:
+            found = actual in [_typed(kind, e) for e in expected]
+        return found if op == "in" else not found
     if kind in ("text", "principal", "enum"):
         have = str(actual).casefold()
-        if op == "in":
-            return have in {str(e).casefold() for e in expected}
         want = str(expected).casefold()
         return {"eq": have == want, "ne": have != want, "contains": want in have}[op]
     if kind == "bool":
         return (bool(actual) == expected) if op == "eq" else (bool(actual) != expected)
-    if kind == "date":
-        expected = date.fromisoformat(expected)
-    elif kind == "instant":
-        expected = datetime.fromisoformat(expected.replace("Z", "+00:00"))
+    expected = _typed(kind, expected)
     return {
         "eq": actual == expected, "ne": actual != expected, "gt": actual > expected,
         "gte": actual >= expected, "lt": actual < expected, "lte": actual <= expected,
@@ -662,17 +725,19 @@ def _eval_group(run: _Run, node: dict[str, Any], scope: Scope) -> None:
 
 
 def _eval_if(run: _Run, node: dict[str, Any], scope: Scope) -> None:
-    when = node["when"]
-    alias, member = when["ref"].split(".")
-    bound = scope[alias]
-    if bound.kind == "group":
-        actual: Any = bound.label if member == "value" else len(bound.members)
-        kind = "text" if member == "value" else "number"
-    else:
-        assert bound.record is not None
-        actual = run.raw(bound.record, member)
-        kind = run.catalogue(bound.record_type)[member].kind
-    chosen = node["children"] if matches_value(actual, kind, when["op"], when.get("value")) else node.get("else_children", [])
+    def leaf(when: dict[str, Any]) -> bool:
+        alias, member = when["ref"].split(".")
+        bound = scope[alias]
+        if bound.kind == "group":
+            actual: Any = bound.label if member == "value" else len(bound.members)
+            kind = "text" if member == "value" else "number"
+        else:
+            assert bound.record is not None
+            actual = run.raw(bound.record, member)
+            kind = run.catalogue(bound.record_type)[member].kind
+        return matches_value(actual, kind, when["op"], when.get("value"))
+
+    chosen = node["children"] if matches_condition(node["when"], leaf) else node.get("else_children", [])
     run.children(chosen, scope)
 
 
@@ -726,13 +791,61 @@ def _eval_sheet(run: _Run, node: dict[str, Any], scope: Scope) -> None:
         run.warn(f'Sheet "{node["name"]}": {count} record(s) not shown (not accessible to you, or not available).')
 
 
+def _widget_result(run: _Run, widget: WidgetInfo, params: dict[str, Any] | None) -> ReportResult | str:
+    """The report behind `widget` for these parameters, collected once per run; a string says why it could not be.
+
+    A module that is off for the project, or a report that rejects its parameters (4xx), is a reason rather than
+    an error: the layout carries on with a note and a warning. Any other exception is a bug and propagates.
+    """
+    cache_key = f"{widget.report_key}|{json.dumps(params or {}, sort_keys=True, separators=(',', ':'))}"
+    if cache_key in run.widget_results:
+        return run.widget_results[cache_key]
+    title = widget.report_title
+    outcome: ReportResult | str
+    if not widget_available(run.db, run.project, widget):
+        outcome = f'The "{title}" report is not available in this project.'
+        run.warn(f'The "{title}" report is not available in this project, so it was left out.')
+    else:
+        try:
+            outcome = collect_widget(run.db, widget, widget_context(run.ctx, widget, typed_params(widget, params)))
+        except HTTPException as exc:
+            reason = exc.detail if isinstance(exc.detail, str) else "it did not accept its settings"
+            outcome = f'The "{title}" report could not be produced: {reason}'
+            run.warn(outcome)
+        else:
+            run._widget_lines.append(f"widget:{cache_key}:{output_digest(outcome)}")
+    run.widget_results[cache_key] = outcome
+    return outcome
+
+
+def _eval_widget(run: _Run, node: dict[str, Any], scope: Scope) -> None:
+    """Inserts one component of a report: its table, headline figures or notes.
+
+    The widget adds no heading or sentence of its own; a component with nothing in it shows the block's
+    `empty_text` when there is one. A report that is unavailable or refuses its settings leaves a note.
+    """
+    widget = find_widget(node["key"])
+    assert widget is not None  # the tree was validated at the start of the run
+    result = _widget_result(run, widget, node.get("params"))
+    run.tick()  # a collector cannot be interrupted, so the deadline is checked as soon as it returns
+    if isinstance(result, str):
+        run.emit(Note(result))
+        return
+    run.widget_keys.add(widget.key)
+    blocks = part_blocks(result, widget.part, node.get("sort"), run.warn)
+    if blocks:
+        run.emit(*blocks)
+    elif node.get("empty_text"):
+        run.emit(Note(run.fill(node["empty_text"], scope)))
+
+
 for _key, _fn in (
     ("heading", _eval_heading), ("text", _eval_text), ("page_break", _eval_page_break), ("table", _eval_table),
-    ("each", _eval_each), ("group", _eval_group), ("if", _eval_if), ("sheet", _eval_sheet),
+    ("each", _eval_each), ("group", _eval_group), ("if", _eval_if), ("sheet", _eval_sheet), ("widget", _eval_widget),
 ):
     register_evaluator(_key, _fn)
 
 __all__ = [
     "DEFAULT_TIMEOUT_SECONDS", "EMPTY_GROUP_LABEL", "MAX_OUTPUT", "MAX_RECORDED_VERSIONS", "MAX_WORK", "EvalStats", "EvaluatedLayout",
-    "LayoutLimitError", "LayoutTimeoutError", "evaluate_layout", "matches_value", "register_evaluator",
+    "LayoutLimitError", "LayoutTimeoutError", "evaluate_layout", "matches_condition", "matches_value", "register_evaluator",
 ]

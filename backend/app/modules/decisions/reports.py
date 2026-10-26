@@ -64,6 +64,7 @@ from app.modules.decisions.models import Decision, DecisionTypeDefinition
 from app.modules.registry import (
     ReportDefinition,
     ReportParamDefinition,
+    ReportPartDefinition,
     get_artefact_summary,
     is_module_enabled_for_project,
 )
@@ -573,23 +574,40 @@ _REPORTS: tuple[ReportDefinition, ...] = (
         "d1", "decision-register", "Decision register",
         "Every Decision with its type, status, date, decision maker, owner and supersession.",
         collect_decision_register, params=(_STATUS, _DECISION_TYPE, _DATE_FROM, _DATE_TO, _INCLUDE_ARCHIVED),
+        parts=(
+            ReportPartDefinition("register", "Decisions"),
+            ReportPartDefinition("by_status", "By status"),
+            ReportPartDefinition("by_type", "By type"),
+        ),
         record_types=("decision",),
     ),
     ReportDefinition(
         "d2", "approval-ageing", "Approval ageing",
         "Proposed and Under review Decisions by days waiting, with overdue and decision-maker-less ones flagged.",
         collect_approval_ageing, params=(_OVERDUE_DAYS,),
+        parts=(
+            ReportPartDefinition("awaiting", "Awaiting a verdict"),
+            ReportPartDefinition("overdue", "Overdue"),
+            ReportPartDefinition("unassigned", "No decision maker"),
+        ),
         record_types=("decision",),
     ),
     ReportDefinition(
         "d3", "decision-log", "Decision log",
         "Decisions made in a period, with context, chosen option and rationale.",
         collect_decision_log, params=(_LOG_DATE_FROM, _DATE_TO),
+        parts=(
+            ReportPartDefinition("log", "Decisions made"),
+        ),
         record_types=("decision",),
     ),
     ReportDefinition(
         "d4", "rationale-coverage", "Rationale coverage",
         "Decisions with no linked artefact, and Requirements with no linked Decision.", collect_rationale_coverage,
+        parts=(
+            ReportPartDefinition("decisions_without_links", "Decisions with no linked artefact"),
+            ReportPartDefinition("requirements_without_decisions", "Requirements with no linked Decision"),
+        ),
         record_types=("decision", "requirement"),
     ),
 )

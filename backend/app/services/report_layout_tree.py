@@ -6,15 +6,18 @@ decides whether a tree may be saved or run.
 
 Responsibilities:
 - Define the tree vocabulary (`TREE_SCHEMA_VERSION`): document blocks `heading`, `text`, `table`,
-  `each`, `group`, `if`, `page_break`, and the table-family block `sheet` (a root source plus optional
-  left `joins` along links, one row per combination).
+  `each`, `group`, `if`, `page_break`, `widget` (one component of a module report, by key), and the table-family
+  block `sheet` (a root source plus optional left `joins` along links, one row per combination).
 - Validate a tree with positioned errors (`validate_tree`): shape, unknown keys, depth/node/size
   caps, record types and field names against the report field registry, operators and values per
-  field kind, aliases in scope and `{{alias.field}}` placeholders.
+  field kind, conditions combined with `all` / `any` / `not`, aliases in scope and `{{alias.field}}`
+  placeholders.
 - Report, per container block, which `(record type, field)` pairs its subtree needs, so the
   evaluator loads exactly those columns (`TreeAnalysis.refs`).
 - Hash a tree (`tree_hash`) for versioning and provenance.
-- Let other features add block types (`register_block_spec`: widgets, equations).
+- Check a `widget` block names a component in the widget catalogue (`services.report_widgets`)
+  and sets only parameters that report declares, with values of the declared type.
+- Let other features add block types (`register_block_spec`: equations).
 
 Design decisions:
 - **No expressions.** A value is a `{{alias.field}}` reference or a literal; a condition is one
@@ -23,15 +26,15 @@ Design decisions:
   registry omits (Restricted and consent-sensitive columns) or inject markup.
 - Strict shape: an unknown key is an error, so a typo is found when saved rather than ignored when run.
 - Everything an author can make unbounded is capped (`MAX_DEPTH`, `MAX_NODES`, `MAX_COLUMNS`,
-  `MAX_TEXT_CHARS`, `MAX_TREE_BYTES`); the evaluator caps what the data can make unbounded.
+  `MAX_TEXT_CHARS`, `MAX_WIDGET_REPORTS`, `MAX_TREE_BYTES`); the evaluator caps what the data can make unbounded.
 - Link types in a source are stored by **name** (forward or reverse), never id, so a layout moves
   between projects and organisations; the evaluator resolves them for the project it runs in.
 - The registry check is by key only. Whether the *runner* may see a type is decided at run time by
   the link graph's resolver, never at save time (an author may write a layout for a type they
   cannot read).
 
-Dependencies: `services.report_fields` (field catalogue), `modules.registry` (reportable types),
-`services.report_model` (the allow-listed global placeholder names).
+Dependencies: `services.report_fields` (field catalogue), `services.report_widgets` (widget catalogue),
+`modules.registry` (reportable types), `services.report_model` (the allow-listed global placeholder names).
 """
 
 from __future__ import annotations
@@ -49,13 +52,20 @@ from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE, LAYOUT_FAMIL
 from app.modules.registry import get_report_field_providers
 from app.services.report_fields import FieldInfo, UnknownReportFieldError, field_catalogue
 from app.services.report_model import PLACEHOLDER_NAMES
+from app.services.report_widgets import find_widget, list_widgets, param_problems
 
 TREE_SCHEMA_VERSION = 1
 
 MAX_DEPTH = 8
 MAX_NODES = 500
 MAX_COLUMNS = 30
+#: Most distinct reports (a report with one set of parameters) the widgets of one layout may run; the widgets of
+#: one report share a single run, so only this count, not the number of widget blocks, bounds the work they cause.
+MAX_WIDGET_REPORTS = 20
 MAX_CONDITIONS = 10
+#: Deepest nesting of `all` / `any` / `not` inside one condition.
+MAX_CONDITION_DEPTH = 4
+MAX_IN_VALUES = 20
 MAX_SORT = 3
 MAX_TEXT_CHARS = 20_000
 MAX_TREE_BYTES = 512_000
@@ -70,15 +80,19 @@ MAX_JOINS = 5
 
 #: Operators a field of each kind accepts. `empty`/`not_empty` take no value; `in` takes a list.
 OPERATORS_BY_KIND: dict[str, tuple[str, ...]] = {
-    "text": ("eq", "ne", "contains", "empty", "not_empty"),
-    "principal": ("eq", "ne", "contains", "empty", "not_empty"),
-    "enum": ("eq", "ne", "in", "empty", "not_empty"),
-    "number": ("eq", "ne", "gt", "gte", "lt", "lte", "empty", "not_empty"),
-    "date": ("eq", "ne", "gt", "gte", "lt", "lte", "empty", "not_empty"),
+    "text": ("eq", "ne", "contains", "in", "not_in", "empty", "not_empty"),
+    "principal": ("eq", "ne", "contains", "in", "not_in", "empty", "not_empty"),
+    "enum": ("eq", "ne", "in", "not_in", "empty", "not_empty"),
+    "number": ("eq", "ne", "gt", "gte", "lt", "lte", "in", "not_in", "empty", "not_empty"),
+    "date": ("eq", "ne", "gt", "gte", "lt", "lte", "in", "not_in", "empty", "not_empty"),
     "instant": ("gt", "gte", "lt", "lte", "empty", "not_empty"),
     "bool": ("eq", "ne"),
 }
 VALUELESS_OPERATORS = ("empty", "not_empty")
+#: Operators that take a list of values: the field matches when it equals any (`in`) or none (`not_in`) of them.
+LIST_OPERATORS = ("in", "not_in")
+#: The boolean keys of a condition node: `all` / `any` hold two or more conditions, `not` holds one.
+BOOLEAN_KEYS = ("all", "any", "not")
 
 #: What a group exposes to `{{alias.value}}`, `{{alias.count}}` and conditions.
 GROUP_FIELDS: dict[str, str] = {"value": "text", "count": "number"}
@@ -230,6 +244,7 @@ class TreeValidator:
         self._collectors: list[set[Ref]] = []
         self._catalogues: dict[str, dict[str, FieldInfo] | None] = {}
         self._sheet_names: set[str] = set()
+        self.widget_reports: set[str] = set()
 
     # --- driver ----------------------------------------------------------------------------
 
@@ -477,22 +492,66 @@ class TreeValidator:
         return binding
 
     def conditions(self, conds: Any, path: str, record_type: str) -> None:
-        """Validates a `where` list of `{field, op, value}` over `record_type`."""
-        if not isinstance(conds, list) or len(conds) > MAX_CONDITIONS:
+        """Validates a `where` list over `record_type`: every entry must hold (an implicit `all`).
+
+        An entry is a condition `{field, op, value}` or a boolean node (see `condition_node`).
+        """
+        if not isinstance(conds, list):
             self.error(path, f"Must be a list of at most {MAX_CONDITIONS} conditions.")
             return
+        leaves = [0]
         for i, cond in enumerate(conds):
-            here = f"{path}[{i}]"
-            if not isinstance(cond, dict):
-                self.error(here, "Must be an object.")
-                continue
-            self.check_keys(cond, here, required=("field", "op"), optional=("value",))
-            info = self.record_field(record_type, cond.get("field"), f"{here}.field")
-            if info is not None:
-                self.operator_and_value(cond, here, info.kind)
+            self.condition_node(cond, f"{path}[{i}]", leaf=lambda c, here: self._record_leaf(c, here, record_type), leaves=leaves)
+        if leaves[0] > MAX_CONDITIONS:
+            self.error(path, f"Too many conditions ({leaves[0]}; the limit is {MAX_CONDITIONS}).")
+
+    def _record_leaf(self, cond: dict[str, Any], path: str, record_type: str) -> None:
+        """A `{field, op, value}` condition over a record's fields."""
+        self.check_keys(cond, path, required=("field", "op"), optional=("value",))
+        info = self.record_field(record_type, cond.get("field"), f"{path}.field")
+        if info is not None:
+            self.operator_and_value(cond, path, info.kind)
+
+    def condition_node(
+        self, node: Any, path: str, *, leaf: Callable[[dict[str, Any], str], None], leaves: list[int], depth: int = 1,
+    ) -> None:
+        """Validates a condition: a leaf, or `{"all": [...]}` / `{"any": [...]}` (two or more) / `{"not": cond}`.
+
+        Args:
+            node: The condition.
+            path: Where it is.
+            leaf: Validates a leaf condition's own keys (it differs between a source's `where` and an `if`).
+            leaves: A one-item counter of leaves seen, so a `where` can be capped as a whole.
+            depth: Nesting depth of boolean nodes so far (1 = outermost).
+        """
+        if not isinstance(node, dict):
+            self.error(path, "Must be an object.")
+            return
+        boolean = [k for k in BOOLEAN_KEYS if k in node]
+        if not boolean:
+            leaves[0] += 1
+            if leaves[0] <= MAX_CONDITIONS:
+                leaf(node, path)
+            return
+        if len(node) != 1:
+            self.error(path, f'A "{boolean[0]}" condition has no other keys.')
+            return
+        if depth > MAX_CONDITION_DEPTH:
+            self.error(path, f"Conditions are nested too deeply (the limit is {MAX_CONDITION_DEPTH} levels).")
+            return
+        key = boolean[0]
+        body = node[key]
+        if key == "not":
+            self.condition_node(body, f"{path}.not", leaf=leaf, leaves=leaves, depth=depth + 1)
+            return
+        if not isinstance(body, list) or len(body) < 2:
+            self.error(f"{path}.{key}", f'"{key}" needs a list of two or more conditions (use the condition itself for one).')
+            return
+        for i, child in enumerate(body):
+            self.condition_node(child, f"{path}.{key}[{i}]", leaf=leaf, leaves=leaves, depth=depth + 1)
 
     def operator_and_value(self, cond: dict[str, Any], path: str, kind: str) -> None:
-        """Checks `cond["op"]` suits the field `kind` and `cond["value"]` is a literal of that kind."""
+        """Checks `cond["op"]` suits the field `kind` and `cond["value"]` is a literal (or, for `in`, a list) of that kind."""
         allowed = OPERATORS_BY_KIND.get(kind, ())
         op = cond.get("op")
         if op not in allowed:
@@ -506,11 +565,14 @@ class TreeValidator:
             self.error(f"{path}.value", "Required.")
             return
         value = cond["value"]
-        if op == "in":
-            if not isinstance(value, list) or not 0 < len(value) <= 20 or not all(
-                isinstance(v, str) and len(v) <= 200 for v in value
-            ):
-                self.error(f"{path}.value", "Must be a list of 1 to 20 texts.")
+        if op in LIST_OPERATORS:
+            if not isinstance(value, list) or not 0 < len(value) <= MAX_IN_VALUES:
+                self.error(f"{path}.value", f"Must be a list of 1 to {MAX_IN_VALUES} values.")
+                return
+            for i, item in enumerate(value):
+                problem = literal_problem(kind, item)
+                if problem:
+                    self.error(f"{path}.value[{i}]", problem)
             return
         problem = literal_problem(kind, value)
         if problem:
@@ -664,21 +726,77 @@ def _validate_group(v: TreeValidator, node: dict[str, Any], path: str) -> None:
 
 def _validate_if(v: TreeValidator, node: dict[str, Any], path: str) -> None:
     v.check_keys(node, path, required=("type", "when", "children"), optional=("else_children",))
-    when = node.get("when")
-    if not isinstance(when, dict):
-        v.error(f"{path}.when", "Must be an object.")
-    else:
-        v.check_keys(when, f"{path}.when", required=("ref", "op"), optional=("value",))
+    if "when" in node:
+        v.condition_node(node["when"], f"{path}.when", leaf=_validate_if_leaf(v), leaves=[0])
+    v.children(node, path)
+    v.children(node, path, "else_children")
+
+
+def _validate_if_leaf(v: TreeValidator) -> Callable[[dict[str, Any], str], None]:
+    """Validates one `{ref, op, value}` test of an `if` (`ref` is `name.field` of an enclosing block)."""
+
+    def leaf(when: dict[str, Any], path: str) -> None:
+        v.check_keys(when, path, required=("ref", "op"), optional=("value",))
         ref = when.get("ref")
         parts = ref.split(".") if isinstance(ref, str) else []
         if len(parts) != 2:
-            v.error(f"{path}.when.ref", 'Must be "name.field", for example "record.status".')
-        else:
-            kind = v.reference(parts[0], parts[1], f"{path}.when.ref")
-            if kind is not None:
-                v.operator_and_value(when, f"{path}.when", kind)
-    v.children(node, path)
-    v.children(node, path, "else_children")
+            v.error(f"{path}.ref", 'Must be "name.field", for example "record.status".')
+            return
+        kind = v.reference(parts[0], parts[1], f"{path}.ref")
+        if kind is not None:
+            v.operator_and_value(when, path, kind)
+
+    return leaf
+
+
+def _validate_widget_sort(v: TreeValidator, items: Any, path: str) -> None:
+    """A widget's `sort`: one to `MAX_SORT` `{column, descending?}` keys, by the heading of a column of its table.
+
+    The columns of a report's table are only known when the report runs, so a name that matches none is reported
+    then (a warning), not here.
+    """
+    if not isinstance(items, list) or not 0 < len(items) <= MAX_SORT:
+        v.error(path, f"Must be a list of 1 to {MAX_SORT} sort keys (leave sort out for the report's own order).")
+        return
+    for i, item in enumerate(items):
+        here = f"{path}[{i}]"
+        if not isinstance(item, dict):
+            v.error(here, "Must be an object.")
+            continue
+        v.check_keys(item, here, required=("column",), optional=("descending",))
+        v.text(item.get("column", MISSING), f"{here}.column", limit=200)
+        if "descending" in item and not isinstance(item["descending"], bool):
+            v.error(f"{here}.descending", "Must be true or false.")
+
+
+def _validate_widget(v: TreeValidator, node: dict[str, Any], path: str) -> None:
+    v.check_keys(node, path, required=("type", "key"), optional=("params", "empty_text", "sort"))
+    key = v.text(node.get("key", MISSING), f"{path}.key", limit=100)
+    if "sort" in node:
+        _validate_widget_sort(v, node["sort"], f"{path}.sort")
+    if "empty_text" in node:
+        v.placeholders(v.text(node["empty_text"], f"{path}.empty_text", limit=500), f"{path}.empty_text")
+    if key is None:
+        return
+    widget = find_widget(key)
+    if widget is None:
+        v.error(f"{path}.key", f'Unknown widget "{key}". Widgets: {", ".join(w.key for w in list_widgets())}.')
+        return
+    if "params" in node:
+        problems = param_problems(widget, node["params"])
+        for name, message in problems:
+            v.error(f"{path}.params.{name}" if name else f"{path}.params", message)
+        if problems:
+            return
+    run = f"{widget.report_key}|{json.dumps(node.get('params', {}), sort_keys=True, separators=(',', ':'))}"
+    if run not in v.widget_reports:
+        v.widget_reports.add(run)
+        if len(v.widget_reports) == MAX_WIDGET_REPORTS + 1:
+            v.error(
+                path,
+                f"The widgets run too many different reports (the limit is {MAX_WIDGET_REPORTS}; widgets of one report "
+                "with the same settings share a run).",
+            )
 
 
 def _validate_sheet(v: TreeValidator, node: dict[str, Any], path: str) -> None:
@@ -729,13 +847,15 @@ for _spec in (
     BlockSpec("each", (FAMILY_DOCUMENT,), _validate_each),
     BlockSpec("group", (FAMILY_DOCUMENT,), _validate_group),
     BlockSpec("if", (FAMILY_DOCUMENT,), _validate_if),
+    BlockSpec("widget", (FAMILY_DOCUMENT,), _validate_widget),
     BlockSpec("sheet", (FAMILY_TABLE,), _validate_sheet),
 ):
     register_block_spec(_spec)
 
 __all__ = [
-    "BLOCK_SPECS", "DEFAULT_GROUP_ALIAS", "DEFAULT_JOIN_ALIAS", "DEFAULT_RECORD_ALIAS", "GROUP_FIELDS", "MAX_COLUMNS",
-    "MAX_DEPTH", "MAX_JOINS", "MAX_NODES", "MAX_TREE_BYTES", "OPERATORS_BY_KIND", "PLACEHOLDER_RE", "TREE_SCHEMA_VERSION", "Binding", "BlockSpec",
+    "BLOCK_SPECS", "BOOLEAN_KEYS", "DEFAULT_GROUP_ALIAS", "DEFAULT_JOIN_ALIAS", "DEFAULT_RECORD_ALIAS", "GROUP_FIELDS",
+    "LIST_OPERATORS", "MAX_COLUMNS", "MAX_CONDITION_DEPTH", "MAX_DEPTH", "MAX_JOINS", "MAX_NODES", "MAX_TREE_BYTES",
+    "MAX_WIDGET_REPORTS", "OPERATORS_BY_KIND", "PLACEHOLDER_RE", "TREE_SCHEMA_VERSION", "Binding", "BlockSpec",
     "InvalidLayoutError", "Ref", "TreeAnalysis", "TreeError", "TreeValidator", "assert_valid", "empty_tree",
     "literal_problem", "register_block_spec", "tree_hash", "validate_tree",
 ]

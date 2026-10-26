@@ -343,7 +343,8 @@ def merge_evaluations(parts: Sequence[tuple[Project, EvaluatedLayout]], title: s
                 target = merged.setdefault(sheet.name, Sheet(sheet.name, ["Project", *sheet.columns], []))
                 target.rows.extend([project.name, *row] for row in sheet.rows)
         sheets = list(merged.values())
-    return EvaluatedLayout(family, document, sheets, warnings, stats, digest, versions, truncated)
+    widgets = sorted({key for _, part in parts for key in part.widgets})
+    return EvaluatedLayout(family, document, sheets, warnings, stats, digest, versions, truncated, widgets)
 
 
 # --- output ------------------------------------------------------------------------------------------------
@@ -493,7 +494,7 @@ def record_run(
             "include_children": include_children,
             "requested_project_ids": [str(p) for p in requested_project_ids] if requested_project_ids is not None else None,
         },
-        scope_project_ids=[str(p.id) for p in run.projects], widgets=[], record_counts=dict(counts),
+        scope_project_ids=[str(p.id) for p in run.projects], widgets=list(run.evaluated.widgets), record_counts=dict(counts),
         stats={
             "blocks": stats.blocks, "rows": stats.rows, "hidden": stats.hidden, "unavailable": stats.unavailable,
             "warnings": len(run.evaluated.warnings), "duration_ms": run.duration_ms,

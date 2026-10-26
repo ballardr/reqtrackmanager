@@ -15,6 +15,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.services.report_framework import ReportParamOut
 from app.services.report_layout_text import MAX_TEXT_VIEW_CHARS
 
 
@@ -152,3 +153,27 @@ class ReportLayoutRestoreOut(BaseModel):
     """The layouts a restore showed again."""
 
     restored: list[UUID]
+
+
+class ReportWidgetOut(BaseModel):
+    """One component of a report (a table, its headline figures or its notes) that a layout can embed with a `widget` block.
+
+    Attributes:
+        key: What the block names (`<module key>.<report slug>.<part>`).
+        title: The component's title.
+        description: One line about what it holds (may be empty).
+        kind: `section` (a table), `figures` or `notes`.
+        report_title: The report it comes from.
+        module_key: The module that provides it.
+        module_name: That module's display name.
+        params: The report's settings a block may give it, with their types, bounds and choices.
+    """
+
+    key: str
+    title: str
+    description: str
+    kind: str
+    report_title: str
+    module_key: str
+    module_name: str
+    params: list[ReportParamOut]

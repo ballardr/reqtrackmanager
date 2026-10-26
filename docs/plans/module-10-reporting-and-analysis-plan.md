@@ -2,7 +2,7 @@
 
 See [future-modules-2026-09-index.md](future-modules-2026-09-index.md) for cross-cutting architecture. Source requirement: [overview §47](completed/future-modules-2026-09-overview.md) (read-only; `docs/requirements.md` stays authoritative).
 
-**Status:** Re-planned 2026-10-20 (supersedes the 2026-09 plan, which predated the core report framework). Phases 0 to 5 and 7 done 2026-10-26. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`.
+**Status:** Re-planned 2026-10-20 (supersedes the 2026-09 plan, which predated the core report framework). Phases 0 to 7 done 2026-10-26. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`.
 
 ## What this module is now
 
@@ -51,7 +51,7 @@ Three orthogonal axes, kept separate: **layout** (what is reported), **branding 
 
 ## Status / Resume Here
 
-7 / 16 phases complete (Phases 0 to 5 and 7, 2026-10-26; findings in `docs/decisions.md`, "Custom reports Phase 0" to "Phase 7"). Phase 6 (widgets) can start, and Phase 8 (designer) can now preview through the HTML format; Phase 8 (designer) has its text view endpoints and now a run endpoint to preview against. Phase 5 shipped the run routes (project, and organisation-wide as a fan-out per project with a Projects selector), both catalogues, content tiers keyed `custom.<layout id>` (portable in bundles), the `generated_reports` provenance row and the MCP tools. Phase 7 shipped the renderer registry (`services/report_render.py`): HTML, PDF, Word (document) and CSV (zip for several sheets), XLSX (table), plus the sanitised SVG `Image` and the ReportLab 5.1 upgrade `svglib` needs; ODT/ODS (Phase 12) and the equation block (Phase 9) register on it. Open for Phase 10: provenance rows are never expired (retention policy gap 3). Provenance records the version of every versioned record (bounded at 20,000 per run, with a digest over all records alongside; **Decided by: User**, decisions log "Custom reports Phase 5", decision 8). The designer's project hide/restore panel and layout CRUD UI are still Phase 8.
+8 / 16 phases complete (Phases 0 to 7, 2026-10-26; findings in `docs/decisions.md`, "Custom reports Phase 0" to "Phase 7"). Phase 8 (designer) has what it needs: the text view endpoints, a run endpoint, the HTML format to preview through, and now the widget list (`GET …/report-layouts/widgets`) for its widget picker. Phase 6 shipped widgets: a widget is one component of a report (a declared table, its `figures` or its `notes`), keyed `<module key>.<slug>.<part>` and written `[[widget.<key> name=value]]`; it adds no heading or prose, so the layout owns the words (**User** correction); the report's own collector and gate run per project, once per report and settings (decisions log "Custom reports Phase 6"). Phase 11's Gap Analysis and Change Impact collectors become widgets by being registered as reports. The condition language grew in the same session at the User's request (`in` / `not_in` on every kind of field, `and` / `or` / `not` with brackets, widget `sort`; decisions log "Custom reports: conditions"); Phase 8's condition builder edits that tree. Phase 5 shipped the run routes (project, and organisation-wide as a fan-out per project with a Projects selector), both catalogues, content tiers keyed `custom.<layout id>` (portable in bundles), the `generated_reports` provenance row and the MCP tools. Phase 7 shipped the renderer registry (`services/report_render.py`): HTML, PDF, Word (document) and CSV (zip for several sheets), XLSX (table), plus the sanitised SVG `Image` and the ReportLab 5.1 upgrade `svglib` needs; ODT/ODS (Phase 12) and the equation block (Phase 9) register on it. Open for Phase 10: provenance rows are never expired (retention policy gap 3). Provenance records the version of every versioned record (bounded at 20,000 per run, with a digest over all records alongside; **Decided by: User**, decisions log "Custom reports Phase 5", decision 8). The designer's project hide/restore panel and layout CRUD UI are still Phase 8.
 
 | # | Phase | Group | Status |
 |---|-------|-------|--------|
@@ -61,7 +61,7 @@ Three orthogonal axes, kept separate: **layout** (what is reported), **branding 
 | 3 | Tiers, permission, hide/restore, bundle export/import | 1 | [x] |
 | 4 | Text view: parser, serialiser, round-trip | 1 | [x] |
 | 5 | Run pipeline: caps, provenance, catalogue and MCP merge | 1 | [x] |
-| 6 | Widgets | 1 | [ ] |
+| 6 | Widgets | 1 | [x] |
 | 7 | Renderers: interface, HTML, CSV/XLSX, DOCX, PDF | 1 | [x] |
 | 8 | Designer UI (text view, field picker, live preview) | 1 | [ ] |
 | 9 | Math | 1 | [ ] |
@@ -105,7 +105,7 @@ Each phase: **Why** (risk addressed) and **Outcome**. Every phase also carries t
 
 **5 — Run pipeline.** `…/custom-reports/{id}/run?format=` for project and organisation scope, framework-level `report_template_id` and content tiers applied, `GeneratedReport` provenance, merge into both report catalogues and MCP. *Why:* custom reports must be indistinguishable from module reports to the Reports page. *Outcome:* a layout appears in the catalogue and runs in the shared `ReportRunner`.
 
-**6 — Widgets.** Adapter exposing any `ReportDefinition` result (sections, metrics, notes) as blocks; per-widget parameter forms; widget keys listed in the designer. *Why:* D1/D5, reuse of existing computed reports. *Outcome:* `[[widget.gap-analysis]]` embeds in a document layout.
+**6 — Widgets.** Adapter exposing a component of any `ReportDefinition` result (a declared table, the figures, the notes) as blocks, never prose; per-widget parameter forms (the designer's, Phase 8, from the widget list); widget keys listed in the designer (the list endpoint and MCP tool are built). *Why:* D1/D5, reuse of existing computed reports. *Outcome:* `[[widget.gap-analysis]]` embeds in a document layout.
 
 **7 — Renderers.** Pluggable renderer interface over the neutral model; HTML (also the live preview), CSV (zip when multi-table), XLSX, DOCX, PDF stays on ReportLab, with a separate HTML renderer for the preview and format; equations and SVG figures embed as vector through `svglib` (SVG rejected if it contains a DOCTYPE or entity; `resvg-py` PNG if `svglib` raises). A bundled Unicode font is registered, and the same font directory goes to `resvg-py`. Spreadsheet cells go through `csv_safe`-equivalent formula guards. The neutral `Image` block gains an SVG-source form that each renderer converts (today it holds raster bytes only), so modules can contribute vector figures without importing an engine. Existing reports keep their ReportLab path. *Why:* formats must not drift. *Outcome:* one layout, every shipped format, visually consistent documents.
 

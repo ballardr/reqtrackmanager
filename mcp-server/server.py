@@ -128,7 +128,8 @@ _READ_ONLY_INSTRUCTIONS = (
     "core detail. If this connection is configured with X-Default-Organization-Id/"
     "X-Default-Project-Id headers, organization_id/project_id can be omitted from any tool call and "
     "that default is used instead. Custom report layouts (a stored definition of a document or tables) are "
-    "listed by list_report_layouts and run by run_custom_report."
+    "listed by list_report_layouts and run by run_custom_report; list_report_widgets names the report components a "
+    "layout can embed."
 )
 _WRITE_MODE_INSTRUCTIONS = (
     " Write mode is enabled on this server: create_requirement and update_requirement let you "
@@ -1365,6 +1366,28 @@ async def run_custom_report(
             "GET", f"/api/v1/projects/{pid}/custom-reports/{lid}/run",
             params={"format": "json", "include_children": "true" if include_children else None},
         )
+    return response.json()
+
+
+@mcp.tool
+async def list_report_widgets(project_id: str | None = None, organization_id: str | None = None) -> list[dict]:
+    """Lists the report components a layout can embed as a widget line, `[[widget.<key> name=value]]`.
+
+    A widget is one component of a module report: one of its tables, its headline figures (`figures`) or its caveat
+    notes (`notes`). It adds no heading or prose; write those in the layout. Needs the layout-management permission for
+    the scope. Only modules the project (or organisation) can use are listed.
+
+    Args:
+        project_id: The project's UUID. Give one of project_id / organization_id.
+        organization_id: The organisation's UUID.
+
+    Returns:
+        Per widget: `key` (`<module key>.<report slug>.<part>`, what the line names), `title`, `description`, `kind`
+        (`section`, `figures` or `notes`), `report_title`, `module_key`, `module_name` and `params` (the report's:
+        each with `name`, `type`, `default`, `choices`, `minimum`, `maximum`, `description`). Give only parameters
+        listed here, as literals of the listed type.
+    """
+    response = await _call_backend("GET", f"{_layout_scope_path(project_id, organization_id)}/widgets")
     return response.json()
 
 

@@ -220,6 +220,12 @@ Lists the custom report layouts of a project (its own, its parents' and the orga
 
 Parameters: `project_id` (string), `organization_id` (string)
 
+## `list_report_widgets` (read)
+
+Lists the report components a layout can embed as a widget line, `[[widget.<key> name=value]]`.
+
+Parameters: `project_id` (string), `organization_id` (string)
+
 ## `list_requirement_comments` (read)
 
 Lists the discussion thread on a requirement.
