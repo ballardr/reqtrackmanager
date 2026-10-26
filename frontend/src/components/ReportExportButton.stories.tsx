@@ -37,6 +37,20 @@ export const DownloadPdfCallsOnDownloadWithPdf: Story = {
   },
 };
 
+/** A custom report can also offer an HTML page and an Excel workbook, each under its own plain name. */
+export const OffersHtmlAndExcelForACustomReport: Story = {
+  args: { kinds: ["pdf", "docx", "html", "csv", "xlsx"] },
+  play: async ({ canvasElement, args }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Export" }));
+    const menu = within(document.body).getByRole("dialog", { name: "Export" });
+    await expect(within(menu).getAllByRole("button").map((b) => b.textContent?.trim())).toEqual([
+      "Download PDF report", "Download Word report", "Download HTML report", "Download CSV report", "Download Excel report",
+    ]);
+    await userEvent.click(within(menu).getByRole("button", { name: "Download Excel report" }));
+    await waitFor(() => expect(args.onDownload).toHaveBeenCalledWith("xlsx"));
+  },
+};
+
 /** `kinds` chooses the options on offer, in order; `label` renames the trigger beside a primary button. */
 export const OffersTheRequestedKindsUnderACustomLabel: Story = {
   args: { kinds: ["docx", "csv"], label: "More formats" },

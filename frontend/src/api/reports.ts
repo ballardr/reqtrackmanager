@@ -27,8 +27,14 @@ export interface ReportParam {
   choice_labels?: Record<string, string> | null;
 }
 
-/** The file formats a report can be downloaded in (the JSON form is the on-screen run). */
+/**
+ * The file formats a record list or module report can be downloaded in (the JSON form is the on-screen run).
+ * A custom table report's `csv` is a zip of one CSV per sheet when it has several sheets.
+ */
 export type ReportDownloadKind = "pdf" | "docx" | "csv";
+
+/** Every file format a catalogue report may offer: the downloads above plus a custom report's HTML page and Excel workbook. */
+export type ReportFileKind = ReportDownloadKind | "html" | "xlsx";
 
 /** One runnable report (`ReportCatalogueEntryOut`). */
 export interface ReportCatalogueEntry {
@@ -41,7 +47,7 @@ export interface ReportCatalogueEntry {
   scope: "project" | "organization";
   /** Route with the project/organisation id already substituted. */
   path: string;
-  formats: ("json" | ReportDownloadKind)[];
+  formats: ("json" | ReportFileKind)[];
   supports_include_children: boolean;
   /** Organisation-level entries accept `project_id` to narrow the run to one project in scope. */
   supports_project_filter: boolean;
@@ -128,7 +134,7 @@ export interface ReportBreakdown {
 export type ReportRunValues = Record<string, string | number | boolean | null | undefined>;
 
 /** Builds the query string for a run; blank/unset values are omitted so the server default applies. */
-export function reportQuery(format: "json" | ReportDownloadKind, values: ReportRunValues): string {
+export function reportQuery(format: "json" | ReportFileKind, values: ReportRunValues): string {
   const query = new URLSearchParams({ format });
   for (const [name, value] of Object.entries(values)) {
     if (value === undefined || value === null || value === "") continue;
@@ -149,6 +155,6 @@ export const reportsApi = {
     return api.get<ReportBreakdown>(`${entry.breakdown_path}?${reportQuery("json", values)}`);
   },
   /** Runs a report and returns the PDF, Word (DOCX) or CSV file. */
-  download: (entry: ReportCatalogueEntry, format: ReportDownloadKind, values: ReportRunValues) =>
+  download: (entry: ReportCatalogueEntry, format: ReportFileKind, values: ReportRunValues) =>
     api.getForBlob(`${entry.path}?${reportQuery(format, values)}`),
 };

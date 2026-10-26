@@ -31,13 +31,15 @@ import { Download } from "lucide-react";
 import { useRef, useState } from "react";
 import type { ReactNode } from "react";
 
-import type { ReportDownloadKind } from "../api/reports";
+import type { ReportFileKind } from "../api/reports";
 import { Popover } from "./Popover";
 
-const OPTION_LABEL: Record<ReportDownloadKind, string> = {
+const OPTION_LABEL: Record<ReportFileKind, string> = {
   pdf: "Download PDF report",
   docx: "Download Word report",
   csv: "Download CSV report",
+  html: "Download HTML report",
+  xlsx: "Download Excel report",
 };
 
 /**
@@ -48,7 +50,7 @@ const OPTION_LABEL: Record<ReportDownloadKind, string> = {
  * template) under the formats, and `note` is one muted line under them (columns
  * the personal-data policy left out).
  */
-export function ReportExportButton<K extends ReportDownloadKind = "pdf" | "csv">({
+export function ReportExportButton<K extends ReportFileKind = "pdf" | "csv">({
   onDownload,
   kinds = ["pdf", "csv"] as K[],
   label = "Export",

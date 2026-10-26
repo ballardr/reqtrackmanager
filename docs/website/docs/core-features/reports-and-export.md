@@ -120,13 +120,13 @@ flowchart TD
     S --> B["Project B<br/>evaluated with your access to B"]
     A --> M["One merged report"]
     B --> M
-    M --> O["On screen · PDF · Word · CSV (one sheet)"]
+    M --> O["On screen · PDF · Word · HTML<br/>Excel · CSV (zip for several sheets)"]
 ```
 
-- **Formats:** a document layout downloads as PDF or Word; a table layout as CSV when it has one sheet. The on-screen view shows each table of the report as a section, titled by the headings above it.
+- **Formats:** a document layout downloads as PDF, Word or a standalone HTML page (no scripts, safe to open or email); a table layout as an Excel workbook (one tab per sheet) or CSV, which is a zip of one CSV file per sheet when the layout has several sheets. Text a cell starts with `=`, `+`, `-` or `@` is stored as plain text, never run as a formula. The on-screen view shows each table of the report as a section, titled by the headings above it.
 - **Choosing projects:** the **Projects** selector lists exactly the projects you hold a role in; downloads carry the same choice as the screen. A project that has hidden the layout is left out, and the report says so.
 - **Limits:** a report that is too large or takes too long is refused with a message to narrow the layout or the project choice; nothing partial is produced.
-- **Provenance:** every run is recorded (which layout and version, who ran it, when, which projects, how many records of each kind, and a fingerprint of the records used) without storing the report's content, so a report can be traced back to what produced it. Layouts are versioned: saving a change adds a version and never rewrites an earlier one.
+- **Provenance:** every run is recorded (which layout and version, who ran it, when, which projects, how many records of each kind, the version of each versioned record such as a requirement, and a fingerprint of all the records used) without storing the report's content, so a report can be traced back to what produced it. Layouts are versioned: saving a change adds a version and never rewrites an earlier one.
 - Layouts, and their introductions, chapters and appendices, travel in a project or organisation [export](./zip-export-import.md).
 
 ## CSV export and import

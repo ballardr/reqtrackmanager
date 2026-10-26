@@ -2,7 +2,7 @@
 
 See [future-modules-2026-09-index.md](future-modules-2026-09-index.md) for cross-cutting architecture. Source requirement: [overview §47](completed/future-modules-2026-09-overview.md) (read-only; `docs/requirements.md` stays authoritative).
 
-**Status:** Re-planned 2026-10-20 (supersedes the 2026-09 plan, which predated the core report framework). Phases 0 to 5 done 2026-10-26. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`.
+**Status:** Re-planned 2026-10-20 (supersedes the 2026-09 plan, which predated the core report framework). Phases 0 to 5 and 7 done 2026-10-26. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`.
 
 ## What this module is now
 
@@ -51,7 +51,7 @@ Three orthogonal axes, kept separate: **layout** (what is reported), **branding 
 
 ## Status / Resume Here
 
-6 / 16 phases complete (Phases 0 to 5, 2026-10-26; findings in `docs/decisions.md`, "Custom reports Phase 0" to "Phase 5"). Phase 6 (widgets) and Phase 7 (renderers) can start; Phase 8 (designer) has its text view endpoints and now a run endpoint to preview against. Phase 5 shipped the run routes (project, and organisation-wide as a fan-out per project with a Projects selector), both catalogues, content tiers keyed `custom.<layout id>` (portable in bundles), the `generated_reports` provenance row and the MCP tools. Open for Phase 7: only `json`, `pdf`, `docx` (document) and single-sheet `csv` (table) are produced, so `available_formats` is the place its renderer registry replaces. Open for Phase 10: provenance rows are never expired (retention policy gap 3). **Flagged for sign-off:** D11 asked for record versions of versioned types; Phase 5 records a `source_digest` over the records in the report instead (decisions log, "Custom reports Phase 5", decision 8). The designer's project hide/restore panel and layout CRUD UI are still Phase 8.
+7 / 16 phases complete (Phases 0 to 5 and 7, 2026-10-26; findings in `docs/decisions.md`, "Custom reports Phase 0" to "Phase 7"). Phase 6 (widgets) can start, and Phase 8 (designer) can now preview through the HTML format; Phase 8 (designer) has its text view endpoints and now a run endpoint to preview against. Phase 5 shipped the run routes (project, and organisation-wide as a fan-out per project with a Projects selector), both catalogues, content tiers keyed `custom.<layout id>` (portable in bundles), the `generated_reports` provenance row and the MCP tools. Phase 7 shipped the renderer registry (`services/report_render.py`): HTML, PDF, Word (document) and CSV (zip for several sheets), XLSX (table), plus the sanitised SVG `Image` and the ReportLab 5.1 upgrade `svglib` needs; ODT/ODS (Phase 12) and the equation block (Phase 9) register on it. Open for Phase 10: provenance rows are never expired (retention policy gap 3). Provenance records the version of every versioned record (bounded at 20,000 per run, with a digest over all records alongside; **Decided by: User**, decisions log "Custom reports Phase 5", decision 8). The designer's project hide/restore panel and layout CRUD UI are still Phase 8.
 
 | # | Phase | Group | Status |
 |---|-------|-------|--------|
@@ -62,7 +62,7 @@ Three orthogonal axes, kept separate: **layout** (what is reported), **branding 
 | 4 | Text view: parser, serialiser, round-trip | 1 | [x] |
 | 5 | Run pipeline: caps, provenance, catalogue and MCP merge | 1 | [x] |
 | 6 | Widgets | 1 | [ ] |
-| 7 | Renderers: interface, HTML, CSV/XLSX, DOCX, PDF | 1 | [ ] |
+| 7 | Renderers: interface, HTML, CSV/XLSX, DOCX, PDF | 1 | [x] |
 | 8 | Designer UI (text view, field picker, live preview) | 1 | [ ] |
 | 9 | Math | 1 | [ ] |
 | 10 | Async runs, expiring output, notification | 1 | [ ] |

@@ -56,6 +56,9 @@ _MEDIA_TYPES = {
     "pdf": "application/pdf",
     "csv": "text/csv",
     "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "html": "text/html; charset=utf-8",
+    "zip": "application/zip",
 }
 
 
@@ -66,7 +69,7 @@ def file_response(content: bytes, stem: str, ext: str) -> Response:
         content: The file bytes.
         stem: The filename without extension; the caller passes it through
             `filename_safe`.
-        ext: One of `pdf`, `csv`, `docx`; selects the content type.
+        ext: One of `pdf`, `csv`, `docx`, `xlsx`, `html`, `zip`; selects the content type.
 
     Returns:
         A response with the content type and an `attachment` disposition.

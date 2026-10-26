@@ -12,7 +12,8 @@ Design decisions:
 - Page setup follows orientation: portrait is A4 with 2 cm top and bottom
   margins, landscape is A4 with 1.5 cm all round.
 
-Dependencies: ReportLab, `services.report_document`, `services.report_fonts`, `services.report_model`.
+Dependencies: ReportLab, `services.report_document`, `services.report_fonts`, `services.report_model`, `services.report_svg`
+(a figure given as SVG is drawn as vector).
 """
 
 from __future__ import annotations
@@ -49,6 +50,7 @@ from app.services.report_model import (
     ReportDocument,
     Table,
 )
+from app.services.report_svg import svg_flowable
 
 _NOTE = ParagraphStyle("report_note", parent=STYLES["BodyText"], fontSize=8.5, leading=11, textColor=colors.HexColor("#555555"))
 _CELL = ParagraphStyle("report_cell", parent=STYLES["BodyText"], fontSize=7.5, leading=9.5)
@@ -138,7 +140,7 @@ def render_pdf_document(document: ReportDocument) -> bytes:
         elif isinstance(block, BulletList):
             story.append(ListFlowable([ListItem(RlParagraph(safe(i), STYLES["BodyText"])) for i in block.items], bulletType="bullet"))
         elif isinstance(block, Image):
-            flowable = image_flowable(block.data)
+            flowable = svg_flowable(block.svg, usable_width) if block.svg is not None else image_flowable(block.data)
             if flowable is not None:
                 story.append(flowable)
         elif isinstance(block, Table):

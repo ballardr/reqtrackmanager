@@ -94,6 +94,7 @@ class ReportRecord:
         status: Status display label, empty for a type without a lifecycle.
         is_archived: Archived flag.
         updated_at: Last change (UTC).
+        version: The current version number for a versioned type, else `None`.
         tags: Comma-separated tag text, empty when none (filled only when asked for).
         values: `{field key: typed value}` for the requested fields; `None` for an empty field.
             An `enum` is its label, a `principal` its text.
@@ -110,6 +111,7 @@ class ReportRecord:
     updated_at: datetime | None
     tags: str = ""
     values: dict[str, Any] = field(default_factory=dict)
+    version: int | None = None
 
 
 # --- builders ------------------------------------------------------------------------------------
@@ -332,6 +334,8 @@ def load_records(
     ]
     if cols.organization_id is not None:
         selected.append(cols.organization_id.label("_org"))
+    if cols.version is not None:
+        selected.append(cols.version.label("_version"))
     for i, f in enumerate(wanted):
         selected.append(f.column.label(f"f{i}"))
         if f.id_column is not None:
@@ -357,7 +361,7 @@ def load_records(
             organization_id=row._org if cols.organization_id is not None else None,
             unique_code=row._code or "", title=row._title or "",
             status=_label(provider.status_labels, row._status), is_archived=bool(row._archived),
-            updated_at=_as_utc(row._updated),
+            updated_at=_as_utc(row._updated), version=row._version if cols.version is not None else None,
         )
         for i, f in enumerate(wanted):
             raw = getattr(row, f"f{i}")

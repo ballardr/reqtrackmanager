@@ -58,6 +58,7 @@ from app.services.report_model import (
     Table,
     text_on,
 )
+from app.services.report_svg import svg_png
 
 DOCX_AUTHOR = "ReqTrackManager"
 _PAGE_WIDTH_CM, _PAGE_HEIGHT_CM = 21.0, 29.7  # A4
@@ -139,6 +140,14 @@ def _footer(doc: DocxDocument, document: ReportDocument) -> None:
     _page_number_field(paragraph)
 
 
+def _svg_png(svg: str) -> bytes:
+    """A PNG of an SVG figure (Word cannot embed SVG), or empty bytes when it cannot be drawn, which `_picture` skips."""
+    try:
+        return svg_png(svg)
+    except Exception:  # noqa: BLE001 - a figure that cannot be drawn must never break report generation
+        return b""
+
+
 def _picture(doc: DocxDocument, data: bytes, max_width_cm: float, *, fixed_width_cm: float | None = None) -> bool:
     """Adds an image, shrunk to the usable width. Returns `False` (nothing
     added) when the bytes are not an image python-docx can read."""
@@ -147,8 +156,9 @@ def _picture(doc: DocxDocument, data: bytes, max_width_cm: float, *, fixed_width
         run = paragraph.add_run()
         shape = run.add_picture(io.BytesIO(data), width=Cm(fixed_width_cm) if fixed_width_cm else None)
     except Exception:  # noqa: BLE001 - a malformed or unsupported image must never break report generation
-        if paragraph._p.getparent() is not None:
-            paragraph._p.getparent().remove(paragraph._p)
+        parent = paragraph._p.getparent()
+        if parent is not None:
+            parent.remove(paragraph._p)
         return False
     limit = Cm(max_width_cm)
     if shape.width > limit:
@@ -251,7 +261,7 @@ def render_docx_document(document: ReportDocument) -> bytes:
             for item in block.items:
                 doc.add_paragraph(clean_text(item), style="List Bullet")
         elif isinstance(block, Image):
-            _picture(doc, block.data, usable_cm)
+            _picture(doc, _svg_png(block.svg) if block.svg is not None else block.data, usable_cm)
         elif isinstance(block, Table):
             _table(doc, block, accent, usable_cm)
         elif isinstance(block, PageBreak):
