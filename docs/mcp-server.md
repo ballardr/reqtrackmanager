@@ -18,6 +18,10 @@ Twenty-two read tools, always available:
 | `list_custom_roles` | An organisation's custom roles (Fine-Grained Access Control) — each role's own definition, never who holds it |
 | `get_custom_role` | A single custom role's own definition (name, description, scope, permission-atom set) |
 | `get_record_list_report` | Every record of one type in a project as one table (code first): the Record list report, for `requirement`, `requirement_action` and every other type with a record list. Tags and project scope filters; personal-data columns left out under the organisation's policy |
+| `list_report_layouts` | The custom report layouts a project can run (its own, a parent's and the organisation's, each with its origin) or an organisation's own |
+| `get_report_layout` | A layout with its tree or one saved version (needs the layout-management permission) |
+| `run_custom_report` | Runs a layout and returns the report as data: one project (optionally with child projects), or an organisation layout once per project the caller can read (optionally limited with `project_ids`). Only what the caller can read; unseen records are counted in `notes`. Every run is recorded for provenance |
+| `parse_report_layout_text` / `format_report_layout_text` | Convert a layout between its text view and its tree, with positioned errors; store nothing |
 | `list_requirements` | Requirements in a project, with the same filters the UI's filter panel offers (status, component, category, keyword, tags, or a name/code search) |
 | `get_requirement` | A single requirement's full current detail |
 | `get_requirement_history` | A requirement's full version history — every prior state, who changed it, and why (C-A-09) |
@@ -51,6 +55,7 @@ Plus seven write tools, only when [write mode](#write-mode) is enabled:
 | `delete_artefact_link` | Removes a link touching an artefact (irreversible; links with a fixed meaning such as supersession are excluded) |
 | `set_artefact_tags` | Makes a record carry exactly the given tags (new names follow the project's free or restricted mode) |
 | `add_artefact_tag` / `remove_artefact_tag` | Adds or removes one tag on a record, keeping the others |
+| `create_report_layout` / `save_report_layout_version` / `update_report_layout` / `delete_report_layout` | Author custom report layouts for a project or organisation (needs the layout-management permission; a save names the version it started from and is refused if someone saved since; delete is irreversible and also deletes the introduction, chapters and appendices written for the layout) |
 | `approve_requirement` | Approves a draft or reviewed requirement — **only when AI approval is enabled** for the project and its organisation |
 | `decide_change_request` | Approves or rejects a submitted change request — **only when AI approval is enabled** for the project and its organisation. `merge_link_ids` chooses which proposed links to create (omitted: every valid one; empty: none); a chosen link that is no longer valid fails the call with a conflict |
 | `complete_requirement` | Marks an approved requirement completed — **only when AI approval is enabled** for the project and its organisation |

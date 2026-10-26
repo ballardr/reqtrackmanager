@@ -1069,7 +1069,9 @@ class ReportCatalogueEntryOut(BaseModel):
     substituted; `supports_include_children` is true for project-level
     entries and `supports_project_filter` for organisation-level ones, which also carry
     `breakdown_path` (the per-project figures; see `ReportBreakdownOut`) (the
-    optional `project_id` query narrows the run to one project in scope).
+    optional `project_id` query narrows the run to one project in scope; an entry with
+    `supports_project_multi_filter` instead takes a comma-separated `project_ids` selection, an
+    organisation-wide custom report that is run once per selected project).
     For those, `projects` lists exactly the projects the caller may pick: in
     the report's scope for this caller, with the module (and declared
     sub-component) enabled, so the picker never offers one the route would 404.
@@ -1086,6 +1088,7 @@ class ReportCatalogueEntryOut(BaseModel):
     formats: list[str]
     supports_include_children: bool
     supports_project_filter: bool
+    supports_project_multi_filter: bool = False
     breakdown_path: str | None = None
     projects: list[ReportProjectOut] = []
     params: list[ReportParamOut]

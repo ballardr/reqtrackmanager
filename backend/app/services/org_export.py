@@ -134,7 +134,7 @@ from app.services.project_export import (
     new_project_from_bundle_data,
 )
 from app.services.rbac import would_create_org_group_cycle
-from app.services.report_content import bundle_entries, content_entries, replace_scope_content
+from app.services.report_content import bundle_entries, portable_entries, replace_scope_content
 from app.services.report_content_bundle import ContentImageImporter, collect_content_images
 from app.services.report_layout_bundle import export_org_layouts, import_org_layouts
 from app.services.scoring import seed_missing_scoring_levels
@@ -177,8 +177,8 @@ def build_org_bundle(db: Session, org: Organization, exported_by: User) -> bytes
         file_assets_by_id.update(project_files)
 
     report_templates = list(db.scalars(select(ReportTemplate).where(ReportTemplate.organization_id == org.id)))
-    org_content = content_entries(db, SCOPE_ORGANIZATION, org.id)
-    template_content = {t.id: content_entries(db, SCOPE_TEMPLATE, t.id) for t in report_templates}
+    org_content = portable_entries(db, SCOPE_ORGANIZATION, org.id)
+    template_content = {t.id: portable_entries(db, SCOPE_TEMPLATE, t.id) for t in report_templates}
     content_images, report_images = collect_content_images(
         db, org.id, [*org_content, *(e for entries in template_content.values() for e in entries)],
     )
@@ -533,20 +533,24 @@ _LEGACY_ORG_CONTENT_KEYS = ("default_report_intro", "default_report_chapters", "
 
 def _set_imported_content(
     db: Session, scope_type: str, scope_id: UUID, entries: list[ReportContentEntry], images: ContentImageImporter,
-    warnings: BundleImportWarnings,
+    warnings: BundleImportWarnings, imported_layouts: dict[str, UUID] | None = None,
 ) -> None:
     """Stores a bundle scope's report content, remapping its images and
-    warning about report types this installation does not have."""
-    skipped = replace_scope_content(db, scope_type, scope_id, images.remap(entries), skip_unknown=True)
+    warning about report types this installation does not have. `imported_layouts` are the layouts this import
+    created, which a `custom:<layout name>` entry binds to."""
+    skipped = replace_scope_content(
+        db, scope_type, scope_id, images.remap(entries), skip_unknown=True, imported_layouts=imported_layouts,
+    )
     if skipped:
         warnings.add(f"Report content for unknown report types was not imported: {', '.join(sorted(set(skipped)))}.")
 
 
 def _import_report_templates(
     db: Session, org: Organization, data: dict[str, Any], current_user: User, *, resolutions: dict[str, str] | None,
-    file_bytes_by_ref: dict[str, bytes], warnings: BundleImportWarnings,
+    file_bytes_by_ref: dict[str, bytes], warnings: BundleImportWarnings, imported_layouts: dict[str, UUID] | None = None,
 ) -> None:
-    """Creates report templates from a bundle. `resolutions=None`
+    """Creates report templates from a bundle. `imported_layouts` are the organisation layouts this import
+    created (their content is keyed to them by name). `resolutions=None`
     (`import_org_bundle`): always creates fresh — a brand-new organisation
     can't already have a same-named template. Otherwise (`merge_org_bundle`):
     a bundle template whose name matches one `target_org` already has (`
@@ -574,6 +578,7 @@ def _import_report_templates(
             existing.chapters_per_component = t.get("chapters_per_component", True)
             _set_imported_content(
                 db, SCOPE_TEMPLATE, existing.id, bundle_entries(t, "content", _LEGACY_TEMPLATE_CONTENT_KEYS), images, warnings,
+                imported_layouts,
             )
             continue
         template = ReportTemplate(
@@ -586,6 +591,7 @@ def _import_report_templates(
         db.flush()
         _set_imported_content(
             db, SCOPE_TEMPLATE, template.id, bundle_entries(t, "content", _LEGACY_TEMPLATE_CONTENT_KEYS), images, warnings,
+            imported_layouts,
         )
 
 
@@ -667,8 +673,12 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
     db.add(org)
     db.flush()
     images = ContentImageImporter(db, org.id, current_user.id, file_bytes_by_ref, data.get("report_images"))
+    # Layouts first: report content may be keyed to one (`custom:<layout name>`).
+    imported_layouts: dict[str, UUID] = {}
+    import_org_layouts(db, org.id, data, current_user, warnings, merge=False, created=imported_layouts)
     _set_imported_content(
         db, SCOPE_ORGANIZATION, org.id, bundle_entries(data, "report_content", _LEGACY_ORG_CONTENT_KEYS), images, warnings,
+        imported_layouts,
     )
     # Default project statuses/link types, same as any other new
     # organisation (`routers/orgs.py::create_organization`) — a bundle
@@ -704,8 +714,10 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
         )
         org.login_background_file_id = asset.id
 
-    _import_report_templates(db, org, data, current_user, resolutions=None, file_bytes_by_ref=file_bytes_by_ref, warnings=warnings)
-    import_org_layouts(db, org.id, data, current_user, warnings, merge=False)
+    _import_report_templates(
+        db, org, data, current_user, resolutions=None, file_bytes_by_ref=file_bytes_by_ref, warnings=warnings,
+        imported_layouts=imported_layouts,
+    )
     acting_user, find_user = _import_members(db, org, data, current_user, warnings, reassign_acting_user=True)
     users = UserResolver(db, acting_user, warnings)
     _import_org_groups(db, org, data, find_user, warnings, merge_by_name=False)
@@ -852,10 +864,12 @@ def merge_org_bundle(
     acting_user, find_user = _import_members(db, target_org, data, current_user, warnings, reassign_acting_user=False)
     users = UserResolver(db, acting_user, warnings)
     _import_org_groups(db, target_org, data, find_user, warnings, merge_by_name=True)
+    imported_layouts: dict[str, UUID] = {}
+    import_org_layouts(db, target_org.id, data, current_user, warnings, merge=True, created=imported_layouts)
     _import_report_templates(
         db, target_org, data, current_user, resolutions=resolutions, file_bytes_by_ref=file_bytes_by_ref, warnings=warnings,
+        imported_layouts=imported_layouts,
     )
-    import_org_layouts(db, target_org.id, data, current_user, warnings, merge=True)
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         hooks.import_(db, target_org, data, users, warnings, resolutions)
     project_id_by_ref = _import_projects(

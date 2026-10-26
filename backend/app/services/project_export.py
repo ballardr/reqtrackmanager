@@ -122,7 +122,7 @@ from app.services.link_type_scope import resolve_link_type_scope
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.rbac import get_effective_project_managers
 from app.services.relationships import create_link as create_artefact_link
-from app.services.report_content import bundle_entries, content_entries, replace_scope_content
+from app.services.report_content import bundle_entries, portable_entries, replace_scope_content
 from app.services.report_content_bundle import ContentImageImporter, collect_content_images
 from app.services.report_layout_bundle import export_project_layouts, import_project_layouts
 from app.services.sequences import generate_unique_code
@@ -493,7 +493,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         template = db.get(ReportTemplate, project.default_report_template_id)
         default_report_template_name = template.name if template else None
 
-    content = content_entries(db, SCOPE_PROJECT, project.id)
+    content = portable_entries(db, SCOPE_PROJECT, project.id)
     content_images, report_images = collect_content_images(db, project.organization_id, content)
     file_assets_by_id.update(content_images)
 
@@ -675,12 +675,15 @@ def apply_project_data(
     # `routers/projects.py::create_project`'s own default-seeding call for
     # a manually-created (non-template) project.
     seed_action_types(db, project.id)
+    # Layouts first: the project's report content may be keyed to one (`custom:<layout name>`).
+    imported_layouts: dict[str, UUID] = {}
+    import_project_layouts(db, project, data, current_user, warnings, created=imported_layouts)
     skipped_report_types = replace_scope_content(
         db, SCOPE_PROJECT, project.id,
         ContentImageImporter(
             db, organization_id, current_user.id, file_bytes_by_ref, data.get("report_images"),
         ).remap(bundle_entries(data, "report_content", ("report_intro", "report_chapters", "report_appendices"))),
-        skip_unknown=True,
+        skip_unknown=True, imported_layouts=imported_layouts,
     )
     if skipped_report_types:
         warnings.add(
@@ -698,7 +701,6 @@ def apply_project_data(
         project.default_report_template_id = template.id
 
     import_vocabulary(db, project, data.get("tags"), current_user.id)
-    import_project_layouts(db, project, data, current_user, warnings)
 
     stage_id_by_name: dict[str, UUID] = {}
     for i, s in enumerate(data.get("stages", []) or [{"name": "Scoping", "sort_order": 0}]):

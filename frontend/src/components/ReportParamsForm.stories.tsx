@@ -95,6 +95,47 @@ export const ProjectPickerNarrowsAnOrganisationReport: Story = {
   },
 };
 
+/** A custom report run once per project offers a Projects selector; none chosen sends no filter (all projects). */
+export const ProjectsSelectorChoosesWhichProjectsAreIncluded: Story = {
+  args: {
+    params: [],
+    supportsIncludeChildren: false,
+    values: {},
+    projectMultiOptions: [
+      { value: "project-1", label: "Atlas" }, { value: "project-2", label: "Borealis" }, { value: "project-3", label: "Cascade" },
+    ],
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const trigger = canvas.getByRole("button", { name: "Projects" });
+    await expect(trigger).toHaveTextContent("All projects");
+    await userEvent.click(trigger);
+    await userEvent.click(within(document.body).getByRole("checkbox", { name: "Cascade" }));
+    await expect(args.onChange).toHaveBeenLastCalledWith("project_ids", "project-3");
+  },
+};
+
+/** The selection is written in the options' own order, whatever order they were ticked in, and clearing it sends no filter. */
+export const ProjectsSelectionKeepsOptionOrderAndClears: Story = {
+  args: {
+    params: [],
+    supportsIncludeChildren: false,
+    values: { project_ids: "project-3" },
+    projectMultiOptions: [
+      { value: "project-1", label: "Atlas" }, { value: "project-2", label: "Borealis" }, { value: "project-3", label: "Cascade" },
+    ],
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("button", { name: "Projects" })).toHaveTextContent("Cascade");
+    await userEvent.click(canvas.getByRole("button", { name: "Projects" }));
+    await userEvent.click(within(document.body).getByRole("checkbox", { name: "Atlas" }));
+    await expect(args.onChange).toHaveBeenLastCalledWith("project_ids", "project-1,project-3");
+    await userEvent.click(within(document.body).getByRole("checkbox", { name: "Cascade" }));
+    await expect(args.onChange).toHaveBeenLastCalledWith("project_ids", null);
+  },
+};
+
 export const NothingToConfigureRendersNothing: Story = {
   args: { params: [], supportsIncludeChildren: false },
   play: async ({ canvasElement }) => {

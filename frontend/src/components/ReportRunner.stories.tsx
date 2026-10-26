@@ -113,6 +113,40 @@ export const OrganisationReportCanBeNarrowedToOneProject: Story = {
   },
 };
 
+/** A custom report run once per project: choosing projects re-runs it with `project_ids`, and downloads carry the same selection. */
+export const OrganisationCustomReportChoosesProjects: Story = {
+  args: {
+    entry: buildReportCatalogueEntry({
+      scope: "organization", module_key: "custom_reports", slug: "custom-everywhere-1", supports_include_children: false,
+      supports_project_filter: false, supports_project_multi_filter: true, params: [],
+      formats: ["json", "pdf", "docx"],
+      projects: [{ id: "project-1", name: "Atlas" }, { id: "project-2", name: "Borealis" }],
+      path: "/api/v1/orgs/org-1/custom-reports/layout-1/run",
+    }),
+    scope: { kind: "organization", id: "org-1" },
+  },
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.includes("/report-templates")) return [];
+      if (path.startsWith("/api/v1/orgs/org-1/custom-reports/layout-1/run")) return buildReportResult();
+      throw new Error(`Unmocked GET: ${path}`);
+    });
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["x"]));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
+    await expect(canvas.queryByLabelText("Project")).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Projects" }));
+    await userEvent.click(within(document.body).getByRole("checkbox", { name: "Borealis" }));
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining("project_ids=project-2")));
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Download PDF report" }));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("project_ids=project-2")));
+  },
+};
+
 export const ProjectReportHasNoProjectPicker: Story = {
   beforeEach: () => mockRunApis(),
   play: async ({ canvasElement }) => {

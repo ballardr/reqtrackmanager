@@ -55,10 +55,13 @@ READ_ONLY_TOOLS = {
     "list_permissions", "list_custom_roles", "get_custom_role",
     "list_tags", "get_artefact_tags", "find_artefacts_by_tag", "get_record_by_code", "search_records",
     "get_record_list_report",
+    # Custom report layouts: listing, reading, running, and the two text-view converters (which store nothing).
+    "list_report_layouts", "get_report_layout", "run_custom_report", "parse_report_layout_text", "format_report_layout_text",
 }
 WRITE_TOOLS = {
     "create_requirement", "update_requirement", "create_artefact_link", "delete_artefact_link",
     "set_artefact_tags", "add_artefact_tag", "remove_artefact_tag",
+    "create_report_layout", "save_report_layout_version", "update_report_layout", "delete_report_layout",
 }
 # AI approval via MCP (docs/decisions.md): approval-type tools, always
 # present when write mode is on (each additionally gated at call time on a
@@ -919,3 +922,34 @@ async def test_get_record_list_report_validates_arguments_and_returns_the_table(
         assert report["metrics"][0]["value"] == len(section["rows"])
         with pytest.raises(ToolError):
             await client.call_tool("get_record_list_report", {"project_id": projects[0]["id"], "record_type": "no_such_type"})
+
+
+@pytest.mark.asyncio
+async def test_custom_report_tools_validate_arguments_and_run_a_layout(admin_token):
+    """Scope and id arguments are checked before any backend call; a project's layouts list and, when it has
+    one the caller can run, run to the report shape the other reports return."""
+    async with _client(admin_token) as client:
+        both = {"project_id": str(uuid.uuid4()), "organization_id": str(uuid.uuid4())}
+        with pytest.raises(ToolError, match="either project_id or organization_id"):
+            await client.call_tool("list_report_layouts", both)
+        with pytest.raises(ToolError, match="either project_id or organization_id"):
+            await client.call_tool("run_custom_report", {"layout_id": str(uuid.uuid4()), **both})
+        with pytest.raises(ToolError, match="'layout_id' must be a valid UUID"):
+            await client.call_tool("get_report_layout", {"layout_id": "not-a-uuid", "project_id": str(uuid.uuid4())})
+        with pytest.raises(ToolError, match="'project_ids' must be a valid UUID"):
+            await client.call_tool(
+                "run_custom_report",
+                {"layout_id": str(uuid.uuid4()), "organization_id": str(uuid.uuid4()), "project_ids": ["x"]},
+            )
+
+        projects = (await client.call_tool("list_projects", {})).data
+        if not projects:
+            pytest.skip("No projects visible to the admin account — seed data (E2E or demo) hasn't been loaded.")
+        listed = (await client.call_tool("list_report_layouts", {"project_id": projects[0]["id"]})).data
+        assert isinstance(listed, list)
+        if not listed:
+            pytest.skip("The first project has no report layouts to run.")
+        report = (
+            await client.call_tool("run_custom_report", {"layout_id": listed[0]["id"], "project_id": projects[0]["id"]})
+        ).data
+        assert report["title"] == listed[0]["name"] and "sections" in report and "notes" in report

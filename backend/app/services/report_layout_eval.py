@@ -40,6 +40,7 @@ Dependencies: `services.report_layout_tree` (validation), `services.report_field
 
 from __future__ import annotations
 
+import hashlib
 import re
 import time
 import uuid
@@ -125,6 +126,8 @@ class EvaluatedLayout:
         sheets: The sheets (table family), else empty.
         warnings: Things the reader should know (a cap truncated a read, a link type name matched nothing).
         stats: Counters.
+        source_digest: SHA-256 hex over every record read (type, id, last-change time), so two runs can be
+            compared for "did the source data change" without storing the records.
     """
 
     family: str
@@ -132,6 +135,7 @@ class EvaluatedLayout:
     sheets: list[Sheet]
     warnings: list[str]
     stats: EvalStats
+    source_digest: str = ""
 
 
 @dataclass
@@ -225,7 +229,7 @@ def evaluate_layout(
     document = None
     if tree["family"] == FAMILY_DOCUMENT:
         document = ReportDocument(title=title, blocks=run.blocks, landscape=tree.get("orientation") == "landscape")
-    return EvaluatedLayout(tree["family"], document, run.sheets, run.warnings, run.stats)
+    return EvaluatedLayout(tree["family"], document, run.sheets, run.warnings, run.stats, run.source_digest())
 
 
 class _Run:
@@ -264,6 +268,17 @@ class _Run:
         self._linked: dict[int, _Linked] = {}
         #: Every record read so far, by type: the batch a nested linked source fetches for.
         self._pool: dict[str, dict[uuid.UUID, ReportRecord]] = defaultdict(dict)
+
+    def source_digest(self) -> str:
+        """SHA-256 hex over the records read: `type:id:last-change` per record, sorted.
+
+        A versioned record's last-change time is its current version's, so a new version changes the digest.
+        """
+        lines = sorted(
+            f"{artefact_type}:{record.id}:{record.updated_at.isoformat() if record.updated_at else ''}"
+            for artefact_type, records in self._pool.items() for record in records.values()
+        )
+        return hashlib.sha256("\n".join(lines).encode()).hexdigest()
 
     # --- dispatch and limits ---------------------------------------------------------------
 

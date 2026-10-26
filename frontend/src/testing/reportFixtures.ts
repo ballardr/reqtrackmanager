@@ -22,6 +22,7 @@ export function buildReportCatalogueEntry(overrides: Partial<ReportCatalogueEntr
     formats: ["json", "pdf", "csv", "docx"],
     supports_include_children: true,
     supports_project_filter: false,
+    supports_project_multi_filter: false,
     breakdown_path: null,
     projects: [],
     params: [

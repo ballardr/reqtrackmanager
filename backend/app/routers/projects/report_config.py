@@ -32,10 +32,10 @@ from app.services.rbac import require_project_manage, require_project_view
 from app.services.report_content import (
     ReportTypeOption,
     content_entries,
+    is_valid_report_key,
     replace_scope_content,
     report_type_options,
     resolve_report_content,
-    valid_report_keys,
 )
 
 router = APIRouter(tags=["projects-report-config"])
@@ -110,7 +110,7 @@ def list_project_report_types(
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
-    return report_type_options(db, project.organization_id)
+    return report_type_options(db, project.organization_id, project)
 
 
 @router.get("/{project_id}/report-content/effective", response_model=EffectiveReportContentOut)
@@ -132,7 +132,7 @@ def get_effective_report_content(
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
-    if report_key not in valid_report_keys() or report_key == "*":
+    if not is_valid_report_key(db, report_key, SCOPE_PROJECT, project.id) or report_key == "*":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown report type '{report_key}'.")
     template = None
     if template_id is not None:

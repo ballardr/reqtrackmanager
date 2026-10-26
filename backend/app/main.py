@@ -36,6 +36,7 @@ from app.routers import (
     auth_oidc,
     change_requests,
     custom_fields,
+    custom_reports,
     files,
     health,
     notifications,
@@ -307,6 +308,8 @@ app.include_router(reports.router)
 app.include_router(report_catalogue.router)
 app.include_router(report_layouts.org_router)
 app.include_router(report_layouts.project_router)
+app.include_router(custom_reports.org_router)
+app.include_router(custom_reports.project_router)
 app.include_router(search.router)
 app.include_router(record_tables.router)
 app.include_router(org_record_tables.router)

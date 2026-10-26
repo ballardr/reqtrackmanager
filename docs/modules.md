@@ -1355,6 +1355,60 @@ flowchart LR
 - **Time.** A layout stores no schedule. Run times are UTC instants; `instant` conditions compare as UTC whatever zone
   the literal is written in; `date` conditions compare plain dates.
 
+### 4o. Custom reports: running a layout (Module 10 Phase 5)
+
+A layout appears in the report catalogue beside the module reports (`module_key` `custom_reports`) and runs through
+its own routes, as the Record list report does: it is core, not a module, so no module declares it.
+
+```mermaid
+flowchart LR
+    C["Report catalogue<br/>(project / organisation)"] --> R["GET .../custom-reports/{id}/run"]
+    R --> P["Project run<br/>one resolver"]
+    R --> O["Organisation run<br/>one resolver per project"]
+    P --> E["evaluate_layout"]
+    O --> E
+    E --> M["merge (organisation run)"]
+    M --> F["json · pdf · docx · csv"]
+    E --> F
+    F --> G["generated_reports row<br/>(after rendering succeeds)"]
+```
+
+- **Routes** (`routers/custom_reports.py`, `services/custom_report_run.py`).
+  `GET /projects/{id}/custom-reports/{layout}/run?format=&include_children=&report_template_id=` runs a layout the
+  project can reach (its own, an ancestor's or the organisation's) unless the project hid it (404).
+  `GET /orgs/{id}/custom-reports/{layout}/run?format=&project_ids=a,b&report_template_id=` runs an organisation layout
+  once **per project** the caller holds a role in and merges the results; `project_ids` can only narrow that set (404
+  for a project outside it), a project that hid the layout is left out (and the report says so), at most
+  `MAX_FANOUT_PROJECTS` are evaluated, and a document gets one heading per project with a page break between them
+  (authored headings move one level down) while a table layout's sheets of one name are concatenated with a leading
+  `Project` column. Running needs only access to the project or organisation: neither manage permission.
+- **Authorisation** is unchanged: each project is evaluated with `ArtefactResolver(project, caller)`, so a record the
+  caller cannot see is counted and never named. The wall-clock limit and the output cap are shared by the whole run.
+- **Formats** follow the family (`available_formats`): a document layout gives `json`, `pdf`, `docx`; a table layout
+  gives `json` and, with exactly one sheet, `csv`. The `json` form is the Reports page's on-screen view: each table of
+  the document becomes a section titled by the headings above it ("Alpha / Requirements"), the text between tables is
+  its note. The catalogue entry lists the formats and, for an organisation layout, `supports_project_multi_filter` and
+  the `projects` the caller may choose among; the Reports page offers them as a **Projects** selector.
+- **Content tiers.** The layout's own introduction, chapters and appendices are `ReportContent` rows keyed
+  `custom.<layout id>` (template, project, ancestors, organisation, as for any report; an organisation-wide run uses the
+  template and organisation tiers). `report_content.is_valid_report_key` accepts the key only for a layout the scope can
+  reach (a project: its effective layouts; the organisation and its templates: the organisation's own), the editors list
+  those layouts under "Custom reports", and deleting a layout deletes its content. In a bundle the key is
+  `custom:<layout name>` (an id means nothing elsewhere) and an import binds it to the layout it created, else to the
+  layout of that name the scope can reach; layouts are imported before report content for that reason.
+- **Provenance** (`models/generated_report.py`). Every run writes one `generated_reports` row after rendering succeeds
+  (so a refused or failed run leaves none): layout id, name, version and tree hash, caller, UTC time, engine version,
+  format, parameters, the projects covered, widgets (none yet), records read per type, block/row/hidden counts and a
+  SHA-256 `source_digest` over the records in the report (type, id, last-change time, which for a versioned record is
+  its current version's). It holds identifiers, counts and keys only, no layout text or cell value, and survives the
+  layout's deletion. Layout runs are recorded here rather than in `audit_events`, as a report read is for the module
+  reports.
+- **Limits.** `LayoutLimitError` answers 413 and a timeout 408; both write nothing.
+- **MCP.** `list_report_layouts`, `get_report_layout`, `run_custom_report`, `parse_report_layout_text`,
+  `format_report_layout_text` and, in write mode, `create_report_layout`, `save_report_layout_version`,
+  `update_report_layout`, `delete_report_layout` (`mcp-server/server.py`, skill `reqtrack-mcp`). `run_custom_report`
+  always returns the `json` form.
+
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 
 A module that reports on its records declares a `ReportDefinition` per report on
