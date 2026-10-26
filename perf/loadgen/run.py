@@ -104,6 +104,20 @@ class Shared:
         return random.choice(projects)
 
 
+def failure_kind(message: str) -> str:
+    """A failure message reduced to something safe to record: its HTTP status, `timeout`, `connection` or `other`
+    (never the response text, which could hold anything the server said)."""
+    head = message.strip()[:3]
+    if head.isdigit():
+        return head
+    lowered = message.lower()
+    if "timed out" in lowered or "timeout" in lowered:
+        return "timeout"
+    if "connection" in lowered:
+        return "connection"
+    return "other"
+
+
 def summarise(environment: Environment, duration: float) -> dict:
     """Per-endpoint statistics for the measured period.
 
@@ -134,10 +148,16 @@ def summarise(environment: Environment, duration: float) -> dict:
             "bytes_mean": round(entry.avg_content_length) if count else None,
         }
 
+    kinds: dict[str, int] = {}
+    for error in environment.stats.errors.values():
+        if THROTTLED in str(error.error):
+            continue
+        kinds[failure_kind(str(error.error))] = kinds.get(failure_kind(str(error.error)), 0) + error.occurrences
+
     rows = [row(entry) for entry in environment.stats.entries.values() if not entry.name.startswith("setup:")]
     total = {"count": sum(r["count"] for r in rows), "failures": sum(r["failures"] for r in rows), "throttled": sum(r["throttled"] for r in rows)}
     total["rps"] = round(total["count"] / duration, 3) if duration else None
-    return {"requests": sorted(rows, key=lambda r: r["name"]), "total": total}
+    return {"requests": sorted(rows, key=lambda r: r["name"]), "total": total, "failure_kinds": kinds}
 
 
 def run(request: dict, password: str) -> dict:

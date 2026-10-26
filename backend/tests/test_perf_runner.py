@@ -1640,3 +1640,154 @@ def test_the_capacity_climb_stops_at_the_first_failing_level(monkeypatch):
     monkeypatch.setattr(run, "record_snapshot", lambda *a, **k: None)
     run.run_scenarios("T2", {}, ["capacity"])
     assert ran == [8, 32, 96], "96 users delivered 21% of the offered rate, so 192 is not run"
+
+
+def test_failures_are_recorded_as_a_status_or_a_kind_never_the_response_text():
+    source = (_PERF / "loadgen" / "run.py").read_text()
+    namespace: dict = {}
+    start = source.index("def failure_kind")
+    exec(source[start:source.index("def summarise")], namespace)  # noqa: S102
+    kind = namespace["failure_kind"]
+    assert kind("503: The server is busy") == "503"
+    assert kind("500: Internal Server Error with secret detail") == "500"
+    assert kind("HTTPConnectionPool(host='backend', port=8000): Read timed out.") == "timeout"
+    assert kind("('Connection aborted.', RemoteDisconnected())") == "connection"
+    assert kind("something unexpected") == "other"
+
+
+def test_database_pool_options_reach_the_stack_and_a_pool_that_cannot_fit_is_refused():
+    from perf import run_profile
+
+    options = run_profile.parse_args(["lab-host", "--workers", "8", "--db-pool-size", "3", "--db-max-overflow", "5"])
+    assert (options.db_pool_size, options.db_max_overflow) == (3, 5)
+    caps = resources.plan_caps(16, 64, max_cpus=12, max_mem_gib=8, workers=8)
+    env = run_profile.stack_environment(caps=caps, workers=8, backend_image="x", loadgen_image="y", db_pool=(3, 5))
+    assert (env["DB_POOL_SIZE"], env["DB_MAX_OVERFLOW"]) == ("3", "5")
+    plain = run_profile.stack_environment(caps=caps, workers=8, backend_image="x", loadgen_image="y")
+    assert "DB_POOL_SIZE" not in plain and "DB_MAX_OVERFLOW" not in plain
+
+    fits = run_profile.ProfileRun(options)
+    fits.check_connection_budget(caps)  # 8 x (3 + 5 + 2) = 80 of 97
+
+    too_many = run_profile.ProfileRun(run_profile.parse_args(["lab-host", "--workers", "8"]))
+    with pytest.raises(run_profile.RunError) as refused:
+        too_many.check_connection_budget(caps)  # 8 x 17 = 136
+    assert "136" in str(refused.value) and "--db-pool-size" in str(refused.value)
+    four = resources.plan_caps(16, 64, max_cpus=8, max_mem_gib=8, workers=4)
+    run_profile.ProfileRun(run_profile.parse_args(["lab-host", "--workers", "4"])).check_connection_budget(four)  # 68
+
+    for bad in ("0", "500"):
+        with pytest.raises(SystemExit):
+            run_profile.parse_args(["lab-host", "--db-pool-size", bad])
+
+
+def test_the_suggested_pool_fits_the_connection_limit():
+    from perf import run_profile
+
+    for workers in (6, 8, 12):
+        caps = resources.plan_caps(32, 128, max_cpus=24, max_mem_gib=16, workers=workers)
+        run = run_profile.ProfileRun(run_profile.parse_args(["lab-host", "--workers", str(workers)]))
+        with pytest.raises(run_profile.RunError) as refused:
+            run.check_connection_budget(caps)
+        words = str(refused.value).split()
+        size, overflow = int(words[words.index("--db-pool-size") + 1]), int(words[words.index("--db-max-overflow") + 1])
+        suggested = run_profile.ProfileRun(run_profile.parse_args(
+            ["lab-host", "--workers", str(workers), "--db-pool-size", str(size), "--db-max-overflow", str(overflow)]))
+        suggested.check_connection_budget(caps)
+
+
+def test_every_documented_run_command_is_valid_for_the_runner():
+    """The commands in `perf/README.md` (Run recipes) parse with the runner's own argument parser, name only real
+    scenarios and fit PostgreSQL's connection limit, so the documentation cannot drift from the flags."""
+    import shlex
+
+    from perf import run_profile
+
+    text = (_PERF / "README.md").read_text()
+    commands = []
+    for block in re.findall(r"```sh\n(.*?)```", text, re.S):
+        for line in block.splitlines():
+            if line.startswith("perf/run_profile.sh"):
+                commands.append(shlex.split(line.split("#")[0].replace("<label>", "lab-host")))
+    assert len(commands) >= 10, "the recipes section lists the runs"
+    for words in commands:
+        options = run_profile.parse_args(words[1:])
+        for scenario in options.scenarios or []:
+            assert scenario in catalog.CATALOG, (scenario, words)
+        workers = options.workers or 4
+        size = options.db_pool_size if options.db_pool_size is not None else 5
+        overflow = options.db_max_overflow if options.db_max_overflow is not None else 10
+        assert workers * (size + overflow + 2) <= 97, ("connections", words)
+
+
+def test_worker_sweep_option_is_validated_and_chooses_one_pool_that_fits_the_largest_count():
+    import dataclasses
+
+    from perf import run_profile
+
+    options = run_profile.parse_args(["lab-host", "--workers-sweep", "6,2,4,4"])
+    assert options.worker_sweep == (2, 4, 6)
+    for bad in ("4", "x,2", "0,2", "2,100"):
+        with pytest.raises(SystemExit):
+            run_profile.parse_args(["lab-host", "--workers-sweep", bad])
+    for conflict in (["--workers", "4"], ["--profiling", "heap"]):
+        with pytest.raises(SystemExit):
+            run_profile.parse_args(["lab-host", "--workers-sweep", "2,4", *conflict])
+
+    pooled = run_profile.sweep_pool(options)
+    assert (pooled.db_pool_size, pooled.db_max_overflow) == (4, 10), "six workers cannot use 5 + 10 (6 x 17 = 102)"
+    small = run_profile.sweep_pool(run_profile.parse_args(["lab-host", "--workers-sweep", "2,4"]))
+    assert (small.db_pool_size, small.db_max_overflow) == (None, None), "the application default fits four workers"
+    chosen = run_profile.sweep_pool(run_profile.parse_args(["lab-host", "--workers-sweep", "2,6", "--db-pool-size", "3"]))
+    assert chosen.db_pool_size == 3 and chosen.db_max_overflow is None, "the operator's pool is left alone"
+    assert dataclasses.replace(pooled, workers=6).db_pool_size == 4
+
+
+def test_a_worker_sweep_runs_each_count_as_its_own_run_and_stops_at_the_first_failure(monkeypatch, tmp_path, capsys):
+    from perf import run_profile
+
+    seen = []
+
+    def fake_execute(self):
+        seen.append((self.options.workers, self.options.db_pool_size, self.options.db_max_overflow, self.options.worker_sweep))
+        self.results_directory = tmp_path / f"run-{self.options.workers}"
+        return 0 if self.options.workers != 4 else run_profile.EX_ABORTED
+
+    monkeypatch.setattr(run_profile.ProfileRun, "execute", fake_execute)
+    status = run_profile.main(["lab-host", "--workers-sweep", "2,4,6"])
+    assert status == run_profile.EX_ABORTED
+    assert seen == [(2, 4, 10, None), (4, 4, 10, None)], "6 workers is not run after 4 aborted; every run has the same pool"
+    out = capsys.readouterr()
+    assert "worker sweep stopped after 4 workers" in out.err
+    assert f"analyse.py --workers {tmp_path / 'run-2'} {tmp_path / 'run-4'}" in out.out
+
+    seen.clear()
+    monkeypatch.setattr(run_profile.ProfileRun, "execute", lambda self: seen.append(self.options.workers) or 0)
+    assert run_profile.main(["lab-host", "--workers-sweep", "2,4", "--plan"]) == 0 and seen == [2, 4]
+
+
+def test_worker_scaling_table_has_one_row_per_run_with_requests_per_worker(tmp_path):
+    import yaml
+
+    analyse = _analyse()
+    budgets = yaml.safe_load((_PERF / "budgets.yaml").read_text())
+
+    def bundle_for(workers, delivered_by_users):
+        directory = tmp_path / f"w{workers}"
+        directory.mkdir()
+        (directory / "run.json").write_text(json.dumps({"workers": workers, "shared_host": False}))
+        lines = ["tier,scenario,repeat,users,request,count,failures,throttled,p50_ms,p95_ms,p99_ms,mean_ms,max_ms,rps,bytes_mean"]
+        for users, rps in delivered_by_users.items():
+            lines.append(f"T2,capacity,1,{users},GET /x,{int(rps * 45)},0,0,10,100,200,50,300,{rps},100")
+        (directory / "latency.csv").write_text("\n".join(lines) + "\n")
+        return str(directory)
+
+    rows = analyse.worker_scaling(
+        [bundle_for(4, {16: 16, 64: 63, 128: 124, 256: 188}), bundle_for(2, {16: 16, 64: 62, 128: 70})], budgets,
+    )
+    assert [r["workers"] for r in rows] == [2, 4]
+    assert rows[0]["usable_users"] == 64 and rows[0]["rps_per_worker"] == 31.0
+    assert rows[1]["usable_users"] == 128 and rows[1]["rps_per_worker"] == 31.0
+    assert rows[1]["next_level"]["users"] == 256
+    assert (rows[1]["peak_rps"], rows[1]["peak_rps_per_worker"]) == (188, 47.0)
+    assert (rows[0]["peak_rps"], rows[0]["peak_rps_per_worker"]) == (70, 35.0)

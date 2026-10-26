@@ -1,5 +1,7 @@
 # Performance findings
 
+The commands that produced these figures are in [perf/README.md](../perf/README.md), "Run recipes".
+
 What the profiling runs (`perf/`, how-to in [perf/README.md](../perf/README.md)) found about how the product scales,
 and what was done. One entry per finding, latest state only. Numbers are from Docker Desktop on a Mac (amd64, one
 backend worker, shared host), so **statement and row counts are exact and latencies are indicative**: untouched
@@ -32,6 +34,25 @@ flowchart LR
   (4-8 s at 20,000), CSV export (3.5 s), PDF report (39 s), project export (12 s) and project import (115 s Linux,
   186 s Dell at the run's commit; faster after F8, not re-measured).
 
+## Capacity (T2, 1,000 requirements; the `capacity` scenario)
+
+One simulated person makes about one request a second (browse plus about one request in five a write); a real person
+makes one every several seconds. Judged on delivered rate (at least 90% of offered), failures (at most 1%) and the
+request-weighted p95 (at most 1 s).
+
+| Host | Workers | Usable level | At the next level | Backend CPU at the knee |
+|------|---------|--------------|-------------------|-------------------------|
+| Linux server (16 cores, shared with production), after the request limit | 4 | 128 people (124 req/s delivered, p95 0.87 s, no failures) | 256 people: 188 of 256 req/s (73%), 0.7% failures, p95 1.75 s | 322% of the 400% cap |
+| Mac (Docker Desktop), before the request limit | 1 | 8 people | 32 people: 61-70% delivered; 96 people: **nothing completed** (F10) | 115% |
+| Mac, after the request limit | 1 | 8 people | 96 people: 22% delivered, no failures (saturated, not stalled) | 116% |
+
+- The Linux server scales linearly (16, 32, 64, 128 people deliver 97-98% of the offered rate) and then runs out of
+  CPU, not of anything else: the load generator used 16% of its cap, the database cache hit rate stayed at 98.6-98.9%
+  and no connection pool was exhausted. About 17 ms of backend CPU per request (322% CPU for 188 req/s), so a worker
+  serves roughly 45-55 requests a second per core on this mix.
+- Planning rule from these numbers: usable requests per second is about 50 times the number of workers (one core
+  each); divide by how often a person makes a request to get people.
+
 ## Closed
 
 | # | Symptom | Cause | Fix | Before to after (T2, 1,000 requirements) | Guard |
@@ -55,7 +76,7 @@ flowchart LR
 | O2 | `link-candidates` (1.1-1.3 s), `link-graph` for a hub (1.5-1.9 s) and a hub's link list (0.7 s) are flat between T3 and T4, so they depend on the hub's degree, not the project size | `latency.csv` | Profile with `--profiling cpu` on a hub; the link list is already 16 statements |
 | O6 | Project import runs, per requirement, about 3 tag-vocabulary statements, 2 parent-project lookups, 1 organisation-role lookup and 1 audit insert (576 statements for 40 requirements); a record import still looks up each named record with its own statement | Probe of a 40-requirement project | Needs bundle-scoped caches (the tag list changes as the import creates tags, and the organisation-role lookup shares a memo with project roles that the import creates), so it is its own change with its own tests |
 | O3 | Other modules list links and comments with the same per-row lookups as F3 and F6 (decisions, context and strategy, stakeholders: their own `comment_to_out` and `_link_to_out`) | Read from code; not measured, because the dataset generator has no generators for those module types yet | Measure once the module generators exist; apply the F3 pattern where it holds |
-| O9 | A single worker saturates at about 20 requests per second on the Mac (32 people deliver 61-70% of 32 req/s, backend CPU 115%): one worker is one core of Python | Capacity runs, Mac, 1 worker | Run the capacity scenario with 4 workers on the Linux server and the Dell to get the per-worker figure and see whether the pool, the project row lock or CPU is the next limit |
+| O9 | The 14 failures at 256 people (create requests, 502 attempted) have no recorded kind; the load generator now records the status or kind of each failure | Capacity run, Linux, 256 people | Re-run at 256 and 384 people on a free host to see whether the next limit is CPU, the project row lock taken by every create, or refused requests (`503`) |
 | O4 | At 20,000 requirements the buffer cache hit rate falls to 86% (attachment) and 66% (soak) with the default `shared_buffers` of 128 MB; every other scenario stays above 99%, and no scenario wrote a temp file or deadlocked | `pgdb.csv`, Linux and Dell T4 | Re-run the soak at `shared_buffers` 512 MB and 1 GB and record the change before advising a setting |
 | O7 | The PDF report takes 39 s at 20,000 requirements (over the 30 s heavy budget) and the Word report 15 s; report, project export and project import hold the whole project, so each backend worker peaks near 1 GiB at 5,000 and 20,000 requirements | `latency.csv`, `processes.csv` | Stream or chunk the document build; until then size memory for the heavy requests (worker peak above, times the workers that may run one at once) |
 | O8 | `link-graph` for a hub record takes 0.5-0.6 s at 5,000 and 20,000 requirements on the x86 hosts (1.3 s on the Pi), and `link-candidates` 1.0-1.3 s at 16 users | `latency.csv` | Profile with `--profiling cpu` on a hub; the cost follows the hub's link count |

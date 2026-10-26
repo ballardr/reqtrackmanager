@@ -42,6 +42,7 @@ Dependencies: Docker with the Compose plugin (2.24 or newer, for `!reset`), Pyth
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import re
 import secrets
@@ -100,6 +101,11 @@ class Interrupted(Exception):
     """The operator pressed Ctrl-C or the process was asked to stop."""
 
 
+APP_DEFAULT_POOL_SIZE = 5
+APP_DEFAULT_MAX_OVERFLOW = 10
+"""The application's pool defaults (`Settings.db_pool_size`, `db_max_overflow`)."""
+PERF_MAX_CONNECTIONS = 100
+"""PostgreSQL's `max_connections` in the perf stack (its default)."""
 DEDICATED_MAX_LOAD_PER_CORE = 4.0
 """Load limit on a dedicated host: nothing else runs there, so load is mostly this run's own threads."""
 
@@ -126,6 +132,9 @@ class Options:
         out: Results root.
         cache_dir: Where dataset snapshots live (outside the repository).
         watch_url: A read-only health URL to poll and abort on (production's `/health`).
+        worker_sweep: Backend worker counts to run one after another, each as its own run (`--workers-sweep`), or None.
+        db_pool_size / db_max_overflow: Per-worker database pool (`DB_POOL_SIZE`, `DB_MAX_OVERFLOW`); None for the
+            application's defaults (5 and 10).
         capacity_users: Simulated-user levels of the `capacity` scenario, or None for the catalogue's.
         max_load_per_core: Host load average per core above which (for a sustained period) the run stops; None for
             the default (1.5, or `DEDICATED_MAX_LOAD_PER_CORE` on a dedicated host).
@@ -156,6 +165,9 @@ class Options:
     watch_url: Optional[str] = None
     max_load_per_core: Optional[float] = None
     capacity_users: Optional[tuple] = None
+    db_pool_size: Optional[int] = None
+    db_max_overflow: Optional[int] = None
+    worker_sweep: Optional[tuple] = None
     scenarios: Optional[list] = None
     profiling: str = "none"
 
@@ -240,11 +252,30 @@ def parse_args(argv: list) -> Options:
              "still counts, so a busy server may need a higher value; --watch-url is the direct check that production is unaffected",
     )
     parser.add_argument(
+        "--workers-sweep", help="comma-separated backend worker counts (for example 2,4,6) to run one after another, each as its own run "
+                                "with the same pool, so only the worker count varies; stops at the first run that fails or aborts",
+    )
+    parser.add_argument("--db-pool-size", type=int, help="DB_POOL_SIZE for the backend (default 5); lower it to run many workers within PostgreSQL's connection limit")
+    parser.add_argument("--db-max-overflow", type=int, help="DB_MAX_OVERFLOW for the backend (default 10)")
+    parser.add_argument(
         "--capacity-users", help="comma-separated simulated-user levels for the capacity scenario (default 16,32,64,128,256 in full mode, "
                                  "16,64 in quick); it runs at T2 only and is a heavy scenario (--allow-heavy or --dedicated)",
     )
     parser.add_argument("--watch-url", help="a health URL (production's /health) to poll with GET; the run aborts if it slows or fails")
     args = parser.parse_args(argv)
+    for flag, value, low in (("--db-pool-size", args.db_pool_size, 1), ("--db-max-overflow", args.db_max_overflow, 0)):
+        if value is not None and not low <= value <= 200:
+            parser.error(f"{flag} must be between {low} and 200")
+    worker_sweep = None
+    if args.workers_sweep:
+        try:
+            worker_sweep = tuple(sorted({int(part) for part in args.workers_sweep.split(",")}))
+        except ValueError:
+            parser.error("--workers-sweep takes whole numbers separated by commas")
+        if len(worker_sweep) < 2 or min(worker_sweep) < 1 or max(worker_sweep) > 64:
+            parser.error("--workers-sweep needs at least two distinct worker counts between 1 and 64")
+        if args.workers != "auto" or args.profiling == "heap":
+            parser.error("--workers-sweep chooses the worker counts: do not combine it with --workers or --profiling heap")
     capacity_users = None
     if args.capacity_users:
         try:
@@ -270,7 +301,7 @@ def parse_args(argv: list) -> Options:
         breadth=args.breadth, density=args.density, seed=args.seed, repeats=args.repeats, workers=1 if args.profiling == "heap" else (None if args.workers == "auto" else int(args.workers)), max_cpus=args.max_cpus,
         max_mem=args.max_mem, dedicated=args.dedicated, allow_heavy=args.allow_heavy or args.dedicated, soak_minutes=args.soak_minutes,
         plan=args.plan, cleanup=args.cleanup, images=args.images, storage=args.storage, keep=args.keep, out=args.out,
-        cache_dir=args.cache_dir, watch_url=args.watch_url, max_load_per_core=args.max_load_per_core, capacity_users=capacity_users, scenarios=args.scenarios.split(",") if args.scenarios else None, profiling=args.profiling,
+        cache_dir=args.cache_dir, watch_url=args.watch_url, max_load_per_core=args.max_load_per_core, capacity_users=capacity_users, db_pool_size=args.db_pool_size, db_max_overflow=args.db_max_overflow, worker_sweep=worker_sweep, scenarios=args.scenarios.split(",") if args.scenarios else None, profiling=args.profiling,
     )
 
 
@@ -286,7 +317,7 @@ def render_env_file(env: dict) -> str:
 
 def stack_environment(
     *, caps: resources.Caps, workers: int, backend_image: str, loadgen_image: str, generate: Callable[[], str] = lambda: secrets.token_urlsafe(24),
-    profiling: str = "none",
+    profiling: str = "none", db_pool: tuple = (None, None),
 ) -> dict:
     """The perf stack's environment: fresh throwaway credentials, images, caps and worker count. Nothing is read
     from the operator's environment or any `.env`.
@@ -297,6 +328,7 @@ def stack_environment(
         backend_image / loadgen_image: Image references (perf-only names, or a pulled published tag).
         generate: Source of random secrets (replaced in tests).
         profiling: The profiling mode; `heap` starts the backend as one worker under memray.
+        db_pool: `(DB_POOL_SIZE, DB_MAX_OVERFLOW)`; None leaves the application's default.
 
     Returns:
         The variables for the env file; `SECRET_KEYS` names those to mask.
@@ -310,6 +342,9 @@ def stack_environment(
         "PERF_USER_PASSWORD": generate(), "PERF_BACKEND_IMAGE": backend_image, "PERF_LOADGEN_IMAGE": loadgen_image,
     }
     env.update(caps.env())
+    for name, value in zip(("DB_POOL_SIZE", "DB_MAX_OVERFLOW"), db_pool):
+        if value is not None:
+            env[name] = str(value)
     if profiling == "heap":
         env["PROFILE_MEMRAY"] = "1"
     return env
@@ -371,6 +406,7 @@ class ProfileRun:
         self._noted: set = set()
         self.workers = options.workers or resources.DEFAULT_WORKERS
         self.caps = None
+        self.results_directory: Optional[Path] = None
         self.latency: list = []
         self.process_rows: list = []
         self.profile_files: dict = {}
@@ -435,6 +471,8 @@ class ProfileRun:
             f"  Compose project   : {compose.PROJECT} (files: docker-compose.yml + perf/docker-compose.perf.yml" + (" + docker-compose.profile.yml" if self.options.profiling != "none" else "") + "; no published ports)",
             f"  Services          : db, storage, backend (workers={worker_text}), plus a load generator container per scenario",
             f"  Images            : {image_source}",
+            f"  Database pool     : {self.options.db_pool_size if self.options.db_pool_size is not None else APP_DEFAULT_POOL_SIZE} + "
+            f"{self.options.db_max_overflow if self.options.db_max_overflow is not None else APP_DEFAULT_MAX_OVERFLOW} per worker (default 5 + 10); each worker admits that many requests at once",
             f"  Caps              : {caps.cpus:g} CPUs, {caps.memory_gib:.1f} GiB memory, no swap (backend {caps.per_service['backend']['mem']}, db {caps.per_service['db']['mem']})",
             f"  Host              : {host['arch']}, {host['docker_cores']} cores and {host['docker_ram_gib']} GiB visible to Docker",
             f"  Tiers             : {tier_text}",
@@ -893,6 +931,7 @@ class ProfileRun:
         delivered = (total["rps"] or 0) / offered if offered else 0.0
         failure_rate = failures / count if count else 1.0
         stalled = count == 0
+        kinds = summary.get("failure_kinds") or {}
         rows = [r for r in self.sampler.rows if r.get("scenario") == "capacity" and r.get("users") == users and r.get("tier") == tier]
 
         def mean_cpu(service: str) -> float:
@@ -903,7 +942,8 @@ class ProfileRun:
         loadgen_cpu = mean_cpu("loadgen")
         saturated = bool(loadgen_cap) and loadgen_cpu >= 0.85 * 100 * float(loadgen_cap)
         line = (f"capacity {tier} {users} users: offered {offered:.0f} req/s, delivered {delivered * 100:.0f}%, "
-                f"{'NO REQUEST COMPLETED, ' if stalled else ''}failures {failure_rate * 100:.1f}%, backend CPU {mean_cpu('backend'):.0f}%, load generator CPU {loadgen_cpu:.0f}%")
+                f"{'NO REQUEST COMPLETED, ' if stalled else ''}failures {failure_rate * 100:.1f}%"
+                f"{' (' + ', '.join(f'{k}: {v}' for k, v in sorted(kinds.items())) + ')' if kinds else ''}, backend CPU {mean_cpu('backend'):.0f}%, load generator CPU {loadgen_cpu:.0f}%")
         self.say("  " + line)
         stop = failure_rate > catalog.CAPACITY_MAX_FAILURE_RATE or delivered < catalog.CAPACITY_MIN_DELIVERED
         self.notes.append(line + (" (load generator saturated: the ceiling may be its own)" if saturated else "") + ("; stopped here" if stop else ""))
@@ -923,6 +963,7 @@ class ProfileRun:
         existing = self.docker.project_resources()
         if any(existing.values()):
             raise RunError(f"a {compose.PROJECT} project already exists (a crashed run?); run with --cleanup to remove it", EX_USAGE)
+        self.check_connection_budget(caps)
         largest = max(self.total_requirements(t) for t in self.tiers())
         self.options.cache_dir.mkdir(parents=True, exist_ok=True)
         reasons = resources.preflight_headroom(
@@ -931,6 +972,26 @@ class ProfileRun:
         )
         if reasons:
             raise RunError("not enough headroom on this host: " + "; ".join(reasons), EX_USAGE)
+
+    def check_connection_budget(self, caps: resources.Caps) -> None:
+        """Refuses a worker count and pool whose connections cannot fit PostgreSQL's limit.
+
+        With more connections possible than the server allows, a loaded run fails with connection errors that read as an
+        application fault; the operator lowers the pool instead.
+
+        Raises:
+            RunError: If `workers x (pool + overflow + 2)` exceeds the usable connections (100 less 3 reserved).
+        """
+        size = self.options.db_pool_size if self.options.db_pool_size is not None else APP_DEFAULT_POOL_SIZE
+        overflow = self.options.db_max_overflow if self.options.db_max_overflow is not None else APP_DEFAULT_MAX_OVERFLOW
+        ceiling = pgprofile.connection_ceiling(caps.workers, size, overflow)
+        usable = PERF_MAX_CONNECTIONS - pgprofile.RESERVED_CONNECTIONS
+        if ceiling > usable:
+            room = usable // caps.workers - 2
+            raise RunError(
+                f"{caps.workers} workers x ({size} + {overflow} + 2) = {ceiling} database connections, more than the {usable} PostgreSQL allows; "
+                f"lower the pool, for example --db-pool-size {max(1, room // 3)} --db-max-overflow {max(0, room - max(1, room // 3))}", EX_USAGE,
+            )
 
     def thresholds(self) -> resources.Thresholds:
         """The host-pressure limits for this run (the defaults, with the operator's load limit)."""
@@ -969,7 +1030,7 @@ class ProfileRun:
 
         self.work = Path(tempfile.mkdtemp(prefix=f"{compose.PROJECT}-"))
         self.work.chmod(0o700)
-        self.env = stack_environment(caps=caps, workers=caps.workers, backend_image=backend_image, loadgen_image="reqtrack-perf-loadgen:build", generate=self._generate, profiling=options.profiling)
+        self.env = stack_environment(caps=caps, workers=caps.workers, backend_image=backend_image, loadgen_image="reqtrack-perf-loadgen:build", generate=self._generate, profiling=options.profiling, db_pool=(options.db_pool_size, options.db_max_overflow))
         env_file = self.work / "perf.env"
         env_file.write_text(render_env_file(self.env))
         env_file.chmod(0o600)
@@ -1019,6 +1080,7 @@ class ProfileRun:
             if not options.keep:
                 self.teardown()
         written = self.write_results(host, git, caps, image_source, started, tiers, names)
+        self.results_directory = written
         if written:
             self.say(f"results: {written}")
         return status
@@ -1091,10 +1153,59 @@ class ProfileRun:
         return directory
 
 
+def sweep_pool(options: Options) -> Options:
+    """The options with one database pool for every run of a worker sweep: the application's default if the largest
+    count fits PostgreSQL's connections with it, else the largest pool that does, so only the worker count varies.
+
+    Returns:
+        `options` unchanged when the operator chose a pool or the default fits, else a copy with the pool set.
+    """
+    if options.db_pool_size is not None or options.db_max_overflow is not None:
+        return options
+    largest = max(options.worker_sweep)
+    usable = PERF_MAX_CONNECTIONS - pgprofile.RESERVED_CONNECTIONS
+    if pgprofile.connection_ceiling(largest, APP_DEFAULT_POOL_SIZE, APP_DEFAULT_MAX_OVERFLOW) <= usable:
+        return options
+    room = usable // largest - 2
+    size = max(1, room // 3)
+    return dataclasses.replace(options, db_pool_size=size, db_max_overflow=max(0, room - size))
+
+
+def run_sweep(options: Options) -> int:
+    """Runs the profile once per worker count, in order, each as its own run and bundle.
+
+    Stops at the first run that fails or aborts (a host under pressure should not be asked for the next one) and
+    prints where the bundles are and how to compare them.
+
+    Returns:
+        0 when every run finished, else the first non-zero status.
+    """
+    options = sweep_pool(options)
+    results = []
+    for count in options.worker_sweep:
+        print(f"=== worker sweep: {count} workers (of {', '.join(str(n) for n in options.worker_sweep)}) ===", flush=True)
+        run = ProfileRun(dataclasses.replace(options, workers=count, worker_sweep=None))
+        try:
+            status = run.execute()
+        except RunError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            status = exc.code
+        if run.results_directory:
+            results.append(run.results_directory)
+        if status != 0:
+            print(f"worker sweep stopped after {count} workers (exit {status})", file=sys.stderr)
+            break
+    if results and not options.plan:
+        print("compare the runs: python3 perf/analyse.py --workers " + " ".join(str(d) for d in results))
+    return status if results or options.plan else (status or EX_USAGE)
+
+
 def main(argv: Optional[list] = None) -> int:
     """Entry point; returns the process exit status."""
     options = parse_args(sys.argv[1:] if argv is None else argv)
     try:
+        if options.worker_sweep:
+            return run_sweep(options)
         return ProfileRun(options).execute()
     except RunError as exc:
         print(f"error: {exc}", file=sys.stderr)

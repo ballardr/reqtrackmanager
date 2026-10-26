@@ -18,6 +18,7 @@ Responsibilities:
 
 Usage:
     python3 perf/analyse.py perf/results/<host-label>/<date>-<commit> [--json]
+    python3 perf/analyse.py --workers <bundle> <bundle> ...     (capacity by worker count; a worker sweep's runs)
 
 Design decisions:
 - Pure functions over rows, so the classification is unit-tested; the command line only loads files.
@@ -367,6 +368,36 @@ def analyse(directory: Path, budgets: dict) -> dict:
     }
 
 
+def worker_scaling(directories: list, budgets: dict) -> list:
+    """How the capacity result changes with the backend worker count, one row per bundle.
+
+    Args:
+        directories: Bundle directories that each ran the `capacity` scenario (a worker sweep's runs).
+        budgets: The parsed `budgets.yaml`.
+
+    Returns:
+        Rows sorted by workers: `workers`, `usable_users`, `delivered_rps` (at the usable level), `rps_per_worker`,
+        `peak_rps` and `peak_rps_per_worker` (the most any level delivered, which is where the stack saturates),
+        `next_level` (the first level beyond the budget, or None) and `host_shared`.
+    """
+    rows = []
+    for directory in directories:
+        run = json.loads((Path(directory) / "run.json").read_text())
+        curve = capacity_curve(read_csv(Path(directory) / "latency.csv"), budgets)
+        usable = next((lvl for lvl in curve["levels"] if lvl["users"] == curve["usable_users"]), None)
+        workers = int(run.get("workers") or 0)
+        delivered = usable["delivered_rps"] if usable else 0.0
+        peak = max((lvl["delivered_rps"] for lvl in curve["levels"]), default=0.0)
+        rows.append({
+            "workers": workers, "usable_users": curve["usable_users"], "delivered_rps": delivered,
+            "rps_per_worker": round(delivered / workers, 1) if workers else None,
+            "peak_rps": peak, "peak_rps_per_worker": round(peak / workers, 1) if workers else None,
+            "next_level": curve["first_unusable"],
+            "host_shared": bool(run.get("shared_host")),
+        })
+    return sorted(rows, key=lambda r: r["workers"])
+
+
 def main(argv: list) -> int:
     """Prints the analysis; exits 1 when there is a finding."""
     import yaml
@@ -376,6 +407,13 @@ def main(argv: list) -> int:
         print(__doc__)
         return 2
     budgets = yaml.safe_load(BUDGETS.read_text())
+    if "--workers" in argv:
+        print("workers  usable people  req/s at that level  peak req/s  peak per worker  next level")
+        for row in worker_scaling(paths, budgets):
+            nxt = row["next_level"]
+            beyond = f"{nxt['users']} people: {nxt['delivered'] * 100:.0f}% delivered, p95 {nxt['p95_ms']} ms" if nxt else "none reached"
+            print(f"{row['workers']:>7}  {row['usable_users'] or 0:>13}  {row['delivered_rps']:>19.0f}  {row['peak_rps']:>10.0f}  {row['peak_rps_per_worker'] or 0:>15.1f}  {beyond}")
+        return 0
     result = analyse(Path(paths[0]), budgets)
     if "--json" in argv:
         print(json.dumps(result, indent=2, default=str))

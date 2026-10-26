@@ -48,6 +48,12 @@ flowchart LR
 
 `--workers auto` (the default) picks the most the CPU and memory budget supports, at most 4 (the production default), at about 0.5 GiB per worker plus 0.5 GiB for the parent. A budget that cannot run one worker is refused. The chosen count and `workers_auto` are recorded in `run.json`; a full run with an automatic count carries a note, because the headline comparison between hosts needs the same count: name it (`--workers 2`) for runs you intend to compare.
 
+
+`--db-pool-size` and `--db-max-overflow` set each worker's database pool (the application defaults are 5 and 10). More workers
+need a smaller pool: `workers x (pool + overflow + 2)` must stay under the 97 connections PostgreSQL allows clients, and the
+runner refuses a combination that does not fit and suggests one that does (eight workers: `--db-pool-size 3 --db-max-overflow 7`).
+A worker admits as many concurrent requests as its pool holds, so a smaller pool also lowers each worker's request limit.
+
 ## Profiling the backend (memory, CPU, statements per request)
 
 Container metrics say *that* memory or CPU is high; these say *where*. Every run records the first two; the
@@ -128,6 +134,62 @@ flowchart LR
   with two dedicated ones (the `LISTEN` listener and the leadership lock) a worker holds at most 17, so the default
   four workers hold at most 68 of PostgreSQL's 97 usable connections. Raise workers or replicas and the sum must stay
   below `max_connections` (default 100, 3 reserved).
+
+## Run recipes
+
+Commands for the runs this project's findings and sizing are based on. Run each inside `tmux new -s perf` (detach with
+Ctrl-b then d, reattach with `tmux attach -t perf`) so a dropped SSH session does not end it. Results land under
+`perf/results/<label>/`; copy the archive each run prints (`~/.cache/reqtrack-perf/<date>-<commit>.tar.gz`) to wherever
+you collect them. Run from a pushed commit: a dirty tree or an unpushed commit marks the bundle non-publishable. If the
+commit shows as empty in the bundle's name, git cannot read the repository as the user running the script (root):
+`git config --global --add safe.directory <path to the repository>`.
+
+```sh
+# Read what a run will create and what it will not touch (any host)
+perf/run_profile.sh <label> --plan
+
+# Quick check that the runner works on a host: T0 and T1, one repeat, minutes
+perf/run_profile.sh <label> --quick
+
+# A dedicated host (nothing else runs on it): every tier, three repeats, heavy scenarios and the soak
+perf/run_profile.sh workstation-wsl2 --full --dedicated --workers 4
+
+# A server that also serves production: browsing and writes at every tier, then the heavy scenarios in a quiet window.
+# --watch-url stops the run if production's health check slows; the load limit is raised because the load average counts the
+# run's own threads
+perf/run_profile.sh linux-vm-4c8g --full --workers 4 --max-load-per-core 3 --watch-url $PROD_HEALTH_URL
+perf/run_profile.sh linux-vm-4c8g --full --workers 4 --allow-heavy --max-load-per-core 3 --watch-url $PROD_HEALTH_URL
+
+# After a change to large-project behaviour: the two largest tiers and the scenarios that exercise them
+perf/run_profile.sh linux-vm-4c8g --full --tiers T3,T4 --scenarios edit,browse,list_filtered,bundle_import --workers 4 --allow-heavy --max-load-per-core 3 --watch-url $PROD_HEALTH_URL
+
+# A Raspberry Pi 5 (8 GB, one worker, a 2.7 GiB budget; T3 and T4 do not fit unless nothing else is running)
+perf/run_profile.sh rpi5-8g --full --workers 1 --max-mem 2.7 --tiers T0,T1,T2 --max-load-per-core 4 --storage nvme
+```
+
+### How throughput scales with workers
+
+`capacity` steps simulated people up at T2 (see above) and reports the usable level. Run it at 2, 4 and 6 workers on one
+host with the same pool, so only the worker count varies: `workers x (pool + overflow + 2)` must stay under 97, and
+4 + 10 gives 96 for six workers (`--workers-sweep` picks it for you). The backend gets about half the stack's CPU budget, so give the stack twice as many
+CPUs as the largest worker count (`--max-cpus 12` for six).
+
+```sh
+perf/run_profile.sh workstation-wsl2 --full --tiers T2 --scenarios capacity --workers-sweep 2,4,6 --max-cpus 12 --dedicated
+python3 perf/analyse.py --workers perf/results/workstation-wsl2/<date>-<commit> ...    # the sweep prints the exact line
+```
+
+`--workers-sweep 2,4,6` runs the profile once per worker count, one after another, each as its own run and bundle, and
+stops at the first run that fails or aborts. It gives every run the same pool: the application's default if the largest count
+fits PostgreSQL's connections with it, else the largest pool that does (six workers: 4 + 10); pass `--db-pool-size` and
+`--db-max-overflow` to choose your own. The final `analyse.py --workers` table has one row per worker count: the usable
+level, the requests per second delivered there, per worker, and the first level beyond the budget.
+
+Read the result as requests per second per worker: it should stay near 50 while the backend's CPU is the limit. A fall
+means the database, the project row lock taken by every create, or the host's own cores became the limit (the run notes
+the load generator's CPU, so a ceiling it caused is not read as the backend's). On a server shared with production use
+`--allow-heavy`, `--max-load-per-core` and `--watch-url` instead of `--dedicated`, and keep the worker count within the
+CPUs production can spare.
 
 ## Dataset tiers
 
