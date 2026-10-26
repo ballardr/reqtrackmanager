@@ -105,6 +105,9 @@ services:
       # Per-worker database pool: at most DB_POOL_SIZE + DB_MAX_OVERFLOW connections (plus two dedicated) each.
       DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
       DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-10}
+      # Requests a worker serves at once (0 = the pool's capacity) and how long an extra one waits before a 503.
+      MAX_CONCURRENT_REQUESTS: ${MAX_CONCURRENT_REQUESTS:-0}
+      REQUEST_QUEUE_TIMEOUT_SECONDS: ${REQUEST_QUEUE_TIMEOUT_SECONDS:-30}
       DATABASE_URL: postgresql://reqtrack:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in production}@db:5432/reqtrack
       # Refuse to start on a placeholder or short JWT secret, a placeholder encryption key or the bundled object
       # store's default key (config.py's weak_secret_problems). Set to false only for a throwaway stack.

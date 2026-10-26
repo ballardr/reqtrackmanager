@@ -32,6 +32,7 @@ SEARCH_WORDS = ("controller", "sensor", "interface", "recover", "audit", "gatewa
 TAG_WORDS = ("safety", "security", "performance", "usability", "regulatory")
 ATTACHMENT_BYTES = 256 * 1024
 LONG_TIMEOUT = 600
+CAPACITY_TIMEOUT = 30
 #: The failure message of a request the server throttled on purpose; `run.py` reports these apart from failures.
 THROTTLED = "throttled"
 
@@ -369,6 +370,23 @@ class Soak(Browse):
                 response.failure(f"{response.status_code}")
 
 
+class Capacity(Browse, Edit):
+    """How many people one stack serves: the browse mix plus writes (about one request in five), each simulated
+    person issuing `CAPACITY_REQUESTS_PER_SECOND` (`perf/lib/catalog.py` names the same constant). The runner steps
+    the number of people up until the stack saturates or starts failing; a real person makes a request every several
+    seconds, so one simulated person stands for many."""
+
+    wait_time = constant_throughput(1)
+
+    def on_start(self) -> None:
+        """As any scenario, plus a request timeout: a request the stack never answers is counted as a failure after
+        `CAPACITY_TIMEOUT` seconds, so a stalled stack shows as failures instead of as no requests at all (Locust only
+        counts a request when it finishes)."""
+        super().on_start()
+        request = self.client.request
+        self.client.request = lambda method, url, **kwargs: request(method, url, **{"timeout": CAPACITY_TIMEOUT, **kwargs})
+
+
 SCENARIOS: dict[str, type[PerfUser]] = {
     "browse": Browse,
     "list_unpaged": ListUnpaged,
@@ -385,4 +403,5 @@ SCENARIOS: dict[str, type[PerfUser]] = {
     "attachment": Attachment,
     "project_scope": ProjectScope,
     "soak": Soak,
+    "capacity": Capacity,
 }

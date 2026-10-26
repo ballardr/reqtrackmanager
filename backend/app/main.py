@@ -25,6 +25,7 @@ from fastapi.responses import JSONResponse
 
 from app import profiling
 from app.body_limit import BodySizeLimitMiddleware
+from app.concurrency_limit import ConcurrencyLimitMiddleware
 from app.config import get_settings
 from app.database import SessionLocal, engine
 from app.metrics import http_request_duration_seconds, http_requests_total, run_worker_gauge_loop
@@ -172,7 +173,9 @@ app = FastAPI(
 )
 
 # Added before CORS so it ends up inside it (middleware added last runs first): a 413 still carries the CORS
-# headers the browser needs to read it.
+# headers the browser needs to read it. The concurrency limit is innermost, so a refused (503) request still
+# carries them too and only requests that pass the body check wait for a slot.
+app.add_middleware(ConcurrencyLimitMiddleware)
 app.add_middleware(BodySizeLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,

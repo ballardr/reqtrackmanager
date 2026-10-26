@@ -126,6 +126,7 @@ class Options:
         out: Results root.
         cache_dir: Where dataset snapshots live (outside the repository).
         watch_url: A read-only health URL to poll and abort on (production's `/health`).
+        capacity_users: Simulated-user levels of the `capacity` scenario, or None for the catalogue's.
         max_load_per_core: Host load average per core above which (for a sustained period) the run stops; None for
             the default (1.5, or `DEDICATED_MAX_LOAD_PER_CORE` on a dedicated host).
         scenarios: Explicit scenario names, or None for the mode's set.
@@ -154,6 +155,7 @@ class Options:
     cache_dir: Path = DEFAULT_CACHE
     watch_url: Optional[str] = None
     max_load_per_core: Optional[float] = None
+    capacity_users: Optional[tuple] = None
     scenarios: Optional[list] = None
     profiling: str = "none"
 
@@ -237,8 +239,20 @@ def parse_args(argv: list) -> Options:
              "The load counts every runnable thread on the host, including this stack's own, and a container held back by its CPU cap "
              "still counts, so a busy server may need a higher value; --watch-url is the direct check that production is unaffected",
     )
+    parser.add_argument(
+        "--capacity-users", help="comma-separated simulated-user levels for the capacity scenario (default 16,32,64,128,256 in full mode, "
+                                 "16,64 in quick); it runs at T2 only and is a heavy scenario (--allow-heavy or --dedicated)",
+    )
     parser.add_argument("--watch-url", help="a health URL (production's /health) to poll with GET; the run aborts if it slows or fails")
     args = parser.parse_args(argv)
+    capacity_users = None
+    if args.capacity_users:
+        try:
+            capacity_users = tuple(int(part) for part in args.capacity_users.split(","))
+        except ValueError:
+            parser.error("--capacity-users takes whole numbers separated by commas")
+        if not capacity_users or min(capacity_users) < 1 or max(capacity_users) > 1000:
+            parser.error("--capacity-users levels must be between 1 and 1000")
     if args.workers != "auto" and not (args.workers.isdigit() and int(args.workers) >= 1):
         parser.error("--workers must be a positive number or 'auto'")
     if args.profiling == "heap" and (not args.tiers or len(args.tiers.split(",")) != 1):
@@ -256,7 +270,7 @@ def parse_args(argv: list) -> Options:
         breadth=args.breadth, density=args.density, seed=args.seed, repeats=args.repeats, workers=1 if args.profiling == "heap" else (None if args.workers == "auto" else int(args.workers)), max_cpus=args.max_cpus,
         max_mem=args.max_mem, dedicated=args.dedicated, allow_heavy=args.allow_heavy or args.dedicated, soak_minutes=args.soak_minutes,
         plan=args.plan, cleanup=args.cleanup, images=args.images, storage=args.storage, keep=args.keep, out=args.out,
-        cache_dir=args.cache_dir, watch_url=args.watch_url, max_load_per_core=args.max_load_per_core, scenarios=args.scenarios.split(",") if args.scenarios else None, profiling=args.profiling,
+        cache_dir=args.cache_dir, watch_url=args.watch_url, max_load_per_core=args.max_load_per_core, capacity_users=capacity_users, scenarios=args.scenarios.split(",") if args.scenarios else None, profiling=args.profiling,
     )
 
 
@@ -356,6 +370,7 @@ class ProfileRun:
         self.notes: list = []
         self._noted: set = set()
         self.workers = options.workers or resources.DEFAULT_WORKERS
+        self.caps = None
         self.latency: list = []
         self.process_rows: list = []
         self.profile_files: dict = {}
@@ -809,15 +824,19 @@ class ProfileRun:
         per_project = self.summary["tiers"][tier]
         soak_minutes = self.options.soak_minutes if self.options.soak_minutes is not None else 30
         for name in names:
-            all_params = catalog.parameters(name, self.options.mode, per_project)
+            all_params = catalog.parameters(name, self.options.mode, per_project, tier, self.options.capacity_users)
             levels = [p["users"] for p in all_params]
             self.pg_begin()
+            climb_ended = False
             for params in all_params:
+                if climb_ended:
+                    break
                 if name == "soak":
                     params = dict(params, measure_seconds=soak_minutes * 60, warmup_seconds=120)
-                for repeat in range(1, (1 if name == "soak" else self.repeats()) + 1):
+                fixed_repeats = catalog.CATALOG[name].repeats
+                for repeat in range(1, (1 if name == "soak" else fixed_repeats or self.repeats()) + 1):
                     self.say(f"  {tier} {name} users={params['users']} repeat={repeat}")
-                    self.sampler.tag(tier=tier, scenario=name, repeat=repeat)
+                    self.sampler.tag(tier=tier, scenario=name, repeat=repeat, users=params["users"])
                     cpu = None
                     if self.options.profiling == "cpu" and repeat == 1 and params["users"] == levels[-1]:
                         cpu = self.start_cpu_profile(tier, name, params)
@@ -833,7 +852,62 @@ class ProfileRun:
                         })
                     self.check_backend_health(tier, name)
                     self.record_snapshot(tier, name, repeat)
+                    if name == "capacity":
+                        climb_ended = self.capacity_step_ends(tier, params["users"], summary)
+                        if not climb_ended:
+                            self.settle_backend()
             self.pg_end(tier, name)
+
+    def settle_backend(self, limit_seconds: int = 120) -> None:
+        """Waits until the backend is idle again (CPU under 10% twice running) before the next capacity level.
+
+        Requests the load generator abandoned when a level ended are still queued in the backend; starting the next
+        level behind them would measure the last level's backlog.
+        """
+        quiet, started = 0, time.monotonic()
+        while quiet < 2 and time.monotonic() - started < limit_seconds:
+            rows = [r for r in self.sampler.poll_once() if r["service"] == "backend"]
+            quiet = quiet + 1 if rows and rows[0]["cpu_percent"] < 10 else 0
+            time.sleep(3)
+        if quiet < 2:
+            self.notes.append(f"the backend was still busy {limit_seconds}s after a capacity level ended; the next level started behind its backlog")
+
+    def capacity_step_ends(self, tier: str, users: int, summary: dict) -> bool:
+        """Notes one capacity level and says whether the stack is past what it can serve, so higher levels are skipped.
+
+        A level fails the stack when more than `CAPACITY_MAX_FAILURE_RATE` of its requests fail or it delivers under
+        `CAPACITY_MIN_DELIVERED` of the offered rate. A saturated load generator is noted too, so a ceiling it caused is
+        not read as the backend's.
+
+        Args:
+            tier: The tier.
+            users: Simulated users at this level.
+            summary: The load generator's summary for the level.
+
+        Returns:
+            True when higher levels should not run.
+        """
+        total = summary["total"]
+        count, failures = total["count"], total["failures"]
+        offered = users * catalog.CAPACITY_REQUESTS_PER_SECOND
+        delivered = (total["rps"] or 0) / offered if offered else 0.0
+        failure_rate = failures / count if count else 1.0
+        stalled = count == 0
+        rows = [r for r in self.sampler.rows if r.get("scenario") == "capacity" and r.get("users") == users and r.get("tier") == tier]
+
+        def mean_cpu(service: str) -> float:
+            values = [r["cpu_percent"] for r in rows if r["service"] == service]
+            return sum(values) / len(values) if values else 0.0
+
+        loadgen_cap = self.caps.per_service.get("loadgen", {}).get("cpus") if self.caps else None
+        loadgen_cpu = mean_cpu("loadgen")
+        saturated = bool(loadgen_cap) and loadgen_cpu >= 0.85 * 100 * float(loadgen_cap)
+        line = (f"capacity {tier} {users} users: offered {offered:.0f} req/s, delivered {delivered * 100:.0f}%, "
+                f"{'NO REQUEST COMPLETED, ' if stalled else ''}failures {failure_rate * 100:.1f}%, backend CPU {mean_cpu('backend'):.0f}%, load generator CPU {loadgen_cpu:.0f}%")
+        self.say("  " + line)
+        stop = failure_rate > catalog.CAPACITY_MAX_FAILURE_RATE or delivered < catalog.CAPACITY_MIN_DELIVERED
+        self.notes.append(line + (" (load generator saturated: the ceiling may be its own)" if saturated else "") + ("; stopped here" if stop else ""))
+        return stop
 
     # the run --------------------------------------------------------------
 
@@ -884,6 +958,7 @@ class ProfileRun:
         host = hostinfo.collect(storage=options.storage, run=self._runner)
         caps = resources.plan_caps(host["docker_cores"], host["docker_ram_gib"], max_cpus=options.max_cpus, max_mem_gib=options.max_mem, dedicated=options.dedicated, docker_vm=host["docker_vm"], workers=options.workers)
         self.workers = caps.workers
+        self.caps = caps
         git = git_state(run=self._runner)
         backend_image, image_source = self.choose_images(host, git)
         for line in self.plan_lines(host, caps, f"backend {image_source} ({backend_image.split(':')[0].split('/')[-1]}), load generator built locally"):

@@ -1527,3 +1527,116 @@ def test_worker_memory_tells_snapshots_at_different_user_levels_apart():
 
     memory = analyse.worker_memory(snapshot(400) + snapshot(450) + snapshot(420))
     assert memory["T1"]["workers"] == 2 and memory["T1"]["private_mib_per_worker"] == 450
+
+
+def test_capacity_scenario_runs_at_one_tier_once_and_steps_users_up():
+    assert catalog.parameters("capacity", "full", 100, "T0") == []
+    assert catalog.parameters("capacity", "full", 5000, "T3") == []
+    full = catalog.parameters("capacity", "full", 1000, "T2")
+    assert [p["users"] for p in full] == [16, 32, 64, 128, 256]
+    assert [p["users"] for p in catalog.parameters("capacity", "quick", 1000, "T2")] == [16, 64]
+    assert [p["users"] for p in catalog.parameters("capacity", "full", 1000, "T2", users=(8, 24))] == [8, 24]
+    spec = catalog.CATALOG["capacity"]
+    assert spec.heavy and spec.repeats == 1 and spec.tiers == ("T2",)
+    assert "capacity" not in catalog.scenarios_for("full", allow_heavy=False, nested=False, soak=False)
+    assert "capacity" in catalog.scenarios_for("full", allow_heavy=True, nested=False, soak=False)
+    assert "capacity" not in catalog.scenarios_for("quick", allow_heavy=True, nested=False, soak=False)
+
+
+def test_capacity_pacing_is_the_same_on_the_host_and_in_the_load_generator_and_the_budgets():
+    import yaml
+
+    source = (_PERF / "loadgen" / "scenarios.py").read_text()
+    block = source[source.index("class Capacity("):source.index("SCENARIOS: dict")]
+    assert f"constant_throughput({catalog.CAPACITY_REQUESTS_PER_SECOND:g})" in block
+    budgets = yaml.safe_load((_PERF / "budgets.yaml").read_text())
+    assert budgets["capacity"]["requests_per_user_per_second"] == catalog.CAPACITY_REQUESTS_PER_SECOND
+
+
+def test_capacity_curve_names_the_largest_level_served_within_the_budget():
+    import yaml
+
+    analyse = _analyse()
+    budgets = yaml.safe_load((_PERF / "budgets.yaml").read_text())
+
+    def level(users, count, failures, rps, p95):
+        return {"scenario": "capacity", "tier": "T2", "users": str(users), "count": str(count), "failures": str(failures),
+                "rps": str(rps), "p95_ms": str(p95)}
+
+    healthy = analyse.capacity_curve([level(16, 960, 0, 16, 40), level(32, 1920, 0, 32, 60), level(64, 3600, 0, 60, 400)], budgets)
+    assert healthy["usable_users"] == 64 and healthy["first_unusable"] is None
+    saturated = analyse.capacity_curve(
+        [level(16, 960, 0, 16, 40), level(32, 1900, 0, 31, 90), level(64, 3000, 0, 40, 2500), level(128, 2000, 300, 45, 4000)], budgets,
+    )
+    assert saturated["usable_users"] == 32 and saturated["first_unusable"]["users"] == 64
+    assert saturated["levels"][2]["delivered"] == 0.625
+    # A later level that happens to look fine does not extend the usable range.
+    lucky = analyse.capacity_curve([level(16, 960, 0, 16, 40), level(32, 100, 50, 30, 90), level(64, 3600, 0, 64, 100)], budgets)
+    assert lucky["usable_users"] == 16
+    assert analyse.capacity_curve([], budgets) == {"levels": [], "usable_users": None, "first_unusable": None}
+
+
+def test_capacity_users_option_is_validated():
+    from perf import run_profile
+
+    assert run_profile.parse_args(["lab-host", "--capacity-users", "8,24,96"]).capacity_users == (8, 24, 96)
+    assert run_profile.parse_args(["lab-host"]).capacity_users is None
+    for bad in ("0", "8,x", "2000"):
+        with pytest.raises(SystemExit):
+            run_profile.parse_args(["lab-host", "--capacity-users", bad])
+
+
+def test_a_capacity_level_ends_the_climb_when_requests_fail_or_the_rate_is_not_delivered():
+    from perf import run_profile
+
+    run = run_profile.ProfileRun(run_profile.parse_args(["lab-host"]))
+    run.sampler = type("Rows", (), {"rows": [
+        {"tier": "T2", "scenario": "capacity", "users": 64, "service": "loadgen", "cpu_percent": 20.0},
+        {"tier": "T2", "scenario": "capacity", "users": 64, "service": "backend", "cpu_percent": 300.0},
+    ]})()
+
+    def summary(count, failures, rps):
+        return {"total": {"count": count, "failures": failures, "rps": rps}}
+
+    assert run.capacity_step_ends("T2", 64, summary(2900, 0, 64.0)) is False
+    assert run.capacity_step_ends("T2", 64, summary(2000, 300, 60.0)) is True       # 15% fail
+    assert run.capacity_step_ends("T2", 64, summary(1200, 0, 25.0)) is True         # 39% of the offered rate
+    assert "stopped here" in run.notes[-1] and "64 users" in run.notes[-1]
+
+
+def test_a_stalled_capacity_level_is_named_and_the_backend_is_given_time_to_settle(monkeypatch):
+    from perf import run_profile
+
+    run = run_profile.ProfileRun(run_profile.parse_args(["lab-host"]))
+    run.sampler = type("Rows", (), {"rows": []})()
+    assert run.capacity_step_ends("T2", 96, {"total": {"count": 0, "failures": 0, "rps": 0.0}}) is True
+    assert "NO REQUEST COMPLETED" in run.notes[-1]
+
+    readings = iter([60.0, 40.0, 5.0, 3.0])
+    run.sampler = type("Sampler", (), {"poll_once": lambda self: [{"service": "backend", "cpu_percent": next(readings)}]})()
+    monkeypatch.setattr(run_profile.time, "sleep", lambda seconds: None)
+    run.settle_backend(limit_seconds=60)
+    assert next(readings, None) is None, "it read until two quiet samples in a row, then stopped"
+    assert not any("still busy" in note for note in run.notes)
+
+
+def test_the_capacity_climb_stops_at_the_first_failing_level(monkeypatch):
+    from perf import run_profile
+
+    run = run_profile.ProfileRun(run_profile.parse_args(["lab-host", "--scenarios", "capacity", "--tiers", "T2", "--capacity-users", "8,32,96,192"]))
+    run.summary = {"tiers": {"T2": 1000}}
+    run.sampler = type("S", (), {"rows": [], "tag": lambda self, **tags: None, "poll_once": lambda self: []})()
+    ran = []
+    delivered = {8: 8.0, 32: 30.0, 96: 20.0, 192: 20.0}
+
+    def fake_loadgen(manifest, scenario, params):
+        ran.append(params["users"])
+        return {"requests": [], "total": {"count": 1000, "failures": 0, "rps": delivered[params["users"]]}}
+
+    monkeypatch.setattr(run, "run_loadgen", fake_loadgen)
+    for name in ("pg_begin", "check_backend_health", "settle_backend"):
+        monkeypatch.setattr(run, name, lambda *a, **k: None)
+    monkeypatch.setattr(run, "pg_end", lambda *a, **k: None)
+    monkeypatch.setattr(run, "record_snapshot", lambda *a, **k: None)
+    run.run_scenarios("T2", {}, ["capacity"])
+    assert ran == [8, 32, 96], "96 users delivered 21% of the offered rate, so 192 is not run"

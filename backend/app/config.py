@@ -254,6 +254,11 @@ class Settings(BaseSettings):
         db_max_overflow: Extra connections a worker may open above `db_pool_size` under load, closed again when
             returned. A worker holds at most `db_pool_size + db_max_overflow` pooled connections, plus two dedicated
             ones; keep `workers x replicas x (that + 2)` below PostgreSQL's `max_connections`.
+        max_concurrent_requests: HTTP requests one worker serves at once; the rest wait (no thread, no connection)
+            and are refused with 503 after `request_queue_timeout_seconds`. 0 means the database pool's capacity
+            (`db_pool_size + db_max_overflow`), the largest number that cannot exhaust the pool; raise it only
+            together with the pool.
+        request_queue_timeout_seconds: How long a request waits for a slot before it is refused with 503.
         profile_mode: Developer profiling (`app.profiling`): counts database statements per request by route and
             writes the totals to `profile_output_dir`. Off by default and never set by the production Compose
             file; it adds no endpoint.
@@ -336,6 +341,8 @@ class Settings(BaseSettings):
 
     db_pool_size: int = Field(default=5, ge=1)
     db_max_overflow: int = Field(default=10, ge=0)
+    max_concurrent_requests: int = Field(default=0, ge=0)
+    request_queue_timeout_seconds: int = Field(default=30, ge=1)
 
     profile_mode: bool = False
     profile_output_dir: str = "/tmp/profile"

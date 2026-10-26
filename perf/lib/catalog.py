@@ -28,6 +28,16 @@ from typing import Optional
 
 TIER_ORDER = ("T0", "T1", "T2", "T3", "T4")
 QUICK_TIERS = ("T0", "T1")
+CAPACITY_REQUESTS_PER_SECOND = 1.0
+"""Requests per second one simulated person makes in the `capacity` scenario (`perf/loadgen/scenarios.py::Capacity`
+paces itself the same). A real person makes one every several seconds, so N simulated people stand for several times N."""
+CAPACITY_USERS_QUICK = (16, 64)
+CAPACITY_USERS_FULL = (16, 32, 64, 128, 256)
+CAPACITY_TIER = "T2"
+CAPACITY_MAX_FAILURE_RATE = 0.05
+"""The capacity steps stop once more than this share of requests fail: the stack is past what it can serve."""
+CAPACITY_MIN_DELIVERED = 0.5
+"""...or once it delivers less than this share of the offered request rate."""
 IMPORT_ROW_LIMIT = 5000
 """The CSV import endpoint refuses more rows than this (HTTP 413), so a larger project is not a valid import test."""
 
@@ -38,7 +48,7 @@ class ScenarioSpec:
 
     Attributes:
         name: Scenario name (a key of the load generator's `SCENARIOS`).
-        kind: `read`, `write`, `heavy` or `soak`.
+        kind: `read`, `write`, `heavy`, `soak` or `capacity`.
         description: What it exercises, for the plan output.
         users_quick / users_full: Simulated-user levels run in each mode.
         measure_seconds: Measured period (after warm-up) in quick and full mode.
@@ -47,6 +57,8 @@ class ScenarioSpec:
         heavy: Opt-in on a shared host.
         needs_nested: Only meaningful with a nested breadth profile.
         max_requirements: Skipped above this many requirements in the project.
+        tiers: Run only at these tiers (None for every tier).
+        repeats: Fixed number of repeats whatever the mode says (None for the mode's).
     """
 
     name: str
@@ -60,6 +72,8 @@ class ScenarioSpec:
     heavy: bool = False
     needs_nested: bool = False
     max_requirements: Optional[int] = None
+    tiers: Optional[tuple] = None
+    repeats: Optional[int] = None
 
 
 CATALOG: dict = {
@@ -79,6 +93,11 @@ CATALOG: dict = {
         ScenarioSpec("bundle_import", "heavy", "importing a project bundle into a new project", users_quick=(1,), users_full=(1,), min_requests=2, heavy=True),
         ScenarioSpec("attachment", "heavy", "uploading a 256 KB file to a requirement", users_quick=(2,), users_full=(1, 4), heavy=True),
         ScenarioSpec("project_scope", "read", "a parent's widened list and dashboard over its descendants", users_quick=(2,), users_full=(1, 4), needs_nested=True),
+        ScenarioSpec(
+            "capacity", "capacity", "steps the number of simulated people up until the stack saturates or fails (one tier)",
+            users_quick=CAPACITY_USERS_QUICK, users_full=CAPACITY_USERS_FULL, measure_seconds=(20, 45), heavy=True,
+            tiers=(CAPACITY_TIER,), repeats=1,
+        ),
         ScenarioSpec("soak", "soak", "a steady mix at a fixed rate to see whether memory keeps growing", users_quick=(4,), users_full=(4,), heavy=True),
     )
 }
@@ -115,13 +134,15 @@ def scenarios_for(mode: str, *, allow_heavy: bool, nested: bool, soak: bool) -> 
     return chosen
 
 
-def parameters(name: str, mode: str, requirements_per_project: int) -> list:
+def parameters(name: str, mode: str, requirements_per_project: int, tier: Optional[str] = None, users: Optional[tuple] = None) -> list:
     """The runs of one scenario at one data volume.
 
     Args:
         name: Scenario name.
         mode: `quick` or `full`.
         requirements_per_project: Requirements in each project at this tier.
+        tier: The tier (a scenario limited to some tiers is skipped at the others).
+        users: Replaces the scenario's user levels (the operator's `--capacity-users`).
 
     Returns:
         A list of `{"users", "measure_seconds", "warmup_seconds", "min_requests", "max_seconds"}`, empty when the
@@ -130,8 +151,10 @@ def parameters(name: str, mode: str, requirements_per_project: int) -> list:
     spec = CATALOG[name]
     if spec.max_requirements is not None and requirements_per_project > spec.max_requirements:
         return []
+    if spec.tiers is not None and tier is not None and tier not in spec.tiers:
+        return []
     index = 0 if mode == "quick" else 1
-    levels = spec.users_quick if mode == "quick" else spec.users_full
+    levels = users or (spec.users_quick if mode == "quick" else spec.users_full)
     return [
         {"users": users, "measure_seconds": spec.measure_seconds[index], "warmup_seconds": 5 if mode == "quick" else 10,
          "min_requests": spec.min_requests, "max_seconds": spec.max_seconds}

@@ -154,6 +154,28 @@ heavy ones are opt-in on a shared host with `--allow-heavy`). Login is done once
 clock starts, so the numbers measure the API, not bcrypt. `scenarios` are defined in `loadgen/scenarios.py` and
 listed with their parameters in `lib/catalog.py`.
 
+### Capacity: how many people one stack serves
+
+`capacity` steps simulated people up at one tier (T2, 1,000 requirements) until the stack saturates or fails, so the
+result is a curve and a number, not a latency at a fixed load. Each simulated person makes about one request a second
+(browse plus roughly one request in five a write); a real person makes one every several seconds, so a level stands
+for several times as many people. It is a heavy scenario (`--allow-heavy` or `--dedicated`).
+
+```sh
+perf/run_profile.sh <label> --quick --tiers T2 --scenarios capacity --allow-heavy      # 16 and 64 people
+perf/run_profile.sh <label> --full --tiers T2 --scenarios capacity --allow-heavy       # 16, 32, 64, 128, 256
+perf/run_profile.sh <label> --quick --tiers T2 --scenarios capacity --allow-heavy --capacity-users 8,32,96
+```
+
+- Each level is judged on the share of the offered rate delivered, the failure rate and the request-weighted p95
+  (`budgets.yaml`, `capacity`); `analyse.py` prints each level and the largest usable one. The climb stops at the first
+  level that delivers under half the offered rate or fails more than 5% of requests, and the backend is left to go
+  idle between levels so one level's backlog is not measured as the next one's.
+- Requests time out after 30 s and count as failures, so a stalled stack shows as failures, not as silence.
+- The run notes the load generator's CPU: a load generator at its cap means the ceiling may be its own.
+- It found that, before the per-worker request limit, 96 people stalled a worker completely (every connection held by
+  a request waiting for a thread, every thread waiting for a connection); see `docs/performance.md`.
+
 ## Safe to run on a production host
 
 The stack is isolated by construction; the hardware is shared, so its impact is bounded, not eliminated.

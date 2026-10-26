@@ -65,17 +65,25 @@ class Shared:
             self.projects_by_org.setdefault(project["organization_id"], []).append(project)
         self.members: list[dict] = []
         self.admins: list[dict] = []
+        self._logins: dict[str, dict] = {}
         orgs = manifest["organisations"]
         wanted_members = max(users, 1)
         for index in range(wanted_members):
             org = orgs[index % len(orgs)]
             slot = (index // len(orgs)) % len(org["member_emails"])
-            self.members.append(self._login(org, org["member_emails"][slot], org["user_ids"][slot + 1], password))
+            self.members.append(self._signed_in(org, org["member_emails"][slot], org["user_ids"][slot + 1], password))
         if needs_admin:
             for org in orgs[: max(1, min(len(orgs), users))]:
-                self.admins.append(self._login(org, org["admin_email"], org["user_ids"][0], password))
+                self.admins.append(self._signed_in(org, org["admin_email"], org["user_ids"][0], password))
         self._members = itertools.cycle(self.members)
         self._admins = itertools.cycle(self.admins)
+
+    def _signed_in(self, org: dict, email: str, user_id: str, password: str) -> dict:
+        """The person's login, made once however many simulated users share the person (a hundred simulated users over
+        ten generated accounts sign in ten times; the bcrypt cost is deliberate)."""
+        if email not in self._logins:
+            self._logins[email] = self._login(org, email, user_id, password)
+        return self._logins[email]
 
     @staticmethod
     def _login(org: dict, email: str, user_id: str, password: str) -> dict:

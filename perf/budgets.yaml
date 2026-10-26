@@ -43,3 +43,15 @@ superlinear_slope: 1.3
 flat_slope: 0.25
 # Statements per request are small integers: any growth with the data beyond this slope is reported as an N+1 suspect.
 query_flat_slope: 0.1
+
+# The capacity scenario (perf/loadgen/scenarios.py::Capacity) steps simulated people up at one tier. A level is usable
+# while the stack delivers at least `delivered` of the offered request rate, fails at most `failure_rate` of requests
+# and answers at the (request-weighted) p95 within `p95_ms`; the usable capacity is the largest such level below the
+# first level that is not. One simulated person makes `requests_per_user_per_second` requests (a real person makes one
+# every several seconds). Decided by: Agent (provisional, like the classes above).
+capacity:
+  requests_per_user_per_second: 1.0
+  delivered: 0.9
+  failure_rate: 0.01
+  p95_ms: 1000
+

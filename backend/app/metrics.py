@@ -39,6 +39,10 @@ http_request_duration_seconds = Histogram(
     "http_request_duration_seconds", "HTTP request duration in seconds", ["method", "path"]
 )
 
+requests_shed_total = Counter(
+    "requests_shed_total", "Requests refused with 503 because no request slot freed within the queue timeout"
+)
+
 requirements_created_total = Counter("requirements_created_total", "Requirements created")
 requirements_updated_total = Counter("requirements_updated_total", "Requirement versions created")
 requirements_approved_total = Counter("requirements_approved_total", "Requirements approved")
