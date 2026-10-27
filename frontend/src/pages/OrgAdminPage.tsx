@@ -100,8 +100,10 @@ import { downloadBlob } from "../utils/download";
 import { defaultResolutions } from "../utils/mergeConflicts";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { reportLayoutApi } from "../api/reportLayouts";
+import { reportPackApi } from "../api/reportPacks";
 import { Badge } from "../components/Badge";
 import { ReportLayoutsPanel } from "../components/ReportLayoutsPanel";
+import { ReportPacksPanel } from "../components/ReportPacksPanel";
 import { CheckboxField, ColorField, FileField, TextAreaField, TextField, ToggleField, UploadField } from "../components/FormFields";
 import { FormActions } from "../components/FormActions";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
@@ -206,6 +208,7 @@ export function OrgAdminPage() {
   const strings = useStrings();
   const { orgId, group: groupParam } = useParams<{ orgId: string; group?: string }>();
   const layoutApi = useMemo(() => (orgId ? reportLayoutApi({ kind: "organization", id: orgId }) : null), [orgId]);
+  const packApi = useMemo(() => (orgId ? reportPackApi({ kind: "organization", id: orgId }) : null), [orgId]);
   const { user } = useAuth();
   const { showToast } = useToast();
   const orgLabel = useOrgLabel();
@@ -3364,6 +3367,12 @@ export function OrgAdminPage() {
             {layoutApi && (
               <CollapsibleSection sectionKey="orgAdmin.reportLayouts" title={strings.reportLayouts.title}>
                 <ReportLayoutsPanel api={layoutApi} />
+              </CollapsibleSection>
+            )}
+
+            {packApi && (
+              <CollapsibleSection sectionKey="orgAdmin.reportPacks" title={strings.reportPacks.title}>
+                <ReportPacksPanel api={packApi} />
               </CollapsibleSection>
             )}
 

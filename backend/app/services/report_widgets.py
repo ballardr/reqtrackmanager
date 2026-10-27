@@ -190,7 +190,7 @@ def widgets_for_organization(db: Session, organization_id: uuid.UUID) -> list[Wi
 # --- parameters -----------------------------------------------------------------------------------------------
 
 
-def _value_problem(param: ReportParamDefinition, value: Any) -> str | None:
+def param_value_problem(param: ReportParamDefinition, value: Any) -> str | None:
     """Why `value` is not a literal of the parameter's declared type (`None` when it is)."""
     kind = param.type
     if kind == "string":
@@ -247,7 +247,7 @@ def param_problems(widget: WidgetInfo, params: Any) -> list[tuple[str, str]]:
             known = ", ".join(declared) if declared else "none"
             problems.append((str(name), f"This report has no parameter {name!r}. Its parameters: {known}."))
             continue
-        problem = _value_problem(param, value)
+        problem = param_value_problem(param, value)
         if problem:
             problems.append((name, problem))
     return problems
@@ -280,6 +280,6 @@ def typed_params(widget: WidgetInfo, params: dict[str, Any] | None) -> dict[str,
 
 __all__ = [
     "BUILT_IN_PARTS", "KIND_FIGURES", "KIND_NOTES", "KIND_SECTION", "MAX_PARAM_TEXT", "WIDGET_KEY_RE", "WidgetInfo",
-    "WidgetPart", "find_widget", "list_widgets", "param_problems", "typed_params", "widget_available", "widget_key",
+    "WidgetPart", "find_widget", "list_widgets", "param_problems", "param_value_problem", "typed_params", "widget_available", "widget_key",
     "widgets_for_organization", "widgets_for_project",
 ]

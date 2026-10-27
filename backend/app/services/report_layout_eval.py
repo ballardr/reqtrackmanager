@@ -147,7 +147,9 @@ class EvalStats:
     """What a run read and produced (for provenance and the sync/async decision).
 
     Attributes:
-        records_read: Records loaded, by artefact type.
+        records_read: Records loaded, by artefact type (before a block's conditions narrow them).
+        records_included: Distinct records that passed a block's conditions and so can appear in the report, by
+            artefact type; this is the figure that shows what a variable's values narrowed the report to.
         blocks: Blocks emitted (document family).
         rows: Table and sheet rows emitted.
         hidden: Records the caller could not see (counted, never named).
@@ -155,6 +157,7 @@ class EvalStats:
     """
 
     records_read: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    records_included: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     blocks: int = 0
     rows: int = 0
     hidden: int = 0
@@ -300,6 +303,8 @@ def evaluate_layout(
     if tree["family"] == FAMILY_DOCUMENT:
         document = ReportDocument(title=title, blocks=run.blocks, landscape=tree.get("orientation") == "landscape")
     versions, truncated = run.record_versions()
+    for artefact_type, pooled in run._pool.items():
+        run.stats.records_included[artefact_type] = len(pooled)
     return EvaluatedLayout(
         tree["family"], document, run.sheets, run.warnings, run.stats, run.source_digest(), versions, truncated,
         sorted(run.widget_keys), values,

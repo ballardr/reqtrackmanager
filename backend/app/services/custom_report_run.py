@@ -48,7 +48,7 @@ import re
 import time
 import uuid
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -246,6 +246,7 @@ def run_project_layout(
 def run_organization_layout(
     db: Session, user: User, organization: Organization, layout: ReportLayout, version: ReportLayoutVersion, *,
     project_ids: Sequence[uuid.UUID] | None = None, background: bool = False, variables: Mapping[str, Any] | None = None,
+    variables_for: Callable[[Project], Mapping[str, Any] | None] | None = None,
 ) -> LayoutRun:
     """Runs an organisation layout once per project the caller can read and merges the results.
 
@@ -258,6 +259,8 @@ def run_organization_layout(
         project_ids: The projects to include (narrowing only); `None` for every project the caller can read.
         background: Run with the larger limits of a background run (`report_layout_eval.ASYNC_*`).
         variables: Values for the layout's run-time variables, the same for every project.
+        variables_for: Decides the values per project instead (a report pack's saved set as each project overrides
+            it); it may raise `VariableValueError`, which ends the run.
 
     Returns:
         The merged run; its `projects` are the ones evaluated.
@@ -297,7 +300,8 @@ def run_organization_layout(
         if remaining <= 0:
             raise LayoutTimeoutError("The report took too long to run. Select fewer projects or narrow the layout.")
         part = _evaluate_project(
-            db, user, organization, project, [project], version, layout.name, remaining, scale, variables,
+            db, user, organization, project, [project], version, layout.name, remaining, scale,
+            variables_for(project) if variables_for is not None else variables,
         )
         produced += part.stats.blocks + part.stats.rows
         if produced > MAX_OUTPUT * scale:
@@ -328,6 +332,8 @@ def merge_evaluations(parts: Sequence[tuple[Project, EvaluatedLayout]], title: s
     for project, part in parts:
         for record_type, count in part.stats.records_read.items():
             stats.records_read[record_type] += count
+        for record_type, count in part.stats.records_included.items():
+            stats.records_included[record_type] += count
         stats.blocks += part.stats.blocks
         stats.rows += part.stats.rows
         stats.hidden += part.stats.hidden

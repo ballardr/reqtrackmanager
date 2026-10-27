@@ -65,13 +65,16 @@ from app.models.notification import NotificationType
 from app.models.organization import Organization
 from app.models.project import Project
 from app.models.report_layout import ReportLayout, ReportLayoutVersion
+from app.models.report_pack import ReportPack, ReportPackVersion
 from app.models.user import User
-from app.services import custom_report_run, report_layout_scope, report_layouts
+from app.services import custom_report_run, report_layout_scope, report_layouts, report_pack_run, report_pack_scope, report_packs
+from app.services.client_date import effective_today, reset_client_date, set_client_date
 from app.services.files import get_storage_backend
 from app.services.notifications import notify
 from app.services.rbac import get_effective_org_roles, get_effective_project_roles
 from app.services.report_document import load_report_template
 from app.services.report_layout_eval import ASYNC_TIMEOUT_SECONDS, LayoutLimitError, LayoutTimeoutError
+from app.services.report_variables import VariableValueError
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +95,8 @@ FAILURE_LIMITS = "The report is too large to produce even in the background. Nar
 FAILURE_TIME = "The report took too long to produce. Narrow the layout or select fewer projects."
 FAILURE_OUTPUT = "The finished file is too large to keep. Narrow the layout or choose another format."
 FAILURE_OTHER = "The report could not be produced."
+FAILURE_PACK_NOTHING = "None of the reports in the pack could be produced."
+FAILURE_PACK_VALUES = "The values or saved set chosen for the pack are no longer valid."
 FAILURE_LOST = "The report was interrupted and was not produced. Run it again."
 
 
@@ -119,6 +124,19 @@ def effective_retention_days(organization: Organization) -> int:
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def _check_capacity(db: Session, user: User) -> None:
+    """Raises `TooManyActiveRunsError` when `user` already has `MAX_ACTIVE_PER_USER` queued or running background runs."""
+    active = db.scalar(
+        select(func.count()).select_from(GeneratedReport).where(
+            GeneratedReport.requested_by == user.id, GeneratedReport.status.in_(_ACTIVE)
+        )
+    )
+    if (active or 0) >= MAX_ACTIVE_PER_USER:
+        raise TooManyActiveRunsError(
+            f"You already have {MAX_ACTIVE_PER_USER} reports being prepared. Wait for one to finish."
+        )
 
 
 def enqueue(
@@ -151,15 +169,7 @@ def enqueue(
     Raises:
         TooManyActiveRunsError: The requester already has `MAX_ACTIVE_PER_USER` active background runs.
     """
-    active = db.scalar(
-        select(func.count()).select_from(GeneratedReport).where(
-            GeneratedReport.requested_by == user.id, GeneratedReport.status.in_(_ACTIVE)
-        )
-    )
-    if (active or 0) >= MAX_ACTIVE_PER_USER:
-        raise TooManyActiveRunsError(
-            f"You already have {MAX_ACTIVE_PER_USER} reports being prepared. Wait for one to finish."
-        )
+    _check_capacity(db, user)
     row = GeneratedReport(
         organization_id=organization.id, project_id=project.id if project else None,
         scope=SCOPE_PROJECT if project else "organization", layout_id=layout.id, layout_name=layout.name,
@@ -168,6 +178,50 @@ def enqueue(
         params=custom_report_run.run_params(report_template_id, include_children, requested_project_ids, variables),
         scope_project_ids=[str(project.id)] if project else [], widgets=[], record_counts={}, stats={},
         source_digest="", status=STATUS_QUEUED,
+    )
+    db.add(row)
+    return row
+
+
+def enqueue_pack(
+    db: Session, user: User, *, organization: Organization, project: Project | None, pack: ReportPack,
+    version: ReportPackVersion, report_template_id: uuid.UUID | None, include_children: bool = False,
+    requested_project_ids: Sequence[uuid.UUID] | None = None, variables: Mapping[str, Any] | None = None,
+    variable_set_id: uuid.UUID | None = None,
+) -> GeneratedReport:
+    """Queues a background pack run (the caller commits).
+
+    The row is the pack job (`params["kind"] == "pack"`, format `zip`); when it finishes the entries'
+    own provenance rows are written beside it with the same `pack_run_id`. The route has validated the values and the
+    set (`report_pack_run.check_request`), so a bad request fails when it is made.
+
+    Args:
+        db: Active session.
+        user: The requester.
+        organization / project: The scope (`project` is `None` for an organisation-wide run).
+        pack / version: The pack and the pinned version.
+        report_template_id: The branding template, if any.
+        include_children: Also read readable child projects (project-level run).
+        requested_project_ids: The projects selected for an organisation-wide run.
+        variables: The values the person typed (kept as typed; the saved set is resolved when the job runs).
+        variable_set_id: The saved set chosen, if any.
+
+    Raises:
+        TooManyActiveRunsError: The requester already has `MAX_ACTIVE_PER_USER` active background runs.
+    """
+    _check_capacity(db, user)
+    params = custom_report_run.run_params(report_template_id, include_children, requested_project_ids, variables)
+    params.update({
+        "kind": "pack", "pack_id": str(pack.id), "pack_version": version.version,
+        "variable_set_id": str(variable_set_id) if variable_set_id else None, "client_date": effective_today().isoformat(),
+    })
+    row = GeneratedReport(
+        organization_id=organization.id, project_id=project.id if project else None,
+        scope=SCOPE_PROJECT if project else "organization", layout_id=pack.id, layout_name=pack.name,
+        layout_version=version.version, tree_hash=version.definition_hash, requested_by=user.id, created_at=_now(),
+        format="zip", engine_version=custom_report_run.ENGINE_VERSION, params=params,
+        scope_project_ids=[str(project.id)] if project else [], widgets=[], record_counts={}, stats={},
+        source_digest="", status=STATUS_QUEUED, pack_run_id=uuid.uuid4(),
     )
     db.add(row)
     return row
@@ -244,6 +298,8 @@ def run_job(db: Session, row: GeneratedReport) -> None:
     if not _can_run(db, user, row, organization):
         return _fail(db, row, FAILURE_ACCESS)
     assert user is not None and organization is not None
+    if (row.params or {}).get("kind") == "pack":
+        return _run_pack_job(db, row, user, organization)
     layout = db.get(ReportLayout, row.layout_id)
     version = report_layouts.get_version(db, row.layout_id, row.layout_version) if layout else None
     project = db.get(Project, row.project_id) if row.project_id else None
@@ -307,6 +363,76 @@ def run_job(db: Session, row: GeneratedReport) -> None:
     _announce(db, row)
 
 
+def _run_pack_job(db: Session, row: GeneratedReport, user: User, organization: Organization) -> None:
+    """Produces a claimed pack job: runs every entry as the requester with the background bounds, stores the zip.
+
+    The pack, its pinned version and (for a project) its reachability are re-checked, as for a layout job.
+    """
+    params = row.params
+    pack = db.get(ReportPack, uuid.UUID(params["pack_id"]))
+    version = report_packs.get_version(db, pack.id, row.layout_version) if pack else None
+    project = db.get(Project, row.project_id) if row.project_id else None
+    if pack is None or version is None or (row.scope == SCOPE_PROJECT and project is None):
+        return _fail(db, row, FAILURE_ACCESS)
+    if project is not None:
+        scoped = report_pack_scope.reachable_pack(db, project, pack.id)
+        if scoped is None or scoped.hidden:
+            return _fail(db, row, FAILURE_ACCESS)
+    elif pack.organization_id != organization.id or pack.project_id is not None:
+        return _fail(db, row, FAILURE_ACCESS)
+    template_id = uuid.UUID(params["report_template_id"]) if params.get("report_template_id") else None
+    set_id = uuid.UUID(params["variable_set_id"]) if params.get("variable_set_id") else None
+    requested = [uuid.UUID(p) for p in params["requested_project_ids"]] if params.get("requested_project_ids") is not None else None
+    token = set_client_date(params.get("client_date"))  # a date variable's `today` is the day it was asked for
+    try:
+        try:
+            if project is not None:
+                run = report_pack_run.run_project_pack(
+                    db, user, project, pack, version, params.get("variables"), template_id=template_id,
+                    include_children=bool(params.get("include_children")), set_id=set_id, background=True,
+                )
+            else:
+                run = report_pack_run.run_organization_pack(
+                    db, user, organization, pack, version, params.get("variables"), template_id=template_id,
+                    project_ids=requested, set_id=set_id, background=True,
+                )
+            run.pack_run_id = row.pack_run_id or run.pack_run_id
+            data = report_pack_run.build_zip(run, background=True)
+        except (report_pack_run.UnknownSetError, VariableValueError):
+            return _fail(db, row, FAILURE_PACK_VALUES)
+        except report_pack_run.NothingToRunError:
+            return _fail(db, row, FAILURE_PACK_NOTHING)
+        except (report_pack_run.PackLimitError, LayoutLimitError):
+            return _fail(db, row, FAILURE_LIMITS)
+        except Exception as exc:  # noqa: BLE001 - recorded as a fixed sentence
+            logger.error("Background pack run %s failed (%s)", row.id, type(exc).__name__)
+            db.rollback()
+            return _fail(db, row, FAILURE_OTHER)
+    finally:
+        reset_client_date(token)
+    key = f"report-runs/{organization.id}/{row.id}.zip"
+    try:
+        get_storage_backend().save(key, data)
+    except Exception as exc:  # noqa: BLE001 - storage outage: the same fixed sentence
+        logger.error("Could not store the output of report run %s (%s)", row.id, type(exc).__name__)
+        return _fail(db, row, FAILURE_OTHER)
+    report_pack_run.record_pack_run(
+        db, user, run, requested_project_ids=requested, include_children=bool(params.get("include_children")),
+    )
+    now = _now()
+    included = run.included
+    row.record_counts = {"entries": len(included)}
+    row.stats = {"entries": len(run.entries), "included": len(included), "records": sum(e.records for e in included)}
+    row.status = STATUS_READY
+    row.finished_at = now
+    row.expires_at = now + timedelta(days=effective_retention_days(organization))
+    row.output_key = key
+    row.output_filename = f"{report_pack_run.zip_stem(run)}.zip"
+    row.output_size = len(data)
+    db.commit()
+    _announce(db, row)
+
+
 def run_next() -> bool:
     """Claims and produces one queued job in its own session.
 
@@ -357,9 +483,15 @@ def expire(db: Session, *, now: datetime | None = None) -> dict[str, int]:
         _clear_output(row, STATUS_EXPIRED)
         expired += 1
     lost_before = now - timedelta(seconds=ASYNC_TIMEOUT_SECONDS) - _RUNNING_GRACE
+    # A pack job may spend its own bound between entries and then one entry's full timeout.
+    pack_lost_before = now - timedelta(seconds=report_pack_run.ASYNC_MAX_PACK_SECONDS + ASYNC_TIMEOUT_SECONDS) - _RUNNING_GRACE
     lost = 0
     for row in db.scalars(
-        select(GeneratedReport).where(GeneratedReport.status == STATUS_RUNNING, GeneratedReport.started_at < lost_before)
+        select(GeneratedReport).where(
+            GeneratedReport.status == STATUS_RUNNING,
+            ((GeneratedReport.format == "zip") & (GeneratedReport.started_at < pack_lost_before))
+            | ((GeneratedReport.format != "zip") & (GeneratedReport.started_at < lost_before)),
+        )
     ).all():
         row.status, row.finished_at, row.error = STATUS_FAILED, now, FAILURE_LOST
         lost += 1

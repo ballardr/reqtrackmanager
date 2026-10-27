@@ -584,6 +584,23 @@ def hide_report_layout(headers: dict, project_id: str, layout_id: str) -> None:
     r.raise_for_status()
 
 
+def create_report_pack(headers: dict, path: str, name: str, description: str, definition: dict) -> dict:
+    """Creates a report pack at one tier: `/orgs/{id}` or `/projects/{id}` (followed by `/report-packs`)."""
+    r = httpx.post(
+        f"{BASE}{path}/report-packs", json={"name": name, "description": description, "definition": definition},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_report_pack_set(headers: dict, path: str, pack_id: str, name: str, values: dict) -> dict:
+    """Saves a variable set with a report pack (`/orgs/{id}` or `/projects/{id}` followed by `/report-packs/{id}/sets`)."""
+    r = httpx.post(f"{BASE}{path}/report-packs/{pack_id}/sets", json={"name": name, "values": values}, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
 def create_project_link_type(
     headers: dict, project_id: str, *, forward_name: str, reverse_name: str, flow: str = "none",
 ) -> dict:
@@ -2168,6 +2185,22 @@ def main() -> None:
     create_report_layout(
         h_pm, f"/orgs/{org['id']}", "Design formulae", "Equations in a text block and as blocks of their own.", DESIGN_FORMULAE_LAYOUT,
     )
+    print("Seeding a report pack: the requirements by category and by component handed over together, with a saved set...")
+    handover = create_report_pack(
+        h_pm, f"/orgs/{org['id']}", "Programme handover", "The requirements for an external team, as one zip.",
+        {
+            "schema_version": 1,
+            "variables": [{
+                "name": "categories", "type": "enum", "multiple": True, "label": "Categories",
+                "source": {"record_type": "requirement", "field": "category"},
+            }],
+            "entries": [
+                {"kind": "layout", "name": "Requirements by category (choose)", "format": "pdf", "filename": "requirements-by-category"},
+                {"kind": "layout", "name": "Requirements by component", "format": "docx", "filename": "requirements-by-component"},
+            ],
+        },
+    )
+    create_report_pack_set(h_pm, f"/orgs/{org['id']}", handover["id"], "Safety only", {"categories": ["Safety"]})
     avionics_components = {"SN": create_component(h_pm, avionics["id"], "Sensors", "SN")}
     avionics_categories = create_categories_for_components(h_pm, avionics["id"], avionics_components, {"SN": ["PERF", "SAF", "FN"]})
     avionics_reqs = seed_project(

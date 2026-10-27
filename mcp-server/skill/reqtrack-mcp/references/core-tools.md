@@ -128,6 +128,18 @@ Lists the run-time variables of a custom report layout: what `run_custom_report`
 
 Parameters: `layout_id*` (string), `project_id` (string), `organization_id` (string), `project_ids` (list[string])
 
+## `get_report_pack_form` (read)
+
+Lists what a report pack takes to run: its variables and the saved sets of values on offer.
+
+Parameters: `pack_id*` (string), `project_id` (string), `organization_id` (string)
+
+## `get_report_run` (read)
+
+Reads one of your own background report runs (a custom report or a report pack): its status and, once ready, its file name.
+
+Parameters: `run_id*` (string)
+
 ## `get_requirement` (read)
 
 Gets a single requirement's full current detail.
@@ -226,6 +238,12 @@ Lists the custom report layouts of a project (its own, its parents' and the orga
 
 Parameters: `project_id` (string), `organization_id` (string)
 
+## `list_report_packs` (read)
+
+Lists the report packs of a project (its own, its parents' and the organisation's) or of an organisation.
+
+Parameters: `project_id` (string), `organization_id` (string)
+
 ## `list_report_widgets` (read)
 
 Lists the report components a layout can embed as a widget line, `[[widget.<key> name=value]]`.
@@ -262,6 +280,12 @@ Previews which of a change request's proposed links would merge if it were appro
 
 Parameters: `project_id` (string), `change_request_id*` (string)
 
+## `preview_report_pack` (read)
+
+Shows how many records each report in a pack would include for the chosen values. Stores and produces nothing.
+
+Parameters: `pack_id*` (string), `project_id` (string), `organization_id` (string), `variables` (object), `variable_set_id` (string), `include_children` (boolean), `project_ids` (list[string])
+
 ## `remove_artefact_tag` (write)
 
 Removes one tag from a record. The tag stays in the project's list.
@@ -273,6 +297,12 @@ Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (st
 Runs a custom report layout and returns the report as data.
 
 Parameters: `layout_id*` (string), `project_id` (string), `organization_id` (string), `include_children` (boolean), `project_ids` (list[string]), `variables` (object)
+
+## `run_report_pack` (write)
+
+Queues a report pack to be produced in the background as one zip, and returns the run to follow.
+
+Parameters: `pack_id*` (string), `project_id` (string), `organization_id` (string), `variables` (object), `variable_set_id` (string), `include_children` (boolean), `project_ids` (list[string])
 
 ## `save_report_layout_version` (write)
 

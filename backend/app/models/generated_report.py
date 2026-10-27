@@ -84,6 +84,9 @@ class GeneratedReport(UUIDPKMixin, Base):
         expires_at: When a `ready` run's stored output is deleted (UTC).
         output_key / output_filename / output_size: The stored file's storage key, download name and size in bytes.
         error: Why a `failed` run failed, in words safe to show the requester (never record content).
+        pack_run_id: Shared by the rows of one report pack run (one row per entry); `None` for a run of a single layout.
+        report_key: `<module key>.<report key>` when the row records a module report run as a pack entry (then
+            `layout_id` is a stable id derived from that key and `layout_version` is 0); `None` for a layout.
     """
 
     __tablename__ = "generated_reports"
@@ -121,3 +124,5 @@ class GeneratedReport(UUIDPKMixin, Base):
     output_filename: Mapped[str | None] = mapped_column(String(300), nullable=True)
     output_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    pack_run_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True, index=True)
+    report_key: Mapped[str | None] = mapped_column(String(200), nullable=True)
