@@ -143,6 +143,42 @@ def _shape_problem(declaration: Mapping[str, Any], value: Any, today: date) -> t
     return (checked if multiple else checked[0]), None
 
 
+def check_values(
+    declarations: Sequence[Mapping[str, Any]] | None, values: Mapping[str, Any], *, today: date,
+) -> dict[str, Any]:
+    """Checks a partial set of values (only the variables given) against their declarations.
+
+    Used for saved variable sets, which may name some variables and leave the rest to a default.
+
+    Args:
+        declarations: The declaring layout's or pack's `variables`.
+        values: `{name: value}`; each must be declared and acceptable.
+        today: The person's own day, for a date's `today`.
+
+    Returns:
+        `{name: checked value}`.
+
+    Raises:
+        VariableValueError: A name is not declared or a value has the wrong shape, type or is not an enum option.
+    """
+    declared = {d["name"]: d for d in declarations or []}
+    problems: list[tuple[str, str]] = []
+    out: dict[str, Any] = {}
+    for name, value in values.items():
+        declaration = declared.get(name)
+        if declaration is None:
+            problems.append((str(name), "No such variable."))
+            continue
+        checked, problem = _shape_problem(declaration, value, today)
+        if problem:
+            problems.append((name, problem))
+        else:
+            out[name] = checked
+    if problems:
+        raise VariableValueError(problems)
+    return out
+
+
 def resolve_values(
     declarations: Sequence[Mapping[str, Any]] | None, supplied: Mapping[str, Any] | None, *, today: date,
 ) -> dict[str, Any]:
@@ -301,6 +337,6 @@ def stale_value_warnings(
 
 __all__ = [
     "FIELD_KINDS", "MAX_LIST_VALUES", "MAX_OPTIONS", "MAX_VARIABLES", "NAME_RE", "PARAM_TYPES", "PLACEHOLDER_FAMILY",
-    "TODAY", "VARIABLE_TYPES", "VariableValueError", "bind_variables", "describe_variables", "is_reference", "resolve_values",
+    "TODAY", "VARIABLE_TYPES", "VariableValueError", "bind_variables", "check_values", "describe_variables", "is_reference", "resolve_values",
     "stale_value_warnings", "value_problem", "variable_options", "variable_text",
 ]

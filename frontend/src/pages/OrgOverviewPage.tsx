@@ -9,6 +9,7 @@ import { ResourceMenu, type ResourceMenuGroupDef } from "../components/ResourceM
 import { Spinner } from "../components/Spinner";
 import { StatBar, type StatBarItem } from "../components/StatBar";
 import { useReportCatalogue } from "../hooks/useReportCatalogue";
+import { useReportPackEntries } from "../hooks/useReportPackEntries";
 import { getInstalledModule, installedModules } from "../modules/registry";
 import { loadOrgSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { formatFileSize } from "../utils/formatFileSize";
@@ -66,6 +67,8 @@ export function OrgOverviewPage() {
   const [stats, setStats] = useState<OrgOverviewStats | null>(null);
   const [modules, setModules] = useState<OrgModule[]>([]);
   const reportCatalogue = useReportCatalogue("organization", orgId);
+  const packScope = useMemo(() => (orgId ? { kind: "organization" as const, id: orgId } : undefined), [orgId]);
+  const reportPacks = useReportPackEntries(packScope, orgId);
 
   useEffect(() => {
     if (!orgId) return;
@@ -97,7 +100,7 @@ export function OrgOverviewPage() {
   );
 
   if (!orgId) return null;
-  if (!org || !stats || reportCatalogue.loading) return <Spinner />;
+  if (!org || !stats || reportCatalogue.loading || reportPacks.loading) return <Spinner />;
 
   // Same "filter installed modules to this org's actually-enabled set"
   // pattern `OrgAdminPage.tsx` already uses for `orgAdminSections` —
@@ -108,7 +111,7 @@ export function OrgOverviewPage() {
     .filter((m) => enabledModuleKeys.has(m.key))
     .flatMap((m) => m.orgOverviewSections ?? []);
 
-  const hasReports = reportCatalogue.entries.length > 0;
+  const hasReports = reportCatalogue.entries.length > 0 || reportPacks.entries.length > 0;
   const groups: ResourceMenuGroupDef<string>[] = [
     { key: OVERVIEW_GROUP_KEY, label: "Overview", href: `/orgs/${orgId}/overview` },
     ...moduleSections.map((section) => ({
@@ -142,7 +145,12 @@ export function OrgOverviewPage() {
 
       <ResourceMenu ariaLabel="Organisation overview sections" groups={groups} active={active}>
         {showingReports ? (
-          <ReportCatalogue entries={reportCatalogue.entries} scope={{ kind: "organization", id: orgId }} organizationId={orgId} />
+          <ReportCatalogue
+            entries={reportCatalogue.entries}
+            scope={{ kind: "organization", id: orgId }}
+            organizationId={orgId}
+            extraEntries={reportPacks.entries}
+          />
         ) : activeModuleSection ? (
           activeModuleSection.render({ orgId })
         ) : (

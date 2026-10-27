@@ -45,9 +45,8 @@ import {
   variableDefaults,
   variablesRunValue,
 } from "../api/reports";
-import { api } from "../api/client";
 import { REPORT_RUN_QUEUED_EVENT } from "../hooks/useReportRuns";
-import type { ReportTemplate } from "../api/types";
+import { useReportTemplates } from "../hooks/useReportTemplates";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { getReportView } from "../modules/registry";
 import { downloadBlob } from "../utils/download";
@@ -96,7 +95,7 @@ export function ReportRunner({
   const [result, setResult] = useState<ReportResult | null>(null);
   // The run that last finished, by the values it ran with; the report is busy whenever the current values differ.
   const [settled, setSettled] = useState<{ signature: string; error: string | null } | null>(null);
-  const [templates, setTemplates] = useState<ReportTemplate[]>([]);
+  const templates = useReportTemplates(organizationId);
   const [templateId, setTemplateId] = useState("");
   const [openedFigure, setOpenedFigure] = useState<{ metric: ReportMetric; values: ReportRunValues } | null>(null);
   const hasRun = useRef(false);
@@ -131,17 +130,6 @@ export function ReportRunner({
       clearTimeout(timer);
     };
   }, [entry, blocked, runValues, signature]);
-
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .get<ReportTemplate[]>(`/api/v1/orgs/${organizationId}/report-templates`)
-      .then((list) => !cancelled && setTemplates(list))
-      .catch(() => !cancelled && setTemplates([]));
-    return () => {
-      cancelled = true;
-    };
-  }, [organizationId]);
 
   // Bring a linked-to gap table into view once its report has rendered (once per arrival, not per re-run).
   const scrolled = useRef<string | null>(null);

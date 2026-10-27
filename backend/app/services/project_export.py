@@ -125,6 +125,7 @@ from app.services.relationships import create_link as create_artefact_link
 from app.services.report_content import bundle_entries, portable_entries, replace_scope_content
 from app.services.report_content_bundle import ContentImageImporter, collect_content_images
 from app.services.report_layout_bundle import export_project_layouts, import_project_layouts
+from app.services.report_pack_bundle import export_project_packs, import_project_packs
 from app.services.sequences import generate_unique_code
 from app.services.tags import export_vocabulary, import_vocabulary, keywords_for_requirements, set_keywords
 
@@ -497,7 +498,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
     content_images, report_images = collect_content_images(db, project.organization_id, content)
     file_assets_by_id.update(content_images)
 
-    module_bundle_json: dict[str, Any] = export_project_layouts(db, project)
+    module_bundle_json: dict[str, Any] = {**export_project_layouts(db, project), **export_project_packs(db, project)}
     for _module_key, hooks in get_all_module_project_bundle_hooks():
         module_json, module_file_assets = hooks.export(db, project)
         module_bundle_json.update(module_json)
@@ -678,6 +679,7 @@ def apply_project_data(
     # Layouts first: the project's report content may be keyed to one (`custom:<layout name>`).
     imported_layouts: dict[str, UUID] = {}
     import_project_layouts(db, project, data, current_user, warnings, created=imported_layouts)
+    import_project_packs(db, project, data, current_user, warnings)
     skipped_report_types = replace_scope_content(
         db, SCOPE_PROJECT, project.id,
         ContentImageImporter(

@@ -1680,6 +1680,47 @@ flowchart LR
   run form (`GET .../custom-reports/{id}/variables`, and `POST .../report-layouts/variables` for a draft). The catalogue entry
   carries the run form as `variables`.
 
+### 4u. Custom reports: report packs (Module 10 Phase 10c)
+
+A report pack lists several reports (custom layouts and module reports), each with its own format, and is run with
+one set of variables into a zip with a `manifest.json`. A pack is configuration like a layout: organisation or project
+level, immutable versions, additive project visibility with hide and restore, the same manage permissions.
+
+```mermaid
+flowchart LR
+    F["Run form<br/>GET .../report-packs/{id}/form"] --> V["pack variables"]
+    V --> P["POST .../preview<br/>records per entry, nothing stored"]
+    V --> R["POST .../run"]
+    R --> E1["layout entry<br/>custom_report_run + renderer"]
+    R --> E2["module report entry<br/>report_module_run + framework renderer"]
+    E1 --> Z["zip: manifest.json + NN-name.ext"]
+    E2 --> Z
+    E1 --> G["GeneratedReport per entry<br/>shared pack_run_id"]
+    E2 --> G
+```
+
+- **Definition** (`services/report_pack_definition.py`): `variables` (declared as a layout's), optional `template`, and up to
+  25 `entries`: `{"kind": "layout", "name", "tier"?, "format", "filename"?, "variables"?}` or
+  `{"kind": "report", "module_key", "report", "format", "filename"?, "params"?}`. A layout is named, never identified by id.
+- **Variables** reach a layout entry by name, type and list-ness; a value the entry fixes wins; else the layout's default.
+- **Every entry runs as the caller** through the report's own path and gates, so a pack never widens access. An entry that
+  cannot run (not found, hidden, module off, no role, format not offered, variables not settable) is listed in the manifest
+  as `not_available` with a reason; no runnable entry is a 409 `nothing_to_run`.
+- **Files** are flat, `NN-<stem>.<ext>`; the stem is the entry's `filename` (or name) cleaned to letters, digits and `._- `.
+- **Bounds:** 25 entries, 100 MB, 120 seconds for the pack, plus each layout's own caps. A file run over a bound answers 409 `async_required`
+  and is queued with `POST .../report-packs/{id}/runs` (a preview over a bound is a 413); the background job stores the zip like any
+  background output, with larger bounds (200 MB, 15 minutes) and the requester's access re-checked.
+- **Saved variable sets** (`services/report_pack_sets.py`): a set is a name and values for some of the pack's variables, saved
+  with the pack or added by a project. A project overrides a pack-defined set per variable (nearest ancestor's override wins,
+  then the set's value) and resets it by deleting the override. A run takes `variable_set_id`; what is typed wins. In an
+  organisation run every project's entries use that project's effective values and the manifest lists them per project.
+- **Bundles.** `services/report_pack_bundle.py` adds `report_packs` (every version, with its sets), `report_packs_hidden`,
+  `report_pack_sets_added` and `report_pack_set_overrides` (by pack and set name) to `project.json` and `report_packs` to `org.json`;
+  an import validates everything again, drops what is not valid here with a warning and never overwrites a pack in a merge.
+- **MCP.** `list_report_packs`, `get_report_pack_form`, `preview_report_pack`, `get_report_run` (read) and `run_report_pack` (write mode,
+  queues the zip; the file is downloaded in the app).
+- A module adds nothing for its reports to appear in a pack: they are found through the registry.
+
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 
 A module that reports on its records declares a `ReportDefinition` per report on

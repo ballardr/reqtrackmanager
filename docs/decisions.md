@@ -12619,3 +12619,113 @@ A cheap count pre-pass (record counts per `each` source, multiplied through nest
 ### Not applicable, checked
 
 *Modules:* nothing per module in a core file; the hook is a generic field attribute. *Core tables and constants keyed by kind:* none added. *Search, codes, tags, quick links:* no record type. *Users and groups parity:* no person-valued field is added. *Nested projects:* no new project-scoped table; the domain walks ancestors. *Bundles:* variables are part of the layout tree, which already travels. *Time:* a date variable is a calendar date (the person's own day); a run's time stays a UTC instant.
+
+## Custom reports Phase 10c, part 1: report packs and the pack run (2026-10-27)
+
+**Decided by: User** (D19 to D25: a pack lists several reports, each with its own format, run with one set of variables into a zip with a manifest; organisation and project tiers with additive visibility; an entry that cannot run is listed, never dropped). **Decided by: Agent** for the mechanism below. Phase 10c is delivered in parts; this is the backend core (definition, store, tiers, run, zip, manifest, provenance). Saved variable sets and overrides (D24, D25), the bundles, the background path, MCP and the UI follow and are not built yet.
+
+### What was built
+
+- `report_packs` and immutable `report_pack_versions` (migration 0111), the layout pattern: partial unique names per owner, an ORM guard refusing a version update, optimistic `base_version`, an unchanged save stores nothing, audit events carry ids, hash and counts only. A pack is configuration: no code, not linkable, not searched.
+- Definition (`services/report_pack_definition.py`, schema 1): `variables` (declared and checked by the layout validator, so a pack variable has the same types, options and source field), an optional `template` (an organisation report template, by name), and up to 25 `entries`: a layout by name and optional tier (`{"kind": "layout", "name", "tier", "format", "filename", "variables"}`) or a module report (`{"kind": "report", "module_key", "report", "format", "filename", "params"}`).
+- Tiers (`services/report_pack_scope.py`): organisation and project packs, additive visibility (own, ancestors', organisation's, de-duplicated by name), hide and restore through `ProjectDefinitionSuppression` (kind `report_pack`), the same permissions as layouts (D22, no new permission).
+- Run (`services/report_pack_run.py`, `services/report_module_run.py`): every entry is produced as the caller. A layout entry goes through `custom_report_run`; a module report entry through a service-level run of its `ReportDefinition` with the gates its own route applies (module and sub-component enabled, an organisation variant, the module role). The zip holds `manifest.json` and flat `NN-<stem>.<ext>` files.
+- API (`routers/report_packs.py`): manage routes at both tiers; `GET .../{id}/form` (variables with defaults and options), `POST .../{id}/preview` (counts per entry, nothing stored) and `POST .../{id}/run` (the zip). Provenance: one `GeneratedReport` row per included entry sharing `pack_run_id`; a module report row carries `report_key` and a `layout_id` derived from it.
+- `EvalStats.records_included` (distinct records that passed a block's conditions) is the figure the preview and manifest show; `records_read` counted records before the conditions narrowed them, which would have hidden exactly what D23's preview is for.
+- `report_framework._content_blocks_for` became public (`content_blocks_for`) for the module report path, and `report_widgets.param_value_problem` is public for the pack's report parameters. Two route handlers in `report_framework` gained an `assert organization is not None`, clearing a baselined mypy finding.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Entries name a layout, never an id.** A definition is then portable in a bundle and resolves for the project it runs in; `tier` pins the owner's tier (`organization`, or `project` meaning the project's own or an ancestor's). A project layout that shadows an organisation layout of the same name makes the organisation tier unreachable in that project, as for any other reader. | Agent |
+| 2 | **Pack variables reach a layout entry by name, type and list-ness**; an entry may fix its own value, which wins; otherwise the layout's own default applies. The values still pass the layout's own declaration (`resolve_values`), so a pack cannot bypass a layout's rules. A mismatch of type makes the pack variable simply not apply. | Agent |
+| 3 | **A variable problem in one entry makes that entry "not available" (naming variables, never values), not a failed pack.** Pack-level values that are wrong are a 422 before anything runs. | Agent |
+| 4 | **Run and preview are POSTs with a body**, so variable values never appear in a URL the front proxy logs. The download is the POST's response. | Agent |
+| 5 | **No partial output.** A layout entry over its caps, a pack over 120 seconds or 100 MB is `PackLimitError` (413); nothing is zipped or recorded. Until the background path is built for packs the answer is 413, not 409 `async_required`. | Agent |
+| 6 | **Nothing runnable is a 409 `nothing_to_run`**, and records nothing; a pack with some runnable entries succeeds and lists the rest (D21). | User (rule), Agent (status code) |
+| 7 | **Nested projects (checklist):** a pack is a project-scoped configuration table. It takes the additive rule of layouts (D15, D22) rather than Action Types' "own rows, else the ancestor's", because a project that made one pack would otherwise hide every inherited one. | Agent |
+| 8 | **A module report entry records provenance as a layout-less row**: `layout_id` is a UUIDv5 of `<module key>.<report key>`, `layout_version` 0, `report_key` set. The column stays non-null for every existing reader. | Agent |
+| 9 | **A pack's default branding template is stored by name** (portable) and a request's `report_template_id` overrides it; a name with no template is ignored, not an error. | Agent |
+
+### Review (identify, verify, remediate)
+
+*Identify:* an entry reading more than the caller can (a pack widening access); a file name taken from user text becoming a path in the zip; a pack variable value or record text in the manifest, a log or an audit event; an unbounded zip or run; a module report run without its module or role gate; a hidden layout or pack still runnable; a requester seeing another project's or tier's pack.
+
+*Verify and remediate:* each entry uses the report's own run path with the caller's resolver (test: an outsider cannot run, the manifest holds no record text, a report whose module is off or that has no organisation variant is listed not available); stems go through `clean_filename` and the zip name is `NN-` plus the stem, so `../../x`, absolute paths and hidden names cannot survive (parametrised test); the manifest carries names, keys, counts, formats, the variable values (configuration, D23) and UTC times; audit events carry ids, hash and counts; caps on entries (25), definition size, zip size and wall time; a hidden pack is a 404 for runners and a hidden layout is not available to a pack; the visibility, 403 for an inherited edit and name-uniqueness rules are tested.
+
+*Residual, recorded:* record counts in the manifest and preview can reveal how many records match a category the runner can read; they cannot reveal a record the runner cannot read. A module report's rows are counted as rows, not records.
+
+### Not applicable, checked
+
+*Modules:* nothing per module in a core file; module reports are reached through the registry. *Core tables and constants keyed by kind:* none added. *Search, codes, tags, quick links:* no record type. *Users and groups parity:* no person-valued field; manage permissions already take users and groups. *Time:* the manifest and provenance times are UTC instants; a date variable keeps the caller's own day. *Not yet built (later parts of 10c):* saved variable sets and per-project overrides, bundle export and import, the background path, MCP, the UI, seeds and the website.
+
+## Custom reports Phase 10c, part 2: saved variable sets, project overrides and per-project values (2026-10-27)
+
+**Decided by: User** (D24: saved sets per pack, an organisation pack's set overridable per project by variable with a reset, projects may add their own sets, nearest ancestor's override wins then the organisation's, editing needs the project report-layout permission; D25: in an organisation run each project's entries use that project's effective set and the manifest lists the values per project). **Decided by: Agent** for the mechanism below.
+
+### What was built
+
+- `report_pack_variable_sets` (a pack's named values; `project_id` null = saved with the pack, else added by that project) and `report_pack_set_overrides` (one project's per-variable values over a pack-defined set), migration 0112. Both cascade from the pack and the project. The column is `variable_values` because `values` is a reserved word in PostgreSQL.
+- `services/report_pack_sets.py`: create, rename, change, delete; `put_override` / `reset_override`; `effective_sets(pack, project)` resolves each variable from the running project up through its ancestors (`get_project_chain_ids`, nearest first), else the set's own value; `set_values_for`; `stale_warnings`.
+- Endpoints: organisation `.../report-packs/{id}/sets` (list, create, patch, delete); project the same, plus `PUT/DELETE .../sets/{set_id}/override`. On the project side a set on the project's own pack is saved with the pack; on an inherited pack it is the project's own set beside the pack's, and the pack's own sets are overridden, not edited (403). Run and preview take `variable_set_id`; typed `variables` win over the set. The run form lists the sets with the values this project would use and any warnings.
+- Organisation run: `custom_report_run.run_organization_layout(variables_for=)` lets the pack give each project its own values (the set with that project's overrides). The manifest records `variable_set`, `warnings` and, per entry, `variables_by_project` when the projects' values differ.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Override is per variable, nearest first.** A variable the override does not list falls back to the next ancestor's override, then the set's value. An empty override removes it. A child inherits its parent's override and a parent never sees a child's. | User (per variable, reset, nearest wins), Agent (empty put = reset) |
+| 2 | **A set belongs to the pack, not a version.** A new version keeps the saved choices; a stored name the version no longer declares is ignored with a remark in the manifest, never an error. A value of a retyped variable that no longer fits is an error at run (the usual `variable_values`), because guessing would change what a report contains. | Agent |
+| 3 | **Names are unique where they can be seen** (the pack's own sets and the project-added sets of the project and its ancestors), so picking by name is unambiguous; a project-added set cannot be used in an organisation run (it is one project's). | Agent |
+| 4 | **A value no longer among its variable's options is flagged on the form and in the manifest, not dropped or refused** (options advise, as for any variable). The warning names the variable, never the value. | User (flag, do not drop), Agent (wording) |
+| 5 | **Nested projects (checklist):** both new tables are project-or-pack-scoped config; the override resolution walks ancestors with the same cycle-safe helper as layouts and link types, always on and independent of role inheritance. | Agent |
+| 6 | **Audit events carry ids, names and variable counts, never values** (values are configuration, shown to people who can manage or run the pack). | Agent |
+
+### Review (identify, verify, remediate)
+
+*Identify:* a project changing the organisation's set for everyone; a project reading another project's added set or override; a set holding a value that is not valid for the variable; a deleted set or pack leaving overrides; values reaching logs or audit events; the organisation run applying one project's override to another; a runner (no manage permission) changing a set.
+
+*Verify and remediate:* the organisation's sets are edited only through the organisation routes and a project can only write its own override row (tested: 403 on edit, delete and a pack's own-set override); sets and overrides cascade with the pack and the project (tested); an organisation run resolves each project through `effective_sets` for that project (tested with two projects, one overriding); values are validated by `check_values` on every write; a member without the project permission gets 403 on set writes but can read the sets on the run form (tested); audit detail is checked to hold no value (tested).
+
+*Residual, recorded:* the set values on the run form are visible to anyone who can run the pack; they are choices (categories, dates), not secrets, and the pack's definition and its entries stay manager-only.
+
+### Not applicable, checked
+
+*Modules, core enums/constants, search, codes, tags, quick links:* none touched. *Users and groups parity:* no person-valued field. *Time:* a date variable keeps the caller's own day; nothing scheduled is stored. *Still to do in Phase 10c:* bundles (sets and overrides travel by pack and set name), the background path and MCP, the UI, seeds and the website.
+
+## Custom reports Phase 10c, parts 3 to 5: bundles, background packs, MCP and the screens (2026-10-27)
+
+**Decided by: User** (D19 to D25, and "do all of 10c"). **Decided by: Agent** for the mechanism below. This closes Phase 10c.
+
+### What was built
+
+- **Bundles** (`services/report_pack_bundle.py`, called from `project_export.py` and `org_export.py` beside the layout bundle): a project bundle carries its own packs (every version, with the sets saved with them), the inherited packs it hides, the sets it added to inherited packs and the overrides it holds, all by name; an organisation bundle carries the organisation's packs with their sets. An import validates every definition again, renumbers versions, drops a version that is not valid here (with a warning), skips a set whose values no longer fit, never overwrites a pack in a merge ("<name> (imported)") and reports a hide, added set or override whose pack it cannot find.
+- **Background packs** (`report_run_jobs.enqueue_pack`, `_run_pack_job`): a pack too big for a request answers 409 `async_required`; `POST .../{id}/runs` queues it (the values and set are checked at once, access again when it runs). The job row is `format zip` with `params.kind == "pack"`; it runs as the requester with larger bounds (200 MB, 15 minutes between entries, plus each layout's own background limits), stores the zip like any background output (retention, expiry, requester-only download) and then writes the entries' provenance rows with the same `pack_run_id`. A date variable's `today` is the day the person asked (`client_date` in the job params). A lost-job reaper allows a pack job its longer bound.
+- **MCP**: `list_report_packs`, `get_report_pack_form`, `preview_report_pack` (read) and `get_report_run` (read), `run_report_pack` (write mode: queues the zip; the file is downloaded in the app, never sent through MCP). The skill and the generated tool reference are updated.
+- **Screens**: Report packs under Report Setup (project) and Templates & reports (organisation) (`ReportPacksPanel`); the pack editor at `/projects/:id/report-packs/:packId` and `/orgs/:id/report-packs/:packId` (`ReportPackEditor`: Reports, Variables, Saved sets, History); the pack on the Reports page and the organisation overview as a "Pack: <name>" entry (`ReportPackRunner`: variables, saved choices, branding template, live counts per report, download or background queue). Shared pieces: `useReportTemplates` (extracted from `ReportRunner`, which now uses it), `JsonObjectField`, `utils/reportPackDraft`. `api.postForBlob` now throws the structured `ApiError` of any other call.
+- Seeds: the demo dataset gains an organisation pack with a saved set; the e2e dataset gains an "E2E Pack". Playwright: `custom-report-packs.spec.ts`. Website: "Report packs" in Reports and export.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **A queued pack keeps what the person typed and the chosen set's id, and resolves them when the job runs**, because an organisation run's per-project values depend on each project's overrides at that moment. The values are validated when queued, so a bad request is a 422 then, not a failed job. | Agent |
+| 2 | **The pack job is one row (`zip`) and the entries' rows are written when it finishes**, so the Background reports list shows one item per pack and provenance still has a row per report. | Agent |
+| 3 | **Overrides and added sets travel in the project's section, a pack's sets in the pack's.** An override is that project's data; moving it with the organisation's set would apply it to projects it was never made for. | Agent |
+| 4 | **MCP does not return the zip.** `run_report_pack` queues a background run (a write-mode action, since it stores output and notifies); `preview_report_pack` is the safe check. | Agent |
+| 5 | **JSON boxes for an entry's pinned values and a module report's options.** A structured control per variable would need the layout's and report's declarations at edit time; the server validates the JSON and the editor shows its positioned problems. Revisit if people find them hard to use. | Agent |
+| 6 | **The organisation run has no project selector for packs** (the API accepts `project_ids`); it covers every project the caller can read. | Agent |
+| 7 | **A pack editor's Save compares canonical JSON** (sorted keys), so a definition built in a different key order is not "changed". A story caught the first version always enabling Save. | Agent |
+
+### Review (identify, verify, remediate)
+
+*Identify:* a bundle importing an invalid or hostile definition or a set naming undeclared variables; a pack job running with more access than the requester holds now, or for a hidden pack; a stored zip readable by anyone but the requester or past its retention; a lost pack job never reaped or a long one reaped early; MCP exposing zip content or running without write mode; values in logs, audit events or notifications; a variable value or record text in the manifest; XSS through a pack name or reason in the screens.
+
+*Verify and remediate:* every imported version and set is validated again through the same services as an edit (tests: corrupted definition and set, merge never overwrites, unmatched hide/added set/override reported); the job re-checks the requester's account and access, the pack's reachability and hiding (tests: archived requester fails with the fixed sentence, hidden pack cannot be queued, only the requester downloads); the zip is stored and expired by the existing output mechanism, so retention, deletion with the organisation and requester-only download apply unchanged; the reaper distinguishes pack rows; the MCP tools only proxy the API with the caller's token and `run_report_pack` exists only in write mode (the skill generator labels it); the manifest, audit events and notifications carry names, ids and counts (tests); names and reasons render as React text.
+
+*Residual, recorded:* a stored zip is Confidential data at rest under the same encryption posture as other background output (no application-level encryption; see the data classification and retention policies). An organisation pack's module report entries can only be organisation-level reports (the editor offers the organisation catalogue); a project that runs such a pack runs them at its own level.
+
+### Not applicable, checked
+
+*Modules:* nothing per module in a core file. *Core enums/constants:* none added (`format` stays a string, `report_key` a plain column). *Search, codes, tags, quick links:* a pack is configuration, not an artefact type. *Users and groups parity:* no person-valued field; manage permissions already take users and groups. *Nested projects:* decided additive in part 1 (D15); overrides walk ancestors. *Time:* manifest and job times are UTC; a date variable keeps the caller's day. *SOC 2 policies:* output retention and classification follow the Phase 10 mechanism; no new control regressed and no new gap beyond the recorded residual.

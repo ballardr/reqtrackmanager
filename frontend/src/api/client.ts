@@ -198,17 +198,9 @@ export const api = {
     for (const [key, value] of Object.entries(fields ?? {})) formData.append(key, value);
     return request<T>(path, { method: "POST", body: formData });
   },
-  postForBlob: async (path: string, body?: unknown): Promise<Blob> => {
-    const headers: Record<string, string> = { "Content-Type": "application/json", "X-Client-Date": localToday() };
-    if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
-    const response = await fetch(`${BASE_URL}${path}`, {
-      method: "POST",
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
-    if (!response.ok) throw new ApiError(response.status, response.statusText);
-    return response.blob();
-  },
+  /** Posts JSON and returns the file in the response; a failed response throws the same `ApiError` (with its structured `detail`) as any other call. */
+  postForBlob: async (path: string, body?: unknown): Promise<Blob> =>
+    (await rawRequest(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined })).blob(),
   /** Downloads a file; a failed response throws the same `ApiError` (message and structured `detail`) as any other call. */
   getForBlob: async (path: string): Promise<Blob> => (await rawRequest(path)).blob(),
 };

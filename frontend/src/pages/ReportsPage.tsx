@@ -5,10 +5,11 @@
  * The requirement report (templates, intro/chapters/appendices, filters; see
  * `RequirementReportPanel`) is always offered, first, and every other report
  * the backend catalogue lists for this project (module enabled, sub-component
- * enabled) is offered beside it in the same picker (`ReportCatalogue`). Nothing here names a module or a report: with no
- * catalogue reports the page is the requirement report alone, as before.
+ * enabled) is offered beside it in the same picker (`ReportCatalogue`), followed by the report packs the project can
+ * run (`useReportPackEntries`). Nothing here names a module or a report: with no catalogue reports and no packs the
+ * page is the requirement report alone, as before.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -19,6 +20,7 @@ import { Spinner } from "../components/Spinner";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useReportCatalogue } from "../hooks/useReportCatalogue";
+import { useReportPackEntries } from "../hooks/useReportPackEntries";
 
 export function ReportsPage() {
   const strings = useStrings();
@@ -26,6 +28,8 @@ export function ReportsPage() {
   const { showToast } = useToast();
   const [project, setProject] = useState<Project | null>(null);
   const catalogue = useReportCatalogue("project", projectId);
+  const packScope = useMemo(() => (projectId ? { kind: "project" as const, id: projectId } : undefined), [projectId]);
+  const packs = useReportPackEntries(packScope, project?.organization_id);
 
   useEffect(() => {
     if (!projectId) return;
@@ -35,7 +39,7 @@ export function ReportsPage() {
       .catch((err) => showToast(toErrorMessage(err, strings.common.error), "error"));
   }, [projectId, showToast, strings.common.error]);
 
-  if (!projectId || !project || catalogue.loading) return <Spinner />;
+  if (!projectId || !project || catalogue.loading || packs.loading) return <Spinner />;
 
   return (
     <div className="stack">
@@ -51,6 +55,7 @@ export function ReportsPage() {
             description: "The project's requirements as a document, with introduction, chapters, appendices and filters.",
             render: () => <RequirementReportPanel project={project} />,
           },
+          ...packs.entries,
         ]}
       />
     </div>

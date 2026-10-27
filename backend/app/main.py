@@ -49,6 +49,7 @@ from app.routers import (
     record_tables,
     report_catalogue,
     report_layouts,
+    report_packs,
     reports,
     requirements,
     reviews,
@@ -310,6 +311,8 @@ app.include_router(reports.router)
 app.include_router(report_catalogue.router)
 app.include_router(report_layouts.org_router)
 app.include_router(report_layouts.project_router)
+app.include_router(report_packs.org_router)
+app.include_router(report_packs.project_router)
 app.include_router(custom_reports.org_router)
 app.include_router(custom_reports.project_router)
 app.include_router(custom_reports.runs_router)

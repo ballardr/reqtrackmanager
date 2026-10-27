@@ -769,7 +769,7 @@ def _template_for(db: Session, organization: Organization, template_id: UUID | N
     return template
 
 
-def _content_blocks_for(
+def content_blocks_for(
     db: Session, fmt: str, module_key: str, definition: ReportDefinition, result: ReportResult,
     organization: Organization, project: Project | None, template: ReportTemplate | None,
 ) -> tuple[list[Block], list[Block]]:
@@ -827,6 +827,7 @@ def _build_project_route(module_key: str, definition: ReportDefinition) -> Calla
         db: Session = kw["db"]
         project = db.get(Project, kw["project_id"])
         organization = db.get(Organization, project.organization_id)
+        assert organization is not None  # the project's own organisation
         params = validated_params(live, kw)
         template = _template_for(db, organization, kw["report_template_id"])
         ctx = ReportContext(
@@ -837,7 +838,7 @@ def _build_project_route(module_key: str, definition: ReportDefinition) -> Calla
             ),
         )
         result = apply_cell_tones(live.collector(db, ctx), live.cell_tones)
-        before, after = _content_blocks_for(db, kw["format"], module_key, live, result, organization, project, template)
+        before, after = content_blocks_for(db, kw["format"], module_key, live, result, organization, project, template)
         return _respond(
             result, live, kw["format"], project.name, resolve_branding(db, organization, template), before, after,
         )
@@ -864,6 +865,7 @@ def _build_org_route(module_key: str, definition: ReportDefinition) -> Callable[
         ):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not hold the role required for organisation-wide reports.")
         organization = db.get(Organization, organization_id)
+        assert organization is not None  # the route dependency has checked the organisation
         params = validated_params(live, kw)
         template = _template_for(db, organization, kw["report_template_id"])
         projects = scope_projects(
@@ -880,7 +882,7 @@ def _build_org_route(module_key: str, definition: ReportDefinition) -> Callable[
             projects=projects,
         )
         result = apply_cell_tones(live.collector(db, ctx), live.cell_tones)
-        before, after = _content_blocks_for(db, kw["format"], module_key, live, result, organization, None, template)
+        before, after = content_blocks_for(db, kw["format"], module_key, live, result, organization, None, template)
         return _respond(
             result, live, kw["format"], organization.name, resolve_branding(db, organization, template), before, after,
         )

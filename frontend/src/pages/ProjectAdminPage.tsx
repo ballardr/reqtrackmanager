@@ -77,8 +77,10 @@ import { loadProjectSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { describeCodePolicy, normaliseProjectCode } from "../utils/codePolicy";
 import { downloadBlob } from "../utils/download";
 import { reportLayoutApi } from "../api/reportLayouts";
+import { reportPackApi } from "../api/reportPacks";
 import { Badge } from "../components/Badge";
 import { ReportLayoutsPanel } from "../components/ReportLayoutsPanel";
+import { ReportPacksPanel } from "../components/ReportPacksPanel";
 import { CheckboxField, InlineTextInput, TextAreaField, TextField, ToggleField } from "../components/FormFields";
 import { InlineSelect, LabeledSelect } from "../components/LabeledSelect";
 import { FormActions } from "../components/FormActions";
@@ -167,6 +169,7 @@ export function ProjectAdminPage() {
   const strings = useStrings();
   const { projectId, group: groupParam } = useParams<{ projectId: string; group?: string }>();
   const layoutApi = useMemo(() => (projectId ? reportLayoutApi({ kind: "project", id: projectId }) : null), [projectId]);
+  const packApi = useMemo(() => (projectId ? reportPackApi({ kind: "project", id: projectId }) : null), [projectId]);
   const navigate = useNavigate();
   const orgLabel = useOrgLabel();
   const { showToast } = useToast();
@@ -2745,6 +2748,11 @@ export function ProjectAdminPage() {
         {layoutApi && (
           <CollapsibleSection sectionKey="projectAdmin.reportSetup.layouts" title={strings.reportLayouts.title} defaultCollapsed={false}>
             <ReportLayoutsPanel api={layoutApi} />
+          </CollapsibleSection>
+        )}
+        {packApi && (
+          <CollapsibleSection sectionKey="projectAdmin.reportSetup.packs" title={strings.reportPacks.title} defaultCollapsed={false}>
+            <ReportPacksPanel api={packApi} />
           </CollapsibleSection>
         )}
         <CollapsibleSection sectionKey="projectAdmin.reportSetup.content" title={strings.admin.reportContent} defaultCollapsed={false}>

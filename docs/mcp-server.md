@@ -24,6 +24,9 @@ Twenty-two read tools, always available:
 | `run_custom_report` | Runs a layout (with values for its run-time `variables`) and returns the report as data: one project (optionally with child projects), or an organisation layout once per project the caller can read (optionally limited with `project_ids`). Only what the caller can read; unseen records are counted in `notes`. Every run is recorded for provenance |
 | `list_report_widgets` | The report components (a table, the headline figures, the notes) a layout can embed as a `[[widget.<module>.<report>.<part> name=value]]` line, with the report's parameters (needs the layout-management permission) |
 | `parse_report_layout_text` / `format_report_layout_text` | Convert a layout between its text view and its tree, with positioned errors; store nothing |
+| `list_report_packs` / `get_report_pack_form` | Report packs (several reports downloaded together as one zip) a project can run or an organisation owns, and a pack's run form: its variables and saved sets with the values the project would use |
+| `preview_report_pack` | How many records each report in a pack would include for the chosen values (and which reports are not available and why); stores and produces nothing |
+| `get_report_run` | One of the caller's own background runs (a custom report or a pack): status, file name, expiry, a fixed error sentence |
 | `list_requirements` | Requirements in a project, with the same filters the UI's filter panel offers (status, component, category, keyword, tags, or a name/code search) |
 | `get_requirement` | A single requirement's full current detail |
 | `get_requirement_history` | A requirement's full version history — every prior state, who changed it, and why (C-A-09) |
@@ -58,6 +61,7 @@ Plus seven write tools, only when [write mode](#write-mode) is enabled:
 | `set_artefact_tags` | Makes a record carry exactly the given tags (new names follow the project's free or restricted mode) |
 | `add_artefact_tag` / `remove_artefact_tag` | Adds or removes one tag on a record, keeping the others |
 | `create_report_layout` / `save_report_layout_version` / `update_report_layout` / `delete_report_layout` | Author custom report layouts for a project or organisation (needs the layout-management permission; a save names the version it started from and is refused if someone saved since; delete is irreversible and also deletes the introduction, chapters and appendices written for the layout) |
+| `run_report_pack` | Queues a report pack to be produced in the background as one zip, as the caller (every report keeps its own access gate); the requester is notified and downloads it in the app. Subject to the per-user limit on background runs |
 | `approve_requirement` | Approves a draft or reviewed requirement — **only when AI approval is enabled** for the project and its organisation |
 | `decide_change_request` | Approves or rejects a submitted change request — **only when AI approval is enabled** for the project and its organisation. `merge_link_ids` chooses which proposed links to create (omitted: every valid one; empty: none); a chosen link that is no longer valid fails the call with a conflict |
 | `complete_requirement` | Marks an approved requirement completed — **only when AI approval is enabled** for the project and its organisation |

@@ -347,6 +347,16 @@ def hide_report_layout(headers: dict, project_id: str, layout_id: str) -> None:
     r.raise_for_status()
 
 
+def create_report_pack(headers: dict, path: str, name: str, description: str, definition: dict) -> dict:
+    """Creates a report pack at one tier: `/orgs/{id}` or `/projects/{id}` (followed by `/report-packs`)."""
+    r = httpx.post(
+        f"{BASE}{path}/report-packs", json={"name": name, "description": description, "definition": definition},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def create_project_link_type(
     headers: dict, project_id: str, *, forward_name: str, reverse_name: str, flow: str = "none",
 ) -> dict:
@@ -1074,6 +1084,20 @@ def main() -> None:
     )
     create_report_layout(
         h_g, f"/orgs/{gamma['id']}", "E2E Widget layout", "Embeds Context & Strategy report tables as widgets.", CONTEXT_OVERVIEW_LAYOUT,
+    )
+    create_report_pack(
+        h_g, f"/orgs/{gamma['id']}", "E2E Pack", "Two layouts handed over as one zip.",
+        {
+            "schema_version": 1,
+            "variables": [{
+                "name": "categories", "type": "enum", "multiple": True, "label": "Categories",
+                "source": {"record_type": "requirement", "field": "category"},
+            }],
+            "entries": [
+                {"kind": "layout", "name": "E2E Variables layout", "format": "pdf", "filename": "variables"},
+                {"kind": "layout", "name": "E2E Org layout", "format": "docx"},
+            ],
+        },
     )
     parent_type = create_project_link_type(
         h_g, gamma5["id"], forward_name=LINK_TYPES_PARENT_VERB, reverse_name="E2E Parent reverse", flow="forward_is_upstream",
