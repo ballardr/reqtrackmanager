@@ -254,7 +254,8 @@ def test_caps_env_matches_the_variables_the_override_reads():
     text = (_PERF / "docker-compose.perf.yml").read_text()
     wanted = set(re.findall(r"\$\{(PERF_[A-Z_]+)", text))
     provided = set(resources.plan_caps(8, 16, max_mem_gib=5).env()) | {"PERF_USER_PASSWORD", "PERF_BACKEND_IMAGE", "PERF_LOADGEN_IMAGE"}
-    assert wanted <= provided
+    optional = {"PERF_PG_SHARED_BUFFERS", "PERF_PG_WORK_MEM"}  # set only by --pg-shared-buffers / --pg-work-mem; the override has defaults
+    assert wanted - optional <= provided
 
 
 # --- caps, headroom and the watchdog ---------------------------------------------------------------------
@@ -1819,3 +1820,30 @@ def test_capacity_tier_option_moves_the_scenario_to_another_tier_and_must_be_amo
         with pytest.raises(SystemExit):
             run_profile.parse_args(["lab-host", *bad])
     assert run_profile.parse_args(["lab-host", "--full", "--capacity-tier", "T4"]).capacity_tier == "T4", "full mode covers every tier"
+
+
+def test_postgres_settings_options_reach_the_stack_and_a_buffer_the_database_cannot_hold_is_refused():
+    from perf import run_profile
+
+    options = run_profile.parse_args(["lab-host", "--pg-shared-buffers", "512MB", "--pg-work-mem", "16MB"])
+    assert (options.pg_shared_buffers, options.pg_work_mem) == ("512MB", "16MB")
+    caps = resources.plan_caps(16, 64, max_cpus=12, max_mem_gib=8, workers=6)
+    env = run_profile.stack_environment(caps=caps, workers=6, backend_image="x", loadgen_image="y", pg=("512MB", "16MB"))
+    assert (env["PERF_PG_SHARED_BUFFERS"], env["PERF_PG_WORK_MEM"]) == ("512MB", "16MB")
+    plain = run_profile.stack_environment(caps=caps, workers=6, backend_image="x", loadgen_image="y")
+    assert "PERF_PG_SHARED_BUFFERS" not in plain and "PERF_PG_WORK_MEM" not in plain
+
+    run_profile.ProfileRun(options).check_shared_buffers(caps)
+    db_mib = int(caps.per_service["db"]["mem"].rstrip("m"))
+    too_big = run_profile.ProfileRun(run_profile.parse_args(["lab-host", "--pg-shared-buffers", f"{db_mib // 1024 + 2}GB"]))
+    with pytest.raises(run_profile.RunError, match="more than half"):
+        too_big.check_shared_buffers(caps)
+    run_profile.ProfileRun(run_profile.parse_args(["lab-host"])).check_shared_buffers(caps)
+    for bad in ("0MB", "big", "512", "1TB", "-1MB"):
+        with pytest.raises(SystemExit):
+            run_profile.parse_args(["lab-host", "--pg-shared-buffers", bad])
+
+
+def test_the_perf_database_reads_its_memory_settings_from_the_environment_with_postgres_defaults():
+    text = (_PERF / "docker-compose.perf.yml").read_text()
+    assert "shared_buffers=${PERF_PG_SHARED_BUFFERS:-128MB}" in text and "work_mem=${PERF_PG_WORK_MEM:-4MB}" in text

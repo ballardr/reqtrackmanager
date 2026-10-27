@@ -19,7 +19,18 @@
 # The frontend and MCP server are not started: the profile measures the API.
 services:
   db:
-    command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements", "-c", "pg_stat_statements.max=5000"]
+    # shared_buffers and work_mem default to PostgreSQL's own (128MB, 4MB); the runner's --pg-shared-buffers / --pg-work-mem
+    # change them for a tuning experiment.
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.max=5000
+      - -c
+      - shared_buffers=${PERF_PG_SHARED_BUFFERS:-128MB}
+      - -c
+      - work_mem=${PERF_PG_WORK_MEM:-4MB}
     cpus: ${PERF_DB_CPUS:-1}
     mem_limit: ${PERF_DB_MEM:-1g}
     memswap_limit: ${PERF_DB_MEM:-1g}

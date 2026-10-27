@@ -133,6 +133,8 @@ class Options:
         cache_dir: Where dataset snapshots live (outside the repository).
         watch_url: A read-only health URL to poll and abort on (production's `/health`).
         worker_sweep: Backend worker counts to run one after another, each as its own run (`--workers-sweep`), or None.
+        pg_shared_buffers / pg_work_mem: PostgreSQL's `shared_buffers` and `work_mem` for the perf stack's database (for
+            example `512MB`, `16MB`), or None for PostgreSQL's defaults (128MB, 4MB).
         db_pool_size / db_max_overflow: Per-worker database pool (`DB_POOL_SIZE`, `DB_MAX_OVERFLOW`); None for the
             application's defaults (5 and 10).
         capacity_users: Simulated-user levels of the `capacity` scenario, or None for the catalogue's.
@@ -167,6 +169,8 @@ class Options:
     max_load_per_core: Optional[float] = None
     capacity_users: Optional[tuple] = None
     capacity_tier: Optional[str] = None
+    pg_shared_buffers: Optional[str] = None
+    pg_work_mem: Optional[str] = None
     db_pool_size: Optional[int] = None
     db_max_overflow: Optional[int] = None
     worker_sweep: Optional[tuple] = None
@@ -257,6 +261,8 @@ def parse_args(argv: list) -> Options:
         "--workers-sweep", help="comma-separated backend worker counts (for example 2,4,6) to run one after another, each as its own run "
                                 "with the same pool, so only the worker count varies; stops at the first run that fails or aborts",
     )
+    parser.add_argument("--pg-shared-buffers", help="PostgreSQL shared_buffers for the perf stack's database, for example 512MB (default 128MB); must fit the database's memory cap")
+    parser.add_argument("--pg-work-mem", help="PostgreSQL work_mem for the perf stack's database, for example 16MB (default 4MB)")
     parser.add_argument("--db-pool-size", type=int, help="DB_POOL_SIZE for the backend (default 5); lower it to run many workers within PostgreSQL's connection limit")
     parser.add_argument("--db-max-overflow", type=int, help="DB_MAX_OVERFLOW for the backend (default 10)")
     parser.add_argument(
@@ -269,6 +275,9 @@ def parse_args(argv: list) -> Options:
     )
     parser.add_argument("--watch-url", help="a health URL (production's /health) to poll with GET; the run aborts if it slows or fails")
     args = parser.parse_args(argv)
+    for flag, value in (("--pg-shared-buffers", args.pg_shared_buffers), ("--pg-work-mem", args.pg_work_mem)):
+        if value is not None and not re.fullmatch(r"[1-9][0-9]{0,5}(MB|GB)", value):
+            parser.error(f"{flag} takes a size such as 512MB or 2GB")
     for flag, value, low in (("--db-pool-size", args.db_pool_size, 1), ("--db-max-overflow", args.db_max_overflow, 0)):
         if value is not None and not low <= value <= 200:
             parser.error(f"{flag} must be between {low} and 200")
@@ -311,7 +320,7 @@ def parse_args(argv: list) -> Options:
         breadth=args.breadth, density=args.density, seed=args.seed, repeats=args.repeats, workers=1 if args.profiling == "heap" else (None if args.workers == "auto" else int(args.workers)), max_cpus=args.max_cpus,
         max_mem=args.max_mem, dedicated=args.dedicated, allow_heavy=args.allow_heavy or args.dedicated, soak_minutes=args.soak_minutes,
         plan=args.plan, cleanup=args.cleanup, images=args.images, storage=args.storage, keep=args.keep, out=args.out,
-        cache_dir=args.cache_dir, watch_url=args.watch_url, max_load_per_core=args.max_load_per_core, capacity_users=capacity_users, capacity_tier=args.capacity_tier, db_pool_size=args.db_pool_size, db_max_overflow=args.db_max_overflow, worker_sweep=worker_sweep, scenarios=args.scenarios.split(",") if args.scenarios else None, profiling=args.profiling,
+        cache_dir=args.cache_dir, watch_url=args.watch_url, max_load_per_core=args.max_load_per_core, capacity_users=capacity_users, capacity_tier=args.capacity_tier, pg_shared_buffers=args.pg_shared_buffers, pg_work_mem=args.pg_work_mem, db_pool_size=args.db_pool_size, db_max_overflow=args.db_max_overflow, worker_sweep=worker_sweep, scenarios=args.scenarios.split(",") if args.scenarios else None, profiling=args.profiling,
     )
 
 
@@ -327,7 +336,7 @@ def render_env_file(env: dict) -> str:
 
 def stack_environment(
     *, caps: resources.Caps, workers: int, backend_image: str, loadgen_image: str, generate: Callable[[], str] = lambda: secrets.token_urlsafe(24),
-    profiling: str = "none", db_pool: tuple = (None, None),
+    profiling: str = "none", db_pool: tuple = (None, None), pg: tuple = (None, None),
 ) -> dict:
     """The perf stack's environment: fresh throwaway credentials, images, caps and worker count. Nothing is read
     from the operator's environment or any `.env`.
@@ -339,6 +348,7 @@ def stack_environment(
         generate: Source of random secrets (replaced in tests).
         profiling: The profiling mode; `heap` starts the backend as one worker under memray.
         db_pool: `(DB_POOL_SIZE, DB_MAX_OVERFLOW)`; None leaves the application's default.
+        pg: `(shared_buffers, work_mem)` for the database; None leaves PostgreSQL's default.
 
     Returns:
         The variables for the env file; `SECRET_KEYS` names those to mask.
@@ -355,6 +365,9 @@ def stack_environment(
     for name, value in zip(("DB_POOL_SIZE", "DB_MAX_OVERFLOW"), db_pool):
         if value is not None:
             env[name] = str(value)
+    for name, value in zip(("PERF_PG_SHARED_BUFFERS", "PERF_PG_WORK_MEM"), pg):
+        if value is not None:
+            env[name] = value
     if profiling == "heap":
         env["PROFILE_MEMRAY"] = "1"
     return env
@@ -974,6 +987,7 @@ class ProfileRun:
         if any(existing.values()):
             raise RunError(f"a {compose.PROJECT} project already exists (a crashed run?); run with --cleanup to remove it", EX_USAGE)
         self.check_connection_budget(caps)
+        self.check_shared_buffers(caps)
         largest = max(self.total_requirements(t) for t in self.tiers())
         self.options.cache_dir.mkdir(parents=True, exist_ok=True)
         reasons = resources.preflight_headroom(
@@ -1001,6 +1015,24 @@ class ProfileRun:
             raise RunError(
                 f"{caps.workers} workers x ({size} + {overflow} + 2) = {ceiling} database connections, more than the {usable} PostgreSQL allows; "
                 f"lower the pool, for example --db-pool-size {max(1, room // 3)} --db-max-overflow {max(0, room - max(1, room // 3))}", EX_USAGE,
+            )
+
+    def check_shared_buffers(self, caps: resources.Caps) -> None:
+        """Refuses a `shared_buffers` the database's memory cap cannot hold (it is allocated up front, and the server also
+        needs memory for connections and sorts), which would end the run in an out-of-memory kill.
+
+        Raises:
+            RunError: If `shared_buffers` is more than half of the database container's memory limit.
+        """
+        value = self.options.pg_shared_buffers
+        if not value:
+            return
+        buffers_mib = int(value[:-2]) * (1024 if value.endswith("GB") else 1)
+        limit_mib = int(str(caps.per_service["db"]["mem"]).rstrip("m"))
+        if buffers_mib * 2 > limit_mib:
+            raise RunError(
+                f"--pg-shared-buffers {value} is more than half of the database's {limit_mib} MiB memory cap; "
+                f"use at most {limit_mib // 2} MiB or raise --max-mem", EX_USAGE,
             )
 
     def thresholds(self) -> resources.Thresholds:
@@ -1040,7 +1072,7 @@ class ProfileRun:
 
         self.work = Path(tempfile.mkdtemp(prefix=f"{compose.PROJECT}-"))
         self.work.chmod(0o700)
-        self.env = stack_environment(caps=caps, workers=caps.workers, backend_image=backend_image, loadgen_image="reqtrack-perf-loadgen:build", generate=self._generate, profiling=options.profiling, db_pool=(options.db_pool_size, options.db_max_overflow))
+        self.env = stack_environment(caps=caps, workers=caps.workers, backend_image=backend_image, loadgen_image="reqtrack-perf-loadgen:build", generate=self._generate, profiling=options.profiling, db_pool=(options.db_pool_size, options.db_max_overflow), pg=(options.pg_shared_buffers, options.pg_work_mem))
         env_file = self.work / "perf.env"
         env_file.write_text(render_env_file(self.env))
         env_file.chmod(0o600)

@@ -207,6 +207,14 @@ requirements is 50,000 in all, so the dataset takes a while to build the first t
 perf/run_profile.sh linux-vm-4c8g --full --tiers T3 --breadth projects-10 --scenarios capacity --capacity-tier T3 --workers 6 --db-pool-size 4 --db-max-overflow 10 --max-cpus 12 --capacity-users 256,384,512 --allow-heavy --max-load-per-core 3 --watch-url $PROD_HEALTH_URL
 ```
 
+To test the database's memory settings on the same climb (the T3 database no longer fits PostgreSQL's default `shared_buffers`),
+set them for the perf stack only; the runner refuses a buffer larger than half the database's memory cap, and `run.json`
+records the settings that were in force:
+
+```sh
+perf/run_profile.sh linux-vm-4c8g --full --tiers T3 --breadth projects-10 --scenarios capacity --capacity-tier T3 --workers 6 --db-pool-size 4 --db-max-overflow 10 --max-cpus 12 --pg-shared-buffers 512MB --pg-work-mem 16MB --capacity-users 256,384 --allow-heavy --max-load-per-core 3 --watch-url $PROD_HEALTH_URL
+```
+
 Read the result as requests per second per worker: it should stay near 50 while the backend's CPU is the limit. A fall
 means the database, the project row lock taken by every create, or the host's own cores became the limit (the run notes
 the load generator's CPU, so a ceiling it caused is not read as the backend's). On a server shared with production use
