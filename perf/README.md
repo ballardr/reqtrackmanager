@@ -224,7 +224,14 @@ CPUs production can spare.
 ## Dataset tiers
 
 Requirements per project; every tier also scales the other record types and the links between them
-(`datasets/profiles.yaml`, a recorded input of every run, not a code constant).
+(`datasets/profiles.yaml`, a recorded input of every run, not a code constant). Every registered artefact type has a
+generator (`ModuleDefinition.perf_generators`; a module registers its own, core never names a module's type): the
+project-scoped types per requirement (`ratios.records`: change requests 0.3, risks 0.6, decisions 0.4, pain points 1.0,
+needs 0.6, engagements 0.4, findings 0.6, and so on), and the four compliance types from a catalogue per organisation
+(`compliance`: 5 standards of 60 requirements, 2 assigned to each project), so compliance follows the projects, not the
+requirement count. Records link to earlier types with the density's mean degree and a heavy tail, 5% of a nested
+project's links going to its parent. A T2 project (1,000 requirements) holds about 75,000 rows and generates in about
+15 seconds.
 
 | Tier | Requirements | Purpose |
 |------|--------------|---------|
@@ -308,9 +315,9 @@ memory numbers are never gated in CI: they are read, from a run.
 
 ## Not built yet (tracked)
 
-- Dataset generators for the module record types (`ModuleDefinition.perf_generators`); the gap list in
-  `test_perf_dataset.py` shrinks as they land. Attachments, and a frontend page-load scenario at T2 and T3 (a
-  Playwright-driven browser run), are not part of the first runner.
+- Attachments, organisation-owned records (an organisation-scoped strategy, future state, principle, persona,
+  stakeholder or group) and a frontend page-load scenario at T2 and T3 (a Playwright-driven browser run) are not part of
+  the generators or the first runner.
 - Statements run by a streamed response or by a utility command are not in `pgstat.csv` (DML only, by design).
 - Statements run while a streamed response body is produced (some exports) are not counted in `queries.csv`.
 - `compare.py` (run-to-run diff) and the plotting script come with the baseline-recording and website work.

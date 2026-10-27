@@ -141,6 +141,12 @@ from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
 from app.modules.compliance.models import ComplianceRequiredActionAssessment, ComplianceReview, ComplianceStandard
+from app.modules.compliance.perf_dataset import (
+    generate_compliance_requirements,
+    generate_evidence,
+    generate_project_compliance,
+    generate_required_action_assessments,
+)
 from app.modules.compliance.record_tables import NOT_IMPORTABLE, RECORD_TABLES
 from app.modules.compliance.search import SEARCH_PROVIDERS, SEARCH_SCOPES
 from app.modules.compliance.service import (
@@ -167,6 +173,7 @@ from app.modules.registry import (
     ModuleProjectBundleHooks,
     ModuleRoleDefinition,
     ModuleScheduledJob,
+    PerfDatasetGenerator,
     PrincipalReference,
 )
 
@@ -489,6 +496,12 @@ MODULE_DEFINITION = ModuleDefinition(
     validate_org_group_deletion=_validate_org_group_deletion,
     artefact_types=_ARTEFACT_TYPES,
     record_tables=RECORD_TABLES,
+    perf_generators={
+        "compliance_requirement": PerfDatasetGenerator(generate=generate_compliance_requirements, order=200),
+        "project_compliance_requirement": PerfDatasetGenerator(generate=generate_project_compliance, order=210),
+        "compliance_required_action_assessment": PerfDatasetGenerator(generate=generate_required_action_assessments, order=220),
+        "compliance_evidence": PerfDatasetGenerator(generate=generate_evidence, order=230),
+    },
     not_importable=NOT_IMPORTABLE,
     artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
     search_providers=SEARCH_PROVIDERS,

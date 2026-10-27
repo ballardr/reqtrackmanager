@@ -2043,6 +2043,8 @@ endpoint. `backend/tests/test_scaling_shapes.py` fills a project with a few and 
 statements behind the type's list, detail, comments or link graph grow with them (a lookup per row). Growth that is
 known and tracked is listed in that test's `KNOWN_GROWING`, strict both ways, so the list shrinks as fixes land.
 
+**Perf generator.** Each type also registers a `PerfDatasetGenerator` in `ModuleDefinition.perf_generators` (or a `no_perf_generator` reason), so the performance tooling's dataset tiers scale it. Build it from `services/perf_dataset/records.py` (`RecordBatch`, `add_comments`, `add_tags`, `link_to_earlier`) and add its ratio to `perf/datasets/profiles.yaml`; `backend/tests/test_perf_dataset.py` fails for a type with none, and its parity test compares the generated rows with an API-created one.
+
 **Reports.** If your module reports on its records, declare `ReportDefinition`s
 (§4g) rather than building routes, PDF/CSV code or a catalogue of your own. Name each
 record through the context's code and tag helpers and list its type in `record_types`.

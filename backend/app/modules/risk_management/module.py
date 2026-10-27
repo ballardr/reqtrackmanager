@@ -70,6 +70,7 @@ from app.modules.registry import (
     ModuleRoleDefinition,
     ModuleScheduledJob,
     ModuleSubComponentDefinition,
+    PerfDatasetGenerator,
     PrincipalReference,
 )
 from app.modules.risk_management import export as risk_export
@@ -77,6 +78,7 @@ from app.modules.risk_management._shared import RISK_ACCEPT_PERMISSION, RISK_MAN
 from app.modules.risk_management.alerts import NOTIFICATION_TYPES
 from app.modules.risk_management.mcp_tools import build_mcp_tools
 from app.modules.risk_management.models import RiskVersion
+from app.modules.risk_management.perf_dataset import generate_risks
 from app.modules.risk_management.record_tables import RECORD_TABLES
 from app.modules.risk_management.reports import REPORT_DEFINITIONS
 from app.modules.risk_management.scaling_probes import SCALING_PROBES
@@ -210,6 +212,7 @@ MODULE_DEFINITION = ModuleDefinition(
     search_providers=SEARCH_PROVIDERS,
     record_tables=RECORD_TABLES,
     scaling_probes=SCALING_PROBES,
+    perf_generators={RISK_ARTEFACT_TYPE: PerfDatasetGenerator(generate=generate_risks, order=100)},
     link_type_seeds=LINK_TYPE_SEEDS,
     sub_components=(ModuleSubComponentDefinition(key=RISK_SUBCOMPONENT_KEY, name="Risks", default_enabled=True),),
     frontend_manifest=ModuleFrontendManifest(

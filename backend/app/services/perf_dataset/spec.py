@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 #: Bumped when the generator's output shape changes, so snapshots made by an older generator are not reused.
-GENERATOR_VERSION = 1
+GENERATOR_VERSION = 2
 
 
 class ProfileError(ValueError):
@@ -46,6 +46,10 @@ class Ratios:
         mean_degree: Mean links touching one requirement.
         hub_exponent: Zipf exponent of the link endpoint weights (higher means hubbier).
         cross_level_link_fraction: Share of a nested project's links that join it to its parent.
+        compliance: The profiles' `compliance` section as pairs: `standards_per_org`, `requirements_per_standard`,
+            `required_action_fraction` and `standards_per_project`. Empty when the profiles omit it (no compliance data).
+        records: `(artefact type, records per requirement)` for every other registered type, from `ratios.records` in
+            the profiles (a tuple of pairs, so the spec stays hashable). A type absent here is not generated.
     """
 
     actions: float
@@ -56,6 +60,22 @@ class Ratios:
     mean_degree: float
     hub_exponent: float
     cross_level_link_fraction: float
+    records: tuple[tuple[str, float], ...] = ()
+    compliance: tuple[tuple[str, float], ...] = ()
+
+    def compliance_setting(self, name: str) -> float:
+        """A value of the profiles' `compliance` section (the catalogue size and what a project takes from it)."""
+        return dict(self.compliance)[name]
+
+    def per_requirement(self, artefact_type: str) -> float:
+        """Records of `artefact_type` per requirement (0 when the profiles do not name the type)."""
+        return dict(self.records).get(artefact_type, 0.0)
+
+    def count_for(self, artefact_type: str, requirements: int) -> int:
+        """How many records of `artefact_type` a project of `requirements` requirements holds (at least one for a
+        non-zero ratio, so a small tier still exercises every type)."""
+        ratio = self.per_requirement(artefact_type)
+        return 0 if ratio <= 0 else max(1, round(requirements * ratio))
 
 
 @dataclass(frozen=True)
@@ -231,6 +251,14 @@ def build_spec(profiles: dict, *, tier: str, breadth: str = "single", density: s
         mean_degree=_number(profiles, f"link_density.{density}.mean_degree", densities[density].get("mean_degree")),
         hub_exponent=_number(profiles, "hub_exponent", profiles.get("hub_exponent"), minimum=0.1),
         cross_level_link_fraction=_number(profiles, "cross_level_link_fraction", profiles.get("cross_level_link_fraction", 0)),
+        records=tuple(
+            (name, float(_number(profiles, f"ratios.records.{name}", value)))
+            for name, value in sorted((ratios.get("records") or {}).items())
+        ),
+        compliance=tuple(
+            (name, float(_number(profiles, f"compliance.{name}", value)))
+            for name, value in sorted((profiles.get("compliance") or {}).items())
+        ),
     )
     return DatasetSpec(
         tier=tier,

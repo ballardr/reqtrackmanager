@@ -118,6 +118,18 @@ from app.modules.context_strategy._shared import OPEN_QUESTION_RESOLVE_PERMISSIO
 from app.modules.context_strategy._shared import PAIN_POINT_DECIDE_PERMISSION as _PAIN_POINT_DECIDE_PERMISSION
 from app.modules.context_strategy._shared import STRATEGY_APPROVE_PERMISSION as _STRATEGY_APPROVE_PERMISSION
 from app.modules.context_strategy.models import GuidingPrincipleVersion, OpenQuestion, PainPoint
+from app.modules.context_strategy.perf_dataset import (
+    FUTURE_STATE,
+    GUIDING_PRINCIPLE,
+    OPEN_QUESTION,
+    PAIN_POINT,
+    STRATEGY,
+    generate_future_states,
+    generate_guiding_principles,
+    generate_open_questions,
+    generate_pain_points,
+    generate_strategies,
+)
 from app.modules.context_strategy.record_tables import RECORD_TABLES
 from app.modules.context_strategy.reports import REPORT_DEFINITIONS
 from app.modules.context_strategy.scaling_probes import SCALING_PROBES
@@ -141,6 +153,7 @@ from app.modules.registry import (
     ModuleProjectBundleHooks,
     ModuleRoleDefinition,
     ModuleSubComponentDefinition,
+    PerfDatasetGenerator,
     PrincipalReference,
 )
 from app.services.report_framework import report_mcp_tools
@@ -848,6 +861,13 @@ MODULE_DEFINITION = ModuleDefinition(
     search_providers=SEARCH_PROVIDERS,
     record_tables=RECORD_TABLES,
     scaling_probes=SCALING_PROBES,
+    perf_generators={
+        STRATEGY: PerfDatasetGenerator(generate=generate_strategies, order=155),
+        PAIN_POINT: PerfDatasetGenerator(generate=generate_pain_points, order=150),
+        FUTURE_STATE: PerfDatasetGenerator(generate=generate_future_states, order=170),
+        GUIDING_PRINCIPLE: PerfDatasetGenerator(generate=generate_guiding_principles, order=175),
+        OPEN_QUESTION: PerfDatasetGenerator(generate=generate_open_questions, order=180),
+    },
     artefact_type_labels=ARTEFACT_TYPE_LABELS,
     link_type_seeds=LINK_TYPE_SEEDS,
     # Each of Context & Strategy's five artefacts declares its own

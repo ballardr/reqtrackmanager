@@ -17,9 +17,11 @@ Dependencies: `perf_dataset.core`, `modules.registry.PerfDatasetGenerator`.
 from __future__ import annotations
 
 from app.modules.registry import PerfDatasetGenerator
+from app.services.perf_dataset.change_requests import generate_change_requests
 from app.services.perf_dataset.core import generate_actions, generate_requirements
 
 CORE_PERF_GENERATORS: dict[str, PerfDatasetGenerator] = {
     "requirement": PerfDatasetGenerator(generate=generate_requirements, order=10),
     "requirement_action": PerfDatasetGenerator(generate=generate_actions, order=20),
+    "change_request": PerfDatasetGenerator(generate=generate_change_requests, order=30),
 }

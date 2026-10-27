@@ -68,6 +68,7 @@ from app.modules.registry import (
     ModuleProjectBundleHooks,
     ModuleRoleDefinition,
     ModuleSubComponentDefinition,
+    PerfDatasetGenerator,
     PrincipalReference,
 )
 from app.modules.stakeholders import engagement_export, need_export, relationship_export, stakeholder_export
@@ -84,6 +85,14 @@ from app.modules.stakeholders.models import (
     PersonaVersion,
     StakeholderNeedVersion,
     StakeholderVersion,
+)
+from app.modules.stakeholders.perf_dataset import (
+    generate_engagements,
+    generate_findings,
+    generate_groups,
+    generate_needs,
+    generate_personas,
+    generate_stakeholders,
 )
 from app.modules.stakeholders.record_tables import RECORD_TABLES
 from app.modules.stakeholders.relationships import LINK_TYPE_SEEDS
@@ -910,6 +919,14 @@ MODULE_DEFINITION = ModuleDefinition(
     search_providers=SEARCH_PROVIDERS,
     record_tables=RECORD_TABLES,
     scaling_probes=SCALING_PROBES,
+    perf_generators={
+        "persona": PerfDatasetGenerator(generate=generate_personas, order=120),
+        "stakeholder": PerfDatasetGenerator(generate=generate_stakeholders, order=125),
+        "stakeholder_need": PerfDatasetGenerator(generate=generate_needs, order=130),
+        "stakeholder_group": PerfDatasetGenerator(generate=generate_groups, order=135),
+        "engagement": PerfDatasetGenerator(generate=generate_engagements, order=140),
+        "research_finding": PerfDatasetGenerator(generate=generate_findings, order=165),
+    },
     artefact_type_labels=ARTEFACT_TYPE_LABELS,
     link_type_seeds=LINK_TYPE_SEEDS,
     artefact_ids_in_organization=_artefact_ids_in_organization,

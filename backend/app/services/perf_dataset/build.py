@@ -95,9 +95,9 @@ def _requirement_link_types(db: Session, org: OrgPlan) -> list[tuple[uuid.UUID, 
 
 
 def _bucket_add(total: dict[str, int], part: dict[str, int]) -> None:
-    """Adds one project's link-degree histogram into the dataset total (`max` takes the maximum)."""
+    """Adds one project's link-degree histogram into the dataset total (`max` and `*_max` take the maximum)."""
     for key, value in part.items():
-        total[key] = max(total.get(key, 0), value) if key == "max" else total.get(key, 0) + value
+        total[key] = max(total.get(key, 0), value) if key == "max" or key.endswith("_max") else total.get(key, 0) + value
 
 
 def check_integrity(db: Session, project_ids: list[uuid.UUID]) -> list[str]:
@@ -152,6 +152,32 @@ def check_integrity(db: Session, project_ids: list[uuid.UUID]) -> list[str]:
     return problems
 
 
+#: Shared ids that are not records of the project's own numbered types (they have no sequence counter).
+_UNNUMBERED_SHARED = frozenset({"requirement_approved", "hubs", "compliance_requirement", "project_compliance_requirement",
+                                "compliance_required_action_assessment"})
+
+
+def _counter_problems(db: Session, ctx: PerfProjectContext) -> list[str]:
+    """Checks the project's sequence counters against what was generated: one `ProjectSequenceCounter` row per
+    numbered type, `next_seq` one past the number of records written (so the next record a person creates is
+    numbered correctly, and a code is never reused)."""
+    from sqlalchemy import select
+
+    from app.models.sequence import ProjectSequenceCounter
+
+    counters = {
+        c.artefact_type: c.next_seq
+        for c in db.scalars(select(ProjectSequenceCounter).where(ProjectSequenceCounter.project_id == ctx.project_uuid))
+    }
+    problems = []
+    for artefact_type, ids in ctx.shared.items():
+        if artefact_type in _UNNUMBERED_SHARED or artefact_type in ("requirement", "requirement_action") or not ids:
+            continue
+        if counters.get(artefact_type) != len(ids) + 1:
+            problems.append(f"project {ctx.project.id}: {artefact_type} counter is {counters.get(artefact_type)}, expected {len(ids) + 1}")
+    return problems
+
+
 def generate_dataset(
     db: Session,
     client: Client,
@@ -196,12 +222,14 @@ def generate_dataset(
     counts: dict[str, int] = {}
     histogram: dict[str, int] = {}
     project_ids: list[uuid.UUID] = []
+    counter_problems: list[str] = []
     project_entries = []
     position = 0
     for org in skeleton.organisations:
         link_types = _requirement_link_types(db, org)
         user_ids = [uuid.UUID(u) for u in org.user_ids]
         shared_by_project: dict[str, dict[str, list[uuid.UUID]]] = {}
+        org_state: dict[str, Any] = {}
         for project in org.projects:
             position += 1
             ctx = PerfProjectContext(
@@ -214,11 +242,13 @@ def generate_dataset(
                 link_type_ids=link_types,
                 action_type_ids=[t.id for t in resolve_effective_action_types(db, uuid.UUID(project.id))],
                 parent_shared=shared_by_project.get(project.parent_id) if project.parent_id else None,
+                org_state=org_state,
                 say=say,
             )
             for _artefact_type, generator in generators:
                 generator.generate(ctx)
             db.commit()
+            counter_problems.extend(_counter_problems(db, ctx))
             shared_by_project[project.id] = ctx.shared
             project_ids.append(uuid.UUID(project.id))
             for table, written in ctx.counts.items():
@@ -247,7 +277,7 @@ def generate_dataset(
     say("analyzing tables")
     db.execute(text("ANALYZE"))
     db.commit()
-    problems = check_integrity(db, project_ids)
+    problems = check_integrity(db, project_ids) + counter_problems
     return {
         "spec": spec.describe(),
         "rows": counts,

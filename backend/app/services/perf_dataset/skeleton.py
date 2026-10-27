@@ -5,7 +5,7 @@ Builds the dataset's structure (organisations, people, projects, their roles, co
 through the application's own HTTP API.
 
 Responsibilities:
-- Create organisations, an administrator and members per organisation, the projects (flat or nested), the
+- Create organisations, an administrator and members per organisation, enable every module for each, the projects (flat or nested), the
   taxonomy each project needs for requirement codes, and the project roles.
 - Return a `Skeleton` that the bulk phase fills with records.
 
@@ -37,6 +37,7 @@ class Client(Protocol):
 
     def get(self, url: str, **kwargs: Any) -> Any: ...  # noqa: D102
     def post(self, url: str, **kwargs: Any) -> Any: ...  # noqa: D102
+    def put(self, url: str, **kwargs: Any) -> Any: ...  # noqa: D102
 
 
 class SkeletonError(RuntimeError):
@@ -134,6 +135,20 @@ def _project_names(spec: DatasetSpec, org_index: int) -> list[tuple[str, int | N
     return names
 
 
+def _enable_modules(client: Client, org_id: str, headers: dict) -> None:
+    """Turns on every registered module and sub-component for the organisation, so the generated records of every
+    type are reachable through the API (a module is off until an organisation administrator enables it)."""
+    from app.modules.registry import get_module_registry
+
+    for key, definition in get_module_registry().items():
+        _check(client.put(f"{API}/orgs/{org_id}/modules/{key}", json={"enabled": True}, headers=headers), f"enable module {key}")
+        for sub in definition.sub_components:
+            _check(
+                client.put(f"{API}/orgs/{org_id}/modules/{key}/subcomponents/{sub.key}", json={"enabled": True}, headers=headers),
+                f"enable {key}/{sub.key}",
+            )
+
+
 def build_skeleton(
     client: Client,
     spec: DatasetSpec,
@@ -182,6 +197,7 @@ def build_skeleton(
             user_ids.append(created["user_id"])
         plan = OrgPlan(id=org["id"], index=org_index, name=name, admin_email=emails[0], member_emails=emails[1:], user_ids=user_ids)
         admin_headers = _login(client, emails[0], user_password)
+        _enable_modules(client, org["id"], admin_headers)
         specs = _project_names(spec, org_index)
         for project_name, parent_position, depth in specs:
             is_parent = spec.topology.is_nested and depth < spec.topology.nesting_depth - 1

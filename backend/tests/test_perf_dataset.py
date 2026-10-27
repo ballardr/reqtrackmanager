@@ -31,33 +31,20 @@ _PROFILES_FILE = Path(__file__).resolve().parents[2] / "perf" / "datasets" / "pr
 
 #: Registered artefact types whose generator is still to be written. Shrinks only: a type that gains a generator
 #: (or a reason) must be removed from this set, and a new type must ship with one of the three.
-TRACKED_GAPS = frozenset(
-    {
-        "change_request",
-        "compliance_evidence",
-        "compliance_required_action_assessment",
-        "compliance_requirement",
-        "decision",
-        "engagement",
-        "future_state",
-        "guiding_principle",
-        "open_question",
-        "pain_point",
-        "persona",
-        "project_compliance_requirement",
-        "research_finding",
-        "risk",
-        "stakeholder",
-        "stakeholder_group",
-        "stakeholder_need",
-        "strategy",
-    }
-)
+TRACKED_GAPS: frozenset[str] = frozenset()
 
 SMALL = {
     "version": 1,
     "tiers": {"T0": 30, "T1": 100},
-    "ratios": {"actions": 0.3, "comments": 1.5, "tags_per_requirement": 1.2, "versions_per_requirement": 2.0, "tag_vocabulary": 8},
+    "ratios": {
+        "actions": 0.3, "comments": 1.5, "tags_per_requirement": 1.2, "versions_per_requirement": 2.0, "tag_vocabulary": 8,
+        "records": {
+            "change_request": 0.3, "risk": 0.4, "decision": 0.3, "pain_point": 0.4, "strategy": 0.2, "future_state": 0.2,
+            "guiding_principle": 0.2, "open_question": 0.2, "persona": 0.2, "stakeholder": 0.3, "stakeholder_need": 0.3,
+            "stakeholder_group": 0.2, "engagement": 0.3, "research_finding": 0.4, "compliance_evidence": 0.2,
+        },
+    },
+    "compliance": {"standards_per_org": 2, "requirements_per_standard": 6, "required_action_fraction": 0.5, "standards_per_project": 1},
     "link_density": {"sparse": {"mean_degree": 1}, "typical": {"mean_degree": 3}},
     "hub_exponent": 0.6,
     "cross_level_link_fraction": 0.1,
@@ -205,7 +192,9 @@ def test_generated_dataset_is_consistent_and_sized(client):
     assert rows["requirement_versions"] >= 60  # at least one version each, more where edited
     assert rows["requirement_actions"] == 2 * round(30 * 0.3)
     assert rows["audit_events"] > rows["requirements"]
-    assert rows["review_comments"] == 2 * round(30 * 1.5)
+    # Requirement comments plus the change requests' threads (they share one table).
+    assert rows["review_comments"] >= 2 * round(30 * 1.5)
+    assert rows["change_requests"] == 2 * round(30 * 0.3)
     assert manifest["link_degree_histogram"]["links"] > 0
     db = SessionLocal()
     try:
@@ -213,6 +202,28 @@ def test_generated_dataset_is_consistent_and_sized(client):
         assert counters and all(c[0] == 31 for c in counters)
         codes = db.scalars(select(Requirement.unique_code).order_by(Requirement.unique_code)).all()
         assert len(codes) == len(set((c, i) for i, c in enumerate(codes)))
+    finally:
+        db.close()
+
+
+def test_every_generated_type_is_written_and_every_link_end_exists(client):
+    """Each type with a ratio produces records, its counter is past its codes (the manifest reports none otherwise),
+    and every link in the dataset joins two records that exist."""
+    manifest = _generate(client, "two")
+    assert manifest["integrity_problems"] == []
+    rows = manifest["rows"]
+    written = {
+        "change_requests", "risks", "decisions", "pain_points", "strategies", "future_states", "guiding_principles", "open_questions",
+        "personas", "stakeholders", "stakeholder_needs", "stakeholder_groups", "engagements", "research_findings",
+        "compliance_evidence", "compliance_standards", "compliance_requirements", "project_compliance_requirements",
+    }
+    assert {t for t in written if rows.get(t, 0) == 0} == set()
+    assert manifest["link_degree_histogram"]["cross_type_links"] > 0
+    db = SessionLocal()
+    try:
+        known = set().union(*_row_ids(db).values())
+        ends = db.execute(text("SELECT source_id, target_id FROM artefact_links")).all()
+        assert ends and all(a in known and b in known for a, b in ends)
     finally:
         db.close()
 
@@ -227,6 +238,47 @@ def test_the_generated_people_can_sign_in_and_read_what_was_generated(client):
     assert 0 < len(listed.json()) <= 30  # archived requirements are hidden by default
 
 
+def test_the_application_reads_every_generated_type(client):
+    """The application's own endpoints serve what the generators wrote: each type's list, a record's detail, its
+    comments and its link graph answer 200 for an ordinary member, and the list holds the generated records."""
+    from app.modules.registry import get_scaling_probes
+
+    manifest = _generate(client, "single")
+    org = manifest["organisations"][0]
+    token = client.post("/api/v1/auth/login", json={"email": org["admin_email"], "password": "Password123!"}).json()["access_token"]
+    headers = auth_headers(token)
+    project_id = manifest["projects"][0]["id"]
+    problems = []
+    for artefact_type, probe in get_scaling_probes().items():
+        if artefact_type in ("requirement", "requirement_action"):
+            continue
+        base = f"/api/v1/projects/{project_id}/{probe.list_path}"
+        listed = client.get(base, headers=headers)
+        if listed.status_code != 200 or not listed.json():
+            problems.append(f"{artefact_type}: list {listed.status_code} {listed.text[:120]}")
+            continue
+        first = listed.json()[0]["id"]
+        paths = [f"{base}/{first}"] if probe.has_detail else []
+        paths += [f"{base}/{first}/comments"] if probe.has_comments else []
+        paths += [f"/api/v1/projects/{project_id}/artefacts/{artefact_type}/{first}/link-graph?depth=2"]
+        for path in paths:
+            resp = client.get(path, headers=headers)
+            if resp.status_code != 200:
+                problems.append(f"{artefact_type}: {path.split(project_id)[-1]} {resp.status_code} {resp.text[:120]}")
+    compliance = f"/api/v1/projects/{project_id}/modules/compliance"
+    assignments = client.get(f"{compliance}/project-compliance", headers=headers)
+    if assignments.status_code != 200 or len(assignments.json()) != 1:
+        problems.append(f"compliance: assignments {assignments.status_code} {assignments.text[:120]}")
+    else:
+        rows = client.get(f"{compliance}/project-compliance/{assignments.json()[0]['id']}/requirements", headers=headers)
+        if rows.status_code != 200 or len(rows.json()) != 6:
+            problems.append(f"compliance: requirements {rows.status_code} {rows.text[:120]}")
+    evidence = client.get(f"{compliance}/evidence", headers=headers)
+    if evidence.status_code != 200 or not evidence.json():
+        problems.append(f"compliance: evidence {evidence.status_code} {evidence.text[:120]}")
+    assert not problems, problems
+
+
 def test_nested_profile_links_a_child_to_its_parent(client):
     manifest = _generate(client, "nested")
     assert len(manifest["projects"]) == 3
@@ -235,7 +287,9 @@ def test_nested_profile_links_a_child_to_its_parent(client):
     db = SessionLocal()
     try:
         cross = db.scalar(text("SELECT count(*) FROM artefact_links WHERE source_project_id IS NOT NULL AND target_project_id IS NOT NULL"))
-        assert cross == manifest["link_degree_histogram"]["cross_level_links"]
+        histogram = manifest["link_degree_histogram"]
+        # Requirement-to-requirement links to the parent, plus those the other types' links make.
+        assert cross == histogram["cross_level_links"] + histogram.get("cross_type_cross_level_links", 0)
     finally:
         db.close()
 
@@ -419,6 +473,98 @@ def test_generator_populates_every_column_the_api_create_path_populates(client, 
         tags = _populated_columns(db, "tags", "project_id = :p", {"p": uuid.UUID(project["id"])})
         assert tags <= _populated_columns(db, "tags", "project_id = :p", {"p": uuid.UUID(generated)})
         assert db.scalar(select(func.count()).select_from(Requirement).where(Requirement.project_id == uuid.UUID(generated))) == 30
+    finally:
+        db.close()
+
+
+#: Tables the module-type parity test leaves to the requirement test or that have no API-created counterpart.
+_PARITY_SKIPPED = frozenset({
+    "requirements", "requirement_versions", "requirement_actions", "audit_events", "tags", "artefact_tags", "artefact_links",
+    "project_sequence_counters", "review_comments",
+})
+
+
+def _row_ids(db) -> dict[str, set]:
+    """`{table: ids}` for every table that has an `id` column."""
+    from app.database import Base
+
+    out = {}
+    for table in Base.metadata.sorted_tables:
+        if "id" in table.c:
+            out[table.name] = {r[0] for r in db.execute(select(table.c.id))}
+    return out
+
+
+def _columns_populated_in(db, table: str, exclude: set, new: bool) -> set[str]:
+    """Columns non-null in at least one row of `table` that is (new) or is not (old) outside `exclude`."""
+    columns = [r[0] for r in db.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = :t"), {"t": table})]
+    if not columns:
+        return set()
+    select_list = ", ".join(f'bool_or("{c}" IS NOT NULL) AS "{c}"' for c in columns)
+    clause = "id <> ALL(:ids)" if new else "id = ANY(:ids)"
+    row = db.execute(text(f"SELECT {select_list} FROM {table} WHERE {clause}"), {"ids": list(exclude)}).mappings().one()  # noqa: S608
+    return {c for c in columns if row[c]}
+
+
+def test_every_generated_type_populates_the_columns_its_api_create_path_populates(client, admin_token):
+    """The drift guard for the module types: create one record of each type (and a comment on it) through the API,
+    generate a dataset, and require every column the API populated to be populated in the generated rows of that
+    table, so a column added to a model cannot stay empty in the dataset."""
+    from app.modules.registry import get_module_registry, get_scaling_probes
+    from tests.conftest import create_org_admin_in
+
+    org, token = create_org_admin_in(client, admin_token, "Generator Parity Co")
+    for key, definition in get_module_registry().items():
+        assert client.put(f"/api/v1/orgs/{org['id']}/modules/{key}", json={"enabled": True}, headers=auth_headers(token)).status_code == 200
+        for sub in definition.sub_components:
+            client.put(f"/api/v1/orgs/{org['id']}/modules/{key}/subcomponents/{sub.key}", json={"enabled": True}, headers=auth_headers(token))
+    project_id = create_project(client, token, org["id"], "Generator parity project")["id"]
+
+    class Api:
+        def post(self, path, body=None):
+            resp = client.post(f"/api/v1{path}", json=body or {}, headers=auth_headers(token))
+            assert resp.status_code in (200, 201), f"POST {path}: {resp.text}"
+            return resp.json()
+
+        def get(self, path):
+            resp = client.get(f"/api/v1{path}", headers=auth_headers(token))
+            assert resp.status_code == 200, f"GET {path}: {resp.text}"
+            return resp.json()
+
+    api = Api()
+    generated = get_perf_generators()
+    for artefact_type, probe in get_scaling_probes().items():
+        if artefact_type not in generated or artefact_type in ("requirement", "requirement_action"):
+            continue
+        ids = probe.create(api, project_id, 0, 2)
+        if probe.has_comments:
+            api.post(f"/projects/{project_id}/{probe.list_path}/{ids[0]}/comments", {"body": "A comment."})
+
+    db = SessionLocal()
+    try:
+        before = _row_ids(db)
+    finally:
+        db.close()
+    manifest = _generate(client, "single")
+    db = SessionLocal()
+    try:
+        from app.database import Base
+
+        problems, compared = [], []
+        for table, written in manifest["rows"].items():
+            if table in _PARITY_SKIPPED or "id" not in Base.metadata.tables[table].c:
+                continue
+            old = before.get(table, set())
+            if not old or not written:
+                continue
+            from_api = _columns_populated_in(db, table, old, new=False)
+            from_generator = _columns_populated_in(db, table, old, new=True)
+            compared.append(table)
+            if not from_api <= from_generator:
+                problems.append(f"{table}: the generator leaves {sorted(from_api - from_generator)} empty")
+        assert not problems, problems
+        # The comparison really ran over every generated type's tables (a silent skip would pass).
+        assert {"risks", "decisions", "pain_points", "personas", "engagements", "research_findings", "strategies"} <= set(compared)
     finally:
         db.close()
 

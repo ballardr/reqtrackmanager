@@ -94,6 +94,7 @@ from sqlalchemy.orm import Session
 from app.models.project import Project
 from app.modules.decisions import export as bundle_export
 from app.modules.decisions.models import Decision
+from app.modules.decisions.perf_dataset import generate_decisions
 from app.modules.decisions.record_tables import RECORD_TABLES
 from app.modules.decisions.reports import REPORT_DEFINITIONS
 from app.modules.decisions.scaling_probes import SCALING_PROBES
@@ -115,6 +116,7 @@ from app.modules.registry import (
     ModuleProjectBundleHooks,
     ModuleRoleDefinition,
     OrgCreationChoiceOption,
+    PerfDatasetGenerator,
     PrincipalReference,
 )
 from app.services.report_framework import report_mcp_tools
@@ -317,6 +319,7 @@ MODULE_DEFINITION = ModuleDefinition(
     search_providers=SEARCH_PROVIDERS,
     record_tables=RECORD_TABLES,
     scaling_probes=SCALING_PROBES,
+    perf_generators={DECISION_ARTEFACT_TYPE: PerfDatasetGenerator(generate=generate_decisions, order=110)},
     artefact_type_labels={DECISION_ARTEFACT_TYPE: "Decision"},
     link_type_seeds=LINK_TYPE_SEEDS,
     roles=(

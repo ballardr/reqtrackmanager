@@ -68,7 +68,7 @@ _DEGREE_BUCKETS = (0, 1, 2, 5, 10, 50, 100)
 _MAX_EXTRA_VERSIONS = 10
 
 
-class _AuditBuffer:
+class AuditBuffer:
     """Collects audit rows and writes them in chunks, so a hundred thousand events never sit in memory at once."""
 
     def __init__(self, ctx: PerfProjectContext) -> None:
@@ -120,7 +120,7 @@ def _weighted(rng: random.Random, mix: tuple) -> object:
     return mix[-1][0]
 
 
-def _extra_versions(rng: random.Random, mean_versions: float) -> int:
+def extra_versions(rng: random.Random, mean_versions: float) -> int:
     """Edits after creation: geometric with mean `mean_versions - 1`, capped."""
     mean_extra = mean_versions - 1
     if mean_extra <= 0:
@@ -187,10 +187,11 @@ def generate_requirements(ctx: PerfProjectContext) -> dict[str, int]:
     categories = list(component_of.values())
     prefixes = {component_id: prefix for component_id, prefix in ctx.project.components}
     stage_ids = [uuid.UUID(s) for s in ctx.project.stage_ids]
-    audit = _AuditBuffer(ctx)
+    audit = AuditBuffer(ctx)
     start_counts = dict(ctx.counts)
 
     requirement_rows, version_rows = [], []
+    approved_ids: list[uuid.UUID] = []
     requirement_ids: list[uuid.UUID] = []
     created_times: list[datetime] = []
     for index in range(count):
@@ -201,7 +202,7 @@ def generate_requirements(ctx: PerfProjectContext) -> dict[str, int]:
         created = ANCHOR - timedelta(days=rng.uniform(1, 540))
         created_times.append(created)
         final_status = _weighted(rng, _STATUS_MIX)
-        extra = _extra_versions(rng, spec.ratios.versions_per_requirement)
+        extra = extra_versions(rng, spec.ratios.versions_per_requirement)
         archived = final_status is RequirementStatus.ARCHIVED
         completed = final_status is RequirementStatus.APPROVED and rng.random() < 0.25
         requirement_rows.append(
@@ -243,6 +244,8 @@ def generate_requirements(ctx: PerfProjectContext) -> dict[str, int]:
             approver = rng.choice(ctx.user_ids) if status is RequirementStatus.APPROVED else None
             if approver and last:
                 audit.add("requirement", requirement_id, "approved", approver, valid_from + timedelta(minutes=5))
+                if not archived:
+                    approved_ids.append(requirement_id)
             version_rows.append(
                 {
                     "id": uuid_from(rng),
@@ -278,6 +281,8 @@ def generate_requirements(ctx: PerfProjectContext) -> dict[str, int]:
     ctx.add_count("requirement_versions", insert_rows(db, RequirementVersion, version_rows))
     del requirement_rows, version_rows
     ctx.shared["requirement"] = requirement_ids
+    #: Locked (approved, not archived) requirements: the only ones a change request may modify.
+    ctx.shared["requirement_approved"] = approved_ids
 
     _generate_tags(ctx, audit, requirement_ids, created_times, org_id)
     _generate_comments(ctx, requirement_ids, created_times)
@@ -288,7 +293,7 @@ def generate_requirements(ctx: PerfProjectContext) -> dict[str, int]:
 
 
 def _generate_tags(
-    ctx: PerfProjectContext, audit: _AuditBuffer, requirement_ids: list[uuid.UUID], created: list[datetime], org_id: uuid.UUID
+    ctx: PerfProjectContext, audit: AuditBuffer, requirement_ids: list[uuid.UUID], created: list[datetime], org_id: uuid.UUID
 ) -> None:
     """The project's tag vocabulary and the tags attached to requirements (skewed toward a few popular tags)."""
     rng, spec = ctx.rng, ctx.spec
@@ -309,6 +314,7 @@ def _generate_tags(
         for name in names
     ]
     ctx.add_count("tags", insert_rows(ctx.db, Tag, tags))
+    ctx.tags = [(tag["id"], tag["name"]) for tag in tags]
     cumulative = list(itertools.accumulate(1 / ((i + 1) ** 0.8) for i in range(vocabulary)))
     attachments = []
     for index, requirement_id in enumerate(requirement_ids):
@@ -369,7 +375,7 @@ def _generate_comments(ctx: PerfProjectContext, requirement_ids: list[uuid.UUID]
     ctx.add_count("review_comments", insert_rows(ctx.db, ReviewComment, rows))
 
 
-def _generate_links(ctx: PerfProjectContext, audit: _AuditBuffer, requirement_ids: list[uuid.UUID], created: list[datetime]) -> None:
+def _generate_links(ctx: PerfProjectContext, audit: AuditBuffer, requirement_ids: list[uuid.UUID], created: list[datetime]) -> None:
     """Requirement-to-requirement links with a heavy-tailed degree distribution, plus links to the parent project."""
     rng, spec = ctx.rng, ctx.spec
     n = len(requirement_ids)
@@ -480,7 +486,7 @@ def generate_actions(ctx: PerfProjectContext) -> dict[str, int]:
     if total == 0 or not ctx.action_type_ids:
         return {}
     start_counts = dict(ctx.counts)
-    audit = _AuditBuffer(ctx)
+    audit = AuditBuffer(ctx)
     org_id = ctx.organization_uuid
     actions, links = [], []
     for index in range(total):

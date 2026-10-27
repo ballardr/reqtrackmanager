@@ -89,6 +89,11 @@ class PerfProjectContext:
         shared: Ids written by earlier generators for this project, keyed by artefact type (a later generator
             such as actions links to the requirement ids).
         parent_shared: The parent project's `shared`, or None for a root (for cross-level links).
+        org_state: Values shared by every project of the organisation (a type whose records belong to the organisation
+            writes them once, in the first project, and records ids here for the rest).
+        created_times: Creation instants of the records in `shared`, parallel to its ids, by artefact type.
+        tags: `(tag id, name)` of the project's tag vocabulary, written by the requirement generator, for the other
+            types' records to be tagged from.
         counts: Rows written, by table name; filled by the generators.
         histogram: Realised link-degree histogram for the manifest.
         say: Progress sink.
@@ -104,6 +109,9 @@ class PerfProjectContext:
     action_type_ids: list[uuid.UUID]
     shared: dict[str, list[uuid.UUID]] = field(default_factory=dict)
     parent_shared: dict[str, list[uuid.UUID]] | None = None
+    org_state: dict[str, Any] = field(default_factory=dict)
+    tags: list[tuple[uuid.UUID, str]] = field(default_factory=list)
+    created_times: dict[str, list[datetime]] = field(default_factory=dict)
     counts: dict[str, int] = field(default_factory=dict)
     histogram: dict[str, int] = field(default_factory=dict)
     say: Any = print
