@@ -192,6 +192,14 @@ is below the knee for six workers on six cores:
 perf/run_profile.sh linux-vm-4c8g --full --tiers T2 --scenarios capacity --workers 6 --db-pool-size 4 --db-max-overflow 10 --max-cpus 12 --capacity-users 256,384,512 --allow-heavy --max-load-per-core 3 --watch-url $PROD_HEALTH_URL
 ```
 
+Every create takes its project's counter lock, so a capacity run whose writes all go to one project (the default `single`
+shape) is limited by that project's create rate (about 14 per second) before the CPU. Spread the writes over ten projects to
+measure the CPU-bound ceiling:
+
+```sh
+perf/run_profile.sh linux-vm-4c8g --full --tiers T2 --breadth projects-10 --scenarios capacity --workers 6 --db-pool-size 4 --db-max-overflow 10 --max-cpus 12 --capacity-users 256,384,512 --allow-heavy --max-load-per-core 3 --watch-url $PROD_HEALTH_URL
+```
+
 Read the result as requests per second per worker: it should stay near 50 while the backend's CPU is the limit. A fall
 means the database, the project row lock taken by every create, or the host's own cores became the limit (the run notes
 the load generator's CPU, so a ceiling it caused is not read as the backend's). On a server shared with production use
