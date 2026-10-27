@@ -465,6 +465,32 @@ def test_project_import_statements_per_requirement_stay_small(client, admin_toke
     assert counter.count / 30 < 9, counter.count
 
 
+def test_requirements_total_count_is_right_for_every_page_shape(client, admin_token):
+    """`X-Total-Count` for the first page, a full page, a short last page, a page past the end, an unpaged list and a
+    filtered list, whether it is taken from the rows read or counted separately."""
+    org, token = create_org_admin_in(client, admin_token, "Total Count Co")
+    project = create_project(client, token, org["id"], "Total Count Project")
+    component_id, category_id = create_component_and_category(client, token, project["id"])
+    headers = auth_headers(token)
+    base = f"/api/v1/projects/{project['id']}/requirements"
+    _create_requirements(client, token, project["id"], component_id, category_id, 7, "Counted")
+
+    def total(**params):
+        resp = client.get(base, params=params, headers=headers)
+        assert resp.status_code == 200, resp.text
+        return resp.headers["X-Total-Count"], len(resp.json())
+
+    assert total() == ("7", 7)
+    assert total(limit=3) == ("7", 3), "a full first page: counted separately"
+    assert total(limit=3, offset=3) == ("7", 3)
+    assert total(limit=3, offset=6) == ("7", 1), "the short last page"
+    assert total(limit=50) == ("7", 7), "a first page that is not full"
+    assert total(limit=3, offset=30) == ("7", 0), "a page past the end still reports the real total"
+    assert total(limit=50, search="counted 1") == ("1", 1)
+    assert total(limit=2, search="counted") == ("7", 2)
+    assert total(limit=50, search="nothing like this") == ("0", 0)
+
+
 def test_my_roles_endpoint(client, admin_token):
     org, token = create_org_admin_in(client, admin_token, "My Roles Co")
     project = create_project(client, token, org["id"], "My Roles Project")

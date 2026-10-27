@@ -582,19 +582,36 @@ def filter_requirement_rows(
             )
         return query.where(*conditions)
 
+    def matching_count() -> int:
+        """How many requirements match, counted from the requirement table alone unless a filter reads the version
+        (status, stage, text): the version and the component and category joins only order and label the page."""
+        query = select(func.count()).select_from(Requirement)
+        if filters.status or filters.target_stage_id or filters.search:
+            query = query.outerjoin(RequirementVersion, and_(
+                RequirementVersion.requirement_id == Requirement.id, RequirementVersion.valid_to.is_(None),
+            ))
+        return db.scalar(query.where(*conditions)) or 0
+
     # A keyword narrows in Python, so the page is cut after it; every other filter is already in the query.
     paged_in_sql = not filters.keyword
     query = joined(select(
         Requirement.id, Requirement.unique_code, Requirement.created_at,
         RequirementVersion.name, RequirementVersion.status, RequirementVersion.sort_order,
     )).order_by(*_sql_order(sort, descending))
-    if paged_in_sql:
-        total = db.scalar(joined(select(func.count()).select_from(Requirement))) or 0
-        if limit is not None:
-            query = query.limit(limit).offset(offset)
+    if paged_in_sql and limit is not None:
+        query = query.limit(limit).offset(offset)
     rows = [ListRow(row[0], project_id, *row[1:]) for row in db.execute(query).all()]
     if any(row.status is None for row in rows):
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Requirement has no current version.")
+    if paged_in_sql:
+        # Every row, or a page that did not fill (and is not past the end), already says how many there are: no second
+        # query to count them.
+        if limit is None:
+            total = len(rows)
+        elif len(rows) < limit and (rows or offset == 0):
+            total = offset + len(rows)
+        else:
+            total = matching_count()
 
     if not paged_in_sql:
         keywords = tag_service.keywords_for_requirements(db, [row.id for row in rows]) if rows else {}
