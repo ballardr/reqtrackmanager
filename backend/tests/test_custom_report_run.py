@@ -181,15 +181,15 @@ def test_a_layout_is_only_produced_in_formats_its_family_allows(world):
     document = make_layout(world, document_tree(), "Doc", project=project)
     sheet = make_layout(world, sheet_tree("A"), "Sheet", project=project)
 
-    for fmt in ("csv", "xlsx"):
+    for fmt in ("csv", "xlsx", "ods"):
         refused = project_run(world, project, document, format=fmt)
-        assert refused.status_code == 400 and "json, pdf, docx, html" in refused.json()["detail"]
-    for fmt in ("pdf", "docx", "html"):
+        assert refused.status_code == 400 and "json, pdf, docx, html, odt" in refused.json()["detail"]
+    for fmt in ("pdf", "docx", "html", "odt"):
         refused = project_run(world, project, sheet, format=fmt)
-        assert refused.status_code == 400 and "json, csv, xlsx" in refused.json()["detail"]
-    assert project_run(world, project, document, format="odt").status_code == 422  # not a known format at all
-    assert custom_report_run.available_formats("table") == ["json", "csv", "xlsx"]
-    assert custom_report_run.available_formats("document") == ["json", "pdf", "docx", "html"]
+        assert refused.status_code == 400 and "json, csv, xlsx, ods" in refused.json()["detail"]
+    assert project_run(world, project, document, format="rtf").status_code == 422  # not a known format at all
+    assert custom_report_run.available_formats("table") == ["json", "csv", "xlsx", "ods"]
+    assert custom_report_run.available_formats("document") == ["json", "pdf", "docx", "html", "odt"]
 
 
 def test_html_is_a_standalone_script_free_page_that_escapes_record_text(world):
@@ -221,6 +221,44 @@ def test_a_table_layout_downloads_as_xlsx_with_text_cells_and_one_tab_per_sheet(
     rows = list(workbook["Reqs"].iter_rows(values_only=True))
     assert rows[0] == ("Code", "Title") and rows[1][1] == "'=1+1 formula"
     assert workbook["Reqs"].cell(2, 2).data_type == "s"
+
+
+def test_a_document_layout_downloads_as_odt_with_escaped_record_text(world):
+    import zipfile
+
+    project = world.project()
+    world.requirement(project, "<script>alert(1)</script> & co")
+    layout = make_layout(world, document_tree("{{record.title}}"), "Doc", project=project)
+
+    resp = project_run(world, project, layout, format="odt")
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/vnd.oasis.opendocument.text"
+    assert resp.headers["content-disposition"].endswith('.odt"')
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as archive:
+        assert archive.read("mimetype") == b"application/vnd.oasis.opendocument.text"
+        content = archive.read("content.xml").decode()
+    assert "<script" not in content and "&lt;script&gt;alert(1)&lt;/script&gt; &amp; co" in content
+
+
+def test_a_table_layout_downloads_as_ods_with_text_cells_and_one_tab_per_sheet(world):
+    import zipfile
+
+    from lxml import etree
+
+    project = world.project()
+    world.requirement(project, "=1+1 formula")
+    layout = make_layout(world, sheet_tree("Reqs", "Other"), "Two", project=project)
+
+    resp = project_run(world, project, layout, format="ods")
+
+    assert resp.status_code == 200 and resp.headers["content-type"] == "application/vnd.oasis.opendocument.spreadsheet"
+    assert resp.headers["content-disposition"].endswith('.ods"')
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as archive:
+        content = etree.fromstring(archive.read("content.xml"))
+    ns = {"table": "urn:oasis:names:tc:opendocument:xmlns:table:1.0"}
+    assert [t.get(f"{{{ns['table']}}}name") for t in content.xpath("//table:table", namespaces=ns)] == ["Reqs", "Other"]
+    assert "'=1+1 formula" in "".join(content.itertext()) and not content.xpath("//@table:formula", namespaces=ns)
 
 
 def test_a_table_layout_with_several_sheets_downloads_as_a_zip_of_csv_files(world):
@@ -694,9 +732,9 @@ def test_the_project_catalogue_lists_runnable_layouts_with_their_formats(world):
     custom = {e["title"]: e for e in entries if e["module_key"] == "custom_reports"}
 
     assert set(custom) == {"Doc", "Sheet"}
-    assert custom["Doc"]["formats"] == ["json", "pdf", "docx", "html"] and custom["Doc"]["scope"] == "project"
+    assert custom["Doc"]["formats"] == ["json", "pdf", "docx", "html", "odt"] and custom["Doc"]["scope"] == "project"
     assert custom["Doc"]["path"] == f"/api/v1/projects/{project['id']}/custom-reports/{document['id']}/run"
-    assert custom["Sheet"]["formats"] == ["json", "csv", "xlsx"] and custom["Doc"]["supports_include_children"] is True
+    assert custom["Sheet"]["formats"] == ["json", "csv", "xlsx", "ods"] and custom["Doc"]["supports_include_children"] is True
     assert custom["Doc"]["module_name"] == "Custom reports" and custom["Doc"]["params"] == []
     assert len({e["slug"] for e in entries}) == len(entries)
     assert custom["Sheet"]["slug"].startswith("custom-sheet-") and custom["Sheet"]["key"] == sheet["id"]

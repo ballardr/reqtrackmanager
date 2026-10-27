@@ -40,6 +40,8 @@ const OPTION_LABEL: Record<ReportFileKind, string> = {
   csv: "Download CSV report",
   html: "Download HTML report",
   xlsx: "Download Excel report",
+  odt: "Download OpenDocument text report",
+  ods: "Download OpenDocument spreadsheet report",
 };
 
 /**

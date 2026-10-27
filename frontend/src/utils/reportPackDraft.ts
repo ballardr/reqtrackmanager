@@ -15,10 +15,10 @@ export interface LayoutChoice {
 
 /** The formats each layout family can be produced in. */
 export const FAMILY_FORMATS: Record<LayoutFamily, PackFormat[]> = {
-  document: ["pdf", "docx", "html"],
-  table: ["csv", "xlsx"],
+  document: ["pdf", "docx", "odt", "html"],
+  table: ["csv", "xlsx", "ods"],
 };
-const ALL_LAYOUT_FORMATS: PackFormat[] = ["pdf", "docx", "html", "csv", "xlsx"];
+const ALL_LAYOUT_FORMATS: PackFormat[] = ["pdf", "docx", "odt", "html", "csv", "xlsx", "ods"];
 
 let nextUid = 0;
 /** A fresh client-only id for a draft entry or variable. */

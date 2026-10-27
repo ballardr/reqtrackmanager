@@ -69,7 +69,7 @@ class GeneratedReport(UUIDPKMixin, Base):
         tree_hash: SHA-256 of that version's tree.
         requested_by: The caller, `None` once that user is deleted.
         created_at: When the run started (UTC).
-        format: The output format requested (`json`, `pdf`, `docx`, `csv`).
+        format: The output format requested (`json`, `pdf`, `docx`, `odt`, `html`, `csv`, `xlsx`, `ods`).
         engine_version: The layout engine's version (changes when evaluation semantics change).
         params: Run parameters: `report_template_id`, `include_children`, `requested_project_ids`.
         scope_project_ids: The projects the run covered.

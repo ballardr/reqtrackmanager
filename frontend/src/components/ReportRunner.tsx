@@ -78,6 +78,7 @@ function initialValues(entry: ReportCatalogueEntry): ReportRunValues {
 /** How a download kind is named to the user (toasts). */
 const DOWNLOAD_NAME: Record<ReportFileKind, string> = {
   pdf: "PDF", docx: "Word file", csv: "CSV", html: "HTML page", xlsx: "Excel workbook",
+  odt: "OpenDocument text file", ods: "OpenDocument spreadsheet",
 };
 
 export function ReportRunner({

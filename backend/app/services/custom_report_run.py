@@ -32,8 +32,8 @@ Design decisions:
   headings above it, with the text between them as its note; text after the last table becomes a report
   note. The PDF and Word are the faithful forms.
 - **Formats follow the layout family and come from the renderer registry** (`services.report_render`): a
-  document layout gives `json` plus `pdf`, `docx`, `html`; a table layout `json` plus `csv` (a zip when it has
-  several sheets) and `xlsx`. A new format is one registration there.
+  document layout gives `json` plus `pdf`, `docx`, `html`, `odt`; a table layout `json` plus `csv` (a zip when it has
+  several sheets), `xlsx` and `ods`. A new format is one registration there.
 - **Content tiers key on the layout id** (`custom.<layout id>`), so a layout has its own introduction,
   chapters and appendices across template, project and organisation like a module report.
 
