@@ -96,6 +96,7 @@ from app.modules.decisions import export as bundle_export
 from app.modules.decisions.models import Decision
 from app.modules.decisions.record_tables import RECORD_TABLES
 from app.modules.decisions.reports import REPORT_DEFINITIONS
+from app.modules.decisions.scaling_probes import SCALING_PROBES
 from app.modules.decisions.search import SEARCH_PROVIDERS
 from app.modules.decisions.service import (
     DECISION_APPROVE_PERMISSION,
@@ -315,6 +316,7 @@ MODULE_DEFINITION = ModuleDefinition(
     },
     search_providers=SEARCH_PROVIDERS,
     record_tables=RECORD_TABLES,
+    scaling_probes=SCALING_PROBES,
     artefact_type_labels={DECISION_ARTEFACT_TYPE: "Decision"},
     link_type_seeds=LINK_TYPE_SEEDS,
     roles=(

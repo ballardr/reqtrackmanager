@@ -1752,6 +1752,40 @@ class PerfDatasetGenerator:
 
 
 @dataclass(frozen=True)
+class ScalingProbe:
+    """How the scaling-shape guard fills and reads one artefact type through its public API, so a test can
+    compare the cost of the type's list, detail, comments and link graph at two data sizes.
+
+    Attributes:
+        list_path: The type's project list endpoint, relative to `/api/v1/projects/{project_id}/` (for example
+            `modules/risk_management/risks`). Its detail is `<list_path>/{id}` and its comments
+            `<list_path>/{id}/comments`.
+        create: `create(api, project_id, start, count)` creates `count` records through the real create endpoint
+            (`start` numbers them, so titles stay distinct across calls) and returns their ids. It fetches any
+            prerequisite (a type vocabulary, a parent record) itself, since it is called once per size. `api` is
+            a `ScalingProbeApi`.
+        has_comments: Whether the type has a comment thread at `<detail>/comments`.
+        has_detail: Whether the type has a detail endpoint at `<list_path>/{id}`.
+    """
+
+    list_path: str
+    create: Callable[[Any, str, int, int], list[str]]
+    has_comments: bool = True
+    has_detail: bool = True
+
+
+class ScalingProbeApi:
+    """The calls a `ScalingProbe.create` makes: `post(path, body)` and `get(path)` return the decoded JSON and
+    raise on a failure status. Paths are absolute from `/api/v1`. The guard supplies the implementation."""
+
+    def post(self, path: str, body: dict[str, Any] | None = None) -> Any:  # pragma: no cover - interface
+        raise NotImplementedError
+
+    def get(self, path: str) -> Any:  # pragma: no cover - interface
+        raise NotImplementedError
+
+
+@dataclass(frozen=True)
 class LinkTypeSeed:
     """A link type a module wants to exist in every organisation, so its
     artefact types can be linked meaningfully without a core edit
@@ -2431,6 +2465,13 @@ class ModuleDefinition:
             performance tooling's dataset tiers scale this type's records and their links. Read via
             `get_perf_generators`. A backend test fails for a registered type with neither a generator, a reason in
             `no_perf_generator`, nor an entry in that test's shrinking list of tracked gaps.
+        scaling_probes: Maps one of this module's own `artefact_types` to a `ScalingProbe`, so the scaling-shape
+            guard can create the type's records through its API at two sizes and assert the statements behind its
+            list, detail, comments and link graph do not grow with the records. Read via `get_scaling_probes`. A
+            backend test fails for a registered type with neither a probe, a reason in `no_scaling_probe`, nor an
+            entry in that test's shrinking list of tracked gaps.
+        no_scaling_probe: `{artefact type: reason}` for a type the guard cannot fill through an API (a record only
+            a workflow produces).
         no_perf_generator: `{artefact type: reason}` for a type that is not generated (a record produced by a
             workflow whose volume is not a function of the requirement count).
         reports: The reports this module contributes, each
@@ -2526,6 +2567,8 @@ class ModuleDefinition:
     record_tables: dict[str, RecordTableProvider] = field(default_factory=dict)
     not_importable: dict[str, str] = field(default_factory=dict)
     perf_generators: dict[str, PerfDatasetGenerator] = field(default_factory=dict)
+    scaling_probes: dict[str, ScalingProbe] = field(default_factory=dict)
+    no_scaling_probe: dict[str, str] = field(default_factory=dict)
     no_perf_generator: dict[str, str] = field(default_factory=dict)
 
 
@@ -4198,6 +4241,26 @@ def get_no_perf_generator_types() -> dict[str, str]:
     reasons: dict[str, str] = {}
     for definition in get_module_registry().values():
         reasons.update(definition.no_perf_generator)
+    return reasons
+
+
+def get_scaling_probes() -> dict[str, ScalingProbe]:
+    """Every registered artefact type's `ScalingProbe`: the core types' (`services.scaling_probes_core`) plus each
+    module's `scaling_probes`. A type claimed twice keeps the first."""
+    from app.services.scaling_probes_core import CORE_SCALING_PROBES
+
+    merged: dict[str, ScalingProbe] = dict(CORE_SCALING_PROBES)
+    for definition in get_module_registry().values():
+        for artefact_type, probe in definition.scaling_probes.items():
+            merged.setdefault(artefact_type, probe)
+    return merged
+
+
+def get_no_scaling_probe_types() -> dict[str, str]:
+    """`{artefact type: reason}` for every type a module declared cannot be filled through its API."""
+    reasons: dict[str, str] = {}
+    for definition in get_module_registry().values():
+        reasons.update(definition.no_scaling_probe)
     return reasons
 
 

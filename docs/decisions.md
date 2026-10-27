@@ -12229,3 +12229,10 @@ An end-to-end audit (authentication, authorisation, tenant isolation, files, out
 - **Answers to the three open questions (Decided by: User).** All 18 generators are written in one pass before measuring; the cross-type link assumption is a typical mean of 3 links per record, 5% across projects, hubs up to 1,000 (run at sparse, typical and dense); the stored-position change for large lists (O12) is in scope if the other types' lists show the same whole-project read, with the design signed off before it is built.
 - **Order of work (Decided by: Agent).** The static review of every type and the link code, and the registry-driven scaling-shape guard, come first because they need no generators and can find the obvious problems before any dataset is built.
 
+## Resource profiling Phase 4c: the scaling-shape guard (2026-10-27)
+
+- **A registry hook, not a central test table (Decided by: Agent).** `ModuleDefinition.scaling_probes` / `no_scaling_probe` (core types in `services/scaling_probes_core.py`) follow the `perf_generators` convention, so a new module cannot skip the guard and no core file names a module's type. A probe creates records through the real create endpoint, so it cannot drift from the application's own path and needs no generator.
+- **What it asserts (Decided by: Agent).** Statements for the list, detail, comments and depth-1 link graph at 3 and 9 records are equal; the response may grow (an unpaged list returns every row), the statements may not. Deterministic, so it runs in CI with the rest of the suite.
+- **Known growth is a strict list (Decided by: Agent).** `KNOWN_GROWING` names each growing check and its finding (O16 lists, O17 comments in `docs/performance.md`); it fails if a check grows and is unlisted, and if a listed check stops growing, so it can only shrink. The four compliance types are `TRACKED_GAPS` (no probe yet; the same shrinking convention as the generator list).
+- **Result.** 12 of 16 probed types grow (lists for 9, comments for 11); requirement, action, and every type's link graph at depth 1 are flat.
+
