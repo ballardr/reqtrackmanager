@@ -92,6 +92,9 @@ class PerfProjectContext:
         org_state: Values shared by every project of the organisation (a type whose records belong to the organisation
             writes them once, in the first project, and records ids here for the rest).
         created_times: Creation instants of the records in `shared`, parallel to its ids, by artefact type.
+        siblings: `(project id, shared)` of the earlier projects with the same parent (sources of dormant links).
+        degrees: Links touching each record, by artefact type, written by the link generators (for the manifest's hubs).
+        pair_stats: Per `source>target` type pair: links written and the largest degree of a partner record.
         tags: `(tag id, name)` of the project's tag vocabulary, written by the requirement generator, for the other
             types' records to be tagged from.
         counts: Rows written, by table name; filled by the generators.
@@ -112,6 +115,9 @@ class PerfProjectContext:
     org_state: dict[str, Any] = field(default_factory=dict)
     tags: list[tuple[uuid.UUID, str]] = field(default_factory=list)
     created_times: dict[str, list[datetime]] = field(default_factory=dict)
+    siblings: list[tuple[uuid.UUID, dict[str, list[uuid.UUID]]]] = field(default_factory=list)
+    degrees: dict[str, dict[uuid.UUID, int]] = field(default_factory=dict)
+    pair_stats: dict[str, dict[str, int]] = field(default_factory=dict)
     counts: dict[str, int] = field(default_factory=dict)
     histogram: dict[str, int] = field(default_factory=dict)
     say: Any = print

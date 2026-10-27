@@ -21,17 +21,37 @@ from __future__ import annotations
 import uuid
 from datetime import timedelta
 
-from app.models.change_request import ChangeRequest, ChangeRequestVersion, ReviewComment
-from app.models.enums import ChangeRequestKind, ChangeRequestStatus, ReviewTargetType
+from app.models.change_request import ChangeRequest, ChangeRequestProposedLink, ChangeRequestVersion, ReviewComment
+from app.models.enums import ChangeRequestKind, ChangeRequestStatus, ProposedLinkOutcome, ReviewTargetType
 from app.services.change_request_summary import CHANGE_REQUEST_CODE_PREFIX
 from app.services.perf_dataset import textgen
 from app.services.perf_dataset.context import PerfProjectContext
-from app.services.perf_dataset.records import RecordBatch, add_comments, add_tags, created_at, pick_weighted
+from app.services.perf_dataset.records import RecordBatch, add_comments, add_tags, created_at, link_types_between, pick_weighted
 
 _STATUS_MIX = (
     (ChangeRequestStatus.DRAFT, 0.2), (ChangeRequestStatus.SUBMITTED, 0.15), (ChangeRequestStatus.IN_REVIEW, 0.1),
     (ChangeRequestStatus.APPROVED, 0.35), (ChangeRequestStatus.REJECTED, 0.1), (ChangeRequestStatus.WITHDRAWN, 0.1),
 )
+
+
+#: Share of change requests that carry proposed links.
+_PROPOSED_LINK_SHARE = 0.25
+
+
+def _outcome(status: ChangeRequestStatus) -> ProposedLinkOutcome:
+    """What became of a proposed link given its request's status (pending until decided)."""
+    if status is ChangeRequestStatus.APPROVED:
+        return ProposedLinkOutcome.MERGED
+    if status in (ChangeRequestStatus.REJECTED, ChangeRequestStatus.WITHDRAWN):
+        return ProposedLinkOutcome.DECLINED
+    return ProposedLinkOutcome.PENDING
+
+
+def _proposed_ends(ctx: PerfProjectContext, rng) -> list[tuple[str, uuid.UUID]]:
+    """One to three `(type, id)` records a request proposes to link to, drawn from the types generated so far."""
+    pool = [(t, ids) for t, ids in ctx.shared.items() if t in ("requirement", "requirement_action") and ids]
+    pool += [(t, ids) for t, ids in ctx.shared.items() if t not in ("requirement", "requirement_action", "requirement_approved", "hubs") and ids]
+    return [(t, rng.choice(ids)) for t, ids in (rng.choice(pool) for _ in range(rng.randint(1, 3)))] if pool else []
 
 
 def generate_change_requests(ctx: PerfProjectContext) -> dict[str, int]:
@@ -73,8 +93,9 @@ def generate_change_requests(ctx: PerfProjectContext) -> dict[str, int]:
             },
             creator=creator, at=created, title=name,
         )
+        version_id = batch.new_id()
         batch.satellite(ChangeRequestVersion, {
-            "id": batch.new_id(), "change_request_id": record_id, "version_number": 1,
+            "id": version_id, "change_request_id": record_id, "version_number": 1,
             "proposed_name": name, "proposed_reasoning": textgen.paragraphs(rng, empty_chance=0.2, short_max=2),
             "proposed_clarification": textgen.paragraphs(rng, empty_chance=0.6, short_max=2),
             "proposed_description": textgen.paragraphs(rng, empty_chance=0.3, short_max=3),
@@ -84,6 +105,17 @@ def generate_change_requests(ctx: PerfProjectContext) -> dict[str, int]:
             "reason": textgen.sentences(rng, rng.randint(1, 2)), "custom_fields": {},
             "created_by": creator, "created_at": created,
         })
+        if rng.random() < _PROPOSED_LINK_SHARE:
+            # Links this request proposes (applied on approval): to requirements, or to another type where one is
+            # generated, using a link type that permits the pair.
+            for position, (other_type, other_id) in enumerate(_proposed_ends(ctx, rng)):
+                types = link_types_between(ctx, "requirement", other_type)
+                batch.satellite(ChangeRequestProposedLink, {
+                    "id": batch.new_id(), "change_request_version_id": version_id,
+                    "link_type_id": rng.choice(types).id if types else None, "direction": "outgoing",
+                    "other_type": other_type, "other_id": other_id, "other_project_id": None, "outcome": _outcome(status),
+                    "outcome_reason": None, "sort_order": position,
+                })
         if submitted:
             batch.audit_event(record_id, "submitted", creator, created + timedelta(days=1))
         if decided:

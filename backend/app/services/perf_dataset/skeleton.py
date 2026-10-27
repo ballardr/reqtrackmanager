@@ -79,6 +79,9 @@ class OrgPlan:
         name: Organisation name.
         admin_email: The organisation administrator's login.
         member_emails: The other people's logins.
+        restricted_email: In a nested profile, the member who holds no role on the deepest projects, so the records
+            there are hidden from them in a parent's link graph (the graph omits and counts what a viewer cannot open);
+            None otherwise.
         user_ids: Every person's user id, administrator first.
         projects: The organisation's projects, parents before children.
     """
@@ -88,6 +91,7 @@ class OrgPlan:
     name: str
     admin_email: str
     member_emails: list[str]
+    restricted_email: str | None
     user_ids: list[str]
     projects: list[ProjectPlan] = field(default_factory=list)
 
@@ -195,7 +199,11 @@ def build_skeleton(
                 f"create {email}",
             )
             user_ids.append(created["user_id"])
-        plan = OrgPlan(id=org["id"], index=org_index, name=name, admin_email=emails[0], member_emails=emails[1:], user_ids=user_ids)
+        restricted_email = emails[-1] if spec.topology.is_nested and len(emails) >= 3 else None
+        plan = OrgPlan(
+            id=org["id"], index=org_index, name=name, admin_email=emails[0], member_emails=emails[1:],
+            restricted_email=restricted_email, user_ids=user_ids,
+        )
         admin_headers = _login(client, emails[0], user_password)
         _enable_modules(client, org["id"], admin_headers)
         specs = _project_names(spec, org_index)
@@ -237,6 +245,8 @@ def build_skeleton(
             stages = _check(client.get(f"{API}/projects/{project['id']}/stages", headers=admin_headers), "list stages")
             project_plan.stage_ids = [s["id"] for s in sorted(stages, key=lambda s: s["sort_order"])]
             for member_index, member_id in enumerate(user_ids[1:], start=1):
+                if restricted_email and emails[member_index] == restricted_email and depth == spec.topology.nesting_depth - 1:
+                    continue
                 role = "project_manager" if member_index == 1 else "stakeholder"
                 _check(
                     client.post(f"{API}/projects/{project['id']}/roles", headers=admin_headers, json={"user_id": member_id, "role": role}),

@@ -230,8 +230,14 @@ project-scoped types per requirement (`ratios.records`: change requests 0.3, ris
 needs 0.6, engagements 0.4, findings 0.6, and so on), and the four compliance types from a catalogue per organisation
 (`compliance`: 5 standards of 60 requirements, 2 assigned to each project), so compliance follows the projects, not the
 requirement count. Records link to earlier types with the density's mean degree and a heavy tail, 5% of a nested
-project's links going to its parent. A T2 project (1,000 requirements) holds about 75,000 rows and generates in about
-15 seconds.
+project's links going to its parent and 2% to a sibling project (dormant: outside the ancestry, so the application
+counts them unavailable and never shows them). The most-linked record of each type pair is planted with up to
+`hub_max_degree` (1,000) links, so a T3 project has hubs of 1,000 links in every pair; the manifest reports links and
+the largest hub per `source>target` pair (`link_pairs`) and each project's three most-linked records per type
+(`type_hubs`). In a nested profile one member (`restricted_email`) holds no role on the deepest projects, so the graph
+from a parent omits and counts what they cannot open. Change requests carry proposed links. A T2 project (1,000
+requirements) holds about 75,000 rows and generates in about 15 seconds; a T3 project about 444,000 rows in about a
+minute.
 
 | Tier | Requirements | Purpose |
 |------|--------------|---------|

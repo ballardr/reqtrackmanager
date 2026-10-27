@@ -12243,3 +12243,11 @@ An end-to-end audit (authentication, authorisation, tenant isolation, files, out
 - **Gaps (Decided by: Agent).** Organisation-scoped records and attachments are not generated; the compliance probes for the scaling-shape guard are not written yet.
 - **Guards (Decided by: Agent).** A parity test creates one record of each type through the API and requires every column it populated to be populated in the generated rows of that table; a second test makes the application read every generated type (list, detail, comments, link graph) and checks every link end exists; the integrity check compares each numbered type's counter with the records written.
 
+## Resource profiling Phase 4c: the cross-type link dataset (2026-10-27)
+
+- **Planted hubs (Decided by: Agent, from the User's "hubs up to 1,000").** A Zipf tail alone gave a largest hub of about 60 links at 5,000 requirements, so the most-linked record of every type pair is planted with `hub_max_degree` (1,000) links, capped by the records available to link from. A T3 project has a 1,000-link hub in every pair.
+- **Dormant links (Decided by: Agent).** In a nested profile 2% of cross-type links join a record to a record of a sibling project, which is outside the ancestry; the application treats these as dormant (counted unavailable, never shown), so the graph's unavailable path has data.
+- **Records the viewer cannot see (Decided by: Agent).** In a nested profile one member holds no role on the deepest projects, so a parent's link graph omits those records and counts them as hidden for that member (tested). A viewer who lacks a type's view permission rather than a project role is not generated, because the skeleton gives every member the same roles.
+- **Proposed links (Decided by: Agent).** A quarter of the change requests carry one to three proposed links, with the outcome following the request's status.
+- **Reporting (Decided by: Agent).** The manifest gains `link_pairs` (links and largest hub per type pair) and per-project `type_hubs`; the profiles gain `hub_max_degree` and `dormant_link_fraction` (version 3).
+

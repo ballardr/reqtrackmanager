@@ -48,6 +48,8 @@ SMALL = {
     "link_density": {"sparse": {"mean_degree": 1}, "typical": {"mean_degree": 3}},
     "hub_exponent": 0.6,
     "cross_level_link_fraction": 0.1,
+    "dormant_link_fraction": 0.2,
+    "hub_max_degree": 10,
     "users_per_org": 3,
     "breadth": {
         "single": {"organisations": 1, "projects_per_org": 1},
@@ -277,6 +279,49 @@ def test_the_application_reads_every_generated_type(client):
     if evidence.status_code != 200 or not evidence.json():
         problems.append(f"compliance: evidence {evidence.status_code} {evidence.text[:120]}")
     assert not problems, problems
+
+
+def test_links_have_planted_hubs_pair_statistics_dormant_links_and_a_part_one_viewer_cannot_open(client):
+    """The cross-type link dataset: the busiest record of a type is a planted hub, the manifest reports links and the
+    largest hub per type pair and the most-linked records per type, sibling-project links are written (dormant: the
+    application never shows them), and in a nested profile one member holds no role on the deepest projects, so the
+    graph from a parent omits and counts what that member cannot open."""
+    manifest = _generate(client, "nested")
+    assert manifest["integrity_problems"] == []
+    pairs = manifest["link_pairs"]
+    assert pairs["requirement>requirement"]["max_partner_degree"] >= 5
+    others = {pair: stats for pair, stats in pairs.items() if pair != "requirement>requirement"}
+    assert any(pair.endswith(">requirement") and stats["max_partner_degree"] >= 5 for pair, stats in others.items())
+    assert all(project["type_hubs"]["requirement"] for project in manifest["projects"])
+    assert manifest["link_degree_histogram"]["dormant_links"] > 0
+    db = SessionLocal()
+    try:
+        siblings = db.scalar(text(
+            "SELECT count(*) FROM artefact_links l JOIN projects a ON a.id = l.source_project_id "
+            "JOIN projects b ON b.id = l.target_project_id "
+            "WHERE a.parent_project_id IS NOT NULL AND a.parent_project_id = b.parent_project_id AND a.id <> b.id"
+        ))
+        assert siblings == manifest["link_degree_histogram"]["dormant_links"]
+        # A requirement of the root that a child links up to.
+        row = db.execute(text(
+            "SELECT l.target_id, l.target_project_id FROM artefact_links l JOIN projects c ON c.id = l.source_project_id "
+            "WHERE l.source_type = 'requirement' AND l.target_type = 'requirement' AND c.parent_project_id = l.target_project_id LIMIT 1"
+        )).one()
+    finally:
+        db.close()
+    org = manifest["organisations"][0]
+    assert org["restricted_email"]
+
+    def graph(email: str) -> dict:
+        token = client.post("/api/v1/auth/login", json={"email": email, "password": "Password123!"}).json()["access_token"]
+        url = f"/api/v1/projects/{row.target_project_id}/artefacts/requirement/{row.target_id}/link-graph?depth=1"
+        resp = client.get(url, headers=auth_headers(token))
+        assert resp.status_code == 200, resp.text
+        return resp.json()
+
+    full, restricted = graph(org["admin_email"]), graph(org["restricted_email"])
+    assert full["hidden_count"] == 0 and restricted["hidden_count"] > 0
+    assert len(restricted["nodes"]) < len(full["nodes"])
 
 
 def test_nested_profile_links_a_child_to_its_parent(client):

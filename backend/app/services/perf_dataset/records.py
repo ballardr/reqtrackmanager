@@ -304,13 +304,18 @@ def link_to_earlier(
     """Links a batch's records to records of earlier-generated types.
 
     Each record draws a number of outgoing links with mean `mean_degree * degree_scale` split across `partners` by
-    weight; the partner record is chosen with a Zipf weight, so a few partner records become hubs with hundreds
-    of links. A share (`cross_level_link_fraction`) of a nested project's links go to the parent project's records
-    of the partner type when a link type with the ancestor scope allows the pair.
+    weight; the partner record is chosen with a Zipf weight, so a few partner records become hubs. On top of that the
+    most-weighted partner record of each type is planted with up to `hub_max_degree` links (fewer where the batch has
+    fewer records), so a hub of hundreds to a thousand links exists at the larger tiers. In a nested project a share
+    (`cross_level_link_fraction`) of the links go to the parent project's records of the partner type, and a share
+    (`dormant_link_fraction`) to a sibling project's, which is outside the project's ancestry and so dormant; both need
+    a link type with the ancestor scope for the pair.
+
+    Records the realised degree of every record in `ctx.degrees` and per type pair in `ctx.pair_stats`.
 
     Args:
         ctx: The project's context.
-        batch: The records whose links are written (the source end).
+        batch: The records whose links are written.
         partners: `(partner artefact type, weight)` pairs or `Partner`s; a type with no records in `ctx.shared`
             is skipped.
         degree_scale: Multiplier on the spec's mean degree for this type.
@@ -318,8 +323,8 @@ def link_to_earlier(
     Returns:
         The number of links written.
     """
-    rng, spec = ctx.rng, ctx.spec
-    if not batch.ids or spec.ratios.mean_degree <= 0:
+    rng, ratios = ctx.rng, ctx.spec.ratios
+    if not batch.ids or ratios.mean_degree <= 0:
         return 0
     normalised = [p if isinstance(p, Partner) else Partner(p[0], p[1]) for p in partners]
     available = [p for p in normalised if ctx.shared.get(p.artefact_type)]
@@ -330,15 +335,17 @@ def link_to_earlier(
     rows: list[dict] = []
     seen: set[tuple[uuid.UUID, str, uuid.UUID]] = set()
     parent_id = uuid.UUID(ctx.project.parent_id) if ctx.project.parent_id else None
+    dormant = 0
+
     for partner in available:
-        partner_type, weight = partner.artefact_type, partner.weight
+        partner_type = partner.artefact_type
         source_type, target_type = (partner_type, batch.artefact_type) if partner.record_is_target else (batch.artefact_type, partner_type)
         targets = ctx.shared[partner_type]
         n = len(targets)
-        mean = spec.ratios.mean_degree * degree_scale * weight / total_weight
+        mean = ratios.mean_degree * degree_scale * partner.weight / total_weight
         order = list(range(n))
         rng.shuffle(order)
-        cumulative = list(itertools.accumulate(1 / ((i + 1) ** spec.ratios.hub_exponent) for i in range(n)))
+        cumulative = list(itertools.accumulate(1 / ((i + 1) ** ratios.hub_exponent) for i in range(n)))
         if partner.untyped:
             types = []
         elif partner.forward_name:
@@ -348,44 +355,75 @@ def link_to_earlier(
             types = link_types_between(ctx, source_type, target_type)
         cross_types = [t for t in types if getattr(t.nesting_scope, "value", str(t.nesting_scope)) == "ancestor_either_way"]
         parent_targets = (ctx.parent_shared or {}).get(partner_type) if parent_id and cross_types else None
-        for index, source_id in enumerate(batch.ids):
+        sibling_targets = [(pid, shared[partner_type]) for pid, shared in ctx.siblings if shared.get(partner_type)] if cross_types else []
+        pair = f"{source_type}>{target_type}"
+        partner_degree: dict[uuid.UUID, int] = {}
+
+        def emit(record_index: int, partner_id: uuid.UUID, link_type: Any, project_pair: tuple[Any, Any],
+                 partner_type: str = partner_type, partner_record_is_target: bool = partner.record_is_target,
+                 source_type: str = source_type, target_type: str = target_type, pair: str = pair,
+                 partner_degree: dict[uuid.UUID, int] = partner_degree) -> None:
+            record_id = batch.ids[record_index]
+            at = at_between(rng, batch.created[record_index])
+            author, link_id = rng.choice(ctx.user_ids), uuid_from(rng)
+            end_a, end_b = (partner_id, record_id) if partner_record_is_target else (record_id, partner_id)
+            rows.append({
+                "id": link_id, "source_type": source_type, "source_id": end_a, "target_type": target_type, "target_id": end_b,
+                "link_type_id": link_type.id if link_type else None,
+                "source_project_id": project_pair[0], "target_project_id": project_pair[1],
+                "created_by": author, "created_at": at, "updated_at": at,
+            })
+            audit.add(
+                "artefact_link", link_id, "created", author, at,
+                detail={"source_type": source_type, "source_id": str(end_a), "target_type": target_type, "target_id": str(end_b)},
+            )
+            partner_degree[partner_id] = partner_degree.get(partner_id, 0) + 1
+            for end_type, end_id in ((source_type, end_a), (target_type, end_b)):
+                counts = ctx.degrees.setdefault(end_type, {})
+                counts[end_id] = counts.get(end_id, 0) + 1
+
+        here = ctx.project_uuid
+        for index in range(len(batch.ids)):
             for _ in range(_poisson(rng, mean)):
-                cross = bool(parent_targets) and rng.random() < spec.ratios.cross_level_link_fraction
-                if cross:
-                    target_id = rng.choice(parent_targets)
+                roll = rng.random()
+                if parent_targets and roll < ratios.cross_level_link_fraction:
+                    target_id, project_pair = rng.choice(parent_targets), ((parent_id, here) if partner.record_is_target else (here, parent_id))
+                    link_type = rng.choice(cross_types)
+                elif sibling_targets and roll > 1 - ratios.dormant_link_fraction:
+                    sibling_id, sibling_ids = rng.choice(sibling_targets)
+                    target_id, project_pair = rng.choice(sibling_ids), ((sibling_id, here) if partner.record_is_target else (here, sibling_id))
+                    link_type = rng.choice(cross_types)
+                    dormant += 1
                 else:
-                    target_id = targets[order[rng.choices(range(n), cum_weights=cumulative)[0]]]
-                key = (source_id, partner_type, target_id)
+                    target_id, project_pair = targets[order[rng.choices(range(n), cum_weights=cumulative)[0]]], (None, None)
+                    link_type = rng.choice(types) if types else None
+                key = (batch.ids[index], partner_type, target_id)
                 if key in seen:
                     continue
                 seen.add(key)
-                link_type = rng.choice(cross_types if cross else types) if (cross_types if cross else types) else None
-                at = at_between(rng, batch.created[index])
-                author = rng.choice(ctx.user_ids)
-                link_id = uuid_from(rng)
-                end_a, end_b = (target_id, source_id) if partner.record_is_target else (source_id, target_id)
-                rows.append({
-                    "id": link_id, "source_type": source_type, "source_id": end_a,
-                    "target_type": target_type, "target_id": end_b,
-                    "link_type_id": link_type.id if link_type else None,
-                    "source_project_id": ((parent_id if partner.record_is_target else ctx.project_uuid) if cross else None),
-                    "target_project_id": ((ctx.project_uuid if partner.record_is_target else parent_id) if cross else None),
-                    "created_by": author, "created_at": at, "updated_at": at,
-                })
-                audit.add(
-                    "artefact_link", link_id, "created", author, at,
-                    detail={"source_type": source_type, "source_id": str(end_a),
-                            "target_type": target_type, "target_id": str(end_b)},
-                )
+                emit(index, target_id, link_type, project_pair)
+
+        # Plant the hub: the highest-weighted partner record gets links from as many of the batch's records as the cap allows.
+        if ratios.hub_max_degree > 0:
+            hub = targets[order[0]]
+            wanted = min(ratios.hub_max_degree, len(batch.ids)) - partner_degree.get(hub, 0)
+            candidates = [i for i in range(len(batch.ids)) if (batch.ids[i], partner_type, hub) not in seen]
+            for index in rng.sample(candidates, max(0, min(wanted, len(candidates)))):
+                seen.add((batch.ids[index], partner_type, hub))
+                emit(index, hub, rng.choice(types) if types else None, (None, None))
+
+        stats = ctx.pair_stats.setdefault(pair, {"links": 0, "max_partner_degree": 0})
+        stats["links"] += sum(partner_degree.values())
+        stats["max_partner_degree"] = max(stats["max_partner_degree"], max(partner_degree.values(), default=0))
+
     audit.flush()
     cross_level = sum(1 for row in rows if row["source_project_id"] is not None)
-    degree: dict[uuid.UUID, int] = {}
-    for row in rows:
-        for end in (row["source_id"], row["target_id"]):
-            degree[end] = degree.get(end, 0) + 1
-    ctx.histogram["cross_type_max"] = max(ctx.histogram.get("cross_type_max", 0), max(degree.values(), default=0))
     ctx.histogram["cross_type_links"] = ctx.histogram.get("cross_type_links", 0) + len(rows)
     ctx.histogram["cross_type_cross_level_links"] = ctx.histogram.get("cross_type_cross_level_links", 0) + cross_level
+    ctx.histogram["dormant_links"] = ctx.histogram.get("dormant_links", 0) + dormant
+    ctx.histogram["cross_type_max"] = max(
+        ctx.histogram.get("cross_type_max", 0), max((d for counts in ctx.degrees.values() for d in counts.values()), default=0)
+    )
     for start in range(0, len(rows), CHUNK):
         ctx.add_count("artefact_links", insert_rows(ctx.db, ArtefactLink, rows[start:start + CHUNK]))
     return len(rows)

@@ -432,6 +432,34 @@ def _generate_links(ctx: PerfProjectContext, audit: AuditBuffer, requirement_ids
                 "link_type_id": str(link_type_id),
             },
         )
+    if spec.ratios.hub_max_degree > 0 and n > 2:
+        # Plant the hub: the busiest requirement is linked to as many others as the cap allows.
+        hub = max(range(n), key=lambda i: degree[i])
+        wanted = min(spec.ratios.hub_max_degree, n - 1) - degree[hub]
+        others = [i for i in rng.sample(range(n), n) if i != hub and (min(i, hub), max(i, hub)) not in seen]
+        for other in others[:max(0, wanted)]:
+            pair = (min(other, hub), max(other, hub))
+            seen.add(pair)
+            degree[other] += 1
+            degree[hub] += 1
+            link_type_id, _scope = rng.choice(usable)
+            at = _at(rng, max(created[pair[0]], created[pair[1]]), ANCHOR)
+            link_id, author = uuid_from(rng), rng.choice(ctx.user_ids)
+            rows.append(
+                {
+                    "id": link_id, "source_type": ArtefactType.REQUIREMENT.value, "source_id": requirement_ids[pair[0]],
+                    "target_type": ArtefactType.REQUIREMENT.value, "target_id": requirement_ids[pair[1]],
+                    "link_type_id": link_type_id, "source_project_id": None, "target_project_id": None,
+                    "created_by": author, "created_at": at, "updated_at": at,
+                }
+            )
+            audit.add(
+                "requirement_link", link_id, "created", author, at,
+                detail={"source_requirement_id": str(requirement_ids[pair[0]]), "target_requirement_id": str(requirement_ids[pair[1]]),
+                        "link_type_id": str(link_type_id)},
+            )
+    ctx.degrees["requirement"] = {requirement_ids[i]: degree[i] for i in range(n)}
+    ctx.pair_stats["requirement>requirement"] = {"links": len(seen), "max_partner_degree": max(degree)}
     for value in degree:
         key = _bucket(value)
         ctx.histogram[key] = ctx.histogram.get(key, 0) + 1

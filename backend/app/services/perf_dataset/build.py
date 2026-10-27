@@ -223,6 +223,7 @@ def generate_dataset(
     histogram: dict[str, int] = {}
     project_ids: list[uuid.UUID] = []
     counter_problems: list[str] = []
+    link_pairs: dict[str, dict[str, int]] = {}
     project_entries = []
     position = 0
     for org in skeleton.organisations:
@@ -230,6 +231,7 @@ def generate_dataset(
         user_ids = [uuid.UUID(u) for u in org.user_ids]
         shared_by_project: dict[str, dict[str, list[uuid.UUID]]] = {}
         org_state: dict[str, Any] = {}
+        children_by_parent: dict[str, list[str]] = {}
         for project in org.projects:
             position += 1
             ctx = PerfProjectContext(
@@ -243,6 +245,9 @@ def generate_dataset(
                 action_type_ids=[t.id for t in resolve_effective_action_types(db, uuid.UUID(project.id))],
                 parent_shared=shared_by_project.get(project.parent_id) if project.parent_id else None,
                 org_state=org_state,
+                siblings=[
+                    (uuid.UUID(pid), shared_by_project[pid]) for pid in children_by_parent.get(project.parent_id or "", [])
+                ] if project.parent_id else [],
                 say=say,
             )
             for _artefact_type, generator in generators:
@@ -250,6 +255,12 @@ def generate_dataset(
             db.commit()
             counter_problems.extend(_counter_problems(db, ctx))
             shared_by_project[project.id] = ctx.shared
+            if project.parent_id:
+                children_by_parent.setdefault(project.parent_id, []).append(project.id)
+            for pair, stats in ctx.pair_stats.items():
+                total = link_pairs.setdefault(pair, {"links": 0, "max_partner_degree": 0})
+                total["links"] += stats["links"]
+                total["max_partner_degree"] = max(total["max_partner_degree"], stats["max_partner_degree"])
             project_ids.append(uuid.UUID(project.id))
             for table, written in ctx.counts.items():
                 counts[table] = counts.get(table, 0) + written
@@ -270,6 +281,11 @@ def generate_dataset(
                     "action_type_id": str(ctx.action_type_ids[0]) if ctx.action_type_ids else None,
                     "requirement_sample": [str(i) for i in requirement_ids[::stride][:SAMPLE_SIZE]],
                     "hubs": [str(i) for i in ctx.shared.get("hubs", [])],
+                    # The three most-linked records of every type with links, for the scenarios to address a hub.
+                    "type_hubs": {
+                        artefact_type: [str(i) for i, _d in sorted(counts.items(), key=lambda item: -item[1])[:3]]
+                        for artefact_type, counts in ctx.degrees.items() if counts
+                    },
                 }
             )
             if position % 10 == 0 or position == spec.total_projects:
@@ -282,10 +298,14 @@ def generate_dataset(
         "spec": spec.describe(),
         "rows": counts,
         "link_degree_histogram": histogram,
+        "link_pairs": link_pairs,
         "integrity_problems": problems,
         "link_rows_total": db.scalar(select(func.count()).select_from(ArtefactLink)),
         "organisations": [
-            {"id": o.id, "index": o.index, "admin_email": o.admin_email, "member_emails": o.member_emails, "user_ids": o.user_ids}
+            {
+                "id": o.id, "index": o.index, "admin_email": o.admin_email, "member_emails": o.member_emails,
+                "restricted_email": o.restricted_email, "user_ids": o.user_ids,
+            }
             for o in skeleton.organisations
         ],
         "projects": project_entries,
