@@ -15,7 +15,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.services.report_framework import ReportParamOut
+from app.services.report_framework import ReportParamOut, ReportVariableOut
 from app.services.report_layout_text import MAX_TEXT_VIEW_CHARS
 
 
@@ -216,6 +216,7 @@ class ReportLayoutPreviewRequest(BaseModel):
         name: The report title to print.
         include_children: Project scope only: also read readable child projects.
         project_ids: Organisation scope only: narrow the fan-out to these projects.
+        variables: Values for the draft's run-time variables (a variable not given takes its default).
     """
 
     text: str | None = Field(default=None, max_length=MAX_TEXT_VIEW_CHARS)
@@ -223,12 +224,41 @@ class ReportLayoutPreviewRequest(BaseModel):
     name: str = Field(default="", max_length=200)
     include_children: bool = False
     project_ids: list[UUID] | None = Field(default=None, max_length=200)
+    variables: dict[str, Any] | None = Field(default=None, max_length=50)
 
     @model_validator(mode="after")
     def _one_draft(self) -> ReportLayoutPreviewRequest:
         if (self.text is None) == (self.tree is None):
             raise ValueError("Send either text or tree.")
         return self
+
+
+class ReportVariablesOut(BaseModel):
+    """The run form of a layout: its variables (empty when it declares none)."""
+
+    variables: list[ReportVariableOut]
+
+
+class ReportLayoutVariablesRequest(BaseModel):
+    """A draft whose run form is wanted: its text view or its tree (exactly one), and the projects whose options to offer."""
+
+    text: str | None = Field(default=None, max_length=MAX_TEXT_VIEW_CHARS)
+    tree: dict[str, Any] | None = None
+    project_ids: list[UUID] | None = Field(default=None, max_length=200)
+
+    @model_validator(mode="after")
+    def _one_draft(self) -> ReportLayoutVariablesRequest:
+        if (self.text is None) == (self.tree is None):
+            raise ValueError("Send either text or tree.")
+        return self
+
+
+class ReportLayoutDraftVariablesOut(BaseModel):
+    """The run form of a draft. When the text has problems `ok` is false and `errors` names them."""
+
+    ok: bool
+    variables: list[ReportVariableOut] = Field(default_factory=list)
+    errors: list[ReportLayoutTextError] = Field(default_factory=list)
 
 
 class ReportLayoutPreviewSheetOut(BaseModel):

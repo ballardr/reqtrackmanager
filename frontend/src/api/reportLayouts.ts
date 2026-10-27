@@ -11,7 +11,7 @@
  * validates it, so the client never interprets block shapes.
  */
 import { api, ApiError } from "./client";
-import type { ReportParam } from "./reports";
+import type { ReportParam, ReportVariable } from "./reports";
 
 export type LayoutFamily = "document" | "table";
 /** Where a project sees a layout from. */
@@ -160,6 +160,15 @@ export interface PreviewRequest {
   include_children?: boolean;
   /** Organisation scope: narrow the fan-out to these projects. */
   project_ids?: string[];
+  /** Values for the draft's run-time variables. */
+  variables?: Record<string, unknown>;
+}
+
+/** The run form of a draft (`ReportLayoutDraftVariablesOut`); with text problems `ok` is false and `errors` names them. */
+export interface DraftVariables {
+  ok: boolean;
+  variables: ReportVariable[];
+  errors: TextError[];
 }
 
 /** The outcome of a preview; with text problems `ok` is false, `errors` names them and nothing ran. */
@@ -192,6 +201,8 @@ export interface ReportLayoutApi {
   fields(): Promise<ReportFieldCatalogue>;
   widgets(): Promise<ReportWidget[]>;
   preview(body: PreviewRequest): Promise<PreviewResult>;
+  /** The draft's run-time variables with their defaults and current options (nothing is stored). */
+  draftVariables(text: string): Promise<DraftVariables>;
   /** Project scope only: hides or shows an inherited layout. */
   setHidden?(id: string, hidden: boolean): Promise<ReportLayoutSummary>;
   /** Project scope only: shows the named hidden layouts again. */
@@ -226,6 +237,7 @@ export function reportLayoutApi(scope: LayoutScope): ReportLayoutApi {
     fields: () => api.get<ReportFieldCatalogue>(`${base}/fields`),
     widgets: () => api.get<ReportWidget[]>(`${base}/widgets`),
     preview: (body) => api.post<PreviewResult>(`${base}/preview`, body),
+    draftVariables: (text) => api.post<DraftVariables>(`${base}/variables`, { text }),
   };
   if (scope.kind === "project") {
     layouts.setHidden = (id, hidden) => api.put<ReportLayoutSummary>(`${base}/${id}/visibility`, { hidden });

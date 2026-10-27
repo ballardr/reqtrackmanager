@@ -25,7 +25,10 @@ from app.services.report_fields import date_field, from_search, name_lookup_fiel
 REPORT_FIELDS: dict[str, ReportFieldProvider] = {
     "decision": from_search(
         SEARCH_PROVIDERS["decision"],
-        name_lookup_field("decision_type", "Decision type", DecisionTypeDefinition.name, DecisionTypeDefinition.id, Decision.decision_type_id),
+        name_lookup_field(
+            "decision_type", "Decision type", DecisionTypeDefinition.name, DecisionTypeDefinition.id,
+            Decision.decision_type_id, DecisionTypeDefinition.project_id,
+        ),
         date_field("decision_date", "Decision date", Decision.decision_date),
         principal_field("owner", "Owner", Decision.owner_type, Decision.owner_id),
         principal_field("decision_maker", "Decision maker", Decision.decision_maker_type, Decision.decision_maker_id),

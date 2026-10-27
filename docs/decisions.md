@@ -12580,3 +12580,42 @@ A cheap count pre-pass (record counts per `each` source, multiplied through nest
 ### Not applicable, checked
 
 *Modules:* nothing per module in a core file; the job is generic and the notification type is a core one. *Core tables and constants keyed by kind:* none added. *Search, codes:* no record type. *Users and groups parity:* the run is for the requesting user; the retention setting is organisation-wide. *Nested projects / organisation defaults:* no definition table. *Bundles:* see decision 14. *Seeds:* no new feature data to demonstrate (a run is made by using the product). *IPv6:* no listener.
+
+
+## Custom reports Phase 10b: run-time variables (2026-10-27)
+
+**Decided by: User** (D18 to D20, D23: a layout declares typed variables the person supplies when running; options come from any record type's field through a generic value-domain hook; variables narrow a report, they are not access control). **Decided by: Agent** for the mechanism below.
+
+### What was built
+
+- Tree schema 1 (additive, no version bump): the root may carry `variables` (`name`, `type` text/number/date/bool/enum, `label`, `multiple`, `default`, `options` or `source {record_type, field}`). A reference is `{"var": name}` as a condition value (`in`/`not_in` need a list variable, every other operator a single one, checked against the field's kind) or a widget parameter (one value of a parameter type the variable fits), and `{{var.name}}` in text. `var` is a reserved block name. `services/report_variables.py` holds the vocabulary, `resolve_values`, `bind_variables`, `describe_variables`, `variable_options` and `stale_value_warnings`.
+- Generic value-domain hook: `ReportField.domain(db, project_ids)`; an enum's labels and the status labels are the domain without declaring one; `name_lookup_field` takes the lookup table's `project_id` column and offers the project's names and its ancestors' (component, category, stage, action type, decision type). A field with no closed list takes free input. `services.report_fields.field_domain` is the one read path.
+- Evaluation: `evaluate_layout(variables=)` validates, resolves values (supplied, else default, `today` being the caller's own day), substitutes them into a copy of the tree and validates that copy, so the evaluator only sees literals; `EvaluatedLayout.variables` carries what was used. `GeneratedReport.params["variables"]` records it; a queued job runs with the values resolved when it was queued.
+- API: `variables` on the run routes (a JSON query parameter on GET, a field on the `.../runs` and preview bodies); 422 `{"code": "variable_values", "problems": [{name, message}]}`; `GET .../custom-reports/{id}/variables` (project and organisation) and `POST .../report-layouts/variables` (a draft) return the run form; the catalogue entry carries `variables`. MCP: `run_custom_report(variables=)` and `get_report_layout_variables` (skill updated).
+- Text view: `@var <name> <type> [list] [label "..."] [default v, ...] [options "a", ...] [from record.field]` before the first block; `$name` is a reference in a condition value or widget parameter (`"$name"` quoted is the text); round trip tested.
+- Frontend: `ReportVariablesForm` (shared by the Reports page and the designer preview), `ReportRunner` holds the run back (and hides Export) until every variable with no default has a value, the preview panel follows the draft's `@var` lines, stories and `custom-report-variables.spec.ts`; both seed scripts gain a "by category" layout.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Substitute, then validate again.** Binding replaces references with checked literals in a copy and the copy is validated, so the evaluator, the widget cache key and every operator see only literals, and a value gets the same size, kind and `MAX_IN_VALUES` checks as an authored one. Cost: a second validation per run of a layout with variables. | Agent |
+| 2 | **A variable with no default must be given**; an empty list is refused. "No restriction unless chosen" would make `in` on an empty list ambiguous (everything or nothing); an author who wants "all" gives a default listing them or does not filter. | Agent |
+| 3 | **Options advise, they do not enforce, except an enum's own `options`.** A value outside a source field's current domain runs, and the run says (naming the variable, never the value) that it may match nothing: the list can change between choosing and running. | Agent |
+| 4 | **Values travel in a JSON query parameter** on GET runs. The front proxy logs the path only (`nginx.conf`), as for search; values are configuration, stored on the provenance row and never written to a log line, a metric label or an audit event. The MCP tool uses the same parameter. | Agent |
+| 5 | **A `{{var.name}}` value is text** in the placeholder pass, never markup, a placeholder or an equation (tested with a hostile value). `var` cannot be an `as` name. | Agent |
+| 6 | **A date's `today` default is the caller's own day** (`X-Client-Date`, `effective_today()`); the day is resolved before queueing, so a background job runs with the concrete date. The run's `generated_on` placeholder now uses the same day. | Agent |
+| 7 | **Organisation fan-out takes one set of values for every project**; options are offered across the projects the caller can read (capped at `MAX_FANOUT_PROJECTS`). Per-project values arrive with saved sets (10c, D25). | Agent |
+| 8 | **Domain of a project-defined vocabulary includes ancestors' definitions**, matching how a child project inherits Action Types and Decision Types; the organisation tier does not exist for these tables. | Agent |
+
+### Review (identify, verify, remediate)
+
+*Identify:* a value used as markup, a placeholder, an equation or TeX; a value widening what a caller reads; an unbounded list or text; options revealing definitions the caller cannot see; values reaching logs; a variable named like a block alias.
+
+*Verify and remediate:* values are text literals filled in one pass over the author's text (hostile-value test); the resolver and traversal are untouched, so a variable only narrows; counts and lengths are capped (20 variables, 20 list values, 200 characters, 100 options, 20,000 characters of JSON); options are definition names the caller can already list in the project (project view role required for the form, a project the caller cannot report on is a 404); no log line carries a value; `var` is rejected as an alias.
+
+*Residual, recorded:* a project's category names are offered to any member who can run reports in it (they already list them in the project); the request URL with values can appear in the browser history and the backend's own access log if it is enabled (the proxy logs the path only).
+
+### Not applicable, checked
+
+*Modules:* nothing per module in a core file; the hook is a generic field attribute. *Core tables and constants keyed by kind:* none added. *Search, codes, tags, quick links:* no record type. *Users and groups parity:* no person-valued field is added. *Nested projects:* no new project-scoped table; the domain walks ancestors. *Bundles:* variables are part of the layout tree, which already travels. *Time:* a date variable is a calendar date (the person's own day); a run's time stays a UTC instant.

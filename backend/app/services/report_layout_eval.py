@@ -15,6 +15,9 @@ Responsibilities:
 - Bound the work: iteration, output-row and wall-clock caps raise `LayoutLimitError`; a traversal
   that hit its record cap adds a warning and a visible note instead of failing.
 - Count what the caller could not see (never name it) and report it as a note.
+- Apply run-time variables: check the supplied values against the layout's declarations, substitute them into a copy
+  of the tree (`services.report_variables`) so everything below sees literals, fill `{{var.name}}` text, and warn when
+  a value is no longer one of its source field's options.
 - Run `widget` blocks: one component (a table, the figures, the notes) of a module report, for the project
   being evaluated, inserted as blocks (`services.report_widget_run`); the widgets that ran and a digest of
   what each report produced go into the run's provenance.
@@ -52,7 +55,7 @@ Design decisions:
   that refuses its parameters (4xx) is shown as a note too, never as a failed layout; any other error is a
   bug and propagates.
 
-Dependencies: `services.report_layout_tree` (validation), `services.report_fields`,
+Dependencies: `services.report_layout_tree` (validation), `services.report_variables` (run-time variables), `services.report_fields`,
 `services.report_traversal`, `services.report_framework.ReportContext` (record codes),
 `services.link_type_scope` (link type names), `services.report_model` (output blocks),
 `services.report_widgets` and `services.report_widget_run` (widgets), `services.report_math` (equations).
@@ -102,6 +105,13 @@ from app.services.report_model import (
     markdown_to_blocks,
 )
 from app.services.report_traversal import MAX_LINKED, MAX_ROOTS, LinkDirection, linked_records, root_records
+from app.services.report_variables import (
+    PLACEHOLDER_FAMILY,
+    bind_variables,
+    resolve_values,
+    stale_value_warnings,
+    variable_text,
+)
 from app.services.report_widget_run import collect_widget, output_digest, part_blocks, widget_context
 from app.services.report_widgets import WidgetInfo, find_widget, typed_params, widget_available
 
@@ -169,6 +179,7 @@ class EvaluatedLayout:
         record_versions_truncated: Whether more versioned records than `MAX_RECORDED_VERSIONS` were in the
             report, so `record_versions` is incomplete (the digest still covers every record).
         widgets: Keys of the widgets that ran (distinct, sorted); their output is covered by `source_digest`.
+        variables: The values the layout's run-time variables took (empty when it declares none).
     """
 
     family: str
@@ -180,6 +191,7 @@ class EvaluatedLayout:
     record_versions: dict[str, dict[str, int]] = field(default_factory=dict)
     record_versions_truncated: bool = False
     widgets: list[str] = field(default_factory=list)
+    variables: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -242,6 +254,7 @@ def evaluate_layout(
     project_ids: list[uuid.UUID] | None = None,
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
     limit_scale: int = 1,
+    variables: Mapping[str, Any] | None = None,
 ) -> EvaluatedLayout:
     """Runs a layout for the caller behind `resolver`.
 
@@ -258,19 +271,29 @@ def evaluate_layout(
         timeout_seconds: Wall-clock limit.
         limit_scale: Multiplier on the work and output limits; 1 for a synchronous run, `ASYNC_LIMIT_SCALE` for a
             background run.
+        variables: Values for the layout's run-time variables, `{name: value}`; a variable not given takes its default.
 
     Returns:
         The evaluated layout.
 
     Raises:
         InvalidLayoutError: The tree is not valid.
+        VariableValueError: A value is missing, undeclared or unacceptable.
         LayoutLimitError: A work, output or time limit was exceeded (`LayoutTimeoutError` for time).
         ValueError: `ctx` has no root project.
     """
     if ctx.root_project is None:
         raise ValueError("A layout runs for one project; ctx.root_project is required.")
+    assert_valid(tree)
+    declared = tree.get("variables")
+    values = resolve_values(declared, variables, today=ctx.today)
+    if declared:
+        tree = bind_variables(tree, values)  # the evaluator sees only literals
     analysis = assert_valid(tree)
     run = _Run(db, resolver, ctx, ctx.root_project, analysis.refs, title, placeholders, project_ids, timeout_seconds, limit_scale)
+    run.variable_text = variable_text(declared, values)
+    for warning in stale_value_warnings(db, declared, values, run.project_ids):
+        run.warn(warning)
     for node in tree["nodes"]:
         run.evaluate(node, {})
     document = None
@@ -279,7 +302,7 @@ def evaluate_layout(
     versions, truncated = run.record_versions()
     return EvaluatedLayout(
         tree["family"], document, run.sheets, run.warnings, run.stats, run.source_digest(), versions, truncated,
-        sorted(run.widget_keys),
+        sorted(run.widget_keys), values,
     )
 
 
@@ -301,6 +324,8 @@ class _Run:
     ) -> None:
         self.db, self.resolver, self.ctx, self.project, self.refs = db, resolver, ctx, project, refs
         self.project_ids = project_ids or [p.id for p in ctx.projects] or [project.id]
+        #: `{variable name: printed value}` for `{{var.name}}`.
+        self.variable_text: dict[str, str] = {}
         self.placeholders: dict[str, str] = {
             "project_name": ctx.scope_label, "report_title": title,
             "generated_on": ctx.today.isoformat(), "organisation": ctx.organization.name,
@@ -459,6 +484,8 @@ class _Run:
         name, member = match.group(1), match.group(2)
         if member is None:
             return self.placeholders.get(name, match.group(0)), False
+        if name == PLACEHOLDER_FAMILY:
+            return self.variable_text.get(member, match.group(0)), False
         bound = scope.get(name)
         if bound is None:
             return match.group(0), True

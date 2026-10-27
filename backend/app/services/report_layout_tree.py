@@ -17,6 +17,9 @@ Responsibilities:
 - Hash a tree (`tree_hash`) for versioning and provenance.
 - Check a `widget` block names a component in the widget catalogue (`services.report_widgets`)
   and sets only parameters that report declares, with values of the declared type.
+- Check a layout's run-time `variables` (typed values supplied when it runs: `services.report_variables`) and that
+  every reference to one (`{"var": name}` as a condition value or widget parameter, `{{var.name}}` in text) names a
+  declared variable of a type that fits.
 - Check TeX at save time against the allow-list in `services.report_math` (an `equation` block's `tex`, and the
   `\\( \\)` / `$$ $$` equations written in a text block); the extension point `register_block_spec` stays open for
   other block types.
@@ -35,8 +38,9 @@ Design decisions:
   the link graph's resolver, never at save time (an author may write a layout for a type they
   cannot read).
 
-Dependencies: `services.report_math` (TeX allow-list), `services.report_fields` (field catalogue), `services.report_widgets` (widget catalogue),
-`modules.registry` (reportable types), `services.report_model` (the allow-listed global placeholder names).
+Dependencies: `services.report_math` (TeX allow-list), `services.report_variables` (variable vocabulary),
+`services.report_fields` (field catalogue), `services.report_widgets` (widget catalogue), `modules.registry`
+(reportable types), `services.report_model` (the allow-listed global placeholder names).
 """
 
 from __future__ import annotations
@@ -55,6 +59,19 @@ from app.modules.registry import get_report_field_providers
 from app.services.report_fields import FieldInfo, UnknownReportFieldError, field_catalogue
 from app.services.report_math import MAX_TEX_CHARS, split_math, tex_problem
 from app.services.report_model import PLACEHOLDER_NAMES
+from app.services.report_variables import (
+    FIELD_KINDS,
+    MAX_LIST_VALUES,
+    MAX_OPTIONS,
+    MAX_VARIABLES,
+    NAME_RE,
+    PARAM_TYPES,
+    PLACEHOLDER_FAMILY,
+    TODAY,
+    VARIABLE_TYPES,
+    is_reference,
+    value_problem,
+)
 from app.services.report_widgets import find_widget, list_widgets, param_problems
 
 TREE_SCHEMA_VERSION = 1
@@ -248,6 +265,8 @@ class TreeValidator:
         self._catalogues: dict[str, dict[str, FieldInfo] | None] = {}
         self._sheet_names: set[str] = set()
         self.widget_reports: set[str] = set()
+        #: `{name: declaration}` of the layout's valid variables (a reference is checked against these).
+        self.variables: dict[str, dict[str, Any]] = {}
 
     # --- driver ----------------------------------------------------------------------------
 
@@ -265,7 +284,7 @@ class TreeValidator:
             self.error("", f"The layout is too large ({size} bytes; the limit is {MAX_TREE_BYTES}).")
             return self.analysis
 
-        self.check_keys(tree, "", required=("schema_version", "family", "nodes"), optional=("orientation",))
+        self.check_keys(tree, "", required=("schema_version", "family", "nodes"), optional=("orientation", "variables"))
         if tree.get("schema_version") != TREE_SCHEMA_VERSION:
             self.error("schema_version", f"Must be {TREE_SCHEMA_VERSION}.")
         declared = tree.get("family")
@@ -280,6 +299,8 @@ class TreeValidator:
                 self.error("orientation", "Only a document layout has a page orientation.")
             elif tree["orientation"] not in ORIENTATIONS:
                 self.error("orientation", f"Must be one of: {', '.join(ORIENTATIONS)}.")
+        if "variables" in tree:
+            self.variable_declarations(tree["variables"], "variables")
         nodes = tree.get("nodes")
         if isinstance(nodes, list):
             self.nodes(nodes, "nodes", 1)
@@ -376,6 +397,8 @@ class TreeValidator:
         else:
             self.error(path, "Must be lower-case letters, digits and underscores, starting with a letter (max 32).")
             return default
+        if chosen == PLACEHOLDER_FAMILY:
+            self.error(path, f'The name "{PLACEHOLDER_FAMILY}" is reserved for variables ({{{{var.name}}}}); choose another.')
         if chosen in self.scope:
             self.error(
                 path if value is not None else path.rsplit(".", 1)[0],
@@ -568,6 +591,9 @@ class TreeValidator:
             self.error(f"{path}.value", "Required.")
             return
         value = cond["value"]
+        if isinstance(value, dict):
+            self.variable_value(value, f"{path}.value", kind, many=op in LIST_OPERATORS)
+            return
         if op in LIST_OPERATORS:
             if not isinstance(value, list) or not 0 < len(value) <= MAX_IN_VALUES:
                 self.error(f"{path}.value", f"Must be a list of 1 to {MAX_IN_VALUES} values.")
@@ -635,7 +661,127 @@ class TreeValidator:
                 if name not in PLACEHOLDER_NAMES:
                     self.error(path, f'Unknown placeholder "{{{{{name}}}}}". Global ones: {", ".join(PLACEHOLDER_NAMES)}.')
                 continue
+            if name == PLACEHOLDER_FAMILY:
+                if member not in self.variables:
+                    self.error(path, f'"{member}" is not a variable of this layout. Variables: {", ".join(self.variables) or "none"}.')
+                continue
             self.reference(name, member, path)
+
+    # --- run-time variables ----------------------------------------------------------------
+
+    def variable_declarations(self, declarations: Any, path: str) -> None:
+        """Validates the root `variables` list and records the valid ones for later references."""
+        if not isinstance(declarations, list) or not 0 < len(declarations) <= MAX_VARIABLES:
+            self.error(path, f"Must be a list of 1 to {MAX_VARIABLES} variables (leave it out when there are none).")
+            return
+        for i, declaration in enumerate(declarations):
+            here = f"{path}[{i}]"
+            if not isinstance(declaration, dict):
+                self.error(here, "Must be an object.")
+                continue
+            self.check_keys(declaration, here, required=("name", "type"), optional=("label", "multiple", "default", "options", "source"))
+            name, vtype = declaration.get("name"), declaration.get("type")
+            if not isinstance(name, str) or not NAME_RE.match(name):
+                self.error(f"{here}.name", "Must be lower-case letters, digits and underscores, starting with a letter (max 32).")
+                continue
+            if name in self.variables:
+                self.error(f"{here}.name", f'Another variable is already called "{name}".')
+                continue
+            if vtype not in VARIABLE_TYPES:
+                self.error(f"{here}.type", f"Must be one of: {', '.join(VARIABLE_TYPES)}.")
+                continue
+            self._variable_body(declaration, here, name, vtype)
+            self.variables[name] = declaration
+
+    def _variable_body(self, declaration: dict[str, Any], path: str, name: str, vtype: str) -> None:
+        """Checks the optional keys of one declaration (label, list, options, source, default)."""
+        if "label" in declaration:
+            self.text(declaration["label"], f"{path}.label", limit=200)
+        multiple = declaration.get("multiple", False)
+        if not isinstance(multiple, bool):
+            self.error(f"{path}.multiple", "Must be true or false.")
+            multiple = False
+        elif multiple and vtype == "bool":
+            self.error(f"{path}.multiple", "A yes/no variable holds one value.")
+        options = declaration.get("options")
+        if "options" in declaration:
+            if vtype != "enum":
+                self.error(f"{path}.options", 'Only an "enum" variable has options.')
+            elif "source" in declaration:
+                self.error(f"{path}.options", 'Give "options" or "source", not both.')
+            elif (
+                not isinstance(options, list) or not 0 < len(options) <= MAX_OPTIONS
+                or not all(value_problem("text", o) is None for o in options) or len(set(options)) != len(options)
+            ):
+                self.error(f"{path}.options", f"Must be a list of 1 to {MAX_OPTIONS} different texts.")
+                options = None
+        if "source" in declaration:
+            self._variable_source(declaration["source"], f"{path}.source", vtype)
+        elif vtype == "enum" and "options" not in declaration:
+            self.error(path, 'An "enum" variable needs "options" or a "source" field to offer its values from.')
+        if "default" in declaration:
+            self._variable_default(declaration["default"], f"{path}.default", vtype, multiple, options)
+
+    def _variable_source(self, source: Any, path: str, vtype: str) -> None:
+        """Checks `source` is a field of a reportable type whose values fit the variable's type."""
+        if not isinstance(source, dict):
+            self.error(path, "Must be an object.")
+            return
+        self.check_keys(source, path, required=("record_type", "field"))
+        record_type, key = source.get("record_type"), source.get("field")
+        fields = self.fields_of(record_type) if isinstance(record_type, str) else None
+        if fields is None:
+            self.error(f"{path}.record_type", f"Must be a reportable record type: {', '.join(sorted(get_report_field_providers()))}.")
+        elif not isinstance(key, str) or key not in fields:
+            self.error(f"{path}.field", f'"{key}" is not a field of {record_type}. Fields: {", ".join(sorted(fields))}.')
+        elif fields[key].kind not in FIELD_KINDS[vtype]:
+            self.error(path, f'A {vtype} variable cannot take its values from {record_type}.{key}, which is a {fields[key].kind} field.')
+
+    def _variable_default(self, default: Any, path: str, vtype: str, multiple: bool, options: list[str] | None) -> None:
+        """Checks a default is a value (or, for a list, a list of values) of the variable's type."""
+        items = default if multiple else [default]
+        if multiple and (not isinstance(default, list) or not 0 < len(default) <= MAX_LIST_VALUES):
+            self.error(path, f"Must be a list of 1 to {MAX_LIST_VALUES} values.")
+            return
+        for item in items:
+            if vtype == "date" and item == TODAY:
+                continue
+            problem = value_problem(vtype, item)
+            if problem:
+                self.error(path, problem)
+            elif options is not None and item not in options:
+                self.error(path, f"Must be one of the options: {', '.join(options)}.")
+
+    def variable_value(self, ref: Any, path: str, kind: str, *, many: bool) -> None:
+        """Checks a condition's `value` reference: a declared variable that fits a field of `kind`.
+
+        Args:
+            ref: The `value` (anything but a `{"var": name}` is an error).
+            path: Where it is.
+            kind: The compared field's kind.
+            many: Whether the operator takes a list (`in` / `not_in`), which needs a list variable.
+        """
+        declaration = self.variable_named(ref, path)
+        if declaration is None:
+            return
+        if kind not in FIELD_KINDS[declaration["type"]]:
+            self.error(path, f'The variable "{declaration["name"]}" is of type {declaration["type"]}; this field is a {kind} field.')
+        elif many != bool(declaration.get("multiple")):
+            self.error(
+                path,
+                f'"{declaration["name"]}" holds a list, which only "in" and "not_in" take.' if not many
+                else f'"in" and "not_in" need a list variable; "{declaration["name"]}" holds one value (declare it with multiple).',
+            )
+
+    def variable_named(self, ref: Any, path: str) -> dict[str, Any] | None:
+        """The declaration a `{"var": name}` reference names, or `None` (with an error) when it is malformed or undeclared."""
+        if not is_reference(ref):
+            self.error(path, 'A variable is written {"var": "<name>"}.')
+            return None
+        declaration = self.variables.get(ref["var"])
+        if declaration is None:
+            self.error(path, f'"{ref["var"]}" is not a variable of this layout. Variables: {", ".join(self.variables) or "none"}.')
+        return declaration
 
     def reference(self, alias: str, member: str, path: str) -> str | None:
         """Checks `alias.member` is valid in scope, notes the reference and returns the value's kind."""
@@ -797,6 +943,36 @@ def _validate_widget_sort(v: TreeValidator, items: Any, path: str) -> None:
             v.error(f"{here}.descending", "Must be true or false.")
 
 
+def _widget_param_problems(v: TreeValidator, widget: Any, params: Any, path: str) -> list[tuple[str, str]]:
+    """`param_problems` for a widget's `params`, where a value may be a `{"var": name}` reference.
+
+    A reference must name a declared variable that holds one value of a type the parameter accepts; the value
+    it takes at run time is checked as a literal then. Errors about a reference are recorded on `v` directly
+    (they have their own path); the rest are returned.
+    """
+    if not isinstance(params, dict):
+        return param_problems(widget, params)
+    declared = {p.name: p for p in widget.params}
+    literal: dict[str, Any] = {}
+    bound = 0
+    for name, value in params.items():
+        if not is_reference(value):
+            literal[name] = value
+            continue
+        bound += 1
+        declaration = v.variable_named(value, f"{path}.{name}")
+        param = declared.get(name)
+        if param is None:
+            literal[name] = value  # reported below as an unknown parameter
+        elif declaration is not None and param.type not in PARAM_TYPES[declaration["type"]]:
+            v.error(f"{path}.{name}", f'The variable "{declaration["name"]}" is of type {declaration["type"]}; this parameter is a {param.type}.')
+        elif declaration is not None and declaration.get("multiple"):
+            v.error(f"{path}.{name}", f'A report parameter takes one value; "{declaration["name"]}" holds a list.')
+    if bound and not literal:
+        return []
+    return param_problems(widget, literal)
+
+
 def _validate_widget(v: TreeValidator, node: dict[str, Any], path: str) -> None:
     v.check_keys(node, path, required=("type", "key"), optional=("params", "empty_text", "sort"))
     key = v.text(node.get("key", MISSING), f"{path}.key", limit=100)
@@ -811,7 +987,7 @@ def _validate_widget(v: TreeValidator, node: dict[str, Any], path: str) -> None:
         v.error(f"{path}.key", f'Unknown widget "{key}". Widgets: {", ".join(w.key for w in list_widgets())}.')
         return
     if "params" in node:
-        problems = param_problems(widget, node["params"])
+        problems = _widget_param_problems(v, widget, node["params"], f"{path}.params")
         for name, message in problems:
             v.error(f"{path}.params.{name}" if name else f"{path}.params", message)
         if problems:

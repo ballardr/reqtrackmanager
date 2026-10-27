@@ -43,8 +43,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -123,7 +124,7 @@ def _now() -> datetime:
 def enqueue(
     db: Session, user: User, *, organization: Organization, project: Project | None, layout: ReportLayout,
     version: ReportLayoutVersion, fmt: str, report_template_id: uuid.UUID | None, include_children: bool = False,
-    requested_project_ids: Sequence[uuid.UUID] | None = None,
+    requested_project_ids: Sequence[uuid.UUID] | None = None, variables: Mapping[str, Any] | None = None,
 ) -> GeneratedReport:
     """Queues a background run (the caller commits).
 
@@ -141,6 +142,8 @@ def enqueue(
         report_template_id: The branding template, if any.
         include_children: Also read readable child projects (project-level run).
         requested_project_ids: The projects selected for an organisation-wide run, `None` for all readable.
+        variables: The layout's run-time variable values, already resolved by the route (so a bad value fails the
+            request, not the job); the job runs with exactly these.
 
     Returns:
         The new `queued` row.
@@ -162,7 +165,7 @@ def enqueue(
         scope=SCOPE_PROJECT if project else "organization", layout_id=layout.id, layout_name=layout.name,
         layout_version=version.version, tree_hash=version.tree_hash, requested_by=user.id, created_at=_now(),
         format=fmt, engine_version=custom_report_run.ENGINE_VERSION,
-        params=custom_report_run.run_params(report_template_id, include_children, requested_project_ids),
+        params=custom_report_run.run_params(report_template_id, include_children, requested_project_ids, variables),
         scope_project_ids=[str(project.id)] if project else [], widgets=[], record_counts={}, stats={},
         source_digest="", status=STATUS_QUEUED,
     )
@@ -261,9 +264,12 @@ def run_job(db: Session, row: GeneratedReport) -> None:
         if project is not None:
             run = custom_report_run.run_project_layout(
                 db, user, project, layout, version, include_children=bool(params.get("include_children")), background=True,
+                variables=params.get("variables"),
             )
         else:
-            run = custom_report_run.run_organization_layout(db, user, organization, layout, version, project_ids=requested, background=True)
+            run = custom_report_run.run_organization_layout(
+                db, user, organization, layout, version, project_ids=requested, background=True, variables=params.get("variables"),
+            )
         rendered = custom_report_run.render_file(db, run, row.format, template)
     except LayoutTimeoutError:
         return _fail(db, row, FAILURE_TIME)

@@ -1804,6 +1804,15 @@ const en = {
     effectiveLoading: "Loading inherited content…",
   },
   // Background runs of custom reports: the panel on the Reports pages.
+  reportVariables: {
+    groupLabel: "Report variables",
+    choose: "Choose…",
+    chooseSeveral: "Choose one or more",
+    commaHint: "Separate values with commas.",
+    needValues: (labels: string[]) =>
+      `Choose a value for ${labels.join(", ")} to run this report.`,
+    notRunYet: "This report runs once its variables have values.",
+  },
   reportRuns: {
     title: "Background reports",
     description:

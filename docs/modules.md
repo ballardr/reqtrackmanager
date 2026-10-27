@@ -1648,6 +1648,38 @@ flowchart LR
 - **Not in MCP.** `run_custom_report` returns the on-screen JSON; a file has no MCP form, so there are no MCP tools for
   background runs.
 
+
+### 4t. Custom reports: run-time variables (Module 10 Phase 10b)
+
+A layout declares typed variables the person supplies when running it, so one layout serves any selection (for example
+the categories to show) without a copy per scope. Variables narrow a report; they never widen what the caller may read.
+
+```mermaid
+flowchart LR
+    L["Layout tree<br/>variables + {var: name}"] --> V["resolve_values<br/>supplied, else default"]
+    U["Run form<br/>GET .../variables"] --> S["values"]
+    S --> V
+    V --> B["bind_variables<br/>copy with literals"]
+    B --> C["validate again"]
+    C --> E["evaluate<br/>(unchanged)"]
+    D["ReportField.domain<br/>(db, project ids)"] --> U
+    V --> P["GeneratedReport.params.variables"]
+```
+
+- **Declaration.** Root `variables`: `name`, `type` (`text`, `number`, `date`, `bool`, `enum`), `label`, `multiple`, `default`
+  (a date may default to `today`), and for an enum either `options` or a `source {record_type, field}`. The text view writes
+  them as `@var` lines and references as `$name`.
+- **References** are `{"var": name}` in a condition `value` (kind and list-ness checked at save), a widget parameter (one value
+  of a fitting parameter type) and `{{var.name}}` in text. Substitution happens before evaluation, so no evaluator, operator
+  or widget has a variable case.
+- **Value domain hook.** `ReportField.domain(db, project_ids) -> list[str]` offers a closed list a project defines; an enum's
+  labels and the status labels need none; `services.report_fields.field_domain` is the single read path. A module whose field names a
+  project-defined row passes the lookup table's `project_id` column to `name_lookup_field`. A field with no domain takes free input.
+- **Runs.** `variables` is accepted by both run routes, `.../runs`, the draft preview and the MCP `run_custom_report`; 422
+  `variable_values` lists each problem by variable. The values used are stored on `GeneratedReport.params` and echoed by the
+  run form (`GET .../custom-reports/{id}/variables`, and `POST .../report-layouts/variables` for a draft). The catalogue entry
+  carries the run form as `variables`.
+
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 
 A module that reports on its records declares a `ReportDefinition` per report on

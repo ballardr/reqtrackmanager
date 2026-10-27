@@ -27,7 +27,7 @@ Dependencies: `services.report_fields`, `services.custom_report_run`, `services.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -47,7 +47,7 @@ from app.modules.registry import (
 )
 from app.services import custom_report_run, report_render
 from app.services.report_fields import FieldInfo, field_catalogue
-from app.services.report_layout_tree import GROUP_FIELDS, TREE_SCHEMA_VERSION, assert_valid
+from app.services.report_layout_tree import GROUP_FIELDS, TREE_SCHEMA_VERSION, TreeError, assert_valid, validate_tree
 from app.services.report_model import PLACEHOLDER_NAMES
 
 #: Most rows of one sheet a preview returns.
@@ -173,8 +173,14 @@ def _preview_of(run: custom_report_run.LayoutRun) -> Preview:
     return Preview(run.family, html, sheets, warnings, records_read, run.duration_ms, len(run.projects))
 
 
+def validation_errors(tree: dict[str, Any]) -> list[TreeError]:
+    """The validator's problems with a draft tree (empty when it may be run)."""
+    return validate_tree(tree).errors
+
+
 def preview_for_project(
     db: Session, user: User, project: Project, *, tree: dict[str, Any], name: str = "", include_children: bool = False,
+    variables: Mapping[str, Any] | None = None,
 ) -> Preview:
     """Evaluates a draft for one project.
 
@@ -185,6 +191,7 @@ def preview_for_project(
         tree: The draft; validated here (it declares its own family).
         name: The report title to print.
         include_children: Also read the project's readable child projects.
+        variables: Values for the draft's run-time variables (a variable not given takes its default).
 
     Returns:
         The preview.
@@ -192,16 +199,19 @@ def preview_for_project(
     Raises:
         InvalidLayoutError: The tree is not valid.
         LayoutLimitError: A work, output or time limit was exceeded.
+        VariableValueError: A variable's value is missing, undeclared or unacceptable.
     """
     assert_valid(tree)
     layout, version = _transient(str(tree["family"]), tree, project.organization_id, project.id, name)
-    run = custom_report_run.run_project_layout(db, user, project, layout, version, include_children=include_children)
+    run = custom_report_run.run_project_layout(
+        db, user, project, layout, version, include_children=include_children, variables=variables,
+    )
     return _preview_of(run)
 
 
 def preview_for_organization(
     db: Session, user: User, organization: Organization, *, tree: dict[str, Any], name: str = "",
-    project_ids: Sequence[uuid.UUID] | None = None,
+    project_ids: Sequence[uuid.UUID] | None = None, variables: Mapping[str, Any] | None = None,
 ) -> Preview:
     """Evaluates a draft organisation layout once per project the caller can read (or the selected ones), merged.
 
@@ -212,5 +222,7 @@ def preview_for_organization(
     """
     assert_valid(tree)
     layout, version = _transient(str(tree["family"]), tree, organization.id, None, name)
-    run = custom_report_run.run_organization_layout(db, user, organization, layout, version, project_ids=project_ids)
+    run = custom_report_run.run_organization_layout(
+        db, user, organization, layout, version, project_ids=project_ids, variables=variables,
+    )
     return _preview_of(run)

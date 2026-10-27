@@ -48,7 +48,7 @@ import re
 import time
 import uuid
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -62,6 +62,7 @@ from app.models.report_content import CUSTOM_REPORT_KEY_PREFIX
 from app.models.report_layout import FAMILY_DOCUMENT, ReportLayout, ReportLayoutVersion
 from app.models.user import User
 from app.services import definition_suppression, report_layout_scope, report_layouts
+from app.services.client_date import effective_today
 from app.services.downloads import filename_safe
 from app.services.link_graph import ArtefactResolver
 from app.services.report_content import (
@@ -77,6 +78,7 @@ from app.services.report_framework import (
     ReportProjectOut,
     ReportResult,
     ReportSection,
+    ReportVariableOut,
     readable_projects,
 )
 from app.services.report_layout_eval import (
@@ -105,6 +107,7 @@ from app.services.report_model import (
     Table,
 )
 from app.services.report_render import RenderedFile, RenderInput, formats_for, render
+from app.services.report_variables import describe_variables
 
 ENGINE_VERSION = "1"
 """Bumped when evaluation semantics change, so a provenance row says which engine produced a report."""
@@ -189,19 +192,25 @@ def available_formats(family: str, tree: dict[str, Any] | None = None) -> list[s
 def _evaluate_project(
     db: Session, user: User, organization: Organization, root: Project, projects: Sequence[Project],
     version: ReportLayoutVersion, title: str, timeout: float, limit_scale: int = 1,
+    variables: Mapping[str, Any] | None = None,
 ) -> EvaluatedLayout:
-    """Evaluates the tree for one root project with that project's resolver (the authorisation point)."""
+    """Evaluates the tree for one root project with that project's resolver (the authorisation point).
+
+    The run's "today" is the caller's own calendar day (`X-Client-Date`), which a date variable's `today` default uses.
+    """
     resolver = ArtefactResolver(db, root, user.id, include_related=True)
-    ctx = ReportContext(module_key=MODULE_KEY, organization=organization, projects=list(projects), root_project=root)
+    ctx = ReportContext(
+        module_key=MODULE_KEY, organization=organization, projects=list(projects), root_project=root, today=effective_today(),
+    )
     return evaluate_layout(
         db, resolver, ctx, version.tree, title=title, project_ids=[p.id for p in projects], timeout_seconds=timeout,
-        limit_scale=limit_scale,
+        limit_scale=limit_scale, variables=variables,
     )
 
 
 def run_project_layout(
     db: Session, user: User, project: Project, layout: ReportLayout, version: ReportLayoutVersion, *,
-    include_children: bool = False, background: bool = False,
+    include_children: bool = False, background: bool = False, variables: Mapping[str, Any] | None = None,
 ) -> LayoutRun:
     """Runs a layout for `project`.
 
@@ -213,12 +222,14 @@ def run_project_layout(
         version: The version to run (the layout's current one).
         include_children: Also read the project's readable child projects' records.
         background: Run with the larger limits of a background run (`report_layout_eval.ASYNC_*`).
+        variables: Values for the layout's run-time variables (a variable not given takes its default).
 
     Returns:
         The run.
 
     Raises:
         LayoutLimitError: A work, output or time limit was exceeded.
+        VariableValueError: A variable's value is missing, undeclared or unacceptable.
     """
     organization = db.get(Organization, project.organization_id)
     assert organization is not None
@@ -226,7 +237,7 @@ def run_project_layout(
     clock = time.monotonic()
     projects = readable_projects(db, user, organization=organization, root_project=project, include_children=include_children)
     scale, timeout = (ASYNC_LIMIT_SCALE, ASYNC_TIMEOUT_SECONDS) if background else (1, DEFAULT_TIMEOUT_SECONDS)
-    evaluated = _evaluate_project(db, user, organization, project, projects, version, layout.name, timeout, scale)
+    evaluated = _evaluate_project(db, user, organization, project, projects, version, layout.name, timeout, scale, variables)
     return LayoutRun(
         layout, version, organization, projects, project, evaluated, started, round((time.monotonic() - clock) * 1000),
     )
@@ -234,7 +245,7 @@ def run_project_layout(
 
 def run_organization_layout(
     db: Session, user: User, organization: Organization, layout: ReportLayout, version: ReportLayoutVersion, *,
-    project_ids: Sequence[uuid.UUID] | None = None, background: bool = False,
+    project_ids: Sequence[uuid.UUID] | None = None, background: bool = False, variables: Mapping[str, Any] | None = None,
 ) -> LayoutRun:
     """Runs an organisation layout once per project the caller can read and merges the results.
 
@@ -246,11 +257,13 @@ def run_organization_layout(
         version: The version to run.
         project_ids: The projects to include (narrowing only); `None` for every project the caller can read.
         background: Run with the larger limits of a background run (`report_layout_eval.ASYNC_*`).
+        variables: Values for the layout's run-time variables, the same for every project.
 
     Returns:
         The merged run; its `projects` are the ones evaluated.
 
     Raises:
+        VariableValueError: A variable's value is missing, undeclared or unacceptable.
         ProjectsNotInScopeError: A requested project is not one the caller holds a role in.
         FanOutTooLargeError: More than `MAX_FANOUT_PROJECTS` projects would be evaluated.
         NoProjectsToRunError: No project is left to evaluate.
@@ -283,7 +296,9 @@ def run_organization_layout(
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise LayoutTimeoutError("The report took too long to run. Select fewer projects or narrow the layout.")
-        part = _evaluate_project(db, user, organization, project, [project], version, layout.name, remaining, scale)
+        part = _evaluate_project(
+            db, user, organization, project, [project], version, layout.name, remaining, scale, variables,
+        )
         produced += part.stats.blocks + part.stats.rows
         if produced > MAX_OUTPUT * scale:
             raise LayoutLimitError("The report is too large. Select fewer projects or narrow the layout.")
@@ -353,7 +368,7 @@ def merge_evaluations(parts: Sequence[tuple[Project, EvaluatedLayout]], title: s
                 target.rows.extend([project.name, *row] for row in sheet.rows)
         sheets = list(merged.values())
     widgets = sorted({key for _, part in parts for key in part.widgets})
-    return EvaluatedLayout(family, document, sheets, warnings, stats, digest, versions, truncated, widgets)
+    return EvaluatedLayout(family, document, sheets, warnings, stats, digest, versions, truncated, widgets, parts[0][1].variables)
 
 
 # --- output ------------------------------------------------------------------------------------------------
@@ -511,7 +526,7 @@ def provenance_fields(
         "scope": SCOPE_PROJECT if run.root_project else SCOPE_ORGANIZATION,
         "layout_id": run.layout.id, "layout_name": run.layout.name, "layout_version": run.version.version,
         "tree_hash": run.version.tree_hash, "created_at": run.generated_at, "engine_version": ENGINE_VERSION,
-        "params": run_params(report_template_id, include_children, requested_project_ids),
+        "params": run_params(report_template_id, include_children, requested_project_ids, run.evaluated.variables),
         "scope_project_ids": [str(p.id) for p in run.projects], "widgets": list(run.evaluated.widgets),
         "record_counts": dict(counts),
         "stats": {
@@ -525,12 +540,18 @@ def provenance_fields(
 
 def run_params(
     report_template_id: uuid.UUID | None, include_children: bool, requested_project_ids: Sequence[uuid.UUID] | None,
+    variables: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """The run parameters stored on the provenance row (and read back to run a background job)."""
+    """The run parameters stored on the provenance row (and read back to run a background job).
+
+    `variables` are the values the layout's run-time variables took: configuration, kept so a run can be repeated
+    and audited, never written to a log line.
+    """
     return {
         "report_template_id": str(report_template_id) if report_template_id else None,
         "include_children": include_children,
         "requested_project_ids": [str(p) for p in requested_project_ids] if requested_project_ids is not None else None,
+        "variables": dict(variables or {}),
     }
 
 
@@ -574,9 +595,14 @@ def slug_for(layout: ReportLayout) -> str:
 
 def _entry(
     db: Session, layout: ReportLayout, *, scope: str, path: str, projects: Sequence[Project] = (),
+    domain_projects: Sequence[Project] = (),
 ) -> ReportCatalogueEntryOut:
+    """The catalogue entry of a layout, with its run form (`variables`) built over `domain_projects`' definitions."""
     version = report_layouts.get_version(db, layout.id, layout.current_version)
     tree = version.tree if version is not None else {"nodes": []}
+    form = describe_variables(
+        db, tree.get("variables"), [p.id for p in domain_projects][:MAX_FANOUT_PROJECTS], today=effective_today(),
+    )
     return ReportCatalogueEntryOut(
         module_key=MODULE_KEY, module_name=MODULE_NAME, key=str(layout.id), slug=slug_for(layout), title=layout.name,
         description=layout.description or "A custom report layout.", scope="project" if scope == "project" else "organization",
@@ -584,13 +610,17 @@ def _entry(
         supports_include_children=scope == "project", supports_project_filter=False,
         supports_project_multi_filter=scope != "project",
         projects=[ReportProjectOut(id=p.id, name=p.name) for p in projects], params=[],
+        variables=[ReportVariableOut.model_validate(v) for v in form],
     )
 
 
 def project_entries(db: Session, project: Project) -> list[ReportCatalogueEntryOut]:
     """The layouts a project's runners can run: its effective set minus the ones it has hidden."""
     return [
-        _entry(db, s.layout, scope="project", path=f"/api/v1/projects/{project.id}/custom-reports/{s.layout.id}/run")
+        _entry(
+            db, s.layout, scope="project", path=f"/api/v1/projects/{project.id}/custom-reports/{s.layout.id}/run",
+            domain_projects=[project],
+        )
         for s in report_layout_scope.resolve_project_layouts(db, project) if not s.hidden
     ]
 
@@ -604,7 +634,10 @@ def org_entries(db: Session, user: User, organization_id: uuid.UUID) -> list[Rep
         return []
     readable = readable_projects(db, user, organization=organization, root_project=None, include_children=False)
     return [
-        _entry(db, layout, scope="organization", path=f"/api/v1/orgs/{organization_id}/custom-reports/{layout.id}/run", projects=readable)
+        _entry(
+            db, layout, scope="organization", path=f"/api/v1/orgs/{organization_id}/custom-reports/{layout.id}/run",
+            projects=readable, domain_projects=readable,
+        )
         for layout in layouts
     ]
 

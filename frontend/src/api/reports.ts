@@ -62,6 +62,55 @@ export interface ReportCatalogueEntry {
   /** For organisation-level entries: exactly the projects the caller may narrow the report to (or choose among). */
   projects: { id: string; name: string }[];
   params: ReportParam[];
+  /** A custom report's run-time variables (its run form); empty for a module report, which declares `params`. */
+  variables: ReportVariable[];
+}
+
+/** A custom report layout's run-time variable as the run form shows it (`ReportVariableOut`). */
+export interface ReportVariable {
+  name: string;
+  type: "text" | "number" | "date" | "bool" | "enum";
+  label: string;
+  /** Takes a list of values. */
+  multiple: boolean;
+  /** What the form starts with (a date's `today` is already the person's own day); `null` when the person must choose. */
+  default: VariableValue | null;
+  /** The values on offer; `null` for free input. */
+  options: string[] | null;
+  /** The record field the options come from. */
+  source: { record_type: string; field: string } | null;
+}
+
+/** One variable's value: a single value, or a list for a variable that takes several. */
+export type VariableValue = string | number | boolean | string[] | number[];
+
+/** The values of a report's variables by name; absent or `null` means not chosen yet. */
+export type VariableValues = Record<string, VariableValue | null>;
+
+/** The form's starting values: each variable's default. */
+export function variableDefaults(variables: ReportVariable[]): VariableValues {
+  return Object.fromEntries(variables.map((v) => [v.name, v.default]));
+}
+
+/** Whether a variable has a usable value (a list needs at least one entry; a blank is not a value). */
+export function hasVariableValue(value: VariableValue | null | undefined): boolean {
+  if (value === null || value === undefined || value === "") return false;
+  return !(Array.isArray(value) && value.length === 0);
+}
+
+/** The names of the variables that still need a value before the report can run. */
+export function missingVariables(variables: ReportVariable[], values: VariableValues): string[] {
+  return variables.filter((v) => !hasVariableValue(values[v.name])).map((v) => v.name);
+}
+
+/**
+ * The `variables` run value: the chosen values as JSON (the framework sends it as the `variables` query
+ * parameter), omitted when the report has no variables so its request is unchanged.
+ */
+export function variablesRunValue(variables: ReportVariable[], values: VariableValues): string | undefined {
+  if (variables.length === 0) return undefined;
+  const chosen = Object.fromEntries(variables.filter((v) => hasVariableValue(values[v.name])).map((v) => [v.name, values[v.name]]));
+  return JSON.stringify(chosen);
 }
 
 /** One table of a report (`ReportSectionOut`). */
@@ -201,6 +250,7 @@ export const reportsApi = {
     if (values.include_children) body.include_children = true;
     if (typeof values.project_ids === "string" && values.project_ids) body.project_ids = values.project_ids.split(",");
     if (values.report_template_id) body.report_template_id = values.report_template_id;
+    if (typeof values.variables === "string" && values.variables) body.variables = JSON.parse(values.variables);
     return api.post<ReportRun>(entry.path.replace(/\/run$/, "/runs"), body);
   },
 };

@@ -122,6 +122,12 @@ Reads a custom report layout with its tree (needs the layout-management permissi
 
 Parameters: `layout_id*` (string), `project_id` (string), `organization_id` (string), `version` (integer)
 
+## `get_report_layout_variables` (read)
+
+Lists the run-time variables of a custom report layout: what `run_custom_report` takes as `variables`.
+
+Parameters: `layout_id*` (string), `project_id` (string), `organization_id` (string), `project_ids` (list[string])
+
 ## `get_requirement` (read)
 
 Gets a single requirement's full current detail.
@@ -266,7 +272,7 @@ Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (st
 
 Runs a custom report layout and returns the report as data.
 
-Parameters: `layout_id*` (string), `project_id` (string), `organization_id` (string), `include_children` (boolean), `project_ids` (list[string])
+Parameters: `layout_id*` (string), `project_id` (string), `organization_id` (string), `include_children` (boolean), `project_ids` (list[string]), `variables` (object)
 
 ## `save_report_layout_version` (write)
 

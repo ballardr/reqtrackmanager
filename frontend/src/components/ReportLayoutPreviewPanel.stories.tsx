@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { expect, userEvent, waitFor, within } from "storybook/test";
+import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
+import { buildReportVariable } from "../testing/reportFixtures";
 import { buildDocumentPreview, buildLayoutApi, buildSheetPreview } from "../testing/reportLayoutFixtures";
 import { ReportLayoutPreviewPanel } from "./ReportLayoutPreviewPanel";
 
@@ -25,6 +26,30 @@ export const ADocumentShowsInAFullySandboxedFrame: Story = {
     await expect(frame).toHaveAttribute("srcdoc", expect.stringContaining("Requirements of Atlas"));
     await expect(args.api.preview).toHaveBeenCalledWith({ text: "@layout document\n", name: "Requirements", include_children: false, project_ids: undefined });
     await expect(canvas.getByRole("status")).toHaveTextContent("3 records read across 1 project in 12 ms.");
+  },
+};
+
+const VARIABLE_TEXT = "@layout document\n@var categories enum list from requirement.category\n\n@heading Requirements\n";
+
+/** The draft's variables become a form; the preview waits for a required one and sends the chosen values. */
+export const TheDraftsVariablesAreAskedForBeforeThePreviewRuns: Story = {
+  args: {
+    text: VARIABLE_TEXT,
+    api: buildLayoutApi([], { draftVariables: fn(async () => ({ ok: true, variables: [buildReportVariable()], errors: [] })) }),
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("button", { name: /Categories/ })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Run preview" })).toBeDisabled();
+    await expect(canvas.getByText("Choose a value for Categories to run this report.")).toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: /Categories/ }));
+    await userEvent.click(await within(document.body).findByRole("checkbox", { name: "Usability" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Run preview" }));
+
+    await waitFor(() => expect(args.api.preview).toHaveBeenCalledWith(expect.objectContaining({ variables: { categories: ["Usability"] } })));
+    // Only the declarations were sent to build the form, never the whole draft.
+    await expect(args.api.draftVariables).toHaveBeenCalledWith("@layout document\n@var categories enum list from requirement.category\n");
   },
 };
 

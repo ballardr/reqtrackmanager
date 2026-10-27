@@ -200,3 +200,6 @@ frontend/storybook-static/
 .playwright-mcp/*
 
 mcp-server/.ruff_cache/*
+
+# macOS
+.DS_Store

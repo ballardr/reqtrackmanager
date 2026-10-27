@@ -289,6 +289,31 @@ REQUIREMENTS_BY_COMPONENT_LAYOUT = {
 """A small custom report layout: the project's requirements grouped by component."""
 
 
+REQUIREMENTS_BY_CATEGORY_LAYOUT = {
+    "schema_version": 1, "family": "document", "orientation": "portrait",
+    "variables": [
+        {
+            "name": "categories", "type": "enum", "multiple": True, "label": "Categories",
+            "source": {"record_type": "requirement", "field": "category"},
+        },
+    ],
+    "nodes": [
+        {"type": "heading", "text": "{{report_title}}"},
+        {"type": "text", "text": "Requirements of **{{project_name}}** in the chosen categories: {{var.categories}}."},
+        {
+            "type": "table",
+            "source": {
+                "record_type": "requirement", "sort": [{"field": "title"}],
+                "where": [{"field": "category", "op": "in", "value": {"var": "categories"}}],
+            },
+            "columns": [{"field": "code", "label": "Code"}, {"field": "category", "label": "Category"}, {"field": "title", "label": "Requirement"}],
+            "empty_text": "No requirements in these categories.",
+        },
+    ],
+}
+"""A custom report layout with a run-time variable: the person chooses which categories to show when running it."""
+
+
 CONTEXT_OVERVIEW_LAYOUT = {
     "schema_version": 1, "family": "document", "orientation": "landscape",
     "nodes": [
@@ -1044,6 +1069,9 @@ def main() -> None:
         h_g, f"/projects/{gamma5['id']}", "E2E Gamma-5 layout", "Gamma-5's own layout.", REQUIREMENTS_BY_COMPONENT_LAYOUT,
     )
     hide_report_layout(h_g, gamma6["id"], org_layout["id"])
+    create_report_layout(
+        h_g, f"/orgs/{gamma['id']}", "E2E Variables layout", "Runs for the categories chosen when it is run.", REQUIREMENTS_BY_CATEGORY_LAYOUT,
+    )
     create_report_layout(
         h_g, f"/orgs/{gamma['id']}", "E2E Widget layout", "Embeds Context & Strategy report tables as widgets.", CONTEXT_OVERVIEW_LAYOUT,
     )

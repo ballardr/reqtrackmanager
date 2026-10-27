@@ -178,6 +178,7 @@ export function buildLayoutApi(
     fields: fn(async () => buildFieldCatalogue()),
     widgets: fn(async () => buildWidgets()),
     preview: fn(async () => buildDocumentPreview()),
+    draftVariables: fn(async () => ({ ok: true, variables: [], errors: [] })),
   };
   if (kind === "project") {
     fake.setHidden = fn(async (id: string, hidden: boolean) => {
