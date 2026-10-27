@@ -21,6 +21,12 @@ queues it in the background:
   `DELETE /api/v1/report-runs/{id}`: the caller's own background runs; the file is downloadable only by the
   requester, until it expires (`services.report_run_jobs`).
 
+Run-time variables: `variables` is a JSON object `{name: value}` (a query parameter on GET, a field on POST; a
+variable left out takes its default). A missing, undeclared or unacceptable value answers 422 with
+`detail.code == "variable_values"` and `detail.problems`. `GET .../{layout_id}/variables` returns the run form: each
+variable with its default and current options. Values are stored with the run (provenance) and never logged; the
+front proxy logs the path only.
+
 `format` is limited by the layout's family (`services.custom_report_run.available_formats`, which reads the
 renderer registry, `services.report_render`): 400 otherwise. A table layout's `csv` is a zip when it has
 several sheets.
@@ -30,6 +36,7 @@ for a file, and writes nothing.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any, Literal, TypeVar
@@ -47,7 +54,9 @@ from app.models.organization import Organization, ReportTemplate
 from app.models.project import Project
 from app.models.report_layout import ReportLayout, ReportLayoutVersion
 from app.models.user import User
+from app.schemas.report_layout import ReportVariablesOut
 from app.services import custom_report_run, report_layout_scope, report_layouts, report_run_jobs
+from app.services.client_date import effective_today
 from app.services.custom_report_run import LayoutRun
 from app.services.downloads import file_response
 from app.services.rbac import check_pat_scope, require_org_role, require_project_view
@@ -55,6 +64,7 @@ from app.services.report_document import load_report_template
 from app.services.report_framework import ReportOut, to_out
 from app.services.report_layout_eval import LayoutLimitError, LayoutTimeoutError
 from app.services.report_render import RenderedFile
+from app.services.report_variables import VariableValueError, describe_variables, resolve_values
 
 T = TypeVar("T")
 
@@ -99,6 +109,36 @@ def _check_format(layout: ReportLayout, version: ReportLayoutVersion, fmt: str) 
 
 
 ASYNC_REQUIRED = "async_required"
+VARIABLE_VALUES = "variable_values"
+MAX_VARIABLES_JSON = 20_000
+
+
+def parse_variables(raw: str | None) -> dict[str, Any] | None:
+    """The `variables` query parameter (a JSON object) as a dict; `None` when absent or blank.
+
+    Raises:
+        HTTPException: 422 when it is not a JSON object, or is too long.
+    """
+    if raw is None or not raw.strip():
+        return None
+    try:
+        if len(raw) > MAX_VARIABLES_JSON:
+            raise ValueError
+        parsed = json.loads(raw)
+    except ValueError:
+        parsed = None
+    if not isinstance(parsed, dict):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "variables must be a JSON object of values by variable name.")
+    return parsed
+
+
+def checked_variables(version: ReportLayoutVersion, supplied: dict[str, Any] | None) -> dict[str, Any]:
+    """The values a run will use, resolved now so a bad value fails the request rather than a queued job.
+
+    Raises:
+        HTTPException: 422 `variable_values` (see `guard_run`).
+    """
+    return guard_run(lambda: resolve_values(version.tree.get("variables"), supplied, today=effective_today()))
 
 
 def guard_run(call: Callable[[], T], *, file_format: bool = False) -> T:
@@ -124,6 +164,15 @@ def guard_run(call: Callable[[], T], *, file_format: bool = False) -> T:
         if isinstance(exc, LayoutTimeoutError):
             raise HTTPException(status.HTTP_408_REQUEST_TIMEOUT, str(exc)) from exc
         raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, str(exc)) from exc
+    except VariableValueError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            {
+                "code": VARIABLE_VALUES,
+                "message": "Some values for this report's variables are missing or not acceptable.",
+                "problems": [{"name": name, "message": message} for name, message in exc.problems],
+            },
+        ) from exc
     except custom_report_run.ProjectsNotInScopeError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "That project is not covered by this report.") from exc
     except custom_report_run.NoProjectsToRunError as exc:
@@ -163,6 +212,9 @@ def run_project_custom_report(
     format: CustomReportFormat = Query("json", description="json (default), or pdf, docx, html (document layouts) / csv, xlsx (table layouts)."),
     include_children: bool = Query(False, description="Also read the records of readable child projects."),
     report_template_id: UUID | None = Query(None, description="An organisation report template's branding for the PDF and Word."),
+    variables: str | None = Query(
+        None, description="A JSON object of values for the layout's run-time variables, e.g. {\"categories\": [\"A\"]}.",
+    ),
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ) -> Response | ReportOut:
     """Runs a layout the project can reach for this project.
@@ -170,7 +222,8 @@ def run_project_custom_report(
     Raises:
         HTTPException: 404 the project or layout is not reachable (or the project hid it); 400 a format the
             layout cannot produce, or a template of another organisation; 413/408 a run over its limits; 409
-            `async_required` a file run over the synchronous limits.
+            `async_required` a file run over the synchronous limits; 422 `variable_values` a variable value that
+            is missing or not acceptable.
     """
     project = db.get(Project, project_id)
     if project is None:
@@ -183,8 +236,9 @@ def run_project_custom_report(
     organization = db.get(Organization, project.organization_id)
     assert organization is not None
     template = _template(db, organization, report_template_id)
+    supplied = parse_variables(variables)
     run = guard_run(lambda: custom_report_run.run_project_layout(
-        db, current_user, project, scoped.layout, version, include_children=include_children,
+        db, current_user, project, scoped.layout, version, include_children=include_children, variables=supplied,
     ), file_format=format != "json")
     return _respond(db, current_user, run, format, template, include_children=include_children)
 
@@ -211,6 +265,9 @@ def run_org_custom_report(
         None, description="Comma-separated projects to include (narrowing only); default every project you can read.",
     ),
     report_template_id: UUID | None = Query(None, description="An organisation report template's branding for the PDF and Word."),
+    variables: str | None = Query(
+        None, description="A JSON object of values for the layout's run-time variables, e.g. {\"categories\": [\"A\"]}.",
+    ),
     current_user: User = Depends(require_org_role(*OrgRole)), db: Session = Depends(get_db),
 ) -> Response | ReportOut:
     """Runs an organisation layout once per project the caller can read (or the selected ones) and merges the results.
@@ -218,8 +275,8 @@ def run_org_custom_report(
     Raises:
         HTTPException: 404 the layout is not the organisation's, a selected project is not one the caller can
             report on, or no project is left; 400 a format the layout cannot produce or a foreign template;
-            422 a malformed or oversized selection; 413/408 a run over its limits; 409 `async_required` a file run
-            over the synchronous limits.
+            422 a malformed or oversized selection, or a variable value that is missing or not acceptable (`variable_values`);
+            413/408 a run over its limits; 409 `async_required` a file run over the synchronous limits.
     """
     organization = db.get(Organization, organization_id)
     layout = db.get(ReportLayout, layout_id)
@@ -229,10 +286,63 @@ def run_org_custom_report(
     _check_format(layout, version, format)
     requested = _parse_project_ids(project_ids)
     template = _template(db, organization, report_template_id)
+    supplied = parse_variables(variables)
     run = guard_run(lambda: custom_report_run.run_organization_layout(
-        db, current_user, organization, layout, version, project_ids=requested,
+        db, current_user, organization, layout, version, project_ids=requested, variables=supplied,
     ), file_format=format != "json")
     return _respond(db, current_user, run, format, template, requested=requested)
+
+
+@project_router.get("/{layout_id}/variables", response_model=ReportVariablesOut)
+def project_report_variables(
+    project_id: UUID, layout_id: UUID, current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+) -> ReportVariablesOut:
+    """The run form of a layout the project can reach: its variables, defaults and current options.
+
+    Raises:
+        HTTPException: 404 the project or layout is not reachable (or the project hid it).
+    """
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    scoped = report_layout_scope.reachable_layout(db, project, layout_id)
+    if scoped is None or scoped.hidden:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Layout not found.")
+    version = _current_version(db, scoped.layout)
+    return ReportVariablesOut.model_validate({
+        "variables": describe_variables(db, version.tree.get("variables"), [project.id], today=effective_today()),
+    })
+
+
+@org_router.get("/{layout_id}/variables", response_model=ReportVariablesOut)
+def org_report_variables(
+    organization_id: UUID, layout_id: UUID,
+    project_ids: str | None = Query(None, description="Comma-separated projects the run will cover (default: every project you can read)."),
+    current_user: User = Depends(require_org_role(*OrgRole)), db: Session = Depends(get_db),
+) -> ReportVariablesOut:
+    """The run form of an organisation layout: its variables, defaults and options across the projects the run covers.
+
+    Raises:
+        HTTPException: 404 the layout is not the organisation's or a selected project is not one the caller can
+            report on; 422 a malformed selection.
+    """
+    organization = db.get(Organization, organization_id)
+    layout = db.get(ReportLayout, layout_id)
+    if organization is None or layout is None or layout.organization_id != organization_id or layout.project_id is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Layout not found.")
+    version = _current_version(db, layout)
+    requested = _parse_project_ids(project_ids)
+    readable = custom_report_run.readable_projects(db, current_user, organization=organization, root_project=None, include_children=False)
+    scope = [p.id for p in readable]
+    if requested is not None:
+        if any(pid not in scope for pid in requested):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "That project is not covered by this report.")
+        scope = requested
+    return ReportVariablesOut.model_validate({
+        "variables": describe_variables(
+            db, version.tree.get("variables"), scope[: custom_report_run.MAX_FANOUT_PROJECTS], today=effective_today(),
+        ),
+    })
 
 
 # --- background runs ---------------------------------------------------------------------------------------------
@@ -244,6 +354,7 @@ class ProjectRunRequest(BaseModel):
     format: CustomReportFormat = Field(description="A file format the layout offers (not json).")
     include_children: bool = False
     report_template_id: UUID | None = None
+    variables: dict[str, Any] | None = Field(default=None, max_length=50, description="Values for the layout's run-time variables.")
 
 
 class OrgRunRequest(BaseModel):
@@ -252,6 +363,7 @@ class OrgRunRequest(BaseModel):
     format: CustomReportFormat = Field(description="A file format the layout offers (not json).")
     project_ids: list[UUID] | None = Field(default=None, max_length=custom_report_run.MAX_FANOUT_PROJECTS)
     report_template_id: UUID | None = None
+    variables: dict[str, Any] | None = Field(default=None, max_length=50, description="Values for the layout's run-time variables.")
 
 
 class ReportRunOut(BaseModel):
@@ -287,20 +399,22 @@ class ReportRunOut(BaseModel):
 def _queue(
     db: Session, user: User, organization: Organization, project: Project | None, layout: ReportLayout,
     version: ReportLayoutVersion, fmt: str, template: ReportTemplate | None, *, include_children: bool = False,
-    requested: list[UUID] | None = None,
+    requested: list[UUID] | None = None, variables: dict[str, Any] | None = None,
 ) -> ReportRunOut:
     """Queues a background run and returns it (the formats were checked by the caller).
 
     Raises:
-        HTTPException: 400 for `json` (the on-screen form has no file), 429 when the caller has too many queued.
+        HTTPException: 400 for `json` (the on-screen form has no file), 422 `variable_values`, 429 when the caller
+            has too many queued.
     """
     if fmt == "json":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Choose a file format; the on-screen report runs immediately.")
+    resolved = checked_variables(version, variables)
     try:
         row = report_run_jobs.enqueue(
             db, user, organization=organization, project=project, layout=layout, version=version, fmt=fmt,
             report_template_id=template.id if template else None, include_children=include_children,
-            requested_project_ids=requested,
+            requested_project_ids=requested, variables=resolved,
         )
     except report_run_jobs.TooManyActiveRunsError as exc:
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, str(exc)) from exc
@@ -335,7 +449,7 @@ def queue_project_custom_report(
     template = _template(db, organization, payload.report_template_id)
     return _queue(
         db, current_user, organization, project, scoped.layout, version, payload.format, template,
-        include_children=payload.include_children,
+        include_children=payload.include_children, variables=payload.variables,
     )
 
 
@@ -359,6 +473,7 @@ def queue_org_custom_report(
     template = _template(db, organization, payload.report_template_id)
     return _queue(
         db, current_user, organization, None, layout, version, payload.format, template, requested=payload.project_ids,
+        variables=payload.variables,
     )
 
 

@@ -56,8 +56,8 @@ READ_ONLY_TOOLS = {
     "list_tags", "get_artefact_tags", "find_artefacts_by_tag", "get_record_by_code", "search_records",
     "get_record_list_report",
     # Custom report layouts: listing, reading, running, and the two text-view converters (which store nothing).
-    "list_report_layouts", "get_report_layout", "run_custom_report", "parse_report_layout_text", "format_report_layout_text",
-    "list_report_widgets",
+    "list_report_layouts", "get_report_layout", "run_custom_report", "get_report_layout_variables",
+    "parse_report_layout_text", "format_report_layout_text", "list_report_widgets",
 }
 WRITE_TOOLS = {
     "create_requirement", "update_requirement", "create_artefact_link", "delete_artefact_link",

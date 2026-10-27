@@ -1055,6 +1055,27 @@ class ReportParamOut(BaseModel):
     choice_labels: dict[str, str] | None = None
 
 
+class ReportVariableOut(BaseModel):
+    """A run-time variable as the run form shows it.
+
+    Attributes:
+        name / type / label / multiple: As declared (`label` falls back to the name).
+        default: The value the form starts with (a date's `today` is the person's own day), `None` when the layout
+            sets none, so the person must choose.
+        options: The values on offer (the variable's own list, or its source field's current values), `None` for
+            free input.
+        source: `{record_type, field}` when the options come from a record field.
+    """
+
+    name: str
+    type: str
+    label: str
+    multiple: bool = False
+    default: Any = None
+    options: list[str] | None = None
+    source: dict[str, str] | None = None
+
+
 class ReportProjectOut(BaseModel):
     """A project an organisation-wide report can be narrowed to."""
 
@@ -1075,6 +1096,8 @@ class ReportCatalogueEntryOut(BaseModel):
     For those, `projects` lists exactly the projects the caller may pick: in
     the report's scope for this caller, with the module (and declared
     sub-component) enabled, so the picker never offers one the route would 404.
+    A custom report's run-time variables are `variables` (the run form: default and current options each);
+    a module report declares `params` instead.
     """
 
     module_key: str
@@ -1092,6 +1115,7 @@ class ReportCatalogueEntryOut(BaseModel):
     breakdown_path: str | None = None
     projects: list[ReportProjectOut] = []
     params: list[ReportParamOut]
+    variables: list[ReportVariableOut] = []
 
 
 def param_out(param: ReportParamDefinition) -> ReportParamOut:

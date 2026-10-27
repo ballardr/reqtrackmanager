@@ -43,6 +43,7 @@ from app.schemas.report_layout import (
     ReportFieldTypeOut,
     ReportLayoutCreate,
     ReportLayoutDetailOut,
+    ReportLayoutDraftVariablesOut,
     ReportLayoutOut,
     ReportLayoutPreviewOut,
     ReportLayoutPreviewRequest,
@@ -56,12 +57,15 @@ from app.schemas.report_layout import (
     ReportLayoutTextParse,
     ReportLayoutTextParseOut,
     ReportLayoutUpdate,
+    ReportLayoutVariablesRequest,
     ReportLayoutVersionOut,
     ReportLayoutVersionSummaryOut,
     ReportLayoutVisibilitySet,
+    ReportVariableOut,
     ReportWidgetOut,
 )
-from app.services import report_layout_designer, report_layout_scope, report_layout_text, report_layouts
+from app.services import custom_report_run, report_layout_designer, report_layout_scope, report_layout_text, report_layouts
+from app.services.client_date import effective_today
 from app.services.rbac import (
     MANAGE_ORG_REPORT_LAYOUTS,
     MANAGE_PROJECT_REPORT_LAYOUTS,
@@ -74,6 +78,7 @@ from app.services.rbac import (
 from app.services.report_framework import param_out
 from app.services.report_layout_scope import Origin, ScopedLayout
 from app.services.report_layout_tree import InvalidLayoutError
+from app.services.report_variables import describe_variables
 from app.services.report_widgets import WidgetInfo, widgets_for_organization, widgets_for_project
 
 manage_org_layouts = require_permission(MANAGE_ORG_REPORT_LAYOUTS, server_admin_bypass=False)
@@ -193,6 +198,21 @@ def _preview_out(preview: report_layout_designer.Preview) -> ReportLayoutPreview
         ],
         warnings=preview.warnings, records_read=preview.records_read, duration_ms=preview.duration_ms, projects=preview.projects,
     )
+
+
+def _draft_variables(
+    db: Session, body: ReportLayoutVariablesRequest, project_ids: list[UUID],
+) -> ReportLayoutDraftVariablesOut:
+    """The run form of a draft over the given projects (its variables, defaults and current options)."""
+    tree, failed = _draft(body)  # type: ignore[arg-type]  # only .text and .tree are read
+    if failed is not None or tree is None:
+        assert failed is not None
+        return ReportLayoutDraftVariablesOut(ok=False, errors=failed.errors)
+    errors = report_layout_designer.validation_errors(tree)
+    if errors:
+        raise _bad_request(InvalidLayoutError(errors))
+    declared = describe_variables(db, tree.get("variables"), project_ids, today=effective_today())
+    return ReportLayoutDraftVariablesOut(ok=True, variables=[ReportVariableOut.model_validate(v) for v in declared])
 
 
 def _get_owned(db: Session, layout_id: UUID, *, organization_id: UUID, project_id: UUID | None) -> ReportLayout:
@@ -326,10 +346,29 @@ def preview_org_layout(
     try:
         preview = guard_run(lambda: report_layout_designer.preview_for_organization(
             db, current_user, organization, tree=tree, name=body.name, project_ids=body.project_ids,
+            variables=body.variables,
         ))
     except InvalidLayoutError as exc:
         raise _bad_request(exc) from exc
     return _preview_out(preview)
+
+
+@org_router.post("/variables", response_model=ReportLayoutDraftVariablesOut)
+def draft_org_variables(
+    organization_id: UUID, body: ReportLayoutVariablesRequest,
+    current_user: User = Depends(manage_org_layouts), db: Session = Depends(get_db),
+) -> ReportLayoutDraftVariablesOut:
+    """The run form of an unsaved organisation draft: its variables, defaults and options across the projects the caller can read."""
+    organization = db.get(Organization, organization_id)
+    if organization is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    readable = custom_report_run.readable_projects(
+        db, current_user, organization=organization, root_project=None, include_children=False,
+    )
+    scope = [p.id for p in readable]
+    if body.project_ids is not None:
+        scope = [pid for pid in scope if pid in set(body.project_ids)]
+    return _draft_variables(db, body, scope[: custom_report_run.MAX_FANOUT_PROJECTS])
 
 
 @org_router.get("/widgets", response_model=list[ReportWidgetOut])
@@ -519,10 +558,21 @@ def preview_project_layout(
     try:
         preview = guard_run(lambda: report_layout_designer.preview_for_project(
             db, current_user, project, tree=tree, name=body.name, include_children=body.include_children,
+            variables=body.variables,
         ))
     except InvalidLayoutError as exc:
         raise _bad_request(exc) from exc
     return _preview_out(preview)
+
+
+@project_router.post("/variables", response_model=ReportLayoutDraftVariablesOut)
+def draft_project_variables(
+    project_id: UUID, body: ReportLayoutVariablesRequest,
+    current_user: User = Depends(manage_project_layouts), db: Session = Depends(get_db),
+) -> ReportLayoutDraftVariablesOut:
+    """The run form of an unsaved draft for this project: its variables, defaults and current options. Stores nothing."""
+    project = _project_or_404(db, project_id)
+    return _draft_variables(db, body, [project.id])
 
 
 @project_router.get("/widgets", response_model=list[ReportWidgetOut])

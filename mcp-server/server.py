@@ -1331,6 +1331,7 @@ async def run_custom_report(
     organization_id: str | None = None,
     include_children: bool = False,
     project_ids: list[str] | None = None,
+    variables: dict | None = None,
 ) -> dict:
     """Runs a custom report layout and returns the report as data.
 
@@ -1345,6 +1346,9 @@ async def run_custom_report(
         organization_id: Run an organisation layout across projects. Give one of the two.
         include_children: Project run only: also read readable child projects' records.
         project_ids: Organisation run only: limit it to these projects (default every project you can read).
+        variables: Values for the layout's run-time variables, `{name: value}` (a list for a variable that takes
+            several; dates as YYYY-MM-DD). A variable left out takes its default; one with no default must be given.
+            `get_report_layout_variables` lists them with their options. A wrong value answers 422 naming it.
 
     Returns:
         The report: `title`, `scope_label`, `notes` (warnings and unseen-record counts), `metrics` and `sections`
@@ -1354,18 +1358,53 @@ async def run_custom_report(
     lid = _require_uuid(layout_id, "layout_id")
     if project_id and organization_id:
         raise ValueError("Give either project_id or organization_id, not both.")
+    encoded = json.dumps(variables) if variables else None
     if organization_id:
         oid = _require_uuid(organization_id, "organization_id")
         ids = ",".join(_require_uuid(p, "project_ids") for p in project_ids) if project_ids else None
         response = await _call_backend(
-            "GET", f"/api/v1/orgs/{oid}/custom-reports/{lid}/run", params={"format": "json", "project_ids": ids},
+            "GET", f"/api/v1/orgs/{oid}/custom-reports/{lid}/run",
+            params={"format": "json", "project_ids": ids, "variables": encoded},
         )
     else:
         pid = _require_project_id(project_id)
         response = await _call_backend(
             "GET", f"/api/v1/projects/{pid}/custom-reports/{lid}/run",
-            params={"format": "json", "include_children": "true" if include_children else None},
+            params={"format": "json", "include_children": "true" if include_children else None, "variables": encoded},
         )
+    return response.json()
+
+
+@mcp.tool
+async def get_report_layout_variables(
+    layout_id: str, project_id: str | None = None, organization_id: str | None = None, project_ids: list[str] | None = None,
+) -> dict:
+    """Lists the run-time variables of a custom report layout: what `run_custom_report` takes as `variables`.
+
+    Any project or organisation member who can run the layout may read this (it does not need the layout-management
+    permission, unlike `get_report_layout`).
+
+    Args:
+        layout_id: The layout's UUID (from `list_report_layouts`).
+        project_id: The project's UUID, for a layout the project can reach.
+        organization_id: The organisation's UUID, for an organisation layout. Give one of the two.
+        project_ids: Organisation layout only: offer the options of these projects (default every project you can read).
+
+    Returns:
+        `variables`: per variable `name`, `type` (text, number, date, bool, enum), `label`, `multiple` (takes a list),
+        `default` (null when the person must choose), `options` (the values on offer, null for free input) and `source`
+        (`record_type` and `field` the options come from, or null).
+    """
+    lid = _require_uuid(layout_id, "layout_id")
+    if project_id and organization_id:
+        raise ValueError("Give either project_id or organization_id, not both.")
+    if organization_id:
+        oid = _require_uuid(organization_id, "organization_id")
+        ids = ",".join(_require_uuid(p, "project_ids") for p in project_ids) if project_ids else None
+        response = await _call_backend("GET", f"/api/v1/orgs/{oid}/custom-reports/{lid}/variables", params={"project_ids": ids})
+    else:
+        pid = _require_project_id(project_id)
+        response = await _call_backend("GET", f"/api/v1/projects/{pid}/custom-reports/{lid}/variables")
     return response.json()
 
 

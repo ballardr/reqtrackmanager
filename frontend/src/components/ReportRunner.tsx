@@ -18,6 +18,9 @@
  *   accepts for this caller, so the picker never offers one that would fail.
  *   An organisation-wide custom report (run once per project) offers a
  *   "Projects" selector (`project_ids`) over the same list instead.
+ * - For a custom report with run-time variables, show their form (`ReportVariablesForm`) and send the chosen values
+ *   as the `variables` run value; a variable with no default and no value holds the run back until it has one, so
+ *   the report is never produced for a choice the person has not made.
  * - Offer an optional branding template for downloads (it never
  *   changes the on-screen result) and download through the shared
  *   `ReportExportButton`, with a toast on success or failure. Downloads send
@@ -26,7 +29,7 @@
  *
  * Dependencies: `api/reports`, `modules/registry` (view lookup only).
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   isAsyncRequired,
@@ -36,6 +39,11 @@ import {
   type ReportMetric,
   type ReportResult,
   type ReportRunValues,
+  type VariableValue,
+  type VariableValues,
+  missingVariables,
+  variableDefaults,
+  variablesRunValue,
 } from "../api/reports";
 import { api } from "../api/client";
 import { REPORT_RUN_QUEUED_EVENT } from "../hooks/useReportRuns";
@@ -48,6 +56,7 @@ import { LabeledSelect } from "./LabeledSelect";
 import { ReportFigureProjectsDialog } from "./ReportFigureProjectsDialog";
 import { ReportExportButton } from "./ReportExportButton";
 import { ReportParamsForm } from "./ReportParamsForm";
+import { ReportVariablesForm } from "./ReportVariablesForm";
 import { ReportViewer, type ReportFigureActionResolver } from "./ReportViewer";
 import { Spinner } from "./Spinner";
 import { useStrings } from "../context/TerminologyContext";
@@ -83,6 +92,7 @@ export function ReportRunner({
   const strings = useStrings();
   const { showToast } = useToast();
   const [values, setValues] = useState<ReportRunValues>(() => initialValues(entry));
+  const [variableValues, setVariableValues] = useState<VariableValues>(() => variableDefaults(entry.variables));
   const [result, setResult] = useState<ReportResult | null>(null);
   // The run that last finished, by the values it ran with; the report is busy whenever the current values differ.
   const [settled, setSettled] = useState<{ signature: string; error: string | null } | null>(null);
@@ -90,15 +100,23 @@ export function ReportRunner({
   const [templateId, setTemplateId] = useState("");
   const [openedFigure, setOpenedFigure] = useState<{ metric: ReportMetric; values: ReportRunValues } | null>(null);
   const hasRun = useRef(false);
-  const signature = JSON.stringify(values);
+  // What a run sends: the report's values plus the chosen variables (as JSON); a report with none is unchanged.
+  const runValues = useMemo<ReportRunValues>(
+    () => ({ ...values, variables: variablesRunValue(entry.variables, variableValues) }),
+    [values, entry.variables, variableValues],
+  );
+  const signature = JSON.stringify(runValues);
+  const missing = missingVariables(entry.variables, variableValues);
+  const blocked = missing.length > 0;
 
   useEffect(() => {
+    if (blocked) return undefined;
     let cancelled = false;
     const timer = setTimeout(
       () => {
         hasRun.current = true;
         reportsApi
-          .run(entry, values)
+          .run(entry, runValues)
           .then((next) => {
             if (cancelled) return;
             setResult(next);
@@ -112,7 +130,7 @@ export function ReportRunner({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [entry, values, signature]);
+  }, [entry, blocked, runValues, signature]);
 
   useEffect(() => {
     let cancelled = false;
@@ -140,11 +158,15 @@ export function ReportRunner({
     setValues((current) => ({ ...current, [name]: value }));
   }
 
+  function setVariable(name: string, value: VariableValue | null) {
+    setVariableValues((current) => ({ ...current, [name]: value }));
+  }
+
   async function download(kind: ReportFileKind) {
     const name = DOWNLOAD_NAME[kind];
-    const runValues = kind === "csv" ? values : { ...values, report_template_id: templateId };
+    const fileValues = kind === "csv" ? runValues : { ...runValues, report_template_id: templateId };
     try {
-      const blob = await reportsApi.download(entry, kind, runValues);
+      const blob = await reportsApi.download(entry, kind, fileValues);
       // A table layout of several sheets comes back as a zip of CSV files, whatever `csv` was asked for.
       downloadBlob(blob, `${entry.slug}.${blob.type === "application/zip" ? "zip" : kind}`);
       showToast(`Downloaded ${entry.title} (${name}).`, "success");
@@ -153,7 +175,7 @@ export function ReportRunner({
         // Too big to produce while the person waits: the same request goes to the background queue and a
         // notification says when the file is ready.
         try {
-          await reportsApi.queueRun(entry, kind, runValues);
+          await reportsApi.queueRun(entry, kind, fileValues);
           showToast(strings.reportRuns.queued(entry.title), "success");
           window.dispatchEvent(new Event(REPORT_RUN_QUEUED_EVENT));
         } catch (queueErr) {
@@ -165,7 +187,7 @@ export function ReportRunner({
     }
   }
 
-  const busy = settled?.signature !== signature;
+  const busy = !blocked && settled?.signature !== signature;
   const error = busy ? null : (settled?.error ?? null);
   const view = getReportView(entry.module_key, entry.key);
   // Figures link to pages in a project report; an organisation report spans projects, so a figure opens a
@@ -196,6 +218,7 @@ export function ReportRunner({
               : undefined
           }
         />
+        <ReportVariablesForm variables={entry.variables} values={variableValues} onChange={setVariable} />
         <div className="row" style={{ alignItems: "flex-end", gap: "var(--space-4)" }}>
           {templates.length > 0 && (
             <LabeledSelect help={strings.help.reportBrandingTemplate}
@@ -206,7 +229,7 @@ export function ReportRunner({
               placeholder="No template"
             />
           )}
-          <ReportExportButton onDownload={download} kinds={entry.formats.filter((f): f is ReportFileKind => f !== "json")} />
+          {!blocked && <ReportExportButton onDownload={download} kinds={entry.formats.filter((f): f is ReportFileKind => f !== "json")} />}
         </div>
       </div>
       {error && (
@@ -214,8 +237,13 @@ export function ReportRunner({
           {error}
         </p>
       )}
-      {result === null && busy && !error && <Spinner label="Running report…" />}
-      {result !== null && (
+      {blocked && (
+        <p role="status" className="text-muted" style={{ margin: 0 }}>
+          {strings.reportVariables.needValues(entry.variables.filter((v) => missing.includes(v.name)).map((v) => v.label))}
+        </p>
+      )}
+      {!blocked && result === null && busy && !error && <Spinner label="Running report…" />}
+      {!blocked && result !== null && (
         <div className="stack" aria-busy={busy} style={busy ? { opacity: 0.6 } : undefined}>
           <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
             {result.scope_label} · generated {new Date(result.generated_at).toLocaleString()}

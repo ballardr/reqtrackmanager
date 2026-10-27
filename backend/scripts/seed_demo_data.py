@@ -513,6 +513,31 @@ REQUIREMENTS_BY_COMPONENT_LAYOUT = {
 """A small custom report layout: the project's requirements grouped by component."""
 
 
+REQUIREMENTS_BY_CATEGORY_LAYOUT = {
+    "schema_version": 1, "family": "document", "orientation": "portrait",
+    "variables": [
+        {
+            "name": "categories", "type": "enum", "multiple": True, "label": "Categories",
+            "source": {"record_type": "requirement", "field": "category"},
+        },
+    ],
+    "nodes": [
+        {"type": "heading", "text": "{{report_title}}"},
+        {"type": "text", "text": "Requirements of **{{project_name}}** in the chosen categories: {{var.categories}}."},
+        {
+            "type": "table",
+            "source": {
+                "record_type": "requirement", "sort": [{"field": "title"}],
+                "where": [{"field": "category", "op": "in", "value": {"var": "categories"}}],
+            },
+            "columns": [{"field": "code", "label": "Code"}, {"field": "category", "label": "Category"}, {"field": "title", "label": "Requirement"}],
+            "empty_text": "No requirements in these categories.",
+        },
+    ],
+}
+"""A custom report layout with a run-time variable: the person chooses which categories to show when running it."""
+
+
 CONTEXT_OVERVIEW_LAYOUT = {
     "schema_version": 1, "family": "document", "orientation": "landscape",
     "nodes": [
@@ -2135,6 +2160,10 @@ def main() -> None:
     hide_report_layout(h_pm, avionics["id"], org_layout["id"])
     create_report_layout(
         h_pm, f"/orgs/{org['id']}", "Context overview", "Context & Strategy figures and tables, embedded as widgets.", CONTEXT_OVERVIEW_LAYOUT,
+    )
+    create_report_layout(
+        h_pm, f"/orgs/{org['id']}", "Requirements by category (choose)",
+        "Pick the categories when running it: one layout for any selection.", REQUIREMENTS_BY_CATEGORY_LAYOUT,
     )
     create_report_layout(
         h_pm, f"/orgs/{org['id']}", "Design formulae", "Equations in a text block and as blocks of their own.", DESIGN_FORMULAE_LAYOUT,

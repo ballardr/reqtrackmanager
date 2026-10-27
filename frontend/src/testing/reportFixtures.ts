@@ -6,7 +6,7 @@
  * report so the generic components (viewer, parameter form, runner,
  * catalogue) are proven independent of Context & Strategy.
  */
-import type { ReportCatalogueEntry, ReportResult } from "../api/reports";
+import type { ReportCatalogueEntry, ReportResult, ReportVariable } from "../api/reports";
 
 /** A synthetic project-level report with one choice and one integer parameter. */
 export function buildReportCatalogueEntry(overrides: Partial<ReportCatalogueEntry> = {}): ReportCatalogueEntry {
@@ -25,10 +25,20 @@ export function buildReportCatalogueEntry(overrides: Partial<ReportCatalogueEntr
     supports_project_multi_filter: false,
     breakdown_path: null,
     projects: [],
+    variables: [],
     params: [
       { name: "rollup", type: "string", default: "weighted_average", choices: ["weighted_average", "worst_case"], minimum: null, maximum: null, description: "How values combine." },
       { name: "stale_months", type: "integer", default: 6, choices: null, minimum: 1, maximum: 120, description: "Months before an item is stale." },
     ],
+    ...overrides,
+  };
+}
+
+/** A custom report's run-time variable; defaults to a required list of categories with three options. */
+export function buildReportVariable(overrides: Partial<ReportVariable> = {}): ReportVariable {
+  return {
+    name: "categories", type: "enum", label: "Categories", multiple: true, default: null,
+    options: ["Security", "Usability", "Billing"], source: { record_type: "requirement", field: "category" },
     ...overrides,
   };
 }

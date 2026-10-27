@@ -151,7 +151,8 @@ def delete_organization_cascade(db: Session, organization_id: UUID) -> None:
             GeneratedReport.organization_id == organization_id, GeneratedReport.output_key.is_not(None)
         )
     ).all():
-        storage.delete(output_key)
+        if output_key is not None:  # the query excludes rows without one
+            storage.delete(output_key)
 
     file_assets = list(db.scalars(select(FileAsset).where(FileAsset.organization_id == organization_id)).all())
     for file_asset in file_assets:

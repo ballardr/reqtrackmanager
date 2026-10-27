@@ -10,19 +10,30 @@
  *   access, a restrictive CSP inside the page), and a table layout as capped sheets with the real row counts.
  * - Offer the scope's options with the Reports page's own form: "include child projects" for a project, the
  *   projects to include for an organisation (`ReportParamsForm`).
+ * - Show the draft's run-time variables as a form (`ReportVariablesForm`, options from the server) and send the chosen
+ *   values; the form follows the draft's `@var` lines, so it is refreshed only when those change, and a variable with
+ *   no default and no value holds the preview back.
  * - Surface the run's warnings, its counters and any refusal (over a limit, no projects) in words.
  *
  * Design decisions: the frame's `sandbox` attribute is deliberately empty; the preview never receives a token,
  * cookie or script. The result is dropped when the text changes (`stale`) rather than shown against text it was
  * not produced from.
  */
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { PreviewResult, ReportLayoutApi } from "../api/reportLayouts";
-import type { ReportRunValues } from "../api/reports";
+import {
+  missingVariables,
+  type ReportRunValues,
+  type ReportVariable,
+  type VariableValue,
+  type VariableValues,
+  variableDefaults,
+} from "../api/reports";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage } from "../context/ToastContext";
 import { ReportParamsForm } from "./ReportParamsForm";
+import { ReportVariablesForm } from "./ReportVariablesForm";
 import { ReportSectionTable } from "./ReportViewer";
 import { Spinner } from "./Spinner";
 
@@ -42,18 +53,53 @@ export function ReportLayoutPreviewPanel({
   disabled: boolean;
   projectOptions?: { value: string; label: string }[];
 }) {
-  const text = useStrings().reportLayouts;
+  const strings = useStrings();
+  const text = strings.reportLayouts;
+  const variableText = strings.reportVariables;
   const [values, setValues] = useState<ReportRunValues>({});
+  const [form, setForm] = useState<ReportVariable[]>([]);
+  const [variableValues, setVariableValues] = useState<VariableValues>({});
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [produced, setProduced] = useState<{ draft: string; result: PreviewResult } | null>(null);
+
+  // The form follows the variable declarations only: other edits to the draft need no new options.
+  const declarations = useMemo(() => draft.split("\n").filter((line) => line.trimStart().startsWith("@var")).join("\n"), [draft]);
+  useEffect(() => {
+    if (disabled || declarations === "") return undefined;
+    let cancelled = false;
+    // The declarations alone are enough to build the form (a variable's options do not depend on the blocks).
+    api
+      .draftVariables(`@layout document\n${declarations}\n`)
+      .then((found) => {
+        if (cancelled || !found.ok) return;
+        setForm(found.variables);
+        // Keep what was already chosen for a variable that is still declared; start new ones from their default.
+        setVariableValues((current) => ({
+          ...variableDefaults(found.variables),
+          ...Object.fromEntries(found.variables.filter((v) => v.name in current && current[v.name] !== null).map((v) => [v.name, current[v.name]])),
+        }));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [api, declarations, disabled]);
+
+  // A draft with no declarations shows no form, whatever an earlier draft had.
+  const shown = declarations === "" ? [] : form;
+  const missing = missingVariables(shown, variableValues);
 
   async function run() {
     setRunning(true);
     setError(null);
     try {
       const ids = typeof values.project_ids === "string" && values.project_ids !== "" ? values.project_ids.split(",") : undefined;
-      const result = await api.preview({ text: draft, name, include_children: values.include_children === true, project_ids: ids });
+      const chosen = Object.fromEntries(shown.map((v) => [v.name, variableValues[v.name]]).filter(([, value]) => value !== null && value !== undefined));
+      const result = await api.preview({
+        text: draft, name, include_children: values.include_children === true, project_ids: ids,
+        ...(shown.length > 0 ? { variables: chosen } : {}),
+      });
       setProduced({ draft, result });
     } catch (err) {
       setProduced(null);
@@ -75,11 +121,19 @@ export function ReportLayoutPreviewPanel({
         supportsIncludeChildren={api.scope.kind === "project"}
         projectMultiOptions={api.scope.kind === "organization" ? projectOptions : undefined}
       />
+      <ReportVariablesForm
+        variables={shown}
+        values={variableValues}
+        onChange={(name: string, value: VariableValue | null) => setVariableValues((previous) => ({ ...previous, [name]: value }))}
+      />
       <div className="row">
-        <button type="button" className="btn btn-primary" disabled={disabled || running} onClick={() => void run()}>
+        <button type="button" className="btn btn-primary" disabled={disabled || running || missing.length > 0} onClick={() => void run()}>
           {text.refreshPreview}
         </button>
         {disabled && <span className="text-muted">{text.previewFixFirst}</span>}
+        {!disabled && missing.length > 0 && (
+          <span className="text-muted">{variableText.needValues(shown.filter((v) => missing.includes(v.name)).map((v) => v.label))}</span>
+        )}
       </div>
       {running && <Spinner />}
       {error && <div role="alert" style={{ color: "var(--color-danger)" }}>{error}</div>}

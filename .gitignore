@@ -210,3 +210,5 @@ mcp-server/.ruff_cache/*
 perf/results/*
 !perf/results/README.md
 
+# macOS
+.DS_Store

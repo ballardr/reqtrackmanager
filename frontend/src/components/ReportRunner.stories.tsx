@@ -4,7 +4,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { ApiError, api } from "../api/client";
 import type { ReportTemplate } from "../api/types";
 import { installedModules } from "../modules/registry";
-import { buildReportCatalogueEntry, buildReportResult } from "../testing/reportFixtures";
+import { buildReportCatalogueEntry, buildReportResult, buildReportVariable } from "../testing/reportFixtures";
 import { withRouter, withToast } from "../testing/storybook-helpers";
 import { ReportRunner } from "./ReportRunner";
 
@@ -61,6 +61,46 @@ const meta: Meta<typeof ReportRunner> = {
 export default meta;
 
 type Story = StoryObj<typeof ReportRunner>;
+
+/** A custom report with a required list variable: it does not run, or offer a download, until a value is chosen. */
+export const ACustomReportWaitsForItsRequiredVariables: Story = {
+  args: { entry: buildReportCatalogueEntry({ params: [], variables: [buildReportVariable()] }) },
+  beforeEach: () => mockRunApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("status")).toHaveTextContent("Choose a value for Categories to run this report.");
+    await expect(canvas.queryByRole("button", { name: "Export" })).toBeNull();
+    await expect(api.get).not.toHaveBeenCalledWith(expect.stringContaining("/reports/fixture-report"));
+
+    await userEvent.click(canvas.getByRole("button", { name: /Categories/ }));
+    await userEvent.click(await within(document.body).findByRole("checkbox", { name: "Billing" }));
+    await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
+    // The chosen values are sent as one JSON query parameter.
+    const run = (api.get as unknown as { mock: { calls: string[][] } }).mock.calls.map((c) => c[0]).find((p) => p.includes("/reports/fixture-report"));
+    const sent = new URLSearchParams(run?.split("?")[1]);
+    await expect(JSON.parse(sent.get("variables") ?? "{}")).toEqual({ categories: ["Billing"] });
+    await expect(canvas.queryByRole("status")).toBeNull();
+  },
+};
+
+/** A variable with a default runs straight away with it, and a download sends the same values. */
+export const ACustomReportRunsWithItsDefaultsAndDownloadsTheSameValues: Story = {
+  args: {
+    entry: buildReportCatalogueEntry({
+      params: [], variables: [buildReportVariable({ default: ["Security"] })], formats: ["json", "pdf", "xlsx"],
+    }),
+  },
+  beforeEach: () => mockRunApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Download PDF report" }));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalled());
+    const url = (api.getForBlob as unknown as { mock: { calls: string[][] } }).mock.calls[0][0];
+    await expect(JSON.parse(new URLSearchParams(url.split("?")[1]).get("variables") ?? "{}")).toEqual({ categories: ["Security"] });
+  },
+};
 
 /** Runs on mount with the declared defaults and renders the generic viewer. */
 export const RunsWithDefaultsAndShowsResult: Story = {

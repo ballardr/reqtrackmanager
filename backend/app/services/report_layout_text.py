@@ -49,6 +49,11 @@ Grammar (one statement per line; indentation is cosmetic):
   a column heading (up to three, most significant first); `empty` is the text shown when the component has
   nothing in it. A line starting `[[widget` is always a widget (and an error if malformed), so prose that needs
   one writes it inside `@text`.
+- Run-time variables are declared before the first block, one per line:
+  `@var <name> <text|number|date|bool|enum> [list] [label "<text>"] [default <value>[, ...]] [options "<a>", ...]
+  [from <record type>.<field>]`. A condition value or widget parameter written `$name` is a reference to one
+  (`where category in $categories`, `[[widget.… since=$since]]`; a quoted `"$name"` is the text), and `{{var.name}}`
+  in text prints its value.
 - Any line that is not a directive is text; consecutive such lines are one text block. A line whose first
   character is `@` is written `@@` in text. Text that cannot be written as plain lines (carriage
   returns, edge blank lines, directly after another text block) uses `@text ... @end` or `@text "..."`.
@@ -84,6 +89,7 @@ from app.services.report_layout_tree import (
     assert_valid,
     validate_tree,
 )
+from app.services.report_variables import NAME_RE, VARIABLE_TYPES, is_reference
 
 MAX_TEXT_VIEW_CHARS = 1_000_000
 #: Words that join conditions; a bare one is never a value.
@@ -101,6 +107,8 @@ _NUMBER = re.compile(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?")
 _BARE = re.compile(r"[A-Za-z_][A-Za-z0-9_\-]*")
 _LEVEL_ATTR = re.compile(r"level=(\S*)(?:\s+|$)")
 _ATTR_LOOKALIKE = re.compile(r"[a-z_]+=")
+#: The clauses of an `@var` line after its name and type.
+VARIABLE_CLAUSES = ("label", "default", "options", "from")
 
 
 @dataclass(frozen=True)
@@ -248,11 +256,20 @@ class _Cursor:
             raise _Syntax(f"Expected {what}, found {token.value}. Put text with brackets in quotes.", token.column)
         if token.value in LOGIC_WORDS:
             raise _Syntax(f'A bare "{token.value}" is logic, not a value: write "{token.value}" in quotes to use it as one.', token.column)
+        if token.value.startswith("$"):
+            return _variable_reference(token.value, token.column)
         if token.value in ("true", "false"):
             return token.value == "true"
         if _NUMBER.fullmatch(token.value):
             return json.loads(token.value)
         return token.value
+
+    def list_or_reference(self, what: str) -> Any:
+        """`value (, value)*`, or one `$name` reference standing for the whole list (`in $categories`)."""
+        items = self.comma_list(lambda: self.value(what))
+        if any(is_reference(item) for item in items) and len(items) > 1:
+            raise _Syntax("A variable stands for the whole list: write `in $name`, not a list that includes one.", self._tokens[0].column)
+        return items[0] if is_reference(items[0]) else items
 
     def accept(self, *names: str) -> str | None:
         """Consumes the next token when it is one of the unquoted words `names`."""
@@ -323,6 +340,17 @@ class _Cursor:
             raise _Syntax(f"Unexpected {token.shown()}.", token.column)
 
 
+def _variable_reference(word: str, column: int) -> dict[str, str]:
+    """`$name` as the tree's `{"var": name}`.
+
+    Raises:
+        _Syntax: The name is not a valid variable name.
+    """
+    if not NAME_RE.fullmatch(word[1:]):
+        raise _Syntax("A variable is written $name (lower-case letters, digits and underscores). Quote the text to use it as one.", column)
+    return {"var": word[1:]}
+
+
 def _cursor(rest: str, offset: int, line_length: int) -> _Cursor:
     return _Cursor(_tokenize(rest, offset), line_length + 1)
 
@@ -336,7 +364,7 @@ def _condition_tail(cur: _Cursor, cond: dict[str, Any]) -> None:
     if cond["op"] in ("empty", "not_empty"):
         return
     if cond["op"] in LIST_OPERATORS:
-        cond["value"] = cur.comma_list(lambda: cur.value("a value"))
+        cond["value"] = cur.list_or_reference("a value")
         return
     cond["value"] = cur.value("a value")
     following = cur.peek()
@@ -455,6 +483,8 @@ def _quote(value: str) -> str:
 
 def _literal(value: Any) -> str:
     """A condition value as text."""
+    if is_reference(value):
+        return "$" + value["var"]
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, int | float):
@@ -725,6 +755,9 @@ class _Parser:
         top = self.frames[-1]
         if name == "layout":
             raise _Syntax("@layout can only be the first line.", indent + 1)
+        if name == "var":
+            self._variable(directive, indent, line_no)
+            return
         if name in ("end", "else"):
             if rest.strip():
                 raise _Syntax(f"@{name} takes nothing after it.", directive.offset + 1)
@@ -757,6 +790,38 @@ class _Parser:
                 scratch: dict[str, Any] = {"type": name, "children": [], "columns": []}
                 self._push(_Frame("container" if name in ("each", "group", "if") else name, scratch, "", line_no))
             raise
+
+    def _variable(self, directive: _Directive, indent: int, line_no: int) -> None:
+        """Reads an `@var` line into the root's `variables` (it belongs before the first block)."""
+        if len(self.frames) > 1 or self.root["nodes"]:
+            raise _Syntax("@var declares a variable for the whole layout: put it before the first block.", indent + 1)
+        cur = directive.cursor()
+        declaration: dict[str, Any] = {
+            "name": cur.word("a variable name"), "type": cur.word(f"a type ({', '.join(VARIABLE_TYPES)})"),
+        }
+        if cur.accept("list"):
+            declaration["multiple"] = True
+        while (token := cur.peek()) is not None:
+            clause = cur.word(f"one of: {', '.join(VARIABLE_CLAUSES)}")
+            if clause not in VARIABLE_CLAUSES:
+                raise _Syntax(f"Unexpected {clause!r}. Expected one of: {', '.join(VARIABLE_CLAUSES)}.", token.column)
+            key = {"label": "label", "default": "default", "options": "options", "from": "source"}[clause]
+            if key in declaration:
+                raise _Syntax(f'"{clause}" is given twice.', token.column)
+            if clause == "label":
+                declaration[key] = cur.text("the label")
+            elif clause == "default":
+                declaration[key] = cur.comma_list(lambda: cur.value("a value")) if declaration.get("multiple") else cur.value("a value")
+            elif clause == "options":
+                declaration[key] = cur.comma_list(lambda: cur.text("an option"))
+            else:
+                record_type, dot, field_key = cur.word("<record type>.<field>").partition(".")
+                if not dot:
+                    raise _Syntax("Write the source as <record type>.<field>, for example requirement.category.", token.column)
+                declaration[key] = {"record_type": record_type, "field": field_key}
+        variables = self.tree.setdefault("variables", [])
+        self.line_of[f"variables[{len(variables)}]"] = line_no
+        variables.append(declaration)
 
     def _bracketed(self, raw: str, stripped: str, line_no: int) -> None:
         """A `[[name.…]]` line (a widget): checks its frame and closing brackets, then hands the inside to its form."""
@@ -954,6 +1019,23 @@ class _Writer:
                 self.prev_implicit_text = False
 
 
+def _variable_text(declaration: dict[str, Any]) -> str:
+    """An `@var` line (see the module docstring for the grammar)."""
+    parts = ["@var", declaration["name"], declaration["type"]]
+    if declaration.get("multiple"):
+        parts.append("list")
+    if "label" in declaration:
+        parts.append(f"label {_quote(declaration['label'])}")
+    if "default" in declaration:
+        default = declaration["default"]
+        parts.append("default " + (", ".join(_literal(v) for v in default) if isinstance(default, list) else _literal(default)))
+    if "options" in declaration:
+        parts.append("options " + ", ".join(_quote(o) for o in declaration["options"]))
+    if "source" in declaration:
+        parts.append(f"from {declaration['source']['record_type']}.{declaration['source']['field']}")
+    return " ".join(parts)
+
+
 def format_tree(tree: dict[str, Any]) -> str:
     """Writes a layout tree as its text view.
 
@@ -972,6 +1054,8 @@ def format_tree(tree: dict[str, Any]) -> str:
     if "orientation" in tree:
         header += f" {tree['orientation']}"
     writer.line(0, header)
+    for declaration in tree.get("variables", []):
+        writer.line(0, _variable_text(declaration))
     if tree["nodes"]:
         writer.blank()
     writer.blocks(tree["nodes"], 0)
@@ -1224,7 +1308,10 @@ def _parse_widget(p: _Parser, d: _Directive) -> None:
             word = _BARE_VALUE.match(rest, pos)
             assert word is not None  # not whitespace or a quote, so at least one character
             text = word.group()
-            value = text == "true" if text in ("true", "false") else json.loads(text) if _NUMBER.fullmatch(text) else text
+            if text.startswith("$"):
+                value = _variable_reference(text, d.offset + pos + 1)
+            else:
+                value = text == "true" if text in ("true", "false") else json.loads(text) if _NUMBER.fullmatch(text) else text
             pos = word.end()
         params[name.group(1)] = value
     if params:
@@ -1262,7 +1349,7 @@ def _widget_literal(value: Any) -> str:
     """A parameter value as text: bare when it reads back as the same value, else quoted."""
     if isinstance(value, bool):
         return "true" if value else "false"
-    if isinstance(value, int | float):
+    if isinstance(value, int | float) or is_reference(value):
         return _literal(value)
     bare = _WIDGET_BARE.fullmatch(value) and value not in ("true", "false") and not _NUMBER.fullmatch(value)
     return value if bare else _quote(value)

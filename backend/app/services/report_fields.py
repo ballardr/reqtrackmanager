@@ -41,7 +41,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import distinct, select
 from sqlalchemy.orm import Session
 
 from app.modules.registry import (
@@ -52,6 +52,7 @@ from app.modules.registry import (
     get_report_field_providers,
 )
 from app.services.principals import principal_labels, principal_ref, principal_text
+from app.services.project_hierarchy import get_project_chain_ids
 from app.services.tags import tag_names_for_records
 
 #: Keys the engine builds from the provider's identity columns; a provider's own field may not use them.
@@ -164,18 +165,34 @@ def principal_field(key: str, label: str, type_column: Any, id_column: Any) -> R
     return ReportField(key, label, type_column, "principal", id_column=id_column)
 
 
-def name_lookup_field(key: str, label: str, name_column: Any, id_column: Any, foreign_key: Any) -> ReportField:
+def name_lookup_field(
+    key: str, label: str, name_column: Any, id_column: Any, foreign_key: Any, scope_column: Any,
+) -> ReportField:
     """A text field that is the name of the row a foreign key points at (a requirement's component).
 
-    A correlated scalar subquery, so it needs no extra join in the provider's `from_clause`.
+    A correlated scalar subquery, so it needs no extra join in the provider's `from_clause`. Its `domain` is the
+    names the project defines (or inherits from an ancestor), so a run-time variable can offer them.
 
     Args:
         key / label: As on `ReportField`.
         name_column: The looked-up table's name column (`ProjectComponent.name`).
         id_column: That table's id column.
         foreign_key: The record's column holding the id.
+        scope_column: The looked-up table's `project_id` column.
     """
-    return ReportField(key, label, select(name_column).where(id_column == foreign_key).scalar_subquery(), "text")
+
+    def domain(db: Session, project_ids: Sequence[uuid.UUID]) -> list[str]:
+        scope: set[uuid.UUID] = set()
+        for project_id in project_ids:
+            scope.update(get_project_chain_ids(db, project_id))
+        if not scope:
+            return []
+        names = db.scalars(select(distinct(name_column)).where(scope_column.in_(scope))).all()
+        return sorted(names, key=str.casefold)
+
+    return ReportField(
+        key, label, select(name_column).where(id_column == foreign_key).scalar_subquery(), "text", domain=domain,
+    )
 
 
 def from_search(
@@ -274,6 +291,36 @@ def field_catalogue(artefact_type: str) -> list[FieldInfo]:
         for f in provider.fields
     ]
     return reserved + own
+
+
+def field_domain(db: Session, artefact_type: str, key: str, project_ids: Sequence[uuid.UUID]) -> list[str] | None:
+    """The values a field can take, for a run-time variable's options.
+
+    Args:
+        db: Active session (read only).
+        artefact_type: A reportable type.
+        key: One of its fields (a reserved key too: `status` offers its labels).
+        project_ids: The projects the report is for.
+
+    Returns:
+        The values in display form, or `None` when the field has no closed list (free text, a number, a date, a
+        person), which then takes free input.
+
+    Raises:
+        UnknownReportFieldError: The type is not reportable, or `key` is not one of its fields.
+    """
+    provider = provider_for(artefact_type)
+    if key == "status":
+        return list(provider.status_labels.values())
+    if key in RESERVED_FIELD_KEYS:  # code, title, tags: free text
+        return None
+    by_key = {f.key: f for f in provider.fields}
+    if key not in by_key:
+        raise UnknownReportFieldError(f"{artefact_type}.{key}")
+    report_field = by_key[key]
+    if report_field.kind == "enum":
+        return list(report_field.labels.values())
+    return report_field.domain(db, project_ids) if report_field.domain is not None else None
 
 
 # --- loading and formatting ----------------------------------------------------------------------
@@ -420,6 +467,6 @@ def format_value(kind: str, value: Any) -> str:
 
 __all__ = [
     "RESERVED_FIELD_KEYS", "FieldInfo", "ReportRecord", "UnknownReportFieldError", "bool_field", "date_field",
-    "enum_field", "field_catalogue", "format_value", "from_search", "instant_field", "load_records",
+    "enum_field", "field_catalogue", "field_domain", "format_value", "from_search", "instant_field", "load_records",
     "name_lookup_field", "number_field", "principal_field", "provider_for", "text_field", "validate_provider",
 ]

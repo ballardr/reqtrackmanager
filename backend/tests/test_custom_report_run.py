@@ -541,7 +541,9 @@ def test_every_run_records_its_provenance_without_content(world, db):
     assert first.engine_version == custom_report_run.ENGINE_VERSION and first.created_at.tzinfo is not None
     assert first.scope_project_ids == [project["id"]] and first.widgets == []
     assert first.record_counts == {"requirement": 1} and first.stats["rows"] == 0 and first.stats["blocks"] >= 2
-    assert first.params == {"report_template_id": None, "include_children": False, "requested_project_ids": None}
+    assert first.params == {
+        "report_template_id": None, "include_children": False, "requested_project_ids": None, "variables": {},
+    }
     assert rows[1].params["include_children"] is True
     for row in rows:
         assert "Confidential widget spec" not in str(

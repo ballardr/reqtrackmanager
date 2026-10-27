@@ -45,9 +45,18 @@ from app.services.search_core import CORE_SEARCH_PROVIDERS
 CORE_REPORT_FIELDS: dict[str, ReportFieldProvider] = {
     "requirement": from_search(
         CORE_SEARCH_PROVIDERS["requirement"],
-        name_lookup_field("component", "Component", ProjectComponent.name, ProjectComponent.id, Requirement.component_id),
-        name_lookup_field("category", "Category", ProjectCategory.name, ProjectCategory.id, Requirement.category_id),
-        name_lookup_field("target_stage", "Target stage", ProjectStage.name, ProjectStage.id, RequirementVersion.target_stage_id),
+        name_lookup_field(
+            "component", "Component", ProjectComponent.name, ProjectComponent.id, Requirement.component_id,
+            ProjectComponent.project_id,
+        ),
+        name_lookup_field(
+            "category", "Category", ProjectCategory.name, ProjectCategory.id, Requirement.category_id,
+            ProjectCategory.project_id,
+        ),
+        name_lookup_field(
+            "target_stage", "Target stage", ProjectStage.name, ProjectStage.id, RequirementVersion.target_stage_id,
+            ProjectStage.project_id,
+        ),
         enum_field("level", "Level", RequirementVersion.level, RequirementLevel),
         principal_field("owner", "Owner", RequirementVersion.owner_type, RequirementVersion.owner_id),
         principal_field("reviewer", "Reviewer", RequirementVersion.reviewer_type, RequirementVersion.reviewer_id),
@@ -58,7 +67,10 @@ CORE_REPORT_FIELDS: dict[str, ReportFieldProvider] = {
     ),
     "requirement_action": from_search(
         CORE_SEARCH_PROVIDERS["requirement_action"],
-        name_lookup_field("action_type", "Action type", ActionTypeDefinition.name, ActionTypeDefinition.id, RequirementAction.action_type_id),
+        name_lookup_field(
+            "action_type", "Action type", ActionTypeDefinition.name, ActionTypeDefinition.id, RequirementAction.action_type_id,
+            ActionTypeDefinition.project_id,
+        ),
         principal_field("assignee", "Assignee", RequirementAction.assignee_type, RequirementAction.assignee_id),
         date_field("due_date", "Due date", RequirementAction.due_date),
         instant_field("completed_at", "Completed at", RequirementAction.completed_at),
