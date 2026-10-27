@@ -29,8 +29,8 @@ from typing import Optional
 TIER_ORDER = ("T0", "T1", "T2", "T3", "T4")
 QUICK_TIERS = ("T0", "T1")
 CAPACITY_REQUESTS_PER_SECOND = 1.0
-"""Requests per second one simulated person makes in the `capacity` scenario (`perf/loadgen/scenarios.py::Capacity`
-paces itself the same). A real person makes one every several seconds, so N simulated people stand for several times N."""
+"""Requests per second one simulated connection makes in the `capacity` scenario (`perf/loadgen/scenarios.py::Capacity`
+paces itself the same). A real person makes one every 5-10 seconds, so N connections stand for 5-10 times N active people."""
 CAPACITY_USERS_QUICK = (16, 64)
 CAPACITY_USERS_FULL = (16, 32, 64, 128, 256)
 CAPACITY_TIER = "T2"
@@ -94,7 +94,7 @@ CATALOG: dict = {
         ScenarioSpec("attachment", "heavy", "uploading a 256 KB file to a requirement", users_quick=(2,), users_full=(1, 4), heavy=True),
         ScenarioSpec("project_scope", "read", "a parent's widened list and dashboard over its descendants", users_quick=(2,), users_full=(1, 4), needs_nested=True),
         ScenarioSpec(
-            "capacity", "capacity", "steps the number of simulated people up until the stack saturates or fails (one tier)",
+            "capacity", "capacity", "steps the number of simulated connections up until the stack saturates or fails (one tier)",
             users_quick=CAPACITY_USERS_QUICK, users_full=CAPACITY_USERS_FULL, measure_seconds=(20, 45), heavy=True,
             tiers=(CAPACITY_TIER,), repeats=1,
         ),

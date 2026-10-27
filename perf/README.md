@@ -169,7 +169,7 @@ perf/run_profile.sh rpi5-8g --full --workers 1 --max-mem 2.7 --tiers T0,T1,T2 --
 
 ### How throughput scales with workers
 
-`capacity` steps simulated people up at T2 (see above) and reports the usable level. Run it at 2, 4 and 6 workers on one
+`capacity` steps simulated connections up at T2 (see above) and reports the usable level. Run it at 2, 4 and 6 workers on one
 host with the same pool, so only the worker count varies: `workers x (pool + overflow + 2)` must stay under 97, and
 4 + 10 gives 96 for six workers (`--workers-sweep` picks it for you). The backend gets about half the stack's CPU budget, so give the stack twice as many
 CPUs as the largest worker count (`--max-cpus 12` for six).
@@ -184,6 +184,13 @@ stops at the first run that fails or aborts. It gives every run the same pool: t
 fits PostgreSQL's connections with it, else the largest pool that does (six workers: 4 + 10); pass `--db-pool-size` and
 `--db-max-overflow` to choose your own. The final `analyse.py --workers` table has one row per worker count: the usable
 level, the requests per second delivered there, per worker, and the first level beyond the budget.
+
+To find where a bigger stack saturates, raise the levels (`--capacity-users 256,384,512`); the default top level, 256 connections,
+is below the knee for six workers on six cores:
+
+```sh
+perf/run_profile.sh linux-vm-4c8g --full --tiers T2 --scenarios capacity --workers 6 --db-pool-size 4 --db-max-overflow 10 --max-cpus 12 --capacity-users 256,384,512 --allow-heavy --max-load-per-core 3 --watch-url $PROD_HEALTH_URL
+```
 
 Read the result as requests per second per worker: it should stay near 50 while the backend's CPU is the limit. A fall
 means the database, the project row lock taken by every create, or the host's own cores became the limit (the run notes
@@ -216,15 +223,15 @@ heavy ones are opt-in on a shared host with `--allow-heavy`). Login is done once
 clock starts, so the numbers measure the API, not bcrypt. `scenarios` are defined in `loadgen/scenarios.py` and
 listed with their parameters in `lib/catalog.py`.
 
-### Capacity: how many people one stack serves
+### Capacity: how many connections, and so how many people, one stack serves
 
-`capacity` steps simulated people up at one tier (T2, 1,000 requirements) until the stack saturates or fails, so the
-result is a curve and a number, not a latency at a fixed load. Each simulated person makes about one request a second
+`capacity` steps simulated connections up at one tier (T2, 1,000 requirements) until the stack saturates or fails, so the
+result is a curve and a number, not a latency at a fixed load. Each connection makes about one API request a second
 (browse plus roughly one request in five a write); a real person makes one every several seconds, so a level stands
-for several times as many people. It is a heavy scenario (`--allow-heavy` or `--dedicated`).
+for 5-10 times as many active people (`budgets.yaml` sets the interval, and `analyse.py` prints the estimate beside each level). It is a heavy scenario (`--allow-heavy` or `--dedicated`).
 
 ```sh
-perf/run_profile.sh <label> --quick --tiers T2 --scenarios capacity --allow-heavy      # 16 and 64 people
+perf/run_profile.sh <label> --quick --tiers T2 --scenarios capacity --allow-heavy      # 16 and 64 connections
 perf/run_profile.sh <label> --full --tiers T2 --scenarios capacity --allow-heavy       # 16, 32, 64, 128, 256
 perf/run_profile.sh <label> --quick --tiers T2 --scenarios capacity --allow-heavy --capacity-users 8,32,96
 ```
@@ -235,7 +242,7 @@ perf/run_profile.sh <label> --quick --tiers T2 --scenarios capacity --allow-heav
   idle between levels so one level's backlog is not measured as the next one's.
 - Requests time out after 30 s and count as failures, so a stalled stack shows as failures, not as silence.
 - The run notes the load generator's CPU: a load generator at its cap means the ceiling may be its own.
-- It found that, before the per-worker request limit, 96 people stalled a worker completely (every connection held by
+- It found that, before the per-worker request limit, 96 connections stalled a worker completely (every connection held by
   a request waiting for a thread, every thread waiting for a connection); see `docs/performance.md`.
 
 ## Safe to run on a production host

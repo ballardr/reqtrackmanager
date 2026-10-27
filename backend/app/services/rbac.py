@@ -1764,8 +1764,13 @@ def lock_project_for_update(db: Session, project_id: UUID) -> None:
     sequence-number generation the same way — the same "two transactions
     both read the pre-increment value, both increment, one overwrites the
     other's write" race, just for a counter instead of a manager count.
+
+    The lock is `FOR NO KEY UPDATE`, not `FOR UPDATE`: both exclude another such lock (so the guards and the counter
+    stay serialised), but only `FOR UPDATE` also blocks the `KEY SHARE` lock every foreign-key check on `projects` takes,
+    which stalled every other insert for the project (audit events, comments, versions) behind a creating request.
+    Under load that lock took 0.9 s on average and capped a six-worker stack at about 240 requests per second.
     """
-    db.execute(select(Project.id).where(Project.id == project_id).with_for_update())
+    db.execute(select(Project.id).where(Project.id == project_id).with_for_update(key_share=True))
 
 
 def lock_organization_for_update(db: Session, organization_id: UUID) -> None:
@@ -1774,7 +1779,7 @@ def lock_organization_for_update(db: Session, organization_id: UUID) -> None:
     sensitive operations (currently: `leave_organization`'s sole-admin
     check) against each other — see `lock_project_for_update` for the same
     race shape one level up."""
-    db.execute(select(Organization.id).where(Organization.id == organization_id).with_for_update())
+    db.execute(select(Organization.id).where(Organization.id == organization_id).with_for_update(key_share=True))
 
 
 def lock_row_for_update(db: Session, model: type, row_id: UUID) -> None:
@@ -1793,7 +1798,7 @@ def lock_row_for_update(db: Session, model: type, row_id: UUID) -> None:
     `tests/test_versioned_update_locks.py` fails when a path that writes a next
     version does not take it first, so a new versioned type cannot skip it.
     """
-    db.execute(select(model.id).where(model.id == row_id).with_for_update())
+    db.execute(select(model.id).where(model.id == row_id).with_for_update(key_share=True))
 
 
 def get_project_users_by_role(db: Session, project_id: UUID, role: ProjectRole) -> set[UUID]:

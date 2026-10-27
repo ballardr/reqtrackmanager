@@ -303,12 +303,15 @@ def capacity_curve(latency: list, budgets: dict) -> dict:
 
     Returns:
         `{"levels": [...], "usable_users": int | None, "first_unusable": dict | None}`; each level has `tier`, `users`,
-        `offered_rps`, `delivered_rps`, `delivered`, `failure_rate`, `p95_ms` (weighted by request count) and `usable`.
+        `offered_rps`, `delivered_rps`, `delivered`, `failure_rate`, `p95_ms` (weighted by request count), `usable` and
+        `people_low` / `people_high` (active people the delivered rate stands for, at one request every busy / relaxed
+        interval of the budgets).
         Empty `levels` when the bundle has no capacity run. Levels are judged in order and the first unusable one ends
         the usable range, so a lucky later level does not count.
     """
     limits = budgets.get("capacity", {})
     rate = float(limits.get("requests_per_user_per_second", 1.0))
+    interval = limits.get("person_request_interval_seconds", {"busy": 5, "relaxed": 10})
     grouped: dict = defaultdict(list)
     for row in latency:
         if row["scenario"] == "capacity":
@@ -325,7 +328,8 @@ def capacity_curve(latency: list, budgets: dict) -> dict:
         usable = (delivered >= float(limits.get("delivered", 0.9)) and failure_rate <= float(limits.get("failure_rate", 0.01))
                   and weighted <= float(limits.get("p95_ms", 1000)))
         levels.append({"tier": tier, "users": users, "offered_rps": offered, "delivered_rps": round(delivered_rps, 1),
-                       "delivered": round(delivered, 3), "failure_rate": round(failure_rate, 4), "p95_ms": round(weighted), "usable": usable})
+                       "delivered": round(delivered, 3), "failure_rate": round(failure_rate, 4), "p95_ms": round(weighted), "usable": usable,
+                       "people_low": round(delivered_rps * float(interval["busy"])), "people_high": round(delivered_rps * float(interval["relaxed"]))})
     usable_users, first_unusable = None, None
     for level in levels:
         if not level["usable"]:
@@ -392,6 +396,7 @@ def worker_scaling(directories: list, budgets: dict) -> list:
             "workers": workers, "usable_users": curve["usable_users"], "delivered_rps": delivered,
             "rps_per_worker": round(delivered / workers, 1) if workers else None,
             "peak_rps": peak, "peak_rps_per_worker": round(peak / workers, 1) if workers else None,
+            "people_low": usable["people_low"] if usable else 0, "people_high": usable["people_high"] if usable else 0,
             "next_level": curve["first_unusable"],
             "host_shared": bool(run.get("shared_host")),
         })
@@ -408,11 +413,12 @@ def main(argv: list) -> int:
         return 2
     budgets = yaml.safe_load(BUDGETS.read_text())
     if "--workers" in argv:
-        print("workers  usable people  req/s at that level  peak req/s  peak per worker  next level")
+        print("workers  usable connections  req/s there  peak req/s  peak per worker  active people (at usable)  next level")
         for row in worker_scaling(paths, budgets):
             nxt = row["next_level"]
-            beyond = f"{nxt['users']} people: {nxt['delivered'] * 100:.0f}% delivered, p95 {nxt['p95_ms']} ms" if nxt else "none reached"
-            print(f"{row['workers']:>7}  {row['usable_users'] or 0:>13}  {row['delivered_rps']:>19.0f}  {row['peak_rps']:>10.0f}  {row['peak_rps_per_worker'] or 0:>15.1f}  {beyond}")
+            beyond = f"{nxt['users']} connections: {nxt['delivered'] * 100:.0f}% delivered, p95 {nxt['p95_ms']} ms" if nxt else "none reached"
+            people = f"{row['people_low']:,}-{row['people_high']:,}"
+            print(f"{row['workers']:>7}  {row['usable_users'] or 0:>18}  {row['delivered_rps']:>11.0f}  {row['peak_rps']:>10.0f}  {row['peak_rps_per_worker'] or 0:>15.1f}  {people:>25}  {beyond}")
         return 0
     result = analyse(Path(paths[0]), budgets)
     if "--json" in argv:
@@ -427,11 +433,14 @@ def main(argv: list) -> int:
             print(f"N+1 SUSPECT {row['scenario']:<14} {row['request']}  statements per request [{counts}]")
         capacity = result["capacity"]
         for level in capacity["levels"]:
-            print(f"capacity {level['tier']} {level['users']:>4} users: offered {level['offered_rps']:.0f} req/s, delivered {level['delivered_rps']:.0f} "
-                  f"({level['delivered'] * 100:.0f}%), failures {level['failure_rate'] * 100:.1f}%, p95 {level['p95_ms']} ms"
+            print(f"capacity {level['tier']} {level['users']:>4} connections: offered {level['offered_rps']:.0f} req/s, delivered {level['delivered_rps']:.0f} "
+                  f"({level['delivered'] * 100:.0f}%), failures {level['failure_rate'] * 100:.1f}%, p95 {level['p95_ms']} ms, "
+                  f"about {level['people_low']:,}-{level['people_high']:,} active people"
                   + ("" if level["usable"] else "  <-- beyond the budget"))
         if capacity["levels"]:
-            print(f"usable capacity: {capacity['usable_users']} simulated users" if capacity["usable_users"] else "usable capacity: below the first level run")
+            usable_level = next((lvl for lvl in capacity["levels"] if lvl["users"] == capacity["usable_users"]), None)
+            print(f"usable capacity: {capacity['usable_users']} connections (about {usable_level['people_low']:,}-{usable_level['people_high']:,} active people)"
+                  if usable_level else "usable capacity: below the first level run")
         for tier, memory in sorted(result["worker_memory"].items()):
             print(f"workers {tier}: {memory['workers']} x {memory['private_mib_per_worker']:.0f} MiB private + {memory['shared_mib_per_worker']:.0f} MiB shared each; {memory['pss_total_mib']:.0f} MiB total")
         if result["postgres"]:

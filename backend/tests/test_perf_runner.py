@@ -627,7 +627,9 @@ def test_the_archive_is_refused_for_a_dirty_bundle(tmp_path):
 
 def test_committed_results_pass_the_check():
     results = _PERF / "results"
-    assert scrub.scan_tree(results) == []
+    # A Finder `.DS_Store` appears in any folder a person opens on a Mac; it is operating-system metadata in a git-ignored
+    # directory, not a bundle file, so it is not a finding here (the check itself stays strict for a bundle).
+    assert [f for f in scrub.scan_tree(results) if not f.path.endswith(".DS_Store")] == []
 
 
 # --- catalogue, sampler and profile reading --------------------------------------------------------------
@@ -1601,7 +1603,7 @@ def test_a_capacity_level_ends_the_climb_when_requests_fail_or_the_rate_is_not_d
     assert run.capacity_step_ends("T2", 64, summary(2900, 0, 64.0)) is False
     assert run.capacity_step_ends("T2", 64, summary(2000, 300, 60.0)) is True       # 15% fail
     assert run.capacity_step_ends("T2", 64, summary(1200, 0, 25.0)) is True         # 39% of the offered rate
-    assert "stopped here" in run.notes[-1] and "64 users" in run.notes[-1]
+    assert "stopped here" in run.notes[-1] and "64 connections" in run.notes[-1]
 
 
 def test_a_stalled_capacity_level_is_named_and_the_backend_is_given_time_to_settle(monkeypatch):
@@ -1789,5 +1791,17 @@ def test_worker_scaling_table_has_one_row_per_run_with_requests_per_worker(tmp_p
     assert rows[0]["usable_users"] == 64 and rows[0]["rps_per_worker"] == 31.0
     assert rows[1]["usable_users"] == 128 and rows[1]["rps_per_worker"] == 31.0
     assert rows[1]["next_level"]["users"] == 256
+    assert (rows[1]["people_low"], rows[1]["people_high"]) == (620, 1240), "124 req/s at one request per 5-10 s"
     assert (rows[1]["peak_rps"], rows[1]["peak_rps_per_worker"]) == (188, 47.0)
     assert (rows[0]["peak_rps"], rows[0]["peak_rps_per_worker"]) == (70, 35.0)
+
+
+def test_capacity_levels_carry_an_estimate_of_the_active_people_they_stand_for():
+    import yaml
+
+    analyse = _analyse()
+    budgets = yaml.safe_load((_PERF / "budgets.yaml").read_text())
+    rows = [{"scenario": "capacity", "tier": "T2", "users": "128", "count": "5600", "failures": "0", "rps": "124", "p95_ms": "800"}]
+    level = analyse.capacity_curve(rows, budgets)["levels"][0]
+    assert (level["people_low"], level["people_high"]) == (620, 1240)
+    assert budgets["capacity"]["person_request_interval_seconds"] == {"busy": 5, "relaxed": 10}

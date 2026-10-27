@@ -44,14 +44,17 @@ flat_slope: 0.25
 # Statements per request are small integers: any growth with the data beyond this slope is reported as an N+1 suspect.
 query_flat_slope: 0.1
 
-# The capacity scenario (perf/loadgen/scenarios.py::Capacity) steps simulated people up at one tier. A level is usable
+# The capacity scenario (perf/loadgen/scenarios.py::Capacity) steps simulated connections up at one tier. A level is usable
 # while the stack delivers at least `delivered` of the offered request rate, fails at most `failure_rate` of requests
 # and answers at the (request-weighted) p95 within `p95_ms`; the usable capacity is the largest such level below the
-# first level that is not. One simulated person makes `requests_per_user_per_second` requests (a real person makes one
-# every several seconds). Decided by: Agent (provisional, like the classes above).
+# first level that is not. One simulated connection makes `requests_per_user_per_second` requests (a real person makes one
+# every several seconds: see `person_request_interval_seconds`). Decided by: Agent (provisional, like the classes above).
 capacity:
   requests_per_user_per_second: 1.0
   delivered: 0.9
   failure_rate: 0.01
   p95_ms: 1000
-
+  # How often an active person makes an API request, for turning connections into people: a page view fires a few calls
+  # together, then the person reads for ten seconds or more, so the average over time is one request every 5 s (busy) to
+  # 10 s (relaxed). An assumption, not a measurement; change it to match your users. Decided by: Agent.
+  person_request_interval_seconds: {busy: 5, relaxed: 10}

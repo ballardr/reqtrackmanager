@@ -919,7 +919,7 @@ class ProfileRun:
 
         Args:
             tier: The tier.
-            users: Simulated users at this level.
+            users: Simulated connections at this level.
             summary: The load generator's summary for the level.
 
         Returns:
@@ -941,7 +941,7 @@ class ProfileRun:
         loadgen_cap = self.caps.per_service.get("loadgen", {}).get("cpus") if self.caps else None
         loadgen_cpu = mean_cpu("loadgen")
         saturated = bool(loadgen_cap) and loadgen_cpu >= 0.85 * 100 * float(loadgen_cap)
-        line = (f"capacity {tier} {users} users: offered {offered:.0f} req/s, delivered {delivered * 100:.0f}%, "
+        line = (f"capacity {tier} {users} connections: offered {offered:.0f} req/s, delivered {delivered * 100:.0f}%, "
                 f"{'NO REQUEST COMPLETED, ' if stalled else ''}failures {failure_rate * 100:.1f}%"
                 f"{' (' + ', '.join(f'{k}: {v}' for k, v in sorted(kinds.items())) + ')' if kinds else ''}, backend CPU {mean_cpu('backend'):.0f}%, load generator CPU {loadgen_cpu:.0f}%")
         self.say("  " + line)

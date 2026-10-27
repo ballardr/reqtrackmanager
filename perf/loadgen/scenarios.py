@@ -371,10 +371,10 @@ class Soak(Browse):
 
 
 class Capacity(Browse, Edit):
-    """How many people one stack serves: the browse mix plus writes (about one request in five), each simulated
-    person issuing `CAPACITY_REQUESTS_PER_SECOND` (`perf/lib/catalog.py` names the same constant). The runner steps
-    the number of people up until the stack saturates or starts failing; a real person makes a request every several
-    seconds, so one simulated person stands for many."""
+    """How many connections one stack serves: the browse mix plus writes (about one request in five), each connection
+    issuing `CAPACITY_REQUESTS_PER_SECOND` (`perf/lib/catalog.py` names the same constant). The runner steps
+    the number of connections up until the stack saturates or starts failing; a real person makes a request every 5-10
+    seconds, so one connection stands for 5-10 active people."""
 
     wait_time = constant_throughput(1)
 
