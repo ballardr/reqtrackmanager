@@ -154,10 +154,49 @@ measurement**; the list is `TRACKED_GAPS` in `tests/test_perf_dataset.py` and a 
 
 What carries over to every type without further work: the request limit, the lock level (every versioned record takes
 `lock_row_for_update`), the audit indexes, the pool settings and `shared_buffers`. What does **not** carry over: the fixes
-made in each type's own list, comment, link, export and import code. Reading the code (not measuring) shows the same shapes:
-the change request list loads and builds every row and then slices (`routers/change_requests/core.py`); the module lists (risks,
-decisions, strategies, stakeholders, compliance) take no `limit` or `offset` at all and look up a version per row; module
-comment and link helpers resolve one record per comment or link. They are hypotheses until a generator exists (O3, O14).
+made in each type's own list, comment, link, export and import code.
+
+### Static review of the other types and the link system
+
+Written 2026-10-27 by reading the code (Phase 4c step 1, **Decided by: User**); nothing here is measured. Every row is a
+hypothesis until a generator and a run exist (O3, O14). Paths are under `backend/app/`. "Per row" means a statement issued
+once for each returned record; "unpaged" means the endpoint takes no `limit` or `offset`, so a page costs the whole project.
+
+| Type | List | Per-row work in the list | Rest of the list's cost |
+|------|------|--------------------------|-------------------------|
+| requirement action | `routers/actions.py:92`, unpaged | none (comment counts and assignees batched) | whole project read per call |
+| change request | `routers/change_requests/core.py:445`, builds every row then slices (`:523`) | one comment-count statement (`_to_out`, `:107`) | `latest_versions` reads every version of every request, not the latest only |
+| risk | `modules/risk_management/project_router.py:221`, unpaged | current version (`:242`) | owners, treatment counts and ratings batched; treatment counts walk each link for liveness |
+| strategy, guiding principle | `modules/context_strategy/project_router.py:384`, `:2014`, unpaged | current version (`:395`; `_shared.py:550`) | owners batched |
+| future state | same file `:841`, unpaged | current version (`:852`) | |
+| pain point | same file `:1449`, unpaged | type name, bounded by the number of distinct types (identity map), not rows | owners batched |
+| open question | same file `:2514`, unpaged | none | owners batched |
+| decision | `modules/decisions/project_router/core.py:85`, unpaged (a stated assumption that sets are small) | none (`_decisions_to_out` batches owners and decision makers) | filters and search in Python after the read |
+| stakeholder, persona, need | `modules/stakeholders/stakeholder_project_router.py:267`, `project_router.py:218`, `need_project_router.py:95`, unpaged | current version (`_stakeholder_shared.py:174`, `_shared.py:144`, `_need_shared.py:115`) | owners, groups and last-engaged batched; group filter in Python |
+| stakeholder group | `group_project_router.py:74`, unpaged, flat | not read in full | |
+| engagement | `engagement_project_router.py:89`, unpaged | none (facilitators and counts batched) | |
+| research finding | `research_project_router.py:170`, unpaged | none | |
+| compliance evidence | `modules/compliance/project_router/evidence.py:181`, unpaged | one link query per row (`service.py:1044`, `build_evidence_out`) | |
+| compliance: assigned standards and their requirements | `project_router/assignment.py:62`, `applicability.py:45`, unpaged | not read in full | bounded by the standards assigned, not by records |
+
+| Path | Shape found by reading | File |
+|------|------------------------|------|
+| Detail and comments (modules) | `comment_to_out` queries the author and the attachments once per comment (the shape F6 fixed for requirements) | `services/module_attachments.py:71` |
+| Links list of a decision, strategy, future state, pain point, guiding principle, open question | One `db.get` of the link type and one lookup of the far record (and its current version, for a requirement) per link (the shape F3 fixed) | `modules/decisions/project_router/relationships.py:66`; `modules/context_strategy/_shared.py:764` |
+| Links list of a risk | Batched through `ArtefactResolver`; not a finding | `modules/risk_management/treatment.py:133` |
+| Link graph | The resolver looks up every neighbour of the frontier before the 150-node cap applies (`:397-414`), so a hub of 1,000 links resolves 1,000 records to show 150; one lookup per scope project per module type, and a permission lookup per scope project (`:195`) | `services/link_graph.py` |
+| Related projects | Per ancestor and per descendant level: a role lookup and a project load; a nested tree multiplies the statements | `services/link_nesting.py:184` |
+| Link candidates and browse (module types) | A type with no `filter` on its summary provider reads every unarchived record of the type in the project, then filters and sorts in Python (`_facet_summaries`, `_records_matching`); only compliance supplies a `filter` | `services/link_browse.py:258`, `:483`; `modules/compliance/summaries.py:288` |
+| Activity timeline, link events | The project's link events are selected on `entity_type` and `project_id` and then matched on two JSON fields row by row (no index on `detail`), so it grows with the project's link events | `services/record_activity.py:81` |
+| `artefact_links` indexes | Forward lookup (`uq_artefact_links_typed`), reverse (`ix_artefact_links_target`) and cross-project (partial) exist; there is no index for a project's links (the table has no project column for a same-project link) | `models/relationship.py:117` |
+| Project bundle, links | Loads every requirement of the project to map codes for each module's export; a risk export reads one record's links per risk (`get_all_links`, `:153`, `:213`) | `services/bundle_links.py:79`; `modules/risk_management/export.py` |
+| Search | Generic, with a row cap per type; not a finding | `services/search.py` |
+| Reports (risk) | Batched (owners, counts, tags, one rating context per project); not a finding | `modules/risk_management/reports.py:165` |
+
+What this predicts, to be confirmed or refuted by the Phase 4c runs: the other types' lists cost a whole project per page, so
+the cost grows with the project; the per-row version, comment-count and link lookups are the same shapes as F3 and F6; the
+link graph and the finder cost more with a hub's degree than with the project; and the activity timeline is the one path
+whose cost grows with the total number of link events in the project.
 
 ## Open
 

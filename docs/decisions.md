@@ -12223,3 +12223,9 @@ An end-to-end audit (authentication, authorisation, tenant isolation, files, out
 - **PgBouncer (asked by: User).** Documented as an untested option, with the reason it is not yet supported: the live-update `LISTEN` and the startup advisory lock use the request engine and break behind a transaction-mode pooler, so a direct URL setting for them comes first (O15). No performance claim is made.
 - **Redis (asked by: User, Decided by: Agent: not added).** It would cache the dashboard and project-list counts (about 20% of database time) at a cost of another service and invalidation; the structural fix for the list and a pooler address more of the measured cost, and caching authorization data would risk a stale permission.
 
+## Resource profiling Phase 4c: scope decisions (2026-10-27)
+
+- **Phase added (Decided by: User).** Other record types and the links between them are measured and fixed in their own phase between 4b and 5, because linking records of different types is a key reason for using the product and only requirement-to-requirement links have been measured. Sizing (Phase 5) follows it so it covers what was measured.
+- **Answers to the three open questions (Decided by: User).** All 18 generators are written in one pass before measuring; the cross-type link assumption is a typical mean of 3 links per record, 5% across projects, hubs up to 1,000 (run at sparse, typical and dense); the stored-position change for large lists (O12) is in scope if the other types' lists show the same whole-project read, with the design signed off before it is built.
+- **Order of work (Decided by: Agent).** The static review of every type and the link code, and the registry-driven scaling-shape guard, come first because they need no generators and can find the obvious problems before any dataset is built.
+

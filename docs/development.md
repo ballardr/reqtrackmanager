@@ -47,7 +47,7 @@ cd tests/container
 docker compose up -d db   # needs the dev/test Postgres running (reqtrack_test)
 
 cd ../../backend
-python3 -m venv .venv && source .venv/bin/activate
+python3.12 -m venv .venv && source .venv/bin/activate   # Python 3.12 or newer: the code uses 3.12 syntax and a 3.11 venv fails on import (SyntaxError)
 pip install -r requirements.txt
 export DATABASE_URL=postgresql://reqtrack:reqtrack@localhost:5432/reqtrack_test
 uvicorn app.main:app --reload --port 8000

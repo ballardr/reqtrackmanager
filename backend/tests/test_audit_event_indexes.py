@@ -23,10 +23,16 @@ def test_audit_events_are_indexed_by_record_and_by_project_and_the_planner_can_u
         assert _columns(db, "ix_audit_events_entity") == ["entity_type", "entity_id"]
         assert _columns(db, "ix_audit_events_project_type") == ["project_id", "entity_type", "created_at"]
         db.execute(text("set local enable_seqscan = off"))
+        # With a nearly empty table the planner may pick either index for either filter, so each is proved usable on its
+        # own: the other index is dropped inside this transaction, which is rolled back.
+        db.execute(text("drop index ix_audit_events_project_type"))
         record = "\n".join(db.execute(text(
             "explain select * from audit_events where entity_type = 'requirement' and entity_id = '00000000-0000-0000-0000-000000000001'"
         )).scalars())
         assert "ix_audit_events_entity" in record
+        db.rollback()
+        db.execute(text("set local enable_seqscan = off"))
+        db.execute(text("drop index ix_audit_events_entity"))
         project = "\n".join(db.execute(text(
             "explain select * from audit_events where project_id = '00000000-0000-0000-0000-000000000001' and entity_type = 'artefact_link'"
         )).scalars())
