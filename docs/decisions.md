@@ -12729,3 +12729,39 @@ A cheap count pre-pass (record counts per `each` source, multiplied through nest
 ### Not applicable, checked
 
 *Modules:* nothing per module in a core file. *Core enums/constants:* none added (`format` stays a string, `report_key` a plain column). *Search, codes, tags, quick links:* a pack is configuration, not an artefact type. *Users and groups parity:* no person-valued field; manage permissions already take users and groups. *Nested projects:* decided additive in part 1 (D15); overrides walk ancestors. *Time:* manifest and job times are UTC; a date variable keeps the caller's day. *SOC 2 policies:* output retention and classification follow the Phase 10 mechanism; no new control regressed and no new gap beyond the recorded residual.
+
+## Custom reports Phase 11: starter layouts (2026-10-28)
+
+**Decided by: User** (starters are seeded organisation rows; Gap Analysis and Change Impact deferred). **Decided by: Agent** for the mechanism below. Phase 11b (the two analysis widgets) stays open.
+
+### What was built
+
+- **Three starters** (`services/report_starters.py`): Business Requirements Document, Engineering Specification, Review Package. Each is a `StarterLayout` holding the parts about core records and its own words, plus every part a module contributes.
+- **Modules contribute their own parts.** `ModuleDefinition.report_starter_sections` (`ReportStarterSection(starter, order, nodes)`, read with `get_report_starter_sections`); Context & Strategy, Stakeholders, Decisions, Risk Management and Compliance each add a `report_starters.py`. The core merges by `order` and wraps each part in an `if` on that module, so the core file names no module, record type or report of one.
+- **`if` on a module.** A new `if` test `{"module": key}` (text view `@if module <key>`): true where the module is available in the project being run. It is additive to tree schema 1 (no version bump) and works in any layout.
+- **Writing them.** `add_starter_layouts` creates the ones an organisation lacks, by name, skipping any name in use. It runs at organisation creation (`routers/orgs/core.py`, `services/bootstrap.py`; not at import, which brings its own layouts) and on request: `POST /orgs/{id}/report-layouts/starters`, an **Add starter layouts** button on the organisation's Report layouts (manage-layouts permission, no server-admin bypass).
+- Tests: `backend/tests/test_report_starters.py` (20), plus `if`-on-module cases in the tree, text and evaluator suites; test helpers delete the starters from a test organisation by default (`create_org_admin_in(keep_starter_layouts=)`), so tests that list layouts need not know about them. Storybook stories for the button; Playwright `report-starter-layouts.spec.ts`. Website: "Starter layouts" and the `@if module` bullet in Reports and export; `docs/modules.md` §4v.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Starters are ordinary organisation layouts written per organisation**, not a read-only platform tier. The Agent recommended a runnable read-only tier (an organisation's copy would not drift from improvements and could not be edited by accident) and flagged the trade-off: a copy does not receive a later release's improved starter, and it is editable and deletable. The User chose seeded rows. Mitigation: names are skipped, never overwritten, and **Add starter layouts** brings back a deleted one. | User |
+| 2 | **Gap Analysis and Change Impact are deferred (Phase 11b)** until Engineering Design, Verification/Validation and Baselines exist, so they are built once against real data. The design description starter is likewise not built. | User |
+| 3 | **No module is named in a core file.** A starter that listed Pain Points, Risks or Decisions in `report_starters.py` would be the module's own data hand-edited into core (the Modular Feature System Boundary). Each module registers its parts; the core wraps them. A first version did the hand-edit and was corrected in the same phase. | Agent |
+| 4 | **A part whose module is off is omitted, not printed empty**, because "No Pain Points recorded." in a project that has no Pain Points module is false. This needed a generic test in `if` rather than an organisation-time filter, since an organisation layout runs in many projects with different modules and a module can be switched on later. | Agent |
+| 5 | **Seeded at organisation creation, and on request for an existing organisation; never by an upgrade** (the module-defaults rule: a migration seeds nothing). The audit event of an automatic write has no actor. | Agent |
+| 6 | **Headings are not numbered**, because parts from modules arrive in an order the core does not control and a fixed "7." would go stale. | Agent |
+| 7 | **The tests' default organisation has no starters**; a test that is about them asks for them. Otherwise every test that lists an organisation's layouts (19 failed on the first run) would need to filter. | Agent |
+
+### Review (identify, verify, remediate)
+
+*Identify:* a starter exposing records the runner cannot read; a module's part leaking when the module is off or the caller lacks the module's permission; the starter tree carrying text from data (injection) or a Restricted column; the new `if` test letting a layout name an unknown module or read another project's state; the Add starters endpoint available without the manage permission or to another organisation; an automatic write attributed to a person; starters overwriting an organisation's edited layout.
+
+*Verify and remediate:* a starter runs through the same evaluator as any layout, as the runner, so record access, hidden-record counts and widget gates are unchanged (tests: starters run with every module on and in a project with none); the module test is checked against the registry at save and evaluated per project by `is_module_enabled_for_project` (tests: unknown key refused, on, off, `not`); the module tests omit headings and text (test: nothing of a module's content appears where it is off); every field used is already in the report field registry, which omits Restricted and consent-sensitive columns; prose is the layout's literal text and record values never become markup; the endpoint uses `manage_org_layouts` scoped to the path organisation (test: a plain member gets 403); existing names are skipped (tests: an edited starter keeps its saved version, a renamed starter's name is re-added only if free); automatic writes carry `actor_id=None`, and the audit event holds ids, counts and the hash only.
+
+*Residual, recorded:* an organisation's copy of a starter does not change when a later release improves the starter (decision 1); a part for a module a project uses but whose records the runner cannot read shows the usual "not shown" note.
+
+### Not applicable, checked
+
+*Modules:* nothing per module in a core file (decision 3). *Core enums/constants:* none added; `starter` and the module key are plain strings validated against the registry. *Search, codes, tags, quick links, record export/import:* a layout is configuration, not an artefact type. *Users and groups parity:* no person-valued field. *Nested projects:* a starter is an organisation layout, visible to child projects by the additive rule. *Time:* no time fields; the generated date is the run's. *Bundles:* starters travel as organisation layouts already do; a project or organisation import does not reseed them. *Seeds:* both seed scripts create organisations through the API, so they now include the starters; no change needed. *MCP:* no new tool; `list_report_layouts` lists them. *SOC 2 policies:* no control regressed; no new gap.

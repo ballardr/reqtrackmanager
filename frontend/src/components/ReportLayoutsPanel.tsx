@@ -7,7 +7,7 @@
  * Responsibilities:
  * - List the layouts the scope can reach, with where an inherited one is shared from; the name opens the
  *   designer (`reportLayoutPath`), where a layout shared from elsewhere is read-only.
- * - Create a layout (`ReportLayoutFormModal`), edit its details, make a copy (the way to customise a shared
+ * - Create a layout (`ReportLayoutFormModal`), add the starter layouts an organisation lacks, edit its details, make a copy (the way to customise a shared
  *   layout, since it is changed only where it lives), delete an own layout.
  * - In a project, hide a shared layout and restore it (style guide, "Pattern: organisation defaults in a
  *   project": delete on a shared row hides it, `RestoreOrgDefaultsButton` shows it again).
@@ -133,6 +133,18 @@ export function ReportLayoutsPanel({ api }: { api: ReportLayoutApi }) {
       <p className="text-muted" style={{ margin: 0 }}>{inProject ? text.projectDescription : text.orgDescription}</p>
       <div className="row">
         <button type="button" className="btn btn-primary" onClick={() => setDialog({ kind: "create" })}>{text.newLayout}</button>
+        {api.addStarters && (
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void run(async () => {
+              const added = (await api.addStarters?.()) ?? [];
+              return added.length > 0 ? text.startersAdded(added) : text.startersNone;
+            })}
+          >
+            {text.addStarters}
+          </button>
+        )}
         {inProject && api.restore && (
           <RestoreOrgDefaultsButton
             hidden={hidden.map((layout) => ({ id: layout.id, name: layout.name }))}

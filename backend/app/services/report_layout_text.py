@@ -41,6 +41,8 @@ Grammar (one statement per line; indentation is cosmetic):
   `in` / `not_in` with a comma-separated list), or tests combined with `and`, `or`, `not` and brackets: `not` binds
   tightest, then `and`, then `or`. Several `where` clauses must all hold. A bare `and`, `or` or `not` is never a value
   (write it in quotes), and a bracket is never part of a bare word.
+- An `@if` also takes `module <key>` (for example `@if module risk_management`): true where that module is
+  available in the project being run, so a layout that spans modules can leave out the parts of one that is off.
 - An equation block is `@equation <TeX>` on one line (`@equation \\frac{a}{b} = c`). Equations inside a text line
   are written `\\( x \\)` (inline) or `$$ x $$` (display), which are ordinary text to this grammar.
 - A widget is one component of a report (a table, its headline figures or its notes) on a line of its own,
@@ -388,7 +390,11 @@ def _where_leaf(cur: _Cursor) -> dict[str, Any]:
 
 
 def _if_leaf(cur: _Cursor) -> dict[str, Any]:
-    """One `<name.field> <op> [value, ...]` test of an `@if`."""
+    """One `<name.field> <op> [value, ...]` test of an `@if`, or `module <key>` (the module is available in the project)."""
+    token = cur.peek()
+    if token is not None and token.kind == "word" and token.value == "module":
+        cur.take("module")
+        return {"module": cur.word("a module key, for example risk_management")}
     cond: dict[str, Any] = {"ref": _test_subject(cur, "name.field, for example record.status")}
     _condition_tail(cur, cond)
     return cond
@@ -507,6 +513,8 @@ def _where_leaf_text(cond: dict[str, Any]) -> str:
 
 
 def _if_leaf_text(cond: dict[str, Any]) -> str:
+    if "module" in cond:
+        return f"module {cond['module']}"
     return f"{cond['ref']} {_condition_text(cond)}"
 
 

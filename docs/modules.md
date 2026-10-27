@@ -373,6 +373,7 @@ class ModuleDefinition:
     not_importable: dict[str, str] = {}  # artefact types whose records import cannot author, with the reason (§4l)
     report_fields: dict[str, ReportFieldProvider] = {}  # fields a custom report layout may use for a type (§4m)
     not_reportable: dict[str, str] = {}  # artefact types deliberately outside custom reports, with the reason (§4m)
+    report_starter_sections: tuple[ReportStarterSection, ...] = ()  # your parts of the platform's starter report layouts (§4v)
     link_type_seeds: tuple[LinkTypeSeed, ...] = ()  # link types you ship; any artefact links to any by default (§4f-bis)
     reports: tuple[ReportDefinition, ...] = ()  # reports core serves for you (§4g)
     notification_types: tuple[NotificationTypeDefinition, ...] = ()  # notification kinds you send (§4h)
@@ -1720,6 +1721,32 @@ flowchart LR
 - **MCP.** `list_report_packs`, `get_report_pack_form`, `preview_report_pack`, `get_report_run` (read) and `run_report_pack` (write mode,
   queues the zip; the file is downloaded in the app).
 - A module adds nothing for its reports to appear in a pack: they are found through the registry.
+
+### 4v. Custom reports: starter layouts (Module 10 Phase 11)
+
+Every organisation is created with three ready-made document layouts: **Business Requirements Document**, **Engineering
+Specification** and **Review Package**. They are ordinary organisation layouts once written (editable, versioned, hideable, shared
+with projects), so an organisation adapts one rather than cloning it first.
+
+```mermaid
+flowchart LR
+    C["Core parts<br/>requirements, change requests,<br/>the document's own words"] --> A["StarterLayout.tree<br/>merge by order"]
+    M["Module parts<br/>ModuleDefinition.report_starter_sections"] --> W["wrapped in<br/>if module &lt;key&gt;"] --> A
+    A --> L["organisation layout<br/>(create_layout)"]
+    L --> R["run in a project:<br/>a part whose module is off is left out"]
+```
+
+- **A module contributes its own parts.** `ModuleDefinition.report_starter_sections` holds `ReportStarterSection(starter, order, nodes)`:
+  blocks over the module's own record types and report widgets. `services/report_starters.py` holds only the parts about core records
+  and the document's words, merges every module's parts by `order` and wraps each in `{"type": "if", "when": {"module": key}}`, so core
+  names no module. A part opens with its own heading. Build blocks with `services/report_starter_blocks.py`.
+- **`if` on a module.** An `if` test can be `{"module": key}` (text view: `@if module risk_management`): true where that module is
+  available in the project being run. The part, heading included, is left out otherwise, rather than printed with a false "none recorded".
+- **Adding them.** New organisations get them at creation (`routers/orgs/core.py`, `services/bootstrap.py`); an existing organisation
+  asks with `POST /orgs/{id}/report-layouts/starters` (the Add starter layouts button, manage-layouts permission). A starter whose name is
+  already used is skipped, so it is safe to repeat and never overwrites an edit. An upgrade seeds nothing by itself.
+- A new module with something to say in a starter adds a section; a new starter adds a `StarterLayout` and a key in
+  `services/report_starter_blocks.py`. `backend/tests/test_report_starters.py` validates every starter as assembled.
 
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 

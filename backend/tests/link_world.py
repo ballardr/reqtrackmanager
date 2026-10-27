@@ -20,11 +20,15 @@ class World:
     """One organisation with an admin and helpers to build artefacts and links in it."""
 
     def __init__(
-        self, client, admin_token, name: str, *, decisions: bool = False, context_strategy: bool = False
+        self, client, admin_token, name: str, *, decisions: bool = False, context_strategy: bool = False,
+        keep_starter_layouts: bool = False,
     ) -> None:
-        """Creates the organisation and its admin; `decisions`/`context_strategy` switch those modules on."""
+        """Creates the organisation and its admin; `decisions`/`context_strategy` switch those modules on.
+        The organisation's starter report layouts are removed unless `keep_starter_layouts`."""
         self.client = client
-        self.org, self.token = create_org_admin_in(client, admin_token, f"{name} {uuid.uuid4().hex[:6]}")
+        self.org, self.token = create_org_admin_in(
+            client, admin_token, f"{name} {uuid.uuid4().hex[:6]}", keep_starter_layouts=keep_starter_layouts,
+        )
         if decisions:
             self.enable("decisions")
         if context_strategy:

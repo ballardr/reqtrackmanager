@@ -1,5 +1,5 @@
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
-import { expect, screen, userEvent, waitFor, within } from "storybook/test";
+import { expect, fn, screen, userEvent, waitFor, within } from "storybook/test";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { buildLayoutApi, buildLayoutSummary } from "../testing/reportLayoutFixtures";
@@ -53,6 +53,33 @@ export const AnOrganisationListHasNoSharedFromColumn: Story = {
     const table = await within(canvasElement).findByRole("table", { name: "Report layouts" });
     await expect(within(table).queryByRole("columnheader", { name: "Shared from" })).not.toBeInTheDocument();
     await expect(within(canvasElement).queryByRole("button", { name: /Add organisation defaults/ })).not.toBeInTheDocument();
+  },
+};
+
+export const AddingTheStarterLayoutsToAnOrganisationSaysWhichWereAdded: Story = {
+  args: {
+    api: buildLayoutApi([], { kind: "organization", addStarters: fn(async () => ["Business Requirements Document", "Review Package"]) }),
+  },
+  play: async ({ canvasElement, args }) => {
+    await userEvent.click(await within(canvasElement).findByRole("button", { name: "Add starter layouts" }));
+    await waitFor(() => expect(args.api!.addStarters).toHaveBeenCalledTimes(1));
+    await expect(await body().findByText("Added Business Requirements Document, Review Package.")).toBeInTheDocument();
+  },
+};
+
+export const AddingStartersWhenAllArePresentSaysSo: Story = {
+  args: { api: buildLayoutApi([buildLayoutSummary({ project_id: null, origin: "organization" })], { kind: "organization" }) },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(await within(canvasElement).findByRole("button", { name: "Add starter layouts" }));
+    await expect(await body().findByText("Every starter layout is already here.")).toBeInTheDocument();
+  },
+};
+
+export const AProjectHasNoAddStartersButton: Story = {
+  args: { api: buildLayoutApi([buildLayoutSummary()]) },
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByRole("table", { name: "Report layouts" });
+    await expect(within(canvasElement).queryByRole("button", { name: "Add starter layouts" })).not.toBeInTheDocument();
   },
 };
 

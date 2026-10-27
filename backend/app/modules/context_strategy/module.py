@@ -120,6 +120,7 @@ from app.modules.context_strategy._shared import STRATEGY_APPROVE_PERMISSION as 
 from app.modules.context_strategy.models import GuidingPrincipleVersion, OpenQuestion, PainPoint
 from app.modules.context_strategy.record_tables import RECORD_TABLES
 from app.modules.context_strategy.report_fields import REPORT_FIELDS
+from app.modules.context_strategy.report_starters import REPORT_STARTER_SECTIONS
 from app.modules.context_strategy.reports import REPORT_DEFINITIONS
 from app.modules.context_strategy.scoring import PAIN_POINT_SCORING_SCHEME
 from app.modules.context_strategy.search import SEARCH_PROVIDERS
@@ -847,6 +848,7 @@ MODULE_DEFINITION = ModuleDefinition(
     artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
     search_providers=SEARCH_PROVIDERS,
     report_fields=REPORT_FIELDS,
+    report_starter_sections=REPORT_STARTER_SECTIONS,
     record_tables=RECORD_TABLES,
     artefact_type_labels=ARTEFACT_TYPE_LABELS,
     link_type_seeds=LINK_TYPE_SEEDS,

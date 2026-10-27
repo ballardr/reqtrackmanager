@@ -647,3 +647,32 @@ def test_instants_compare_as_utc_whatever_zone_the_literal_is_written_in():
     assert matches_value(nine_at_plus_10, "instant", "lt", "2026-10-25T23:00:00-08:00")
     assert matches_value(nine_at_plus_10, "instant", "lt", "2026-10-25T23:00:01Z")
     assert not matches_value(nine_at_plus_10, "instant", "lt", "2026-10-25T23:00:00Z")
+
+
+# ---- an `if` on a module ---------------------------------------------------------------------------------------
+
+
+def module_if(module: str) -> dict[str, Any]:
+    return doc({
+        "type": "if", "when": {"module": module},
+        "children": [{"type": "text", "text": "module on"}], "else_children": [{"type": "text", "text": "module off"}],
+    })
+
+
+def test_an_if_on_a_module_shows_its_children_where_the_module_is_available(db, world):
+    project = world.project("Has the module")
+
+    assert lines(run(db, world, project, module_if("context_strategy")).document) == ["P module on"]
+
+
+def test_an_if_on_a_module_shows_the_else_children_where_the_module_is_off(db, world):
+    project = world.project("Lacks the module")
+
+    assert lines(run(db, world, project, module_if("risk_management")).document) == ["P module off"]
+
+
+def test_an_if_on_a_module_combines_with_not(db, world):
+    project = world.project("Negated")
+    tree = doc({"type": "if", "when": {"not": {"module": "risk_management"}}, "children": [{"type": "text", "text": "no risk module"}]})
+
+    assert lines(run(db, world, project, tree).document) == ["P no risk module"]

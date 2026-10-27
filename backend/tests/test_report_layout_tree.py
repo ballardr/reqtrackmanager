@@ -430,3 +430,20 @@ def test_another_feature_can_add_a_block_type_once_and_only_once():
             tree_module.register_block_spec(spec)
     finally:
         del tree_module.BLOCK_SPECS["probe"]
+
+
+# ---- an `if` on a module ---------------------------------------------------------------------------------------
+
+
+def test_an_if_may_test_that_a_module_is_available_and_a_made_up_module_is_refused():
+    def tree(module: str) -> dict[str, Any]:
+        return {
+            **empty_tree("document"),
+            "nodes": [{"type": "if", "when": {"module": module}, "children": [{"type": "text", "text": "x"}]}],
+        }
+
+    assert validate_tree(tree("risk_management")).errors == []
+    errors = validate_tree(tree("no_such_module")).errors
+    assert [e.path for e in errors] == ["nodes[0].when.module"]
+    extra = {**empty_tree("document"), "nodes": [{"type": "if", "when": {"module": "risk_management", "op": "eq"}, "children": []}]}
+    assert validate_tree(extra).errors, "an unknown key beside module is refused"

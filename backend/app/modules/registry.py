@@ -1962,6 +1962,24 @@ class ReportParamDefinition:
 
 
 @dataclass(frozen=True)
+class ReportStarterSection:
+    """A part of a starter report layout (Business Requirements Document, Engineering Specification, Review
+    Package) that a module contributes for its own records.
+
+    Attributes:
+        starter: The starter's key (`services.report_starters`, e.g. `business-requirements-document`).
+        order: Where the part sits among the starter's parts (ascending; the core's own parts leave gaps).
+        nodes: The layout blocks of the part (headings, text, tables, widgets), written against the report
+            field registry and widget catalogue. The core wraps them in an `if` on this module, so a project
+            where the module is off leaves them out; the nodes do not test for that.
+    """
+
+    starter: str
+    order: int
+    nodes: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
 class ReportDefinition:
     """Declares one report a module contributes (see docs/modules.md,
     "Reports"). Core generates the routes (`?format=json|pdf|csv`), access
@@ -2501,6 +2519,9 @@ class ModuleDefinition:
             every artefact type: one that cannot be reported says why in `not_reportable`.
         not_reportable: `{artefact type: reason}` for a type deliberately left out of custom reports. A
             backend test fails for a type that has neither.
+        report_starter_sections: The parts of the platform's starter report layouts this module supplies for its
+            own records (`ReportStarterSection`), so a starter names no module in a core file. Read via
+            `get_report_starter_sections`; each is validated as part of its starter by a backend test.
         record_tables: Maps one of this module's own `artefact_types` to a `RecordTableProvider`, making its
             list exportable (CSV, PDF, Word) and, where the provider has `create`/`update`, importable from the
             list itself. Read via `get_record_table_providers`. Registration is required of every artefact
@@ -2600,6 +2621,7 @@ class ModuleDefinition:
     search_scopes: dict[str, SearchScope] = field(default_factory=dict)
     report_fields: dict[str, ReportFieldProvider] = field(default_factory=dict)
     not_reportable: dict[str, str] = field(default_factory=dict)
+    report_starter_sections: tuple[ReportStarterSection, ...] = field(default=())
     record_tables: dict[str, RecordTableProvider] = field(default_factory=dict)
     not_importable: dict[str, str] = field(default_factory=dict)
 
@@ -4238,6 +4260,18 @@ def get_not_searchable_types() -> dict[str, str]:
     for definition in get_module_registry().values():
         reasons.update(definition.not_searchable)
     return reasons
+
+
+def get_report_starter_sections(starter: str) -> list[tuple[str, ReportStarterSection]]:
+    """The parts modules contribute to the starter layout `starter`, as `(module_key, section)` in `order`
+    (registry order breaks a tie)."""
+    found = [
+        (key, section)
+        for key, definition in get_module_registry().items()
+        for section in definition.report_starter_sections
+        if section.starter == starter
+    ]
+    return sorted(found, key=lambda pair: pair[1].order)
 
 
 def get_report_field_providers() -> dict[str, ReportFieldProvider]:

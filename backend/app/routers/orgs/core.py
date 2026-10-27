@@ -66,6 +66,7 @@ from app.services.downloads import filename_safe
 from app.services.org_deletion import delete_organization_cascade
 from app.services.org_export import build_org_bundle, detect_merge_conflicts, import_org_bundle, merge_org_bundle
 from app.services.rbac import get_effective_org_roles, require_org_role, require_server_admin
+from app.services.report_starters import add_starter_layouts
 
 router = APIRouter(tags=["organizations-core"])
 
@@ -112,6 +113,7 @@ def create_organization(
     # docstring.
     selected_keys = None if payload.module_choice_keys is None else frozenset(payload.module_choice_keys)
     run_on_org_created_hooks(db, org.id, selected_keys)
+    add_starter_layouts(db, org.id, actor_id=None)
     log_event(db, entity_type="organization", entity_id=org.id, action="created", actor_id=current_user.id)
     db.commit()
     db.refresh(org)

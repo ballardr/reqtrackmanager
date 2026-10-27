@@ -90,6 +90,16 @@ class ReportLayoutRestore(BaseModel):
     layout_ids: list[UUID] | None = None
 
 
+class ReportLayoutStartersOut(BaseModel):
+    """The result of adding the starter layouts to an organisation.
+
+    Attributes:
+        added: The names written; starters the organisation already had are not listed.
+    """
+
+    added: list[str]
+
+
 class ReportLayoutOut(BaseModel):
     """A layout without its tree.
 

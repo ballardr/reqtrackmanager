@@ -2025,12 +2025,15 @@ const en = {
     description:
       "A layout is a report you design once and run whenever you like: text and tables built from your records and the links between them, produced as a document or as a table.",
     orgDescription:
-      "Organisation layouts are shared with every project, which can run them, copy them or hide them. A layout run for the whole organisation is run once per project you can read and the results are combined.",
+      "Organisation layouts are shared with every project, which can run them, copy them or hide them. A layout run for the whole organisation is run once per project you can read and the results are combined. New organisations start with a Business Requirements Document, an Engineering Specification and a Review Package; add starter layouts brings back any that were deleted, and never changes one you edited.",
     projectDescription:
       "This project's own layouts, with those shared by its parent projects and the organisation. A shared layout can be copied here to change it, or hidden if this project has no use for it.",
     loadFailed: "The report layouts could not be loaded.",
     empty: "No report layouts yet.",
     newLayout: "New layout",
+    addStarters: "Add starter layouts",
+    startersAdded: (names: string[]) => `Added ${names.join(", ")}.`,
+    startersNone: "Every starter layout is already here.",
     listLabel: "Report layouts",
     nameHeading: "Name",
     kindHeading: "Kind",

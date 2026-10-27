@@ -180,6 +180,9 @@ export function buildLayoutApi(
     preview: fn(async () => buildDocumentPreview()),
     draftVariables: fn(async () => ({ ok: true, variables: [], errors: [] })),
   };
+  if (kind === "organization") {
+    fake.addStarters = fn(async () => []);
+  }
   if (kind === "project") {
     fake.setHidden = fn(async (id: string, hidden: boolean) => {
       const found = store.find((layout) => layout.id === id) ?? store[0];
