@@ -7,7 +7,9 @@
 # A host that also serves production should have PROD_HEALTH_URL set (the runs stop if production slows) and be run in
 # a quiet window; leave it unset on a dedicated host and pass --dedicated instead. A run that fails or aborts does not
 # stop the ones after it: every run's outcome is listed at the end, and the exit status is non-zero if any failed.
-# Each run is its own bundle under perf/results/<host-label>/ and its own archive in ~/.cache/reqtrack-perf/.
+# Each run is its own bundle directory under perf/results/<host-label>/ (copy those; pass --archive to also get a
+# .tar.gz of each beside it, inside perf/results/). Nothing is written outside the project except the dataset snapshots
+# (--cache-dir).
 #
 # The runs, in order: (1) lists, links and search at T2 and T3; (2) exports, import previews and the bundles at T2;
 # (3) the six-worker capacity climb at 256, 384 and 512 connections, writes spread over ten projects, once as before
@@ -26,14 +28,17 @@ summary=""
 run() {
     name=$1
     shift
+    started=$(date +%s)
     echo "=== $name: $(date -u +%H:%M:%SZ)"
     # shellcheck disable=SC2086
     if "$here/run_profile.sh" "$label" "$@" $common; then
-        summary="$summary\n  ok      $name"
+        outcome="ok     "
     else
-        summary="$summary\n  FAILED  $name (exit $?)"
+        outcome="FAILED "
         failed=1
     fi
+    minutes=$(( ($(date +%s) - started + 30) / 60 ))
+    summary="$summary\n  $outcome $name (${minutes} min)"
 }
 
 run "1 lists, links, search (T2, T3)" --full --tiers T2,T3 --scenarios lists_by_type,links_mixed,search_all_types --workers 4 "$@"
@@ -44,5 +49,5 @@ run "4 nested tree (T1)" --full --tiers T1 --breadth nested-3x5 --scenarios link
 echo
 echo "=== finished: $(date -u +%H:%M:%SZ)"
 printf "%b\n" "$summary"
-echo "archives: ls -t ~/.cache/reqtrack-perf/*.tar.gz | head -4"
+echo "bundles: ls -td perf/results/$label/*/ | head -4"
 exit $failed

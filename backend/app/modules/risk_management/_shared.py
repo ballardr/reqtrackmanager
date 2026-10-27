@@ -137,7 +137,7 @@ def risk_versions_out(db: Session, versions: Sequence[RiskVersion]) -> list[Risk
 
 def risk_to_out(
     db: Session, risk: Risk, version: RiskVersion, ctx: RatingContext, *, effective_treatments: int = 0,
-    labels: OwnerLabels | None = None,
+    labels: OwnerLabels | None = None, type_names: dict | None = None,
 ) -> RiskOut:
     """Merges a risk with its current version and derived ratings. `ctx` is
     loaded once per request (`load_rating_context`); `effective_treatments` is
@@ -151,7 +151,10 @@ def risk_to_out(
         is_archived=risk.is_archived, archived_at=risk.archived_at, archived_by=risk.archived_by,
         title=version.title, statement=version.statement, cause=version.cause, risk_event=version.risk_event,
         consequence=version.consequence, risk_type_id=version.project_type_id,
-        risk_type_name=RISK_TYPES.display_name(db, org_type_id=None, project_type_id=version.project_type_id),
+        risk_type_name=(
+            type_names[(None, version.project_type_id)] if type_names is not None
+            else RISK_TYPES.display_name(db, org_type_id=None, project_type_id=version.project_type_id)
+        ),
         treatment_strategy=version.treatment_strategy, acceptance_criteria=version.acceptance_criteria,
         **{column: getattr(version, column) for column in LEVEL_COLUMN_AXES},
         inherent_rating=_rating_out(inherent), residual_rating=_rating_out(residual), status=version.status,

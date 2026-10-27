@@ -47,7 +47,7 @@ from app.models.relationship import ArtefactLink
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.services.link_type_scope import LinkRuleError
 from app.services.project_hierarchy import get_project_chain_ids
-from app.services.rbac import get_effective_project_roles, session_may_reach_project
+from app.services.rbac import get_effective_project_roles, prefetch_project_roles, session_may_reach_project
 
 MAX_RELATED_PROJECTS = 50
 """Cap on the related projects considered at once (ancestors + descendants), so a
@@ -205,6 +205,7 @@ def related_projects(
     """
     found: list[RelatedProject] = [RelatedProject(project, ProjectRelation.SAME, 0)]
     chain = get_project_chain_ids(db, project.id)[1:]
+    prefetch_project_roles(db, user_id, chain)
     for distance, ancestor_id in enumerate(chain, start=1):
         if not can_open_project(db, user_id, ancestor_id):
             break
@@ -226,6 +227,7 @@ def related_projects(
             ).order_by(Project.name, Project.id)
         ).all()
         frontier = []
+        prefetch_project_roles(db, user_id, [child.id for child in children])
         for child in children:
             if child.id in visited:
                 continue

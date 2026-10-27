@@ -58,7 +58,9 @@ ALLOWED_FILES: dict = {
     "plans.csv": {"tier", "scenario", "rank", "node", "relation", "index", "filtered", "est_rows", "plan_cost"},
 }
 #: Keys of each entry in `dataset.json`'s `datasets` list (one per tier run).
-DATASET_ENTRY_KEYS = {"tier", "spec", "rows", "link_degree_histogram", "integrity_problems", "database_bytes", "generation_seconds"}
+DATASET_ENTRY_KEYS = {
+    "tier", "spec", "rows", "link_degree_histogram", "link_pairs", "integrity_problems", "database_bytes", "generation_seconds",
+}
 SAMPLE_COLUMNS = ("tier", "scenario", "repeat", "service", "t_seconds", "mem_mib", "mem_limit_mib", "cpu_percent")
 LATENCY_COLUMNS = (
     "tier", "scenario", "repeat", "users", "request", "count", "failures", "throttled", "p50_ms", "p95_ms", "p99_ms", "mean_ms", "max_ms",

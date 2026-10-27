@@ -165,7 +165,15 @@ def ensure_org_seeds(db: Session, organization_id: uuid.UUID) -> None:
     to keep it out of the pickers.
     """
     enabled: dict[str, bool] = {}
+    present = set(db.scalars(
+        select(RequirementLinkTypeDefinition.forward_name).where(
+            RequirementLinkTypeDefinition.organization_id == organization_id,
+            RequirementLinkTypeDefinition.project_id.is_(None),
+        )
+    ))
     for forward_name, owners in get_link_type_seed_owners().items():
+        if forward_name in present:
+            continue  # one statement for the whole set, not one per seed
         for key in owners:
             if key not in enabled:
                 enabled[key] = is_module_enabled(db, organization_id, key)

@@ -19,8 +19,13 @@ _BASE = "modules/risk_management"
 
 
 def _create(api: Any, project_id: str, start: int, count: int) -> list[str]:
+    # Typed, round robin over the project's risk types: a list that names each row's type must do it in bulk.
+    types = [t["id"] for t in api.get(f"/projects/{project_id}/{_BASE}/risk-types")]
     return [
-        api.post(f"/projects/{project_id}/{_BASE}/risks", {"title": f"Probe risk {start + i}", "statement": "If a, then b."})["id"]
+        api.post(
+            f"/projects/{project_id}/{_BASE}/risks",
+            {"title": f"Probe risk {start + i}", "statement": "If a, then b.", "risk_type_id": types[(start + i) % len(types)] if types else None},
+        )["id"]
         for i in range(count)
     ]
 

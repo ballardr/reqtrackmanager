@@ -86,8 +86,7 @@ def _persona_json(db: Session, persona: Persona, ref: str, emails: dict[UUID, st
     type_name = PERSONA_TYPES.display_name(db, org_type_id=v.org_type_id, project_type_id=v.project_type_id)
     type_is_local = False
     if v.project_type_id is not None:
-        row = db.get(ProjectPersonaType, v.project_type_id)
-        type_is_local = row is not None and row.org_type_id is None
+        type_is_local = PERSONA_TYPES.is_project_local(db, v.project_type_id)
     data.update({
         "type_name": type_name, "type_is_project_local": type_is_local, "status": v.status.value,
         **principals_to_bundle(db, v, PERSONA_PRINCIPAL_FIELDS), "created_by_email": emails.get(persona.creator_id),
@@ -200,7 +199,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     ).all())
     emails = _persona_emails(db, personas)
     ids = [p.id for p in personas]
-    prime_current_versions(db, PersonaVersion, "persona_id", ids)
+    versions = prime_current_versions(db, PersonaVersion, "persona_id", ids)
+    PERSONA_TYPES.prime_display_names(db, [(v.org_type_id, v.project_type_id) for v in versions.values()])
     prime_links(db, PERSONA_ARTEFACT_TYPE, ids)
     prime_record_tag_names(db, PERSONA_ARTEFACT_TYPE, ids)
     prime_file_links(db, PersonaFile, "persona_id", ids)
@@ -211,8 +211,13 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         personas_json.append(entry)
 
     types_json = []
-    for row in db.scalars(select(ProjectPersonaType).where(ProjectPersonaType.project_id == project.id)):
-        org_type = db.get(PersonaTypeDefinition, row.org_type_id) if row.org_type_id else None
+    own_rows = list(db.scalars(select(ProjectPersonaType).where(ProjectPersonaType.project_id == project.id)))
+    own_org_ids = {r.org_type_id for r in own_rows if r.org_type_id is not None}
+    own_org_types = {
+        t.id: t for t in db.scalars(select(PersonaTypeDefinition).where(PersonaTypeDefinition.id.in_(own_org_ids)))
+    } if own_rows else {}
+    for row in own_rows:
+        org_type = own_org_types.get(row.org_type_id) if row.org_type_id else None
         types_json.append({
             "org_type_name": org_type.name if org_type else None, "name_override": row.name_override,
             "display_order_override": row.display_order_override, "is_enabled": row.is_enabled,

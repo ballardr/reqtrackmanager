@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.project import Project
 from app.models.user import User
-from app.modules.registry import get_artefact_type_label
+from app.modules.registry import get_artefact_type_label, memoize_module_state
 from app.schemas.artefact_links import (
     ArtefactLinkBrowseOption,
     ArtefactLinkBrowseStepOut,
@@ -58,7 +58,7 @@ from app.services.link_authoring import (
 from app.services.link_browse import CANDIDATE_LIMIT, next_browse_step, parse_selected, search_link_candidates
 from app.services.link_graph import MAX_DEPTH, ArtefactResolver, build_link_graph
 from app.services.link_types import ensure_org_seeds
-from app.services.rbac import require_project_view
+from app.services.rbac import memoize_user_lookups, require_project_view
 from app.services.record_activity import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, get_record_activity
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/artefacts", tags=["artefact-links"])
@@ -94,10 +94,13 @@ def get_artefact_link_graph(
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
-    graph = build_link_graph(
-        db, project=project, user_id=current_user.id, root_type=artefact_type, root_id=artefact_id,
-        depth=depth, direction=direction,
-    )
+    # Read-only: each project's roles, permissions and module state are resolved once for the request, not once per
+    # record and project the graph reaches.
+    with memoize_module_state(), memoize_user_lookups():
+        graph = build_link_graph(
+            db, project=project, user_id=current_user.id, root_type=artefact_type, root_id=artefact_id,
+            depth=depth, direction=direction,
+        )
     if graph is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Artefact not found.")
     return graph
@@ -133,10 +136,11 @@ def get_artefact_activity(
             this project (indistinguishable by design).
     """
     project = _project_or_404(db, project_id)
-    return get_record_activity(
-        db, project=project, user=current_user, artefact_type=artefact_type, artefact_id=artefact_id,
-        limit=limit, offset=offset,
-    )
+    with memoize_module_state(), memoize_user_lookups():
+        return get_record_activity(
+            db, project=project, user=current_user, artefact_type=artefact_type, artefact_id=artefact_id,
+            limit=limit, offset=offset,
+        )
 
 
 def _project_or_404(db: Session, project_id: UUID) -> Project:

@@ -12,7 +12,7 @@ Responsibilities:
   snapshot or generate it (and snapshot it), set this run's throwaway passwords, and run each scenario at each
   tier the requested number of times with the load generator while sampling container memory and CPU.
 - Write the bundle under `perf/results/<host-label>/<date>-<commit>/`, check it for anything identifying, and
-  create the archive; always tear the stack down (success, failure, Ctrl-C, watchdog abort).
+  write the bundle (and an archive with `--archive`); always tear the stack down (success, failure, Ctrl-C, watchdog abort).
 - After every scenario, read the backend's per-route database statement counts and per-process memory
   (`queries.csv`, `processes.csv`); with `--profiling cpu`, sample the backend with py-spy during the highest-load
   run of each scenario (`profiles/*.svg`); with `--profiling heap`, run one worker under memray and report what it
@@ -131,6 +131,7 @@ class Options:
         keep: Leave the stack running afterwards (inspection).
         out: Results root.
         cache_dir: Where dataset snapshots live (outside the repository).
+        archive: Also write a `.tar.gz` of each bundle beside it, inside the results directory.
         watch_url: A read-only health URL to poll and abort on (production's `/health`).
         worker_sweep: Backend worker counts to run one after another, each as its own run (`--workers-sweep`), or None.
         pg_shared_buffers / pg_work_mem: PostgreSQL's `shared_buffers` and `work_mem` for the perf stack's database (for
@@ -165,6 +166,7 @@ class Options:
     keep: bool = False
     out: Path = RESULTS_ROOT
     cache_dir: Path = DEFAULT_CACHE
+    archive: bool = False
     watch_url: Optional[str] = None
     max_load_per_core: Optional[float] = None
     capacity_users: Optional[tuple] = None
@@ -245,6 +247,7 @@ def parse_args(argv: list) -> Options:
     parser.add_argument("--storage", choices=["ssd", "nvme", "hdd", "sd-card", "network"], help="storage class (otherwise guessed)")
     parser.add_argument("--keep", action="store_true", help="leave the stack running afterwards")
     parser.add_argument("--out", type=Path, default=RESULTS_ROOT, help=argparse.SUPPRESS)
+    parser.add_argument("--archive", action="store_true", help="also write a .tar.gz of the bundle beside it in the results directory (off by default: the bundle directory is what you copy)")
     parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE, help="where dataset snapshots are kept (default ~/.cache/reqtrack-perf)")
     parser.add_argument(
         "--profiling", default="none", choices=PROFILING_MODES,
@@ -320,7 +323,7 @@ def parse_args(argv: list) -> Options:
         breadth=args.breadth, density=args.density, seed=args.seed, repeats=args.repeats, workers=1 if args.profiling == "heap" else (None if args.workers == "auto" else int(args.workers)), max_cpus=args.max_cpus,
         max_mem=args.max_mem, dedicated=args.dedicated, allow_heavy=args.allow_heavy or args.dedicated, soak_minutes=args.soak_minutes,
         plan=args.plan, cleanup=args.cleanup, images=args.images, storage=args.storage, keep=args.keep, out=args.out,
-        cache_dir=args.cache_dir, watch_url=args.watch_url, max_load_per_core=args.max_load_per_core, capacity_users=capacity_users, capacity_tier=args.capacity_tier, pg_shared_buffers=args.pg_shared_buffers, pg_work_mem=args.pg_work_mem, db_pool_size=args.db_pool_size, db_max_overflow=args.db_max_overflow, worker_sweep=worker_sweep, scenarios=args.scenarios.split(",") if args.scenarios else None, profiling=args.profiling,
+        cache_dir=args.cache_dir, archive=args.archive, watch_url=args.watch_url, max_load_per_core=args.max_load_per_core, capacity_users=capacity_users, capacity_tier=args.capacity_tier, pg_shared_buffers=args.pg_shared_buffers, pg_work_mem=args.pg_work_mem, db_pool_size=args.db_pool_size, db_max_overflow=args.db_max_overflow, worker_sweep=worker_sweep, scenarios=args.scenarios.split(",") if args.scenarios else None, profiling=args.profiling,
     )
 
 
@@ -1129,11 +1132,7 @@ class ProfileRun:
         return status
 
     def _dataset_entry(self, tier: str, manifest: dict, details: dict) -> dict:
-        return {
-            "tier": tier, "spec": manifest["spec"], "rows": manifest["rows"], "link_degree_histogram": manifest["link_degree_histogram"], "link_pairs": manifest.get("link_pairs", {}),
-            "integrity_problems": manifest["integrity_problems"], "database_bytes": self.database_bytes(),
-            "generation_seconds": details["generation_seconds"],
-        }
+        return dataset_entry(tier, manifest, self.database_bytes(), details["generation_seconds"])
 
     def _on_signal(self, _signum, _frame) -> None:
         raise Interrupted()
@@ -1154,7 +1153,8 @@ class ProfileRun:
                 shutil.rmtree(self.work, ignore_errors=True)
 
     def write_results(self, host: dict, git: dict, caps: resources.Caps, image_source: str, started: datetime, tiers: list, names: list) -> Optional[Path]:
-        """Writes the bundle and archive; returns the bundle directory, or None when nothing was measured."""
+        """Writes the bundle (checked for anything identifying as it is written) and, with `--archive`, a `.tar.gz` beside it
+        in the results directory; returns the bundle directory, or None when nothing was measured."""
         if not self.latency and not self.datasets:
             return None
         reasons = []
@@ -1191,9 +1191,24 @@ class ProfileRun:
             directory, host=host_doc, run=run_doc, datasets=self.datasets, samples=samples, latency=self.latency, queries=self.query_rows(),
             pgstat=self.pgstat_rows, pgdb=self.pgdb_rows, plans=self.plan_rows, processes=self.process_rows, heap=self.heap_rows, profiles=self.profile_files,
         )
-        archive = bundle.make_archive(directory, self.options.cache_dir / f"{directory.name}.tar.gz")
-        self.say(f"archive: {archive}")
+        self.say(f"bundle: {directory}")
+        if self.options.archive:
+            self.say(f"archive: {bundle.make_archive(directory)}")
         return directory
+
+
+def dataset_entry(tier: str, manifest: dict, database_bytes: int, generation_seconds: float) -> dict:
+    """The `dataset.json` entry for one tier: the generated dataset's spec, row counts, link statistics and size.
+
+    Every key must be in `lib.scrub.DATASET_ENTRY_KEYS`, or the bundle fails its anonymisation check; a test builds
+    this from a real generated manifest and writes it, so a key added here without the allowlist is caught in CI.
+    """
+    return {
+        "tier": tier, "spec": manifest["spec"], "rows": manifest["rows"],
+        "link_degree_histogram": manifest["link_degree_histogram"], "link_pairs": manifest.get("link_pairs", {}),
+        "integrity_problems": manifest["integrity_problems"], "database_bytes": database_bytes,
+        "generation_seconds": generation_seconds,
+    }
 
 
 def sweep_pool(options: Options) -> Options:

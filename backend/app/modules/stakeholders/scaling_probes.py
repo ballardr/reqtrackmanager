@@ -30,6 +30,25 @@ def _creator(path: str, body: Callable[[int], dict[str, Any]]) -> Callable[[Any,
     return create
 
 
+def _typed_creator(
+    path: str, types_path: str, field: str, body: Callable[[int], dict[str, Any]]
+) -> Callable[[Any, str, int, int], list[str]]:
+    """Like `_creator`, but each record takes one of the project's types in turn (`field` is the create payload's type
+    column), so a list that names every row's type has to do it in bulk to stay flat."""
+
+    def create(api: Any, project_id: str, start: int, count: int) -> list[str]:
+        types = [t["id"] for t in api.get(f"/projects/{project_id}/{_BASE}/{types_path}")]
+        return [
+            api.post(
+                f"/projects/{project_id}/{_BASE}/{path}",
+                {**body(start + i), field: types[(start + i) % len(types)] if types else None},
+            )["id"]
+            for i in range(count)
+        ]
+
+    return create
+
+
 def _engagement(n: int) -> dict[str, Any]:
     return {"title": f"Probe engagement {n}", "channel": "meeting", "engagement_date": "2026-01-15"}
 
@@ -46,10 +65,12 @@ def _create_findings(api: Any, project_id: str, start: int, count: int) -> list[
 
 SCALING_PROBES = {
     "stakeholder": ScalingProbe(
-        list_path=f"{_BASE}/stakeholders", create=_creator("stakeholders", lambda n: {"name": f"Probe stakeholder {n}"}),
+        list_path=f"{_BASE}/stakeholders",
+        create=_typed_creator("stakeholders", "stakeholder-types", "stakeholder_type_id", lambda n: {"name": f"Probe stakeholder {n}"}),
     ),
     "persona": ScalingProbe(
-        list_path=f"{_BASE}/personas", create=_creator("personas", lambda n: {"name": f"Probe persona {n}"}),
+        list_path=f"{_BASE}/personas",
+        create=_typed_creator("personas", "persona-types", "persona_type_id", lambda n: {"name": f"Probe persona {n}"}),
     ),
     "stakeholder_need": ScalingProbe(
         list_path=f"{_BASE}/needs", create=_creator("needs", lambda n: {"name": f"Probe need {n}"}),

@@ -96,7 +96,7 @@ def visibility_fields(
 
 def persona_to_out(
     db: Session, persona: Persona, version: PersonaVersion, *, project_id: uuid.UUID | None = None,
-    labels: Labels | None = None, project_context: dict | None = None,
+    labels: Labels | None = None, project_context: dict | None = None, type_names: dict | None = None,
 ) -> PersonaOut:
     """Merges a persona with its current version. When `project_id` is given
     (project router), also resolves `effective_weight` and `weight_override`
@@ -116,8 +116,9 @@ def persona_to_out(
         unique_code=persona.unique_code, creator_id=persona.creator_id, is_archived=persona.is_archived, archived_at=persona.archived_at,
         archived_by=persona.archived_by, name=version.name, description=version.description,
         persona_type_id=type_ref,
-        persona_type_name=PERSONA_TYPES.display_name(
-            db, org_type_id=version.org_type_id, project_type_id=version.project_type_id
+        persona_type_name=(
+            type_names[(version.org_type_id, version.project_type_id)] if type_names is not None
+            else PERSONA_TYPES.display_name(db, org_type_id=version.org_type_id, project_type_id=version.project_type_id)
         ),
         role_title=version.role_title, goals=version.goals, needs=version.needs, behaviours=version.behaviours,
         context_environment=version.context_environment, skills_proficiency=version.skills_proficiency,
@@ -150,8 +151,9 @@ def personas_to_out(
     versions = [by_id[p.id] for p in personas]
     labels = resolve_labels(db, versions, PERSONA_PRINCIPAL_FIELDS)
     context = persona_project_context(db, project_id, {p.id: v.weight for p, v in zip(personas, versions, strict=True)}) if project_id else None
+    type_names = PERSONA_TYPES.display_names(db, [(v.org_type_id, v.project_type_id) for v in versions])
     return [
-        persona_to_out(db, p, v, project_id=project_id, labels=labels, project_context=context)
+        persona_to_out(db, p, v, project_id=project_id, labels=labels, project_context=context, type_names=type_names)
         for p, v in zip(personas, versions, strict=True)
     ]
 

@@ -211,6 +211,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         t.id: t.forward_name
         for t in db.scalars(select(RequirementLinkTypeDefinition).where(RequirementLinkTypeDefinition.organization_id == project.organization_id))
     }
+    RISK_TYPES.prime_display_names(db, [(None, v.project_type_id) for _r, v in pairs])
     prime_record_tag_names(db, RISK_ARTEFACT_TYPE, risk_ids)
     prime_file_links(db, RiskFile, "risk_id", risk_ids)
     user_ids: set[UUID | None] = set()

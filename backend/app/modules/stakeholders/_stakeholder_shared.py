@@ -119,7 +119,7 @@ _UNRESOLVED: date = date.min  # sentinel: `last_engaged` not supplied by the cal
 def stakeholder_to_out(
     db: Session, stakeholder: Stakeholder, version: StakeholderVersion, *, project_id: uuid.UUID | None = None,
     labels: Labels | None = None, group_refs: list[grp.GroupRef] | None = None,
-    last_engaged: date | None = _UNRESOLVED,
+    last_engaged: date | None = _UNRESOLVED, type_names: dict | None = None,
 ) -> StakeholderOut:
     """Merges a stakeholder with its current version. When `project_id` is given
     (project router) and the stakeholder is an org one, also resolves its
@@ -143,8 +143,9 @@ def stakeholder_to_out(
         is_archived=stakeholder.is_archived,
         archived_at=stakeholder.archived_at, archived_by=stakeholder.archived_by, name=version.name,
         description=version.description, stakeholder_type_id=version.project_type_id or version.org_type_id,
-        stakeholder_type_name=STAKEHOLDER_TYPES.display_name(
-            db, org_type_id=version.org_type_id, project_type_id=version.project_type_id
+        stakeholder_type_name=(
+            type_names[(version.org_type_id, version.project_type_id)] if type_names is not None
+            else STAKEHOLDER_TYPES.display_name(db, org_type_id=version.org_type_id, project_type_id=version.project_type_id)
         ),
         role=version.role, organisation_group=version.organisation_group, interests=version.interests,
         responsibilities=version.responsibilities, goals_needs=version.goals_needs, priorities=version.priorities,
@@ -181,9 +182,11 @@ def stakeholders_to_out(
     last: dict[uuid.UUID, date] = {}
     if project_id is not None and stakeholders:
         last = last_engaged_by_stakeholder(db, db.get(Project, project_id), [s.id for s in stakeholders])
+    type_names = STAKEHOLDER_TYPES.display_names(db, [(v.org_type_id, v.project_type_id) for v in versions])
     return [
         stakeholder_to_out(
-            db, s, v, project_id=project_id, labels=labels, group_refs=refs[s.id], last_engaged=last.get(s.id)
+            db, s, v, project_id=project_id, labels=labels, group_refs=refs[s.id], last_engaged=last.get(s.id),
+            type_names=type_names,
         )
         for s, v in zip(stakeholders, versions, strict=True)
     ]

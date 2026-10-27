@@ -650,3 +650,22 @@ def test_the_tracked_gap_list_only_names_types_still_without_a_generator():
 def test_core_generators_run_requirements_before_actions():
     generators = get_perf_generators()
     assert generators["requirement"].order < generators["requirement_action"].order
+
+
+def test_the_dataset_entry_the_runner_writes_passes_the_bundle_check(client, tmp_path):
+    """The `dataset.json` entry built from a real generated manifest is accepted by the bundle writer and its
+    anonymisation check. A key added to the entry without the allowlist once threw away a whole night's measurements at the
+    end of the run; this fails in CI instead."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from perf import run_profile
+    from perf.lib import bundle
+
+    manifest = _generate(client, "single")
+    entry = run_profile.dataset_entry("T0", manifest, 12345, 1.5)
+    assert entry["link_pairs"] and entry["rows"]
+    written = bundle.write_bundle(
+        tmp_path / "bundle", host={"arch": "x86_64"}, run={"schema_version": 1}, datasets=[entry], samples=[], latency=[],
+    )
+    assert "dataset.json" in written and "latency.csv" in written

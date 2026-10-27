@@ -42,7 +42,7 @@ flowchart LR
    `generate_dataset.py` (structure through the API, records by bulk insert) and snapshotted for next time.
 3. This run's passwords are set (`prepare_run.py`), then each scenario runs at each user level and repeat while
    container memory and CPU are sampled with `docker stats`.
-4. The bundle is written, checked for anything identifying, archived; the stack is torn down in every case.
+4. The bundle is written and checked for anything identifying (an archive too with `--archive`); the stack is torn down in every case.
 
 ## Backend workers
 
@@ -138,9 +138,12 @@ flowchart LR
 ## Run recipes
 
 Commands for the runs this project's findings and sizing are based on. Run each inside `tmux new -s perf` (detach with
-Ctrl-b then d, reattach with `tmux attach -t perf`) so a dropped SSH session does not end it. Results land under
-`perf/results/<label>/`; copy the archive each run prints (`~/.cache/reqtrack-perf/<date>-<commit>.tar.gz`) to wherever
-you collect them. Run from a pushed commit: a dirty tree or an unpushed commit marks the bundle non-publishable. If the
+Ctrl-b then d, reattach with `tmux attach -t perf`) so a dropped SSH session does not end it. To scroll the output with the mouse wheel, enable tmux mouse support once
+(`echo "set -g mouse on" >> ~/.tmux.conf`, then `tmux source-file ~/.tmux.conf` inside tmux or start a new session);
+without it the wheel scrolls nothing, and keyboard scrollback is Ctrl-b then `[` (exit with `q`). Results land under
+`perf/results/<label>/<date>-<commit>/`; copy that directory to wherever you collect results (add `--archive` to
+also get a `.tar.gz` of it beside the directory). Dataset snapshots are the one thing kept outside the project
+(`--cache-dir`, default `~/.cache/reqtrack-perf`). Run from a pushed commit: a dirty tree or an unpushed commit marks the bundle non-publishable. If the
 commit shows as empty in the bundle's name, git cannot read the repository as the user running the script (root):
 `git config --global --add safe.directory <path to the repository>`.
 
@@ -340,7 +343,7 @@ per service still is.
 username, paths, serials, MAC or IP addresses, Docker or container ids, environment variables, git author or branch
 names. A dirty tree or a commit not on a remote branch marks the run `non_publishable`.
 `python3 perf/scrub_check.py` (also a repository test and part of the pre-commit hook) scans `perf/results/`;
-the runner refuses to write an archive that fails it. The archive has owners zeroed and times normalised.
+the runner refuses to write a bundle that fails it, and the archive (only with `--archive`) refuses a directory that fails it. The archive has owners zeroed and times normalised.
 
 ## Tests
 

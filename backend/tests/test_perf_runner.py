@@ -1881,3 +1881,25 @@ def test_the_analysis_judges_capacity_mixed_apart_from_capacity():
     assert analyse.capacity_curve(latency, budgets)["usable_users"] == 16
     mixed = analyse.capacity_curve(latency, budgets, "capacity_mixed")
     assert [level["users"] for level in mixed["levels"]] == [16, 32] and mixed["usable_users"] == 16
+
+
+def test_a_run_writes_an_archive_only_when_asked_and_never_outside_the_results_directory():
+    """The bundle directory is what a run leaves; the `.tar.gz` is opt-in (`--archive`) and sits beside the bundle, not in
+    the cache directory (which only holds dataset snapshots)."""
+    assert run_profile.parse_args(["x-host-label"]).archive is False
+    assert run_profile.parse_args(["x-host-label", "--archive"]).archive is True
+    source = (Path(run_profile.__file__)).read_text()
+    assert "make_archive(directory)" in source and "cache_dir / f\"{directory.name}.tar.gz\"" not in source
+
+
+def test_a_field_outside_the_allowlist_fails_the_bundle_but_keeps_every_measurement(tmp_path):
+    """One stray key in a document must not discard a run: every file is written first, then the check fails naming the
+    field, and the files stay in the directory to be read."""
+    directory = tmp_path / "bundle"
+    latency_rows = [{"tier": "T0", "scenario": "browse", "repeat": 1, "users": 4, "request": "GET /x", "count": 10, "failures": 0}]
+    with pytest.raises(bundle.BundleError, match="stray_key"):
+        bundle.write_bundle(
+            directory, host={}, run={}, datasets=[{"tier": "T0", "stray_key": 1}], samples=[], latency=latency_rows,
+        )
+    assert (directory / "latency.csv").read_text().count("GET /x") == 1
+    assert (directory / "dataset.json").exists() and (directory / "run.json").exists()

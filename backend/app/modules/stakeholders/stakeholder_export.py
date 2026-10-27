@@ -113,8 +113,7 @@ def _stakeholder_json(db: Session, stakeholder: Stakeholder, organization_id: UU
     data: dict[str, Any] = {"unique_code": stakeholder.unique_code, **{f: getattr(v, f) for f in _TEXT_FIELDS}}
     type_is_local = False
     if v.project_type_id is not None:
-        row = db.get(ProjectStakeholderType, v.project_type_id)
-        type_is_local = row is not None and row.org_type_id is None
+        type_is_local = STAKEHOLDER_TYPES.is_project_local(db, v.project_type_id)
     data.update({
         "type_name": STAKEHOLDER_TYPES.display_name(db, org_type_id=v.org_type_id, project_type_id=v.project_type_id),
         "type_is_project_local": type_is_local, "status": v.status.value,
@@ -379,7 +378,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         .order_by(Stakeholder.created_at)
     ).all())
     ids = [s.id for s in stakeholders]
-    prime_current_versions(db, StakeholderVersion, "stakeholder_id", ids)
+    versions = prime_current_versions(db, StakeholderVersion, "stakeholder_id", ids)
+    STAKEHOLDER_TYPES.prime_display_names(db, [(v.org_type_id, v.project_type_id) for v in versions.values()])
     prime_links(db, STAKEHOLDER_ARTEFACT_TYPE, ids)
     prime_record_tag_names(db, STAKEHOLDER_ARTEFACT_TYPE, ids)
     prime_file_links(db, StakeholderFile, "stakeholder_id", ids)
@@ -391,8 +391,13 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         stakeholders_json.append(entry)
 
     types_json = []
-    for row in db.scalars(select(ProjectStakeholderType).where(ProjectStakeholderType.project_id == project.id)):
-        org_type = db.get(StakeholderTypeDefinition, row.org_type_id) if row.org_type_id else None
+    own_rows = list(db.scalars(select(ProjectStakeholderType).where(ProjectStakeholderType.project_id == project.id)))
+    own_org_ids = {r.org_type_id for r in own_rows if r.org_type_id is not None}
+    own_org_types = {
+        t.id: t for t in db.scalars(select(StakeholderTypeDefinition).where(StakeholderTypeDefinition.id.in_(own_org_ids)))
+    } if own_rows else {}
+    for row in own_rows:
+        org_type = own_org_types.get(row.org_type_id) if row.org_type_id else None
         types_json.append({
             "org_type_name": org_type.name if org_type else None, "name_override": row.name_override,
             "display_order_override": row.display_order_override, "is_enabled": row.is_enabled,

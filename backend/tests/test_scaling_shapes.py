@@ -43,8 +43,8 @@ TRACKED_GAPS = frozenset(
 )
 
 #: `{artefact type: {check: finding}}` for a check whose statements grow with the records today. Checks are `list`,
-#: `detail`, `comments`, `links` (the link graph of a record with N linked requirements) and `export` (the project
-#: bundle, which carries every module's records).
+#: `detail`, `comments`, `links` (the link graph of a record with N linked requirements), `activity` (its timeline) and
+#: `export` (the project bundle, which carries every module's records).
 KNOWN_GROWING: dict[str, dict[str, str]] = {}
 
 
@@ -153,7 +153,11 @@ def _growth(artefact_type: str, client, admin_token: str) -> dict[str, tuple[int
         for n in range(COMMENTS_SMALL):
             api.post(f"{base}/{first}/comments", {"body": f"comment {n}"})
     graph = f"/projects/{project_id}/artefacts/{artefact_type}/{first}/link-graph?depth=1"
-    small = {"list": _measure(api, base), "links": _measure(api, graph), "export": _measure_export(client, token, project_id)}
+    activity = f"/projects/{project_id}/artefacts/{artefact_type}/{first}/activity?limit=25"
+    small = {
+        "list": _measure(api, base), "links": _measure(api, graph), "activity": _measure(api, activity),
+        "export": _measure_export(client, token, project_id),
+    }
     if probe.has_detail:
         small["detail"] = _measure(api, f"{base}/{first}")
     if probe.has_comments:
@@ -164,7 +168,10 @@ def _growth(artefact_type: str, client, admin_token: str) -> dict[str, tuple[int
     if probe.has_comments:
         for n in range(COMMENTS_SMALL, COMMENTS_LARGE):
             api.post(f"{base}/{first}/comments", {"body": f"comment {n}"})
-    large = {"list": _measure(api, base), "links": _measure(api, graph), "export": _measure_export(client, token, project_id)}
+    large = {
+        "list": _measure(api, base), "links": _measure(api, graph), "activity": _measure(api, activity),
+        "export": _measure_export(client, token, project_id),
+    }
     if probe.has_detail:
         large["detail"] = _measure(api, f"{base}/{first}")
     if probe.has_comments:
@@ -194,7 +201,7 @@ def test_known_growing_names_only_probed_types_and_real_checks():
     probed = set(get_scaling_probes())
     assert set(KNOWN_GROWING) <= probed, sorted(set(KNOWN_GROWING) - probed)
     for artefact_type, checks in KNOWN_GROWING.items():
-        assert set(checks) <= {"list", "detail", "comments", "links", "export"}, (artefact_type, sorted(checks))
+        assert set(checks) <= {"list", "detail", "comments", "links", "activity", "export"}, (artefact_type, sorted(checks))
         assert all(reason.strip() for reason in checks.values()), artefact_type
 
 

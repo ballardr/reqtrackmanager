@@ -95,19 +95,24 @@ def write_bundle(
         The names of the files written.
 
     Raises:
-        BundleError: If a document carries a field outside the allowlist, or the anonymisation check finds anything.
+        BundleError: If a document carries a field outside the allowlist, or the anonymisation check finds anything;
+            every file has been written by then, so the measurements are kept for inspection.
     """
     directory.mkdir(parents=True, exist_ok=True)
+    # A field outside the allowlist is reported at the end, after every file is written: refusing to write would throw
+    # away a whole run's measurements for one stray key. The files stay in the directory for the operator to read, and
+    # the run fails with the problem named (the scan below finds the same fields, so nothing is called clean).
+    problems: list = []
     for name, document in (("host.json", host), ("run.json", run)):
         extra = set(document) - scrub.ALLOWED_FILES[name]
         if extra:
-            raise BundleError(f"{name}: field outside the allowlist: {sorted(extra)[0]}")
+            problems.append(f"{name}: field outside the allowlist: {sorted(extra)[0]}")
         _write_json(directory / name, document)
     dataset_documents = list(datasets)
     for document in dataset_documents:
         extra = set(document) - scrub.DATASET_ENTRY_KEYS
         if extra:
-            raise BundleError(f"dataset.json: field outside the allowlist: {sorted(extra)[0]}")
+            problems.append(f"dataset.json: field outside the allowlist: {sorted(extra)[0]}")
     _write_json(directory / "dataset.json", {"schema_version": RUN_SCHEMA_VERSION, "datasets": dataset_documents})
     _write_csv(directory / "samples.csv", scrub.SAMPLE_COLUMNS, samples)
     _write_csv(directory / "latency.csv", scrub.LATENCY_COLUMNS, latency)
@@ -124,8 +129,11 @@ def write_bundle(
         (directory / "profiles").mkdir(exist_ok=True)
         (directory / "profiles" / name).write_text(text)
     findings = scrub.scan_tree(directory)
-    if findings:
-        raise BundleError("the bundle failed the anonymisation check:\n" + "\n".join(f"  {finding}" for finding in findings))
+    if problems or findings:
+        raise BundleError(
+            "the bundle failed the anonymisation check (its files were kept in " + str(directory) + "):\n"
+            + "\n".join(f"  {line}" for line in [*problems, *map(str, findings)])
+        )
     return sorted(p.name for p in directory.iterdir())
 
 

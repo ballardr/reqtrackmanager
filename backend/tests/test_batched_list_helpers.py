@@ -149,3 +149,30 @@ def test_build_evidence_outs_matches_build_evidence_out(client, admin_token):
         assert build_evidence_outs(db, []) == []
     finally:
         db.close()
+
+
+def test_ensuring_the_link_type_seeds_is_one_lookup_not_one_per_seed(client, admin_token):
+    """`GET .../link-types` makes sure every seeded link type exists first. With them all present that is one statement
+    for the set (plus the module-enabled checks), not a lookup for each of the dozens of seeds."""
+    from app.models.organization import Organization
+    from app.modules.registry import get_link_type_seed_owners
+    from app.services.link_types import ensure_org_seeds
+
+    org, _token, _api = _setup(client, admin_token, "Seeds Co")
+    seeds = len(get_link_type_seed_owners())
+    db = SessionLocal()
+    try:
+        organization = db.get(Organization, uuid.UUID(org["id"]))
+        ensure_org_seeds(db, organization.id)
+        db.commit()
+        counted: list[int] = []
+
+        def count(*_args) -> None:
+            counted.append(1)
+
+        event.listen(engine, "before_cursor_execute", count)
+        ensure_org_seeds(db, organization.id)
+        event.remove(engine, "before_cursor_execute", count)
+        assert seeds > 20 and len(counted) < seeds / 2, (seeds, len(counted))
+    finally:
+        db.close()

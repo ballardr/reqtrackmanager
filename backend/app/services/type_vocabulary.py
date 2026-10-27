@@ -27,7 +27,7 @@ Design decisions:
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -333,6 +333,64 @@ class TypeVocabulary:
         if memo is not None:
             memo[key] = name
         return name
+
+    def display_names(
+        self, db: Session, refs: Iterable[tuple[uuid.UUID | None, uuid.UUID | None]]
+    ) -> dict[tuple[uuid.UUID | None, uuid.UUID | None], str | None]:
+        """`display_name` for many `(org_type_id, project_type_id)` references in two statements (the project rows, then
+        the organisation types they and the references point at), for a list to name every row's type at once.
+
+        Returns:
+            `{(org_type_id, project_type_id): name}` for each reference given (an untyped one maps to `None`).
+        """
+        wanted = set(refs)
+        project_ids = {p for _o, p in wanted if p is not None}
+        rows = {r.id: r for r in db.scalars(select(self.project_model).where(self.project_model.id.in_(project_ids)))} if project_ids else {}
+        org_ids = {o for o, p in wanted if p is None and o is not None}
+        org_ids |= {r.org_type_id for r in rows.values() if r.name_override is None and r.org_type_id is not None}
+        org_types = {t.id: t for t in db.scalars(select(self.org_model).where(self.org_model.id.in_(org_ids)))} if org_ids else {}
+        names: dict[tuple[uuid.UUID | None, uuid.UUID | None], str | None] = {}
+        for org_type_id, project_type_id in wanted:
+            if project_type_id is not None:
+                row = rows.get(project_type_id)
+                if row is None:
+                    names[(org_type_id, project_type_id)] = None
+                elif row.name_override is not None:
+                    names[(org_type_id, project_type_id)] = row.name_override
+                else:
+                    org_type = org_types.get(row.org_type_id) if row.org_type_id else None
+                    names[(org_type_id, project_type_id)] = org_type.name if org_type is not None else None
+            else:
+                org_type = org_types.get(org_type_id) if org_type_id is not None else None
+                names[(org_type_id, project_type_id)] = org_type.name if org_type is not None else None
+        return names
+
+    def prime_display_names(self, db: Session, refs: Iterable[tuple[uuid.UUID | None, uuid.UUID | None]]) -> None:
+        """Reads many types' names in bulk for `display_name` to answer from, inside an export's
+        `memoize_module_state()` block (a no-op elsewhere), and whether each project type is local to the project."""
+        from app.modules.registry import module_state_memo
+
+        memo = module_state_memo()
+        if memo is None:
+            return
+        refs = list(refs)
+        for (org_type_id, project_type_id), name in self.display_names(db, refs).items():
+            memo[("type_display_name", self.project_model.__name__, org_type_id, project_type_id)] = name
+        project_ids = {p for _o, p in refs if p is not None}
+        if project_ids:
+            for row in db.scalars(select(self.project_model).where(self.project_model.id.in_(project_ids))):
+                memo[("type_is_local", self.project_model.__name__, row.id)] = row.org_type_id is None
+
+    def is_project_local(self, db: Session, project_type_id: uuid.UUID) -> bool:
+        """Whether a project type row is the project's own (no organisation type behind it)."""
+        from app.modules.registry import module_state_memo
+
+        memo = module_state_memo()
+        key = ("type_is_local", self.project_model.__name__, project_type_id)
+        if memo is not None and key in memo:
+            return memo[key]
+        row = db.get(self.project_model, project_type_id)
+        return row is not None and row.org_type_id is None
 
     def _display_name(self, db: Session, *, org_type_id: uuid.UUID | None, project_type_id: uuid.UUID | None) -> str | None:
         """`display_name` without the cache."""

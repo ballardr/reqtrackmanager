@@ -51,20 +51,24 @@ def current_versions(db: Session, version_model: Any, fk: str, record_ids: Seque
     return found
 
 
-def prime_current_versions(db: Session, version_model: Any, fk: str, record_ids: Sequence[uuid.UUID]) -> None:
+def prime_current_versions(db: Session, version_model: Any, fk: str, record_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, Any]:
     """Reads the current version of many records in one statement, for `primed_current_version` to answer from.
 
     A bundle export asks for each record's current version through the per-record helpers; priming the records it will
     export first makes that one statement. It only has an effect inside a `memoize_module_state()` block (an
-    export, which does not change versions between the read and its use); elsewhere it does nothing.
+    export, which does not change versions between the read and its use); elsewhere it only returns them.
+
+    Returns:
+        `{record id: current version}`, which the caller can use to prime the versions' other lookups.
     """
     from app.modules.registry import module_state_memo
 
+    found = current_versions(db, version_model, fk, record_ids)
     memo = module_state_memo()
-    if memo is None or not record_ids:
-        return
-    for record_id, version in current_versions(db, version_model, fk, record_ids).items():
-        memo[("current_version", version_model.__name__, record_id)] = version
+    if memo is not None:
+        for record_id, version in found.items():
+            memo[("current_version", version_model.__name__, record_id)] = version
+    return found
 
 
 def primed_current_version(version_model: Any, record_id: uuid.UUID) -> Any | None:

@@ -242,8 +242,11 @@ def list_risks(
             risks = [r for r in risks if (counts.get(r.id, 0) > 0) == effectively_treated]
         versions = current_versions(db, RiskVersion, "risk_id", [r.id for r in risks])
         labels = sh.owner_labels(db, list(versions.values()))
+        type_names = RISK_TYPES.display_names(db, [(None, v.project_type_id) for v in versions.values()])
         out = [
-            sh.risk_to_out(db, r, versions[r.id], ctx, effective_treatments=counts.get(r.id, 0), labels=labels)
+            sh.risk_to_out(
+                db, r, versions[r.id], ctx, effective_treatments=counts.get(r.id, 0), labels=labels, type_names=type_names,
+            )
             for r in risks
         ]
         if review_overdue is not None:
