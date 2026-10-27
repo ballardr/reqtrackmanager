@@ -73,6 +73,10 @@ flowchart LR
 
 Keep `BACKEND_WORKERS × replicas × (DB_POOL_SIZE + DB_MAX_OVERFLOW + 2)` (17 per worker by default) below PostgreSQL's `max_connections` (100 by default, 3 reserved), and allow about 0.5 GiB of memory per worker (each holds roughly 400 MiB of private memory; workers share almost nothing). Set `BACKEND_WORKERS=1` to run a single process.
 
+:::note PgBouncer is untested
+A connection pooler such as PgBouncer is the usual way past PostgreSQL's connection limit when you add workers, but it has not been tried with this application and is not yet supported: each worker keeps two connections that need a session (the live-update `LISTEN` and a startup lock), which a transaction-mode pooler would break. Until a direct connection setting for those two exists, lower `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` or raise PostgreSQL's `max_connections` instead.
+:::
+
 Each worker serves at most `MAX_CONCURRENT_REQUESTS` requests at once (by default as many as it has database connections, 15); further requests wait, up to `REQUEST_QUEUE_TIMEOUT_SECONDS` (30), and are then refused with `503` and `Retry-After`. Watch the `requests_shed_total` metric: a steady rise means the deployment needs more workers or replicas.
 
 ## Next steps

@@ -377,6 +377,23 @@ Each backend container runs `BACKEND_WORKERS` uvicorn worker processes (default 
 
 Sizing: each worker holds up to `DB_POOL_SIZE + DB_MAX_OVERFLOW` database connections (default 5 + 10 = 15) plus two dedicated ones (the `LISTEN` listener and the leadership lock), so keep `BACKEND_WORKERS × replicas × (DB_POOL_SIZE + DB_MAX_OVERFLOW + 2)` (68 for the defaults) under Postgres's `max_connections` (default 100), and budget roughly 150–250 MB of memory per worker. Each worker also admits at most `MAX_CONCURRENT_REQUESTS` requests at a time (default: the pool's 15); the rest wait up to `REQUEST_QUEUE_TIMEOUT_SECONDS` and then get a `503` with `Retry-After`, so a burst queues instead of every thread and connection waiting on the other. `BACKEND_WORKERS=1` restores single-process behaviour (served by `app/serve.py` on a dual-stack socket). Measured on a 100-requirement project, each worker holds about 400 MiB of private memory (workers share almost nothing), so budget about 0.5 GiB per worker rather than 150-250 MB.
 
+**More workers than PostgreSQL's connection limit allows: PgBouncer (not tested, not yet supported).** At six workers with a
+4 + 10 pool the stack held 91 of the 97 connections PostgreSQL allows, so a seventh worker would be refused connections before the
+CPU ran out. A connection pooler in front of PostgreSQL, such as PgBouncer in *transaction* mode, lets many application
+connections share a few database connections and is the usual remedy. It has **not** been run with this application and the
+performance effect is unmeasured. Two things stand in the way, both found by reading the code:
+
+- Each worker keeps two connections that need a *session*, not a transaction: the `LISTEN` that drives live updates
+  (`services/pubsub.py`) and the startup advisory lock (`services/process_coordination.py`). Both are taken from the same engine as
+  the request pool, so behind a transaction-mode pooler they would fail or lose their state. Supporting a pooler needs a
+  separate direct URL for those two connections; that setting does not exist yet.
+- Row locks (`FOR NO KEY UPDATE`), `SET LOCAL` and ordinary transactions work in transaction mode; session-level `SET`, prepared
+  statements held across transactions and advisory locks do not.
+
+Until that change is made and measured, the supported ways to add workers are a smaller pool per worker
+(`DB_POOL_SIZE`, `DB_MAX_OVERFLOW`; the per-worker request limit follows it) or a higher PostgreSQL `max_connections` with memory
+to match.
+
 ## Troubleshooting
 
 **Backend logs were silently empty (fixed).** `docker compose logs backend` used to never show anything beyond the startup banner — no per-request access logs, no error tracebacks. Root cause: `backend/alembic/env.py` called `logging.config.fileConfig(...)` on every app startup (migrations run automatically every boot), and `fileConfig()`'s default `disable_existing_loggers=True` disabled every logger not explicitly listed in `alembic.ini`, including uvicorn's own loggers. Fixed by passing `disable_existing_loggers=False`. If you're on a version predating this fix and logs look suspiciously empty, that's why.
