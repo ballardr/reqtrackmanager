@@ -200,6 +200,13 @@ measure the CPU-bound ceiling:
 perf/run_profile.sh linux-vm-4c8g --full --tiers T2 --breadth projects-10 --scenarios capacity --workers 6 --db-pool-size 4 --db-max-overflow 10 --max-cpus 12 --capacity-users 256,384,512 --allow-heavy --max-load-per-core 3 --watch-url $PROD_HEALTH_URL
 ```
 
+To see whether the ceiling depends on project size, run the same capacity climb at a larger tier (ten projects of 5,000
+requirements is 50,000 in all, so the dataset takes a while to build the first time):
+
+```sh
+perf/run_profile.sh linux-vm-4c8g --full --tiers T3 --breadth projects-10 --scenarios capacity --capacity-tier T3 --workers 6 --db-pool-size 4 --db-max-overflow 10 --max-cpus 12 --capacity-users 256,384,512 --allow-heavy --max-load-per-core 3 --watch-url $PROD_HEALTH_URL
+```
+
 Read the result as requests per second per worker: it should stay near 50 while the backend's CPU is the limit. A fall
 means the database, the project row lock taken by every create, or the host's own cores became the limit (the run notes
 the load generator's CPU, so a ceiling it caused is not read as the backend's). On a server shared with production use
@@ -233,7 +240,7 @@ listed with their parameters in `lib/catalog.py`.
 
 ### Capacity: how many connections, and so how many people, one stack serves
 
-`capacity` steps simulated connections up at one tier (T2, 1,000 requirements) until the stack saturates or fails, so the
+`capacity` steps simulated connections up at one tier (T2, 1,000 requirements, unless `--capacity-tier` names another) until the stack saturates or fails, so the
 result is a curve and a number, not a latency at a fixed load. Each connection makes about one API request a second
 (browse plus roughly one request in five a write); a real person makes one every several seconds, so a level stands
 for 5-10 times as many active people (`budgets.yaml` sets the interval, and `analyse.py` prints the estimate beside each level). It is a heavy scenario (`--allow-heavy` or `--dedicated`).

@@ -134,7 +134,10 @@ def scenarios_for(mode: str, *, allow_heavy: bool, nested: bool, soak: bool) -> 
     return chosen
 
 
-def parameters(name: str, mode: str, requirements_per_project: int, tier: Optional[str] = None, users: Optional[tuple] = None) -> list:
+def parameters(
+    name: str, mode: str, requirements_per_project: int, tier: Optional[str] = None, users: Optional[tuple] = None,
+    capacity_tier: Optional[str] = None,
+) -> list:
     """The runs of one scenario at one data volume.
 
     Args:
@@ -143,6 +146,7 @@ def parameters(name: str, mode: str, requirements_per_project: int, tier: Option
         requirements_per_project: Requirements in each project at this tier.
         tier: The tier (a scenario limited to some tiers is skipped at the others).
         users: Replaces the scenario's user levels (the operator's `--capacity-users`).
+        capacity_tier: The one tier the `capacity` scenario runs at, replacing `CAPACITY_TIER` (the operator's `--capacity-tier`).
 
     Returns:
         A list of `{"users", "measure_seconds", "warmup_seconds", "min_requests", "max_seconds"}`, empty when the
@@ -151,7 +155,8 @@ def parameters(name: str, mode: str, requirements_per_project: int, tier: Option
     spec = CATALOG[name]
     if spec.max_requirements is not None and requirements_per_project > spec.max_requirements:
         return []
-    if spec.tiers is not None and tier is not None and tier not in spec.tiers:
+    allowed = (capacity_tier,) if name == "capacity" and capacity_tier else spec.tiers
+    if allowed is not None and tier is not None and tier not in allowed:
         return []
     index = 0 if mode == "quick" else 1
     levels = users or (spec.users_quick if mode == "quick" else spec.users_full)

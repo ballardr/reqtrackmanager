@@ -1805,3 +1805,17 @@ def test_capacity_levels_carry_an_estimate_of_the_active_people_they_stand_for()
     level = analyse.capacity_curve(rows, budgets)["levels"][0]
     assert (level["people_low"], level["people_high"]) == (620, 1240)
     assert budgets["capacity"]["person_request_interval_seconds"] == {"busy": 5, "relaxed": 10}
+
+
+def test_capacity_tier_option_moves_the_scenario_to_another_tier_and_must_be_among_the_tiers_run():
+    from perf import run_profile
+
+    assert catalog.parameters("capacity", "full", 5000, "T3", capacity_tier="T3")
+    assert catalog.parameters("capacity", "full", 1000, "T2", capacity_tier="T3") == [], "only the named tier"
+    assert catalog.parameters("capacity", "full", 1000, "T2")
+    options = run_profile.parse_args(["lab-host", "--full", "--tiers", "T3", "--scenarios", "capacity", "--capacity-tier", "T3"])
+    assert options.capacity_tier == "T3"
+    for bad in (["--tiers", "T2", "--capacity-tier", "T3"], ["--capacity-tier", "T3"], ["--capacity-tier", "T9"]):
+        with pytest.raises(SystemExit):
+            run_profile.parse_args(["lab-host", *bad])
+    assert run_profile.parse_args(["lab-host", "--full", "--capacity-tier", "T4"]).capacity_tier == "T4", "full mode covers every tier"

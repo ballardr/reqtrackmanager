@@ -136,6 +136,7 @@ class Options:
         db_pool_size / db_max_overflow: Per-worker database pool (`DB_POOL_SIZE`, `DB_MAX_OVERFLOW`); None for the
             application's defaults (5 and 10).
         capacity_users: Simulated-user levels of the `capacity` scenario, or None for the catalogue's.
+        capacity_tier: The tier the `capacity` scenario runs at, or None for T2.
         max_load_per_core: Host load average per core above which (for a sustained period) the run stops; None for
             the default (1.5, or `DEDICATED_MAX_LOAD_PER_CORE` on a dedicated host).
         scenarios: Explicit scenario names, or None for the mode's set.
@@ -165,6 +166,7 @@ class Options:
     watch_url: Optional[str] = None
     max_load_per_core: Optional[float] = None
     capacity_users: Optional[tuple] = None
+    capacity_tier: Optional[str] = None
     db_pool_size: Optional[int] = None
     db_max_overflow: Optional[int] = None
     worker_sweep: Optional[tuple] = None
@@ -258,6 +260,10 @@ def parse_args(argv: list) -> Options:
     parser.add_argument("--db-pool-size", type=int, help="DB_POOL_SIZE for the backend (default 5); lower it to run many workers within PostgreSQL's connection limit")
     parser.add_argument("--db-max-overflow", type=int, help="DB_MAX_OVERFLOW for the backend (default 10)")
     parser.add_argument(
+        "--capacity-tier", choices=catalog.TIER_ORDER,
+        help="the dataset tier the capacity scenario runs at (default T2, 1,000 requirements per project); the tier must also be in --tiers",
+    )
+    parser.add_argument(
         "--capacity-users", help="comma-separated simulated-user levels for the capacity scenario (default 16,32,64,128,256 in full mode, "
                                  "16,64 in quick); it runs at T2 only and is a heavy scenario (--allow-heavy or --dedicated)",
     )
@@ -266,6 +272,10 @@ def parse_args(argv: list) -> Options:
     for flag, value, low in (("--db-pool-size", args.db_pool_size, 1), ("--db-max-overflow", args.db_max_overflow, 0)):
         if value is not None and not low <= value <= 200:
             parser.error(f"{flag} must be between {low} and 200")
+    if args.capacity_tier:
+        run_tiers = args.tiers.split(",") if args.tiers else list(catalog.QUICK_TIERS if not args.full else catalog.TIER_ORDER)
+        if args.capacity_tier not in run_tiers:
+            parser.error(f"--capacity-tier {args.capacity_tier} is not among the tiers this run covers ({','.join(run_tiers)}); add it to --tiers")
     worker_sweep = None
     if args.workers_sweep:
         try:
@@ -301,7 +311,7 @@ def parse_args(argv: list) -> Options:
         breadth=args.breadth, density=args.density, seed=args.seed, repeats=args.repeats, workers=1 if args.profiling == "heap" else (None if args.workers == "auto" else int(args.workers)), max_cpus=args.max_cpus,
         max_mem=args.max_mem, dedicated=args.dedicated, allow_heavy=args.allow_heavy or args.dedicated, soak_minutes=args.soak_minutes,
         plan=args.plan, cleanup=args.cleanup, images=args.images, storage=args.storage, keep=args.keep, out=args.out,
-        cache_dir=args.cache_dir, watch_url=args.watch_url, max_load_per_core=args.max_load_per_core, capacity_users=capacity_users, db_pool_size=args.db_pool_size, db_max_overflow=args.db_max_overflow, worker_sweep=worker_sweep, scenarios=args.scenarios.split(",") if args.scenarios else None, profiling=args.profiling,
+        cache_dir=args.cache_dir, watch_url=args.watch_url, max_load_per_core=args.max_load_per_core, capacity_users=capacity_users, capacity_tier=args.capacity_tier, db_pool_size=args.db_pool_size, db_max_overflow=args.db_max_overflow, worker_sweep=worker_sweep, scenarios=args.scenarios.split(",") if args.scenarios else None, profiling=args.profiling,
     )
 
 
@@ -862,7 +872,7 @@ class ProfileRun:
         per_project = self.summary["tiers"][tier]
         soak_minutes = self.options.soak_minutes if self.options.soak_minutes is not None else 30
         for name in names:
-            all_params = catalog.parameters(name, self.options.mode, per_project, tier, self.options.capacity_users)
+            all_params = catalog.parameters(name, self.options.mode, per_project, tier, self.options.capacity_users, self.options.capacity_tier)
             levels = [p["users"] for p in all_params]
             self.pg_begin()
             climb_ended = False
