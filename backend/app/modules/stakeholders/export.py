@@ -44,6 +44,7 @@ from app.modules.stakeholders.models import (
     Persona,
     PersonaFile,
     PersonaTypeDefinition,
+    PersonaVersion,
     ProjectPersonaType,
     ProjectPersonaVisibility,
     ProjectPersonaWeight,
@@ -54,8 +55,10 @@ from app.modules.stakeholders.service import (
     create_persona,
     get_current_persona_version,
 )
-from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
-from app.services.tags import record_tag_names, restore_record_tags
+from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_bundled_file, prime_file_links
+from app.services.current_versions import prime_current_versions
+from app.services.relationships import prime_links
+from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
 
 _TEXT_FIELDS = (
     "name", "description", "role_title", "goals", "needs", "behaviours", "context_environment",
@@ -196,20 +199,15 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         select(Persona).where(Persona.project_id == project.id, Persona.scope == PersonaScope.PROJECT).order_by(Persona.created_at)
     ).all())
     emails = _persona_emails(db, personas)
+    ids = [p.id for p in personas]
+    prime_current_versions(db, PersonaVersion, "persona_id", ids)
+    prime_links(db, PERSONA_ARTEFACT_TYPE, ids)
+    prime_record_tag_names(db, PERSONA_ARTEFACT_TYPE, ids)
+    prime_file_links(db, PersonaFile, "persona_id", ids)
     personas_json = []
     for i, persona in enumerate(personas):
         entry = _persona_json(db, persona, f"PROJECT-PERSONA-{i + 1}", emails)
-        attachments = []
-        for asset, linked_by in db.execute(
-            select(FileAsset, User).join(PersonaFile, PersonaFile.file_id == FileAsset.id)
-            .join(User, User.id == PersonaFile.linked_by).where(PersonaFile.persona_id == persona.id)
-        ).all():
-            assets[asset.id] = asset
-            attachments.append({
-                "file_ref": f"{asset.id}_{asset.filename}", "filename": asset.filename,
-                "content_type": asset.content_type, "linked_by_email": linked_by.email,
-            })
-        entry["attachments"] = attachments
+        entry["attachments"] = export_file_links(db, PersonaFile, "persona_id", persona.id, assets)
         personas_json.append(entry)
 
     types_json = []

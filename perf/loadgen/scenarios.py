@@ -4,7 +4,8 @@ Module: loadgen.scenarios
 The Locust user classes, one per scenario, that drive the application's HTTP API.
 
 Responsibilities:
-- Define what each simulated person does (browse, search, edit, export, report, bundle, attachment) against the
+- Define what each simulated person does (browse, search, edit, export, report, bundle, attachment, and the other record
+  types and the links between them) against the
   generated dataset, addressing records through the dataset manifest rather than listing first.
 - Name every request after its endpoint template, not its URL, so statistics aggregate per endpoint.
 
@@ -74,6 +75,23 @@ class PerfUser(HttpUser):
     def get(self, path: str, name: str, **kwargs):
         """GET with the endpoint template as the statistics name."""
         return self.client.get(path, name=name, **kwargs)
+
+    def typed(self, exclude: tuple = ("requirement",)) -> list[str]:
+        """Record types this project has sampled records of (the manifest's `record_types`), except `exclude`."""
+        samples = self.project.get("type_samples", {})
+        return [t for t in self.environment.shared.record_types if samples.get(t) and t not in exclude]
+
+    def record_of(self, artefact_type: str) -> str:
+        """A sampled record of the type."""
+        return random.choice(self.project["type_samples"][artefact_type])
+
+    def hub_of(self, artefact_type: str) -> str:
+        """One of the project's most-linked records of the type (a sampled one if none is recorded)."""
+        return random.choice(self.project.get("type_hubs", {}).get(artefact_type) or self.project["type_samples"][artefact_type])
+
+    def list_path(self, artefact_type: str) -> str:
+        """The type's project list endpoint."""
+        return f"{self.base}/{self.environment.shared.record_types[artefact_type]['list_path']}"
 
 
 class Browse(PerfUser):
@@ -345,6 +363,226 @@ class ProjectScope(PerfUser):
         self.get(f"{self.base}/metrics?project_scope=children", "GET /projects/{id}/metrics (project_scope=children)", timeout=LONG_TIMEOUT)
 
 
+class _TypeReads(PerfUser):
+    """Reading each record type the way its screens do: the list, a record, its comment thread. The lists are the
+    unpaged defaults, so a type whose list reads the whole project shows as cost growing with the data."""
+
+    abstract = True
+
+    @task(6)
+    def type_list(self) -> None:
+        types = self.typed()
+        if types:
+            t = random.choice(types)
+            self.get(self.list_path(t), f"GET {t} (list)", timeout=LONG_TIMEOUT)
+
+    @task(6)
+    def type_record(self) -> None:
+        types = [t for t in self.typed() if self.environment.shared.record_types[t]["has_detail"]]
+        if types:
+            t = random.choice(types)
+            self.get(f"{self.list_path(t)}/{self.record_of(t)}", f"GET {t} (record)")
+
+    @task(3)
+    def type_comments(self) -> None:
+        types = [t for t in self.typed() if self.environment.shared.record_types[t]["has_comments"]]
+        if types:
+            t = random.choice(types)
+            self.get(f"{self.list_path(t)}/{self.record_of(t)}/comments", f"GET {t} (comments)")
+
+
+class ListsByType(_TypeReads):
+    """Every record type's list, a record and its comments, equally weighted across the types the dataset holds."""
+
+
+class _LinkReads(PerfUser):
+    """The link system's reads across types: the graph from a hub or an ordinary record at depth 1 to 3, link candidates
+    and the browse step for a type pair, the link types a record offers, and the activity timeline (which reads the
+    project's link events)."""
+
+    abstract = True
+
+    @task(4)
+    def graph_from_hub(self) -> None:
+        types = self.typed(exclude=())
+        if types:
+            t, depth = random.choice(types), random.choice((1, 2, 3))
+            self.get(f"{self.base}/artefacts/{t}/{self.hub_of(t)}/link-graph?depth={depth}", f"GET link-graph depth={depth} (hub)")
+
+    @task(2)
+    def graph_from_record(self) -> None:
+        types = self.typed(exclude=())
+        if types:
+            t = random.choice(types)
+            self.get(f"{self.base}/artefacts/{t}/{self.record_of(t)}/link-graph?depth=2", "GET link-graph depth=2 (record)")
+
+    @task(3)
+    def candidates(self) -> None:
+        types = self.typed(exclude=())
+        if len(types) > 1:
+            t, other = random.sample(types, 2)
+            self.get(
+                f"{self.base}/artefacts/{t}/{self.record_of(t)}/link-candidates?other_type={other}&q={random.choice(SEARCH_WORDS)}",
+                f"GET link-candidates ({other})", timeout=LONG_TIMEOUT,
+            )
+
+    @task(2)
+    def browse(self) -> None:
+        types = self.typed(exclude=())
+        if len(types) > 1:
+            t, other = random.sample(types, 2)
+            self.get(f"{self.base}/artefacts/{t}/{self.record_of(t)}/link-browse?other_type={other}", f"GET link-browse ({other})")
+
+    @task(1)
+    def link_types(self) -> None:
+        types = self.typed(exclude=())
+        if types:
+            t = random.choice(types)
+            self.get(f"{self.base}/artefacts/{t}/{self.record_of(t)}/link-types?other_type=requirement", "GET link-types")
+
+    @task(2)
+    def hub_activity(self) -> None:
+        types = self.typed(exclude=())
+        if types:
+            t = random.choice(types)
+            self.get(f"{self.base}/artefacts/{t}/{self.hub_of(t)}/activity?limit=25", "GET activity (hub)")
+
+
+class LinksMixed(_LinkReads):
+    """The link reads above, plus creating and removing a link (which takes locks and writes an audit event). An
+    organisation administrator, so every type's link permission is held."""
+
+    needs_admin = True
+
+    def on_start(self) -> None:
+        super().on_start()
+        self.options: dict[str, dict | None] = {}
+
+    def _option(self, artefact_type: str, record_id: str) -> dict | None:
+        """A link type usable from the type to a requirement, looked up once per type."""
+        if artefact_type not in self.options:
+            response = self.client.get(
+                f"{self.base}/artefacts/{artefact_type}/{record_id}/link-types?other_type=requirement", name="setup: link-types"
+            )
+            found = response.json() if response.status_code == 200 else []
+            self.options[artefact_type] = found[0] if found else None
+        return self.options[artefact_type]
+
+    @task(2)
+    def link_and_unlink(self) -> None:
+        types = self.typed(exclude=("requirement",))
+        if not types:
+            return
+        t = random.choice(types)
+        record_id = self.record_of(t)
+        option = self._option(t, record_id)
+        if option is None:
+            return
+        body = {"link_type_id": option["link_type_id"], "direction": option["direction"], "other_type": "requirement",
+                "other_id": self.requirement_id()}
+        with self.client.post(
+            f"{self.base}/artefacts/{t}/{record_id}/links", json=body, name="POST /artefacts/{type}/{id}/links (create)", catch_response=True,
+        ) as response:
+            if response.status_code == 201:
+                link_id = response.json()["id"]
+            elif response.status_code in (400, 409):
+                response.success()  # the pair is already linked, or the type refuses it: not a fault
+                return
+            else:
+                response.failure(f"{response.status_code}")
+                return
+        self.client.delete(f"{self.base}/artefacts/{t}/{record_id}/links/{link_id}", name="DELETE /artefacts/{type}/{id}/links/{id}")
+
+
+class SearchAllTypes(PerfUser):
+    """The global search across every record type: all types in a project, a single type, a few types, and every
+    project. The per-person search limit (`429`) is recorded as throttled, not as a failure."""
+
+    wait_time = constant_throughput(0.5)
+
+    def _search(self, body: dict, name: str) -> None:
+        with self.client.post("/api/v1/search", json=body, name=name, catch_response=True) as response:
+            if response.status_code == 429:
+                response.failure(THROTTLED)
+            elif response.status_code >= 400:
+                response.failure(f"{response.status_code}")
+
+    @task(3)
+    def all_types_in_project(self) -> None:
+        self._search({"q": random.choice(SEARCH_WORDS), "scope": "project", "project_id": self.project["id"], "limit": 25}, "POST /search (all types, project)")
+
+    @task(3)
+    def one_type(self) -> None:
+        types = self.typed(exclude=())
+        if types:
+            self._search(
+                {"q": random.choice(SEARCH_WORDS), "scope": "project", "project_id": self.project["id"], "types": [random.choice(types)], "limit": 25},
+                "POST /search (one type)",
+            )
+
+    @task(2)
+    def several_types(self) -> None:
+        types = self.typed(exclude=())
+        if len(types) >= 3:
+            self._search(
+                {"q": random.choice(SEARCH_WORDS), "scope": "project", "project_id": self.project["id"], "types": random.sample(types, 3), "limit": 25},
+                "POST /search (three types)",
+            )
+
+    @task(1)
+    def every_project(self) -> None:
+        self._search({"q": random.choice(SEARCH_WORDS), "scope": "all", "limit": 25}, "POST /search (all types, all projects)")
+
+
+class ExportByType(PerfUser):
+    """Each type's list as a CSV (the file its list's Export button downloads)."""
+
+    needs_admin = True
+    wait_time = constant(1)
+
+    @task
+    def export(self) -> None:
+        types = self.typed()  # requirements have their own scenario (`export_csv`)
+        if types:
+            t = random.choice(types)
+            self.get(f"{self.base}/records/{t}/export", f"GET /records/{t}/export (csv)", timeout=LONG_TIMEOUT)
+
+
+class ImportPreviewByType(PerfUser):
+    """Previewing a CSV import of each importable type's own export (every row an update, validated and rolled back)."""
+
+    needs_admin = True
+    wait_time = constant(1)
+
+    def on_start(self) -> None:
+        super().on_start()
+        self.files: dict[str, bytes] = {}
+
+    @task
+    def preview(self) -> None:
+        types = [t for t in self.typed() if self.environment.shared.record_types[t]["importable"]]  # requirements: `import_preview`
+        if not types:
+            return
+        t = random.choice(types)
+        if t not in self.files:
+            self.files[t] = self.client.get(f"{self.base}/records/{t}/export", name=f"setup: export {t}", timeout=LONG_TIMEOUT).content
+        self.client.post(
+            f"{self.base}/records/{t}/import?dry_run=true", files={"file": (f"{t}.csv", self.files[t], "text/csv")},
+            name=f"POST /records/{t}/import (preview)", timeout=LONG_TIMEOUT,
+        )
+
+
+class OrgBundleExport(PerfUser):
+    """The whole organisation's export bundle (every project, with the links), which a backup or a move relies on."""
+
+    needs_admin = True
+    wait_time = constant(1)
+
+    @task
+    def export(self) -> None:
+        self.get(f"/api/v1/orgs/{self.persona['org_id']}/export", "GET /orgs/{id}/export (bundle)", timeout=LONG_TIMEOUT)
+
+
 class Soak(Browse):
     """A steady mix at a fixed request rate, to see whether memory keeps growing after warm-up."""
 
@@ -387,6 +625,20 @@ class Capacity(Browse, Edit):
         self.client.request = lambda method, url, **kwargs: request(method, url, **{"timeout": CAPACITY_TIMEOUT, **kwargs})
 
 
+class CapacityMixed(Browse, Edit, _TypeReads, _LinkReads):
+    """`Capacity` with the other record types and the link system in the mix: roughly a third of the requests are other
+    types' lists, records and comments or the link graph, candidates and browse. Kept apart from `Capacity` so that
+    scenario's numbers stay comparable with earlier runs."""
+
+    wait_time = constant_throughput(1)
+
+    def on_start(self) -> None:
+        """As `Capacity`: a request timeout, so a stalled stack shows as failures."""
+        super().on_start()
+        request = self.client.request
+        self.client.request = lambda method, url, **kwargs: request(method, url, **{"timeout": CAPACITY_TIMEOUT, **kwargs})
+
+
 SCENARIOS: dict[str, type[PerfUser]] = {
     "browse": Browse,
     "list_unpaged": ListUnpaged,
@@ -404,4 +656,11 @@ SCENARIOS: dict[str, type[PerfUser]] = {
     "project_scope": ProjectScope,
     "soak": Soak,
     "capacity": Capacity,
+    "lists_by_type": ListsByType,
+    "links_mixed": LinksMixed,
+    "search_all_types": SearchAllTypes,
+    "export_by_type": ExportByType,
+    "import_preview_by_type": ImportPreviewByType,
+    "org_bundle_export": OrgBundleExport,
+    "capacity_mixed": CapacityMixed,
 }

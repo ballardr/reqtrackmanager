@@ -18,6 +18,7 @@ module docstring for the package layout.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -80,8 +81,27 @@ def _require_can_create_change_request(db: Session, user: User, project: Project
 OPEN_CR_STATUSES = (ChangeRequestStatus.SUBMITTED, ChangeRequestStatus.IN_REVIEW)
 
 
+@dataclass
+class _ListFacts:
+    """What `_to_out` reads per request, loaded once for a whole list: the caller's subscriptions and each request's
+    comment count."""
+
+    subscribed: set[UUID]
+    comment_counts: dict[UUID, int]
+
+
+def _list_facts(db: Session, crs: list[ChangeRequest], current_user_id: UUID) -> _ListFacts:
+    """Loads the facts a list of `crs` needs in two statements."""
+    ids = [cr.id for cr in crs]
+    return _ListFacts(
+        subscribed=engagement.subscribed_ids(db, current_user_id, "change_request", ids),
+        comment_counts=engagement.get_comment_counts(db, ReviewTargetType.CHANGE_REQUEST, ids),
+    )
+
+
 def _to_out(
-    db: Session, cr: ChangeRequest, version: ChangeRequestVersion, current_user_id: UUID, *, with_links: bool = True
+    db: Session, cr: ChangeRequest, version: ChangeRequestVersion, current_user_id: UUID, *, with_links: bool = True,
+    facts: _ListFacts | None = None,
 ) -> ChangeRequestOut:
     """Builds the API response shape for a change request from its identity
     row plus one version snapshot, including `current_user_id`'s
@@ -89,7 +109,8 @@ def _to_out(
 
     `with_links` resolves the proposed links for display (the far end's title
     only where `current_user_id` may see it); the list view passes false and
-    carries just `proposed_link_count`."""
+    carries just `proposed_link_count`. `facts` is what `_list_facts` loaded for a whole list; omitted, the
+    subscription and comment count are read for this one request."""
     project = db.get(Project, cr.project_id) if with_links and version.proposed_links else None
     return ChangeRequestOut(
         id=cr.id, project_id=cr.project_id, unique_code=cr.unique_code, requirement_id=cr.requirement_id, kind=cr.kind,
@@ -103,8 +124,13 @@ def _to_out(
         custom_fields=version.custom_fields,
         submitted_at=cr.submitted_at, decided_at=cr.decided_at, decided_by=cr.decided_by,
         decision_note=cr.decision_note, created_at=cr.created_at,
-        is_subscribed=engagement.is_subscribed(db, current_user_id, "change_request", cr.id),
-        comment_count=engagement.get_comment_count(db, ReviewTargetType.CHANGE_REQUEST, cr.id),
+        is_subscribed=(
+            cr.id in facts.subscribed if facts else engagement.is_subscribed(db, current_user_id, "change_request", cr.id)
+        ),
+        comment_count=(
+            facts.comment_counts.get(cr.id, 0) if facts
+            else engagement.get_comment_count(db, ReviewTargetType.CHANGE_REQUEST, cr.id)
+        ),
         requires_approval=cr.status in OPEN_CR_STATUSES,
         proposed_review_date=version.proposed_review_date,
         proposed_review_lead_days=version.proposed_review_lead_days,
@@ -506,7 +532,8 @@ def list_change_requests(
         crs = list_service.query_change_requests(db, pid, cr_status=cr_status, active_only=active_only)
         crs = tag_filter.keep(db, pid, "change_request", crs)
         pairs = list_service.narrow_change_requests(db, crs, target_stage_id=target_stage_id, search=search)
-        return [_to_out(db, cr, version, current_user.id, with_links=False) for cr, version in pairs]
+        facts = _list_facts(db, [cr for cr, _version in pairs], current_user.id)
+        return [_to_out(db, cr, version, current_user.id, with_links=False, facts=facts) for cr, version in pairs]
 
     out = project_scope.collect(db, db.get(Project, project_id), current_user.id, "change_request", rows_for)
     response.headers["X-Total-Unfiltered-Count"] = str(unfiltered)

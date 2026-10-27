@@ -25,23 +25,17 @@ from app.modules.decisions.service import DECISION_ARTEFACT_TYPE
 from app.schemas.file import FileAssetOut
 from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
+from app.services.module_attachments import comments_out
 
 router = APIRouter(tags=["decisions-comments"])
 
 
+def _comments_to_out(db: Session, comments: list[DecisionComment]) -> list[DecisionCommentOut]:
+    return comments_out(db, comments, out=DecisionCommentOut, fk="decision_id", file_model=DecisionCommentFile)
+
+
 def _comment_to_out(db: Session, comment: DecisionComment) -> DecisionCommentOut:
-    author = db.get(User, comment.author_id)
-    attachments = db.scalars(
-        select(FileAsset)
-        .join(DecisionCommentFile, DecisionCommentFile.file_id == FileAsset.id)
-        .where(DecisionCommentFile.comment_id == comment.id)
-    ).all()
-    return DecisionCommentOut(
-        id=comment.id, decision_id=comment.decision_id, author_id=comment.author_id,
-        author_display_name=author.display_name if author is not None else "Unknown user",
-        body=comment.body, created_at=comment.created_at, edited_at=comment.edited_at,
-        attachments=[FileAssetOut.model_validate(a) for a in attachments],
-    )
+    return _comments_to_out(db, [comment])[0]
 
 
 @router.post("/{decision_id}/comments", response_model=DecisionCommentOut, status_code=status.HTTP_201_CREATED)
@@ -69,7 +63,7 @@ def list_decision_comments(
     comments = db.scalars(
         select(DecisionComment).where(DecisionComment.decision_id == decision.id).order_by(DecisionComment.created_at)
     ).all()
-    return [_comment_to_out(db, c) for c in comments]
+    return _comments_to_out(db, comments)
 
 
 @router.patch("/{decision_id}/comments/{comment_id}", response_model=DecisionCommentOut)

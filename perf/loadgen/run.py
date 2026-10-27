@@ -60,6 +60,7 @@ class Shared:
     """
 
     def __init__(self, manifest: dict, users: int, needs_admin: bool, password: str) -> None:
+        self.record_types: dict[str, dict] = manifest.get("record_types", {})
         self.projects_by_org: dict[str, list[dict]] = {}
         for project in manifest["projects"]:
             self.projects_by_org.setdefault(project["organization_id"], []).append(project)

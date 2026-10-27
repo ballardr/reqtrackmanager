@@ -171,17 +171,54 @@ def export_file_links(
     Returns:
         One `{"file_ref", "filename", "content_type", "linked_by_email"}` entry per attachment.
     """
+    primed = _primed_file_links(file_model, record_id)
+    rows = primed if primed is not None else _file_link_rows(db, file_model, fk, [record_id]).get(record_id, [])
     out = []
-    for asset, linked_by in db.execute(
-        select(FileAsset, User).join(file_model, file_model.file_id == FileAsset.id)
-        .join(User, User.id == file_model.linked_by).where(getattr(file_model, fk) == record_id)
-    ).all():
+    for asset, linked_by_email in rows:
         assets[asset.id] = asset
         out.append({
             "file_ref": f"{asset.id}_{asset.filename}", "filename": asset.filename,
-            "content_type": asset.content_type, "linked_by_email": linked_by.email,
+            "content_type": asset.content_type, "linked_by_email": linked_by_email,
         })
     return out
+
+
+def _file_link_rows(db: Session, file_model: type, fk: str, record_ids: list[UUID]) -> dict[UUID, list[tuple[FileAsset, str]]]:
+    """`{record id: [(asset, linker's email)]}` for the records, in one statement."""
+    found: dict[UUID, list[tuple[FileAsset, str]]] = {}
+    if not record_ids:
+        return found
+    column = getattr(file_model, fk)
+    for record_id, asset, linked_by in db.execute(
+        select(column, FileAsset, User).join(file_model, file_model.file_id == FileAsset.id)
+        .join(User, User.id == file_model.linked_by).where(column.in_(record_ids))
+    ).all():
+        found.setdefault(record_id, []).append((asset, linked_by.email))
+    return found
+
+
+def _primed_file_links(file_model: type, record_id: UUID) -> list[tuple[FileAsset, str]] | None:
+    """The attachments `prime_file_links` read for the record, or `None` when it did not prime them."""
+    from app.modules.registry import module_state_memo
+
+    memo = module_state_memo()
+    return None if memo is None else memo.get(("file_links", file_model.__name__, record_id))
+
+
+def prime_file_links(db: Session, file_model: type, fk: str, record_ids: list[UUID]) -> None:
+    """Reads the direct attachments of many records in one statement, for `export_file_links` to answer from.
+
+    Like `services.tags.prime_record_tag_names`: effective only inside a `memoize_module_state()` block (an export),
+    and a no-op elsewhere.
+    """
+    from app.modules.registry import module_state_memo
+
+    memo = module_state_memo()
+    if memo is None:
+        return
+    found = _file_link_rows(db, file_model, fk, list(record_ids))
+    for record_id in record_ids:
+        memo[("file_links", file_model.__name__, record_id)] = found.get(record_id, [])
 
 
 def import_file_links(

@@ -92,9 +92,20 @@ CATALOG: dict = {
         ScenarioSpec("bundle_export", "heavy", "the full project export bundle", users_quick=(1,), users_full=(1,), min_requests=3, heavy=True),
         ScenarioSpec("bundle_import", "heavy", "importing a project bundle into a new project", users_quick=(1,), users_full=(1,), min_requests=2, heavy=True),
         ScenarioSpec("attachment", "heavy", "uploading a 256 KB file to a requirement", users_quick=(2,), users_full=(1, 4), heavy=True),
+        ScenarioSpec("lists_by_type", "read", "every other record type's list, a record and its comments", users_quick=(2,), users_full=(1, 4, 8)),
+        ScenarioSpec("links_mixed", "write", "the link graph at depth 1-3 from hubs of every type, link candidates, browse and activity, and creating and removing a link", users_quick=(2,), users_full=(1, 4, 8)),
+        ScenarioSpec("search_all_types", "read", "global search across every record type: all, one and three types, and every project", users_quick=(2,), users_full=(1, 4, 8)),
+        ScenarioSpec("export_by_type", "heavy", "each other record type's list as a CSV", users_quick=(1,), users_full=(1,), min_requests=3, heavy=True),
+        ScenarioSpec("import_preview_by_type", "heavy", "preview of a CSV import of each other importable type's own export", users_quick=(1,), users_full=(1,), min_requests=2, heavy=True, max_requirements=IMPORT_ROW_LIMIT),
+        ScenarioSpec("org_bundle_export", "heavy", "the whole organisation's export bundle (every project, with the links)", users_quick=(1,), users_full=(1,), min_requests=1, max_seconds=1800, heavy=True),
         ScenarioSpec("project_scope", "read", "a parent's widened list and dashboard over its descendants", users_quick=(2,), users_full=(1, 4), needs_nested=True),
         ScenarioSpec(
             "capacity", "capacity", "steps the number of simulated connections up until the stack saturates or fails (one tier)",
+            users_quick=CAPACITY_USERS_QUICK, users_full=CAPACITY_USERS_FULL, measure_seconds=(20, 45), heavy=True,
+            tiers=(CAPACITY_TIER,), repeats=1,
+        ),
+        ScenarioSpec(
+            "capacity_mixed", "capacity", "capacity with the other record types and the link system in the mix (one tier)",
             users_quick=CAPACITY_USERS_QUICK, users_full=CAPACITY_USERS_FULL, measure_seconds=(20, 45), heavy=True,
             tiers=(CAPACITY_TIER,), repeats=1,
         ),
@@ -102,8 +113,14 @@ CATALOG: dict = {
     )
 }
 
-QUICK_SCENARIOS = ("browse", "list_unpaged", "list_filtered", "search", "links", "edit")
+QUICK_SCENARIOS = ("browse", "list_unpaged", "list_filtered", "search", "links", "edit", "lists_by_type", "links_mixed", "search_all_types")
 FULL_SCENARIOS = tuple(name for name in CATALOG if name != "soak")
+
+
+def is_capacity(name: str) -> bool:
+    """Whether the scenario steps simulated connections up (`capacity` and `capacity_mixed`): the runner ends the climb
+    when the stack saturates, and the analysis turns the levels into a usable capacity."""
+    return CATALOG[name].kind == "capacity"
 
 
 def scenarios_for(mode: str, *, allow_heavy: bool, nested: bool, soak: bool) -> list:
@@ -155,7 +172,7 @@ def parameters(
     spec = CATALOG[name]
     if spec.max_requirements is not None and requirements_per_project > spec.max_requirements:
         return []
-    allowed = (capacity_tier,) if name == "capacity" and capacity_tier else spec.tiers
+    allowed = (capacity_tier,) if is_capacity(name) and capacity_tier else spec.tiers
     if allowed is not None and tier is not None and tier not in allowed:
         return []
     index = 0 if mode == "quick" else 1

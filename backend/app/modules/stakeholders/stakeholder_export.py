@@ -43,6 +43,7 @@ from app.models.organization import Organization
 from app.models.project import Project
 from app.models.scoring import ScoringLevel
 from app.models.user import User
+from app.modules.registry import scoped_memo
 from app.modules.stakeholders import groups as grp
 from app.modules.stakeholders._principals import STAKEHOLDER_PRINCIPAL_FIELDS, principals_from_bundle, principals_to_bundle
 from app.modules.stakeholders.enums import PersonaScope, StakeholderScope, StakeholderStatus, TargetCadence
@@ -53,7 +54,9 @@ from app.modules.stakeholders.models import (
     Stakeholder,
     StakeholderFile,
     StakeholderGroup,
+    StakeholderGroupMember,
     StakeholderTypeDefinition,
+    StakeholderVersion,
 )
 from app.modules.stakeholders.scoring import INFLUENCE_AXIS_KEY, INTEREST_AXIS_KEY, STAKEHOLDER_SCORING_SCHEME_KEY
 from app.modules.stakeholders.service import (
@@ -65,8 +68,10 @@ from app.modules.stakeholders.service import (
     get_current_stakeholder_version,
     list_represented_personas,
 )
-from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
-from app.services.tags import record_tag_names, restore_record_tags
+from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_bundled_file, prime_file_links
+from app.services.current_versions import prime_current_versions
+from app.services.relationships import prime_links
+from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
 
 _TEXT_FIELDS = (
     "name", "description", "role", "organisation_group", "interests", "responsibilities", "goals_needs",
@@ -87,6 +92,7 @@ def _emails(db: Session, user_ids: set[UUID | None]) -> dict[UUID, str]:
     return {u.id: u.email for u in db.scalars(select(User).where(User.id.in_(ids)))} if ids else {}
 
 
+@scoped_memo
 def _level_name(db: Session, level_id: UUID | None) -> str | None:
     level = db.get(ScoringLevel, level_id) if level_id else None
     return level.name if level else None
@@ -143,13 +149,23 @@ def _export_groups(
     """The groups of `scope` (org groups, or `project_id`'s own), parents before children."""
     universe = grp.load_groups(db, organization_id, project_id)
     entries = []
-    for g in universe.values():
-        if g.scope != scope:
-            continue
+    wanted = [g for g in universe.values() if g.scope == scope]
+    members_of: dict[UUID, list[UUID]] = {g.id: [] for g in wanted}
+    if wanted:
+        for group_id, stakeholder_id in db.execute(
+            select(StakeholderGroupMember.group_id, StakeholderGroupMember.stakeholder_id)
+            .where(StakeholderGroupMember.group_id.in_(list(members_of)))
+        ):
+            members_of[group_id].append(stakeholder_id)
+    member_rows = {
+        s.id: s for s in db.scalars(select(Stakeholder).where(Stakeholder.id.in_({i for ids in members_of.values() for i in ids})))
+    } if any(members_of.values()) else {}
+    prime_current_versions(db, StakeholderVersion, "stakeholder_id", list(member_rows))
+    for g in wanted:
         chain = [g, *grp.ancestor_chain(universe, g.id)][::-1]
         names = {}
-        for sid in grp.member_ids(db, {g.id}):
-            member = db.get(Stakeholder, sid)
+        for sid in members_of[g.id]:
+            member = member_rows.get(sid)
             if member is not None:
                 names[(get_current_stakeholder_version(db, sid).name, member.scope.value)] = None
         entries.append({
@@ -362,21 +378,16 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         select(Stakeholder).where(Stakeholder.project_id == project.id, Stakeholder.scope == StakeholderScope.PROJECT)
         .order_by(Stakeholder.created_at)
     ).all())
+    ids = [s.id for s in stakeholders]
+    prime_current_versions(db, StakeholderVersion, "stakeholder_id", ids)
+    prime_links(db, STAKEHOLDER_ARTEFACT_TYPE, ids)
+    prime_record_tag_names(db, STAKEHOLDER_ARTEFACT_TYPE, ids)
+    prime_file_links(db, StakeholderFile, "stakeholder_id", ids)
     emails = _stakeholder_emails(db, stakeholders)
     stakeholders_json = []
     for stakeholder in stakeholders:
         entry = _stakeholder_json(db, stakeholder, project.organization_id, emails)
-        attachments = []
-        for asset, linked_by in db.execute(
-            select(FileAsset, User).join(StakeholderFile, StakeholderFile.file_id == FileAsset.id)
-            .join(User, User.id == StakeholderFile.linked_by).where(StakeholderFile.stakeholder_id == stakeholder.id)
-        ).all():
-            assets[asset.id] = asset
-            attachments.append({
-                "file_ref": f"{asset.id}_{asset.filename}", "filename": asset.filename,
-                "content_type": asset.content_type, "linked_by_email": linked_by.email,
-            })
-        entry["attachments"] = attachments
+        entry["attachments"] = export_file_links(db, StakeholderFile, "stakeholder_id", stakeholder.id, assets)
         stakeholders_json.append(entry)
 
     types_json = []

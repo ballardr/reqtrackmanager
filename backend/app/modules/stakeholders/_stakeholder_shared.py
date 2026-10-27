@@ -79,6 +79,7 @@ from app.modules.stakeholders.service import (
 )
 from app.services import module_attachments as att
 from app.services.audit import log_event
+from app.services.current_versions import current_versions
 from app.services.permissions import encode_permission
 from app.services.rbac import get_effective_permissions, lock_row_for_update, permission_satisfied, user_satisfies_module_role
 
@@ -171,7 +172,8 @@ def stakeholders_to_out(
     db: Session, stakeholders: Sequence[Stakeholder], *, project_id: uuid.UUID | None = None
 ) -> list[StakeholderOut]:
     """`stakeholder_to_out` for many stakeholders, resolving every owner and group in one batch."""
-    versions = [get_current_stakeholder_version(db, s.id) for s in stakeholders]
+    by_id = current_versions(db, StakeholderVersion, "stakeholder_id", [s.id for s in stakeholders])
+    versions = [by_id[s.id] for s in stakeholders]
     labels = resolve_labels(db, versions, STAKEHOLDER_PRINCIPAL_FIELDS)
     refs: dict[uuid.UUID, list[grp.GroupRef]] = {}
     if stakeholders:

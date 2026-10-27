@@ -172,7 +172,7 @@ from app.modules.compliance.models import (
     ProjectCompliance,
 )
 from app.modules.compliance.service import (
-    build_evidence_out,
+    build_evidence_outs,
     build_status_out,
     compute_evidence_validity_state,
     compute_review_schedule_state,
@@ -635,8 +635,9 @@ def collect_project_compliance_report(
     evidence_rows = list(db.scalars(select(ComplianceEvidence).where(ComplianceEvidence.project_id == project.id)).all())
     evidence_provider_emails = _emails_by_id(db, {e.provided_by for e in evidence_rows})
     register_codes, register_tags = _evidence_codes(db, project, evidence_rows, own_project=True)
+    evidence_outs = {e.id: o for e, o in zip(evidence_rows, build_evidence_outs(db, evidence_rows), strict=True)}
     for evidence in evidence_rows:
-        linked_count = len(build_evidence_out(db, evidence).linked_requirement_ids)
+        linked_count = len(evidence_outs[evidence.id].linked_requirement_ids)
         data.evidence_rows.append(ComplianceReportEvidenceRow(
             code=register_codes[evidence.id], tags=register_tags.get(evidence.id, ""),
             title=evidence.title, issuing_organisation=evidence.issuing_organisation or "",
@@ -1069,8 +1070,9 @@ def collect_org_compliance_report(
             data.pending_approval_rows.append((project.name, _requirement_report_row_from_out(row, is_pending=True)))
         expiring = list(list_expiring_or_expired_evidence(db, project_id=project.id))
         expiring_codes, expiring_tags = _evidence_codes(db, project, expiring, own_project=False)
+        expiring_outs = dict(zip((e.id for e in expiring), build_evidence_outs(db, expiring), strict=True))
         for evidence in expiring:
-            evidence_out = build_evidence_out(db, evidence)
+            evidence_out = expiring_outs[evidence.id]
             data.expiring_evidence_rows.append((project.name, ComplianceReportEvidenceRow(
                 code=expiring_codes[evidence.id], tags=expiring_tags.get(evidence.id, ""),
                 title=evidence.title, issuing_organisation=evidence.issuing_organisation or "",

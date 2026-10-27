@@ -90,6 +90,7 @@ from app.modules.context_strategy.models import (
     FutureStateComment,
     FutureStateCommentFile,
     FutureStateFile,
+    FutureStateVersion,
     GuidingPrinciple,
     GuidingPrincipleComment,
     GuidingPrincipleCommentFile,
@@ -99,6 +100,7 @@ from app.modules.context_strategy.models import (
     StrategyComment,
     StrategyCommentFile,
     StrategyFile,
+    StrategyVersion,
 )
 from app.modules.context_strategy.reports import REPORT_ROUTERS
 from app.modules.context_strategy.schemas import (
@@ -189,7 +191,9 @@ from app.modules.context_strategy.service import (
 from app.schemas.file import FileAssetOut
 from app.schemas.project import MoveDirection
 from app.services.audit import log_event
+from app.services.current_versions import current_versions
 from app.services.files import delete_file, upload_file
+from app.services.module_attachments import comments_out
 from app.services.ordering import move_ordered
 from app.services.rbac import require_org_subcomponent_enabled
 from app.services.relationships import get_all_links
@@ -249,7 +253,8 @@ def list_org_strategies(
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     strategies = edits.organization_strategies(db, organization_id, include_archived)
-    return [strategy_to_out(s, get_current_version(db, s.id)) for s in strategies]
+    versions = current_versions(db, StrategyVersion, "strategy_id", [s.id for s in strategies])
+    return [strategy_to_out(s, versions[s.id]) for s in strategies]
 
 
 @router.get("/strategies/{strategy_id}", response_model=StrategyOut)
@@ -437,19 +442,12 @@ def retire_org_strategy(
 # --- Comments -----------------------------------------------------------
 
 
+def _comments_to_out(db: Session, comments: list[StrategyComment]) -> list[StrategyCommentOut]:
+    return comments_out(db, comments, out=StrategyCommentOut, fk="strategy_id", file_model=StrategyCommentFile)
+
+
 def _comment_to_out(db: Session, comment: StrategyComment) -> StrategyCommentOut:
-    author = db.get(User, comment.author_id)
-    attachments = db.scalars(
-        select(FileAsset)
-        .join(StrategyCommentFile, StrategyCommentFile.file_id == FileAsset.id)
-        .where(StrategyCommentFile.comment_id == comment.id)
-    ).all()
-    return StrategyCommentOut(
-        id=comment.id, strategy_id=comment.strategy_id, author_id=comment.author_id,
-        author_display_name=author.display_name if author is not None else "Unknown user",
-        body=comment.body, created_at=comment.created_at, edited_at=comment.edited_at,
-        attachments=[FileAssetOut.model_validate(a) for a in attachments],
-    )
+    return _comments_to_out(db, [comment])[0]
 
 
 @router.post("/strategies/{strategy_id}/comments", response_model=StrategyCommentOut, status_code=status.HTTP_201_CREATED)
@@ -477,7 +475,7 @@ def list_org_strategy_comments(
     comments = db.scalars(
         select(StrategyComment).where(StrategyComment.strategy_id == strategy.id).order_by(StrategyComment.created_at)
     ).all()
-    return [_comment_to_out(db, c) for c in comments]
+    return _comments_to_out(db, comments)
 
 
 @router.patch("/strategies/{strategy_id}/comments/{comment_id}", response_model=StrategyCommentOut)
@@ -672,7 +670,8 @@ def list_org_future_states(
     current_user: User = Depends(_require_future_state_view), db: Session = Depends(get_db),
 ):
     future_states = edits.organization_future_states(db, organization_id, include_archived)
-    return [future_state_to_out(fs, get_current_future_state_version(db, fs.id)) for fs in future_states]
+    versions = current_versions(db, FutureStateVersion, "future_state_id", [fs.id for fs in future_states])
+    return [future_state_to_out(fs, versions[fs.id]) for fs in future_states]
 
 
 @router.get("/future-states/{future_state_id}", response_model=FutureStateOut)
@@ -856,19 +855,12 @@ def retire_org_future_state(
 # --- Future State comments ----------------------------------------------------
 
 
+def _fs_comments_to_out(db: Session, comments: list[FutureStateComment]) -> list[FutureStateCommentOut]:
+    return comments_out(db, comments, out=FutureStateCommentOut, fk="future_state_id", file_model=FutureStateCommentFile)
+
+
 def _fs_comment_to_out(db: Session, comment: FutureStateComment) -> FutureStateCommentOut:
-    author = db.get(User, comment.author_id)
-    attachments = db.scalars(
-        select(FileAsset)
-        .join(FutureStateCommentFile, FutureStateCommentFile.file_id == FileAsset.id)
-        .where(FutureStateCommentFile.comment_id == comment.id)
-    ).all()
-    return FutureStateCommentOut(
-        id=comment.id, future_state_id=comment.future_state_id, author_id=comment.author_id,
-        author_display_name=author.display_name if author is not None else "Unknown user",
-        body=comment.body, created_at=comment.created_at, edited_at=comment.edited_at,
-        attachments=[FileAssetOut.model_validate(a) for a in attachments],
-    )
+    return _fs_comments_to_out(db, [comment])[0]
 
 
 @router.post(
@@ -900,7 +892,7 @@ def list_org_future_state_comments(
         select(FutureStateComment).where(FutureStateComment.future_state_id == future_state.id)
         .order_by(FutureStateComment.created_at)
     ).all()
-    return [_fs_comment_to_out(db, c) for c in comments]
+    return _fs_comments_to_out(db, comments)
 
 
 @router.patch("/future-states/{future_state_id}/comments/{comment_id}", response_model=FutureStateCommentOut)
@@ -1435,19 +1427,12 @@ def retire_org_guiding_principle(
 # --- Guiding Principle comments -----------------------------------------------
 
 
+def _gp_comments_to_out(db: Session, comments: list[GuidingPrincipleComment]) -> list[GuidingPrincipleCommentOut]:
+    return comments_out(db, comments, out=GuidingPrincipleCommentOut, fk="guiding_principle_id", file_model=GuidingPrincipleCommentFile)
+
+
 def _gp_comment_to_out(db: Session, comment: GuidingPrincipleComment) -> GuidingPrincipleCommentOut:
-    author = db.get(User, comment.author_id)
-    attachments = db.scalars(
-        select(FileAsset)
-        .join(GuidingPrincipleCommentFile, GuidingPrincipleCommentFile.file_id == FileAsset.id)
-        .where(GuidingPrincipleCommentFile.comment_id == comment.id)
-    ).all()
-    return GuidingPrincipleCommentOut(
-        id=comment.id, guiding_principle_id=comment.guiding_principle_id, author_id=comment.author_id,
-        author_display_name=author.display_name if author is not None else "Unknown user",
-        body=comment.body, created_at=comment.created_at, edited_at=comment.edited_at,
-        attachments=[FileAssetOut.model_validate(a) for a in attachments],
-    )
+    return _gp_comments_to_out(db, [comment])[0]
 
 
 @router.post(
@@ -1481,7 +1466,7 @@ def list_org_guiding_principle_comments(
         select(GuidingPrincipleComment).where(GuidingPrincipleComment.guiding_principle_id == guiding_principle.id)
         .order_by(GuidingPrincipleComment.created_at)
     ).all()
-    return [_gp_comment_to_out(db, c) for c in comments]
+    return _gp_comments_to_out(db, comments)
 
 
 @router.patch("/guiding-principles/{guiding_principle_id}/comments/{comment_id}", response_model=GuidingPrincipleCommentOut)

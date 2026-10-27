@@ -2040,7 +2040,7 @@ component, never an edit to a core file.
 **Scaling probe.** Each type also registers a `ScalingProbe` (`ModuleDefinition.scaling_probes`, or a `no_scaling_probe`
 reason): its list path and a `create(api, project_id, start, count)` that makes records through the real create
 endpoint. `backend/tests/test_scaling_shapes.py` fills a project with a few and then more records and fails if the
-statements behind the type's list, detail, comments or link graph grow with them (a lookup per row). Growth that is
+statements behind the type's list, detail, comments, link graph or project bundle export grow with them (a lookup per row). A module's export reads its records' tags, attachments, versions and links in bulk first (`prime_record_tag_names`, `prime_file_links`, `prime_current_versions`, `prime_links`) so its per-record code stays cheap. Growth that is
 known and tracked is listed in that test's `KNOWN_GROWING`, strict both ways, so the list shrinks as fixes land.
 
 **Perf generator.** Each type also registers a `PerfDatasetGenerator` in `ModuleDefinition.perf_generators` (or a `no_perf_generator` reason), so the performance tooling's dataset tiers scale it. Build it from `services/perf_dataset/records.py` (`RecordBatch`, `add_comments`, `add_tags`, `link_to_earlier`) and add its ratio to `perf/datasets/profiles.yaml`; `backend/tests/test_perf_dataset.py` fails for a type with none, and its parity test compares the generated rows with an API-created one.

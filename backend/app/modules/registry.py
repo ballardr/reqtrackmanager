@@ -97,6 +97,12 @@ ENTRY_POINT_GROUP = "reqtrackmanager.modules"
 _module_state_memo: contextvars.ContextVar[dict | None] = contextvars.ContextVar("module_state_memo", default=None)
 
 
+def module_state_memo() -> dict | None:
+    """The active `memoize_module_state()` block's cache, or `None` outside one. Read-only code that wants to keep a
+    bulk-loaded answer for the rest of an export (the tags or attachments of every record of a type) stores it here."""
+    return _module_state_memo.get()
+
+
 def scoped_memo(fn: Callable) -> Callable:
     """Memoises `fn(db, *args)` while `memoize_module_state()` is active (keyed by its arguments after `db`).
 

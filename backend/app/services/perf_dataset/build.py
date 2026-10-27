@@ -94,6 +94,23 @@ def _requirement_link_types(db: Session, org: OrgPlan) -> list[tuple[uuid.UUID, 
     return usable
 
 
+def _record_types() -> dict[str, dict[str, Any]]:
+    """What the load generator needs to address each record type through the API, from the registry: its project list
+    path (relative to `/api/v1/projects/{id}/`), whether it has a detail and comments, and whether its list imports
+    (export is offered for every type). Taken from the scaling probes, so a module that registers one is covered
+    with no edit here."""
+    from app.modules.registry import get_not_importable_types, get_scaling_probes
+
+    not_importable = get_not_importable_types()
+    return {
+        artefact_type: {
+            "list_path": probe.list_path, "has_detail": probe.has_detail, "has_comments": probe.has_comments,
+            "importable": artefact_type not in not_importable,
+        }
+        for artefact_type, probe in sorted(get_scaling_probes().items())
+    }
+
+
 def _bucket_add(total: dict[str, int], part: dict[str, int]) -> None:
     """Adds one project's link-degree histogram into the dataset total (`max` and `*_max` take the maximum)."""
     for key, value in part.items():
@@ -219,6 +236,7 @@ def generate_dataset(
         say=say,
     )
     generators = sorted(get_perf_generators().items(), key=lambda item: item[1].order)
+    record_types = _record_types()
     counts: dict[str, int] = {}
     histogram: dict[str, int] = {}
     project_ids: list[uuid.UUID] = []
@@ -281,6 +299,11 @@ def generate_dataset(
                     "action_type_id": str(ctx.action_type_ids[0]) if ctx.action_type_ids else None,
                     "requirement_sample": [str(i) for i in requirement_ids[::stride][:SAMPLE_SIZE]],
                     "hubs": [str(i) for i in ctx.shared.get("hubs", [])],
+                    # Sampled ids of every record type the scenarios address by type (`record_types`).
+                    "type_samples": {
+                        t: [str(i) for i in ids[:: max(1, len(ids) // SAMPLE_SIZE)][:SAMPLE_SIZE]]
+                        for t, ids in ctx.shared.items() if t in record_types and ids
+                    },
                     # The three most-linked records of every type with links, for the scenarios to address a hub.
                     "type_hubs": {
                         artefact_type: [str(i) for i, _d in sorted(counts.items(), key=lambda item: -item[1])[:3]]
@@ -299,6 +322,7 @@ def generate_dataset(
         "rows": counts,
         "link_degree_histogram": histogram,
         "link_pairs": link_pairs,
+        "record_types": record_types,
         "integrity_problems": problems,
         "link_rows_total": db.scalar(select(func.count()).select_from(ArtefactLink)),
         "organisations": [

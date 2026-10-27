@@ -266,6 +266,29 @@ def get_link_between(
     )
 
 
+def prime_links(db: Session, artefact_type: str, artefact_ids: Sequence[uuid.UUID]) -> None:
+    """Reads the same-project links touching many records of one type in two statements, for `get_all_links` to
+    answer from.
+
+    A bundle export asks for each record's links one record at a time; priming the records it will export first
+    makes that two statements. It only has an effect inside a `memoize_module_state()` block (an export, which does
+    not change links between the read and its use); elsewhere it does nothing.
+    """
+    from app.modules.registry import module_state_memo
+
+    memo = module_state_memo()
+    if memo is None or not artefact_ids:
+        return
+    ids = list(artefact_ids)
+    found: dict[uuid.UUID, dict[uuid.UUID, ArtefactLink]] = {i: {} for i in ids}
+    for link in get_links_from_many(db, artefact_type, ids):
+        found[link.source_id][link.id] = link
+    for link in get_links_to_many(db, artefact_type, ids):
+        found[link.target_id][link.id] = link
+    for record_id, links in found.items():
+        memo[("links", artefact_type, record_id)] = list(links.values())
+
+
 def get_all_links(
     db: Session, artefact_type: str, artefact_id: uuid.UUID, *, include_cross_project: bool = False
 ) -> list[ArtefactLink]:
@@ -274,7 +297,14 @@ def get_all_links(
     `routers.requirements.list_links`'s old
     `(source_requirement_id == X) | (target_requirement_id == X)` query,
     now expressed once for any artefact type rather than re-derived per
-    caller. Cross-level links are left out unless `include_cross_project`."""
+    caller. Cross-level links are left out unless `include_cross_project`. Answers from `prime_links` when the
+    record was primed (an export)."""
+    if not include_cross_project:
+        from app.modules.registry import module_state_memo
+
+        memo = module_state_memo()
+        if memo is not None and ("links", artefact_type, artefact_id) in memo:
+            return list(memo[("links", artefact_type, artefact_id)])
     return list(
         db.scalars(
             select(ArtefactLink).where(

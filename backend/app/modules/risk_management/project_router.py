@@ -30,7 +30,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.modules.risk_management import _shared as sh
 from app.modules.risk_management.enums import RiskStatus
-from app.modules.risk_management.models import Risk, RiskReview
+from app.modules.risk_management.models import Risk, RiskReview, RiskVersion
 from app.modules.risk_management.ratings import load_rating_context
 from app.modules.risk_management.reports import REPORT_ROUTERS
 from app.modules.risk_management.reviews import count_stale_treatments, list_reviews, record_review
@@ -80,6 +80,7 @@ from app.schemas.type_vocabulary import (
 )
 from app.services import scoring
 from app.services.audit import log_event
+from app.services.current_versions import current_versions
 from app.services.project_scope import ProjectScope
 from app.services.rbac import lock_row_for_update, require_ai_approvals_enabled, require_project_subcomponent_enabled
 from app.services.tags import TagFilter
@@ -239,7 +240,7 @@ def list_risks(
         counts = effective_treatment_counts(db, [r.id for r in risks])
         if effectively_treated is not None:
             risks = [r for r in risks if (counts.get(r.id, 0) > 0) == effectively_treated]
-        versions = {r.id: get_current_risk_version(db, r.id) for r in risks}
+        versions = current_versions(db, RiskVersion, "risk_id", [r.id for r in risks])
         labels = sh.owner_labels(db, list(versions.values()))
         out = [
             sh.risk_to_out(db, r, versions[r.id], ctx, effective_treatments=counts.get(r.id, 0), labels=labels)

@@ -259,6 +259,24 @@ heavy ones are opt-in on a shared host with `--allow-heavy`). Login is done once
 clock starts, so the numbers measure the API, not bcrypt. `scenarios` are defined in `loadgen/scenarios.py` and
 listed with their parameters in `lib/catalog.py`.
 
+### The other record types and the links between them
+
+These scenarios address every record type through the dataset manifest (`record_types`, taken from each type's scaling
+probe, and each project's `type_samples` and `type_hubs`), so a type a module adds later is exercised with no edit here.
+
+| Scenario | What it does |
+|----------|--------------|
+| `lists_by_type` | each other type's list (unpaged), a record, and its comment thread, equally weighted across the types |
+| `links_mixed` | the link graph at depth 1, 2 and 3 from a hub of a random type, and at depth 2 from an ordinary record; link candidates and browse for a type pair; the link types a record offers; a hub's activity timeline; and creating and removing a link (an organisation administrator, so every type's link permission is held) |
+| `search_all_types` | search across all types in a project, one type, three types, and every project |
+| `export_by_type`, `import_preview_by_type` | each type's list as a CSV, and a dry-run import of its own export (heavy) |
+| `org_bundle_export` | the whole organisation's export bundle, every project with its links (heavy) |
+| `capacity_mixed` | `capacity` with roughly a third of the requests being the type lists, records, comments and link reads above; kept apart from `capacity` so that scenario's numbers stay comparable with earlier runs (heavy) |
+
+Requests are named after the type (`GET risk (list)`), so `analyse.py` reports a scaling curve per type and endpoint.
+Compliance types other than evidence are not addressed one at a time (an assessment per requirement is produced by
+assigning a standard), so they appear only through the link graph and the organisation bundle.
+
 ### Capacity: how many connections, and so how many people, one stack serves
 
 `capacity` steps simulated connections up at one tier (T2, 1,000 requirements, unless `--capacity-tier` names another) until the stack saturates or fails, so the

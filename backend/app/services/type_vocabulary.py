@@ -322,7 +322,20 @@ class TypeVocabulary:
 
     def display_name(self, db: Session, *, org_type_id: uuid.UUID | None, project_type_id: uuid.UUID | None) -> str | None:
         """Effective name for whichever reference an artefact version holds,
-        or `None` when untyped."""
+        or `None` when untyped. Read once per type while an export's `memoize_module_state()` block is active."""
+        from app.modules.registry import module_state_memo
+
+        memo = module_state_memo()
+        key = ("type_display_name", self.project_model.__name__, org_type_id, project_type_id)
+        if memo is not None and key in memo:
+            return memo[key]
+        name = self._display_name(db, org_type_id=org_type_id, project_type_id=project_type_id)
+        if memo is not None:
+            memo[key] = name
+        return name
+
+    def _display_name(self, db: Session, *, org_type_id: uuid.UUID | None, project_type_id: uuid.UUID | None) -> str | None:
+        """`display_name` without the cache."""
         if project_type_id is not None:
             row = db.get(self.project_model, project_type_id)
             if row is None:

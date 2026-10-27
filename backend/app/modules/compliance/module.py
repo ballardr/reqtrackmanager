@@ -148,6 +148,7 @@ from app.modules.compliance.perf_dataset import (
     generate_required_action_assessments,
 )
 from app.modules.compliance.record_tables import NOT_IMPORTABLE, RECORD_TABLES
+from app.modules.compliance.scaling_probes import SCALING_PROBES
 from app.modules.compliance.search import SEARCH_PROVIDERS, SEARCH_SCOPES
 from app.modules.compliance.service import (
     COMPLIANCE_ACTION_ASSESSMENT_MANAGE_PERMISSION,
@@ -496,6 +497,7 @@ MODULE_DEFINITION = ModuleDefinition(
     validate_org_group_deletion=_validate_org_group_deletion,
     artefact_types=_ARTEFACT_TYPES,
     record_tables=RECORD_TABLES,
+    scaling_probes=SCALING_PROBES,
     perf_generators={
         "compliance_requirement": PerfDatasetGenerator(generate=generate_compliance_requirements, order=200),
         "project_compliance_requirement": PerfDatasetGenerator(generate=generate_project_compliance, order=210),

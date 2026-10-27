@@ -1031,7 +1031,17 @@ def compute_evidence_validity_state(
     return ComplianceEvidenceValidityState.VALID
 
 
-def build_evidence_out(db: Session, evidence: ComplianceEvidence) -> ComplianceEvidenceOut:
+def build_evidence_outs(db: Session, evidence_rows: list[ComplianceEvidence]) -> list[ComplianceEvidenceOut]:
+    """`build_evidence_out` for many evidence rows, reading all their links in one statement (a list of 200 costs the
+    same as a list of 2)."""
+    links = relationships.get_links_from_many(db, ARTEFACT_TYPE_EVIDENCE, [e.id for e in evidence_rows])
+    by_evidence: dict[uuid.UUID, list] = {}
+    for link in links:
+        by_evidence.setdefault(link.source_id, []).append(link)
+    return [build_evidence_out(db, e, links=by_evidence.get(e.id, [])) for e in evidence_rows]
+
+
+def build_evidence_out(db: Session, evidence: ComplianceEvidence, *, links: list | None = None) -> ComplianceEvidenceOut:
     """Builds the response schema for one `ComplianceEvidence` row,
     filling in its computed `validity_state` (`compute_evidence_validity_
     state`) and its current linked requirement/required-action-assessment
@@ -1040,8 +1050,10 @@ def build_evidence_out(db: Session, evidence: ComplianceEvidence) -> ComplianceE
     fields are never built ad hoc per call site.
 
     Reads via `services.relationships` — see `find_pcrs_linked_to_evidence` above for the same
-    replacement applied to a different query shape."""
-    links = relationships.get_links_from(db, ARTEFACT_TYPE_EVIDENCE, evidence.id)
+    replacement applied to a different query shape. `links` is the evidence's outgoing links when the caller
+    already read them (`build_evidence_outs`); omitted, they are read here."""
+    if links is None:
+        links = relationships.get_links_from(db, ARTEFACT_TYPE_EVIDENCE, evidence.id)
     requirement_ids = [link.target_id for link in links if link.target_type == ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT]
     action_ids = [
         link.target_id for link in links if link.target_type == ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT

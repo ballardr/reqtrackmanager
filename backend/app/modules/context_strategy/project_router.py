@@ -124,6 +124,7 @@ from app.modules.context_strategy._shared import (
     open_question_to_out,
     owner_labels,
     pain_point_to_out,
+    pain_point_type_names,
     require_approve_permission,
     require_future_state_approve_permission,
     require_future_state_manage_role,
@@ -160,6 +161,7 @@ from app.modules.context_strategy.models import (
     FutureStateComment,
     FutureStateCommentFile,
     FutureStateFile,
+    FutureStateVersion,
     GuidingPrinciple,
     GuidingPrincipleComment,
     GuidingPrincipleCommentFile,
@@ -176,6 +178,7 @@ from app.modules.context_strategy.models import (
     StrategyComment,
     StrategyCommentFile,
     StrategyFile,
+    StrategyVersion,
 )
 from app.modules.context_strategy.pain_point_scores import (
     PainPointScoringSummary,
@@ -322,7 +325,9 @@ from app.modules.context_strategy.service import (
 from app.schemas.file import FileAssetOut
 from app.schemas.type_vocabulary import HiddenTypeOut, RestoreTypesOut, RestoreTypesRequest
 from app.services.audit import log_event
+from app.services.current_versions import current_versions
 from app.services.files import delete_file, upload_file
+from app.services.module_attachments import comments_out
 from app.services.project_scope import ProjectScope
 from app.services.rbac import require_ai_approvals_enabled, require_project_subcomponent_enabled
 from app.services.relationships import get_all_links
@@ -392,7 +397,8 @@ def list_project_strategies(
         """This endpoint's rows for one project of the scope."""
         strategies = project_strategies(db, pid, include_archived)
         strategies = tag_filter.keep(db, pid, STRATEGY_ARTEFACT_TYPE, strategies)
-        return [strategy_to_out(s, get_current_version(db, s.id)) for s in strategies]
+        versions = current_versions(db, StrategyVersion, "strategy_id", [s.id for s in strategies])
+        return [strategy_to_out(s, versions[s.id]) for s in strategies]
 
     return project_scope.collect(
         db, db.get(Project, project_id), current_user.id, STRATEGY_ARTEFACT_TYPE, rows_for,
@@ -605,19 +611,12 @@ def retire_project_strategy(
 # --- Comments -----------------------------------------------------------
 
 
+def _comments_to_out(db: Session, comments: list[StrategyComment]) -> list[StrategyCommentOut]:
+    return comments_out(db, comments, out=StrategyCommentOut, fk="strategy_id", file_model=StrategyCommentFile)
+
+
 def _comment_to_out(db: Session, comment: StrategyComment) -> StrategyCommentOut:
-    author = db.get(User, comment.author_id)
-    attachments = db.scalars(
-        select(FileAsset)
-        .join(StrategyCommentFile, StrategyCommentFile.file_id == FileAsset.id)
-        .where(StrategyCommentFile.comment_id == comment.id)
-    ).all()
-    return StrategyCommentOut(
-        id=comment.id, strategy_id=comment.strategy_id, author_id=comment.author_id,
-        author_display_name=author.display_name if author is not None else "Unknown user",
-        body=comment.body, created_at=comment.created_at, edited_at=comment.edited_at,
-        attachments=[FileAssetOut.model_validate(a) for a in attachments],
-    )
+    return _comments_to_out(db, [comment])[0]
 
 
 @router.post("/strategies/{strategy_id}/comments", response_model=StrategyCommentOut, status_code=status.HTTP_201_CREATED)
@@ -645,7 +644,7 @@ def list_project_strategy_comments(
     comments = db.scalars(
         select(StrategyComment).where(StrategyComment.strategy_id == strategy.id).order_by(StrategyComment.created_at)
     ).all()
-    return [_comment_to_out(db, c) for c in comments]
+    return _comments_to_out(db, comments)
 
 
 @router.patch("/strategies/{strategy_id}/comments/{comment_id}", response_model=StrategyCommentOut)
@@ -849,7 +848,8 @@ def list_project_future_states(
         """This endpoint's rows for one project of the scope."""
         future_states = project_future_states(db, pid, include_archived)
         future_states = tag_filter.keep(db, pid, FUTURE_STATE_ARTEFACT_TYPE, future_states)
-        return [future_state_to_out(fs, get_current_future_state_version(db, fs.id)) for fs in future_states]
+        versions = current_versions(db, FutureStateVersion, "future_state_id", [fs.id for fs in future_states])
+        return [future_state_to_out(fs, versions[fs.id]) for fs in future_states]
 
     return project_scope.collect(
         db, db.get(Project, project_id), current_user.id, FUTURE_STATE_ARTEFACT_TYPE, rows_for,
@@ -1070,19 +1070,12 @@ def retire_project_future_state(
 # --- Future State comments ----------------------------------------------------
 
 
+def _fs_comments_to_out(db: Session, comments: list[FutureStateComment]) -> list[FutureStateCommentOut]:
+    return comments_out(db, comments, out=FutureStateCommentOut, fk="future_state_id", file_model=FutureStateCommentFile)
+
+
 def _fs_comment_to_out(db: Session, comment: FutureStateComment) -> FutureStateCommentOut:
-    author = db.get(User, comment.author_id)
-    attachments = db.scalars(
-        select(FileAsset)
-        .join(FutureStateCommentFile, FutureStateCommentFile.file_id == FileAsset.id)
-        .where(FutureStateCommentFile.comment_id == comment.id)
-    ).all()
-    return FutureStateCommentOut(
-        id=comment.id, future_state_id=comment.future_state_id, author_id=comment.author_id,
-        author_display_name=author.display_name if author is not None else "Unknown user",
-        body=comment.body, created_at=comment.created_at, edited_at=comment.edited_at,
-        attachments=[FileAssetOut.model_validate(a) for a in attachments],
-    )
+    return _fs_comments_to_out(db, [comment])[0]
 
 
 @router.post(
@@ -1114,7 +1107,7 @@ def list_project_future_state_comments(
         select(FutureStateComment).where(FutureStateComment.future_state_id == future_state.id)
         .order_by(FutureStateComment.created_at)
     ).all()
-    return [_fs_comment_to_out(db, c) for c in comments]
+    return _fs_comments_to_out(db, comments)
 
 
 @router.patch("/future-states/{future_state_id}/comments/{comment_id}", response_model=FutureStateCommentOut)
@@ -1458,7 +1451,8 @@ def list_project_pain_points(
         pain_points = project_pain_points(db, pid, include_archived)
         pain_points = tag_filter.keep(db, pid, PAIN_POINT_ARTEFACT_TYPE, pain_points)
         labels = owner_labels(db, pain_points)
-        return [pain_point_to_out(db, p, labels) for p in pain_points]
+        type_names = pain_point_type_names(db, [p.pain_point_type_id for p in pain_points])
+        return [pain_point_to_out(db, p, labels, type_names) for p in pain_points]
 
     return project_scope.collect(
         db, db.get(Project, project_id), current_user.id, PAIN_POINT_ARTEFACT_TYPE, rows_for,
@@ -1764,19 +1758,12 @@ def close_project_pain_point(
 # --- Pain Point comments -------------------------------------------------------
 
 
+def _pp_comments_to_out(db: Session, comments: list[PainPointComment]) -> list[PainPointCommentOut]:
+    return comments_out(db, comments, out=PainPointCommentOut, fk="pain_point_id", file_model=PainPointCommentFile)
+
+
 def _pp_comment_to_out(db: Session, comment: PainPointComment) -> PainPointCommentOut:
-    author = db.get(User, comment.author_id)
-    attachments = db.scalars(
-        select(FileAsset)
-        .join(PainPointCommentFile, PainPointCommentFile.file_id == FileAsset.id)
-        .where(PainPointCommentFile.comment_id == comment.id)
-    ).all()
-    return PainPointCommentOut(
-        id=comment.id, pain_point_id=comment.pain_point_id, author_id=comment.author_id,
-        author_display_name=author.display_name if author is not None else "Unknown user",
-        body=comment.body, created_at=comment.created_at, edited_at=comment.edited_at,
-        attachments=[FileAssetOut.model_validate(a) for a in attachments],
-    )
+    return _pp_comments_to_out(db, [comment])[0]
 
 
 @router.post(
@@ -1808,7 +1795,7 @@ def list_project_pain_point_comments(
         select(PainPointComment).where(PainPointComment.pain_point_id == pain_point.id)
         .order_by(PainPointComment.created_at)
     ).all()
-    return [_pp_comment_to_out(db, c) for c in comments]
+    return _pp_comments_to_out(db, comments)
 
 
 @router.patch("/pain-points/{pain_point_id}/comments/{comment_id}", response_model=PainPointCommentOut)
@@ -2260,19 +2247,12 @@ def retire_project_guiding_principle(
 # --- Guiding Principle comments -----------------------------------------------
 
 
+def _gp_comments_to_out(db: Session, comments: list[GuidingPrincipleComment]) -> list[GuidingPrincipleCommentOut]:
+    return comments_out(db, comments, out=GuidingPrincipleCommentOut, fk="guiding_principle_id", file_model=GuidingPrincipleCommentFile)
+
+
 def _gp_comment_to_out(db: Session, comment: GuidingPrincipleComment) -> GuidingPrincipleCommentOut:
-    author = db.get(User, comment.author_id)
-    attachments = db.scalars(
-        select(FileAsset)
-        .join(GuidingPrincipleCommentFile, GuidingPrincipleCommentFile.file_id == FileAsset.id)
-        .where(GuidingPrincipleCommentFile.comment_id == comment.id)
-    ).all()
-    return GuidingPrincipleCommentOut(
-        id=comment.id, guiding_principle_id=comment.guiding_principle_id, author_id=comment.author_id,
-        author_display_name=author.display_name if author is not None else "Unknown user",
-        body=comment.body, created_at=comment.created_at, edited_at=comment.edited_at,
-        attachments=[FileAssetOut.model_validate(a) for a in attachments],
-    )
+    return _gp_comments_to_out(db, [comment])[0]
 
 
 @router.post(
@@ -2306,7 +2286,7 @@ def list_project_guiding_principle_comments(
         select(GuidingPrincipleComment).where(GuidingPrincipleComment.guiding_principle_id == guiding_principle.id)
         .order_by(GuidingPrincipleComment.created_at)
     ).all()
-    return [_gp_comment_to_out(db, c) for c in comments]
+    return _gp_comments_to_out(db, comments)
 
 
 @router.patch(
@@ -2677,19 +2657,12 @@ def resolve_project_open_question(
 # --- Open Question comments ----------------------------------------------------
 
 
+def _oq_comments_to_out(db: Session, comments: list[OpenQuestionComment]) -> list[OpenQuestionCommentOut]:
+    return comments_out(db, comments, out=OpenQuestionCommentOut, fk="open_question_id", file_model=OpenQuestionCommentFile)
+
+
 def _oq_comment_to_out(db: Session, comment: OpenQuestionComment) -> OpenQuestionCommentOut:
-    author = db.get(User, comment.author_id)
-    attachments = db.scalars(
-        select(FileAsset)
-        .join(OpenQuestionCommentFile, OpenQuestionCommentFile.file_id == FileAsset.id)
-        .where(OpenQuestionCommentFile.comment_id == comment.id)
-    ).all()
-    return OpenQuestionCommentOut(
-        id=comment.id, open_question_id=comment.open_question_id, author_id=comment.author_id,
-        author_display_name=author.display_name if author is not None else "Unknown user",
-        body=comment.body, created_at=comment.created_at, edited_at=comment.edited_at,
-        attachments=[FileAssetOut.model_validate(a) for a in attachments],
-    )
+    return _oq_comments_to_out(db, [comment])[0]
 
 
 @router.post(
@@ -2723,7 +2696,7 @@ def list_project_open_question_comments(
         select(OpenQuestionComment).where(OpenQuestionComment.open_question_id == open_question.id)
         .order_by(OpenQuestionComment.created_at)
     ).all()
-    return [_oq_comment_to_out(db, c) for c in comments]
+    return _oq_comments_to_out(db, comments)
 
 
 @router.patch("/open-questions/{open_question_id}/comments/{comment_id}", response_model=OpenQuestionCommentOut)

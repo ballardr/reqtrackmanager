@@ -18,6 +18,7 @@ for any manage-role check on direct files.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -68,19 +69,43 @@ class AttachmentKit:
         return {"filename": asset.filename} if self.log_filenames else {"file_id": str(asset.id)}
 
 
+def comments_out(db: Session, comments: Sequence[Any], *, out: Any, fk: str, file_model: Any) -> list:
+    """API shapes for several comments of one artefact type, each with the author's display name and attached files,
+    loaded in a fixed number of statements (one for the authors, one for the attachments), so a thread of 200
+    comments costs the same as one of 2.
+
+    Args:
+        db: Active session (read only).
+        comments: Comment rows of one comment table, in the order to return.
+        out: The comment response schema (`id`, `fk`, `author_id`, `author_display_name`, `body`, `created_at`,
+            `edited_at`, `attachments`).
+        fk: The name of the artefact foreign-key attribute on the comment (e.g. `"persona_id"`).
+        file_model: The comment-attachment table (`comment_id`, `file_id`).
+    """
+    if not comments:
+        return []
+    ids = [c.id for c in comments]
+    authors = {u.id: u for u in db.scalars(select(User).where(User.id.in_({c.author_id for c in comments})))}
+    attachments: dict[uuid.UUID, list[FileAsset]] = {}
+    for comment_id, asset in db.execute(
+        select(file_model.comment_id, FileAsset).join(FileAsset, file_model.file_id == FileAsset.id)
+        .where(file_model.comment_id.in_(ids))
+    ).all():
+        attachments.setdefault(comment_id, []).append(asset)
+    return [
+        out(**{
+            "id": c.id, fk: getattr(c, fk), "author_id": c.author_id,
+            "author_display_name": authors[c.author_id].display_name if c.author_id in authors else "Unknown user",
+            "body": c.body, "created_at": c.created_at, "edited_at": c.edited_at,
+            "attachments": [FileAssetOut.model_validate(a) for a in attachments.get(c.id, [])],
+        })
+        for c in comments
+    ]
+
+
 def comment_to_out(db: Session, kit: AttachmentKit, comment: Any):
-    """API shape for a comment, with author display name and attachments."""
-    author = db.get(User, comment.author_id)
-    attachments = db.scalars(
-        select(FileAsset).join(kit.comment_file_model, kit.comment_file_model.file_id == FileAsset.id)
-        .where(kit.comment_file_model.comment_id == comment.id)
-    ).all()
-    return kit.comment_out(**{
-        "id": comment.id, kit.fk: getattr(comment, kit.fk), "author_id": comment.author_id,
-        "author_display_name": author.display_name if author is not None else "Unknown user",
-        "body": comment.body, "created_at": comment.created_at, "edited_at": comment.edited_at,
-        "attachments": [FileAssetOut.model_validate(a) for a in attachments],
-    })
+    """API shape for one comment (see `comments_out`)."""
+    return comments_out(db, [comment], out=kit.comment_out, fk=kit.fk, file_model=kit.comment_file_model)[0]
 
 
 def get_own_comment(db: Session, kit: AttachmentKit, artefact: Any, comment_id: uuid.UUID, user: User, *, verb: str):
@@ -115,7 +140,7 @@ def list_comments(db: Session, kit: AttachmentKit, artefact: Any) -> list:
         select(kit.comment_model).where(getattr(kit.comment_model, kit.fk) == artefact.id)
         .order_by(kit.comment_model.created_at)
     ).all()
-    return [comment_to_out(db, kit, c) for c in comments]
+    return comments_out(db, comments, out=kit.comment_out, fk=kit.fk, file_model=kit.comment_file_model)
 
 
 def edit_comment(db: Session, kit: AttachmentKit, artefact: Any, comment_id: uuid.UUID, user: User, body: str, **scope_ids):

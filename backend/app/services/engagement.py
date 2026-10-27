@@ -142,6 +142,16 @@ def is_subscribed(db: Session, user_id: UUID, entity_type: str, entity_id: UUID)
     return db.scalar(select(Subscription.id).where(*_own_subscription(user_id, entity_type, entity_id))) is not None
 
 
+def subscribed_ids(db: Session, user_id: UUID, entity_type: str, entity_ids: Collection[UUID]) -> set[UUID]:
+    """`is_subscribed` for many entities of one type in one query, for list views."""
+    if not entity_ids:
+        return set()
+    return set(db.scalars(select(Subscription.entity_id).where(
+        Subscription.subscriber_type == PrincipalType.USER.value, Subscription.subscriber_id == user_id,
+        Subscription.entity_type == entity_type, Subscription.entity_id.in_(set(entity_ids)),
+    )))
+
+
 def subscribe(db: Session, user_id: UUID, entity_type: str, entity_id: UUID) -> None:
     if not is_subscribed(db, user_id, entity_type, entity_id):
         db.add(Subscription(

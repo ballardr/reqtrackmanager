@@ -18,6 +18,16 @@ rules:
   - {match: "(unpaged)", class: list}
   - {match: "records/requirement/export", class: heavy}
   - {match: "records/requirement/import", class: heavy}
+  - {match: "/export (csv)", class: heavy}
+  - {match: "/import (preview)", class: heavy}
+  # Another record type's list: unpaged today, so judged like the other unpaged lists (the 300 ms page budget applies once
+  # a type pages).
+  - {match: " (list)", class: list}
+  - {match: "link-candidates", class: list}
+  - {match: "link-browse", class: list}
+  # The link graph from a hub of hundreds of links at depth 2-3: 1 s up to T2 (provisional, Decided by: Agent). Depth 1 and a graph from an ordinary record stay interactive.
+  - {match: "depth=2 (hub)", class: list}
+  - {match: "depth=3 (hub)", class: list}
   - {match: "/reports", class: heavy}
   - {match: "(bundle)", class: heavy}
   - {match: "/files", class: heavy}

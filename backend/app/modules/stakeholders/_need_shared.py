@@ -77,6 +77,7 @@ from app.modules.stakeholders.service import (
 )
 from app.services import module_attachments as att
 from app.services.audit import log_event
+from app.services.current_versions import current_versions
 from app.services.permissions import encode_permission
 from app.services.rbac import get_effective_permissions, lock_row_for_update, permission_satisfied, user_satisfies_module_role
 from app.services.relationships import delete_link
@@ -112,7 +113,8 @@ def need_to_out(
 
 def needs_to_out(db: Session, needs: Sequence[StakeholderNeed]) -> list[NeedOut]:
     """`need_to_out` for many needs, resolving every owner in one batch."""
-    versions = [get_current_need_version(db, n.id) for n in needs]
+    by_id = current_versions(db, StakeholderNeedVersion, "need_id", [n.id for n in needs])
+    versions = [by_id[n.id] for n in needs]
     labels = resolve_labels(db, versions, NEED_PRINCIPAL_FIELDS)
     return [need_to_out(db, n, v, labels=labels) for n, v in zip(needs, versions, strict=True)]
 

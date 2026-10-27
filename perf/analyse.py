@@ -294,12 +294,13 @@ def read_csv(path: Path) -> list:
         return list(csv.DictReader(handle))
 
 
-def capacity_curve(latency: list, budgets: dict) -> dict:
+def capacity_curve(latency: list, budgets: dict, scenario: str = "capacity") -> dict:
     """The capacity scenario's levels, and the largest level the stack served within the budget.
 
     Args:
         latency: Rows of `latency.csv` (strings).
         budgets: The parsed `budgets.yaml` (its `capacity` section).
+        scenario: `capacity`, or `capacity_mixed` for the run with the other record types and links in the mix.
 
     Returns:
         `{"levels": [...], "usable_users": int | None, "first_unusable": dict | None}`; each level has `tier`, `users`,
@@ -314,7 +315,7 @@ def capacity_curve(latency: list, budgets: dict) -> dict:
     interval = limits.get("person_request_interval_seconds", {"busy": 5, "relaxed": 10})
     grouped: dict = defaultdict(list)
     for row in latency:
-        if row["scenario"] == "capacity":
+        if row["scenario"] == scenario:
             grouped[(row["tier"], int(row["users"]))].append(row)
     levels = []
     for (tier, users), rows in sorted(grouped.items(), key=lambda item: (item[0][0], item[0][1])):
@@ -345,7 +346,7 @@ def analyse(directory: Path, budgets: dict) -> dict:
     sizes = {d["tier"]: d["spec"]["requirements_per_project"] for d in datasets}
     latency = read_csv(directory / "latency.csv")
     samples = read_csv(directory / "samples.csv")
-    table = scaling_table([r for r in latency if r["scenario"] != "capacity"], sizes, budgets)
+    table = scaling_table([r for r in latency if not r["scenario"].startswith("capacity")], sizes, budgets)
     peaks = memory_peaks(samples)
     queries = query_scaling(read_csv(directory / "queries.csv"), sizes, budgets)
     run_file = directory / "run.json"
@@ -367,8 +368,9 @@ def analyse(directory: Path, budgets: dict) -> dict:
         "budget_findings": budget_findings(table, budgets),
         "peak_memory_mib": {f"{tier}/{service}": value for (tier, service), value in sorted(peaks.items())},
         "soak_backend_mib_per_hour": {tier: memory_slope_mib_per_hour(samples, tier) for tier in sizes},
-        "failures": [r for r in latency if int(r["failures"] or 0) > 0 and r["scenario"] != "capacity"],
+        "failures": [r for r in latency if int(r["failures"] or 0) > 0 and not r["scenario"].startswith("capacity")],
         "capacity": capacity_curve(latency, budgets),
+        "capacity_mixed": capacity_curve(latency, budgets, "capacity_mixed"),
     }
 
 
@@ -431,16 +433,16 @@ def main(argv: list) -> int:
         for row in result["query_findings"]:
             counts = ", ".join(f"{t} {v:g}" for t, v in sorted(row["per_request"].items()))
             print(f"N+1 SUSPECT {row['scenario']:<14} {row['request']}  statements per request [{counts}]")
-        capacity = result["capacity"]
-        for level in capacity["levels"]:
-            print(f"capacity {level['tier']} {level['users']:>4} connections: offered {level['offered_rps']:.0f} req/s, delivered {level['delivered_rps']:.0f} "
-                  f"({level['delivered'] * 100:.0f}%), failures {level['failure_rate'] * 100:.1f}%, p95 {level['p95_ms']} ms, "
-                  f"about {level['people_low']:,}-{level['people_high']:,} active people"
-                  + ("" if level["usable"] else "  <-- beyond the budget"))
-        if capacity["levels"]:
-            usable_level = next((lvl for lvl in capacity["levels"] if lvl["users"] == capacity["usable_users"]), None)
-            print(f"usable capacity: {capacity['usable_users']} connections (about {usable_level['people_low']:,}-{usable_level['people_high']:,} active people)"
-                  if usable_level else "usable capacity: below the first level run")
+        for label, capacity in (("capacity", result["capacity"]), ("capacity (mixed)", result["capacity_mixed"])):
+            for level in capacity["levels"]:
+                print(f"{label} {level['tier']} {level['users']:>4} connections: offered {level['offered_rps']:.0f} req/s, delivered {level['delivered_rps']:.0f} "
+                      f"({level['delivered'] * 100:.0f}%), failures {level['failure_rate'] * 100:.1f}%, p95 {level['p95_ms']} ms, "
+                      f"about {level['people_low']:,}-{level['people_high']:,} active people"
+                      + ("" if level["usable"] else "  <-- beyond the budget"))
+            if capacity["levels"]:
+                usable_level = next((lvl for lvl in capacity["levels"] if lvl["users"] == capacity["usable_users"]), None)
+                print(f"usable {label}: {capacity['usable_users']} connections (about {usable_level['people_low']:,}-{usable_level['people_high']:,} active people)"
+                      if usable_level else f"usable {label}: below the first level run")
         for tier, memory in sorted(result["worker_memory"].items()):
             print(f"workers {tier}: {memory['workers']} x {memory['private_mib_per_worker']:.0f} MiB private + {memory['shared_mib_per_worker']:.0f} MiB shared each; {memory['pss_total_mib']:.0f} MiB total")
         if result["postgres"]:

@@ -28,7 +28,7 @@ from app.modules.compliance.models import (
 )
 from app.modules.compliance.project_router._shared import _get_pcr_or_404, _require_officer, _require_view, _validate_project_principal
 from app.modules.compliance.schemas import ComplianceEvidenceOut, ComplianceRequiredActionAssessmentOut, ComplianceRequiredActionAssessmentUpdate
-from app.modules.compliance.service import assessment_to_out, assessments_to_out, build_evidence_out
+from app.modules.compliance.service import assessment_to_out, assessments_to_out, build_evidence_outs
 from app.services import relationships
 from app.services.audit import log_event
 from app.services.principals import principal_columns
@@ -200,4 +200,4 @@ def list_required_action_assessment_evidence(
     if not evidence_ids:
         return []
     evidence_rows = db.scalars(select(ComplianceEvidence).where(ComplianceEvidence.id.in_(evidence_ids))).all()
-    return [build_evidence_out(db, evidence) for evidence in evidence_rows]
+    return build_evidence_outs(db, list(evidence_rows))

@@ -114,12 +114,13 @@ from app.modules.context_strategy.service import (
 )
 from app.modules.registry import get_scoring_targets
 from app.services import definition_suppression
-from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_file_links
+from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_file_links, prime_file_links
 from app.services.bundle_links import export_artefact_links, import_artefact_links
+from app.services.current_versions import prime_current_versions, primed_current_version
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.scoring import list_levels, seed_missing_scoring_levels
 from app.services.sequences import generate_unique_code
-from app.services.tags import record_tag_names, restore_record_tags
+from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
 
 _SCORE_AXES = {"severity": "severity_level_id", "frequency": "frequency_level_id", "confidence": "confidence_level_id"}
 _LINKS_KEY = "context_strategy_links"
@@ -214,6 +215,9 @@ _SPECS: tuple[_VersionedSpec, ...] = (
 
 def _current_version(db: Session, spec: _VersionedSpec, record_id: uuid.UUID):
     """The open (current) version row of an identity+version record."""
+    primed = primed_current_version(spec.version, record_id)
+    if primed is not None:
+        return primed
     return db.scalar(
         select(spec.version).where(getattr(spec.version, spec.fk) == record_id, spec.version.valid_to.is_(None))
     )
@@ -299,6 +303,8 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
             .order_by(spec.identity.created_at)
         ).all())
         emails = _emails(db, {r.creator_id for r in records} | {r.archived_by for r in records})
+        prime_record_tag_names(db, spec.artefact_type, [r.id for r in records])
+        prime_file_links(db, spec.file_model, spec.file_fk, [r.id for r in records])
         out[spec.key] = [
             _versioned_json(db, spec, r, _current_version(db, spec, r.id), emails, None) for r in records
         ]
@@ -359,27 +365,31 @@ def _level_refs(db: Session, project: Project) -> dict[uuid.UUID, str]:
     }
 
 
-def _type_name(db: Session, row: ProjectPainPointType) -> tuple[str | None, bool]:
-    """`(effective name, is project-local)` of a project Pain Point type row."""
+def _type_name(org_types: dict[uuid.UUID, PainPointTypeDefinition], row: ProjectPainPointType) -> tuple[str | None, bool]:
+    """`(effective name, is project-local)` of a project Pain Point type row; `org_types` holds the organisation types
+    the project's rows point at."""
     if row.org_type_id is None:
         return row.name_override, True
-    org_type = db.get(PainPointTypeDefinition, row.org_type_id)
+    org_type = org_types.get(row.org_type_id)
     return (row.name_override or (org_type.name if org_type else None)), False
 
 
 def _pain_point_json(
     db: Session, project: Project, pp: PainPoint, emails: dict[uuid.UUID, str], assets: dict[uuid.UUID, FileAsset],
     levels: dict[uuid.UUID, str], persona_labels: dict[uuid.UUID, str],
+    type_rows: dict[uuid.UUID, ProjectPainPointType], org_types: dict[uuid.UUID, PainPointTypeDefinition],
+    scores_by_pain_point: dict[uuid.UUID, list[PainPointScore]],
 ) -> dict[str, Any]:
-    """One Pain Point with its type, scores and attachments."""
-    type_row = db.get(ProjectPainPointType, pp.pain_point_type_id)
-    type_name, type_is_local = _type_name(db, type_row)
+    """One Pain Point with its type, scores and attachments; the type rows, organisation types and scores of every
+    exported Pain Point are loaded once by the caller."""
+    type_row = type_rows[pp.pain_point_type_id]
+    type_name, type_is_local = _type_name(org_types, type_row)
     org_type_name = None
     if type_row.org_type_id is not None:
-        org_type = db.get(PainPointTypeDefinition, type_row.org_type_id)
+        org_type = org_types.get(type_row.org_type_id)
         org_type_name = org_type.name if org_type else None
     scores = []
-    for score in db.scalars(select(PainPointScore).where(PainPointScore.pain_point_id == pp.id).order_by(PainPointScore.created_at)):
+    for score in scores_by_pain_point.get(pp.id, []):
         target = None
         if score.target_id is not None:
             label = persona_labels.get(score.target_id) if score.target_type == PERSONA_TARGET_TYPE else None
@@ -413,8 +423,14 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     refs: dict[str, dict[uuid.UUID, str]] = {}
 
     type_rows = []
-    for row in db.scalars(select(ProjectPainPointType).where(ProjectPainPointType.project_id == project.id)):
-        org_type = db.get(PainPointTypeDefinition, row.org_type_id) if row.org_type_id else None
+    own_rows = list(db.scalars(select(ProjectPainPointType).where(ProjectPainPointType.project_id == project.id)))
+    own_org_types = {
+        t.id: t for t in db.scalars(select(PainPointTypeDefinition).where(
+            PainPointTypeDefinition.id.in_({r.org_type_id for r in own_rows if r.org_type_id is not None})
+        ))
+    } if own_rows else {}
+    for row in own_rows:
+        org_type = own_org_types.get(row.org_type_id) if row.org_type_id else None
         type_rows.append({
             "org_type_name": org_type.name if org_type else None, "name_override": row.name_override,
             "display_order_override": row.display_order_override, "is_enabled": row.is_enabled,
@@ -431,6 +447,9 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             .order_by(spec.identity.unique_code)
         ).all())
         emails = _emails(db, {r.creator_id for r in records} | {r.archived_by for r in records})
+        prime_current_versions(db, spec.version, spec.fk, [r.id for r in records])
+        prime_record_tag_names(db, spec.artefact_type, [r.id for r in records])
+        prime_file_links(db, spec.file_model, spec.file_fk, [r.id for r in records])
         out[spec.key] = [
             _versioned_json(db, spec, r, _current_version(db, spec, r.id), emails, assets) for r in records
         ]
@@ -444,11 +463,31 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         s.scored_by for s in db.scalars(select(PainPointScore).where(PainPointScore.pain_point_id.in_([p.id for p in pain_points])))
     } if pain_points else set()
     emails.update(_emails(db, scorer_ids))
-    out["pain_points"] = [_pain_point_json(db, project, p, emails, assets, levels, persona_labels) for p in pain_points]
+    prime_record_tag_names(db, PAIN_POINT_ARTEFACT_TYPE, [p.id for p in pain_points])
+    prime_file_links(db, PainPointFile, "pain_point_id", [p.id for p in pain_points])
+    type_rows = {
+        r.id: r for r in db.scalars(select(ProjectPainPointType).where(ProjectPainPointType.id.in_({p.pain_point_type_id for p in pain_points})))
+    } if pain_points else {}
+    org_types = {
+        t.id: t for t in db.scalars(select(PainPointTypeDefinition).where(
+            PainPointTypeDefinition.id.in_({r.org_type_id for r in type_rows.values() if r.org_type_id is not None})
+        ))
+    } if type_rows else {}
+    scores_by_pain_point: dict[uuid.UUID, list[PainPointScore]] = {}
+    for score in db.scalars(
+        select(PainPointScore).where(PainPointScore.pain_point_id.in_([p.id for p in pain_points])).order_by(PainPointScore.created_at)
+    ) if pain_points else []:
+        scores_by_pain_point.setdefault(score.pain_point_id, []).append(score)
+    out["pain_points"] = [
+        _pain_point_json(db, project, p, emails, assets, levels, persona_labels, type_rows, org_types, scores_by_pain_point)
+        for p in pain_points
+    ]
     refs[PAIN_POINT_ARTEFACT_TYPE] = {p.id: p.unique_code for p in pain_points}
 
     questions = list(db.scalars(select(OpenQuestion).where(OpenQuestion.project_id == project.id).order_by(OpenQuestion.unique_code)))
     emails = _emails(db, {q.creator_id for q in questions} | {q.archived_by for q in questions})
+    prime_record_tag_names(db, OPEN_QUESTION_ARTEFACT_TYPE, [q.id for q in questions])
+    prime_file_links(db, OpenQuestionFile, "open_question_id", [q.id for q in questions])
     out["open_questions"] = [
         {
             "ref": q.unique_code, "question": q.question, "context": q.context, "evidence": q.evidence,

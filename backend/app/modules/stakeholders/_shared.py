@@ -21,7 +21,6 @@ import uuid
 from collections.abc import Sequence
 
 from fastapi import HTTPException, UploadFile, status
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.enums import PermissionLevel
@@ -61,11 +60,12 @@ from app.modules.stakeholders.service import (
     hidden_stakeholder_ids,
     resolve_persona_type_refs,
     resolve_persona_visibility,
-    resolve_persona_weight_with_source,
+    resolve_persona_weights,
     transition_persona,
 )
 from app.services import module_attachments as att
 from app.services.audit import log_event
+from app.services.current_versions import current_versions
 from app.services.permissions import encode_permission
 from app.services.rbac import (
     get_effective_org_roles,
@@ -96,25 +96,21 @@ def visibility_fields(
 
 def persona_to_out(
     db: Session, persona: Persona, version: PersonaVersion, *, project_id: uuid.UUID | None = None,
-    labels: Labels | None = None,
+    labels: Labels | None = None, project_context: dict | None = None,
 ) -> PersonaOut:
     """Merges a persona with its current version. When `project_id` is given
     (project router), also resolves `effective_weight` and `weight_override`
-    for that project, and an org persona's visibility to it."""
-    from app.modules.stakeholders.models import ProjectPersonaWeight
+    for that project, and an org persona's visibility to it. `project_context` is what `personas_to_out` resolved once for
+    a whole list (`weights`, `visibility`); omitted, it is resolved here for this one persona."""
 
     type_ref = version.project_type_id or version.org_type_id
     effective_weight = override = weight_source = None
     hidden: dict[str, bool | str | None] = {}
     if project_id is not None:
+        context = project_context or persona_project_context(db, project_id, {persona.id: version.weight})
         if persona.scope == PersonaScope.ORGANIZATION:
-            hidden = visibility_fields(resolve_persona_visibility(db, project_id), persona.id)
-        effective_weight, weight_source = resolve_persona_weight_with_source(db, project_id, persona.id, version.weight)
-        override = db.scalar(
-            select(ProjectPersonaWeight.weight).where(
-                ProjectPersonaWeight.project_id == project_id, ProjectPersonaWeight.persona_id == persona.id
-            )
-        )
+            hidden = visibility_fields(context["visibility"], persona.id)
+        effective_weight, weight_source, override = context["weights"][persona.id]
     return PersonaOut(
         id=persona.id, scope=persona.scope, organization_id=persona.organization_id, project_id=persona.project_id,
         unique_code=persona.unique_code, creator_id=persona.creator_id, is_archived=persona.is_archived, archived_at=persona.archived_at,
@@ -137,13 +133,27 @@ def persona_to_out(
     )
 
 
+def persona_project_context(db: Session, project_id: uuid.UUID, own_weights: dict[uuid.UUID, float | None]) -> dict:
+    """What `persona_to_out` reads per project, resolved once for several personas: their effective weights (two
+    statements) and the organisation personas' visibility (once)."""
+    return {
+        "weights": resolve_persona_weights(db, project_id, own_weights),
+        "visibility": resolve_persona_visibility(db, project_id),
+    }
+
+
 def personas_to_out(
     db: Session, personas: Sequence[Persona], *, project_id: uuid.UUID | None = None
 ) -> list[PersonaOut]:
     """`persona_to_out` for many personas, resolving every owner and champion in one batch."""
-    versions = [get_current_persona_version(db, p.id) for p in personas]
+    by_id = current_versions(db, PersonaVersion, "persona_id", [p.id for p in personas])
+    versions = [by_id[p.id] for p in personas]
     labels = resolve_labels(db, versions, PERSONA_PRINCIPAL_FIELDS)
-    return [persona_to_out(db, p, v, project_id=project_id, labels=labels) for p, v in zip(personas, versions, strict=True)]
+    context = persona_project_context(db, project_id, {p.id: v.weight for p, v in zip(personas, versions, strict=True)}) if project_id else None
+    return [
+        persona_to_out(db, p, v, project_id=project_id, labels=labels, project_context=context)
+        for p, v in zip(personas, versions, strict=True)
+    ]
 
 
 def get_persona_in_scope(

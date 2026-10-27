@@ -1064,8 +1064,32 @@ def tag_names_for_records(db: Session, artefact_type: str, artefact_ids: Iterabl
     return {rid: [t.name for t in tags] for rid, tags in tags_for_records(db, artefact_type, artefact_ids).items()}
 
 
+def prime_record_tag_names(db: Session, artefact_type: str, artefact_ids: Iterable[uuid.UUID]) -> None:
+    """Reads the tag names of many records of one type in one statement, for `record_tag_names` to answer from.
+
+    A bundle export calls `record_tag_names` once per record; calling this first with the records it will export
+    makes that one statement instead of one per record. It only has an effect inside a `memoize_module_state()`
+    block (an export), where nothing changes tags between the read and its use; elsewhere it does nothing and
+    `record_tag_names` reads the database as before.
+    """
+    from app.modules.registry import module_state_memo
+
+    memo = module_state_memo()
+    if memo is None:
+        return
+    ids = list(artefact_ids)
+    found = tag_names_for_records(db, artefact_type, ids)
+    for record_id in ids:
+        memo[("record_tag_names", artefact_type, record_id)] = found.get(record_id, [])
+
+
 def record_tag_names(db: Session, artefact_type: str, artefact_id: uuid.UUID) -> list[str]:
-    """The names of one record's tags, for a bundle row."""
+    """The names of one record's tags, for a bundle row (from `prime_record_tag_names` when the export primed them)."""
+    from app.modules.registry import module_state_memo
+
+    memo = module_state_memo()
+    if memo is not None and ("record_tag_names", artefact_type, artefact_id) in memo:
+        return list(memo[("record_tag_names", artefact_type, artefact_id)])
     return [t.name for t in get_record_tags(db, artefact_type, artefact_id)]
 
 

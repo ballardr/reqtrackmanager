@@ -1847,3 +1847,37 @@ def test_postgres_settings_options_reach_the_stack_and_a_buffer_the_database_can
 def test_the_perf_database_reads_its_memory_settings_from_the_environment_with_postgres_defaults():
     text = (_PERF / "docker-compose.perf.yml").read_text()
     assert "shared_buffers=${PERF_PG_SHARED_BUFFERS:-128MB}" in text and "work_mem=${PERF_PG_WORK_MEM:-4MB}" in text
+
+
+def test_capacity_mixed_is_a_capacity_scenario_and_runs_beside_capacity():
+    """The mixed-type capacity run follows the same rules as `capacity`: one tier, one repeat, heavy, users stepped up,
+    and the runner and analysis treat it as a climb."""
+    assert catalog.is_capacity("capacity") and catalog.is_capacity("capacity_mixed")
+    assert not catalog.is_capacity("lists_by_type")
+    assert catalog.parameters("capacity_mixed", "full", 100, "T0") == []
+    assert [p["users"] for p in catalog.parameters("capacity_mixed", "full", 1000, "T2")] == list(catalog.CAPACITY_USERS_FULL)
+    assert [p["users"] for p in catalog.parameters("capacity_mixed", "full", 5000, "T3", capacity_tier="T3")] == list(catalog.CAPACITY_USERS_FULL)
+    assert catalog.CATALOG["capacity_mixed"].repeats == 1 and catalog.CATALOG["capacity_mixed"].heavy
+    assert "capacity_mixed" not in catalog.scenarios_for("full", allow_heavy=False, nested=False, soak=False)
+    assert "capacity_mixed" in catalog.scenarios_for("full", allow_heavy=True, nested=False, soak=False)
+
+
+def test_the_other_type_scenarios_are_in_the_catalogue_with_the_right_weight():
+    quick = catalog.scenarios_for("quick", allow_heavy=False, nested=False, soak=False)
+    assert {"lists_by_type", "links_mixed", "search_all_types"} <= set(quick)
+    for name in ("export_by_type", "import_preview_by_type", "org_bundle_export"):
+        assert catalog.CATALOG[name].heavy and name not in quick
+    assert catalog.parameters("import_preview_by_type", "full", 20000, "T4") == []  # past the import row limit
+
+
+def test_the_analysis_judges_capacity_mixed_apart_from_capacity():
+    from perf import analyse
+
+    def row(scenario, users, rps):
+        return {"scenario": scenario, "tier": "T2", "users": str(users), "count": "100", "failures": "0", "rps": str(rps), "p95_ms": "200"}
+
+    latency = [row("capacity", 16, 16), row("capacity_mixed", 16, 16), row("capacity_mixed", 32, 8)]
+    budgets = {"capacity": {"requests_per_user_per_second": 1.0, "delivered": 0.9, "failure_rate": 0.01, "p95_ms": 1000}}
+    assert analyse.capacity_curve(latency, budgets)["usable_users"] == 16
+    mixed = analyse.capacity_curve(latency, budgets, "capacity_mixed")
+    assert [level["users"] for level in mixed["levels"]] == [16, 32] and mixed["usable_users"] == 16

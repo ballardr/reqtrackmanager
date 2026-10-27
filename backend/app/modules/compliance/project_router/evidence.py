@@ -59,6 +59,7 @@ from app.modules.compliance.schemas import (
 from app.modules.compliance.service import (
     COMPLIANCE_EVIDENCE_MANAGE_PERMISSION,
     build_evidence_out,
+    build_evidence_outs,
     find_pcrs_linked_to_evidence,
     invalidate_approval_if_in_flight,
     list_expiring_or_expired_evidence,
@@ -192,7 +193,7 @@ def list_evidence(
         """This endpoint's rows for one project of the scope."""
         evidence_rows = db.scalars(select(ComplianceEvidence).where(ComplianceEvidence.project_id == pid)).all()
         evidence_rows = tag_filter.keep(db, pid, "compliance_evidence", evidence_rows)
-        return [build_evidence_out(db, evidence) for evidence in evidence_rows]
+        return build_evidence_outs(db, list(evidence_rows))
 
     return project_scope.collect(
         db, db.get(Project, project_id), current_user.id, "compliance_evidence", rows_for,
@@ -207,7 +208,7 @@ def get_expiring_evidence(
     """Every non-archived piece of evidence approaching or past its
     expiry (§14) — the `compliance_list_expiring_evidence` MCP tool
     (`module.py`)."""
-    return [build_evidence_out(db, evidence) for evidence in list_expiring_or_expired_evidence(db, project_id=project_id)]
+    return build_evidence_outs(db, list(list_expiring_or_expired_evidence(db, project_id=project_id)))
 
 
 @router.get("/evidence/{evidence_id}", response_model=ComplianceEvidenceOut)

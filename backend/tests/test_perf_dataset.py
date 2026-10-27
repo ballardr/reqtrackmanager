@@ -240,6 +240,22 @@ def test_the_generated_people_can_sign_in_and_read_what_was_generated(client):
     assert 0 < len(listed.json()) <= 30  # archived requirements are hidden by default
 
 
+def test_the_manifest_tells_the_load_generator_how_to_address_every_type(client):
+    """`record_types` comes from the scaling probes (so a new module is covered with no edit) and every project lists
+    sampled ids for each type it holds, so a scenario can address a record of any type without listing first."""
+    from app.modules.registry import get_scaling_probes
+
+    manifest = _generate(client, "single")
+    assert set(manifest["record_types"]) == set(get_scaling_probes())
+    assert manifest["record_types"]["risk"] == {
+        "list_path": "modules/risk_management/risks", "has_detail": True, "has_comments": True, "importable": True,
+    }
+    assert manifest["record_types"]["stakeholder_group"]["has_detail"] is False
+    project = manifest["projects"][0]
+    assert {"risk", "decision", "pain_point", "engagement", "compliance_evidence"} <= set(project["type_samples"])
+    assert all(len(ids) <= 200 and ids for ids in project["type_samples"].values())
+
+
 def test_the_application_reads_every_generated_type(client):
     """The application's own endpoints serve what the generators wrote: each type's list, a record's detail, its
     comments and its link graph answer 200 for an ordinary member, and the list holds the generated records."""

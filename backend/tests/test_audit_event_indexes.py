@@ -34,9 +34,34 @@ def test_audit_events_are_indexed_by_record_and_by_project_and_the_planner_can_u
         db.execute(text("set local enable_seqscan = off"))
         db.execute(text("drop index ix_audit_events_entity"))
         project = "\n".join(db.execute(text(
-            "explain select * from audit_events where project_id = '00000000-0000-0000-0000-000000000001' and entity_type = 'artefact_link'"
+            "explain select * from audit_events where project_id = '00000000-0000-0000-0000-000000000001' and entity_type = 'requirement'"
         )).scalars())
         assert "ix_audit_events_project_type" in project
+    finally:
+        db.rollback()
+        db.close()
+
+
+def test_an_activity_timelines_link_event_lookup_uses_the_expression_indexes():
+    """The generic link events are found by the ids kept in `detail`, not by reading every link event of the project."""
+    db = SessionLocal()
+    try:
+        db.execute(text("set local enable_seqscan = off"))
+        db.execute(text("drop index ix_audit_events_project_type"))
+        db.execute(text("drop index ix_audit_events_entity"))
+        for side in ("source", "target"):
+            # With an almost empty table the planner may use one index for both sides, so each is proved on its own.
+            other = "target" if side == "source" else "source"
+            db.execute(text(f"drop index if exists ix_audit_events_link_{other}"))
+            plan = "\n".join(db.execute(text(
+                f"explain select * from audit_events where entity_type = 'artefact_link' "
+                f"and (detail ->> '{side}_id') = '00000000-0000-0000-0000-000000000001'"
+            )).scalars())
+            assert f"ix_audit_events_link_{side}" in plan, plan
+            db.rollback()
+            db.execute(text("set local enable_seqscan = off"))
+            db.execute(text("drop index ix_audit_events_project_type"))
+            db.execute(text("drop index ix_audit_events_entity"))
     finally:
         db.rollback()
         db.close()

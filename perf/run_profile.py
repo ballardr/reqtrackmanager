@@ -913,8 +913,8 @@ class ProfileRun:
                         })
                     self.check_backend_health(tier, name)
                     self.record_snapshot(tier, name, repeat)
-                    if name == "capacity":
-                        climb_ended = self.capacity_step_ends(tier, params["users"], summary)
+                    if catalog.is_capacity(name):
+                        climb_ended = self.capacity_step_ends(tier, params["users"], summary, name)
                         if not climb_ended:
                             self.settle_backend()
             self.pg_end(tier, name)
@@ -933,7 +933,7 @@ class ProfileRun:
         if quiet < 2:
             self.notes.append(f"the backend was still busy {limit_seconds}s after a capacity level ended; the next level started behind its backlog")
 
-    def capacity_step_ends(self, tier: str, users: int, summary: dict) -> bool:
+    def capacity_step_ends(self, tier: str, users: int, summary: dict, scenario: str = "capacity") -> bool:
         """Notes one capacity level and says whether the stack is past what it can serve, so higher levels are skipped.
 
         A level fails the stack when more than `CAPACITY_MAX_FAILURE_RATE` of its requests fail or it delivers under
@@ -944,6 +944,7 @@ class ProfileRun:
             tier: The tier.
             users: Simulated connections at this level.
             summary: The load generator's summary for the level.
+            scenario: The capacity scenario (`capacity` or `capacity_mixed`).
 
         Returns:
             True when higher levels should not run.
@@ -955,7 +956,7 @@ class ProfileRun:
         failure_rate = failures / count if count else 1.0
         stalled = count == 0
         kinds = summary.get("failure_kinds") or {}
-        rows = [r for r in self.sampler.rows if r.get("scenario") == "capacity" and r.get("users") == users and r.get("tier") == tier]
+        rows = [r for r in self.sampler.rows if r.get("scenario") == scenario and r.get("users") == users and r.get("tier") == tier]
 
         def mean_cpu(service: str) -> float:
             values = [r["cpu_percent"] for r in rows if r["service"] == service]
@@ -1129,7 +1130,7 @@ class ProfileRun:
 
     def _dataset_entry(self, tier: str, manifest: dict, details: dict) -> dict:
         return {
-            "tier": tier, "spec": manifest["spec"], "rows": manifest["rows"], "link_degree_histogram": manifest["link_degree_histogram"],
+            "tier": tier, "spec": manifest["spec"], "rows": manifest["rows"], "link_degree_histogram": manifest["link_degree_histogram"], "link_pairs": manifest.get("link_pairs", {}),
             "integrity_problems": manifest["integrity_problems"], "database_bytes": self.database_bytes(),
             "generation_seconds": details["generation_seconds"],
         }

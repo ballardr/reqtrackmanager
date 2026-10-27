@@ -36,35 +36,16 @@ COMMENTS_SMALL, COMMENTS_LARGE = 2, 6
 #: removed from this set, and a new type must ship with one of the three.
 TRACKED_GAPS = frozenset(
     {
-        "compliance_evidence",
         "compliance_required_action_assessment",
         "compliance_requirement",
         "project_compliance_requirement",
     }
 )
 
-#: O17 in docs/performance.md: a module comment thread costs one statement per comment (the shape `comments_to_out`
-#: fixed for requirements, actions and change requests).
-_COMMENT_PER_ROW = "O17: one statement per comment"
-#: O16: a list reads the current version (and in places more) once per row.
-_VERSION_PER_ROW = "O16: the current version once per row"
-
 #: `{artefact type: {check: finding}}` for a check whose statements grow with the records today. Checks are `list`,
-#: `detail`, `comments` and `links` (the link graph of a record with N linked requirements).
-KNOWN_GROWING: dict[str, dict[str, str]] = {
-    "change_request": {"list": "O16: a comment count, and more, per request"},
-    "decision": {"comments": _COMMENT_PER_ROW},
-    "engagement": {"comments": _COMMENT_PER_ROW},
-    "future_state": {"list": _VERSION_PER_ROW, "comments": _COMMENT_PER_ROW},
-    "guiding_principle": {"list": _VERSION_PER_ROW, "comments": _COMMENT_PER_ROW},
-    "open_question": {"comments": _COMMENT_PER_ROW},
-    "pain_point": {"list": "O16: two statements per row", "comments": _COMMENT_PER_ROW},
-    "persona": {"list": "O16: three statements per row", "comments": _COMMENT_PER_ROW},
-    "risk": {"list": _VERSION_PER_ROW, "comments": _COMMENT_PER_ROW},
-    "stakeholder": {"list": _VERSION_PER_ROW, "comments": _COMMENT_PER_ROW},
-    "stakeholder_need": {"list": _VERSION_PER_ROW, "comments": _COMMENT_PER_ROW},
-    "strategy": {"list": _VERSION_PER_ROW, "comments": _COMMENT_PER_ROW},
-}
+#: `detail`, `comments`, `links` (the link graph of a record with N linked requirements) and `export` (the project
+#: bundle, which carries every module's records).
+KNOWN_GROWING: dict[str, dict[str, str]] = {}
 
 
 class _Api(ScalingProbeApi):
@@ -107,6 +88,16 @@ def _measure(api: _Api, path: str) -> int:
     api.get(path)
     with _Statements() as statements:
         api.get(path)
+    return statements.count
+
+
+def _measure_export(client, token: str, project_id: str) -> int:
+    """Statements for one project bundle export (a zip, so read as bytes), after a first identical export."""
+    url = f"/api/v1/projects/{project_id}/export"
+    assert client.get(url, headers=auth_headers(token)).status_code == 200
+    with _Statements() as statements:
+        resp = client.get(url, headers=auth_headers(token))
+    assert resp.status_code == 200
     return statements.count
 
 
@@ -162,7 +153,7 @@ def _growth(artefact_type: str, client, admin_token: str) -> dict[str, tuple[int
         for n in range(COMMENTS_SMALL):
             api.post(f"{base}/{first}/comments", {"body": f"comment {n}"})
     graph = f"/projects/{project_id}/artefacts/{artefact_type}/{first}/link-graph?depth=1"
-    small = {"list": _measure(api, base), "links": _measure(api, graph)}
+    small = {"list": _measure(api, base), "links": _measure(api, graph), "export": _measure_export(client, token, project_id)}
     if probe.has_detail:
         small["detail"] = _measure(api, f"{base}/{first}")
     if probe.has_comments:
@@ -173,7 +164,7 @@ def _growth(artefact_type: str, client, admin_token: str) -> dict[str, tuple[int
     if probe.has_comments:
         for n in range(COMMENTS_SMALL, COMMENTS_LARGE):
             api.post(f"{base}/{first}/comments", {"body": f"comment {n}"})
-    large = {"list": _measure(api, base), "links": _measure(api, graph)}
+    large = {"list": _measure(api, base), "links": _measure(api, graph), "export": _measure_export(client, token, project_id)}
     if probe.has_detail:
         large["detail"] = _measure(api, f"{base}/{first}")
     if probe.has_comments:
@@ -203,7 +194,7 @@ def test_known_growing_names_only_probed_types_and_real_checks():
     probed = set(get_scaling_probes())
     assert set(KNOWN_GROWING) <= probed, sorted(set(KNOWN_GROWING) - probed)
     for artefact_type, checks in KNOWN_GROWING.items():
-        assert set(checks) <= {"list", "detail", "comments", "links"}, (artefact_type, sorted(checks))
+        assert set(checks) <= {"list", "detail", "comments", "links", "export"}, (artefact_type, sorted(checks))
         assert all(reason.strip() for reason in checks.values()), artefact_type
 
 
@@ -217,3 +208,28 @@ def test_statements_do_not_grow_with_the_records(artefact_type, client, admin_to
         f"{artefact_type}: statements grow with the records (check: (at {SMALL}, at {LARGE})): {unexpected}"
     )
     assert not fixed, f"{artefact_type}: {fixed} no longer grow; remove them from KNOWN_GROWING"
+
+
+def test_organisation_export_statements_do_not_grow_with_the_records_of_its_projects(client, admin_token):
+    """The organisation bundle runs the same module exports for every project, so its cost per record is the project
+    export's: flat. (A project adds a fixed number of statements; a record adds none.)"""
+    org, token = create_org_admin_in(client, admin_token, "Org Export Co")
+    _enable_every_module(client, token, org["id"])
+    project_id = create_project(client, token, org["id"], "Org Export Project")["id"]
+    api = _Api(client, token)
+    probes = get_scaling_probes()
+    types = ("risk", "decision", "persona", "stakeholder", "engagement", "pain_point", "compliance_evidence")
+
+    def measure() -> int:
+        url = f"/api/v1/orgs/{org['id']}/export"
+        assert client.get(url, headers=auth_headers(token)).status_code == 200
+        with _Statements() as statements:
+            assert client.get(url, headers=auth_headers(token)).status_code == 200
+        return statements.count
+
+    for t in types:
+        probes[t].create(api, project_id, 0, SMALL)
+    small = measure()
+    for t in types:
+        probes[t].create(api, project_id, SMALL, LARGE - SMALL)
+    assert measure() == small

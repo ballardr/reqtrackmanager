@@ -76,12 +76,12 @@ from app.modules.risk_management.models import (
 )
 from app.modules.risk_management.scoring import LEVEL_COLUMN_AXES, RISK_SCORING_SCHEME_KEY
 from app.modules.risk_management.service import RISK_ARTEFACT_TYPE, RISK_TYPES
-from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
+from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_bundled_file, prime_file_links
 from app.services.link_type_scope import resolve_link_type_scope
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
-from app.services.relationships import create_link, get_all_links
+from app.services.relationships import create_link, get_links_from_many, get_links_to_many
 from app.services.scoring import list_levels, seed_missing_scoring_levels
-from app.services.tags import record_tag_names, restore_record_tags
+from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
 
 _TEXT_FIELDS = ("title", "statement", "cause", "risk_event", "consequence", "acceptance_criteria")
 _REQUIREMENT = "requirement"
@@ -146,11 +146,11 @@ def _level_refs(db: Session, project: Project) -> dict[UUID, dict[str, str]]:
 
 def _treatment_json(
     db: Session, project: Project, risk_id: UUID, req_code: dict[UUID, str], link_type_names: dict[UUID, str],
-    verdicts: dict[UUID, RiskTreatmentAssessment], emails: dict[UUID, str],
+    verdicts: dict[UUID, RiskTreatmentAssessment], emails: dict[UUID, str], risk_links: list[ArtefactLink],
 ) -> list[dict[str, Any]]:
     """The risk's same-project links to Requirements, each with its verdict (if any)."""
     out = []
-    for link in sorted(get_all_links(db, RISK_ARTEFACT_TYPE, risk_id), key=lambda lk: lk.created_at):
+    for link in sorted(risk_links, key=lambda lk: lk.created_at):
         if link.link_type_id is None:
             continue
         risk_is_source = (link.source_type, link.source_id) == (RISK_ARTEFACT_TYPE, risk_id)
@@ -181,8 +181,14 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     levels = _level_refs(db, project)
 
     types_json = []
-    for row in db.scalars(select(ProjectRiskType).where(ProjectRiskType.project_id == project.id)):
-        org_type = db.get(RiskTypeDefinition, row.org_type_id) if row.org_type_id else None
+    own_rows = list(db.scalars(select(ProjectRiskType).where(ProjectRiskType.project_id == project.id)))
+    own_org_types = {
+        t.id: t for t in db.scalars(select(RiskTypeDefinition).where(
+            RiskTypeDefinition.id.in_({r.org_type_id for r in own_rows if r.org_type_id is not None})
+        ))
+    } if own_rows else {}
+    for row in own_rows:
+        org_type = own_org_types.get(row.org_type_id) if row.org_type_id else None
         types_json.append({
             "org_type_name": org_type.name if org_type else None, "name_override": row.name_override,
             "display_order_override": row.display_order_override, "is_enabled": row.is_enabled,
@@ -205,12 +211,19 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         t.id: t.forward_name
         for t in db.scalars(select(RequirementLinkTypeDefinition).where(RequirementLinkTypeDefinition.organization_id == project.organization_id))
     }
+    prime_record_tag_names(db, RISK_ARTEFACT_TYPE, risk_ids)
+    prime_file_links(db, RiskFile, "risk_id", risk_ids)
     user_ids: set[UUID | None] = set()
     for risk, version in pairs:
         user_ids |= {risk.creator_id, risk.archived_by, version.created_by}
         user_ids |= {r.reviewed_by for r in reviews_by_risk.get(risk.id, [])}
     user_ids |= {a.assessed_by for a in verdicts_by_link.values()}
-    user_ids |= {lk.created_by for r in risk_ids for lk in get_all_links(db, RISK_ARTEFACT_TYPE, r)}
+    links_by_risk: dict[UUID, list[ArtefactLink]] = {r: [] for r in risk_ids}
+    for lk in get_links_from_many(db, RISK_ARTEFACT_TYPE, risk_ids):
+        links_by_risk[lk.source_id].append(lk)
+    for lk in get_links_to_many(db, RISK_ARTEFACT_TYPE, risk_ids):
+        links_by_risk[lk.target_id].append(lk)
+    user_ids |= {lk.created_by for links in links_by_risk.values() for lk in links}
     emails = _emails(db, user_ids)
 
     risks_json = []
@@ -227,17 +240,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "review_notified_for": {"due": _j(risk.review_due_notified_for), "overdue": _j(risk.review_overdue_notified_for)},
             "tags": record_tag_names(db, RISK_ARTEFACT_TYPE, risk.id),
         }
-        attachments = []
-        for asset, linked_by in db.execute(
-            select(FileAsset, User).join(RiskFile, RiskFile.file_id == FileAsset.id)
-            .join(User, User.id == RiskFile.linked_by).where(RiskFile.risk_id == risk.id)
-        ).all():
-            assets[asset.id] = asset
-            attachments.append({
-                "file_ref": f"{asset.id}_{asset.filename}", "filename": asset.filename,
-                "content_type": asset.content_type, "linked_by_email": linked_by.email,
-            })
-        entry["attachments"] = attachments
+        entry["attachments"] = export_file_links(db, RiskFile, "risk_id", risk.id, assets)
         entry["reviews"] = [
             {
                 "reviewed_by_email": emails.get(r.reviewed_by), "reviewed_at": _j(r.reviewed_at), "outcome": r.outcome.value,
@@ -248,7 +251,9 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             }
             for r in reviews_by_risk.get(risk.id, [])
         ]
-        entry["treatments"] = _treatment_json(db, project, risk.id, req_code, link_type_names, verdicts_by_link, emails)
+        entry["treatments"] = _treatment_json(
+            db, project, risk.id, req_code, link_type_names, verdicts_by_link, emails, links_by_risk[risk.id]
+        )
         risks_json.append(entry)
     return {
         "risk_project_types": types_json,
