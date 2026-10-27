@@ -167,6 +167,17 @@ perf/run_profile.sh linux-vm-4c8g --full --tiers T3,T4 --scenarios edit,browse,l
 perf/run_profile.sh rpi5-8g --full --workers 1 --max-mem 2.7 --tiers T0,T1,T2 --max-load-per-core 4 --storage nvme
 ```
 
+### All the other-type runs in one command
+
+`perf/run_other_types.sh <host-label>` runs the four profiles for the record types other than requirements and the
+links between them one after another (lists, links and search at T2 and T3; exports, import previews and bundles at T2;
+the six-worker capacity climb, plain and with the other types in the mix; a nested tree at T1), so it can run overnight. A run that fails does not stop the next; the
+end lists each outcome. On a server that also serves production, set `PROD_HEALTH_URL` and use a quiet window:
+
+```sh
+PROD_HEALTH_URL=https://prod.example/health perf/run_other_types.sh linux-vm-4c8g
+```
+
 ### How throughput scales with workers
 
 `capacity` steps simulated connections up at T2 (see above) and reports the usable level. Run it at 2, 4 and 6 workers on one
