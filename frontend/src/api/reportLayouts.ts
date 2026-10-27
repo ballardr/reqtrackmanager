@@ -203,6 +203,8 @@ export interface ReportLayoutApi {
   preview(body: PreviewRequest): Promise<PreviewResult>;
   /** The draft's run-time variables with their defaults and current options (nothing is stored). */
   draftVariables(text: string): Promise<DraftVariables>;
+  /** Organisation scope only: writes the starter layouts the organisation lacks; resolves to the names added. */
+  addStarters?(): Promise<string[]>;
   /** Project scope only: hides or shows an inherited layout. */
   setHidden?(id: string, hidden: boolean): Promise<ReportLayoutSummary>;
   /** Project scope only: shows the named hidden layouts again. */
@@ -239,6 +241,9 @@ export function reportLayoutApi(scope: LayoutScope): ReportLayoutApi {
     preview: (body) => api.post<PreviewResult>(`${base}/preview`, body),
     draftVariables: (text) => api.post<DraftVariables>(`${base}/variables`, { text }),
   };
+  if (scope.kind === "organization") {
+    layouts.addStarters = async () => (await api.post<{ added: string[] }>(`${base}/starters`, {})).added;
+  }
   if (scope.kind === "project") {
     layouts.setHidden = (id, hidden) => api.put<ReportLayoutSummary>(`${base}/${id}/visibility`, { hidden });
     layouts.restore = async (ids) => {

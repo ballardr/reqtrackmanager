@@ -142,8 +142,9 @@ test.describe("Custom report run", () => {
     await createLayout(request, headers, `/orgs/${org.id}`, name);
 
     await test.step("every project the person can read is included, each under its own title", async () => {
-      // A new organisation has no other organisation-wide report, so this one is shown without a picker.
+      // A new organisation also has the starter layouts, so the report is chosen by name.
       await page.goto(`/orgs/${org.id}/overview/reports`);
+      await chooseReport(page, name);
       await expect(page.getByRole("cell", { name: alpha.requirement })).toBeVisible();
       await expect(page.getByRole("cell", { name: beta.requirement })).toBeVisible();
       await expect(page.getByRole("heading", { name: `${alpha.name} / Requirements` })).toBeVisible();

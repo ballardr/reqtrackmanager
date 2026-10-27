@@ -79,6 +79,7 @@ from sqlalchemy.orm import Session
 
 from app.models.project import Project
 from app.models.report_layout import FAMILY_DOCUMENT
+from app.modules.registry import is_module_enabled_for_project
 from app.services.link_graph import ArtefactResolver
 from app.services.link_type_scope import resolve_link_type_scope
 from app.services.report_fields import RESERVED_FIELD_KEYS, FieldInfo, ReportRecord, field_catalogue, format_value, load_records
@@ -884,6 +885,8 @@ def _eval_group(run: _Run, node: dict[str, Any], scope: Scope) -> None:
 
 def _eval_if(run: _Run, node: dict[str, Any], scope: Scope) -> None:
     def leaf(when: dict[str, Any]) -> bool:
+        if "module" in when:
+            return is_module_enabled_for_project(run.db, run.project.id, when["module"])
         alias, member = when["ref"].split(".")
         bound = scope[alias]
         if bound.kind == "group":

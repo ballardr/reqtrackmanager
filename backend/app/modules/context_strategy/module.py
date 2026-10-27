@@ -132,6 +132,7 @@ from app.modules.context_strategy.perf_dataset import (
 )
 from app.modules.context_strategy.record_tables import RECORD_TABLES
 from app.modules.context_strategy.report_fields import REPORT_FIELDS
+from app.modules.context_strategy.report_starters import REPORT_STARTER_SECTIONS
 from app.modules.context_strategy.reports import REPORT_DEFINITIONS
 from app.modules.context_strategy.scaling_probes import SCALING_PROBES
 from app.modules.context_strategy.scoring import PAIN_POINT_SCORING_SCHEME
@@ -861,6 +862,7 @@ MODULE_DEFINITION = ModuleDefinition(
     artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
     search_providers=SEARCH_PROVIDERS,
     report_fields=REPORT_FIELDS,
+    report_starter_sections=REPORT_STARTER_SECTIONS,
     record_tables=RECORD_TABLES,
     scaling_probes=SCALING_PROBES,
     perf_generators={

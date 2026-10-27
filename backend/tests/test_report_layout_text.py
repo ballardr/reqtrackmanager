@@ -578,3 +578,13 @@ def test_every_block_type_has_a_text_form_and_every_text_form_a_block_type():
 def test_a_text_form_cannot_be_registered_twice():
     with pytest.raises(ValueError, match="already has a text form"):
         register_text_form(TextForm("heading", lambda p, d: None, lambda w, n, depth: None))
+
+
+def test_an_if_on_a_module_reads_and_writes_as_module_and_the_key():
+    text = "@layout document\n\n@if module risk_management and not module decisions\n  @text \"x\"\n@else\n  @text \"y\"\n@end\n"
+
+    parsed = parse_text(text)
+
+    assert parsed.errors == []
+    assert parsed.tree["nodes"][0]["when"] == {"all": [{"module": "risk_management"}, {"not": {"module": "decisions"}}]}
+    assert parse_text(format_tree(parsed.tree)).tree == parsed.tree

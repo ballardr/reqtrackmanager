@@ -331,8 +331,26 @@ def direct_project_roles(project_id: str) -> dict[str, set[str]]:
     return result
 
 
-def create_org_admin_in(client, admin_token, org_name) -> tuple[dict, str]:
+def remove_starter_layouts(organization_id) -> None:
+    """Deletes the starter report layouts a new organisation is created with, so a test that lists or counts an
+    organisation's layouts starts from an empty set (`tests/test_report_starters.py` covers the starters themselves)."""
+    from app.models.report_layout import ReportLayout
+
+    db = SessionLocal()
+    try:
+        db.query(ReportLayout).filter(
+            ReportLayout.organization_id == organization_id, ReportLayout.project_id.is_(None)
+        ).delete(synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
+
+
+def create_org_admin_in(client, admin_token, org_name, *, keep_starter_layouts: bool = False) -> tuple[dict, str]:
     """Creates a new organisation, then a genuine org_admin user within it.
+
+    The starter report layouts a new organisation is created with are deleted unless `keep_starter_layouts`, so
+    tests that list an organisation's layouts need not know about them.
 
     Since I-M-05 removed the server-admin bypass from `require_org_role`,
     the bootstrap server admin can no longer act directly on an org it
@@ -345,6 +363,8 @@ def create_org_admin_in(client, admin_token, org_name) -> tuple[dict, str]:
         A tuple of (organization dict, bearer token for the new org_admin).
     """
     org = client.post("/api/v1/orgs", json={"name": org_name}, headers=auth_headers(admin_token)).json()
+    if not keep_starter_layouts:
+        remove_starter_layouts(org["id"])
     email = f"{org_name.lower().replace(' ', '_')}_admin@example.com"
     client.post(
         f"/api/v1/orgs/{org['id']}/users",

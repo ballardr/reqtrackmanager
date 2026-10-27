@@ -81,6 +81,7 @@ from app.modules.risk_management.models import RiskVersion
 from app.modules.risk_management.perf_dataset import generate_risks
 from app.modules.risk_management.record_tables import RECORD_TABLES
 from app.modules.risk_management.report_fields import REPORT_FIELDS
+from app.modules.risk_management.report_starters import REPORT_STARTER_SECTIONS
 from app.modules.risk_management.reports import REPORT_DEFINITIONS
 from app.modules.risk_management.scaling_probes import SCALING_PROBES
 from app.modules.risk_management.scoring import RISK_SCORING_SCHEME
@@ -212,6 +213,7 @@ MODULE_DEFINITION = ModuleDefinition(
     artefact_summary_providers={RISK_ARTEFACT_TYPE: RISK_SUMMARY_PROVIDER},
     search_providers=SEARCH_PROVIDERS,
     report_fields=REPORT_FIELDS,
+    report_starter_sections=REPORT_STARTER_SECTIONS,
     record_tables=RECORD_TABLES,
     scaling_probes=SCALING_PROBES,
     perf_generators={RISK_ARTEFACT_TYPE: PerfDatasetGenerator(generate=generate_risks, order=100)},

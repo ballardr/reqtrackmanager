@@ -97,6 +97,7 @@ from app.modules.decisions.models import Decision
 from app.modules.decisions.perf_dataset import generate_decisions
 from app.modules.decisions.record_tables import RECORD_TABLES
 from app.modules.decisions.report_fields import REPORT_FIELDS
+from app.modules.decisions.report_starters import REPORT_STARTER_SECTIONS
 from app.modules.decisions.reports import REPORT_DEFINITIONS
 from app.modules.decisions.scaling_probes import SCALING_PROBES
 from app.modules.decisions.search import SEARCH_PROVIDERS
@@ -319,6 +320,7 @@ MODULE_DEFINITION = ModuleDefinition(
     },
     search_providers=SEARCH_PROVIDERS,
     report_fields=REPORT_FIELDS,
+    report_starter_sections=REPORT_STARTER_SECTIONS,
     record_tables=RECORD_TABLES,
     scaling_probes=SCALING_PROBES,
     perf_generators={DECISION_ARTEFACT_TYPE: PerfDatasetGenerator(generate=generate_decisions, order=110)},

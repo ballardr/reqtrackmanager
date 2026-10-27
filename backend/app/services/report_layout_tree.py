@@ -15,6 +15,8 @@ Responsibilities:
 - Report, per container block, which `(record type, field)` pairs its subtree needs, so the
   evaluator loads exactly those columns (`TreeAnalysis.refs`).
 - Hash a tree (`tree_hash`) for versioning and provenance.
+- Let an `if` test whether a module is available in the project being run (`{"module": key}`), so a layout that
+  spans modules leaves out the parts of one that is off instead of printing an empty section.
 - Check a `widget` block names a component in the widget catalogue (`services.report_widgets`)
   and sets only parameters that report declares, with values of the declared type.
 - Check a layout's run-time `variables` (typed values supplied when it runs: `services.report_variables`) and that
@@ -55,7 +57,7 @@ from datetime import date, datetime
 from typing import Any
 
 from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE, LAYOUT_FAMILIES
-from app.modules.registry import get_report_field_providers
+from app.modules.registry import get_module_registry, get_report_field_providers
 from app.services.report_fields import FieldInfo, UnknownReportFieldError, field_catalogue
 from app.services.report_math import MAX_TEX_CHARS, split_math, tex_problem
 from app.services.report_model import PLACEHOLDER_NAMES
@@ -910,6 +912,11 @@ def _validate_if_leaf(v: TreeValidator) -> Callable[[dict[str, Any], str], None]
     """Validates one `{ref, op, value}` test of an `if` (`ref` is `name.field` of an enclosing block)."""
 
     def leaf(when: dict[str, Any], path: str) -> None:
+        if "module" in when:  # "the module is available in the project being run"
+            v.check_keys(when, path, required=("module",))
+            if when.get("module") not in get_module_registry():
+                v.error(f"{path}.module", f"Must be a module key: {', '.join(sorted(get_module_registry()))}.")
+            return
         v.check_keys(when, path, required=("ref", "op"), optional=("value",))
         ref = when.get("ref")
         parts = ref.split(".") if isinstance(ref, str) else []

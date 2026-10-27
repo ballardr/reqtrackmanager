@@ -51,6 +51,7 @@ from app.schemas.report_layout import (
     ReportLayoutRestore,
     ReportLayoutRestoreOut,
     ReportLayoutSave,
+    ReportLayoutStartersOut,
     ReportLayoutTextError,
     ReportLayoutTextFormat,
     ReportLayoutTextOut,
@@ -64,7 +65,14 @@ from app.schemas.report_layout import (
     ReportVariableOut,
     ReportWidgetOut,
 )
-from app.services import custom_report_run, report_layout_designer, report_layout_scope, report_layout_text, report_layouts
+from app.services import (
+    custom_report_run,
+    report_layout_designer,
+    report_layout_scope,
+    report_layout_text,
+    report_layouts,
+    report_starters,
+)
 from app.services.client_date import effective_today
 from app.services.rbac import (
     MANAGE_ORG_REPORT_LAYOUTS,
@@ -301,6 +309,23 @@ def create_org_layout(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
     layout = _create(db, current_user, body, organization_id=organization_id, project_id=None)
     return _detail(db, layout, "organization")
+
+
+@org_router.post("/starters", response_model=ReportLayoutStartersOut)
+def add_org_starter_layouts(
+    organization_id: UUID, current_user: User = Depends(manage_org_layouts), db: Session = Depends(get_db),
+) -> ReportLayoutStartersOut:
+    """Adds the starter layouts (Business Requirements Document, Engineering Specification, Review Package) the
+    organisation does not have yet. A starter whose name is already used is left as it is, so this is safe to repeat.
+
+    Raises:
+        HTTPException: 404 the organisation does not exist.
+    """
+    if db.get(Organization, organization_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    added = report_starters.add_starter_layouts(db, organization_id, actor_id=current_user.id)
+    db.commit()
+    return ReportLayoutStartersOut(added=added)
 
 
 @org_router.post("/text/parse", response_model=ReportLayoutTextParseOut)
