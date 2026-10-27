@@ -47,7 +47,7 @@ class ReportLayout(UUIDPKMixin, TimestampMixin, Base):
         project_id: The owning project, or `None` for an organisation-level layout.
         name: Display name, unique within the owner (case-insensitively, checked by the service).
         description: What the layout reports.
-        family: `document` (PDF, DOCX, HTML ...) or `table` (CSV, XLSX ...); fixed at creation.
+        family: `document` (PDF, DOCX, ODT, HTML ...) or `table` (CSV, XLSX, ODS ...); fixed at creation.
         current_version: The latest `ReportLayoutVersion.version`.
         created_by: The author, `None` once that user is deleted.
     """

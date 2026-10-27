@@ -19,8 +19,8 @@ from app.services.report_render import MAX_CELL_CHARS, RenderedFile, Renderer, R
 
 
 def test_formats_are_read_from_the_registry_per_family():
-    assert formats_for("document") == ["pdf", "docx", "html"]
-    assert formats_for("table") == ["csv", "xlsx"]
+    assert formats_for("document") == ["pdf", "docx", "html", "odt"]
+    assert formats_for("table") == ["csv", "xlsx", "ods"]
     assert formats_for("nothing") == []
 
 
@@ -30,14 +30,16 @@ def test_a_format_is_not_rendered_for_a_family_it_does_not_serve():
     with pytest.raises(KeyError):
         render("xlsx", "document", RenderInput("t", document=ReportDocument("t")))
     with pytest.raises(KeyError):
-        render("odt", "document", RenderInput("t", document=ReportDocument("t")))
+        render("ods", "document", RenderInput("t", document=ReportDocument("t")))
+    with pytest.raises(KeyError):
+        render("rtf", "document", RenderInput("t", document=ReportDocument("t")))
 
 
 def test_a_new_format_is_one_registration(monkeypatch):
     monkeypatch.setattr(report_render, "_RENDERERS", dict(report_render._RENDERERS))
     report_render.register_renderer(Renderer("txt", ("table",), lambda s: RenderedFile(b"x", "csv")))
 
-    assert formats_for("table") == ["csv", "xlsx", "txt"]
+    assert formats_for("table") == ["csv", "xlsx", "ods", "txt"]
     with pytest.raises(ValueError):
         report_render.register_renderer(Renderer("txt", ("table",), lambda s: RenderedFile(b"", "csv")))
 

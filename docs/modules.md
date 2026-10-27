@@ -1409,19 +1409,24 @@ flowchart LR
 - **Authorisation** is unchanged: each project is evaluated with `ArtefactResolver(project, caller)`, so a record the
   caller cannot see is counted and never named. The wall-clock limit and the output cap are shared by the whole run.
 - **Formats** come from the renderer registry (`services/report_render.py`; `available_formats` is `json` plus
-  `formats_for(family)`): a document layout gives `pdf`, `docx` and `html`; a table layout `csv` (one CSV, or a zip
-  with one CSV per sheet when there are several) and `xlsx`. Table formats are for the table family only. A new
-  format (ODT, ODS) is one `register_renderer(Renderer(key, families, render))`; a renderer sees only the neutral
+  `formats_for(family)`): a document layout gives `pdf`, `docx`, `html` and `odt`; a table layout `csv` (one CSV, or a zip
+  with one CSV per sheet when there are several), `xlsx` and `ods`. Table formats are for the table family only. A
+  new format is one `register_renderer(Renderer(key, families, render))` (ODT and ODS were); a renderer sees only the neutral
   model (`RenderInput`: a `ReportDocument` or `Sheet`s). The `json` form is the Reports page's on-screen view: each
   table of the document becomes a section titled by the headings above it ("Alpha / Requirements"), the text between
   tables is its note. The catalogue entry lists the formats and, for an organisation layout,
   `supports_project_multi_filter` and the `projects` the caller may choose among; the Reports page offers them as a
   **Projects** selector.
-- **Cells and pages are safe by construction.** Every CSV and XLSX cell goes through `csv_safe` and is written as
-  text (an XLSX cell is typed `s`, never a formula, and cut at 32,767 characters); sheet and zip member names are
+- **Cells and pages are safe by construction.** Every CSV, XLSX and ODS cell goes through `csv_safe` and is written as
+  text (an XLSX cell is typed `s` and an ODS cell is a `string` value with no formula attribute, never a formula,
+  and both are cut at 32,767 characters); sheet and zip member names are
   cleaned and made unique. The HTML page escapes every string, carries no script and a
   `Content-Security-Policy` of `default-src 'none'; img-src data:; style-src 'unsafe-inline'`, inlines a raster image
-  only as a `data:` URI of a type sniffed from its bytes and an SVG only after sanitising.
+  only as a `data:` URI of a type sniffed from its bytes and an SVG only after sanitising. ODT and ODS
+  (`services/report_odf.py`, `report_odt.py`, `report_ods.py`) are written as XML text, not through an object
+  library (which cost 1.1 GB for 100,000 rows): every string passes `xml_text`/`xml_attr`, an image's type is sniffed,
+  and the package holds no macro, link, script or field code but the page number. ODT headings, tables, lists and
+  the footer page number are real ODF structures; equations are pictures (then the source), not formula objects.
 - **SVG figures.** `Image(svg=...)` holds markup that is untrusted until `report_svg.sanitize_svg` allow-lists it
   (no DOCTYPE or entity, no script, `foreignObject`, `image`, `style` element, event handler or external reference;
   `href` only to `#id`); every renderer sanitises again. The PDF draws it as vector through `svglib` (a `resvg-py` PNG
@@ -1571,7 +1576,7 @@ flowchart LR
   opener with no closer is ordinary text. Scanned: the paragraphs, headings and list items of a text block, and the
   cells of a document table whose field is math-capable. A `$$ $$` where there is no room for a block (a heading, an
   item, a cell) is drawn inline, and a display equation cannot hold a blank line (Markdown ends the paragraph). Sheets
-  of the table family (CSV, XLSX) keep the TeX as text.
+  of the table family (CSV, XLSX, ODS) keep the TeX as text.
 - **The `equation` block** is `{type: "equation", tex}` (a display equation; text view `@equation <TeX>` on one line, no
   spaces at either end). The neutral model has `Equation(tex, display)` for a block and `MathText`, a `str` subclass whose
   value is the text as written and whose `parts` are its runs and inline equations, so a heading, paragraph, list item or

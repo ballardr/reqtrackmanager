@@ -12765,3 +12765,35 @@ A cheap count pre-pass (record counts per `each` source, multiplied through nest
 ### Not applicable, checked
 
 *Modules:* nothing per module in a core file (decision 3). *Core enums/constants:* none added; `starter` and the module key are plain strings validated against the registry. *Search, codes, tags, quick links, record export/import:* a layout is configuration, not an artefact type. *Users and groups parity:* no person-valued field. *Nested projects:* a starter is an organisation layout, visible to child projects by the additive rule. *Time:* no time fields; the generated date is the run's. *Bundles:* starters travel as organisation layouts already do; a project or organisation import does not reseed them. *Seeds:* both seed scripts create organisations through the API, so they now include the starters; no change needed. *MCP:* no new tool; `list_report_layouts` lists them. *SOC 2 policies:* no control regressed; no new gap.
+
+
+## Custom reports Phase 12: ODT and ODS renderers (2026-10-28)
+
+**Decided by: Agent** (design), within D6 (User: ODT and ODS follow once the renderer interface has proved itself). Phase 7's note that "ODT/ODS are one registration each" held: no layout, route, provenance or MCP change was needed.
+
+### What was built
+
+- `services/report_odf.py` (package: zip with `mimetype` first and stored, manifest, fixed metadata, `xml_text`/`xml_attr` escaping, image sniffing), `report_odt.py` (document family) and `report_ods.py` (table family); both registered in `report_render.py`, which also gained `render_ods` and a shared `sheet_title`.
+- ODT: real heading paragraphs with outline levels, real tables with a repeating accent-shaded header row, zebra rows and tones, real bullet lists, a footer with a live page-number field, A4 portrait or landscape, a cover page (logo, accent title, the body starts on the next page; no footer on the cover), pictures and equations.
+- ODS: one tab per sheet, bold header row (repeated when printed, frozen on screen through `settings.xml`), sized columns, every cell a `string` value.
+- `odt` and `ods` in the download media types, the route's `format` values, the catalogue, packs (any layout entry can use them), the Reports page's Export menu and the pack entry editor.
+- Tests: `test_report_odf.py` (30: package structure, escaping in every position, whitespace, headings, tables, cover, footer, orientation, pictures, equations, cell safety, sheet names, streaming of 20,000 rows), route tests in `test_custom_report_run.py`, Storybook stories, Playwright steps in `custom-report-run.spec.ts`. LibreOffice 7 (in a throwaway container) opened an ODT with cover, footer, table, tones, list, picture, inline and display equations and a landscape page break, converting it to PDF with the header row repeating on the second page, and read an ODS back to CSV with `'=x` as text.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **ODF is written as XML text, not through `odfpy`** (reverses the Phase 0 library pick). `odfpy` builds an object tree: a table of 100,000 rows of six cells took 1.1 GB and 45 seconds to build and write, and a background run allows five times that. Streaming text is proportional to the file, adds no dependency and puts every string through one escaping choke point. | Agent |
+| 2 | **Equations in ODT are pictures, then the author's source**; not native formula objects. A formula object is an embedded sub-document whose StarMath/MathML rendering differs between suites and could only be checked in LibreOffice here, so it would repeat Word's "tested subset" work for one application. Raise it if editable equations in ODT matter. | Agent |
+| 3 | **An SVG figure is a PNG in ODT**, as in Word, so text in it is drawn with the bundled font rather than whatever the reader's system has. | Agent |
+| 4 | **ODS cells follow the XLSX rules**: text only, `csv_safe` first, cut at 32,767 characters (a limit no suite needs but which keeps the two files identical in content), sheet names cleaned and unique. | Agent |
+| 5 | **Fixed an XLSX defect found on the way:** a sheet name starting or ending with an apostrophe is refused by Excel and LibreOffice; `sheet_title` now strips it for both formats (test: `test_sheet_titles_are_clean_for_every_spreadsheet_format`). | Agent |
+| 6 | **Not changed:** module reports (`report_framework`) keep PDF, Word and CSV; the pack entry for a module report is still limited to those. | Agent |
+
+### Review (identify, verify, remediate)
+
+*Identify:* record text becoming markup in any ODF element or attribute; a cell becoming a formula; control characters or a NUL making the XML unreadable; a hostile accent colour or sheet name reaching an attribute; a non-image or an SVG-as-raster embedded unsanitised; memory growth on a large run; a package a reader rejects (mimetype not first or compressed, manifest missing a part). *Verify:* tests with `<script>`, `</text:p><draw:frame>`, quotes and NUL in every position (headings, paragraphs, notes, lists, cells, footer, title, sheet names, header cells) and a parse of every XML part; a bad accent colour and a quoted sheet name; no `table:formula` attribute and every cell typed `string`; non-image bytes skipped and the type sniffed (a PNG is `image/png` whatever it is called); the mimetype entry first and stored and the manifest listing every part; 20,000 rows streamed. LibreOffice opened both files. Word was not tried with ODT and Excel was not tried with ODS (only LibreOffice is available here). *Remediate:* the two failures were test mistakes (a shell-expanded `$` in the sample; the header row sits outside the body rows); no product defect surfaced beyond decision 5.
+
+### Not applicable, checked
+
+*Authentication, RBAC, audit:* no new endpoint or permission; provenance already records the format. *Time:* the only time is the creation time in the metadata (UTC, past instant). *Search, codes, tags, bundles, record export/import, seeds:* no record type or table. *Nested projects:* no definition table. *MCP:* tools return JSON only; no skill change. *SOC 2 policies:* no control regressed, no new dependency; the PDF/Word/ODF renderers still never fetch anything.

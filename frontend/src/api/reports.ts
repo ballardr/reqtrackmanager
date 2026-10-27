@@ -34,8 +34,11 @@ export interface ReportParam {
  */
 export type ReportDownloadKind = "pdf" | "docx" | "csv";
 
-/** Every file format a catalogue report may offer: the downloads above plus a custom report's HTML page and Excel workbook. */
-export type ReportFileKind = ReportDownloadKind | "html" | "xlsx";
+/**
+ * Every file format a catalogue report may offer: the downloads above plus a custom report's HTML page, Excel workbook
+ * and OpenDocument text (`odt`) and spreadsheet (`ods`) files.
+ */
+export type ReportFileKind = ReportDownloadKind | "html" | "xlsx" | "odt" | "ods";
 
 /** One runnable report (`ReportCatalogueEntryOut`). */
 export interface ReportCatalogueEntry {

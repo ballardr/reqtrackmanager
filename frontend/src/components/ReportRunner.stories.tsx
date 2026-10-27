@@ -158,7 +158,7 @@ export const CustomTableReportOffersExcelAndCsv: Story = {
   args: {
     entry: buildReportCatalogueEntry({
       module_key: "custom_reports", slug: "custom-sheet-1", supports_include_children: true, params: [],
-      formats: ["json", "csv", "xlsx"], path: "/api/v1/projects/project-1/custom-reports/layout-2/run",
+      formats: ["json", "csv", "xlsx", "ods"], path: "/api/v1/projects/project-1/custom-reports/layout-2/run",
     }),
   },
   beforeEach: () => {
@@ -177,6 +177,9 @@ export const CustomTableReportOffersExcelAndCsv: Story = {
     await userEvent.click(within(document.body).getByRole("button", { name: "Download Excel report" }));
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("format=xlsx")));
     await waitFor(() => expect(within(document.body).getByText("Downloaded Fixture report (Excel workbook).")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Download OpenDocument spreadsheet report" }));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("format=ods")));
   },
 };
 

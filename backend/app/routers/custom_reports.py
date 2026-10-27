@@ -3,7 +3,7 @@ Module: routers.custom_reports
 
 Runs a custom report layout (`services.custom_report_run`):
 
-- `GET /api/v1/projects/{project_id}/custom-reports/{layout_id}/run?format=json|pdf|docx|html|csv|xlsx`: a layout the
+- `GET /api/v1/projects/{project_id}/custom-reports/{layout_id}/run?format=json|pdf|docx|odt|html|csv|xlsx|ods`: a layout the
   project can reach (its own, an ancestor's or the organisation's, unless the project hid it), for this
   project and, with `include_children`, its readable child projects.
 - `GET /api/v1/orgs/{organization_id}/custom-reports/{layout_id}/run?format=...&project_ids=a,b`: an
@@ -71,7 +71,7 @@ T = TypeVar("T")
 project_router = APIRouter(prefix="/api/v1/projects/{project_id}/custom-reports", tags=["custom-reports"])
 org_router = APIRouter(prefix="/api/v1/orgs/{organization_id}/custom-reports", tags=["custom-reports"])
 
-CustomReportFormat = Literal["json", "pdf", "docx", "html", "csv", "xlsx"]
+CustomReportFormat = Literal["json", "pdf", "docx", "odt", "html", "csv", "xlsx", "ods"]
 """Every format any family offers; `available_formats` narrows it per layout (400)."""
 _RESPONSES: dict[int | str, dict[str, Any]] = {
     200: {"content": {"application/pdf": {}, "text/csv": {}, "text/html": {}, "application/zip": {}}},
@@ -209,7 +209,7 @@ def _respond(
 @project_router.get("/{layout_id}/run", response_model=ReportOut, responses=_RESPONSES)
 def run_project_custom_report(
     project_id: UUID, layout_id: UUID,
-    format: CustomReportFormat = Query("json", description="json (default), or pdf, docx, html (document layouts) / csv, xlsx (table layouts)."),
+    format: CustomReportFormat = Query("json", description="json (default), or pdf, docx, odt, html (document layouts) / csv, xlsx, ods (table layouts)."),
     include_children: bool = Query(False, description="Also read the records of readable child projects."),
     report_template_id: UUID | None = Query(None, description="An organisation report template's branding for the PDF and Word."),
     variables: str | None = Query(
@@ -260,7 +260,7 @@ def _parse_project_ids(raw: str | None) -> list[UUID] | None:
 @org_router.get("/{layout_id}/run", response_model=ReportOut, responses=_RESPONSES)
 def run_org_custom_report(
     organization_id: UUID, layout_id: UUID,
-    format: CustomReportFormat = Query("json", description="json (default), or pdf, docx, html (document layouts) / csv, xlsx (table layouts)."),
+    format: CustomReportFormat = Query("json", description="json (default), or pdf, docx, odt, html (document layouts) / csv, xlsx, ods (table layouts)."),
     project_ids: str | None = Query(
         None, description="Comma-separated projects to include (narrowing only); default every project you can read.",
     ),

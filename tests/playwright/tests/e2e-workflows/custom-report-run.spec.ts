@@ -93,7 +93,7 @@ test.describe("Custom report run", () => {
     return pending;
   }
 
-  test("a project runs a layout on screen and downloads it as PDF and Word", async ({ page, request }) => {
+  test("a project runs a layout on screen and downloads it as PDF, Word, OpenDocument text and HTML", async ({ page, request }) => {
     const { headers, projects, suffix } = await setup(page, request);
     const [alpha, beta] = projects;
     const name = `E2E Project layout ${suffix}`;
@@ -127,6 +127,17 @@ test.describe("Custom report run", () => {
       expect(html.startsWith("<!doctype html>")).toBeTruthy();
       expect(html).toContain(alpha.requirement);
       expect(html).not.toContain("<script");
+    });
+
+    await test.step("the OpenDocument text file is a real document (its type is stored first, uncompressed)", async () => {
+      const file = await download(page, "Download OpenDocument text report");
+      expect(file.suggestedFilename()).toMatch(/\.odt$/);
+      const bytes = fs.readFileSync((await file.path())!);
+      expect(bytes.subarray(0, 2).toString()).toBe("PK");
+      expect(bytes.subarray(30, 38).toString()).toBe("mimetype");
+      expect(bytes.includes("application/vnd.oasis.opendocument.text")).toBeTruthy();
+      expect(bytes.includes("content.xml")).toBeTruthy();
+      await expect(page.getByText(`Downloaded ${name} (OpenDocument text file).`)).toBeVisible();
     });
 
     await test.step("a project that has nothing to do with the layout does not offer it", async () => {
@@ -215,7 +226,7 @@ test.describe("Custom report run", () => {
     });
   });
 
-  test("a table layout downloads as an Excel workbook and, with several sheets, as a zip of CSV files", async ({ page, request }) => {
+  test("a table layout downloads as an Excel workbook, an OpenDocument spreadsheet and, with several sheets, as a zip of CSV files", async ({ page, request }) => {
     const { headers, projects, suffix } = await setup(page, request);
     const [alpha] = projects;
     const name = `E2E Sheets layout ${suffix}`;
@@ -238,6 +249,15 @@ test.describe("Custom report run", () => {
       expect(bytes.subarray(0, 2).toString()).toBe("PK");
       expect(bytes.includes("xl/workbook.xml")).toBeTruthy();
       await expect(page.getByText(`Downloaded ${name} (Excel workbook).`)).toBeVisible();
+    });
+
+    await test.step("the OpenDocument spreadsheet is a real file", async () => {
+      const file = await download(page, "Download OpenDocument spreadsheet report");
+      expect(file.suggestedFilename()).toMatch(/\.ods$/);
+      const bytes = fs.readFileSync((await file.path())!);
+      expect(bytes.subarray(0, 2).toString()).toBe("PK");
+      expect(bytes.includes("application/vnd.oasis.opendocument.spreadsheet")).toBeTruthy();
+      await expect(page.getByText(`Downloaded ${name} (OpenDocument spreadsheet).`)).toBeVisible();
     });
 
     await test.step("two sheets come as a zip of CSV files, named as a zip", async () => {
