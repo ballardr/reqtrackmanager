@@ -353,13 +353,15 @@ def _report_entry(
 
 
 def _template(db: Session, organization: Organization, version: ReportPackVersion, template_id: uuid.UUID | None) -> ReportTemplate | None:
-    """The branding template: the one requested, else the pack's default by name, else none."""
+    """The branding template: the one requested, else the pack's own by name, else the organisation's default."""
     if template_id is not None:
         return db.scalar(select(ReportTemplate).where(ReportTemplate.id == template_id, ReportTemplate.organization_id == organization.id))
     name = version.definition.get("template")
-    if not name:
-        return None
-    return db.scalar(select(ReportTemplate).where(ReportTemplate.organization_id == organization.id, ReportTemplate.name == name))
+    if name:
+        named = db.scalar(select(ReportTemplate).where(ReportTemplate.organization_id == organization.id, ReportTemplate.name == name))
+        if named is not None:
+            return named
+    return db.scalar(select(ReportTemplate).where(ReportTemplate.organization_id == organization.id, ReportTemplate.is_default))
 
 
 def _run(

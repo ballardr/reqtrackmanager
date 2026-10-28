@@ -25,6 +25,7 @@ class ReportLayoutCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str = ""
     folder: str = Field(default="", max_length=120)
+    report_template_id: UUID | None = None
     family: Literal["document", "table"]
     tree: dict[str, Any]
     comment: str = ""
@@ -36,6 +37,8 @@ class ReportLayoutUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = None
     folder: str | None = Field(default=None, max_length=120)
+    report_template_id: UUID | None = None
+    """The branding template; sent as `null` it clears the override (a field left out is unchanged)."""
 
 
 class ReportLayoutSave(BaseModel):
@@ -119,6 +122,7 @@ class ReportLayoutOut(BaseModel):
     name: str
     description: str
     folder: str = ""
+    report_template_id: UUID | None = None
     family: str
     current_version: int
     origin: Literal["project", "ancestor", "organization"]

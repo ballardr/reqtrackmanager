@@ -86,23 +86,23 @@ test.describe("project nav: personal order, More, per-project override", () => {
     const { projectA, projectB } = await setupOrgWithTwoProjects(page);
     await page.goto(`/projects/${projectA.id}`);
     const defaultOrder = await navLinkNames(page);
-    expect(defaultOrder.indexOf("Reports")).toBeGreaterThan(-1);
+    expect(defaultOrder.indexOf("Actions")).toBeGreaterThan(-1);
 
     await test.step("pinned items cannot be moved to More", async () => {
       await openEditor(page);
       await expect(editor(page).getByRole("button", { name: "Move Overview to More" })).toHaveCount(0);
       await expect(editor(page).getByRole("button", { name: "Move Project admin to More" })).toHaveCount(0);
-      await expect(editor(page).getByRole("button", { name: "Move Reports to More" })).toBeVisible();
+      await expect(editor(page).getByRole("button", { name: "Move Files to More" })).toBeVisible();
     });
 
-    await test.step("move Reports up one place and Project history to More, then save for all projects", async () => {
-      await editor(page).getByRole("button", { name: "Move Reports up" }).click();
+    await test.step("move Actions up one place and Project history to More, then save for all projects", async () => {
+      await editor(page).getByRole("button", { name: "Move Actions up" }).click();
       await editor(page).getByRole("button", { name: "Move Project history to More" }).click();
       await saveEditor(page);
       await expect(page.getByText("Navigation saved")).toBeVisible();
 
       const reordered = await navLinkNames(page);
-      expect(reordered.indexOf("Reports")).toBe(defaultOrder.indexOf("Reports") - 1);
+      expect(reordered.indexOf("Actions")).toBe(defaultOrder.indexOf("Actions") - 1);
       await expect(navLink(page, HISTORY)).toHaveCount(0);
       await page.getByRole("navigation").getByRole("button", { name: "More" }).click();
       await expect(navLink(page, HISTORY)).toBeVisible();
@@ -113,7 +113,7 @@ test.describe("project nav: personal order, More, per-project override", () => {
       await expect(navLink(page, HISTORY)).toHaveCount(0);
       await page.goto(`/projects/${projectB.id}`);
       await expect(navLink(page, HISTORY)).toHaveCount(0);
-      expect((await navLinkNames(page)).indexOf("Reports")).toBe(defaultOrder.indexOf("Reports") - 1);
+      expect((await navLinkNames(page)).indexOf("Actions")).toBe(defaultOrder.indexOf("Actions") - 1);
     });
 
     await test.step("landing on a hidden item's page shows its link without opening More", async () => {
@@ -193,9 +193,9 @@ test.describe("project nav: personal order, More, per-project override", () => {
     const { projectA } = await setupOrgWithTwoProjects(page);
     await page.goto(`/projects/${projectA.id}`);
 
-    await test.step("move Reports to More while expanded", async () => {
+    await test.step("move Files to More while expanded", async () => {
       await openEditor(page);
-      await editor(page).getByRole("button", { name: "Move Reports to More" }).click();
+      await editor(page).getByRole("button", { name: "Move Files to More" }).click();
       await saveEditor(page);
     });
 
@@ -204,9 +204,9 @@ test.describe("project nav: personal order, More, per-project override", () => {
       const more = page.getByRole("navigation").getByRole("button", { name: "More" });
       await more.click();
       const popover = page.getByRole("dialog", { name: "More" });
-      await expect(popover.getByRole("link", { name: "Reports" })).toBeVisible();
-      await popover.getByRole("link", { name: "Reports" }).click();
-      await page.waitForURL(/\/reports$/);
+      await expect(popover.getByRole("link", { name: "Files" })).toBeVisible();
+      await popover.getByRole("link", { name: "Files" }).click();
+      await page.waitForURL(/\/files$/);
       await expect(popover).toBeHidden();
     });
 

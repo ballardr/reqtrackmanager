@@ -75,6 +75,8 @@ export interface ReportCatalogueEntry {
   placement_key: string;
   /** The record types the report names or reads (a record list offers the reports that use its type). */
   record_types: string[];
+  /** A custom layout's own branding template; `null` means the organisation's default applies. */
+  report_template_id: string | null;
 }
 
 /** A custom report layout's run-time variable as the run form shows it (`ReportVariableOut`). */

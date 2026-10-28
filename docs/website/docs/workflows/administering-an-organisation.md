@@ -33,7 +33,7 @@ Deleting a group never leaves a project without a Project Manager. Every project
 
 ## Branding and report templates
 
-Set the organisation's logo and, under **Templates & reports**, define **report templates** (accent colour, cover page, logo and footer text). Introductions, chapters and appendices are written in report layouts, not in a template. See [Core Features → Reports and export](../core-features/reports-and-export.md).
+Set the organisation's logo and, under **Templates & reports**, define **report templates** (accent colour, cover page, logo and footer text) and mark one as the **default**, used by every document report that names none. Introductions, chapters and appendices are written in report layouts, not in a template. See [Core Features → Reports and export](../core-features/reports-and-export.md).
 
 ## Tags
 

@@ -8,7 +8,7 @@ A **custom report** is a report layout somebody designed: a document (headings, 
 
 Layouts are written in the [designer](./designing-a-layout.md), opened from **Report layouts** in a project's **Report Setup** or the organisation's **Templates & reports**; they can also be created through the REST API, or by an AI assistant that has the [MCP tools](../../api-integrations/ai-assistants-mcp/overview.md) in write mode. A layout can have its own introduction, chapters and appendices (the **Report type** drop-down in Report Setup and Report Defaults lists it by name), and a PDF or Word download uses the chosen branding template as for any report.
 
-| The Reports page running a custom layout: the layout is chosen from the Report picker and its Categories choice narrows the table |
+| The Reports dialog running a custom layout: the layout is chosen from the Report picker and its Categories choice narrows the table |
 | --- |
 | ![The Reports page showing the Requirements by category layout with Functional and Performance chosen](../../../static/img/screenshots/custom-reports-picker.png) |
 
@@ -39,8 +39,8 @@ Each section is built from the project's records when you run it, so the documen
 
 | Run | What you get |
 | --- | --- |
-| A project's Reports page | The layout for that project; **Include child projects** adds the readable child projects |
-| The organisation overview's Reports group | An organisation layout evaluated once for **each project you can read**, merged into one report: a document has a heading and a new page per project, a table layout a leading *Project* column |
+| A project's Reports dialog (**Reports** menu on the overview) | The layout for that project; **Include child projects** adds the readable child projects |
+| The organisation overview's Reports dialog | An organisation layout evaluated once for **each project you can read**, merged into one report: a document has a heading and a new page per project, a table layout a leading *Project* column |
 
 ```mermaid
 flowchart TD

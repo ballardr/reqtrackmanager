@@ -6,14 +6,16 @@ sidebar_position: 5
 
 ## Generating a report
 
-A project's **Reports** page generates a PDF, Word (DOCX) or CSV export of its requirements, filtered by component, category, status, or keyword, with the organisation's shared resource files appended as extra sections. **Generate PDF** is the main button; **More formats** offers the Word file and CSV. A PDF or Word export can use one of the organisation's **report templates** — an accent colour, an optional cover page, logo and footer text — for consistent, on-brand output across projects.
+A project's **Reports** menu (at the top of the project overview, **Choose a report…**) opens a dialog that generates a PDF, Word (DOCX) or CSV export of its requirements, filtered by component, category, status, or keyword, with the organisation's shared resource files appended as extra sections. **Generate PDF** is the main button; **More formats** offers the Word file and CSV. A PDF or Word export can use one of the organisation's **report templates** — an accent colour, an optional cover page, logo and footer text — for consistent, on-brand output across projects.
+
+**Which template is used.** The one you choose in the dialog; otherwise the report layout's own template (set in **Layout details → Branding template**, available when editing a layout); otherwise the organisation's **default template** (tick **Default template** on a report template; only one template can be the default); otherwise none. The dialog names the template that will apply, for example *Default (House style)*.
 
 | Reports |
 | --- |
 | Filtered PDF/Word/CSV export with a selectable organisation branding template |
 | ![Reports page with filters and a selected branding template](../../static/img/screenshots/reports-page.png) |
 
-A project's Reports page can also offer reports from enabled modules (for example [Context & Strategy's](../modules/context-strategy-module/reports.md) and [Decision Management's](../modules/decision-management-module/reports.md)) in the same **Report** picker, a dialog with search, folders and favourites (see [Finding and organising reports](./custom-reports/organising-reports.md)). A module report is offered only while its module, and the sub-component it belongs to, is on for the project. When no module report applies, the picker is hidden and the page is the requirements report alone.
+The same dialog can also offer reports from enabled modules (for example [Context & Strategy's](../modules/context-strategy-module/reports.md) and [Decision Management's](../modules/decision-management-module/reports.md)) in the same **Report** picker, a dialog with search, folders and favourites (see [Finding and organising reports](./custom-reports/organising-reports.md)). A module report is offered only while its module, and the sub-component it belongs to, is on for the project. When no module report applies, the picker is hidden and the page is the requirements report alone.
 
 ## How reports name records
 
@@ -35,13 +37,20 @@ A report never follows your personal *Show the project code* preference, so a re
 
 ## Word (DOCX) export
 
-Every report downloads as an editable Word file with the same content, order and branding as its PDF, so it can be edited after download. Both formats are built from one shared document, so they cannot drift apart.
+Every report downloads as an editable Word file with the same content, order and branding as its PDF, so it can be edited after download. All the document formats are built from one shared document, so they cannot drift apart.
+
+Every report in the project's catalogue (every module report, and the **Record list** report) offers the same formats in its **Export** menu: PDF, Word, HTML page, OpenDocument text (ODT), CSV, Excel (XLSX) and OpenDocument spreadsheet (ODS). The documents carry the whole report and the organisation's branding template; **CSV** is the first table only, and **Excel** and **OpenDocument spreadsheet** hold every table as its own tab, titled by the table's heading, with no branding. The requirements report in the Reports dialog keeps PDF, Word and CSV.
 
 ```mermaid
 flowchart LR
-    R["Requirements report<br/>or module report"] --> D["One report document<br/>headings, text, tables, images"]
+    R["Module report"] --> D["One report document<br/>headings, text, tables, images"]
     D --> P[PDF]
     D --> W["Word (DOCX)"]
+    D --> H["HTML page"]
+    D --> O["OpenDocument text (ODT)"]
+    R --> S["Tables, one tab each"]
+    S --> X["Excel (XLSX)"]
+    S --> OD["OpenDocument spreadsheet (ODS)"]
     R --> C["CSV (first table)"]
 ```
 
@@ -73,7 +82,7 @@ Anything else in double braces is printed as written. Placeholders are plain tex
 
 ## Record list report
 
-For any other kind of record, the **Reports** picker offers **Record list**: choose a **Record type** (Requirements, Actions and every other list that has a table), optionally a **Tag**, and, on a project with parent or child projects, which **Projects** to include. The page shows the table, with the record's code first, and **Export** downloads it as a PDF, Word file or CSV. The same PDF and Word files are in each list's own **Export** menu, where they carry that list's current filters. A status or rating that is coloured on screen is coloured in the PDF and Word file too, and also written out in words. Columns holding personal data appear only when your organisation's policy and your role allow it, and the report says when some were left out. A PDF or Word file covers up to 5,000 records; for more, download the CSV or narrow the filters.
+For any other kind of record, the **Reports** picker offers **Record list**: choose a **Record type** (Requirements, Actions and every other list that has a table), optionally a **Tag**, and, on a project with parent or child projects, which **Projects** to include. The page shows the table, with the record's code first, and **Export** downloads it as a PDF, Word, HTML, OpenDocument or Excel file or as CSV. The same files are in each list's own **Export** menu, where they carry that list's current filters. A status or rating that is coloured on screen is coloured in the PDF and Word file too, and also written out in words. Columns holding personal data appear only when your organisation's policy and your role allow it, and the report says when some were left out. A document (PDF, Word, HTML or OpenDocument text) covers up to 5,000 records; for more, download a spreadsheet format or CSV, or narrow the filters.
 
 ## Custom reports
 
@@ -87,7 +96,7 @@ A **custom report** is a report layout somebody designed in the organisation's o
 
 ## Large reports are prepared in the background
 
-When you download a file that is too big to produce while you wait, the Reports page says so ("It is being prepared in the background and you will be notified when it is ready") and the report joins **Background reports**, a list under the report. The server works through the queue, allows a bigger report than a download you wait for, and **notifies you** (in the app, and by email if your notification settings send it) when the file is ready or could not be produced.
+When you download a file that is too big to produce while you wait, the dialog says so ("It is being prepared in the background and you will be notified when it is ready") and the report joins **Background reports**, a list under the report. The server works through the queue, allows a bigger report than a download you wait for, and **notifies you** (in the app, and by email if your notification settings send it) when the file is ready or could not be produced.
 
 ```mermaid
 flowchart LR
@@ -106,9 +115,9 @@ flowchart LR
 
 ## CSV export and import
 
-A record list can also offer the reports that use its records: open the list's **List actions** menu (the ⋮ button beside **New**) and choose **Download report**. Only reports that read that kind of record are listed, in the same folders as the Reports page; choose one to see it and download it in place.
+A record list can also offer the reports that use its records: open the list's **List actions** menu (the ⋮ button beside **New**) and choose **Download report**. Only reports that read that kind of record are listed, in the same folders as the Reports dialog; choose one to see it and download it in place.
 
-The same Reports page exports requirements as CSV — every field, including custom field values and target stage — and the Requirements page's **List actions** menu (CSV that re-imports and updates records by code) reverse the trip, mapping a spreadsheet's columns back onto a project's fields. See [Requirements management](./requirements-management.md#csv-import-and-export) for the import side.
+The Reports dialog exports requirements as CSV — every field, including custom field values and target stage — and the Requirements page's **List actions** menu (CSV that re-imports and updates records by code) reverse the trip, mapping a spreadsheet's columns back onto a project's fields. See [Requirements management](./requirements-management.md#csv-import-and-export) for the import side.
 
 ## Where this fits
 

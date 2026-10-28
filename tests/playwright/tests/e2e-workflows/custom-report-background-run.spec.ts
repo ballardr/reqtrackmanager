@@ -73,7 +73,7 @@ test.describe("Custom report background run", () => {
           body: JSON.stringify({ detail: { code: "async_required", message: "Too big to produce while you wait." } }),
         }),
       );
-      await page.goto(`/projects/${project.id}/reports`);
+      await page.goto(`/projects/${project.id}?reports=choose`);
       await chooseReport(page, layoutName);
       await page.getByRole("button", { name: "Export", exact: true }).click();
       await page.getByRole("button", { name: "Download PDF report" }).click();
@@ -82,6 +82,7 @@ test.describe("Custom report background run", () => {
 
     const panel = page.getByRole("region", { name: "Background reports" });
     await test.step("the Background reports list shows it and, once the server has produced it, offers the file", async () => {
+      await page.goto(`/projects/${project.id}?reports=runs`);
       await expect(panel.getByRole("row", { name: new RegExp(layoutName) })).toBeVisible();
       await expect(panel.getByText("Ready")).toBeVisible({ timeout: 60_000 });
     });
@@ -113,7 +114,7 @@ test.describe("Custom report background run", () => {
 
     await test.step("deleting the stored file asks first and leaves the run listed as expired", async () => {
       await panel.getByRole("button", { name: `Delete file ${layoutName}` }).click();
-      await page.getByRole("dialog").getByRole("button", { name: "Delete file" }).click();
+      await page.getByRole("dialog", { name: "Delete file" }).getByRole("button", { name: "Delete file" }).click();
       await expect(page.getByText("The report file was deleted.")).toBeVisible();
       await expect(panel.getByText("Expired")).toBeVisible();
       await expect(panel.getByRole("button", { name: `Download ${layoutName}` })).toHaveCount(0);

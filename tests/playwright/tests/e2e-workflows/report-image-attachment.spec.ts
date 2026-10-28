@@ -79,7 +79,7 @@ test("a resource file with an image is appended to the requirements PDF", async 
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 
-  await page.goto(`/projects/${project.id}/reports`);
+  await page.goto(`/projects/${project.id}?reports=choose`);
 
   await test.step("select the Markdown resource as an appended section", async () => {
     await page.getByRole("button", { name: "Resource sections section" }).click();

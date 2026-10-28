@@ -46,7 +46,7 @@ async function setUp(page: Page) {
 test.describe("Risk Management: reports", () => {
   test("the project Reports page lists the four Risk reports", async ({ page }) => {
     const { project } = await setUp(page);
-    await page.goto(`/projects/${project.id}/reports`);
+    await page.goto(`/projects/${project.id}?reports=choose`);
 
     await expect(reportPickerButton(page)).toHaveAttribute("aria-label", "Report: Requirements report");
     expect(await listReports(page)).toEqual(expect.arrayContaining(REPORTS.map((r) => r.title)));
@@ -59,7 +59,7 @@ test.describe("Risk Management: reports", () => {
 
   test("the register shows display labels and derived ratings, and narrows by status", async ({ page }) => {
     const { project, titles } = await setUp(page);
-    await page.goto(`/projects/${project.id}/reports?report=risk-register`);
+    await page.goto(`/projects/${project.id}?reports=choose&report=risk-register`);
 
     const register = page.getByRole("region", { name: "Risks", exact: true });
     await expect(register.getByRole("row")).toHaveCount(3); // header + two risks
@@ -78,11 +78,11 @@ test.describe("Risk Management: reports", () => {
   test("exposure lists unrated risks and coverage lists risks with no effective treatment", async ({ page }) => {
     const { project, titles } = await setUp(page);
 
-    await page.goto(`/projects/${project.id}/reports?report=risk-exposure`);
+    await page.goto(`/projects/${project.id}?reports=choose&report=risk-exposure`);
     await expect(page.getByRole("region", { name: "Not rated" })).toContainText(titles.unscored);
     await expect(page.getByRole("region", { name: /Highest residual risks/ })).not.toContainText(titles.unscored);
 
-    await page.goto(`/projects/${project.id}/reports?report=treatment-coverage`);
+    await page.goto(`/projects/${project.id}?reports=choose&report=treatment-coverage`);
     const untreated = page.getByRole("region", { name: "No effective treatment" });
     await expect(untreated).toContainText(titles.scored);
     await expect(untreated).not.toContainText(titles.unscored); // Identified: not yet expected to be treated
@@ -90,7 +90,7 @@ test.describe("Risk Management: reports", () => {
 
   test("the review schedule flags an assessed risk with no review date", async ({ page }) => {
     const { project, titles } = await setUp(page);
-    await page.goto(`/projects/${project.id}/reports?report=review-schedule`);
+    await page.goto(`/projects/${project.id}?reports=choose&report=review-schedule`);
     const unscheduled = page.getByRole("region", { name: "No review scheduled" });
     await expect(unscheduled).toContainText(titles.scored);
     await expect(unscheduled).not.toContainText(titles.unscored);
@@ -98,7 +98,7 @@ test.describe("Risk Management: reports", () => {
 
   test("every Risk report downloads as PDF and CSV", async ({ page }) => {
     const { project, titles } = await setUp(page);
-    await page.goto(`/projects/${project.id}/reports`);
+    await page.goto(`/projects/${project.id}?reports=choose`);
     await expect(reportPickerButton(page)).toHaveAttribute("aria-label", "Report: Requirements report");
     const offered = await listReports(page);
     expect(REPORTS.filter((r) => offered.includes(r.title))).toHaveLength(4);
@@ -133,7 +133,7 @@ test.describe("Risk Management: reports", () => {
     });
     expect(off.ok(), await off.text()).toBeTruthy();
 
-    await page.goto(`/projects/${project.id}/reports`);
+    await page.goto(`/projects/${project.id}?reports=choose`);
     await expect(page.getByRole("button", { name: "Generate PDF" })).toBeVisible();
     // The platform Record list report keeps the picker, but no Risk report is in it.
     const offered = await listReports(page);

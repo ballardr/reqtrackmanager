@@ -2136,6 +2136,8 @@ export interface ReportTemplate {
   include_logo: boolean;
   footer_text: string | null;
   chapters_per_component: boolean;
+  /** The organisation's default template: used by every document report that names none. */
+  is_default: boolean;
 }
 
 export interface OrgSsoConfig {

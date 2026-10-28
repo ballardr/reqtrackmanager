@@ -135,6 +135,8 @@ export const DownloadReportOffersTheReportsForTheType: Story = {
   play: async ({ canvasElement }) => {
     await chooseListAction(within(canvasElement), "Download report");
     const dialog = within(await screen.findByRole("dialog", { name: "Download report" }));
+    // Folders start collapsed the first time a picker is opened.
+    await userEvent.click(await dialog.findByRole("button", { name: "Expand Fixture Module" }));
     await expect(await dialog.findByRole("button", { name: /^Requirement coverage/ })).toBeInTheDocument();
     await expect(dialog.queryByText(/Engagement yield/)).not.toBeInTheDocument();
   },

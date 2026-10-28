@@ -139,7 +139,7 @@ export const EditingTheDetailsRenamesIt: Story = {
     await userEvent.clear(name);
     await userEvent.type(name, "Renamed");
     await userEvent.click(dialog.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(args.api!.update).toHaveBeenCalledWith("layout-1", { name: "Renamed", description: "Every requirement with its component.", folder: "" }));
+    await waitFor(() => expect(args.api!.update).toHaveBeenCalledWith("layout-1", { name: "Renamed", description: "Every requirement with its component.", folder: "", report_template_id: null }));
     await expect(await body().findByText("Layout details saved.")).toBeInTheDocument();
   },
 };

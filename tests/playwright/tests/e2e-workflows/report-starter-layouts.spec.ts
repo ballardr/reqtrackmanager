@@ -65,14 +65,14 @@ test.describe("Report starter layouts", () => {
     });
 
     await test.step("a project runs the Business Requirements Document on its own records", async () => {
-      await page.goto(`/projects/${project.id}/reports`);
+      await page.goto(`/projects/${project.id}?reports=choose`);
       await chooseReport(page, "Business Requirements Document");
       await expect(page.getByRole("cell", { name: requirement })).toBeVisible();
       await expect(page.getByRole("heading", { name: /Pain Points/ })).toHaveCount(0); // its module is off in this project, so the section is left out
     });
 
     await test.step("a project runs Requirements by Component, which groups requirements under their component", async () => {
-      await page.goto(`/projects/${project.id}/reports`);
+      await page.goto(`/projects/${project.id}?reports=choose`);
       await chooseReport(page, "Requirements by Component");
       await expect(page.getByRole("cell", { name: requirement })).toBeVisible();
       await expect(page.getByRole("heading", { name: "Hardware" })).toBeVisible();

@@ -16,7 +16,7 @@ flowchart LR
     A & B & C & D --> E["On screen · PDF · Word · CSV · AI assistant"]
 ```
 
-Open the project's **Reports** page and choose a report from the **Report** picker; the module's reports appear there only while Risks are enabled for the project. How the page works (options, figures, export, branding template) is the same as for every module report; see [Context & Strategy → Reports](../context-strategy-module/reports.md#generating-a-report). A report covers only what you can read, and **Include child projects** adds readable sub-projects that have Risks enabled. Each project is rated by its own matrix, so a sub-project with its own bands or pinned cells is never rated by its parent's.
+Open the **Reports** menu at the top of the project overview, choose **Choose a report…**, and pick a report from the **Report** picker; the module's reports appear there only while Risks are enabled for the project. How the page works (options, figures, export, branding template) is the same as for every module report; see [Context & Strategy → Reports](../context-strategy-module/reports.md#generating-a-report). A report covers only what you can read, and **Include child projects** adds readable sub-projects that have Risks enabled. Each project is rated by its own matrix, so a sub-project with its own bands or pinned cells is never rated by its parent's.
 
 ## The reports
 

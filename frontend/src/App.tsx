@@ -30,7 +30,6 @@ import { ProjectOverviewPage } from "./pages/ProjectOverviewPage";
 import { ProjectReviewsDuePage } from "./pages/ProjectReviewsDuePage";
 import { ReportLayoutDesignerPage } from "./pages/ReportLayoutDesignerPage";
 import { ReportPackPage } from "./pages/ReportPackPage";
-import { ReportsPage } from "./pages/ReportsPage";
 import { SearchPage } from "./pages/SearchPage";
 import { RequirementDetailPage } from "./pages/RequirementDetailPage";
 import { RequirementsPage } from "./pages/RequirementsPage";
@@ -123,7 +122,6 @@ function ProtectedRoutes() {
         <Route path="/projects/:projectId/files" element={<ProjectFilesPage />} />
         <Route path="/projects/:projectId/admin/:group?" element={<ProjectAdminPage />} />
         <Route path="/projects/:projectId/history" element={<ProjectHistoryPage />} />
-        <Route path="/projects/:projectId/reports" element={<ReportsPage />} />
         <Route path="/projects/:projectId/report-layouts/:layoutId" element={<ReportLayoutDesignerPage />} />
         <Route path="/projects/:projectId/report-packs/:packId" element={<ReportPackPage />} />
         <Route path="/projects/:projectId/reviews-due" element={<ProjectReviewsDuePage />} />

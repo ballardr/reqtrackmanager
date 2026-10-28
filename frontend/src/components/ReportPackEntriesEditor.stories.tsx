@@ -59,6 +59,18 @@ export const AnOrganisationPackHasNoOwnerTier: Story = {
   },
 };
 
+/** A module report entry is not limited to PDF, Word and CSV: it offers every file format. */
+export const AModuleReportOffersEveryFormat: Story = {
+  render: () => <Harness />,
+  play: async ({ canvasElement }) => {
+    const second = within(await within(canvasElement).findByRole("region", { name: "Report 2" }));
+    const format = second.getByRole("combobox", { name: /^Format/ });
+    await expect(within(format).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "PDF", "Word", "OpenDocument text", "HTML page", "CSV", "Excel workbook", "OpenDocument spreadsheet",
+    ]);
+  },
+};
+
 export const ChoosingATableLayoutOffersItsFormats: Story = {
   render: () => <Harness />,
   play: async ({ canvasElement }) => {

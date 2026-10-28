@@ -2,8 +2,9 @@
  * Module: components/ReportLayoutFormModal
  *
  * The create and edit dialog of a report layout: its name, description and folder (both modes, through the one
- * `ReportLayoutFields` group) and, when creating, the kind of report (document or table), which cannot change
- * afterwards. Creating starts the layout empty; the designer is where its content is written.
+ * `ReportLayoutFields` group), its own branding template (editing only: it is set when modifying a layout, and the
+ * organisation's default applies until then) and, when creating, the kind of report (document or table), which
+ * cannot change afterwards. Creating starts the layout empty; the designer is where its content is written.
  *
  * Responsibilities: validate the name locally, call the API, show the server's refusal (a taken name) in the
  * dialog's header. The caller owns the toast, the reload and any navigation, through `onSaved`.
@@ -15,6 +16,8 @@ import { LAYOUT_FAMILY_LABEL } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage } from "../context/ToastContext";
 import { useFolderSuggestions } from "../hooks/useFolderSuggestions";
+import { useReportTemplates } from "../hooks/useReportTemplates";
+import type { ReportTemplate } from "../api/types";
 import { folderProblem, tidyFolder } from "../utils/reportFolders";
 import { FormActions } from "./FormActions";
 import { TextAreaField, TextField } from "./FormFields";
@@ -24,12 +27,15 @@ import { Modal } from "./Modal";
 
 /** The fields a layout's create and edit forms share, so a field added later reaches both. */
 export function ReportLayoutFields({
-  name, description, folder, folders, onName, onDescription, onFolder,
+  name, description, folder, folders, onName, onDescription, onFolder, templates, templateId, onTemplate,
 }: {
   name: string; description: string; folder: string; folders: string[];
   onName: (value: string) => void; onDescription: (value: string) => void; onFolder: (value: string) => void;
+  /** The organisation's templates, offered only when there are any (editing). */
+  templates?: ReportTemplate[]; templateId?: string; onTemplate?: (value: string) => void;
 }) {
-  const strings = useStrings().reportLayouts;
+  const allStrings = useStrings();
+  const strings = allStrings.reportLayouts;
   return (
     <>
       <TextField helpNotNeeded required
@@ -37,6 +43,14 @@ export function ReportLayoutFields({
       />
       <TextAreaField helpNotNeeded label={strings.descriptionLabel} value={description} onChange={onDescription} />
       <ReportFolderField value={folder} onChange={onFolder} suggestions={folders} />
+      {templates && templates.length > 0 && onTemplate && (
+        <LabeledSelect
+          label={strings.templateLabel} help={allStrings.help.reportLayoutTemplate}
+          value={templateId ?? ""} onChange={onTemplate}
+          options={templates.map((t) => ({ value: t.id, label: t.name }))}
+          placeholder={strings.templateDefault}
+        />
+      )}
     </>
   );
 }
@@ -60,6 +74,8 @@ export function ReportLayoutFormModal({
   const [name, setName] = useState(layout?.name ?? "");
   const [description, setDescription] = useState(layout?.description ?? "");
   const [folder, setFolder] = useState(layout?.folder ?? "");
+  const [templateId, setTemplateId] = useState(layout?.report_template_id ?? "");
+  const templates = useReportTemplates(layout?.organization_id);
   const folders = useFolderSuggestions(api.list);
   const [family, setFamily] = useState<LayoutFamily>(layout?.family ?? "document");
   const [error, setError] = useState<string | null>(null);
@@ -71,7 +87,9 @@ export function ReportLayoutFormModal({
     try {
       let saved: ReportLayoutSummary | ReportLayoutDetail;
       if (layout) {
-        saved = await api.update(layout.id, { name: name.trim(), description, folder: tidyFolder(folder) });
+        saved = await api.update(layout.id, {
+          name: name.trim(), description, folder: tidyFolder(folder), report_template_id: templateId || null,
+        });
       } else {
         // The server writes the empty tree of a family, so the client never spells out the tree's shape.
         const parsed = await api.parseText(`@layout ${family}\n`);
@@ -93,6 +111,7 @@ export function ReportLayoutFormModal({
         <ReportLayoutFields
           name={name} description={description} folder={folder} folders={folders}
           onName={setName} onDescription={setDescription} onFolder={setFolder}
+          templates={layout ? templates : undefined} templateId={templateId} onTemplate={setTemplateId}
         />
         {!layout && (
           <LabeledSelect required

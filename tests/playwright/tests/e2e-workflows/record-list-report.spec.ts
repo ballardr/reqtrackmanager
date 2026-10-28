@@ -29,7 +29,7 @@ test.describe("Record list report", () => {
 
   test("the Reports page lists a type as a table, switches type and downloads Word", async ({ page }) => {
     const project = await projectWithRequirement(page, "E2E Record List Page");
-    await page.goto(`/projects/${project.projectId}/reports?report=record-list`);
+    await page.goto(`/projects/${project.projectId}?reports=choose&report=record-list`);
 
     await test.step("the first type is run and its rows are shown, code first", async () => {
       await expect(page.getByLabel("Record type")).toHaveValue("requirement");

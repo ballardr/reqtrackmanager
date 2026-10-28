@@ -60,7 +60,7 @@ from app.services.client_date import effective_today
 from app.services.custom_report_run import LayoutRun
 from app.services.downloads import file_response
 from app.services.rbac import check_pat_scope, require_org_role, require_project_view
-from app.services.report_document import load_report_template
+from app.services.report_document import ForeignReportTemplateError, effective_report_template
 from app.services.report_framework import ReportOut, to_out
 from app.services.report_layout_eval import LayoutLimitError, LayoutTimeoutError
 from app.services.report_render import RenderedFile
@@ -78,18 +78,20 @@ _RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 
 
-def _template(db: Session, organization: Organization, template_id: UUID | None) -> ReportTemplate | None:
-    """The requested branding template, `None` when none was asked for.
+def _template(
+    db: Session, organization: Organization, template_id: UUID | None, layout: ReportLayout,
+) -> ReportTemplate | None:
+    """The branding template of a run: the one asked for, else the layout's own, else the organisation's default.
 
     Raises:
-        HTTPException: 400 when it is not one of the organisation's.
+        HTTPException: 400 when the requested one is not one of the organisation's.
     """
-    if template_id is None:
-        return None
-    template = load_report_template(db, organization.id, template_id)
-    if template is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid report_template_id for this organisation.")
-    return template
+    try:
+        return effective_report_template(
+            db, organization.id, template_id, layout_template_id=layout.report_template_id,
+        )
+    except ForeignReportTemplateError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
 
 def _current_version(db: Session, layout: ReportLayout) -> ReportLayoutVersion:
@@ -237,7 +239,7 @@ def run_project_custom_report(
     _check_format(scoped.layout, version, format)
     organization = db.get(Organization, project.organization_id)
     assert organization is not None
-    template = _template(db, organization, report_template_id)
+    template = _template(db, organization, report_template_id, scoped.layout)
     supplied = parse_variables(variables)
     run = guard_run(lambda: custom_report_run.run_project_layout(
         db, current_user, project, scoped.layout, version, include_children=include_children, variables=supplied,
@@ -289,7 +291,7 @@ def run_org_custom_report(
     version = _current_version(db, layout)
     _check_format(layout, version, format)
     requested = _parse_project_ids(project_ids)
-    template = _template(db, organization, report_template_id)
+    template = _template(db, organization, report_template_id, layout)
     supplied = parse_variables(variables)
     run = guard_run(lambda: custom_report_run.run_organization_layout(
         db, current_user, organization, layout, version, project_ids=requested, variables=supplied,
@@ -450,7 +452,7 @@ def queue_project_custom_report(
     _check_format(scoped.layout, version, payload.format)
     organization = db.get(Organization, project.organization_id)
     assert organization is not None
-    template = _template(db, organization, payload.report_template_id)
+    template = _template(db, organization, payload.report_template_id, scoped.layout)
     return _queue(
         db, current_user, organization, project, scoped.layout, version, payload.format, template,
         include_children=payload.include_children, variables=payload.variables,
@@ -474,7 +476,7 @@ def queue_org_custom_report(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Layout not found.")
     version = _current_version(db, layout)
     _check_format(layout, version, payload.format)
-    template = _template(db, organization, payload.report_template_id)
+    template = _template(db, organization, payload.report_template_id, layout)
     return _queue(
         db, current_user, organization, None, layout, version, payload.format, template, requested=payload.project_ids,
         variables=payload.variables,

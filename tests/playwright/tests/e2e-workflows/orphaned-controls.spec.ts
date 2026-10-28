@@ -99,7 +99,7 @@ test.describe("controls beside long text", () => {
       ["project history", `${base}/history`],
       ["project admin", `${base}/admin`],
       ["project files", `${base}/files`],
-      ["reports", `${base}/reports`],
+      ["reports dialog", `${base}?reports=choose`],
       ["projects list", "/projects"],
       ["organisations list", "/orgs"],
       ["organisation admin", `/orgs/${project.organizationId}/admin`],

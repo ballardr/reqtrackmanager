@@ -16,13 +16,13 @@ Responsibilities:
 - Naming records: `ReportContext.code` / `org_code` give a record's code by the one rule
   (`services.codes.display_code`) and `tag_text` its tags, so a collector never formats a code or
   queries tags itself; `ReportDefinition.record_types` declares what a report names.
-- Output: `render_csv` (first section only, formula-neutralised) and
-  `render_pdf` and `render_docx` (every section). Both render one neutral
-  `ReportDocument` from `build_result_document` (`services.report_model`), so a
-  template's cover, accent colour and footer apply to each and the formats
-  cannot drift.
+- Output: `render_result` is the one place a module report's file formats are decided: `csv` (first
+  section only, formula-neutralised), the documents `pdf`, `docx`, `html` and `odt` (every section; one
+  neutral `ReportDocument` from `build_result_document`, so a template's cover, accent colour and footer
+  apply to each and the formats cannot drift) and the spreadsheets `xlsx` and `ods` (every section as a
+  tab, through the `report_render` registry the custom reports use).
 - HTTP: `build_report_routers` turns `ReportDefinition`s into a project router
-  and an organisation router (`GET .../reports/<slug>?format=json|pdf|csv|docx`) for
+  and an organisation router (`GET .../reports/<slug>?format=json|pdf|docx|html|odt|csv|xlsx|ods`) for
   the module to include under its own prefixes, so routes stay inside the
   module's mount and MCP path verification keeps working.
 - MCP: `report_mcp_tools` derives read-only tools from the same declarations.
@@ -44,12 +44,12 @@ Design decisions:
 - Parameters are declared, not hand-written: the generated route signature
   carries typed `Query` parameters (so FastAPI validates types and bounds, 422)
   and `choices` are checked here (400). Unknown query parameters are ignored.
-- The CSV is the first section only (the flat export); the PDF and DOCX carry the
-  full layout. Every CSV cell goes through `csv_safe`; PDF and DOCX cells are
+- The CSV is the first section only (the flat export); the documents carry the
+  full layout and the spreadsheets one tab per table. Every CSV cell goes through `csv_safe`; PDF and DOCX cells are
   escaped by their renderers (`report_document.safe`, `report_docx.clean_text`),
   since cells hold user-entered text.
 
-Dependencies: FastAPI/Pydantic, ReportLab and python-docx (via `report_pdf`/`report_docx`),
+Dependencies: FastAPI/Pydantic, `services.report_render` (and through it the PDF, Word, HTML, ODF and spreadsheet writers),
 `modules.registry`, `services.rbac`.
 """
 
@@ -101,14 +101,25 @@ from app.services.rbac import (
     require_project_module_enabled,
     user_satisfies_module_role,
 )
-from app.services.report_document import ReportBranding, load_report_template, resolve_branding
+from app.services.report_document import (
+    ForeignReportTemplateError,
+    ReportBranding,
+    effective_report_template,
+    resolve_branding,
+)
 from app.services.report_docx import render_docx_document
-from app.services.report_model import TONE_FILL, Block, Gap, Heading, Note, ReportDocument, Table
+from app.services.report_model import TONE_FILL, Block, Gap, Heading, Note, ReportDocument, Sheet, Table
 from app.services.report_pdf import render_pdf_document
+from app.services.report_render import RenderedFile, RenderInput, sheet_title, unique_names
+from app.services.report_render import render as render_registered
 from app.services.tags import tag_names_for_records
 
-ReportFormat = Literal["json", "pdf", "csv", "docx"]
-REPORT_FORMATS: tuple[str, ...] = ("json", "pdf", "csv", "docx")
+ReportFormat = Literal["json", "pdf", "docx", "html", "odt", "csv", "xlsx", "ods"]
+#: Every format a module report offers: documents (the whole report), then spreadsheets (`csv` is the main table
+#: only; `xlsx` and `ods` hold every table as a tab). Order is the order the Download menu lists them in.
+REPORT_FORMATS: tuple[str, ...] = ("json", "pdf", "docx", "html", "odt", "csv", "xlsx", "ods")
+#: The formats that lay the report out as a document, so a very long table is refused for them.
+DOCUMENT_FORMATS: tuple[str, ...] = ("pdf", "docx", "html", "odt")
 
 # --- Result shapes -------------------------------------------------------------
 
@@ -542,6 +553,43 @@ def render_docx(result: ReportResult, *, branding: ReportBranding | None = None)
     return render_docx_document(build_result_document(result, branding=branding))
 
 
+def result_sheets(result: ReportResult) -> list[Sheet]:
+    """The report's tables as spreadsheet tabs: one per section that has columns, named by its title.
+
+    Args:
+        result: The collected report.
+
+    Returns:
+        The sheets, in section order; a section with no columns (a note only) is left out.
+    """
+    sections = [s for s in result.sections if s.columns]
+    names = unique_names([s.title or s.key for s in sections], clean=sheet_title, limit=31)
+    return [Sheet(name=n, columns=s.columns, rows=s.rows) for n, s in zip(names, sections, strict=True)]
+
+
+def render_result(result: ReportResult, fmt: str, *, branding: ReportBranding | None = None) -> RenderedFile:
+    """Renders a collected report as `fmt`, the one place a module report's formats are decided.
+
+    Args:
+        result: The collected report.
+        fmt: One of `REPORT_FORMATS` other than `json`.
+        branding: Organisation template branding for the document formats; spreadsheets carry none.
+
+    Returns:
+        The file bytes and extension.
+
+    Raises:
+        ValueError: `fmt` is not a file format of a module report.
+    """
+    if fmt == "csv":
+        return RenderedFile(render_csv(result), "csv")
+    if fmt in ("xlsx", "ods"):
+        return render_registered(fmt, "table", RenderInput(title=result.title, sheets=result_sheets(result)))
+    if fmt not in DOCUMENT_FORMATS:
+        raise ValueError(f"A module report cannot be produced as {fmt!r}.")
+    return render_registered(fmt, "document", RenderInput(title=result.title, document=build_result_document(result, branding=branding)))
+
+
 # --- JSON schema --------------------------------------------------------------------
 
 
@@ -721,29 +769,24 @@ def _live_definition(module_key: str, definition: ReportDefinition) -> ReportDef
 def _respond(
     result: ReportResult, definition: ReportDefinition, fmt: str, scope_name: str, branding: ReportBranding | None,
 ) -> Response | ReportOut:
-    """Serialises `result` as `fmt`; branding only reaches the PDF and DOCX."""
+    """Serialises `result` as `fmt`; branding only reaches the document formats."""
     if fmt == "json":
         return to_out(result)
     stem = f"{filename_safe(scope_name, fallback='report')}-{definition.slug}"
-    if fmt == "csv":
-        return file_response(render_csv(result), stem, "csv")
-    if fmt == "docx":
-        return file_response(render_docx(result, branding=branding), stem, "docx")
-    return file_response(render_pdf(result, branding=branding), stem, "pdf")
+    rendered = render_result(result, fmt, branding=branding)
+    return file_response(rendered.content, stem, rendered.extension)
 
 
 def _template_for(db: Session, organization: Organization, template_id: UUID | None) -> ReportTemplate | None:
-    """The requested template, `None` when none was requested.
+    """The branding template: the one requested, else the organisation's default, `None` when neither.
 
     Raises:
-        HTTPException: 400 when the template is not one of the organisation's.
+        HTTPException: 400 when the requested one is not one of the organisation's.
     """
-    if template_id is None:
-        return None
-    template = load_report_template(db, organization.id, template_id)
-    if template is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid report_template_id for this organisation.")
-    return template
+    try:
+        return effective_report_template(db, organization.id, template_id)
+    except ForeignReportTemplateError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
 
 def _route_signature(path_param: str, definition: ReportDefinition, *, project_level: bool, dependency: Callable) -> inspect.Signature:
@@ -803,9 +846,9 @@ def _build_project_route(module_key: str, definition: ReportDefinition) -> Calla
 
     endpoint.__signature__ = _route_signature("project_id", definition, project_level=True, dependency=dependency)  # type: ignore[attr-defined]
     endpoint.__doc__ = (
-        f"{definition.title} for this project: {definition.description} `format` is json (default), pdf, csv or docx; "
+        f"{definition.title} for this project: {definition.description} `format` is json (default), pdf, docx, html, odt, csv, xlsx or ods; "
         "`include_children` adds readable child projects; `report_template_id` applies an organisation report "
-        "template's branding to the PDF and DOCX."
+        "template's branding to the document formats."
     )
     return endpoint
 
@@ -1062,6 +1105,7 @@ class ReportCatalogueEntryOut(BaseModel):
     "Custom reports").
     `record_types` are the registered record types the report names or reads (a record list offers the reports that
     list its type under "Download report").
+    `report_template_id` is a custom layout's own branding template (`None` = the organisation's default applies).
     """
 
     module_key: str
@@ -1084,6 +1128,7 @@ class ReportCatalogueEntryOut(BaseModel):
     folder: str = ""
     placement_key: str = ""
     record_types: list[str] = []
+    report_template_id: UUID | None = None
 
 
 def param_out(param: ReportParamDefinition) -> ReportParamOut:
@@ -1192,6 +1237,7 @@ def organization_catalogue(db: Session, user: User, organization_id: UUID) -> li
 
 
 __all__ = [
+    "DOCUMENT_FORMATS",
     "REPORT_FORMATS",
     "ReportBreakdownOut",
     "ReportBreakdownProjectOut",
@@ -1215,7 +1261,9 @@ __all__ = [
     "render_csv",
     "render_docx",
     "render_pdf",
+    "render_result",
     "report_mcp_tools",
+    "result_sheets",
     "scope_projects",
     "to_out",
     "validated_params",

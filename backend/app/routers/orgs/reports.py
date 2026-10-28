@@ -14,7 +14,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -28,13 +28,22 @@ from app.services.rbac import require_org_role
 router = APIRouter(tags=["organizations-reports"])
 
 
+def _make_only_default(db: Session, organization_id: UUID, keep_id: UUID) -> None:
+    """Clears the default flag on the organisation's other templates (at most one default)."""
+    db.execute(
+        update(ReportTemplate)
+        .where(ReportTemplate.organization_id == organization_id, ReportTemplate.id != keep_id, ReportTemplate.is_default)
+        .values(is_default=False)
+    )
+
+
 def template_out(template: ReportTemplate) -> ReportTemplateOut:
     """A template as the API returns it."""
     return ReportTemplateOut(
         id=template.id, organization_id=template.organization_id, name=template.name,
         accent_color_hex=template.accent_color_hex, include_cover_page=template.include_cover_page,
         include_logo=template.include_logo, footer_text=template.footer_text,
-        chapters_per_component=template.chapters_per_component,
+        chapters_per_component=template.chapters_per_component, is_default=template.is_default,
     )
 
 
@@ -44,16 +53,18 @@ def create_report_template(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
 ):
     """Creates a named report branding preset for this organisation (R-G-05)."""
+    if payload.is_default:
+        _make_only_default(db, organization_id, UUID(int=0))
     template = ReportTemplate(
         organization_id=organization_id, name=payload.name, accent_color_hex=payload.accent_color_hex,
         include_cover_page=payload.include_cover_page, include_logo=payload.include_logo,
         footer_text=payload.footer_text, created_by=current_user.id,
-        chapters_per_component=payload.chapters_per_component,
+        chapters_per_component=payload.chapters_per_component, is_default=payload.is_default,
     )
     db.add(template)
     db.flush()
     log_event(db, entity_type="report_template", entity_id=template.id, action="created",
-              actor_id=current_user.id, organization_id=organization_id, detail={"name": template.name})
+              actor_id=current_user.id, organization_id=organization_id, detail={"name": template.name, "is_default": template.is_default})
     db.commit()
     db.refresh(template)
     return template_out(template)
@@ -68,7 +79,9 @@ def list_report_templates(
     """Lists an organisation's report templates — any org member may select
     one when generating a report, so listing isn't admin-only (only
     create/edit/delete are)."""
-    templates = db.scalars(select(ReportTemplate).where(ReportTemplate.organization_id == organization_id)).all()
+    templates = db.scalars(
+        select(ReportTemplate).where(ReportTemplate.organization_id == organization_id).order_by(ReportTemplate.name)
+    ).all()
     return [template_out(t) for t in templates]
 
 
@@ -87,8 +100,13 @@ def update_report_template(
     template.include_logo = payload.include_logo
     template.footer_text = payload.footer_text
     template.chapters_per_component = payload.chapters_per_component
+    if payload.is_default:
+        _make_only_default(db, organization_id, template.id)
+    template.is_default = payload.is_default
+    db.flush()
     log_event(db, entity_type="report_template", entity_id=template.id, action="updated",
-              actor_id=current_user.id, organization_id=organization_id, detail={"name": template.name})
+              actor_id=current_user.id, organization_id=organization_id,
+              detail={"name": template.name, "is_default": template.is_default})
     db.commit()
     db.refresh(template)
     return template_out(template)

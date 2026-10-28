@@ -1,4 +1,4 @@
-import { BarChart3, Bell, Building2, CalendarClock, CheckSquare, Clock, Files, History, HelpCircle, LayoutDashboard, ListChecks, Settings, FileText, LogOut, GitPullRequest, FolderKanban, PanelLeftClose, PanelLeftOpen, Star, Wrench } from "lucide-react";
+import { BarChart3, Bell, Building2, CalendarClock, CheckSquare, Clock, Files, History, HelpCircle, LayoutDashboard, ListChecks, Settings, LogOut, GitPullRequest, FolderKanban, PanelLeftClose, PanelLeftOpen, Star, Wrench } from "lucide-react";
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 
@@ -140,7 +140,6 @@ function LayoutShell({ children }: { children: ReactNode }) {
         { key: "change-requests", to: `/projects/${projectId}/change-requests`, label: strings.nav.changeRequests, icon: <GitPullRequest size={16} /> },
         { key: "actions", to: `/projects/${projectId}/actions`, label: strings.nav.actions, icon: <CheckSquare size={16} /> },
         { key: "files", to: `/projects/${projectId}/files`, label: strings.files.title, icon: <Files size={16} /> },
-        { key: "reports", to: `/projects/${projectId}/reports`, label: strings.nav.reports, icon: <FileText size={16} /> },
         { key: "reviews-due", to: `/projects/${projectId}/reviews-due`, label: strings.reviews.projectTitle, icon: <Clock size={16} /> },
         ...enabledModules.flatMap((moduleEntry) => {
           const manifest = moduleEntry.frontend_manifest;

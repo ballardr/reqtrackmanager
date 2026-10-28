@@ -865,6 +865,7 @@ class ReportTemplateCreate(BaseModel):
     include_logo: bool = True
     footer_text: str | None = None
     chapters_per_component: bool = True
+    is_default: bool = False
 
 
 class ReportTemplateOut(BaseModel):
@@ -876,6 +877,7 @@ class ReportTemplateOut(BaseModel):
     include_logo: bool
     footer_text: str | None = None
     chapters_per_component: bool = True
+    is_default: bool = False
 
 
 class OrgProjectSummaryOut(BaseModel):

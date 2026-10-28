@@ -1,13 +1,13 @@
 """
 Module: routers.record_list_report
 
-`GET /api/v1/projects/{project_id}/reports/record-list?record_type=<type>&format=json|pdf|docx|csv`: the table of
+`GET /api/v1/projects/{project_id}/reports/record-list?record_type=<type>&format=json|pdf|docx|html|odt|csv|xlsx|ods`: the table of
 any record type that has a `RecordTableProvider` (`services.record_list_report`), narrowed by the same filters as
 the type's list and its CSV export (`tag`, `tag_mode`, `project_scope`, and the type's own, listed by
 `.../records/{type}/columns`).
 
 Access: a project member holding the type's `view` permission with the type's module on for the project, as for
-the CSV export; `pdf`, `docx` and `csv` are audited as exports, `json` (the Reports page's on-screen run) is not.
+the CSV export; every file format is audited as an export, `json` (the Reports page's on-screen run) is not.
 A parameter the type cannot honour is refused (422) rather than ignored, so a filtered-looking screen never
 downloads an unfiltered document. `csv` is the file the export route writes, so it re-imports.
 """
@@ -36,8 +36,8 @@ from app.services.record_tables import (
     split_params,
     table_csv,
 )
-from app.services.report_document import load_report_template, resolve_branding
-from app.services.report_framework import ReportFormat, ReportOut, render_docx, render_pdf, to_out
+from app.services.report_document import ForeignReportTemplateError, effective_report_template, resolve_branding
+from app.services.report_framework import DOCUMENT_FORMATS, ReportFormat, ReportOut, render_result, to_out
 from app.services.tags import TagFilter
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/reports", tags=["reports"])
@@ -49,7 +49,7 @@ def record_list_report(
     record_type: str | None = Query(
         None, description="The record type to list, e.g. `requirement`; default: Requirements, else the first the caller may list.",
     ),
-    format: ReportFormat = Query("json", description="json (default), pdf, docx or csv."),
+    format: ReportFormat = Query("json", description="json (default), pdf, docx, html, odt, csv, xlsx or ods."),
     report_template_id: UUID | None = Query(None, description="An organisation report template's branding for the PDF and Word."),
     tag_filter: TagFilter = Depends(), project_scope: ProjectScope = Depends(),
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
@@ -73,15 +73,14 @@ def record_list_report(
     require_view(db, current_user, project, record_type)
     filters = split_params(provider, request.query_params.multi_items(), also=REPORT_PARAMS)
     organization = db.get(Organization, project.organization_id)
-    template = None
-    if report_template_id is not None:
-        template = load_report_template(db, organization.id, report_template_id)
-        if template is None:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid report_template_id for this organisation.")
+    try:
+        template = effective_report_template(db, organization.id, report_template_id)
+    except ForeignReportTemplateError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     table = build_table(
         db, current_user, project, record_type, provider, filters=filters, tag_filter=tag_filter, project_scope=project_scope,
     )
-    if format in ("pdf", "docx") and len(table.rows) > MAX_DOCUMENT_ROWS:
+    if format in DOCUMENT_FORMATS and len(table.rows) > MAX_DOCUMENT_ROWS:
         raise HTTPException(
             status.HTTP_413_CONTENT_TOO_LARGE,
             f"This list has {len(table.rows)} rows, more than a document is laid out for ({MAX_DOCUMENT_ROWS}). "
@@ -96,7 +95,7 @@ def record_list_report(
     else:
         # A document is named like every catalogue report (`<scope>-<slug>`); the CSV is named like the export it equals.
         stem = f"{stem}-{REPORT_KEY}"
-        branding = resolve_branding(db, organization, template)
-        content, ext = (render_docx(result, branding=branding), "docx") if format == "docx" else (render_pdf(result, branding=branding), "pdf")
+        rendered = render_result(result, format, branding=resolve_branding(db, organization, template))
+        content, ext = rendered.content, rendered.extension
     audit_export(db, current_user, project, record_type, table, ext)
     return file_response(content, stem, ext)

@@ -19,7 +19,7 @@ const orgEntry = buildReportCatalogueEntry({
 const template: ReportTemplate = {
   id: "tpl-1", organization_id: "org-1", name: "Branded template", accent_color_hex: "#475569",
   include_cover_page: true, include_logo: true, footer_text: null,
-  chapters_per_component: false,
+  chapters_per_component: false, is_default: false,
 };
 
 function mockRunApis(opts: { templates?: ReportTemplate[]; result?: ReturnType<typeof buildReportResult> } = {}) {
@@ -269,6 +269,32 @@ export const CsvDownloadOmitsTemplate: Story = {
     await userEvent.click(within(document.body).getByRole("button", { name: "Download CSV report" }));
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("format=csv")));
     await expect(api.getForBlob).not.toHaveBeenCalledWith(expect.stringContaining("report_template_id"));
+  },
+};
+
+/** Every format a module report declares is in the menu; a document carries the template, a spreadsheet does not. */
+export const EveryDeclaredFormatIsInTheMenuAndOnlyDocumentsCarryTheTemplate: Story = {
+  args: { entry: buildReportCatalogueEntry({ formats: ["json", "pdf", "docx", "html", "odt", "csv", "xlsx", "ods"] }) },
+  beforeEach: () => mockRunApis({ templates: [template] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
+    await userEvent.selectOptions(await canvas.findByLabelText("Branding template"), "tpl-1");
+    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
+    const menu = within(document.body);
+    for (const label of [
+      "Download PDF report", "Download Word report", "Download HTML report", "Download OpenDocument text report",
+      "Download CSV report", "Download Excel report", "Download OpenDocument spreadsheet report",
+    ]) {
+      await expect(menu.getByRole("button", { name: label })).toBeInTheDocument();
+    }
+    await userEvent.click(menu.getByRole("button", { name: "Download OpenDocument text report" }));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringMatching(/format=odt.*report_template_id=tpl-1|report_template_id=tpl-1.*format=odt/)));
+    await waitFor(() => expect(within(document.body).getByText("Downloaded Fixture report (OpenDocument text file).")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Download OpenDocument spreadsheet report" }));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenLastCalledWith(expect.stringContaining("format=ods")));
+    await expect(api.getForBlob).toHaveBeenLastCalledWith(expect.not.stringContaining("report_template_id"));
   },
 };
 

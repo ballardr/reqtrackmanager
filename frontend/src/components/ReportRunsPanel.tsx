@@ -3,8 +3,8 @@
  *
  * The caller's background custom reports: reports too big to produce while they wait, with their state
  * (waiting, preparing, ready, failed, expired), a Download for a ready one and Delete file (or Cancel while
- * waiting). Shown on the Reports pages through `ReportCatalogue`; renders nothing until the person has a
- * background report, so a page without any is unchanged. Only the person who asked for a report sees it.
+ * waiting). Shown in the Reports dialog (`ReportsDialog`); renders nothing until the person has a background
+ * report, unless `emptyMessage` is given. Only the person who asked for a report sees it.
  *
  * Deleting a file is a Tier 1 confirmation (the report can be produced again); every action ends in a toast.
  */
@@ -22,14 +22,15 @@ import { ConfirmDialog } from "./ConfirmDialog";
 
 /**
  * @param organizationId Show only the runs of this organisation (the page's own); omit for all.
+ * @param emptyMessage Shown instead of nothing when there are no background reports.
  */
-export function ReportRunsPanel({ organizationId }: { organizationId?: string }) {
+export function ReportRunsPanel({ organizationId, emptyMessage }: { organizationId?: string; emptyMessage?: string }) {
   const strings = useStrings();
   const { showToast } = useToast();
   const { runs, error, reload } = useReportRuns(organizationId);
   const [removing, setRemoving] = useState<ReportRun | null>(null);
 
-  if (runs.length === 0 && !error) return null;
+  if (runs.length === 0 && !error) return emptyMessage ? <p className="text-muted">{emptyMessage}</p> : null;
 
   async function download(run: ReportRun) {
     try {
