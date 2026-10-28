@@ -101,7 +101,7 @@ def test_an_empty_pack_is_valid_as_a_draft():
         (definition(layout_entry("X", "pdf", variables={"a": {"nested": 1}})), "entries[0].variables.a"),
         (definition(layout_entry("X", "pdf", filename="")), "entries[0].filename"),
         (definition({"kind": "report", "module_key": "decisions", "report": "nope", "format": "pdf"}), "entries[0].report"),
-        (definition({"kind": "report", "module_key": "decisions", "report": "d1", "format": "xlsx"}), "entries[0].format"),
+        (definition({"kind": "report", "module_key": "decisions", "report": "d1", "format": "json"}), "entries[0].format"),
         (definition({"kind": "report", "module_key": "decisions", "report": "d1", "format": "pdf", "params": {"zzz": 1}}), "entries[0].params.zzz"),
         (definition({**D1, "params": {"overdue_days": 3}}), "entries[0].params.overdue_days"),
         (definition(variables=[{"name": "x", "type": "nope"}]), "variables[0].type"),
@@ -388,6 +388,18 @@ def open_zip(resp) -> zipfile.ZipFile:
 
 def manifest(archive: zipfile.ZipFile) -> dict[str, Any]:
     return json.loads(archive.read("manifest.json"))
+
+
+def test_a_module_report_entry_may_take_every_file_format_and_each_makes_its_file(world, scene):
+    formats = ["pdf", "docx", "html", "odt", "csv", "xlsx", "ods"]
+    pack = created(world, org_url(world), "Every format", definition(
+        *[{**D1, "format": f, "filename": f"d1-{f}"} for f in formats],
+    ))
+    archive = open_zip(run_pack(world, scene, pack))
+    assert archive.namelist() == ["manifest.json", *[f"{i + 1:02d}-d1-{f}.{f}" for i, f in enumerate(formats)]]
+    assert archive.read("02-d1-docx.docx")[:2] == b"PK" and archive.read("01-d1-pdf.pdf")[:4] == b"%PDF"
+    assert b"<" in archive.read("03-d1-html.html")[:200]
+    assert all(e["status"] == "included" for e in manifest(archive)["entries"])
 
 
 def test_a_pack_runs_into_a_zip_with_a_manifest_and_flat_numbered_files(world, scene):

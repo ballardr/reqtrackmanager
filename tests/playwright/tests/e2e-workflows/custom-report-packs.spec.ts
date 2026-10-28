@@ -97,7 +97,7 @@ test.describe("Custom report packs", () => {
       { kind: "layout", name: `No such layout ${suffix}`, format: "pdf" },
     ]);
 
-    await page.goto(`/projects/${project.id}/reports`);
+    await page.goto(`/projects/${project.id}?reports=choose`);
     await choosePack(page, packName);
 
     await test.step("the pack waits for the categories it needs", async () => {
@@ -166,7 +166,7 @@ test.describe("Custom report packs", () => {
     });
 
     await test.step("running from the set uses the project's values; the organisation's set is unchanged", async () => {
-      await page.goto(`/projects/${project.id}/reports`);
+      await page.goto(`/projects/${project.id}?reports=choose`);
       await choosePack(page, packName);
       await page.getByLabel("Saved choices").selectOption("Team Alpha");
       const table = page.getByRole("table", { name: "What the zip will contain" });
@@ -237,7 +237,7 @@ test.describe("Custom report packs", () => {
     });
 
     await test.step("the Reports page offers the pack with the saved choice", async () => {
-      await page.goto(`/projects/${project.id}/reports`);
+      await page.goto(`/projects/${project.id}?reports=choose`);
       await choosePack(page, packName);
       await page.getByLabel("Saved choices").selectOption("Security team");
       await expect(page.getByRole("table", { name: "What the zip will contain" }).getByRole("row", { name: new RegExp(`${layout}.*Included.*1`) })).toBeVisible();

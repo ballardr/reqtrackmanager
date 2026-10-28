@@ -403,10 +403,17 @@ class ReportTemplate(UUIDPKMixin, TimestampMixin, Base):
             breaks) — see `services/reports.py::generate_pdf_report`. A
             per-generation choice on the report page (`ReportRequest.
             chapters_per_component`) always overrides this when set.
+        is_default: Whether this is the organisation's default template, applied to a document report that names
+            none (at most one per organisation: a partial unique index; setting one clears the previous).
     """
 
     __tablename__ = "report_templates"
-    __table_args__ = (UniqueConstraint("organization_id", "name"),)
+    __table_args__ = (
+        UniqueConstraint("organization_id", "name"),
+        Index(
+            "uq_report_templates_one_default", "organization_id", unique=True, postgresql_where=text("is_default"),
+        ),
+    )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(255))
@@ -415,6 +422,7 @@ class ReportTemplate(UUIDPKMixin, TimestampMixin, Base):
     include_logo: Mapped[bool] = mapped_column(Boolean, default=True)
     footer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     chapters_per_component: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
 
 

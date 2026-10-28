@@ -93,7 +93,7 @@ test.describe("Custom report run", () => {
     await createLayout(request, headers, `/projects/${alpha.id}`, name);
 
     await test.step("the layout is listed beside the other reports and shows only this project's records", async () => {
-      await page.goto(`/projects/${alpha.id}/reports`);
+      await page.goto(`/projects/${alpha.id}?reports=choose`);
       await chooseReport(page, name);
       await expect(page.getByRole("cell", { name: alpha.requirement })).toBeVisible();
       await expect(page.getByRole("cell", { name: beta.requirement })).toHaveCount(0);
@@ -134,7 +134,7 @@ test.describe("Custom report run", () => {
     });
 
     await test.step("a project that has nothing to do with the layout does not offer it", async () => {
-      await page.goto(`/projects/${beta.id}/reports`);
+      await page.goto(`/projects/${beta.id}?reports=choose`);
       await expect(reportPickerButton(page)).toBeVisible();
       expect(await offersReport(page, name)).toBe(false);
     });
@@ -148,7 +148,7 @@ test.describe("Custom report run", () => {
 
     await test.step("every project the person can read is included, each under its own title", async () => {
       // A new organisation also has the starter layouts, so the report is chosen by name.
-      await page.goto(`/orgs/${org.id}/overview/reports`);
+      await page.goto(`/orgs/${org.id}/overview?reports=choose`);
       await chooseReport(page, name);
       await expect(page.getByRole("cell", { name: alpha.requirement })).toBeVisible();
       await expect(page.getByRole("cell", { name: beta.requirement })).toBeVisible();
@@ -202,7 +202,7 @@ test.describe("Custom report run", () => {
     expect(created.ok(), await created.text()).toBeTruthy();
 
     await test.step("the figures table sits under the layout's own heading, with no heading of the report's", async () => {
-      await page.goto(`/projects/${alpha.id}/reports`);
+      await page.goto(`/projects/${alpha.id}?reports=choose`);
       await chooseReport(page, name);
       await expect(page.getByRole("heading", { name: "Our context" })).toBeVisible();
       await expect(page.getByRole("columnheader", { name: "Measure" }).first()).toBeVisible();
@@ -232,7 +232,7 @@ test.describe("Custom report run", () => {
     });
     expect(created.ok(), await created.text()).toBeTruthy();
 
-    await page.goto(`/projects/${alpha.id}/reports`);
+    await page.goto(`/projects/${alpha.id}?reports=choose`);
     await chooseReport(page, name);
     await expect(page.getByRole("cell", { name: alpha.requirement }).first()).toBeVisible();
 

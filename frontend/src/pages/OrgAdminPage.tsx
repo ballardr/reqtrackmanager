@@ -513,6 +513,7 @@ export function OrgAdminPage() {
   const [newTemplateIncludeLogo, setNewTemplateIncludeLogo] = useState(true);
   const [newTemplateFooterText, setNewTemplateFooterText] = useState("");
   const [newTemplateChaptersPerComponent, setNewTemplateChaptersPerComponent] = useState(true);
+  const [newTemplateIsDefault, setNewTemplateIsDefault] = useState(false);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   // The create/edit form for a report template is a brand-new (or, when
   // editing, an existing) entity's full field set, not contextual detail
@@ -1921,6 +1922,7 @@ export function OrgAdminPage() {
     setNewTemplateIncludeLogo(true);
     setNewTemplateFooterText("");
     setNewTemplateChaptersPerComponent(true);
+    setNewTemplateIsDefault(false);
   }
 
   function openNewTemplateForm() {
@@ -1941,6 +1943,7 @@ export function OrgAdminPage() {
     setNewTemplateIncludeLogo(tpl.include_logo);
     setNewTemplateFooterText(tpl.footer_text ?? "");
     setNewTemplateChaptersPerComponent(tpl.chapters_per_component);
+    setNewTemplateIsDefault(tpl.is_default);
     setTemplateFormOpen(true);
   }
 
@@ -1953,6 +1956,7 @@ export function OrgAdminPage() {
       include_logo: newTemplateIncludeLogo,
       footer_text: newTemplateFooterText || null,
       chapters_per_component: newTemplateChaptersPerComponent,
+      is_default: newTemplateIsDefault,
     };
     const editing = editingTemplateId !== null;
     const saved = await run(
@@ -3365,6 +3369,7 @@ export function OrgAdminPage() {
                 <div key={tpl.id} className="row" style={{ justifyContent: "space-between" }}>
                   <span>
                     {tpl.name} <Badge style={{ background: tpl.accent_color_hex }}>&nbsp;&nbsp;</Badge>
+                    {tpl.is_default && <> <Badge>{strings.admin.defaultTemplateBadge}</Badge></>}
                   </span>
                   <div className="row" style={{ gap: "var(--space-2)" }}>
                     <button className="btn" onClick={() => startEditTemplate(tpl)}>
@@ -3403,6 +3408,12 @@ export function OrgAdminPage() {
                       label={strings.admin.includeLogo(orgLabel)} checked={newTemplateIncludeLogo}
                       onChange={setNewTemplateIncludeLogo}
                     />
+                    <FormGridFull>
+                      <CheckboxField help={strings.help.reportDefaultTemplate}
+                        label={strings.admin.templateIsDefault} checked={newTemplateIsDefault}
+                        onChange={setNewTemplateIsDefault}
+                      />
+                    </FormGridFull>
                     <FormGridFull>
                       <CheckboxField help={strings.help.reportChapterDefault}
                         label={strings.admin.templateChaptersPerComponent} checked={newTemplateChaptersPerComponent}

@@ -541,7 +541,10 @@ export function ReportLayoutDesigner({
           onClose={() => setDialog(null)}
           onSaved={(updated) => {
             showToast(text.detailsSaved);
-            setDetail({ ...detail, name: updated.name, description: updated.description, updated_at: updated.updated_at });
+            setDetail({
+              ...detail, name: updated.name, description: updated.description, folder: updated.folder,
+              report_template_id: updated.report_template_id, updated_at: updated.updated_at,
+            });
           }}
         />
       )}

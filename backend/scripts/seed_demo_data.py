@@ -687,14 +687,14 @@ def archive_action(headers: dict, project_id: str, action_id: str) -> None:
 
 
 def create_report_template(
-    headers: dict, org_id: str, *, name: str, accent_color_hex: str, footer_text: str,
+    headers: dict, org_id: str, *, name: str, accent_color_hex: str, footer_text: str, is_default: bool = False,
 ) -> dict:
-    """Creates a report template (branding only)."""
+    """Creates a report template (branding only); the default one brands every document report that names none."""
     r = httpx.post(
         f"{BASE}/orgs/{org_id}/report-templates",
         json={
             "name": name, "accent_color_hex": accent_color_hex, "include_cover_page": True,
-            "include_logo": False, "footer_text": footer_text,
+            "include_logo": False, "footer_text": footer_text, "is_default": is_default,
         },
         headers=headers, timeout=30,
     )
@@ -1885,7 +1885,7 @@ def main() -> None:
     print("Branding a report template...")
     create_report_template(
         h_pm, org["id"], name="Solstice Standard Report", accent_color_hex="#0F62FE",
-        footer_text="Solstice Robotics — Confidential",
+        footer_text="Solstice Robotics — Confidential", is_default=True,
     )
 
     print("Setting organisation outgoing-email branding...")

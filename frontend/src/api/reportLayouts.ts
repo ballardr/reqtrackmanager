@@ -47,6 +47,8 @@ export interface ReportLayoutSummary {
   description: string;
   /** The author's Reports picker folder, up to three levels written `A/B` (`""` = the default folder). */
   folder: string;
+  /** The branding template this layout's documents use; `null` follows the organisation's default. */
+  report_template_id: string | null;
   family: LayoutFamily;
   current_version: number;
   origin: LayoutOrigin;
@@ -275,7 +277,9 @@ export interface ReportLayoutApi {
   versions(id: string): Promise<ReportLayoutVersionSummary[]>;
   version(id: string, version: number): Promise<ReportLayoutVersion>;
   save(id: string, body: { tree: ReportLayoutTree; base_version: number; comment?: string }): Promise<ReportLayoutDetail>;
-  update(id: string, body: { name?: string; description?: string; folder?: string }): Promise<ReportLayoutSummary>;
+  update(
+    id: string, body: { name?: string; description?: string; folder?: string; report_template_id?: string | null },
+  ): Promise<ReportLayoutSummary>;
   remove(id: string): Promise<void>;
   parseText(text: string): Promise<TextParseResult>;
   formatTree(tree: ReportLayoutTree): Promise<string>;

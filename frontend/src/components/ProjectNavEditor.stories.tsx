@@ -80,18 +80,18 @@ export const ReorderMoveAndSaveForAllProjects: Story = {
   decorators: [withPrefs({})],
   play: async () => {
     const d = dialog();
-    await expect(rowLabels("Navigation")).toEqual(["Overview", "Requirements", "Actions", "Reports", "Project admin", "Decisions"]);
+    await expect(rowLabels("Navigation")).toEqual(["Overview", "Requirements", "Actions", "Files", "Project admin", "Decisions"]);
 
-    await userEvent.click(d.getByRole("button", { name: "Move Reports up" }));
+    await userEvent.click(d.getByRole("button", { name: "Move Files up" }));
     await userEvent.click(d.getByRole("button", { name: "Move Requirements to More" }));
-    await expect(rowLabels("Navigation")).toEqual(["Overview", "Reports", "Actions", "Project admin", "Decisions"]);
+    await expect(rowLabels("Navigation")).toEqual(["Overview", "Files", "Actions", "Project admin", "Decisions"]);
     await expect(rowLabels("More")).toEqual(["Requirements"]);
 
     await userEvent.click(d.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(onWrite).toHaveBeenCalledTimes(1));
     await expect(onWrite).toHaveBeenCalledWith({
       project_nav: {
-        order: ["overview", "reports", "actions", "admin", "decisions:/projects/project-1/decisions", "requirements"],
+        order: ["overview", "files", "actions", "admin", "decisions:/projects/project-1/decisions", "requirements"],
         more: ["requirements"],
       },
     });
@@ -137,7 +137,7 @@ export const ResetToDefaultRestoresProductOrderUntilSaved: Story = {
   decorators: [
     withPrefs({
       project_nav: {
-        order: ["overview", "reports", "requirements", "actions", "admin", "decisions:/projects/project-1/decisions"],
+        order: ["overview", "files", "requirements", "actions", "admin", "decisions:/projects/project-1/decisions"],
         more: ["actions"],
       },
     }),
@@ -146,7 +146,7 @@ export const ResetToDefaultRestoresProductOrderUntilSaved: Story = {
     const d = dialog();
     await expect(rowLabels("More")).toEqual(["Actions"]);
     await userEvent.click(d.getByRole("button", { name: "Reset to default" }));
-    await expect(rowLabels("Navigation")).toEqual(["Overview", "Requirements", "Actions", "Reports", "Project admin", "Decisions"]);
+    await expect(rowLabels("Navigation")).toEqual(["Overview", "Requirements", "Actions", "Files", "Project admin", "Decisions"]);
     await expect(rowLabels("More")).toEqual([]);
     // A draft only: nothing was written.
     await expect(onWrite).not.toHaveBeenCalled();

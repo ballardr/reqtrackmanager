@@ -8,7 +8,7 @@ The **Reports** page picks a report from a dialog, not a long drop-down, and the
 
 ## Choosing a report
 
-The button at the top of the Reports page names the current report and the folder it is in. Choosing it opens the picker:
+The button at the top of the Reports dialog (opened from the **Reports** menu on the project or organisation overview) names the current report and the folder it is in. Choosing it opens the picker:
 
 | Reports picker |
 | --- |

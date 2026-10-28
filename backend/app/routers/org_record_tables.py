@@ -51,7 +51,7 @@ from app.services.record_tables import (
     table_csv,
 )
 from app.services.report_document import resolve_branding
-from app.services.report_framework import ReportFormat, render_docx, render_pdf
+from app.services.report_framework import DOCUMENT_FORMATS, ReportFormat, render_result
 
 router = APIRouter(prefix="/api/v1/orgs/{organization_id}", tags=["record-tables"])
 
@@ -150,10 +150,10 @@ async def import_org_records(
 def org_record_list_report(
     organization_id: UUID, request: Request,
     record_type: str = Query(..., description="The record type to list, e.g. `strategy`."),
-    format: ReportFormat = Query("pdf", description="pdf, docx or csv."),
+    format: ReportFormat = Query("pdf", description="pdf, docx, html, odt, csv, xlsx or ods."),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ) -> Response:
-    """The organisation's own records of `record_type` as a PDF, Word or CSV document, with the list's filters.
+    """The organisation's own records of `record_type` as a document or spreadsheet, with the list's filters.
 
     `csv` is the file the export route writes (it re-imports); every file is audited as an export.
 
@@ -163,10 +163,10 @@ def org_record_list_report(
     """
     organization, provider = authorise(db, current_user, request, organization_id, record_type)
     if format == "json":
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Use pdf, docx or csv.")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Use pdf, docx, html, odt, csv, xlsx or ods.")
     filters = split_org_params(provider, [(k, v) for k, v in request.query_params.multi_items() if k != "record_type"])
     table = build_org_table(db, current_user, organization, provider, filters=filters)
-    if format in ("pdf", "docx") and len(table.rows) > MAX_DOCUMENT_ROWS:
+    if format in DOCUMENT_FORMATS and len(table.rows) > MAX_DOCUMENT_ROWS:
         raise HTTPException(
             status.HTTP_413_CONTENT_TOO_LARGE,
             f"This list has {len(table.rows)} rows, more than a document is laid out for ({MAX_DOCUMENT_ROWS}). "
@@ -177,8 +177,8 @@ def org_record_list_report(
         content, ext = table_csv(table), "csv"
     else:
         result = collect(organization.name, provider.label, table)
-        branding = resolve_branding(db, organization, None)
         stem = f"{stem}-{REPORT_KEY}"
-        content, ext = (render_docx(result, branding=branding), "docx") if format == "docx" else (render_pdf(result, branding=branding), "pdf")
+        rendered = render_result(result, format, branding=resolve_branding(db, organization, None))
+        content, ext = rendered.content, rendered.extension
     audit_export(db, current_user, organization, record_type, table, ext)
     return file_response(content, stem, ext)

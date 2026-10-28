@@ -4,7 +4,7 @@ import { useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { Organization, OrgModule, OrgOverviewStats } from "../api/types";
 import { EntitySwitcher } from "../components/EntitySwitcher";
-import { ReportCatalogue } from "../components/ReportCatalogue";
+import { ReportsMenuButton } from "../components/ReportsMenuButton";
 import { ResourceMenu, type ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { Spinner } from "../components/Spinner";
 import { StatBar, type StatBarItem } from "../components/StatBar";
@@ -19,12 +19,6 @@ import { formatFileSize } from "../utils/formatFileSize";
  * module section key. */
 const OVERVIEW_GROUP_KEY = "overview";
 
-/** The core "Reports" group: the organisation-wide
- * reports from the backend catalogue, shown only when the caller can run at
- * least one. Contributed by this page, not a module, so it can never collide
- * with a module section key. */
-const REPORTS_GROUP_KEY = "reports";
-
 /**
  * "Organisation Overview" — a new
  * top-level, always-visible nav-rail page (unlike the module-contributed
@@ -35,6 +29,9 @@ const REPORTS_GROUP_KEY = "reports";
  * entry). Reached via `/org-overview` (`OrgListPage`'s single-org/multi-org
  * auto-redirect, reused rather than duplicated — see that component's own
  * docstring) or directly at `/orgs/:orgId/overview`.
+ *
+ * A "Reports" menu beside the title opens the Reports dialog (`ReportsMenuButton`), shown only when the caller can
+ * run at least one organisation report or pack.
  *
  * A stats header (project/requirement/member counts, total file storage —
  * `GET /orgs/{id}/overview-stats` — plus any installed, currently-enabled
@@ -119,11 +116,9 @@ export function OrgOverviewPage() {
       label: section.label,
       href: `/orgs/${orgId}/overview/${section.key}`,
     })),
-    ...(hasReports ? [{ key: REPORTS_GROUP_KEY, label: "Reports", href: `/orgs/${orgId}/overview/${REPORTS_GROUP_KEY}` }] : []),
   ];
   const activeModuleSection = moduleSections.find((s) => s.key === groupParam);
-  const showingReports = hasReports && groupParam === REPORTS_GROUP_KEY;
-  const active = showingReports ? REPORTS_GROUP_KEY : (activeModuleSection?.key ?? OVERVIEW_GROUP_KEY);
+  const active = activeModuleSection?.key ?? OVERVIEW_GROUP_KEY;
 
   const statItems: StatBarItem[] = [
     { key: "projects", label: "Projects", value: stats.project_count },
@@ -141,17 +136,15 @@ export function OrgOverviewPage() {
           currentId={orgId}
           loadOptions={() => loadOrgSwitcherOptions("overview")}
         />
+        {hasReports && (
+          <div style={{ marginLeft: "auto" }}>
+            <ReportsMenuButton scope={{ kind: "organization", id: orgId }} organizationId={orgId} />
+          </div>
+        )}
       </div>
 
       <ResourceMenu ariaLabel="Organisation overview sections" groups={groups} active={active}>
-        {showingReports ? (
-          <ReportCatalogue
-            entries={reportCatalogue.entries}
-            scope={{ kind: "organization", id: orgId }}
-            organizationId={orgId}
-            extraEntries={reportPacks.entries}
-          />
-        ) : activeModuleSection ? (
+        {activeModuleSection ? (
           activeModuleSection.render({ orgId })
         ) : (
           <div className="stack">

@@ -53,6 +53,7 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.file import FileAsset
@@ -122,6 +123,39 @@ def load_report_template(db: Session, organization_id: UUID, template_id: UUID) 
     if template is None or template.organization_id != organization_id:
         return None
     return template
+
+
+class ForeignReportTemplateError(ValueError):
+    """A requested branding template is not one of the organisation's."""
+
+
+def effective_report_template(
+    db: Session, organization_id: UUID, requested_id: UUID | None, *, layout_template_id: UUID | None = None,
+) -> ReportTemplate | None:
+    """The branding template a report run uses: the one asked for, else the layout's own, else the organisation's default.
+
+    Args:
+        db: Database session.
+        organization_id: The organisation the report is generated for.
+        requested_id: The template the caller named, if any.
+        layout_template_id: The layout's template override, for a custom layout.
+
+    Returns:
+        The template, or `None` when none applies (an unbranded report).
+
+    Raises:
+        ForeignReportTemplateError: `requested_id` is not one of the organisation's templates.
+    """
+    if requested_id is not None:
+        template = load_report_template(db, organization_id, requested_id)
+        if template is None:
+            raise ForeignReportTemplateError("Invalid report_template_id for this organisation.")
+        return template
+    if layout_template_id is not None:
+        template = load_report_template(db, organization_id, layout_template_id)
+        if template is not None:
+            return template
+    return db.scalar(select(ReportTemplate).where(ReportTemplate.organization_id == organization_id, ReportTemplate.is_default))
 
 
 def resolve_branding(db: Session, organization: Organization | None, template: ReportTemplate | None) -> ReportBranding | None:

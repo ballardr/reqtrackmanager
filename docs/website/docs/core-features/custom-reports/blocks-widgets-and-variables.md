@@ -24,7 +24,7 @@ a layout's `where` can combine tests with `and`, `or`, `not` and brackets, and t
 
 ## Variables
 
-| Variables: the form the Reports page shows for a layout that asks for categories |
+| Variables: the form the Reports dialog shows for a layout that asks for categories |
 | --- |
 | ![A Categories variable shown as tick boxes on the Reports page](../../../static/img/screenshots/custom-reports-variables.png) |
 

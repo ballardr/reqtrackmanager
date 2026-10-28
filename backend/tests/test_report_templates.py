@@ -114,3 +114,158 @@ def test_a_project_has_no_default_report_template(client, admin_token, org_id):
     assert client.put(
         f"/api/v1/projects/{project['id']}/report-config", json={}, headers=auth_headers(admin_token),
     ).status_code in (404, 405)
+
+
+# ---- default template and a layout's own template (Reports dialog) -------------------------------------------------
+
+
+import io  # noqa: E402
+import json  # noqa: E402
+import uuid  # noqa: E402
+import zipfile  # noqa: E402
+
+import pytest  # noqa: E402
+
+from app.database import SessionLocal  # noqa: E402
+from app.services.report_document import ForeignReportTemplateError, effective_report_template  # noqa: E402
+from app.services.report_layout_tree import empty_tree  # noqa: E402
+from tests.link_world import World  # noqa: E402
+
+
+def _template(client, token, org_id, name: str, **extra) -> dict:
+    resp = client.post(f"/api/v1/orgs/{org_id}/report-templates", json={"name": name, **extra}, headers=auth_headers(token))
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+def _defaults(client, token, org_id) -> list[str]:
+    listed = client.get(f"/api/v1/orgs/{org_id}/report-templates", headers=auth_headers(token)).json()
+    return [t["name"] for t in listed if t["is_default"]]
+
+
+def test_an_organisation_has_at_most_one_default_template(client, admin_token, org_id):
+    first = _template(client, admin_token, org_id, "First", is_default=True)
+    assert first["is_default"] is True
+    second = _template(client, admin_token, org_id, "Second", is_default=True)
+    assert second["is_default"] is True
+    assert _defaults(client, admin_token, org_id) == ["Second"]
+
+    resp = client.put(
+        f"/api/v1/orgs/{org_id}/report-templates/{first['id']}",
+        json={"name": "First", "is_default": True}, headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 200, resp.text
+    assert _defaults(client, admin_token, org_id) == ["First"]
+
+    resp = client.put(
+        f"/api/v1/orgs/{org_id}/report-templates/{first['id']}",
+        json={"name": "First", "is_default": False}, headers=auth_headers(admin_token),
+    )
+    assert _defaults(client, admin_token, org_id) == []
+
+
+def test_the_effective_template_is_requested_then_the_layouts_then_the_default(client, admin_token, org_id):
+    default = _template(client, admin_token, org_id, "Org default", is_default=True)
+    layout_own = _template(client, admin_token, org_id, "Layout own")
+    requested = _template(client, admin_token, org_id, "Requested")
+    org = uuid.UUID(org_id)
+    with SessionLocal() as db:
+        assert effective_report_template(db, org, None).id == uuid.UUID(default["id"])
+        assert effective_report_template(db, org, None, layout_template_id=uuid.UUID(layout_own["id"])).id == uuid.UUID(layout_own["id"])
+        assert effective_report_template(
+            db, org, uuid.UUID(requested["id"]), layout_template_id=uuid.UUID(layout_own["id"]),
+        ).id == uuid.UUID(requested["id"])
+        with pytest.raises(ForeignReportTemplateError):
+            effective_report_template(db, org, uuid.uuid4())
+
+
+def test_no_default_and_no_override_means_an_unbranded_report(client, admin_token, org_id):
+    _template(client, admin_token, org_id, "Not default")
+    with SessionLocal() as db:
+        assert effective_report_template(db, uuid.UUID(org_id), None) is None
+
+
+@pytest.fixture
+def world(client, admin_token) -> World:
+    return World(client, admin_token, "Template Org")
+
+
+def _layout(world: World, **extra) -> dict:
+    resp = world.client.post(
+        f"/api/v1/orgs/{world.org['id']}/report-layouts",
+        json={"name": "Branded layout", "family": "document", "tree": {**empty_tree("document"), "nodes": [{"type": "heading", "text": "Hi"}]}, **extra},
+        headers=auth_headers(world.token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+def test_a_layout_can_set_and_clear_its_own_template(world):
+    own = _template(world.client, world.token, world.org["id"], "Own")
+    layout = _layout(world, report_template_id=own["id"])
+    assert layout["report_template_id"] == own["id"]
+    url = f"/api/v1/orgs/{world.org['id']}/report-layouts/{layout['id']}"
+    h = auth_headers(world.token)
+
+    assert world.client.patch(url, json={"description": "x"}, headers=h).json()["report_template_id"] == own["id"]  # left out: unchanged
+    catalogue = world.client.get(f"/api/v1/orgs/{world.org['id']}/report-catalogue", headers=h).json()
+    assert any(e["title"] == "Branded layout" and e["report_template_id"] == own["id"] for e in catalogue)
+
+    assert world.client.patch(url, json={"report_template_id": None}, headers=h).json()["report_template_id"] is None
+
+
+def test_a_layout_refuses_another_organisations_template(world, client, admin_token):
+    other_org, other_token = create_org_admin_in(client, admin_token, "Foreign Template Org")
+    foreign = _template(client, other_token, other_org["id"], "Foreign")
+    resp = world.client.post(
+        f"/api/v1/orgs/{world.org['id']}/report-layouts",
+        json={"name": "Bad", "family": "document", "tree": empty_tree("document"), "report_template_id": foreign["id"]},
+        headers=auth_headers(world.token),
+    )
+    assert resp.status_code == 422 and "template" in resp.text
+
+
+def test_deleting_a_template_clears_the_layouts_override(world):
+    own = _template(world.client, world.token, world.org["id"], "Own")
+    layout = _layout(world, report_template_id=own["id"])
+    world.client.delete(f"/api/v1/orgs/{world.org['id']}/report-templates/{own['id']}", headers=auth_headers(world.token))
+    got = world.client.get(f"/api/v1/orgs/{world.org['id']}/report-layouts/{layout['id']}", headers=auth_headers(world.token)).json()
+    assert got["report_template_id"] is None
+
+
+def test_an_organisation_bundle_carries_the_default_flag_and_a_layouts_template(world):
+    h = auth_headers(world.token)
+    org_id = world.org["id"]
+    _template(world.client, world.token, org_id, "Corporate", is_default=True)
+    own = _template(world.client, world.token, org_id, "Layout only")
+    _layout(world, report_template_id=own["id"])
+
+    exported = world.client.get(f"/api/v1/orgs/{org_id}/export", headers=h)
+    assert exported.status_code == 200, exported.text
+    with zipfile.ZipFile(io.BytesIO(exported.content)) as zf:
+        org_json = json.loads(zf.read("org.json"))
+    assert {(t["name"], t["is_default"]) for t in org_json["report_templates"]} == {("Corporate", True), ("Layout only", False)}
+    assert [layout["report_template"] for layout in org_json["report_layouts"]] == ["Layout only"]
+
+
+def test_a_project_bundle_restores_a_layouts_template_by_name(world):
+    h = auth_headers(world.token)
+    org_id = world.org["id"]
+    own = _template(world.client, world.token, org_id, "Project layout template")
+    project = world.project("Source")
+    created = world.client.post(
+        f"/api/v1/projects/{project['id']}/report-layouts",
+        json={"name": "P layout", "family": "document", "tree": {**empty_tree("document"), "nodes": [{"type": "heading", "text": "x"}]},
+              "report_template_id": own["id"]},
+        headers=h,
+    )
+    assert created.status_code == 201, created.text
+    bundle = world.client.get(f"/api/v1/projects/{project['id']}/export", headers=h).content
+    imported = world.client.post(
+        "/api/v1/projects/import", data={"organization_id": org_id, "name": "Copy"},
+        files={"file": ("bundle.zip", bundle, "application/zip")}, headers=h,
+    )
+    assert imported.status_code == 201, imported.text
+    assert imported.json()["warnings"] == []
+    listed = world.client.get(f"/api/v1/projects/{imported.json()['project']['id']}/report-layouts", headers=h).json()
+    assert [layout["report_template_id"] for layout in listed if layout["name"] == "P layout"] == [own["id"]]

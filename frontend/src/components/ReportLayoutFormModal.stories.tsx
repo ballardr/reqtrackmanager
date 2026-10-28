@@ -1,5 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, fn, screen, userEvent, waitFor, within } from "storybook/test";
+import { expect, fn, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
+
+import { api as http } from "../api/client";
 
 import { buildLayoutApi, buildLayoutSummary } from "../testing/reportLayoutFixtures";
 import { requiredCaptions } from "../testing/requiredMarkers";
@@ -88,5 +90,37 @@ export const EditingChangesTheFolder: Story = {
     await userEvent.type(folder, "New/Sub");
     await userEvent.click(dialog.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(args.api.update).toHaveBeenCalledWith("layout-1", expect.objectContaining({ folder: "New/Sub" })));
+  },
+};
+
+/** Editing offers the layout's own branding template (the organisation's default until one is chosen); creating does not. */
+export const EditingOffersTheLayoutsOwnTemplate: Story = {
+  args: { layout: buildLayoutSummary() },
+  beforeEach: () => {
+    spyOn(http, "get").mockImplementation(async (path: string) => {
+      if (path.includes("/report-templates")) {
+        return [{
+          id: "tpl-1", organization_id: "org-1", name: "Corporate", accent_color_hex: "#475569", include_cover_page: true,
+          include_logo: true, footer_text: null, chapters_per_component: true, is_default: true,
+        }];
+      }
+      return [];
+    });
+  },
+  play: async ({ args }) => {
+    const dialog = within(await screen.findByRole("dialog", { name: "Layout details" }));
+    const select = await dialog.findByRole("combobox", { name: "Branding template" });
+    await expect(select).toHaveValue("");
+    await userEvent.selectOptions(select, "tpl-1");
+    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(args.api.update).toHaveBeenCalledWith("layout-1", expect.objectContaining({ report_template_id: "tpl-1" })));
+  },
+};
+
+/** Creating a layout does not ask for a template: the organisation's default applies until the layout is edited. */
+export const CreatingOffersNoTemplate: Story = {
+  play: async () => {
+    const dialog = within(await screen.findByRole("dialog", { name: "New report layout" }));
+    await expect(dialog.queryByRole("combobox", { name: "Branding template" })).not.toBeInTheDocument();
   },
 };

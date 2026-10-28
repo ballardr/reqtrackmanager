@@ -13,10 +13,13 @@ setup and the catalogue use the real app.
 from __future__ import annotations
 
 import ast
+import io
 import uuid
+import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 
+import openpyxl
 import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
@@ -44,7 +47,9 @@ from app.services.report_framework import (
     render_csv,
     render_docx,
     render_pdf,
+    render_result,
     report_mcp_tools,
+    result_sheets,
 )
 from tests.conftest import auth_headers, create_org_admin_in, create_org_user, create_project, login
 
@@ -419,7 +424,47 @@ def test_json_shape_and_pdf_csv_files(client, admin_token, probe):
     assert docx.headers["content-type"].startswith("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     assert docx.headers["content-disposition"] == 'attachment; filename="Format Co A-probe-all.docx"'
     assert docx.content[:2] == b"PK"
-    _get(probe, token, _project_url(project["id"]), expect=422, format="odt")
+    _get(probe, token, _project_url(project["id"]), expect=422, format="rtf")
+
+
+def test_every_declared_format_makes_a_real_file_of_the_whole_report(client, admin_token, probe):
+    """The catalogue's formats, each one produced: documents carry every section, spreadsheets a tab per table."""
+    org, project, token = _setup(client, admin_token, "Every Format Co")
+    url = _project_url(project["id"])
+    html = _get(probe, token, url, format="html")
+    assert html.headers["content-type"].startswith("text/html")
+    assert html.headers["content-disposition"] == 'attachment; filename="Every Format Co A-probe-all.html"'
+    assert "only in the PDF" in html.text and "<img src=" not in html.text, "every section, markup in data escaped"
+    odt = _get(probe, token, url, format="odt")
+    assert odt.headers["content-type"] == "application/vnd.oasis.opendocument.text"
+    with zipfile.ZipFile(io.BytesIO(odt.content)) as archive:
+        assert b"only in the PDF" in archive.read("content.xml")
+    xlsx = _get(probe, token, url, format="xlsx")
+    assert xlsx.headers["content-type"].endswith("spreadsheetml.sheet")
+    sheets = openpyxl.load_workbook(io.BytesIO(xlsx.content)).worksheets
+    assert [ws.title for ws in sheets] == ["Projects", "Second"]
+    assert sheets[0]["B2"].value == "'" + FORMULA, "the formula guard applies to a cell"
+    ods = _get(probe, token, url, format="ods")
+    assert ods.headers["content-type"] == "application/vnd.oasis.opendocument.spreadsheet"
+    with zipfile.ZipFile(io.BytesIO(ods.content)) as archive:
+        content = archive.read("content.xml")
+    assert b"only in the PDF" in content and b'table:name="Second"' in content
+
+
+def test_result_sheets_name_each_table_by_its_title_and_skip_a_note_only_section():
+    result = ReportResult("k", "T", "S", datetime.now(UTC), [], [
+        ReportSection("a", "Alpha: one", ["X"], [["1"]]), ReportSection("b", "Notes", [], []), ReportSection("c", "Alpha: one", ["Y"], [])
+    ])
+    sheets = result_sheets(result)
+    assert [s.name for s in sheets] == ["Alpha  one", "Alpha  one (2)"], "illegal tab characters cleaned, repeats numbered"
+    assert sheets[1].rows == []
+
+
+def test_render_result_refuses_a_format_that_is_not_a_file():
+    result = ReportResult("k", "T", "S", datetime.now(UTC), [], [])
+    for fmt in ("json", "rtf"):
+        with pytest.raises(ValueError):
+            render_result(result, fmt)
 
 
 def test_render_functions_handle_empty_results_and_escape_markup():
@@ -494,7 +539,7 @@ def test_project_catalogue_lists_enabled_reports_with_parameters(client, admin_t
     entry = entries["probe-all"]
     assert entry["scope"] == "project" and entry["supports_include_children"] is True
     assert entry["supports_project_filter"] is False
-    assert entry["path"] == _project_url(project["id"]) and entry["formats"] == ["json", "pdf", "csv", "docx"]
+    assert entry["path"] == _project_url(project["id"]) and entry["formats"] == ["json", "pdf", "docx", "html", "odt", "csv", "xlsx", "ods"]
     assert entry["module_name"] == "Report Probe"
     params = {p["name"]: p for p in entry["params"]}
     assert params["mode"]["choices"] == ["a", "b"] and params["limit"]["minimum"] == 1 and params["limit"]["maximum"] == 5

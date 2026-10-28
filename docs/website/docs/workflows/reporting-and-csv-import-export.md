@@ -6,22 +6,22 @@ sidebar_position: 9
 
 ## Generating a PDF, Word or CSV report
 
-Open a project's **Reports** page:
+Open the **Reports** menu at the top of the project overview, choose **Choose a report…**, and pick the **Requirements report**:
 
 1. Filter by component, category, status, or keyword to scope what's included.
 2. Optionally pick one of the organisation's **report templates** for a PDF or Word export — an accent colour, cover page, logo and footer, for consistent on-brand output.
 3. Generate the report with **Generate PDF**, or choose **More formats** for an editable Word file or CSV — a PDF or Word file can append the organisation's shared resource files. For an introduction, chapters and appendices, start from the **Requirements by Component** layout (see [Introductions, chapters and appendices](../core-features/reports-and-export.md#introductions-chapters-and-appendices)).
 
-| Reports page |
+| Reports dialog |
 | --- |
 | Filtered PDF/Word/CSV export with a selectable organisation branding template |
 | ![Reports page with filters and a selected branding template](../../static/img/screenshots/reports-page.png) |
 
 ## Exporting requirements to CSV
 
-Two doors lead to the same data. The Reports page exports requirements as a formatted CSV. The **Requirements** page's own **List actions** menu (the ⋮ button beside **New requirement**) downloads the list *as it is filtered on screen* as a CSV that you can edit and import back: every field, including custom field values and target stage, with the record's code in the first column. Columns that your organisation's policy keeps out of exports (personal data) are left out, and the menu says so.
+Two doors lead to the same data. The Reports dialog exports requirements as a formatted CSV. The **Requirements** page's own **List actions** menu (the ⋮ button beside **New requirement**) downloads the list *as it is filtered on screen* as a CSV that you can edit and import back: every field, including custom field values and target stage, with the record's code in the first column. Columns that your organisation's policy keeps out of exports (personal data) are left out, and the menu says so.
 
-The same menu also offers **Export as PDF** and **Export as Word file**: the same rows and filters as a formatted document. The Reports page's **Record list** report produces the same table for any record type without opening its list.
+The same menu also offers **Export as PDF** and **Export as Word file**: the same rows and filters as a formatted document. The Reports dialog's **Record list** report produces the same table for any record type without opening its list.
 
 ## Importing requirements from a CSV file
 

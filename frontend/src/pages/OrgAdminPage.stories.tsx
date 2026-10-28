@@ -830,6 +830,29 @@ export const TemplatesAndReportsListsTheReportLayouts: Story = {
   },
 };
 
+/** One template can be the organisation's default, applied to every document report that names none. */
+export const ATemplateCanBeTheDefault: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Templates & reports" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "New template" }));
+    const dialog = within(within(document.body).getByRole("dialog", { name: "New template" }));
+    await userEvent.type(dialog.getByLabelText("Name", { exact: true }), "House style");
+    await userEvent.click(dialog.getByRole("checkbox", { name: /Default template/ }));
+    await userEvent.click(dialog.getByRole("button", { name: "Create" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        `/api/v1/orgs/${ORG_ID}/report-templates`,
+        expect.objectContaining({ name: "House style", is_default: true }),
+      ),
+    );
+  },
+};
+
 /** A report template is branding only (name, colour, cover, logo, footer): no introduction or chapters. */
 export const NewReportTemplate: Story = {
   beforeEach: () => {

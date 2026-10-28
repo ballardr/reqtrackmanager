@@ -7,7 +7,7 @@ routes apply (`report_framework.build_report_routers`). A report pack uses it fo
 Responsibilities:
 - `find_report`: the registered report a pack entry names.
 - `run_module_report`: collect the report for a project or for the organisation and return its `ReportResult`.
-- `render_module_report`: produce the PDF, Word or CSV file of a result, with the organisation template's
+- `render_module_report`: produce the file of a result in any format a module report offers, with the organisation template's
   branding.
 
 Design decisions:
@@ -45,9 +45,7 @@ from app.services.report_framework import (
     ReportContext,
     ReportResult,
     apply_cell_tones,
-    render_csv,
-    render_docx,
-    render_pdf,
+    render_result,
     scope_projects,
 )
 
@@ -128,18 +126,13 @@ def run_module_report(
 def render_module_report(
     db: Session, result: ReportResult, fmt: str, *, organization: Organization, template: ReportTemplate | None,
 ) -> bytes:
-    """The file of a collected report in `fmt` (`pdf`, `docx` or `csv`), branded by `template` when one is given.
+    """The file of a collected report in `fmt` (any of `report_framework.REPORT_FORMATS` but `json`), with the
+    document formats branded by `template` when one is given.
 
     Raises:
         ValueError: `fmt` is not one of those.
     """
-    if fmt == "csv":
-        return render_csv(result)
-    if fmt not in ("pdf", "docx"):
-        raise ValueError(f"A module report cannot be produced as {fmt!r}.")
-    branding = resolve_branding(db, organization, template)
-    render = render_pdf if fmt == "pdf" else render_docx
-    return render(result, branding=branding)
+    return render_result(result, fmt, branding=resolve_branding(db, organization, template)).content
 
 
 __all__ = [

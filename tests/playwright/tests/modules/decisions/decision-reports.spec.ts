@@ -94,7 +94,7 @@ async function setup(page: Page, request: APIRequestContext) {
 test.describe("Decision Management: reports", () => {
   test("the project Reports page lists the four Decision reports", async ({ page, request }) => {
     const { project } = await setup(page, request);
-    await page.goto(`/projects/${project.id}/reports`);
+    await page.goto(`/projects/${project.id}?reports=choose`);
 
     await expect(reportPickerButton(page)).toHaveAttribute("aria-label", "Report: Requirements report");
     expect(await listReports(page)).toEqual(expect.arrayContaining(REPORTS.map((r) => r.title)));
@@ -107,7 +107,7 @@ test.describe("Decision Management: reports", () => {
 
   test("the register shows display labels and narrows by status", async ({ page, request }) => {
     const { project, titles } = await setup(page, request);
-    await page.goto(`/projects/${project.id}/reports?report=decision-register`);
+    await page.goto(`/projects/${project.id}?reports=choose&report=decision-register`);
 
     const register = page.getByRole("region", { name: "Decisions", exact: true });
     await expect(register.getByRole("row")).toHaveCount(4); // header + three decisions
@@ -123,7 +123,7 @@ test.describe("Decision Management: reports", () => {
 
   test("approval ageing lists only the decision still awaiting a verdict", async ({ page, request }) => {
     const { project, titles } = await setup(page, request);
-    await page.goto(`/projects/${project.id}/reports?report=approval-ageing`);
+    await page.goto(`/projects/${project.id}?reports=choose&report=approval-ageing`);
 
     const awaiting = page.getByRole("region", { name: "Awaiting a verdict" });
     await expect(awaiting).toContainText(titles.review);
@@ -135,13 +135,13 @@ test.describe("Decision Management: reports", () => {
   test("the decision log shows the rationale of decisions made, and rationale coverage lists the unlinked ones", async ({ page, request }) => {
     const { project, titles } = await setup(page, request);
 
-    await page.goto(`/projects/${project.id}/reports?report=decision-log`);
+    await page.goto(`/projects/${project.id}?reports=choose&report=decision-log`);
     const log = page.getByRole("region", { name: "Decisions made" });
     await expect(log).toContainText(titles.approved);
     await expect(log).toContainText("Because it is cheaper.");
     await expect(log).not.toContainText(titles.review);
 
-    await page.goto(`/projects/${project.id}/reports?report=rationale-coverage`);
+    await page.goto(`/projects/${project.id}?reports=choose&report=rationale-coverage`);
     const bare = page.getByRole("region", { name: "Decisions with no linked artefact" });
     await expect(bare).toContainText(titles.approved);
     await expect(bare).toContainText(titles.draft);
@@ -149,7 +149,7 @@ test.describe("Decision Management: reports", () => {
 
   test("every Decision report downloads as PDF and CSV", async ({ page, request }) => {
     const { project, titles } = await setup(page, request);
-    await page.goto(`/projects/${project.id}/reports`);
+    await page.goto(`/projects/${project.id}?reports=choose`);
     await expect(reportPickerButton(page)).toHaveAttribute("aria-label", "Report: Requirements report");
     const offered = await listReports(page);
     expect(REPORTS.filter((r) => offered.includes(r.title))).toHaveLength(4);
@@ -184,7 +184,7 @@ test.describe("Decision Management: reports", () => {
     });
     expect(off.ok(), await off.text()).toBeTruthy();
 
-    await page.goto(`/projects/${project.id}/reports`);
+    await page.goto(`/projects/${project.id}?reports=choose`);
     await expect(page.getByRole("button", { name: "Generate PDF" })).toBeVisible();
     // The platform Record list report keeps the picker, but no Decision report is in it.
     const offered = await listReports(page);

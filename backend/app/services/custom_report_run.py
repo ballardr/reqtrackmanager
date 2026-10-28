@@ -586,7 +586,7 @@ def _entry(
         projects=[ReportProjectOut(id=p.id, name=p.name) for p in projects], params=[],
         variables=[ReportVariableOut.model_validate(v) for v in form],
         kind="sheet" if layout.family == FAMILY_TABLE else "report", folder=layout.folder,
-        record_types=record_types_of(tree),
+        record_types=record_types_of(tree), report_template_id=layout.report_template_id,
     )
 
 

@@ -1412,10 +1412,10 @@ flowchart LR
   `formats_for(family)`): a document layout gives `pdf`, `docx`, `html` and `odt`; a table layout `csv` (one CSV, or a zip
   with one CSV per sheet when there are several), `xlsx` and `ods`. Table formats are for the table family only. A
   new format is one `register_renderer(Renderer(key, families, render))` (ODT and ODS were); a renderer sees only the neutral
-  model (`RenderInput`: a `ReportDocument` or `Sheet`s). The `json` form is the Reports page's on-screen view: each
+  model (`RenderInput`: a `ReportDocument` or `Sheet`s). The `json` form is the Reports dialog's on-screen view: each
   table of the document becomes a section titled by the headings above it ("Alpha / Requirements"), the text between
   tables is its note. The catalogue entry lists the formats and, for an organisation layout,
-  `supports_project_multi_filter` and the `projects` the caller may choose among; the Reports page offers them as a
+  `supports_project_multi_filter` and the `projects` the caller may choose among; the Reports dialog offers them as a
   **Projects** selector.
 - **Cells and pages are safe by construction.** Every CSV, XLSX and ODS cell goes through `csv_safe` and is written as
   text (an XLSX cell is typed `s` and an ODS cell is a `string` value with no formula attribute, never a formula,
@@ -1869,8 +1869,12 @@ flowchart LR
 
 A module that reports on its records declares a `ReportDefinition` per report on
 `ModuleDefinition.reports` and writes one `collect_*` function for each. Core
-(`services/report_framework.py`) supplies the rest: routes, `?format=json|pdf|docx|csv`,
-access gating, typed parameters, MCP tools, the catalogue and the branded PDF and Word output.
+(`services/report_framework.py`) supplies the rest: routes, `?format=json|pdf|docx|html|odt|csv|xlsx|ods`,
+access gating, typed parameters, MCP tools, the catalogue and the branded document output. One function,
+`report_framework.render_result`, decides a module report's file formats: the documents (`pdf`, `docx`, `html`, `odt`)
+render the neutral `ReportDocument` of the result and the spreadsheets (`xlsx`, `ods`) one tab per section through the
+`report_render` registry; `csv` is the first section only. The record-list routes use the same function, so a new
+format is one registration there and every report gains it.
 
 ```mermaid
 flowchart LR
@@ -1977,8 +1981,8 @@ REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
   `branding.readable_on_white`, which darkens a light accent until it reads.
 - **Not built yet:** rich cells (Compliance's multi-line narrative) and row caps; add them when a second
   consumer needs them.
-- **On-screen UI is core too (Phase 13).** The project Reports page and Org
-  Overview's "Reports" group list whatever the catalogue returns and run it with
+- **On-screen UI is core too (Phase 13).** The Reports dialog (`ReportsDialog`, opened from the "Reports" menu
+  on the project and organisation overviews) lists whatever the catalogue returns and run it with
   the shared `ReportRunner` (parameter form from the declaration, `ReportViewer`,
   PDF/Word/CSV). A module needs no UI for a report whose table form is enough. To draw
   something richer, register a view on the frontend

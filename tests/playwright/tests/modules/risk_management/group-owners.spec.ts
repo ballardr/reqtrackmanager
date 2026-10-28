@@ -53,7 +53,7 @@ test.describe("Risk Management: groups as owners", () => {
     await boardRow.getByRole("link", { name: /RSK-/ }).click();
     await expect(page.getByRole("heading", { name: title })).toBeVisible();
     await expect(page.getByText(boardName).first()).toBeVisible();
-    await page.goto(`/projects/${project.id}/reports?report=risk-register`);
+    await page.goto(`/projects/${project.id}?reports=choose&report=risk-register`);
     await expect(page.getByText(`${boardName} (Org group)`).first()).toBeVisible();
 
     // --- Deleting the org group is blocked while it owns a Risk; hand the Risk to the admin.

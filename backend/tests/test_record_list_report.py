@@ -13,6 +13,7 @@ import io
 import uuid
 import zipfile
 
+import openpyxl
 import pytest
 
 from app.database import SessionLocal
@@ -116,6 +117,23 @@ def test_the_pdf_is_a_document_and_the_word_file_fills_the_status_cells_as_the_s
     assert f'w:fill="{TONE_FILL["muted"]}"' in xml, "a Draft cell is filled with the muted tone"
 
 
+def test_the_other_formats_are_real_files_and_are_audited_and_capped_like_the_documents(world):
+    project = world.project()
+    world.requirement(project, "=cmd|' /C calc'!A0")
+    html = _report(world, project, format="html")
+    assert html.status_code == 200 and html.headers["content-type"].startswith("text/html")
+    assert html.headers["content-disposition"].endswith('-requirements-record-list.html"')
+    odt = _report(world, project, format="odt")
+    assert odt.status_code == 200 and odt.content[:2] == b"PK" and odt.headers["content-type"] == "application/vnd.oasis.opendocument.text"
+    xlsx = _report(world, project, format="xlsx")
+    assert xlsx.status_code == 200 and xlsx.headers["content-disposition"].endswith('-requirements-record-list.xlsx"')
+    cells = [c.value for row in openpyxl.load_workbook(io.BytesIO(xlsx.content)).worksheets[0].iter_rows() for c in row]
+    assert any(isinstance(v, str) and v.startswith("'=cmd") for v in cells), "the formula guard applies"
+    ods = _report(world, project, format="ods")
+    assert ods.status_code == 200 and ods.headers["content-type"] == "application/vnd.oasis.opendocument.spreadsheet"
+    assert {e.detail["format"] for e in _audit(project)} >= {"html", "odt", "xlsx", "ods"}
+
+
 def test_only_the_filters_of_the_list_apply(world):
     project = world.project()
     world.requirement(project, "Live")
@@ -161,7 +179,10 @@ def test_a_document_over_the_row_limit_is_refused_and_the_csv_is_not(world, monk
     monkeypatch.setattr(router, "MAX_DOCUMENT_ROWS", 1)
     assert _report(world, project, format="pdf").status_code == 413
     assert _report(world, project, format="docx").status_code == 413
+    assert _report(world, project, format="html").status_code == 413
+    assert _report(world, project, format="odt").status_code == 413
     assert _report(world, project, format="csv").status_code == 200
+    assert _report(world, project, format="xlsx").status_code == 200
     assert _report(world, project).status_code == 200
 
 
@@ -225,7 +246,7 @@ def test_the_catalogue_offers_the_record_list_with_exactly_the_types_the_caller_
     entry = next(e for e in _catalogue(world, project) if e["slug"] == "record-list")
     assert entry["module_key"] == "platform" and entry["scope"] == "project" and entry["supports_include_children"] is False
     assert entry["path"] == f"/api/v1/projects/{project['id']}/reports/record-list"
-    assert set(entry["formats"]) == {"json", "pdf", "csv", "docx"}
+    assert set(entry["formats"]) == {"json", "pdf", "docx", "html", "odt", "csv", "xlsx", "ods"}
     record_type = next(p for p in entry["params"] if p["name"] == "record_type")
     assert {REQ, ACTION} <= set(record_type["choices"]) and record_type["default"] in record_type["choices"]
     assert record_type["choice_labels"][REQ] == "Requirements"

@@ -18,7 +18,7 @@ flowchart LR
 
 ## Generating a report
 
-1. Open the project's **Reports** page and choose a report from the **Report** picker. The list shows *Requirements report* first, then every Context & Strategy report that applies to this project.
+1. Open the **Reports** menu at the top of the project overview, choose **Choose a report…**, and pick a report from the **Report** picker. The list shows *Requirements report* first, then every Context & Strategy report that applies to this project.
 2. Adjust the report's **options**, if it has any. The report re-generates each time you change one.
 3. Read the result on screen: headline figures first, then the tables. A figure or table that lists problems to fix carries a **Needs attention** marker; a gap table with nothing to fix is marked **None**.
 4. Select **Export** to download it.

@@ -180,7 +180,7 @@ def build_org_bundle(db: Session, org: Organization, exported_by: User) -> bytes
         {
             "name": t.name, "accent_color_hex": t.accent_color_hex, "include_cover_page": t.include_cover_page,
             "include_logo": t.include_logo, "footer_text": t.footer_text,
-            "chapters_per_component": t.chapters_per_component,
+            "chapters_per_component": t.chapters_per_component, "is_default": t.is_default,
         }
         for t in report_templates
     ]
@@ -549,6 +549,7 @@ def _import_report_templates(
         existing_by_name = {
             t.name.strip().lower(): t for t in db.scalars(select(ReportTemplate).where(ReportTemplate.organization_id == org.id))
         }
+    has_default = resolutions is not None and any(t.is_default for t in existing_by_name.values())
     for t in data.get("report_templates", []):
         existing = existing_by_name.get(t["name"].strip().lower()) if resolutions is not None else None
         if existing is not None:
@@ -564,8 +565,9 @@ def _import_report_templates(
             organization_id=org.id, name=t["name"], accent_color_hex=t.get("accent_color_hex", "#475569"),
             include_cover_page=t.get("include_cover_page", True), include_logo=t.get("include_logo", True),
             footer_text=t.get("footer_text"), chapters_per_component=t.get("chapters_per_component", True),
-            created_by=current_user.id,
+            is_default=bool(t.get("is_default")) and not has_default, created_by=current_user.id,
         )
+        has_default = has_default or template.is_default
         db.add(template)
         db.flush()
 
@@ -648,6 +650,7 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
     )
     db.add(org)
     db.flush()
+    _import_report_templates(db, org, data, current_user, resolutions=None, warnings=warnings)  # before layouts name them
     import_org_layouts(db, org.id, data, current_user, warnings, merge=False)
     import_org_packs(db, org.id, data, current_user, warnings, merge=False)
     import_org_placements(db, org.id, data, current_user, warnings)
@@ -686,7 +689,6 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
         )
         org.login_background_file_id = asset.id
 
-    _import_report_templates(db, org, data, current_user, resolutions=None, warnings=warnings)
     acting_user, find_user = _import_members(db, org, data, current_user, warnings, reassign_acting_user=True)
     users = UserResolver(db, acting_user, warnings)
     _import_org_groups(db, org, data, find_user, warnings, merge_by_name=False)
@@ -833,11 +835,11 @@ def merge_org_bundle(
     acting_user, find_user = _import_members(db, target_org, data, current_user, warnings, reassign_acting_user=False)
     users = UserResolver(db, acting_user, warnings)
     _import_org_groups(db, target_org, data, find_user, warnings, merge_by_name=True)
+    _import_report_templates(db, target_org, data, current_user, resolutions=resolutions, warnings=warnings)  # before layouts name them
     import_org_layouts(db, target_org.id, data, current_user, warnings, merge=True)
     import_org_packs(db, target_org.id, data, current_user, warnings, merge=True)
     import_org_placements(db, target_org.id, data, current_user, warnings)
     _warn_legacy_report_content(data, warnings)
-    _import_report_templates(db, target_org, data, current_user, resolutions=resolutions, warnings=warnings)
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         hooks.import_(db, target_org, data, users, warnings, resolutions)
     project_id_by_ref = _import_projects(

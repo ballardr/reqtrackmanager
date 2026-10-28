@@ -54,7 +54,7 @@ async function stakeholder(
 test.describe("Stakeholders & Personas: Reports", () => {
   test("the project report picker lists all five reports", async ({ page }) => {
     const { project } = await setUpOrg(page, "RepPick");
-    await page.goto(`/projects/${project.id}/reports`);
+    await page.goto(`/projects/${project.id}?reports=choose`);
     await expect(reportPickerButton(page)).toBeVisible();
     expect(await listReports(page)).toEqual(expect.arrayContaining(REPORTS));
 
@@ -76,7 +76,7 @@ test.describe("Stakeholders & Personas: Reports", () => {
     await stakeholder(page, adminHeaders, org.id, project.id, names.monitor, "Low", "Low");
     await stakeholder(page, adminHeaders, org.id, project.id, names.unscored, "High", null);
 
-    await page.goto(`/projects/${project.id}/reports?report=power-interest-grid`);
+    await page.goto(`/projects/${project.id}?reports=choose&report=power-interest-grid`);
     const quadrant = (name: string) => page.getByRole("region", { name, exact: true });
     await expect(quadrant("Manage closely").getByRole("link", { name: names.manage })).toBeVisible();
     await expect(quadrant("Keep satisfied").getByText(names.satisfied)).toBeVisible();
@@ -99,7 +99,7 @@ test.describe("Stakeholders & Personas: Reports", () => {
     await stakeholder(page, adminHeaders, org.id, project.id, outside, "High", "High", { target_cadence: "weekly" });
     await post(page, `${projectBase(project.id)}/stakeholder-groups/${group.id}/members`, adminHeaders, { stakeholder_id: member.id });
 
-    await page.goto(`/projects/${project.id}/reports?report=power-interest-grid`);
+    await page.goto(`/projects/${project.id}?reports=choose&report=power-interest-grid`);
     await expect(page.getByRole("region", { name: "Manage closely" }).getByText(outside)).toBeVisible();
     // The view draws the group controls itself, so the generic form shows no raw id box for them.
     await expect(page.getByLabel("Group", { exact: true })).toHaveCount(1);
@@ -123,7 +123,7 @@ test.describe("Stakeholders & Personas: Reports", () => {
   test("every Stakeholders & Personas report downloads as PDF and CSV", async ({ page }) => {
     const { org, project, adminHeaders, suffix } = await setUpOrg(page, "RepDownload");
     await stakeholder(page, adminHeaders, org.id, project.id, `Downloader ${suffix}`, "High", "High", { target_cadence: "weekly" });
-    await page.goto(`/projects/${project.id}/reports`);
+    await page.goto(`/projects/${project.id}?reports=choose`);
     await expect(reportPickerButton(page)).toBeVisible();
 
     for (const title of REPORTS) {
@@ -153,7 +153,7 @@ test.describe("Stakeholders & Personas: Reports", () => {
     for (let i = 1; i <= 12; i++) {
       await stakeholder(page, adminHeaders, org.id, project.id, `Crowd ${String(i).padStart(2, "0")} ${suffix}`, "High", "High");
     }
-    await page.goto(`/projects/${project.id}/reports?report=power-interest-grid`);
+    await page.goto(`/projects/${project.id}?reports=choose&report=power-interest-grid`);
     const manage = page.getByRole("region", { name: "Manage closely", exact: true });
     await expect(manage.getByRole("listitem")).toHaveCount(10);
     await manage.getByRole("button", { name: "Show all 12 Stakeholders" }).click();

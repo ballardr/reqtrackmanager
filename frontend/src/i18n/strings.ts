@@ -160,7 +160,6 @@ const en = {
     changeRequests: "{ChangeRequests}",
     actions: "Actions",
     admin: "{Project} admin",
-    reports: "Reports",
     projectSectionLabel: "{Project}",
     preferences: "Preferences",
     signOut: "Sign out",
@@ -654,6 +653,8 @@ const en = {
     reportSetupHint:
       "Report layouts, report packs and where reports appear for this {project}. Write an introduction, chapters and appendices in a layout.",
     templateChaptersPerComponent: "Chapter per {component} by default",
+    templateIsDefault: "Default template",
+    defaultTemplateBadge: "Default",
     components: "{Components}",
     componentsAndCategories: "{Components} & {categories}",
     componentTreeHint: "{Categories} are nested under one {component} each. A {requirement}'s identifier combines its {component}'s and {category}'s prefixes, e.g. SW-PERF-014.",
@@ -1826,13 +1827,16 @@ const en = {
   },
   reports: {
     title: "Reports",
+    menuLabel: "Reports menu",
+    chooseReport: "Choose a report…",
+    backgroundReports: "Background reports…",
     generatePdf: "Generate PDF",
     // A long report table is paged on screen; exports still carry every row.
     tableShowing: (shown: number, total: number) => `Showing ${shown} of ${total} rows`,
     moreFormats: "More formats",
-    templateAndLayout: "Template & layout",
     reportTemplate: "Report template",
     noTemplate: "None (plain)",
+    templateDefaultNamed: (name: string) => `Default (${name})`,
     chapterLayout: "Chapter layout",
     chapterLayoutAuto: "Auto (recommended)",
     chapterLayoutChaptered: "Chapter per {component}",
@@ -2037,6 +2041,7 @@ const en = {
     description:
       "Reports too big to produce while you wait are prepared in the background and you are notified when they are ready. Only you can download one, and the file is deleted when it expires.",
     listLabel: "Background reports",
+    empty: "You have no background reports. A report too big to produce while you wait is prepared here, and you are notified when it is ready.",
     reportHeading: "Report",
     formatHeading: "Format",
     statusHeading: "Status",
@@ -2208,6 +2213,8 @@ const en = {
     nameLabel: "Name",
     descriptionLabel: "Description",
     familyLabel: "Kind of report",
+    templateLabel: "Branding template",
+    templateDefault: "Organisation default",
     createButton: "Create",
     nameTaken: "A layout with this name already exists here.",
     // Confirmations and feedback
@@ -2836,7 +2843,9 @@ const en = {
     requirementPrefix: "A short code that starts the identifiers of everything under it, for example SW in SW-PERF-014.",
     // Reports
     reportOutputRetention: "How long a report prepared in the background stays available to download before its file is deleted. Blank uses the platform default; the platform also sets a maximum.",
-    reportBrandingTemplate: "The branding applied to the export: logo, colours, cover page and footer. Leave it unset to use the default.",
+    reportBrandingTemplate: "The branding applied to the export: logo, colours, cover page and footer. Leave it on the default to use the report's own template, or else the organisation's default.",
+    reportDefaultTemplate: "Applies this template to every document report that does not name another. Only one template is the default: setting this one clears the previous. A report layout can choose its own template in its details.",
+    reportLayoutTemplate: "The branding this layout's documents use. Leave it on the default to follow the organisation's default template. Whoever downloads the report can still pick another.",
     reportChapterLayout: "Whether the report starts a new chapter for each {component} or runs on continuously. Automatic follows the chosen template.",
     reportChapterDefault: "New reports start a chapter for each {component} unless the person exporting chooses a continuous layout.",
     // Search

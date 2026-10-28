@@ -72,7 +72,7 @@ test.describe("Context & Strategy: groups as owners", () => {
     await expect(page.getByText(teamName).first()).toBeVisible();
 
     // --- The Open Question register prints the group with its kind, rather than a person's name.
-    await page.goto(`/projects/${project.id}/reports?report=open-question-register`);
+    await page.goto(`/projects/${project.id}?reports=choose&report=open-question-register`);
     await expect(page.getByText(`${squadName} (Project group)`).first()).toBeVisible();
 
     // --- Deleting the org group is blocked while it owns records; hand them to the admin.

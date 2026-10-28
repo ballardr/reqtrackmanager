@@ -2,10 +2,9 @@
  * Module: components/RequirementReportPanel
  *
  * The requirement report's configuration and generation surface (R-F-01 PDF,
- * Word, R-F-02 CSV), extracted from `pages/ReportsPage.tsx` so it can sit beside
- * the catalogue reports in the same Reports picker. It
- * carries a report-template picker (R-G-05), a chapter-per-component/
- * continuous layout toggle, requirement filters (R-G-03), and organisation
+ * Word, R-F-02 CSV), shown in the Reports dialog beside the catalogue reports in the same picker. It
+ * carries a report-template picker (R-G-05; unset uses the organisation's default template), a chapter-per-component/
+ * continuous layout choice, requirement filters (R-G-03), and organisation
  * shared resource sections (R-G-04). An introduction, chapters or appendices
  * are written in a report layout (the "Requirements by Component" starter),
  * not here. It has its own request model
@@ -56,6 +55,8 @@ export function RequirementReportPanel({ project }: { project: Project }) {
   const [reportTemplateId, setReportTemplateId] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [chaptersPerComponent, setChaptersPerComponent] = useState<boolean | null>(null);
+  // What a download uses when none is chosen: the organisation's default template.
+  const defaultTemplate = reportTemplates.find((tpl) => tpl.is_default);
 
   useEffect(() => {
     if (!projectId) return;
@@ -114,29 +115,27 @@ export function RequirementReportPanel({ project }: { project: Project }) {
         <ReportExportButton onDownload={generate} kinds={["docx", "csv"]} label={strings.reports.moreFormats} />
       </div>
 
-      <CollapsibleSection sectionKey="reports.templateAndLayout" title={strings.reports.templateAndLayout} defaultCollapsed>
-        <FormGrid minColumn="16rem">
-          {reportTemplates.length > 0 && (
-            <LabeledSelect help={strings.help.reportBrandingTemplate}
-              label={strings.reports.reportTemplate}
-              value={reportTemplateId}
-              onChange={setReportTemplateId}
-              options={reportTemplates.map((tpl) => ({ value: tpl.id, label: tpl.name }))}
-              placeholder={strings.reports.noTemplate}
-            />
-          )}
-          <LabeledSelect help={strings.help.reportChapterLayout}
-            label={strings.reports.chapterLayout}
-            value={chaptersPerComponent === null ? "" : String(chaptersPerComponent)}
-            onChange={(next) => setChaptersPerComponent(next === "" ? null : next === "true")}
-            options={[
-              { value: "true", label: strings.reports.chapterLayoutChaptered },
-              { value: "false", label: strings.reports.chapterLayoutContinuous },
-            ]}
-            placeholder={strings.reports.chapterLayoutAuto}
+      <FormGrid minColumn="16rem">
+        {reportTemplates.length > 0 && (
+          <LabeledSelect help={strings.help.reportBrandingTemplate}
+            label={strings.reports.reportTemplate}
+            value={reportTemplateId}
+            onChange={setReportTemplateId}
+            options={reportTemplates.map((tpl) => ({ value: tpl.id, label: tpl.name }))}
+            placeholder={defaultTemplate ? strings.reports.templateDefaultNamed(defaultTemplate.name) : strings.reports.noTemplate}
           />
-        </FormGrid>
-      </CollapsibleSection>
+        )}
+        <LabeledSelect help={strings.help.reportChapterLayout}
+          label={strings.reports.chapterLayout}
+          value={chaptersPerComponent === null ? "" : String(chaptersPerComponent)}
+          onChange={(next) => setChaptersPerComponent(next === "" ? null : next === "true")}
+          options={[
+            { value: "true", label: strings.reports.chapterLayoutChaptered },
+            { value: "false", label: strings.reports.chapterLayoutContinuous },
+          ]}
+          placeholder={strings.reports.chapterLayoutAuto}
+        />
+      </FormGrid>
 
       <CollapsibleSection sectionKey="reports.filters" title={strings.reports.filters} defaultCollapsed>
         <FormGrid minColumn="14rem">

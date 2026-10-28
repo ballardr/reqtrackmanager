@@ -90,6 +90,8 @@ export function ReportPackRunner({
   const [values, setValues] = useState<VariableValues>({});
   const [setId, setSetId] = useState("");
   const [templateId, setTemplateId] = useState("");
+  // What a download uses when none is chosen (unless the pack names its own): the organisation's default.
+  const defaultTemplate = templates.find((t) => t.is_default);
   const [preview, setPreview] = useState<{ signature: string; result: ReportPackPreview | null; error: string | null } | null>(null);
   const [downloading, setDownloading] = useState(false);
   const hasPreviewed = useRef(false);
@@ -201,7 +203,7 @@ export function ReportPackRunner({
             value={templateId}
             onChange={setTemplateId}
             options={templates.map((t) => ({ value: t.id, label: t.name }))}
-            placeholder="No template"
+            placeholder={defaultTemplate ? strings.reports.templateDefaultNamed(defaultTemplate.name) : strings.reports.noTemplate}
           />
         )}
       </div>

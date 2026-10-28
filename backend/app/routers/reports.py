@@ -33,7 +33,12 @@ from app.services.codes import display_code
 from app.services.downloads import file_response, filename_safe
 from app.services.files import read_file
 from app.services.rbac import require_project_view
-from app.services.report_document import load_report_template, resolve_branding, resolve_report_images
+from app.services.report_document import (
+    ForeignReportTemplateError,
+    effective_report_template,
+    resolve_branding,
+    resolve_report_images,
+)
 from app.services.reports import (
     ReportRequirementRow,
     default_chapters_per_component,
@@ -131,13 +136,10 @@ def generate_report(
     org = db.get(Organization, project.organization_id)
     resource_markdown = _resource_sections_markdown(db, project, payload.resource_file_ids)
 
-    template = None
-    if payload.report_template_id is not None:
-        template = load_report_template(db, project.organization_id, payload.report_template_id)
-        if template is None:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid report_template_id for this project's organisation.")
-
-
+    try:
+        template = effective_report_template(db, project.organization_id, payload.report_template_id)
+    except ForeignReportTemplateError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     branding = resolve_branding(db, org, template)
 
     # Precedence: an explicit per-generation choice always wins; failing

@@ -13211,3 +13211,71 @@ No time or date is involved; the preference is a list of strings.
 ### Verification
 
 Storybook: `ReportPicker` (collapsed first time, remembers, search leaves the saved folders, star on the right), `ReportCatalogue` and `ReportDownloadDialog` updated. Playwright `report-picker-and-folders.spec.ts` (remembered across close and reload) and `list-download-report.spec.ts` updated; the picker helper finds report rows by `data-report-picker-item`, not by the star's position. `tsc` and eslint clean.
+
+## Custom reports Phase 22: one Download menu, every format (2026-10-29)
+
+The third review found ODT and ODS missing "for some reason". Cause: module reports (and the record-list report) declared `json, pdf, csv, docx` in core, so only custom layouts reached the renderer registry.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **A module report's result goes through the existing renderers.** `report_framework.render_result` is the single place its formats are decided: `pdf`, `docx`, `html`, `odt` render the neutral `ReportDocument` already built for PDF and Word, `xlsx` and `ods` render each section as a tab (`result_sheets`), `csv` stays the first section. A format a report cannot make honestly is not listed; none is excluded today because every result is a document of tables. | Agent |
+| 2 | **Excel is offered with ODS** though the plan named only ODT, HTML and ODS: it is the same sheets and the renderer already exists, so leaving it out would be a second inconsistency. | Agent |
+| 3 | **The record-list routes (project and organisation) use the same function.** Their CSV is still the export file that re-imports. The row cap (`MAX_DOCUMENT_ROWS`) now applies to the four document formats (`DOCUMENT_FORMATS`), not to the spreadsheets, which stream. Every format is audited as an export. | Agent |
+| 4 | **The menu is the existing `ReportExportButton`** (it lists what the catalogue entry's `formats` declares), so the runner, the record-list dialog and the organisation Reports group show the new formats with no per-format button. Its trigger keeps the label **Export**: the compliance panels share the component and a rename is cosmetic churn across about twenty tests. | Agent |
+| 5 | **The branding template is sent only with the document formats** (`DOCUMENT_KINDS` in `ReportRunner`), so a spreadsheet request never carries one. | Agent |
+| 6 | **A pack entry for a module report may take every file format** (`report_pack_definition.REPORT_FORMATS` is now the framework's, minus `json`; a layout entry already could take any of its family's). The pack editor offers the same list. `render_module_report` already rendered any of them. Told by the User after the first cut left packs on PDF, Word and CSV. | User |
+
+### Shapes of time and data
+
+No new time or date. Files are produced from the result as before; `generated_at` stays a UTC instant.
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a new file format bypassing the formula guard, the row cap or the export audit; markup or a formula in a record value reaching a new format.
+- *Verify:* spreadsheet cells go through the registry's `csv_safe` and text-typed cells (test: a `=HYPERLINK` cell is written with the leading apostrophe in XLSX); the HTML and ODT writers are the ones custom layouts already use (test: markup in data is escaped); the record-list routes audit `html`, `odt`, `xlsx`, `ods` (test) and refuse an over-long document in `html`/`odt` as in `pdf`/`docx` (test).
+- *Remediate:* none needed.
+
+*Not applicable:* no authentication, secret, classification, permission or retention change; no MCP tool signature change (module report MCP tools return JSON); no module-boundary edit (core change is generic); no new table or bundle data; no user/group field.
+
+### Verification
+
+Backend: `test_report_framework.py` (every declared format produces a real file; `result_sheets`; `render_result` refuses `json`), `test_record_list_report.py`, `test_org_record_tables.py`. Storybook: `ReportRunner` lists every declared format and only documents carry the template. Playwright: `report-docx-export.spec.ts` downloads HTML, ODT, XLSX and ODS from a module report.
+
+
+## Custom reports Phase 23: the Reports page becomes a Reports dialog (2026-10-29)
+
+The third review asked for the Reports page to go: choosing and downloading a report happens in a dialog opened from the top of the project overview. The User answered the open questions interactively.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **No Reports page, route or navigation entry.** `ReportsPage`, `/projects/:id/reports` and the nav item are removed; the old route is not redirected (an old bookmark reaches the catch-all). Saved navigation preferences that mention the item are ignored like any item that no longer exists. | User |
+| 2 | **A "Reports" menu at the top of the project and organisation overviews** (`ReportsMenuButton`) with two items, **Choose a report…** and **Background reports…**. Both open `ReportsDialog`. The organisation menu appears only when its catalogue or packs list something, as the old Reports group did, and that group is gone. | User (menu and shared dialog), Agent (the two items: a menu of one item would not be a menu, and the background-runs list needed a home) |
+| 3 | **Whether the dialog is open is the `reports` search parameter** (`choose` or `runs`) on the overview, with `report` and `section` choosing a report and a section as before. A report figure that points at another report now links to `/projects/<id>?reports=choose&report=…&section=…` (`utils/reportLinks.ts`); this is the new deep link, not a redirect of the old path. Closing removes the three parameters and keeps the rest (the overview's project-scope filter). | Agent |
+| 4 | **Background reports live in the dialog** (the `runs` view, with a sentence saying how one comes about when empty). The list is no longer drawn under every report. | User |
+| 5 | **Branding template chain.** A document report uses: the template named in the request, else the layout's own template, else the organisation's default, else none (`report_document.effective_report_template`, used by the layout, module-report, record-list and requirement-report routes; a pack uses its named template, else the default). The default is `ReportTemplate.is_default`, at most one per organisation (a partial unique index; setting one clears the previous, in the same request). The layout's own is `ReportLayout.report_template_id` (`ON DELETE SET NULL`). Migration 0115. | User |
+| 6 | **The download step names the template that will apply** ("Default (House style)") and lets the person choose another. There is no explicit "none" while a default or an override applies: the User asked that a template always be used when one is available. | User |
+| 7 | **A layout's template is set when modifying a layout, not when creating one** (the User's words: "this can only be set when modifying a report layout"). The create form omits `Branding template` for that reason; both forms share `ReportLayoutFields`, which takes the field when given templates. | User |
+| 8 | **The requirement report keeps its filters and resource sections.** The plan's table says the filters and the "Template & layout" section go; only the second is removed (its template and chapter-layout choices are now plain fields above the buttons). The filters (R-G-03) and resource sections (R-G-04) are in the authoritative requirements and are that report's own parameters, so they stay in its step of the dialog. Flagged for the User to confirm. | Agent |
+| 9 | **The MCP layout tools do not take the template** (they keep their signatures, so the agent skill is unchanged); an MCP-created layout follows the organisation default until someone sets one in the designer. | Agent |
+| 10 | **Bundles.** The organisation bundle carries `is_default` per template (an existing default in the target organisation wins on a merge, so the unique index cannot be hit), and templates are now imported before layouts so a layout can name one. A layout travels with `report_template` (the template's name), looked up in the target organisation; a name with no match is a warning and the default applies. | Agent |
+| 11 | **Nested projects:** no new project-scoped definition table, so no fallback decision. **Users and groups:** no person-valued field. **Save and activate, MCP, search, codes:** not applicable. | Agent |
+
+### Shapes of time and data
+
+No new time or date. Templates and layouts hold no scheduled time.
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a layout naming another organisation's template (reading its branding, cross-tenant); a second default created by a race or a bundle; the default silently branding a report for a caller who should not choose branding.
+- *Verify:* the layout create and update paths refuse a template outside the layout's organisation (test: 422, and the override is cleared when the template is deleted); a requested id outside the organisation is a 400 on every run route (`ForeignReportTemplateError`); the one-default rule is a database partial unique index, with clearing done before the insert or flag change (test); a template is already readable by every organisation member, so naming it as a default exposes nothing new; setting the default stays an organisation-admin action and is audited (`report_template` created/updated carry `is_default`).
+- *Remediate:* none needed.
+
+*Not applicable:* no authentication, secret, classification or retention change; no module-boundary edit (`ReportCatalogueEntry.report_template_id` is generic).
+
+### Verification
+
+Backend (`test_report_templates.py`): one default per organisation, the precedence (requested, layout, default, none), a layout's template set, kept when left out, cleared with `null` and shown in the catalogue, a foreign template refused, delete clears the override, the organisation and project bundles carry the flag and the name. The wider report, bundle and import suites ran (323 passed; the one failure is the known mail-server DNS test, `test_import_invites_a_member_with_no_existing_account`). Storybook: `ReportsDialog`, `ReportsMenuButton`, the organisation overview's menu, the layout form's template field, the template form's default checkbox. Playwright: `reports-dialog.spec.ts`; every spec that opened `/projects/<id>/reports` now opens `?reports=choose`.
+
+### Known gap
+
+The docs website text now says "Reports dialog" and describes the template chain, but its screenshots of the old page (`reports-page.png`, `custom-reports-picker.png`, `report-pack-preview` and the module report pages') are unchanged: they are retaken in the website phase after the review, as the plan says.

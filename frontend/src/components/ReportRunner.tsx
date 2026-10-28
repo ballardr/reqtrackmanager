@@ -2,7 +2,7 @@
  * Module: components/ReportRunner
  *
  * Runs one catalogue report and shows it: the generated
- * parameter form, the on-screen result, and PDF/Word/CSV downloads. Everything
+ * parameter form, the on-screen result, and the downloads in every format the report offers. Everything
  * that is the same for every report lives here; only the result view varies,
  * and that is resolved generically (`getReportView`) so core never imports a
  * module's own view, falling back to `ReportViewer` for a report with none.
@@ -62,6 +62,9 @@ import { useStrings } from "../context/TerminologyContext";
 
 const RERUN_DELAY_MS = 300;
 
+/** The formats that lay the report out as a document, the only ones a branding template applies to. */
+const DOCUMENT_KINDS: readonly ReportFileKind[] = ["pdf", "docx", "html", "odt"];
+
 function initialValues(entry: ReportCatalogueEntry): ReportRunValues {
   const values: ReportRunValues = {};
   for (const param of entry.params) if (param.default !== null && param.default !== undefined) values[param.name] = param.default;
@@ -99,6 +102,8 @@ export function ReportRunner({
   const [settled, setSettled] = useState<{ signature: string; error: string | null } | null>(null);
   const templates = useReportTemplates(organizationId);
   const [templateId, setTemplateId] = useState("");
+  // What a download uses when none is chosen: the layout's own template, else the organisation's default.
+  const defaultTemplate = templates.find((t) => t.id === entry.report_template_id) ?? templates.find((t) => t.is_default);
   const [openedFigure, setOpenedFigure] = useState<{ metric: ReportMetric; values: ReportRunValues } | null>(null);
   const hasRun = useRef(false);
   // What a run sends: the report's values plus the chosen variables (as JSON); a report with none is unchanged.
@@ -154,7 +159,7 @@ export function ReportRunner({
 
   async function download(kind: ReportFileKind) {
     const name = DOWNLOAD_NAME[kind];
-    const fileValues = kind === "csv" ? runValues : { ...runValues, report_template_id: templateId };
+    const fileValues = DOCUMENT_KINDS.includes(kind) ? { ...runValues, report_template_id: templateId } : runValues;
     try {
       const blob = await reportsApi.download(entry, kind, fileValues);
       // A table layout of several sheets comes back as a zip of CSV files, whatever `csv` was asked for.
@@ -216,7 +221,7 @@ export function ReportRunner({
               value={templateId}
               onChange={setTemplateId}
               options={templates.map((t) => ({ value: t.id, label: t.name }))}
-              placeholder="No template"
+              placeholder={defaultTemplate ? strings.reports.templateDefaultNamed(defaultTemplate.name) : strings.reports.noTemplate}
             />
           )}
           {!blocked && <ReportExportButton onDownload={download} kinds={entry.formats.filter((f): f is ReportFileKind => f !== "json")} />}

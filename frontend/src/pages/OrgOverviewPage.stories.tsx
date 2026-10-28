@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { ReportCatalogueEntry } from "../api/reports";
@@ -32,7 +32,7 @@ const scopedStats: OrgOverviewStats = {
 function mockOrgOverviewApis(
   overrides: {
     org?: Organization; stats?: OrgOverviewStats; modules?: OrgModule[]; myOrgs?: Organization[];
-    /** Organisation-wide reports the caller can run (the core "Reports" group's catalogue). */
+    /** Organisation-wide reports the caller can run (the Reports menu's catalogue). */
     reports?: ReportCatalogueEntry[];
   } = {}
 ) {
@@ -187,27 +187,26 @@ const orgReport = buildReportCatalogueEntry({
   path: `/api/v1/orgs/${ORG_ID}/modules/fixture_report_module/reports/fixture-report`,
 });
 
-/** The core "Reports" group appears only when the
- * organisation catalogue lists a report the caller can run, and lists it
- * generically (no module is named here). */
-export const ReportsGroupListsOrganisationReports: Story = {
+/** The "Reports" menu beside the title appears only when the organisation catalogue lists a report the caller can
+ * run, and opens a dialog that lists it generically (no module is named here). */
+export const ReportsMenuOpensTheReportsDialog: Story = {
   beforeEach: () => mockOrgOverviewApis({ reports: [orgReport] }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("link", { name: "Reports" })).toHaveAttribute("href", `/orgs/${ORG_ID}/overview/reports`));
-    await userEvent.click(canvas.getByRole("link", { name: "Reports" }));
-    await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
-    await expect(canvas.getByText(/Acme Corp · generated/)).toBeInTheDocument();
+    await userEvent.click(await canvas.findByRole("button", { name: "Reports" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Choose a report…" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Reports" }));
+    await expect(await dialog.findByText(/Acme Corp · generated/)).toBeInTheDocument();
   },
 };
 
-/** No runnable org report (module off, or no org report role): no Reports group at all. */
-export const ReportsGroupHiddenWithoutOrganisationReports: Story = {
+/** No runnable org report (module off, or no org report role): no Reports menu at all. */
+export const ReportsMenuHiddenWithoutOrganisationReports: Story = {
   beforeEach: () => mockOrgOverviewApis({ reports: [] }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument();
-    await expect(canvas.queryByRole("link", { name: "Reports" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Reports" })).not.toBeInTheDocument();
   },
 };
 

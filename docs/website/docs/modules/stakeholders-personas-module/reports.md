@@ -17,7 +17,7 @@ flowchart LR
     S1 & S2 & S3 & S4 & S5 --> O["On screen · PDF · Word · CSV · AI assistant"]
 ```
 
-Open the project's **Reports** page and choose a report from the **Report** picker; the reports appear while the module is enabled for the project. How the page works (options, export, branding template) is the same for every module report; see [Context & Strategy → Reports](../context-strategy-module/reports.md#generating-a-report). **Include child projects** adds readable sub-projects that also have the module on. Each report covers only what you can read, and there is no organisation-wide version.
+Open the **Reports** menu at the top of the project overview, choose **Choose a report…**, and pick a report from the **Report** picker; the reports appear while the module is enabled for the project. How the page works (options, export, branding template) is the same for every module report; see [Context & Strategy → Reports](../context-strategy-module/reports.md#generating-a-report). **Include child projects** adds readable sub-projects that also have the module on. Each report covers only what you can read, and there is no organisation-wide version.
 
 ## The reports
 

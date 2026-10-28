@@ -80,7 +80,7 @@ test.describe("Custom report variables", () => {
     await createLayout(request, headers, project.id, name, text());
 
     await test.step("a required variable holds the report back, naming what is needed", async () => {
-      await page.goto(`/projects/${project.id}/reports`);
+      await page.goto(`/projects/${project.id}?reports=choose`);
       await chooseReport(page, name);
       await expect(page.getByText("Choose a value for Categories to run this report.")).toBeVisible();
       await expect(page.getByRole("cell", { name: requirements.Security })).toHaveCount(0);
@@ -124,7 +124,7 @@ test.describe("Custom report variables", () => {
     const name = `E2E Variables default ${suffix}`;
     await createLayout(request, headers, project.id, name, text(' default "Usability"'));
 
-    await page.goto(`/projects/${project.id}/reports`);
+    await page.goto(`/projects/${project.id}?reports=choose`);
     await chooseReport(page, name);
 
     await expect(page.getByRole("cell", { name: requirements.Usability })).toBeVisible();

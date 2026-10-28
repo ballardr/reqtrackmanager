@@ -69,7 +69,7 @@ test.describe("Report picker, folders and placements", () => {
       headers, data: { name: pack, description: "", folder: "Handover", definition: { schema_version: 1, entries: [] } },
     });
     expect(made.ok(), await made.text()).toBeTruthy();
-    await page.goto(`/projects/${projects[0].id}/reports`);
+    await page.goto(`/projects/${projects[0].id}?reports=choose`);
 
     await test.step("the button names the current report and its folder", async () => {
       await expect(reportPickerButton(page)).toHaveAttribute("aria-label", "Report: Requirements report");
@@ -157,7 +157,7 @@ test.describe("Report picker, folders and placements", () => {
     });
 
     await test.step("every project follows it: the report is in the new folder and the hidden one is gone", async () => {
-      await page.goto(`/projects/${alpha.id}/reports`);
+      await page.goto(`/projects/${alpha.id}?reports=choose`);
       const dialog = await openReportPicker(page);
       await dialog.getByRole("button", { name: "Expand Governance" }).click();
       await dialog.getByRole("button", { name: "Expand Decisions" }).click();
@@ -176,12 +176,12 @@ test.describe("Report picker, folders and placements", () => {
       await table.getByRole("button", { name: "Actions for Approval ageing" }).click();
       await page.getByRole("menuitem", { name: "Show in the list" }).click();
       await expect(page.getByText("Report shown in the list.")).toBeVisible();
-      await page.goto(`/projects/${alpha.id}/reports`);
+      await page.goto(`/projects/${alpha.id}?reports=choose`);
       expect(await listReports(page)).toContain("Approval ageing");
     });
 
     await test.step("another project still follows the organisation", async () => {
-      await page.goto(`/projects/${beta.id}/reports`);
+      await page.goto(`/projects/${beta.id}?reports=choose`);
       expect(await listReports(page)).not.toContain("Approval ageing");
     });
 
@@ -193,7 +193,7 @@ test.describe("Report picker, folders and placements", () => {
       await table.getByRole("button", { name: "Actions for Approval ageing" }).click();
       await page.getByRole("menuitem", { name: "Follow the default again" }).click();
       await expect(page.getByText("Back to following the default.")).toBeVisible();
-      await page.goto(`/projects/${alpha.id}/reports`);
+      await page.goto(`/projects/${alpha.id}?reports=choose`);
       expect(await listReports(page)).not.toContain("Approval ageing");
     });
   });

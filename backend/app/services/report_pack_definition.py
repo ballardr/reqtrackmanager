@@ -38,6 +38,7 @@ import re
 from typing import Any
 
 from app.modules.registry import get_all_reports
+from app.services.report_framework import REPORT_FORMATS as framework_formats
 from app.services.report_layout_tree import TreeError, TreeValidator, tree_hash
 from app.services.report_render import formats_for
 from app.services.report_variables import MAX_LIST_VALUES, MAX_VALUE_CHARS, NAME_RE
@@ -48,8 +49,8 @@ MAX_ENTRIES = 25
 MAX_FILENAME_CHARS = 60
 MAX_DEFINITION_BYTES = 256_000
 MAX_ERRORS = 50
-#: The formats a module report can be produced in as a pack entry (the framework's own, not `json`).
-REPORT_FORMATS = ("pdf", "docx", "csv")
+#: The formats a module report can be produced in as a pack entry: every file format the framework offers.
+REPORT_FORMATS = tuple(f for f in framework_formats if f != "json")
 LAYOUT_TIERS = ("organization", "project")
 _FILENAME_BAD = re.compile(r"[^A-Za-z0-9 ._-]")
 
