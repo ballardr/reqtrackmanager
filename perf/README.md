@@ -348,7 +348,7 @@ the runner refuses to write a bundle that fails it, and the archive (only with `
 ## Recording the sizing baseline and comparing runs
 
 `perf/run_baseline.sh <host-label>` is the one command that refreshes the figures in [docs/performance.md](../docs/performance.md)
-and the memory limits in `docker-compose.yml`: the capacity climb at 2, 4 and 6 workers (T2, ten projects, plain and with the
+and the memory limits in `docker-compose.yml`: the capacity climb at 1, 2, 4 and 6 workers (T2, ten projects, plain and with the
 other record types in the mix) with levels low enough to find the usable one, the same climb at T3, and a full T0-T4 run with
 the soak. It is long (hours; `--repeats 1` shortens it, at the cost of the noise band), so run it unattended. A failed run does not stop the
 next, and the end lists each outcome.

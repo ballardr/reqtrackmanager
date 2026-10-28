@@ -5,7 +5,7 @@
 #   PROD_HEALTH_URL=https://prod.example/health perf/run_baseline.sh <host-label> [extra run_profile.sh options]   (shared host)
 #   DEDICATED=1 perf/run_baseline.sh <host-label> [extra run_profile.sh options]                                 (nothing else runs there)
 #
-# The runs, in order: (1) the capacity climb at 2, 4 and 6 workers with levels low enough to find the usable one (T2, ten
+# The runs, in order: (1) the capacity climb at 1, 2, 4 and 6 workers (one worker is the Raspberry Pi's count) with levels low enough to find the usable one (T2, ten
 # projects, plain and with the other record types in the mix); (2) the same climb at T3 with six workers and the
 # recommended PostgreSQL memory settings; (3) every tier T0-T4 with the soak at four workers (the default), which gives memory per
 # service at idle, under load and over time. A run that fails or aborts does not stop the next: every outcome is listed
@@ -42,7 +42,7 @@ run() {
     summary="$summary\n  $outcome $name (${minutes} min)"
 }
 
-run "1 capacity by worker count (T2, ten projects, plain and mixed)" --full --tiers T2 --breadth projects-10 --scenarios capacity,capacity_mixed --workers-sweep 2,4,6 --max-cpus 12 --capacity-users 64,128,192,256,384 "$@"
+run "1 capacity by worker count (T2, ten projects, plain and mixed)" --full --tiers T2 --breadth projects-10 --scenarios capacity,capacity_mixed --workers-sweep 1,2,4,6 --max-cpus 12 --capacity-users 32,64,128,192,256,384 "$@"
 run "2 capacity at T3 (ten projects, six workers, shared_buffers 512MB)" --full --tiers T3 --breadth projects-10 --scenarios capacity --capacity-tier T3 --workers 6 --db-pool-size 4 --db-max-overflow 10 --max-cpus 12 --pg-shared-buffers 512MB --pg-work-mem 16MB --capacity-users 64,128,192,256 "$@"
 run "3 memory and scaling baseline (T0-T4, soak, four workers)" --full --workers 4 "$@"
 
