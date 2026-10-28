@@ -12288,3 +12288,9 @@ An end-to-end audit (authentication, authorisation, tenant isolation, files, out
 - **Capacity fell, and the cause was found in the database (Decided by: Agent).** 157 req/s against about 240 earlier. The statements named the dashboard building every module type's list to count it (fourteen types had no `count` hook) and the activity timeline's two audit queries reading the project's whole trail. Fixed in F20 (count hooks with a test that compares each with its list, archived records included; a closed list of legacy link event types; migration 0110). Whether capacity recovers is for the next server run to show; it is not assumed.
 - **Test coverage added (Decided by: Agent).** A new type must have a count hook (`test_every_overview_type_has_a_count_hook`), recorded in the `CLAUDE.md` section on profilable types.
 
+## Resource profiling Phase 4c: closed (2026-10-28)
+
+- **Verified (Decided by: Agent).** The second server run confirmed F20: `capacity` 157 to 225 req/s at 256 connections (237 at 512) and `capacity_mixed` 122 to 150, with the audit statements at about 4 ms and the cache hit rate at 99.7%. All seven steps are done and every finding has a fix with a guard.
+- **Carried into Phase 5 (Decided by: Agent).** A usable capacity level (the lowest level run is already past the knee: run 128 and 192 connections), O12 for requirements, O13 (`shared_buffers`), O19 (per-project role reads), O20 (bundle temp spill) and O21 (the first-request spike). The sizing page must state that the other types were measured at 15 types x 5 ratios on synthetic data, organisation-owned records and attachments excluded.
+- **Not confirmed (Decided by: Agent).** A full backend suite run on the final commit was not obtained cleanly (a branch switch mid-run, then a possible clash with a concurrent run); the targeted suites and a clean-worktree rerun of the failing files pass. Re-run the suite once when the machine is otherwise idle.
+

@@ -626,11 +626,55 @@ def test_the_archive_is_refused_for_a_dirty_bundle(tmp_path):
         bundle.make_archive(directory, tmp_path / "x.tar.gz")
 
 
-def test_committed_results_pass_the_check():
+def _tracked_result_files() -> list[str] | None:
+    """Paths under `perf/results/` that git tracks (relative to it), or None when git cannot say (a source archive)."""
+    import subprocess
+
+    try:
+        done = subprocess.run(
+            ["git", "ls-files", "-z", "--", "perf/results"], cwd=_PERF.parent, capture_output=True, text=True, check=True, timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return [p.removeprefix("perf/results/") for p in done.stdout.split("\0") if p]
+
+
+def _result_findings(tracked: list[str]) -> list[str]:
+    """The anonymisation check's findings over the named files of `perf/results/` (symbolic links count as findings)."""
     results = _PERF / "results"
-    # A Finder `.DS_Store` appears in any folder a person opens on a Mac; it is operating-system metadata in a git-ignored
-    # directory, not a bundle file, so it is not a finding here (the check itself stays strict for a bundle).
-    assert [f for f in scrub.scan_tree(results) if not f.path.endswith(".DS_Store")] == []
+    names = scrub.machine_identities()
+    findings: list[str] = []
+    for relative in tracked:
+        path = results / relative
+        if path.is_symlink():
+            findings.append(f"{relative}: symbolic link")
+        elif path.is_file():
+            findings.extend(str(f) for f in scrub.scan_file(path, results, names))
+    return findings
+
+
+def test_committed_results_pass_the_check():
+    """A bundle that was force-added to git must carry nothing identifying.
+
+    Only tracked files are checked: `perf/results/` is git-ignored, so on a machine that has run the profile it also holds
+    local bundles (each already checked by the runner as it was written) and whatever a person copies in (a zip, a
+    `.DS_Store`), none of which is committed. In CI the checkout holds only tracked files, so the check is the same there.
+    """
+    tracked = _tracked_result_files()
+    if tracked is None:
+        pytest.skip("git is not available to list the tracked result files")
+    assert _result_findings(tracked) == []
+
+
+def test_only_tracked_files_are_checked_so_a_local_file_cannot_fail_it_but_a_committed_one_would():
+    """The same stray file is a finding when it is tracked and invisible to the check when it is not."""
+    stray = _PERF / "results" / "zz-stray-local-file.zip"
+    stray.write_bytes(b"PK")
+    try:
+        assert stray.name not in (_tracked_result_files() or [])
+        assert any("allowlist" in finding for finding in _result_findings([stray.name]))
+    finally:
+        stray.unlink()
 
 
 # --- catalogue, sampler and profile reading --------------------------------------------------------------
