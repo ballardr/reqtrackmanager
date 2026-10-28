@@ -1060,6 +1060,8 @@ class ReportCatalogueEntryOut(BaseModel):
     `kind` is what the Reports picker filters on (`sheet` is a table layout) and `folder` is the author's folder for a
     custom report (`""` for none: the picker then files a module report under its module and a custom one under
     "Custom reports").
+    `record_types` are the registered record types the report names or reads (a record list offers the reports that
+    list its type under "Download report").
     """
 
     module_key: str
@@ -1081,6 +1083,7 @@ class ReportCatalogueEntryOut(BaseModel):
     kind: Literal["report", "sheet"] = "report"
     folder: str = ""
     placement_key: str = ""
+    record_types: list[str] = []
 
 
 def param_out(param: ReportParamDefinition) -> ReportParamOut:
@@ -1105,6 +1108,7 @@ def _entry(
         breakdown_path=f"{path}/by-project" if scope == "organization" else None,
         projects=[ReportProjectOut(id=p.id, name=p.name) for p in projects],
         params=[param_out(p) for p in definition.params],
+        record_types=list(definition.record_types),
     )
 
 

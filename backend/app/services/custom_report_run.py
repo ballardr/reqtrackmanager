@@ -85,6 +85,7 @@ from app.services.report_layout_eval import (
     LayoutTimeoutError,
     evaluate_layout,
 )
+from app.services.report_layout_tree import record_types_of
 from app.services.report_model import (
     DEFAULT_PAGE_SIZE,
     Block,
@@ -585,6 +586,7 @@ def _entry(
         projects=[ReportProjectOut(id=p.id, name=p.name) for p in projects], params=[],
         variables=[ReportVariableOut.model_validate(v) for v in form],
         kind="sheet" if layout.family == FAMILY_TABLE else "report", folder=layout.folder,
+        record_types=record_types_of(tree),
     )
 
 

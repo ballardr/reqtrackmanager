@@ -13154,3 +13154,32 @@ No time or date field is added or changed. Stored data is **deleted** (report co
 ### Verification
 
 Backend: ruff clean; pytest on the touched areas passed (reports, templates, starters, images, docx, custom reports, framework, packs, run jobs, record list reports, placements, layouts, project and organisation export/import and merge, bundle hooks, search, doc links, MCP skill reference, organisation lifecycle); the one failure is the known mailhog DNS test (`test_import_invites_a_member_with_no_existing_account`). The full suite was not run. Migration 0114 was applied by the rebuilt `tests/container` backend (`alembic_version` 0114, table and column gone). Frontend: `tsc`, `eslint` and the Storybook stories for the Reports page, Project Admin, Org Admin and the report runner pass. Playwright: the image-in-a-resource-file, template/Report Setup and starter-layout specs pass; `report-content-per-type.spec.ts` is deleted with its feature. Website: Reports and export, three workflow pages, the glossary, the custom reports overview and two concept pages updated; the two Report Setup / Report Defaults screenshots are removed. `scripts/check_doc_links.py` passes.
+
+## Custom reports Phase 20: Download report from record lists (2026-10-28)
+
+The second design review asked for a way to take a report away from the list the records are on: the list actions menu gains **Download report**, which offers only the reports that use the list's record type (no engagement report on the requirements list).
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **A catalogue entry says which record types it uses** (`ReportCatalogueEntryOut.record_types`). A module report takes `ReportDefinition.record_types` (already declared, and already tested to be registered and coded). A custom layout takes `report_layout_tree.record_types_of(tree)`: every block's, sheet's or join's `source.record_type`, plus the types of the report behind each `widget` block. No new declaration and no per-module edit: the field is derived from what is already declared. | Agent |
+| 2 | **The platform "Record list" report is not matched** (its entry declares none): its PDF and Word are already the list's Export items, and offering it again would list the same file twice. | Agent |
+| 3 | **The dialog loads the catalogue when it opens**, not when the list page loads, so a list nobody downloads a report from costs no extra request (the project catalogue builds every layout's run form). A type no report uses shows "No report uses …" instead of hiding the menu item. | Agent |
+| 4 | **The picker is reused, not copied**: `ReportPickerPanel` (search, type filter, folders, favourites) is split out of the Reports page's dialog and embedded; a pick runs the report in place with `ReportRunner`, so variables, branding template, formats and background runs behave as on the Reports page. The panel opens every folder when nothing is chosen. | Agent |
+| 5 | **The list's own filters are not passed on.** A report has its own selection and variables; the filtered rows are what the Export items download. | Agent |
+| 6 | **Report packs are not offered here.** A pack is several reports and has no single record type; they stay on the Reports page. | Agent |
+
+### Shapes of time and data
+
+No time or date field is added. `record_types` is derived data (a list of registered type keys); nothing is stored.
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* the new field leaking a type the caller cannot see; the dialog widening what the catalogue returns.
+- *Verify:* the field is a list of type keys already visible to anyone who can open the layout or report; the dialog calls the existing catalogue routes (`require_project_view`, the organisation role), so who may list and run a report is unchanged, and the run still goes through the report's own gate.
+- *Remediate:* none needed.
+
+*Not applicable:* no authentication, secret, classification, permission, audit or retention change; no MCP tool touched; no module-boundary edit (nothing in a core file names a module); no new project-scoped table or bundle data; no user/group field.
+
+### Verification
+
+Backend: `record_types_of` and the catalogue field are pinned in `test_custom_report_run.py`; the reports, framework, placements and record-list report suites pass. Frontend: stories for the dialog and for the menu item; `tsc -b` and eslint clean. Playwright `list-download-report.spec.ts` (only the matching report is listed in its folder, it runs and downloads a PDF, Choose another returns to the list).

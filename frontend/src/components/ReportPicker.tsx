@@ -11,6 +11,8 @@
  *   report's stable placement key), so they follow the person across browsers.
  * - Report the choice through `onSelect`; the host (`ReportCatalogue`) keeps the selection in the URL.
  *
+ * `ReportPickerPanel` is the same search, filter and tree without the dialog, for another dialog to embed.
+ *
  * Design decisions: a dialog rather than a native `<select>` because a tree, search and stars do not fit one; the
  * expansion state is held here and overridden (everything open) only while a filter is active, so clearing the search
  * returns to the person's own layout. Pure presentation over already-loaded items.
@@ -111,6 +113,25 @@ function ReportPickerDialog({
   items, selectedId, onSelect, onClose,
 }: { items: ReportPickerItem[]; selectedId: string; onSelect: (id: string) => void; onClose: () => void }) {
   const text = useStrings().reportPicker;
+  return (
+    <Modal title={text.title} onClose={onClose} size="lg">
+      <ReportPickerPanel items={items} selectedId={selectedId} onSelect={onSelect} />
+    </Modal>
+  );
+}
+
+/**
+ * The picker's search, type filter and folder tree without a dialog around it, so another dialog can embed it
+ * (the record lists' "Download report" does).
+ *
+ * @param items Everything on offer.
+ * @param selectedId The highlighted item's id (`""` for none, which opens every folder).
+ * @param onSelect Called with the id of the report the person picked.
+ */
+export function ReportPickerPanel({
+  items, selectedId, onSelect,
+}: { items: ReportPickerItem[]; selectedId: string; onSelect: (id: string) => void }) {
+  const text = useStrings().reportPicker;
   const kindOptions = useKindOptions();
   const [search, setSearch] = useState("");
   const [kind, setKind] = useState<KindFilter>("all");
@@ -137,9 +158,11 @@ function ReportPickerDialog({
     return [favouritesFolder, ...folders];
   }, [shown, favouriteSet, text.favourites]);
 
-  const [openIds, setOpenIds] = useState<Set<string>>(
-    () => new Set([FAVOURITES_FOLDER_ID, ...folderIdsToItem(buildFolderTree(items, (i) => i.folder, (i) => i.title, (i) => i.id, TREE_PREFIX), selectedId, TREE_PREFIX)]),
-  );
+  // Opens on the chosen report's folders; with none chosen (an embedded picker) every folder is open.
+  const [openIds, setOpenIds] = useState<Set<string>>(() => {
+    const folders = buildFolderTree(items, (i) => i.folder, (i) => i.title, (i) => i.id, TREE_PREFIX);
+    return new Set([FAVOURITES_FOLDER_ID, ...(selectedId === "" ? allFolderIds(folders) : folderIdsToItem(folders, selectedId, TREE_PREFIX))]);
+  });
   const expanded = useMemo(() => (filtering ? new Set(allFolderIds(tree)) : openIds), [filtering, tree, openIds]);
 
   function toggleFavourite(item: ReportPickerItem) {
@@ -149,48 +172,46 @@ function ReportPickerDialog({
   }
 
   return (
-    <Modal title={text.title} onClose={onClose} size="lg">
-      <div className="stack">
-        <div className="row" style={{ alignItems: "flex-end" }}>
-          <div style={{ flex: 1 }}>
-            <TextField helpNotNeeded label={text.search} value={search} onChange={setSearch} inputProps={{ autoFocus: true }} />
-          </div>
-          <LabeledSelect helpNotNeeded label={text.show} value={kind} onChange={(v) => setKind(v as KindFilter)} options={kindOptions} placeholder={null} />
+    <div className="stack">
+      <div className="row" style={{ alignItems: "flex-end" }}>
+        <div style={{ flex: 1 }}>
+          <TextField helpNotNeeded label={text.search} value={search} onChange={setSearch} inputProps={{ autoFocus: true }} />
         </div>
-        {shown.length === 0 ? (
-          <p className="text-muted">{text.noMatch}</p>
-        ) : (
-          <TreeView
-            nodes={tree}
-            nodeLabel={(node) => node.name}
-            expanded={expanded}
-            onToggle={(id, isOpen) => {
-              if (filtering) return;
-              setOpenIds((current) => {
-                const next = new Set(current);
-                if (isOpen) next.add(id);
-                else next.delete(id);
-                return next;
-              });
-            }}
-            renderNode={(node) => (node.kind === "folder" ? (
-              <span className="row" style={{ gap: "var(--space-1)", alignItems: "center" }}>
-                <strong>{node.name}</strong>
-                <Badge>{text.folderCount(node.count)}</Badge>
-              </span>
-            ) : (
-              <PickerRow
-                item={node.item as ReportPickerItem}
-                selected={(node.item as ReportPickerItem).id === selectedId}
-                favourite={favouriteSet.has(favouriteKeyOf(node.item as ReportPickerItem))}
-                onSelect={onSelect}
-                onToggleFavourite={toggleFavourite}
-              />
-            ))}
-          />
-        )}
+        <LabeledSelect helpNotNeeded label={text.show} value={kind} onChange={(v) => setKind(v as KindFilter)} options={kindOptions} placeholder={null} />
       </div>
-    </Modal>
+      {shown.length === 0 ? (
+        <p className="text-muted">{text.noMatch}</p>
+      ) : (
+        <TreeView
+          nodes={tree}
+          nodeLabel={(node) => node.name}
+          expanded={expanded}
+          onToggle={(id, isOpen) => {
+            if (filtering) return;
+            setOpenIds((current) => {
+              const next = new Set(current);
+              if (isOpen) next.add(id);
+              else next.delete(id);
+              return next;
+            });
+          }}
+          renderNode={(node) => (node.kind === "folder" ? (
+            <span className="row" style={{ gap: "var(--space-1)", alignItems: "center" }}>
+              <strong>{node.name}</strong>
+              <Badge>{text.folderCount(node.count)}</Badge>
+            </span>
+          ) : (
+            <PickerRow
+              item={node.item as ReportPickerItem}
+              selected={(node.item as ReportPickerItem).id === selectedId}
+              favourite={favouriteSet.has(favouriteKeyOf(node.item as ReportPickerItem))}
+              onSelect={onSelect}
+              onToggleFavourite={toggleFavourite}
+            />
+          ))}
+        />
+      )}
+    </div>
   );
 }
 

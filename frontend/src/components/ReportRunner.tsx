@@ -86,7 +86,8 @@ export function ReportRunner({
 }: {
   entry: ReportCatalogueEntry;
   scope: { kind: "project" | "organization"; id: string };
-  organizationId: string;
+  /** The owning organisation (branding templates); `undefined` offers no template choice. */
+  organizationId: string | undefined;
   focusSection?: string;
 }) {
   const strings = useStrings();

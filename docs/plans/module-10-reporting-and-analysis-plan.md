@@ -2,7 +2,7 @@
 
 See [future-modules-2026-09-index.md](future-modules-2026-09-index.md) for cross-cutting architecture. Source requirement: [overview §47](completed/future-modules-2026-09-overview.md) (read-only; `docs/requirements.md` stays authoritative).
 
-**Status:** Re-planned 2026-10-20 (supersedes the 2026-09 plan, which predated the core report framework). Phases 0 to 10, 10b, 10c, 11, 12 and 13 (its Phase 0), 13a to 13d, 16 to 18 done 2026-10-26 to 2026-10-28. Phases 10b (run-time variables) and 10c (report packs) added 2026-10-27 at the User's request. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`.
+**Status:** Re-planned 2026-10-20 (supersedes the 2026-09 plan, which predated the core report framework). Phases 0 to 10, 10b, 10c, 11, 12 and 13 (its Phase 0), 13a to 13d, 16 to 20 done 2026-10-26 to 2026-10-28. Phases 10b (run-time variables) and 10c (report packs) added 2026-10-27 at the User's request. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`.
 
 ## What this module is now
 
@@ -77,8 +77,8 @@ Three orthogonal axes, kept separate: **layout** (what is reported), **branding 
 | 17 | Text designer fixes (review 2) | **Done 2026-10-28** (built and tested; awaiting the checkpoint review). |
 | 18 | Block editor on Blockly | **Done 2026-10-28** (built and tested; awaiting the checkpoint review). |
 | 19 | Remove report content and the project default template | **Done 2026-10-28** (built and tested; awaiting the checkpoint review). The User chose to drop the content, not convert it; decisions log "Custom reports Phase 19". |
-| 20 | Download report from record lists | Planned, not started |
-| R | Review checkpoint: the User reviews Phases 17 to 20 together | After Phase 20 |
+| 20 | Download report from record lists | **Done 2026-10-28** (built and tested; awaiting the checkpoint review). Decisions log "Custom reports Phase 20". |
+| R | Review checkpoint: the User reviews Phases 17 to 20 together | **Next** |
 | 15 | Docs website | After the review checkpoint |
 
 The plan is not closed. The paragraph below is the history of Phases 0 to 15, kept as written.
@@ -118,7 +118,7 @@ The plan is not closed. The paragraph below is the history of Phases 0 to 15, ke
 | 17 | Text designer fixes: icon toolbar with tooltips, Save popover for the change note, one searchable list of fields and placeholders, Document view removed (with TipTap), page size, project placeholders (User review 2, 2026-10-28) | 4 | [x] |
 | 18 | Block editor on Blockly (themed), blocks generated from the server's block schemas, replacing the Outline; heading blocks by level, compact inline-label forms (decisions log "Custom reports Phase 18"; website screenshot left to Phase 15) | 4 | [x] |
 | 19 | Report content (introduction, chapters, appendices) removed everywhere (dropped, not converted: User, 2026-10-28); the project default branding template pointer removed; "Requirements by Component" starter layout as the requirements counterpart (widgets for project facts: the `{{project_code}}` and `{{project_description}}` placeholders of Phase 17) | 4 | [x] |
-| 20 | Download report from record lists: the list actions menu offers a report picker limited to reports that use the list's record type | 4 | [ ] |
+| 20 | Download report from record lists: the list actions menu offers a report picker limited to reports that use the list's record type | 4 | [x] |
 | R | **Review checkpoint (User):** the User reviews Phases 17 to 20 together, once all are built; Phases 16 to 16d were reviewed 2026-10-28. The plan is not closed before it, and Phase 15 (docs) waits for it | 4 | [ ] |
 | 15 | Docs website coverage (incremental; first slice 2026-10-28: nested Custom reports section with eight screenshots, decisions log "Custom reports Phase 15"; background-reports, starters and organisation-run screenshots still to add) | — | [ ] |
 

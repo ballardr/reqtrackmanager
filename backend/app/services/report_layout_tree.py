@@ -219,6 +219,41 @@ def register_block_spec(spec: BlockSpec) -> None:
     BLOCK_SPECS[spec.key] = spec
 
 
+def record_types_of(tree: Any) -> list[str]:
+    """The record types a tree reads, sorted: every source's `record_type` (a block's, a sheet's or a join's) and the
+    types the report behind each `widget` block names (`ReportDefinition.record_types`).
+
+    Used by the catalogue so a record list can offer the reports that use its type. The tree is only walked, not
+    validated, so an unknown widget or a malformed node adds nothing.
+
+    Args:
+        tree: A layout tree (any JSON value is tolerated).
+
+    Returns:
+        The distinct type keys, alphabetically.
+    """
+    found: set[str] = set()
+
+    def walk(value: Any) -> None:
+        if isinstance(value, dict):
+            source = value.get("source")
+            if isinstance(source, dict) and isinstance(source.get("record_type"), str):
+                found.add(source["record_type"])
+            key = value.get("key")
+            if value.get("type") == "widget" and isinstance(key, str):
+                widget = find_widget(key)
+                if widget is not None:
+                    found.update(widget.definition.record_types)
+            for child in value.values():
+                walk(child)
+        elif isinstance(value, list):
+            for child in value:
+                walk(child)
+
+    walk(tree)
+    return sorted(found)
+
+
 def tree_hash(tree: dict[str, Any]) -> str:
     """SHA-256 hex of the tree's canonical JSON (sorted keys, no whitespace)."""
     canonical = json.dumps(tree, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -1185,5 +1220,5 @@ __all__ = [
     "LIST_OPERATORS", "MAX_COLUMNS", "MAX_CONDITION_DEPTH", "MAX_DEPTH", "MAX_JOINS", "MAX_NODES", "MAX_TREE_BYTES",
     "MAX_WIDGET_REPORTS", "OPERATORS_BY_KIND", "PLACEHOLDER_RE", "TREE_SCHEMA_VERSION", "Binding", "BlockSpec",
     "InvalidLayoutError", "Ref", "TreeAnalysis", "TreeError", "TreeValidator", "assert_valid", "empty_tree",
-    "literal_problem", "register_block_spec", "tree_hash", "validate_tree",
+    "literal_problem", "record_types_of", "register_block_spec", "tree_hash", "validate_tree",
 ]

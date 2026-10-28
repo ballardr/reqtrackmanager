@@ -1,5 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, fn, userEvent, waitFor, within } from "storybook/test";
+import { expect, fn, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
+
+import { api } from "../api/client";
+import { buildReportCatalogueEntry } from "../testing/reportFixtures";
+import { buildUser, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
 
 import { buildImportResult, buildRecordColumns, failing, fakeRecordTables, inSequence } from "../testing/recordTablesFixtures";
 import { chooseListAction, openListMenu } from "../testing/listActionsMenu";
@@ -39,7 +43,7 @@ export const TheActionsShareOneBurgerMenu: Story = {
     await expect(canvas.queryByRole("button", { name: "Export" })).not.toBeInTheDocument();
     await expect(canvas.queryByText("Import")).not.toBeInTheDocument();
     const menu = await openListMenu(canvas);
-    for (const name of ["Export as CSV", "Export as PDF", "Export as Word file", "Download import template", "Import from CSV"]) {
+    for (const name of ["Export as CSV", "Export as PDF", "Export as Word file", "Download report", "Download import template", "Import from CSV"]) {
       await expect(menu.getByRole("menuitem", { name })).toBeInTheDocument();
     }
   },
@@ -114,6 +118,25 @@ export const ImportOpensTheWizardAndReloadsTheList: Story = {
     await userEvent.click(modal.getByRole("button", { name: "Preview" }));
     await userEvent.click(await modal.findByRole("button", { name: "Apply 1 change(s)" }));
     await waitFor(() => expect(args.onImported).toHaveBeenCalledOnce());
+  },
+};
+
+/** Download report opens the picker of the reports that use the list's record type. */
+export const DownloadReportOffersTheReportsForTheType: Story = {
+  decorators: [withRouter("/projects/project-1/requirements", "/projects/:projectId/requirements"), withStatefulAuth(buildUser({ ui_preferences: {} }))],
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => (path.endsWith("/report-catalogue")
+      ? [
+        buildReportCatalogueEntry({ slug: "requirement-coverage", title: "Requirement coverage", record_types: ["requirement"] }),
+        buildReportCatalogueEntry({ slug: "engagement-yield", title: "Engagement yield", record_types: ["engagement"] }),
+      ]
+      : []));
+  },
+  play: async ({ canvasElement }) => {
+    await chooseListAction(within(canvasElement), "Download report");
+    const dialog = within(await screen.findByRole("dialog", { name: "Download report" }));
+    await expect(await dialog.findByRole("button", { name: /^Requirement coverage/ })).toBeInTheDocument();
+    await expect(dialog.queryByText(/Engagement yield/)).not.toBeInTheDocument();
   },
 };
 
