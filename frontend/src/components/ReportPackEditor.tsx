@@ -37,13 +37,13 @@ import { useReportTemplates } from "../hooks/useReportTemplates";
 import { canonicalJson, newUid, type LayoutChoice } from "../utils/reportPackDraft";
 import { Badge } from "./Badge";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { TextField } from "./FormFields";
 import { LabeledSelect } from "./LabeledSelect";
 import { RecordHeader } from "./RecordHeader";
 import { ReportPackEntriesEditor, type DraftEntry, type ReportChoice } from "./ReportPackEntriesEditor";
 import { ReportPackFormModal } from "./ReportPackFormModal";
 import { ReportPackSetsPanel } from "./ReportPackSetsPanel";
 import { ReportPackVariablesEditor, type DraftVariable } from "./ReportPackVariablesEditor";
+import { SaveVersionButton } from "./SaveVersionButton";
 import { Spinner } from "./Spinner";
 import { Tabs, tabPanelProps, type TabDef } from "./Tabs";
 
@@ -78,7 +78,6 @@ export function ReportPackEditor({ api, packId, backTo }: { api: ReportPackApi; 
   const [entries, setEntries] = useState<DraftEntry[]>([]);
   const [variables, setVariables] = useState<DraftVariable[]>([]);
   const [template, setTemplate] = useState("");
-  const [note, setNote] = useState("");
   const [tab, setTab] = useState<Tab>("reports");
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [saving, setSaving] = useState(false);
@@ -149,22 +148,24 @@ export function ReportPackEditor({ api, packId, backTo }: { api: ReportPackApi; 
   const editable = detail.editable;
   const originLabel = LAYOUT_ORIGIN_LABEL[detail.origin];
 
-  async function save() {
-    if (!detail) return;
+  /** Saves the definition on screen as a new version with `note`; resolves to whether a version was stored. */
+  async function save(note: string): Promise<boolean> {
+    if (!detail) return false;
     setSaving(true);
     setProblems([]);
     try {
-      const result = await api.save(packId, { definition, base_version: detail.current_version, comment: note.trim() });
+      const result = await api.save(packId, { definition, base_version: detail.current_version, comment: note });
       showToast(result.current_version === detail.current_version ? text.noChanges : text.saved(result.current_version));
       setDetail(result);
-      setNote("");
       setVersions(null);
+      return true;
     } catch (err) {
       const newer = conflictVersion(err);
       const found = packProblems(err);
       if (newer !== null) setConflict(true);
       else if (found.length > 0) setProblems(found.map((p) => text.problem(p.path, p.message)));
       else showToast(toErrorMessage(err, text.saveFailed), "error");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -293,17 +294,7 @@ export function ReportPackEditor({ api, packId, backTo }: { api: ReportPackApi; 
 
       {editable && (tab === "reports" || tab === "variables") && (
         <div className="row" style={{ alignItems: "flex-end", flexWrap: "wrap" }}>
-          <TextField helpNotNeeded
-            label={text.changeNoteLabel} value={note} onChange={setNote} placeholder={text.changeNotePlaceholder}
-            inputProps={{ maxLength: 500 }}
-          />
-          <button
-            type="button" className="btn btn-primary"
-            disabled={saving || !dirty || invalid.size > 0}
-            onClick={() => void save()}
-          >
-            {text.saveVersion}
-          </button>
+          <SaveVersionButton disabled={!dirty || invalid.size > 0} saving={saving} onSave={save} />
           {invalid.size > 0 && <span className="text-muted">{text.needsInvalidFix}</span>}
         </div>
       )}

@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
+import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, selectProjectAdminGroup, saveNewVersion } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -85,8 +85,7 @@ test.describe("Report layout designer", () => {
     });
 
     await test.step("saving makes version 2 and the note is kept in the history", async () => {
-      await page.getByRole("textbox", { name: "Note on this change" }).fill("Listed the requirements");
-      await page.getByRole("button", { name: "Save new version" }).click();
+      await saveNewVersion(page, "Listed the requirements");
       await expect(page.getByText("Saved as version 2.")).toBeVisible();
       await expect(page.getByText("Unsaved changes")).toHaveCount(0);
       await page.getByRole("tab", { name: "History" }).click();
@@ -102,30 +101,31 @@ test.describe("Report layout designer", () => {
     });
   });
 
-  test("a layout is built in the block outline, previewed, saved and read back as text", async ({ page, request }) => {
+  test("a layout is built in the block editor, previewed, saved and read back as text", async ({ page, request }) => {
     const { project, requirements, suffix } = await setup(page, request);
-    await createFromProjectAdmin(page, project.id, `E2E outline layout ${suffix}`);
+    await createFromProjectAdmin(page, project.id, `E2E blocks layout ${suffix}`);
+    const inspector = page.getByLabel("Block details");
 
-    await test.step("the outline starts empty", async () => {
-      await page.getByRole("tab", { name: "Outline" }).click();
-      await expect(page.getByRole("region", { name: "Layout outline" })).toBeVisible();
-      await expect(page.getByText("This layout has no blocks yet. Add one to start.")).toBeVisible();
+    await test.step("the block editor starts empty", async () => {
+      await page.getByRole("tab", { name: "Blocks" }).click();
+      await expect(page.getByRole("region", { name: "Block editor" })).toBeVisible();
+      await expect(inspector.getByText("Select a block to edit its settings.")).toBeVisible();
     });
 
     await test.step("a For each block takes its records from a type and names each record", async () => {
-      await page.getByRole("button", { name: "Add block" }).click();
+      await inspector.getByRole("button", { name: "Add block" }).click();
       await page.getByRole("menuitem", { name: "For each record" }).click();
-      const each = page.getByRole("listitem", { name: "For each record block 1" });
-      await each.getByRole("combobox", { name: "Record type" }).selectOption({ label: "Requirement" });
-      await each.getByRole("textbox", { name: "Name" }).fill("req");
+      await inspector.getByRole("combobox", { name: "Record type" }).selectOption({ label: "Requirement" });
+      await inspector.getByRole("textbox", { name: "Name", exact: true }).fill("req");
     });
 
     await test.step("a heading inside it shows each requirement's title", async () => {
-      await page.getByRole("button", { name: "Add to Contents: For each record 1" }).click();
-      await page.getByRole("menuitem", { name: "Heading" }).click();
-      const heading = page.getByRole("listitem", { name: "Heading block 1" });
-      await heading.getByRole("textbox", { name: "Heading" }).fill("{{req.title}}");
+      await inspector.getByRole("button", { name: "Add to Contents" }).click();
+      await page.getByRole("menuitem", { name: "Heading 2" }).click();
+      await inspector.getByRole("textbox", { name: "Heading", exact: true }).fill("{{req.title}}");
       await expect(page.getByText("No problems.")).toBeVisible();
+      // The block on the workspace shows the same words.
+      await expect(page.locator(".blocklyEditableField .blocklyText", { hasText: "{{req.title}}" })).toBeVisible();
     });
 
     await test.step("the preview lists this project's requirements", async () => {
@@ -135,97 +135,93 @@ test.describe("Report layout designer", () => {
     });
 
     await test.step("a block with a problem says so and holds back saving", async () => {
-      const heading = page.getByRole("listitem", { name: "Heading block 1" });
-      await heading.getByRole("textbox", { name: "Heading" }).fill("");
-      await expect(heading.getByText("Must not be empty.")).toBeVisible();
+      await inspector.getByRole("textbox", { name: "Heading", exact: true }).fill("");
+      await expect(inspector.getByText("Must not be empty.")).toBeVisible();
       await expect(page.getByRole("button", { name: "Save new version" })).toBeDisabled();
-      await heading.getByRole("textbox", { name: "Heading" }).fill("{{req.title}}");
+      await inspector.getByRole("textbox", { name: "Heading", exact: true }).fill("{{req.title}}");
       await expect(page.getByText("No problems.")).toBeVisible();
     });
 
     await test.step("saving makes version 2, and the text view reads the same layout", async () => {
-      await page.getByRole("button", { name: "Save new version" }).click();
+      await saveNewVersion(page);
       await expect(page.getByText("Saved as version 2.")).toBeVisible();
       await page.getByRole("tab", { name: "Text" }).click();
       await expect(page.getByRole("textbox", { name: "Layout text" })).toHaveValue(/@each requirement[\s\S]*as req[\s\S]*@heading[\s\S]*\{\{req\.title\}\}/);
     });
 
-    await test.step("a reload and the outline show the saved blocks", async () => {
+    await test.step("a reload and the block editor show the saved blocks", async () => {
       await page.reload();
-      await page.getByRole("tab", { name: "Outline" }).click();
-      await expect(page.getByRole("listitem", { name: "For each record block 1" })).toBeVisible();
-      await expect(page.getByRole("textbox", { name: "Heading" })).toHaveValue("{{req.title}}");
+      await page.getByRole("tab", { name: "Blocks" }).click();
+      await expect(page.locator(".blocklyEditableField .blocklyText", { hasText: "{{req.title}}" })).toBeVisible();
     });
   });
 
-  test("a layout is written in the document view with formatting and links, previewed, saved and read back in the other views", async ({ page, request }) => {
+  test("formatting and links written in the text view are previewed, saved and read back in the block editor", async ({ page, request }) => {
     const { project, suffix } = await setup(page, request);
-    await createFromProjectAdmin(page, project.id, `E2E document layout ${suffix}`);
-    await page.getByRole("tab", { name: "Document" }).click();
-    const region = page.getByRole("region", { name: "Layout document" });
+    await createFromProjectAdmin(page, project.id, `E2E formatted layout ${suffix}`);
+    const editor = page.getByRole("textbox", { name: "Layout text" });
 
-    await test.step("a heading and a text block are added and typed in place", async () => {
-      await region.getByRole("button", { name: "Add block" }).click();
-      await page.getByRole("menuitem", { name: "Heading" }).click();
-      await region.locator(".rich-heading").click({ clickCount: 3 });
-      await page.keyboard.type("Spec review");
-      await region.getByRole("button", { name: "Add block" }).click();
-      await page.getByRole("menuitem", { name: "Text", exact: true }).click();
-      await region.locator(".rich-prose p").click({ clickCount: 3 });
-      await page.keyboard.type("Read the spec **now** please");
-      await expect(region.locator(".rich-prose strong")).toHaveText("now");
-    });
-
-    await test.step("selected words become a web link and a link to the heading through the dialog", async () => {
-      await region.locator(".rich-prose p").click();
-      await page.keyboard.press("Home");
-      for (let i = 0; i < 9; i += 1) await page.keyboard.press("ArrowRight");
-      for (let i = 0; i < 4; i += 1) await page.keyboard.press("Shift+ArrowRight");
-      await region.getByRole("button", { name: "Link", exact: true }).click();
-      let dialog = page.getByRole("dialog", { name: "Link" });
-      await dialog.getByRole("textbox", { name: /Web address/ }).fill("javascript:alert(1)");
-      await expect(dialog.getByRole("alert")).toBeVisible();
-      await expect(dialog.getByRole("button", { name: "Apply" })).toBeDisabled();
-      await dialog.getByRole("textbox", { name: /Web address/ }).fill("https://example.org/spec");
-      await dialog.getByRole("button", { name: "Apply" }).click();
-      await expect(region.locator(".rich-prose a[href='https://example.org/spec']")).toHaveText("spec");
-
-      await region.locator(".rich-prose p").click();
-      await page.keyboard.press("End");
-      for (let i = 0; i < 6; i += 1) await page.keyboard.press("Shift+ArrowLeft");
-      await region.getByRole("button", { name: "Link", exact: true }).click();
-      dialog = page.getByRole("dialog", { name: "Link" });
-      await dialog.getByRole("combobox", { name: /Link to/ }).selectOption("section");
-      await dialog.getByRole("combobox", { name: /^Section/ }).selectOption({ label: "Spec review" });
-      await dialog.getByRole("button", { name: "Apply" }).click();
-      await expect(region.locator(".rich-prose a[href='#spec-review']")).toHaveText("please");
+    await test.step("a heading and a formatted paragraph with a web link and a section link are typed", async () => {
+      await editor.fill(
+        "@layout document\n\n@heading Spec review\n\nRead the [spec](https://example.org/spec) **now** [please](#spec-review)\n",
+      );
+      await expect(page.getByText("The text is valid.")).toBeVisible();
     });
 
     await test.step("the preview draws the styles, the links and the heading's anchor", async () => {
       await page.getByRole("button", { name: "Run preview" }).click();
       const frame = page.frameLocator('iframe[title="Report preview"]');
-      await expect(frame.locator("h3#spec-review")).toHaveText("Spec review");
+      await expect(frame.locator("h2#spec-review")).toHaveText("Spec review");
       await expect(frame.locator("strong", { hasText: "now" })).toBeVisible();
       await expect(frame.locator("a[href='https://example.org/spec']")).toHaveText("spec");
       await expect(frame.locator("a[href='#spec-review']")).toHaveText("please");
     });
 
-    await test.step("saving makes version 2 and the other views read the same layout", async () => {
-      await page.getByRole("button", { name: "Save new version" }).click();
+    await test.step("saving makes version 2 and the block editor reads the same layout", async () => {
+      await saveNewVersion(page);
       await expect(page.getByText("Saved as version 2.")).toBeVisible();
+      await page.getByRole("tab", { name: "Blocks" }).click();
+      await expect(page.locator(".blocklyText.rl-summary", { hasText: "Read the" })).toBeVisible();
       await page.getByRole("tab", { name: "Text" }).click();
-      const text = page.getByRole("textbox", { name: "Layout text" });
-      await expect(text).toHaveValue(/@heading[\s\S]*Spec review/);
-      await expect(text).toHaveValue(/Read the \[spec\]\(https:\/\/example\.org\/spec\) \*\*now\*\* \[please\]\(#spec-review\)/);
-      await page.getByRole("tab", { name: "Outline" }).click();
-      await expect(page.getByRole("listitem", { name: "Text block 2" })).toBeVisible();
+      await expect(editor).toHaveValue(/Read the \[spec\]\(https:\/\/example\.org\/spec\) \*\*now\*\* \[please\]\(#spec-review\)/);
     });
+  });
 
-    await test.step("a reload and the document view show the saved links", async () => {
-      await page.reload();
-      await page.getByRole("tab", { name: "Document" }).click();
-      await expect(page.getByRole("region", { name: "Layout document" }).locator("a[href='https://example.org/spec']")).toHaveText("spec");
-    });
+  test("page orientation and size are set from the toolbar, written into the first line and used by the preview", async ({ page, request }) => {
+    const { project, suffix } = await setup(page, request);
+    await createFromProjectAdmin(page, project.id, `E2E page layout ${suffix}`);
+    const editor = page.getByRole("textbox", { name: "Layout text" });
+
+    await page.getByRole("button", { name: "Page setup: A4, portrait" }).click();
+    const popover = page.getByRole("dialog", { name: "Page setup" });
+    await popover.getByRole("combobox", { name: "Page size" }).selectOption("Letter");
+    await popover.getByRole("combobox", { name: "Orientation" }).selectOption("landscape");
+    await expect(editor).toHaveValue(/^@layout document landscape Letter\n/);
+    await expect(page.getByRole("button", { name: "Page setup: Letter, landscape" })).toBeVisible();
+    await expect(page.getByText("The text is valid.")).toBeVisible();
+    await saveNewVersion(page);
+    await expect(page.getByText("Saved as version 2.")).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Page setup: Letter, landscape" })).toBeVisible();
+  });
+
+  test("fields and project values are one searchable list", async ({ page, request }) => {
+    const { project, suffix } = await setup(page, request);
+    await createFromProjectAdmin(page, project.id, `E2E fields layout ${suffix}`);
+    // The caret sits inside an unfinished For each, so its name (req) is in scope.
+    const editor = page.getByRole("textbox", { name: "Layout text" });
+    await editor.fill("@layout document\n\n@each requirement sort title as req\n  ");
+    await editor.press("End");
+    await page.getByRole("tab", { name: "Fields" }).click();
+    const list = page.getByRole("list", { name: "Fields" });
+    await expect(list.getByRole("button", { name: "Insert {{project_description}}" })).toBeVisible();
+    await expect(list.getByRole("button", { name: "Insert {{req.title}}" })).toBeVisible();
+    await page.getByRole("textbox", { name: "Find a field" }).fill("descr");
+    await expect(list.getByRole("button", { name: "Insert {{req.title}}" })).toHaveCount(0);
+    await expect(list.getByRole("button", { name: "Insert {{project_description}}" })).toBeVisible();
+    await page.getByRole("textbox", { name: "Find a field" }).fill("");
+    await page.getByRole("combobox", { name: "From" }).selectOption("req");
+    await expect(list.getByRole("button", { name: "Insert {{project_name}}" })).toHaveCount(0);
   });
 
   test("an equation is inserted, drawn in the preview, and a command that is not allowed is refused", async ({ page, request }) => {
@@ -367,7 +363,7 @@ test.describe("Report layout designer", () => {
     for (const requirement of requirements) await expect(sheet.getByRole("cell", { name: requirement })).toBeVisible();
     await expect(sheet.getByRole("columnheader", { name: "Project" })).toBeVisible();
 
-    await page.getByRole("button", { name: "Save new version" }).click();
+    await saveNewVersion(page);
     await expect(page.getByText("Saved as version 2.")).toBeVisible();
   });
 

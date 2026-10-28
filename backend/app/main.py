@@ -50,6 +50,7 @@ from app.routers import (
     report_catalogue,
     report_layouts,
     report_packs,
+    report_placements,
     reports,
     requirements,
     reviews,
@@ -313,6 +314,8 @@ app.include_router(report_layouts.org_router)
 app.include_router(report_layouts.project_router)
 app.include_router(report_packs.org_router)
 app.include_router(report_packs.project_router)
+app.include_router(report_placements.org_router)
+app.include_router(report_placements.project_router)
 app.include_router(custom_reports.org_router)
 app.include_router(custom_reports.project_router)
 app.include_router(custom_reports.runs_router)

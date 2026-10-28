@@ -4,10 +4,17 @@ import { readFile } from "node:fs/promises";
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
 import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD } from "../../e2e-workflows/helpers";
+import { chooseReport, listReports, reportPickerButton } from "../../e2e-workflows/reportPicker";
 
 const API_BASE_URL = "http://localhost:8000";
 const MODULE = "decisions";
-const REPORTS = ["Decision register", "Approval ageing", "Decision log", "Rationale coverage"];
+/** The four Decision reports: the URL slug (also the download's file name) and the title the picker shows. */
+const REPORTS = [
+  { slug: "decision-register", title: "Decision register" },
+  { slug: "approval-ageing", title: "Approval ageing" },
+  { slug: "decision-log", title: "Decision log" },
+  { slug: "rationale-coverage", title: "Rationale coverage" },
+];
 
 /**
  * Job to be done: —
@@ -84,24 +91,18 @@ async function setup(page: Page, request: APIRequestContext) {
   return { org, project, headers, titles, suffix };
 }
 
-function picker(page: Page) {
-  return page.getByRole("combobox", { name: "Report", exact: true });
-}
-
 test.describe("Decision Management: reports", () => {
   test("the project Reports page lists the four Decision reports", async ({ page, request }) => {
     const { project } = await setup(page, request);
     await page.goto(`/projects/${project.id}/reports`);
 
-    await expect(picker(page)).toHaveValue("requirements");
-    // With more than one report source the picker prefixes each title with its module name.
-    const options = (await picker(page).locator("option").allTextContents()).map((o) => o.replace(/^[^:]+: /, ""));
-    expect(options).toEqual(expect.arrayContaining(REPORTS));
+    await expect(reportPickerButton(page)).toHaveAttribute("aria-label", "Report: Requirements report");
+    expect(await listReports(page)).toEqual(expect.arrayContaining(REPORTS.map((r) => r.title)));
 
-    await picker(page).selectOption("decision-register");
+    await chooseReport(page, "Decision register");
     await expect(page).toHaveURL(/report=decision-register/);
     await page.reload();
-    await expect(picker(page)).toHaveValue("decision-register");
+    await expect(reportPickerButton(page)).toHaveAttribute("aria-label", "Report: Decision register");
   });
 
   test("the register shows display labels and narrows by status", async ({ page, request }) => {
@@ -149,15 +150,13 @@ test.describe("Decision Management: reports", () => {
   test("every Decision report downloads as PDF and CSV", async ({ page, request }) => {
     const { project, titles } = await setup(page, request);
     await page.goto(`/projects/${project.id}/reports`);
-    await expect(picker(page)).toHaveValue("requirements");
-    const values = await picker(page).locator("option").evaluateAll((els, labels) =>
-      els.filter((e) => labels.includes((e.textContent ?? "").replace(/^[^:]+: /, ""))).map((e) => ({ value: (e as HTMLOptionElement).value, label: e.textContent ?? "" })),
-    REPORTS);
-    expect(values).toHaveLength(4);
+    await expect(reportPickerButton(page)).toHaveAttribute("aria-label", "Report: Requirements report");
+    const offered = await listReports(page);
+    expect(REPORTS.filter((r) => offered.includes(r.title))).toHaveLength(4);
 
-    for (const report of values) {
-      await test.step(`${report.label}: PDF and CSV`, async () => {
-        await picker(page).selectOption(report.value);
+    for (const report of REPORTS) {
+      await test.step(`${report.title}: PDF and CSV`, async () => {
+        await chooseReport(page, report.title);
         await expect(page.getByRole("button", { name: "Export" })).toBeVisible();
         for (const kind of ["PDF", "CSV"] as const) {
           await page.getByRole("button", { name: "Export" }).click();
@@ -165,8 +164,8 @@ test.describe("Decision Management: reports", () => {
             page.waitForEvent("download"),
             page.getByRole("button", { name: `Download ${kind} report` }).click(),
           ]);
-          expect(download.suggestedFilename()).toBe(`${report.value}.${kind.toLowerCase()}`);
-          if (kind === "CSV" && report.value === "decision-register") {
+          expect(download.suggestedFilename()).toBe(`${report.slug}.${kind.toLowerCase()}`);
+          if (kind === "CSV" && report.slug === "decision-register") {
             const csv = await readFile((await download.path())!, "utf8");
             expect(csv).toContain(titles.approved);
             // A report names each record by its code, and lists its tags.
@@ -188,7 +187,7 @@ test.describe("Decision Management: reports", () => {
     await page.goto(`/projects/${project.id}/reports`);
     await expect(page.getByRole("button", { name: "Generate PDF" })).toBeVisible();
     // The platform Record list report keeps the picker, but no Decision report is in it.
-    const options = await picker(page).locator("option").allTextContents();
-    expect(options.filter((o) => REPORTS.includes(o.replace(/^[^:]+: /, "")))).toEqual([]);
+    const offered = await listReports(page);
+    expect(offered.filter((title) => REPORTS.some((r) => r.title === title))).toEqual([]);
   });
 });

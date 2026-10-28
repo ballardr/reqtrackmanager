@@ -1,7 +1,7 @@
 /**
  * Module: components/ReportCatalogue
  *
- * The one Reports destination: a "Report" picker over
+ * The one Reports destination: a "Report" picker (`ReportPicker`: folders, search, a type filter and favourites) over
  * every report the backend catalogue lists for a project or organisation,
  * and the selected report below it, run by `ReportRunner`. Used by the
  * project Reports page and the Organisation Overview "Reports" group, so a
@@ -20,8 +20,12 @@
 import type { ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 
+import { useMemo } from "react";
+
+import { PLACEMENT_KEY_REQUIREMENTS, type ResolvedPlacement } from "../api/reportPlacements";
 import type { ReportCatalogueEntry } from "../api/reports";
-import { LabeledSelect } from "./LabeledSelect";
+import { useReportPlacements } from "../hooks/useReportPlacements";
+import { ReportPicker, type ReportPickerItem, type ReportPickerKind } from "./ReportPicker";
 import { ReportRunner } from "./ReportRunner";
 import { ReportRunsPanel } from "./ReportRunsPanel";
 
@@ -31,7 +35,28 @@ export interface ExtraReportEntry {
   title: string;
   description: string;
   render: () => ReactNode;
+  /** What the type filter matches (default `report`). */
+  kind?: ReportPickerKind;
+  /** Where it files unless a placement moves it (default "Platform"). */
+  folder?: string;
+  /** The key placements and favourites use (default `report:platform.<key>`). */
+  placementKey?: string;
 }
+
+const DEFAULT_EXTRA_FOLDER = "Platform";
+
+/** The picker item of an extra entry, with the scope's placement (a folder, or hidden) applied. */
+function extraItem(entry: ReportCatalogueExtra, placements: Map<string, ResolvedPlacement>): ReportPickerItem | null {
+  const key = entry.placementKey ?? (entry.key === "requirements" ? PLACEMENT_KEY_REQUIREMENTS : `report:platform.${entry.key}`);
+  const placed = placements.get(key);
+  if (placed?.hidden && key.startsWith("report:")) return null;
+  return {
+    id: entry.key, title: entry.title, description: entry.description, kind: entry.kind ?? "report", favouriteKey: key,
+    folder: placed?.folder ?? entry.folder ?? DEFAULT_EXTRA_FOLDER,
+  };
+}
+
+type ReportCatalogueExtra = ExtraReportEntry;
 
 /**
  * @param entries Catalogue entries the caller can run.
@@ -48,15 +73,14 @@ export function ReportCatalogue({
   extraEntries?: ExtraReportEntry[];
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const multipleModules = new Set(entries.map((e) => e.module_key)).size > 1;
-  const options = [
-    ...extraEntries.map((e) => ({ id: e.key, label: e.title, description: e.description })),
+  const placementScope = useMemo(() => ({ kind: scope.kind, id: scope.id }), [scope.kind, scope.id]);
+  const placements = useReportPlacements(placementScope);
+  const options = useMemo<ReportPickerItem[]>(() => [
+    ...extraEntries.map((e) => extraItem(e, placements)).filter((item): item is ReportPickerItem => item !== null),
     ...entries.map((e) => ({
-      id: e.slug,
-      label: multipleModules ? `${e.module_name}: ${e.title}` : e.title,
-      description: e.description,
+      id: e.slug, title: e.title, description: e.description, folder: e.folder, kind: e.kind, favouriteKey: e.placement_key || e.slug,
     })),
-  ];
+  ], [entries, extraEntries, placements]);
   if (options.length === 0) return <p className="text-muted">No reports are available.</p>;
 
   const selected = options.find((o) => o.id === searchParams.get("report")) ?? options[0];
@@ -66,22 +90,15 @@ export function ReportCatalogue({
   return (
     <div className="stack">
       {options.length > 1 && (
-        <div className="stack" style={{ gap: "var(--space-1)" }}>
-          <LabeledSelect helpNotNeeded
-            label="Report"
-            value={selected.id}
-            onChange={(id) => {
-              const next = new URLSearchParams(searchParams);
-              next.set("report", id);
-              setSearchParams(next, { replace: true });
-            }}
-            options={options.map((o) => ({ value: o.id, label: o.label }))}
-            placeholder={null}
-          />
-          <span className="text-muted" style={{ fontSize: "0.9rem" }}>
-            {selected.description}
-          </span>
-        </div>
+        <ReportPicker
+          items={options}
+          selectedId={selected.id}
+          onSelect={(id) => {
+            const next = new URLSearchParams(searchParams);
+            next.set("report", id);
+            setSearchParams(next, { replace: true });
+          }}
+        />
       )}
       {extra ? extra.render() : entry && <ReportRunner
           key={entry.path} entry={entry} scope={scope} organizationId={organizationId}

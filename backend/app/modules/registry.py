@@ -1996,6 +1996,9 @@ class ReportDefinition:
             enabled for the report to be offered, or `None` when only the
             module itself must be enabled (the collector then reports
             `eligible_projects` itself).
+        any_subcomponents: Keys of the module's own `sub_components` for a report that spans several of them (a
+            summary of Strategy, Future State and Guiding Principles): it is offered while at least one is enabled and
+            hidden once every one is off. Exclusive with `subcomponent`.
         org_level: Whether an organisation-wide variant exists.
         org_role_key: The org-scoped `ModuleRoleDefinition.role_key` of this
             module a caller must hold to run the organisation-wide variant.
@@ -2032,6 +2035,7 @@ class ReportDefinition:
     description: str
     collector: Callable[[Session, ReportContext], ReportResult]
     subcomponent: str | None = None
+    any_subcomponents: tuple[str, ...] = field(default=())
     org_level: bool = False
     org_role_key: str | None = None
     org_scope: Literal["readable_projects", "all_org_projects"] = "readable_projects"
@@ -3245,6 +3249,29 @@ def is_org_module_subcomponent_enabled(
     return org_state is not None and org_state[0]
 
 
+def report_enabled_for_project(db: Session, project_id: uuid.UUID, module_key: str, report: ReportDefinition) -> bool:
+    """Whether `report` is offered on a project: its module is enabled and, when it declares a sub-component, that one
+    is (`subcomponent`) or at least one of those it spans is (`any_subcomponents`)."""
+    if not is_module_enabled_for_project(db, project_id, module_key):
+        return False
+    if report.subcomponent:
+        return is_module_subcomponent_enabled(db, project_id, module_key, report.subcomponent)
+    if report.any_subcomponents:
+        return any(is_module_subcomponent_enabled(db, project_id, module_key, key) for key in report.any_subcomponents)
+    return True
+
+
+def report_enabled_for_organization(db: Session, organization_id: uuid.UUID, module_key: str, report: ReportDefinition) -> bool:
+    """Organisation-level twin of `report_enabled_for_project`."""
+    if not is_module_enabled(db, organization_id, module_key):
+        return False
+    if report.subcomponent:
+        return is_org_module_subcomponent_enabled(db, organization_id, module_key, report.subcomponent)
+    if report.any_subcomponents:
+        return any(is_org_module_subcomponent_enabled(db, organization_id, module_key, key) for key in report.any_subcomponents)
+    return True
+
+
 def _project_ids_without_row(db: Session, organization_id: uuid.UUID, row_model, **row_filters) -> list[uuid.UUID]:
     """Returns ids of `organization_id`'s projects that have no `row_model`
     row matching `row_filters` — the projects still reading an org default
@@ -4076,6 +4103,10 @@ def validate_report_definitions(
             problem = "org_role_key on a report with no organisation-wide variant"
         elif subcomponent_keys is not None and report.subcomponent and report.subcomponent not in subcomponent_keys:
             problem = f"unknown sub-component '{report.subcomponent}'"
+        elif report.any_subcomponents and report.subcomponent:
+            problem = "subcomponent and any_subcomponents are exclusive"
+        elif subcomponent_keys is not None and any(k not in subcomponent_keys for k in report.any_subcomponents):
+            problem = "unknown sub-component in any_subcomponents"
         elif org_role_keys is not None and report.org_role_key and report.org_role_key not in org_role_keys:
             problem = f"'{report.org_role_key}' is not an org-scoped role of this module"
         else:

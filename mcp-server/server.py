@@ -2045,7 +2045,7 @@ if MCP_WRITES_ENABLED:
 
     @mcp.tool
     async def create_report_layout(
-        name: str, family: str, tree: dict, description: str = "", comment: str = "",
+        name: str, family: str, tree: dict, description: str = "", comment: str = "", folder: str = "",
         project_id: str | None = None, organization_id: str | None = None,
     ) -> dict:
         """Creates a custom report layout and its version 1. Needs the layout-management permission for the scope.
@@ -2056,6 +2056,8 @@ if MCP_WRITES_ENABLED:
             tree: The layout tree (see `get_report_layout`, or write the text view and use `parse_report_layout_text`).
             description: What the layout reports.
             comment: A note on this first version.
+            folder: The Reports picker folder to file it under, up to three levels written `Handover/Quarterly`
+                (empty for the default "Custom reports" folder).
             project_id: Create it for this project. Give one of project_id / organization_id.
             organization_id: Create it for the organisation (every project can then run it).
 
@@ -2064,7 +2066,7 @@ if MCP_WRITES_ENABLED:
         """
         response = await _call_backend(
             "POST", _layout_scope_path(project_id, organization_id),
-            json={"name": name, "description": description, "family": family, "tree": tree, "comment": comment},
+            json={"name": name, "description": description, "folder": folder, "family": family, "tree": tree, "comment": comment},
         )
         return response.json()
 
@@ -2095,15 +2097,16 @@ if MCP_WRITES_ENABLED:
 
     @mcp.tool
     async def update_report_layout(
-        layout_id: str, name: str | None = None, description: str | None = None,
+        layout_id: str, name: str | None = None, description: str | None = None, folder: str | None = None,
         project_id: str | None = None, organization_id: str | None = None,
     ) -> dict:
-        """Renames or re-describes a layout the scope owns (its tree is changed with `save_report_layout_version`).
+        """Renames, re-describes or re-files a layout the scope owns (its tree is changed with `save_report_layout_version`).
 
         Args:
             layout_id: The layout's UUID.
             name: The new name, or omit to keep it.
             description: The new description, or omit to keep it.
+            folder: The new Reports picker folder (`""` for none), or omit to keep it.
             project_id: The project that owns the layout. Give one of project_id / organization_id.
             organization_id: The organisation that owns it.
 
@@ -2111,7 +2114,7 @@ if MCP_WRITES_ENABLED:
             The layout's summary.
         """
         path = f"{_layout_scope_path(project_id, organization_id)}/{_require_uuid(layout_id, 'layout_id')}"
-        body = {k: v for k, v in (("name", name), ("description", description)) if v is not None}
+        body = {k: v for k, v in (("name", name), ("description", description), ("folder", folder)) if v is not None}
         response = await _call_backend("PATCH", path, json=body)
         return response.json()
 

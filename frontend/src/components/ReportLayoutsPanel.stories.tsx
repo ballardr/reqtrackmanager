@@ -139,7 +139,7 @@ export const EditingTheDetailsRenamesIt: Story = {
     await userEvent.clear(name);
     await userEvent.type(name, "Renamed");
     await userEvent.click(dialog.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(args.api!.update).toHaveBeenCalledWith("layout-1", { name: "Renamed", description: "Every requirement with its component." }));
+    await waitFor(() => expect(args.api!.update).toHaveBeenCalledWith("layout-1", { name: "Renamed", description: "Every requirement with its component.", folder: "" }));
     await expect(await body().findByText("Layout details saved.")).toBeInTheDocument();
   },
 };
@@ -187,5 +187,70 @@ export const DeletingNeedsTheNameTyped: Story = {
     await waitFor(() => expect(args.api!.remove).toHaveBeenCalledWith("layout-1"));
     await expect(await body().findByText("Layout deleted.")).toBeInTheDocument();
     await expect(await within(canvasElement).findByText("No report layouts yet.")).toBeInTheDocument();
+  },
+};
+
+const many = [
+  buildLayoutSummary({ id: "a", name: "Alpha requirements", folder: "Handover/Quarterly" }),
+  buildLayoutSummary({ id: "b", name: "Beta rows", family: "table", folder: "Handover" }),
+  buildLayoutSummary({ id: "c", name: "Gamma review", description: "Weekly review", folder: "" }),
+  shared,
+];
+
+/** Each layout shows its folder, or "None". */
+export const TheFolderColumnShowsEachLayoutsFolder: Story = {
+  args: { api: buildLayoutApi(many) },
+  play: async ({ canvasElement }) => {
+    const table = within(await within(canvasElement).findByRole("table", { name: "Report layouts" }));
+    await expect(table.getByRole("columnheader", { name: "Folder" })).toBeInTheDocument();
+    await expect(table.getByText("Handover/Quarterly")).toBeInTheDocument();
+    await expect(table.getAllByText("None").length).toBeGreaterThan(0);
+  },
+};
+
+/** Search matches the name, description or folder; the kind, folder and shared-from filters narrow further. */
+export const SearchAndFiltersNarrowTheList: Story = {
+  args: { api: buildLayoutApi(many) },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = within(await canvas.findByRole("table", { name: "Report layouts" }));
+    await userEvent.type(canvas.getByRole("textbox", { name: "Search this list" }), "weekly");
+    await expect(table.getByText("Gamma review")).toBeInTheDocument();
+    await expect(table.queryByText("Alpha requirements")).not.toBeInTheDocument();
+    await userEvent.clear(canvas.getByRole("textbox", { name: "Search this list" }));
+    await userEvent.selectOptions(canvas.getByLabelText("Kind"), "Table");
+    await expect(table.getByText("Beta rows")).toBeInTheDocument();
+    await expect(table.queryByText("Alpha requirements")).not.toBeInTheDocument();
+    await userEvent.selectOptions(canvas.getByLabelText("Kind"), "Any");
+    await userEvent.selectOptions(canvas.getByLabelText("Folder"), "Handover");
+    await expect(table.getByText("Alpha requirements")).toBeInTheDocument(); // a folder filter keeps what is inside it
+    await expect(table.getByText("Beta rows")).toBeInTheDocument();
+    await expect(table.queryByText("Gamma review")).not.toBeInTheDocument();
+    await userEvent.selectOptions(canvas.getByLabelText("Folder"), "Any");
+    await userEvent.selectOptions(canvas.getByLabelText("Shared from"), "Shared from elsewhere");
+    await expect(table.getByText("Organisation requirements pack")).toBeInTheDocument();
+    await expect(table.queryByText("Gamma review")).not.toBeInTheDocument();
+  },
+};
+
+export const NothingMatchingSaysSoRatherThanThatThereAreNoLayouts: Story = {
+  args: { api: buildLayoutApi(many) },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("table", { name: "Report layouts" });
+    await userEvent.type(canvas.getByRole("textbox", { name: "Search this list" }), "zzzz");
+    await expect(await canvas.findByText("Nothing matches these filters.")).toBeInTheDocument();
+  },
+};
+
+/** A long list shows its first page and loads the next on request. */
+export const ALongListIsPaged: Story = {
+  args: { api: buildLayoutApi(Array.from({ length: 30 }, (_, i) => buildLayoutSummary({ id: `l${i}`, name: `Layout ${String(i + 1).padStart(2, "0")}` }))) },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("table", { name: "Report layouts" });
+    await expect(canvas.queryByText("Layout 30")).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: /Load more/ }));
+    await expect(await canvas.findByText("Layout 30")).toBeInTheDocument();
   },
 };

@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { api } from "../api/client";
+import { PLACEMENT_KEY_REQUIREMENTS } from "../api/reportPlacements";
 import type { Project } from "../api/types";
 import { ReportCatalogue } from "../components/ReportCatalogue";
 import { RequirementReportPanel } from "../components/RequirementReportPanel";
@@ -52,6 +53,7 @@ export function ReportsPage() {
           {
             key: "requirements",
             title: "Requirements report",
+            placementKey: PLACEMENT_KEY_REQUIREMENTS,
             description: "The project's requirements as a document, with introduction, chapters, appendices and filters.",
             render: () => <RequirementReportPanel project={project} />,
           },

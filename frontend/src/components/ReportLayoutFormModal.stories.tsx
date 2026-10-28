@@ -51,3 +51,42 @@ export const EditingOffersNoKind: Story = {
     await expect(args.onClose).toHaveBeenCalled();
   },
 };
+
+/** The folder is optional (so unmarked), suggests the folders the scope already uses and is saved tidied. */
+export const FolderSuggestsExistingFoldersAndIsSavedTidied: Story = {
+  args: { api: buildLayoutApi([buildLayoutSummary({ folder: "Handover/Quarterly" })]) },
+  play: async ({ args }) => {
+    const dialog = within(await screen.findByRole("dialog", { name: "New report layout" }));
+    await expect(requiredCaptions(document.body)).toEqual(["Name", "Kind of report"]);
+    await waitFor(() => expect(document.querySelectorAll("datalist option").length).toBe(2)); // Handover and Handover/Quarterly
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Filed");
+    await userEvent.type(dialog.getByRole("combobox", { name: "Folder" }), " Handover / Annual ");
+    await userEvent.click(dialog.getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(args.api.create).toHaveBeenCalledWith(expect.objectContaining({ name: "Filed", folder: "Handover/Annual" })));
+  },
+};
+
+/** A path the server would refuse is flagged and cannot be saved. */
+export const AFolderThatIsTooDeepCannotBeSaved: Story = {
+  play: async () => {
+    const dialog = within(await screen.findByRole("dialog", { name: "New report layout" }));
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Deep");
+    await userEvent.type(dialog.getByRole("combobox", { name: "Folder" }), "a/b/c/d");
+    await expect(dialog.getByRole("alert")).toHaveTextContent("at most 3 levels");
+    await expect(dialog.getByRole("button", { name: "Create" })).toBeDisabled();
+  },
+};
+
+/** Editing starts from the layout's folder and sends the change. */
+export const EditingChangesTheFolder: Story = {
+  args: { layout: buildLayoutSummary({ folder: "Old" }) },
+  play: async ({ args }) => {
+    const dialog = within(await screen.findByRole("dialog", { name: "Layout details" }));
+    const folder = dialog.getByRole("combobox", { name: "Folder" });
+    await expect(folder).toHaveValue("Old");
+    await userEvent.clear(folder);
+    await userEvent.type(folder, "New/Sub");
+    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(args.api.update).toHaveBeenCalledWith("layout-1", expect.objectContaining({ folder: "New/Sub" })));
+  },
+};

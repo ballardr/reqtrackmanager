@@ -1486,6 +1486,7 @@ _REPORTS: tuple[ReportDefinition, ...] = (
         "r7", "strategy-change-history", "Strategy change history",
         "Version history of Strategies, Future States and Guiding Principles, and stale Active items.",
         collect_change_history, params=(_STALE_MONTHS, _SINCE),
+        any_subcomponents=("strategy", "future_state", "guiding_principle"),
         parts=(
             ReportPartDefinition("history", "Version history"),
             ReportPartDefinition("stale", "Active, not recently revised"),
@@ -1495,6 +1496,7 @@ _REPORTS: tuple[ReportDefinition, ...] = (
     ReportDefinition(
         "r8", "summary", "Context & Strategy summary", "Headline figures and every report's gap lists in one pack.",
         collect_summary_pack, org_level=True, org_role_key=_ORG_ROLE,
+        any_subcomponents=("strategy", "future_state", "pain_point", "guiding_principle", "open_question"),
         params=(_MODEL_KEY, _ROLLUP, _STALE_MONTHS, _SINCE),
         record_types=("pain_point", "strategy", "future_state", "open_question", "guiding_principle", "requirement"),
     ),

@@ -1546,33 +1546,34 @@ flowchart LR
   versions' text views, computed in the browser). `utils/reportLayoutText.ts` only helps a person write (names in scope
   at the caret, insertion, snippets, the widget line); the server stays the only parser and validator, so the client
   holds no block model that could drift from the tree.
-- **Block outline (Phase 13b).** The designer's second view edits the same tree: `ReportLayoutOutline` draws one card per block
-  from the block catalogue (`GET .../blocks`), with `ReportLayoutOutlineField` choosing a control by field `kind` (shared field
-  components, plus `ReportLayoutSourceEditor`, `ReportLayoutConditionEditor`, `ReportLayoutColumnsEditor` (also joins),
-  `ReportLayoutWidgetEditor`, `ReportLayoutVariablesField` over the pack variables editor, and `ReportLayoutJsonField` for a kind
-  or block type it does not know). `utils/reportLayoutTree.ts` holds the pure tree edits (insert, move, indent, outdent, duplicate,
-  remove), the names in scope (from each block's `provides`) and the path reading that puts a server problem on its block.
-  The designer holds the tree while the outline is shown, checks it with `POST .../validate` after each pause, keeps the text
-  view's text in step through `text/format` for the preview and for switching back, and saves the tree itself. Moves are buttons;
-  there is no drag-and-drop.
-- **Three views (Phase 13d).** The designer's `Tabs` are **Text**, **Outline** and (document layouts) **Document** (`ReportLayoutRichText`,
-  below). The outline and the document edit the one tree the designer holds, so switching between them converts nothing; from the
+- **Block editor.** The designer's second view edits the same tree on a Blockly workspace (`ReportLayoutBlocks`, loaded lazily so
+  the library stays out of the main bundle). Block types are generated from the block catalogue (`GET .../blocks`) in
+  `utils/reportLayoutBlocklyBlocks.ts`: a label, the short fields (`text`, `alias`, `tex`, `integer`, `boolean`, `choice`; an
+  optional text is not short) inline with a small label each, a read-only summary of what only the inspector edits, and a
+  statement input per child list. A small integer range or a choice is a dropdown. A module's block type therefore needs no
+  frontend code. `utils/reportLayoutBlockly.ts` converts tree and workspace state both ways without importing Blockly; a block's
+  `data` keeps the whole node minus its child blocks, so a key the editor does not draw survives and opening a layout never
+  rewrites it (a round-trip story pins this). The inspector beside the workspace shows every field of the selected block with the
+  shared field components (`ReportLayoutBlockField`, `ReportLayoutSourceEditor`, `ReportLayoutConditionEditor`,
+  `ReportLayoutColumnsEditor` (also joins), `ReportLayoutWidgetEditor`, `ReportLayoutVariablesField`, and `ReportLayoutJsonField`
+  for a kind or block type it does not know) and "Add block" / "Add to <list>" menus, the route without a pointer. An inspector
+  edit that changes only values is patched into the blocks in place; a change of shape redraws the workspace. Blockly deselects
+  when focus leaves the workspace, so the inspector keeps showing the last block chosen. The designer holds the tree while the
+  blocks are shown, checks it with `POST .../validate` after each pause, keeps the text view's text in step through `text/format`
+  for the preview and for switching back, and saves the tree itself. A block dropped outside the layout is not part of it and is
+  counted in the inspector. `utils/reportLayoutTree.ts` holds the pure tree reads and inserts, the names in scope (from each
+  block's `provides`) and the path reading that puts a server problem on its block.
+- **Two views.** The designer's `Tabs` are **Text** and **Blocks**. The blocks edit the one tree the designer holds; from the
   text the designer parses the text as it stands (an immediate `text/parse`, not the pause-and-check result) and refuses with the
-  reason if it has problems; to the text it formats the tree only if the tree changed since it was entered; to the document it
-  first tries `treeToDoc` and refuses with the `NotRepresentableError` reason. Dirty, Save, the preview and the validate check read
-  the tree in either tree view.
-- **Document view (Phase 13c).** A third way to edit the same tree, for document layouts: `ReportLayoutRichText` is a TipTap editor
-  whose content is `treeToDoc(tree)` and whose every edit is reported as `docToTree(doc)`. `utils/reportLayoutDoc.ts` is the converter
-  (no editor dependency): headings and text blocks are editable prose, a block that holds blocks becomes a container with one slot per
-  child list (from the catalogue's `containers`), and every other block is carried whole as a framed card whose settings reuse the
-  outline's field forms. Prose carries the three styles the engine draws (bold, italic, code, as editor marks) and bullet and numbered
-  lists; `utils/reportLayoutProse.ts` reads and writes the canonical spelling (`**x**`, `*x*`, `` `x` ``, `- `, `1. `). A text block is drawn
-  as prose only when `serialize(parse(markdown)) === markdown` and nothing in it could be read differently by the server's reader
-  (a stray `*`, `_` emphasis, an unknown backslash, a line that could start another Markdown construct); otherwise it stays a
-  raw-Markdown source box, so no text is rewritten. A tree the view cannot show without changing
-  it is refused with the reason (`NotRepresentableError`). The identity `docToTree(treeToDoc(t)) = t` is tested over the three
-  starter layouts (`frontend/src/testing/starterLayoutTrees.json`, written by `backend/scripts/export_starter_trees.py` and checked
-  current by a backend test) and a crafted corpus. A table layout has no document view.
+  reason if it has problems; to the text it formats the tree only if the tree changed since it was entered. Dirty, Save, the
+  preview and the validate check read the tree in either view. (A rich-text document view existed briefly and was removed; so was
+  the card outline the block editor replaced.)
+- **Text view tools.** `ReportLayoutBlockToolbar` is an icon button per block (headings by level) with tooltips;
+  `ReportLayoutPageSetup` writes the page size (`page_size`: A3, A4, A5, Letter or Legal, A4 when absent) and orientation into
+  the `@layout document [landscape] [size]` line; `ReportLayoutFieldPicker` is one searchable list of the report and project
+  placeholders (`PLACEHOLDER_NAMES`: `project_name`, `project_code`, `project_description`, `report_title`, `generated_on`,
+  `organisation`) and the fields of every name in scope; `SaveVersionButton` asks for the note in a popover. The page size
+  reaches `ReportDocument.page_size` and every renderer through `report_model.page_dimensions_cm`.
 - **Kind is fixed.** The server parses text without knowing the layout, so the designer compares the text's `@layout`
   kind with the layout's and reports a mismatch as a problem before saving.
 - **Block schemas for the visual designer.** A `BlockSpec` carries a `schema` (`services/report_layout_block_schema.py`):
@@ -1834,6 +1835,38 @@ flowchart LR
 - **Behaviour change.** Existing text containing a matched `*…*`, `**…**`, `_…_` or a backtick pair now prints styled, and a line
   starting `1. ` becomes a numbered list; an unmatched marker, `5 * 3`, `snake_case` and a lone `_` are unchanged. This applies to
   report introductions, chapters and appendices as well as layouts.
+
+### 4x. Reports picker: folders, placements and the sub-component gate (Module 10 Phase 16)
+
+Every entry of the report catalogue has a **folder** and a **kind** (`report`, `sheet` for a table layout, `pack`).
+The folder is a path of up to three levels (`Handover/Quarterly`, `services/report_folders.py`), decided in layers:
+
+```mermaid
+flowchart LR
+    D["Default<br/>module name · Platform ·<br/>Custom reports · Report packs"] --> A["Author's folder<br/>ReportLayout.folder · ReportPack.folder"]
+    A --> O["Organisation placement"] --> P["Parent project placement"] --> C["Project placement"]
+    C --> E["ReportCatalogueEntryOut.folder<br/>and the picker's tree"]
+```
+
+- **`ReportPlacement`** (`models/report_placement.py`, `services/report_placements.py`) is one row per (organisation or
+  project, report key) holding an optional `folder` and, for a module or platform report, an optional `hidden`. Each
+  is `NULL` for "no override here"; the nearest tier with a value wins per attribute (the way action types fall
+  back to the nearest ancestor). A report is named by a stable key: `report:<module>.<report key>`, `layout:<id>`,
+  `pack:<id>`; deleting a layout or pack deletes its placements.
+- A shared layout or pack is hidden through its own definition-suppression tombstone, so a placement may only *move*
+  it. A hide of a module report is a tidy-up, not access control: the report route still answers and runs its own gate.
+- `GET/PUT /api/v1/{orgs|projects}/{id}/report-placements` lists everything a scope can place (hidden included, so it can
+  be restored) and sets one override; `GET .../report-placements/resolved` is the read for any member. The permission
+  is the existing manage-report-layouts one at each tier. Changes are audited (`report_placement`).
+- Placements travel in both bundles (`services/report_placement_bundle.py`): a module report by key, a layout or pack by name,
+  resolved after the layouts and packs are imported; a name with nothing to apply to is a warning.
+- **Sub-components.** A `ReportDefinition` names the sub-component it needs (`subcomponent`) or, for a report spanning
+  several, the ones it spans (`any_subcomponents`, offered while at least one is enabled). `report_enabled_for_project` and
+  `report_enabled_for_organization` (`modules/registry.py`) are the one check the catalogue, the report route, the
+  widget list and the module run all use.
+- Favourites are not a table: they are a list of report keys in the person's `ui_preferences` (`report_favourites`).
+- Frontend: `ReportPicker` (dialog over the shared `TreeView` in controlled mode), `ReportPlacementsPanel` (Org Admin and
+  Project Admin), `ReportListControls` (search, filters and paging of the layouts and packs lists) and `ReportFolderField`.
 
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 

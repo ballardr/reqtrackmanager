@@ -36,10 +36,8 @@ from app.models.user import User
 from app.modules.registry import (
     ReportDefinition,
     get_all_reports,
-    is_module_enabled,
-    is_module_enabled_for_project,
-    is_module_subcomponent_enabled,
-    is_org_module_subcomponent_enabled,
+    report_enabled_for_organization,
+    report_enabled_for_project,
 )
 from app.services.rbac import user_satisfies_module_role
 from app.services.report_document import resolve_branding
@@ -104,18 +102,12 @@ def run_module_report(
             the caller lacks the role it needs.
     """
     if project is not None:
-        enabled = (
-            is_module_subcomponent_enabled(db, project.id, module_key, definition.subcomponent)
-            if definition.subcomponent else is_module_enabled_for_project(db, project.id, module_key)
-        )
-        if not enabled:
+        if not report_enabled_for_project(db, project.id, module_key, definition):
             raise ModuleReportUnavailableError("Its module is not enabled for this project.")
     else:
         if not definition.org_level:
             raise ModuleReportUnavailableError("It has no organisation-wide version.")
-        if not is_module_enabled(db, organization.id, module_key) or (
-            definition.subcomponent and not is_org_module_subcomponent_enabled(db, organization.id, module_key, definition.subcomponent)
-        ):
+        if not report_enabled_for_organization(db, organization.id, module_key, definition):
             raise ModuleReportUnavailableError("Its module is not enabled for this organisation.")
         assert definition.org_role_key is not None  # validate_report_definitions requires it for org_level
         if not user_satisfies_module_role(

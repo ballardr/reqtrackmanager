@@ -10,6 +10,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 
+import { packPlacementKey } from "../api/reportPlacements";
 import { reportPackApi, reportPackRunApi, type ReportPackSummary } from "../api/reportPacks";
 import type { LayoutScope } from "../api/reportLayouts";
 import type { ExtraReportEntry } from "../components/ReportCatalogue";
@@ -57,7 +58,10 @@ export function useReportPackEntries(
       const api = reportPackRunApi(scope, pack.id);
       return {
         key: packEntryKey(pack.id),
-        title: text.entryOption(pack.name),
+        title: pack.name,
+        kind: "pack" as const,
+        folder: pack.folder || text.defaultFolder,
+        placementKey: packPlacementKey(pack.id),
         description: pack.description || text.description,
         render: () => <ReportPackRunner key={pack.id} api={api} organizationId={organizationId} name={pack.name} />,
       };

@@ -96,6 +96,7 @@ from app.services.report_layout_tree import (
 )
 from app.services.report_math import MathSegment, source_of, split_math, tex_problem, typeset
 from app.services.report_model import (
+    DEFAULT_PAGE_SIZE,
     Block,
     BulletList,
     Equation,
@@ -317,7 +318,10 @@ def evaluate_layout(
         run.evaluate(node, {})
     document = None
     if tree["family"] == FAMILY_DOCUMENT:
-        document = ReportDocument(title=title, blocks=run.blocks, landscape=tree.get("orientation") == "landscape")
+        document = ReportDocument(
+            title=title, blocks=run.blocks, landscape=tree.get("orientation") == "landscape",
+            page_size=tree.get("page_size", DEFAULT_PAGE_SIZE),
+        )
     versions, truncated = run.record_versions()
     for artefact_type, pooled in run._pool.items():
         run.stats.records_included[artefact_type] = len(pooled)
@@ -349,6 +353,7 @@ class _Run:
         self.variable_text: dict[str, str] = {}
         self.placeholders: dict[str, str] = {
             "project_name": ctx.scope_label, "report_title": title,
+            "project_code": getattr(project, "code", "") or "", "project_description": getattr(project, "summary", "") or "",
             "generated_on": ctx.today.isoformat(), "organisation": ctx.organization.name,
             **(placeholders or {}),
         }

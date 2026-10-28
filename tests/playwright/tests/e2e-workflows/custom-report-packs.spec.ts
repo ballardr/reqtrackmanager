@@ -3,7 +3,8 @@ import fs from "node:fs";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectProjectAdminGroup } from "./helpers";
+import { chooseReport } from "./reportPicker";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectProjectAdminGroup, saveNewVersion } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -73,10 +74,7 @@ test.describe("Custom report packs", () => {
   }
 
   async function choosePack(page: Page, name: string) {
-    const picker = page.getByLabel("Report", { exact: true });
-    const option = picker.locator("option", { hasText: `Pack: ${name}` });
-    await expect(option).toHaveCount(1);
-    await picker.selectOption({ label: (await option.textContent())! });
+    await chooseReport(page, name);
   }
 
   async function choose(page: Page, ...categories: string[]) {
@@ -220,8 +218,7 @@ test.describe("Custom report packs", () => {
       await variable.getByRole("switch", { name: "Takes several values" }).click();
       await variable.getByRole("combobox", { name: /^Take options from/ }).selectOption("requirement");
       await variable.getByRole("combobox", { name: "Field" }).selectOption("category");
-      await page.getByRole("textbox", { name: "Note on this change" }).fill("First reports");
-      await page.getByRole("button", { name: "Save new version" }).click();
+      await saveNewVersion(page, "First reports");
       await expect(page.getByText("Saved as version 2.")).toBeVisible();
       await expect(page.getByText("Unsaved changes")).toHaveCount(0);
     });

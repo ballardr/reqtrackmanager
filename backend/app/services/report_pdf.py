@@ -14,8 +14,8 @@ Design decisions:
   image only from a file path, so the PNGs live in a temporary directory that exists for one render. The `<img>`
   tags are built here from numbers and a path this module made, never from text; one that cannot be drawn is
   printed as its source.
-- Page setup follows orientation: portrait is A4 with 2 cm top and bottom
-  margins, landscape is A4 with 1.5 cm all round.
+- Page setup follows the layout's page size (A4 by default) and orientation: portrait has 2 cm top and bottom
+  margins, landscape 1.5 cm all round.
 
 Dependencies: ReportLab, `services.report_document`, `services.report_fonts`, `services.report_math`,
 `services.report_model`, `services.report_svg` (a figure given as SVG is drawn as vector).
@@ -29,7 +29,6 @@ from pathlib import Path
 from typing import Any
 
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.platypus import ListFlowable, ListItem, Spacer
@@ -64,6 +63,7 @@ from app.services.report_model import (
     Styled,
     Table,
     finalize_links,
+    page_dimensions_cm,
     text_runs,
 )
 from app.services.report_svg import svg_flowable
@@ -216,7 +216,8 @@ def render_pdf_document(document: ReportDocument) -> bytes:
     document = finalize_links(document)
     branding = document.branding
     accent = colors.HexColor((branding or ReportBranding(accent_color_hex=DEFAULT_ACCENT_COLOR_HEX)).accent_color_hex)
-    pagesize = landscape(A4) if document.landscape else A4
+    page_cm = page_dimensions_cm(document)
+    pagesize = (page_cm[0] * cm, page_cm[1] * cm)
     margins = _LANDSCAPE_MARGINS if document.landscape else _PORTRAIT_MARGINS
     usable_width = pagesize[0] - margins.get("leftMargin", 72) - margins.get("rightMargin", 72)
 

@@ -32,6 +32,7 @@ from app.services.custom_report_run import project_entries as custom_project_ent
 from app.services.rbac import require_org_role, require_project_view
 from app.services.record_list_report import catalogue_entry as record_list_catalogue_entry
 from app.services.report_framework import ReportCatalogueEntryOut, organization_catalogue, project_catalogue
+from app.services.report_placements import apply_to_catalogue, resolve_for_organization, resolve_for_project
 
 router = APIRouter(prefix="/api/v1", tags=["reports"])
 
@@ -42,12 +43,14 @@ def get_project_report_catalogue(
 ) -> list[ReportCatalogueEntryOut]:
     """Reports runnable on this project, with their parameters and formats: the platform's
     record list (when the caller can list any record type), then each module report whose
-    module and sub-component are enabled."""
+    module and sub-component are enabled, then the project's custom layouts. Each carries its folder, and a module
+    report a placement hides is left out."""
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
     record_list = record_list_catalogue_entry(db, current_user, project)
-    return [*([record_list] if record_list else []), *project_catalogue(db, project), *custom_project_entries(db, project)]
+    entries = [*([record_list] if record_list else []), *project_catalogue(db, project), *custom_project_entries(db, project)]
+    return apply_to_catalogue(entries, resolve_for_project(db, project))
 
 
 @router.get("/orgs/{organization_id}/report-catalogue", response_model=list[ReportCatalogueEntryOut])
@@ -56,4 +59,5 @@ def get_org_report_catalogue(
 ) -> list[ReportCatalogueEntryOut]:
     """Organisation-wide module reports the caller can run (module and
     sub-component enabled, required module role held), then the organisation's custom report layouts."""
-    return [*organization_catalogue(db, current_user, organization_id), *custom_org_entries(db, current_user, organization_id)]
+    entries = [*organization_catalogue(db, current_user, organization_id), *custom_org_entries(db, current_user, organization_id)]
+    return apply_to_catalogue(entries, resolve_for_organization(db, organization_id))

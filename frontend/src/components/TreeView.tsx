@@ -8,8 +8,9 @@
  * `TreeSelect` share one implementation of the chevron, indentation, ARIA
  * (`aria-expanded`, named toggle) and expand state instead of three copies.
  *
- * Presentational: it owns only which nodes are expanded; the data and every
- * mutation stay with the caller (the page/component split `ViewToggle` set).
+ * Presentational: it owns only which nodes are expanded (or, in controlled mode, none of it: the caller passes
+ * `expanded` and `onToggle`, as the report picker does to open every folder while a search is active); the data and
+ * every mutation stay with the caller (the page/component split `ViewToggle` set).
  */
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -26,6 +27,8 @@ export function TreeView<N extends TreeViewNode<N>>({
   renderNode,
   emptyText = "Nothing to show.",
   defaultExpanded = true,
+  expanded,
+  onToggle,
 }: {
   nodes: N[];
   /** Plain-text name of a node, for the toggle's accessible name ("Collapse Acme"). */
@@ -33,14 +36,21 @@ export function TreeView<N extends TreeViewNode<N>>({
   /** The node's own content, shown after the chevron. */
   renderNode: (node: N) => ReactNode;
   emptyText?: string;
-  /** Whether nodes start expanded. */
+  /** Whether nodes start expanded (uncontrolled mode). */
   defaultExpanded?: boolean;
+  /** Controlled mode: the ids of the expanded nodes. The caller then owns the state (to expand everything while a
+   * search is active, say) and `onToggle` is told what to flip. */
+  expanded?: ReadonlySet<string>;
+  onToggle?: (id: string, expanded: boolean) => void;
 }) {
   if (nodes.length === 0) return <p className="text-muted">{emptyText}</p>;
   return (
     <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
       {nodes.map((node) => (
-        <TreeViewRow key={node.id} node={node} depth={0} nodeLabel={nodeLabel} renderNode={renderNode} defaultExpanded={defaultExpanded} />
+        <TreeViewRow
+          key={node.id} node={node} depth={0} nodeLabel={nodeLabel} renderNode={renderNode} defaultExpanded={defaultExpanded}
+          expanded={expanded} onToggle={onToggle}
+        />
       ))}
     </ul>
   );
@@ -52,14 +62,24 @@ function TreeViewRow<N extends TreeViewNode<N>>({
   nodeLabel,
   renderNode,
   defaultExpanded,
+  expanded: controlled,
+  onToggle,
 }: {
   node: N;
   depth: number;
   nodeLabel: (node: N) => string;
   renderNode: (node: N) => ReactNode;
   defaultExpanded: boolean;
+  expanded?: ReadonlySet<string>;
+  onToggle?: (id: string, expanded: boolean) => void;
 }) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
+  const [ownExpanded, setOwnExpanded] = useState(defaultExpanded);
+  const expanded = controlled ? controlled.has(node.id) : ownExpanded;
+  const setExpanded = (update: (current: boolean) => boolean) => {
+    const next = update(expanded);
+    if (controlled) onToggle?.(node.id, next);
+    else setOwnExpanded(next);
+  };
   const hasChildren = node.children.length > 0;
   const label = nodeLabel(node);
 
@@ -87,7 +107,7 @@ function TreeViewRow<N extends TreeViewNode<N>>({
           {node.children.map((child) => (
             <TreeViewRow
               key={child.id} node={child} depth={depth + 1} nodeLabel={nodeLabel} renderNode={renderNode}
-              defaultExpanded={defaultExpanded}
+              defaultExpanded={defaultExpanded} expanded={controlled} onToggle={onToggle}
             />
           ))}
         </ul>

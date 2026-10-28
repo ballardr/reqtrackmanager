@@ -39,6 +39,7 @@ from app.models.report_pack import ReportPack, ReportPackSetOverride, ReportPack
 from app.models.user import User
 from app.services import report_pack_scope, report_pack_sets, report_packs
 from app.services.bundle_common import BundleImportWarnings
+from app.services.report_folders import imported_folder
 from app.services.report_pack_definition import InvalidPackError
 from app.services.report_variables import VariableValueError
 
@@ -60,7 +61,7 @@ def _pack_json(db: Session, pack: ReportPack) -> dict[str, Any]:
         .order_by(ReportPackVariableSet.name)
     ).all()
     return {
-        "name": pack.name, "description": pack.description,
+        "name": pack.name, "description": pack.description, "folder": pack.folder,
         "versions": [
             {
                 "version": v.version, "schema_version": v.schema_version, "definition": v.definition, "comment": v.comment,
@@ -141,7 +142,8 @@ def _import_pack(
             if pack is None:
                 saved = report_packs.create_pack(
                     db, organization_id=organization_id, project_id=project_id, name=name,
-                    description=str(entry.get("description", "")), definition=v["definition"], actor_id=actor.id, comment=comment,
+                    description=str(entry.get("description", "")), folder=imported_folder(entry.get("folder")), definition=v["definition"],
+                    actor_id=actor.id, comment=comment,
                 )
                 pack = saved.pack
             else:

@@ -24,10 +24,14 @@ import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { ActionMenu, type ActionMenuItem } from "./ActionMenu";
+import { useShowMore } from "../hooks/useShowMore";
+import { distinctFolders } from "../utils/reportFolders";
+import { applyReportListFilter, EMPTY_REPORT_LIST_FILTER, type ReportListFilter } from "../utils/reportListFilter";
 import { Badge } from "./Badge";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { DirectoryTable, type DirectoryColumn } from "./DirectoryTable";
 import { ReportPackFormModal } from "./ReportPackFormModal";
+import { ReportListControls } from "./ReportListControls";
 import { RestoreOrgDefaultsButton } from "./RestoreOrgDefaultsButton";
 import { Spinner } from "./Spinner";
 
@@ -46,6 +50,7 @@ export function ReportPacksPanel({ api }: { api: ReportPackApi }) {
   const [packs, setPacks] = useState<ReportPackSummary[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [filter, setFilter] = useState<ReportListFilter>(EMPTY_REPORT_LIST_FILTER);
   const inProject = api.scope.kind === "project";
 
   const reload = useCallback(async () => {
@@ -69,17 +74,22 @@ export function ReportPacksPanel({ api }: { api: ReportPackApi }) {
     }
   }
 
+  const visible = (packs ?? []).filter((pack) => !pack.hidden);
+  const matching = applyReportListFilter(visible, filter);
+  const { limit, more } = useShowMore(matching.length, JSON.stringify(filter));
+
   if (failed && !packs) return <p className="text-muted" role="alert">{text.loadFailed}</p>;
   if (!packs) return <Spinner />;
 
-  const visible = packs.filter((pack) => !pack.hidden);
   const hidden = packs.filter((pack) => pack.hidden);
+  const folders = distinctFolders(visible.map((pack) => pack.folder));
+  const filtering = JSON.stringify(filter) !== JSON.stringify(EMPTY_REPORT_LIST_FILTER);
 
   async function copy(pack: ReportPackSummary) {
     await run(async () => {
       const detail = await api.get(pack.id);
       const created = await api.create({
-        name: text.copyName(pack.name), description: pack.description, definition: detail.current.definition,
+        name: text.copyName(pack.name), description: pack.description, folder: pack.folder, definition: detail.current.definition,
       });
       navigate(reportPackPath(api.scope, created.id));
       return text.copied;
@@ -113,6 +123,7 @@ export function ReportPacksPanel({ api }: { api: ReportPackApi }) {
         </span>
       ),
     },
+    { key: "folder", label: text.folderHeading, render: (pack) => pack.folder || <span className="text-muted">{text.noFolder}</span> },
     { key: "reports", label: text.reportsHeading, render: (pack) => text.reportCount(pack.entries) },
     ...(inProject
       ? [{
@@ -147,13 +158,19 @@ export function ReportPacksPanel({ api }: { api: ReportPackApi }) {
           />
         )}
       </div>
+      <ReportListControls
+        sectionKey={`reportPacks.${api.scope.kind}`} filter={filter} onChange={setFilter} folders={folders}
+        showSource={inProject} matching={matching.length} total={visible.length}
+      />
       <DirectoryTable
         ariaLabel={text.listLabel}
         columns={columns}
-        rows={visible}
+        rows={matching.slice(0, limit)}
+        total={matching.length}
+        onLoadMore={more}
         rowKey={(pack) => pack.id}
         rowHref={(pack) => reportPackPath(api.scope, pack.id)}
-        emptyState={<p className="text-muted">{text.empty}</p>}
+        emptyState={<p className="text-muted">{filtering && visible.length > 0 ? strings.reportListControls.noMatch : text.empty}</p>}
       />
 
       {dialog?.kind === "create" && (

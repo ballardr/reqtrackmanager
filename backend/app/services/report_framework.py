@@ -83,10 +83,9 @@ from app.modules.registry import (
     get_all_reports,
     get_module,
     get_module_reports,
-    is_module_enabled,
-    is_module_enabled_for_project,
     is_module_subcomponent_enabled,
-    is_org_module_subcomponent_enabled,
+    report_enabled_for_organization,
+    report_enabled_for_project,
     validate_report_definitions,
 )
 from app.services.codes import display_code
@@ -98,8 +97,8 @@ from app.services.rbac import (
     memoize_user_lookups,
     prefetch_project_roles,
     require_org_module_enabled,
+    require_project_any_subcomponent_enabled,
     require_project_module_enabled,
-    require_project_subcomponent_enabled,
     user_satisfies_module_role,
 )
 from app.services.report_content import build_placeholders, content_blocks, report_key_for, resolve_report_content
@@ -818,8 +817,9 @@ def _route_signature(path_param: str, definition: ReportDefinition, *, project_l
 
 def _build_project_route(module_key: str, definition: ReportDefinition) -> Callable[..., Any]:
     dependency = (
-        require_project_subcomponent_enabled(module_key, definition.subcomponent)
-        if definition.subcomponent else require_project_module_enabled(module_key)
+        require_project_any_subcomponent_enabled(module_key, (definition.subcomponent,))
+        if definition.subcomponent else require_project_any_subcomponent_enabled(module_key, definition.any_subcomponents)
+        if definition.any_subcomponents else require_project_module_enabled(module_key)
     )
 
     def endpoint(**kw: Any):
@@ -1100,6 +1100,9 @@ class ReportCatalogueEntryOut(BaseModel):
     sub-component) enabled, so the picker never offers one the route would 404.
     A custom report's run-time variables are `variables` (the run form: default and current options each);
     a module report declares `params` instead.
+    `kind` is what the Reports picker filters on (`sheet` is a table layout) and `folder` is the author's folder for a
+    custom report (`""` for none: the picker then files a module report under its module and a custom one under
+    "Custom reports").
     """
 
     module_key: str
@@ -1118,6 +1121,9 @@ class ReportCatalogueEntryOut(BaseModel):
     projects: list[ReportProjectOut] = []
     params: list[ReportParamOut]
     variables: list[ReportVariableOut] = []
+    kind: Literal["report", "sheet"] = "report"
+    folder: str = ""
+    placement_key: str = ""
 
 
 def param_out(param: ReportParamDefinition) -> ReportParamOut:
@@ -1173,9 +1179,7 @@ def project_catalogue(db: Session, project: Project) -> list[ReportCatalogueEntr
     for module_key, definition in get_all_reports():
         module = get_module(module_key)
         router = module.get_project_router() if module is not None and module.get_project_router is not None else None
-        if router is None or not is_module_enabled_for_project(db, project.id, module_key):
-            continue
-        if definition.subcomponent and not is_module_subcomponent_enabled(db, project.id, module_key, definition.subcomponent):
+        if router is None or not report_enabled_for_project(db, project.id, module_key, definition):
             continue
         path = _mounted_path(
             router, f"project_report_{definition.key}", f"{router.prefix}/reports/{definition.slug}",
@@ -1202,11 +1206,7 @@ def organization_catalogue(db: Session, user: User, organization_id: UUID) -> li
     scoped: dict[str, list[Project]] = {}  # per `org_scope`: the scope does not depend on the report
     for module_key, definition in get_all_reports():
         module = get_module(module_key)
-        if not definition.org_level or module is None or not is_module_enabled(db, organization_id, module_key):
-            continue
-        if definition.subcomponent and not is_org_module_subcomponent_enabled(
-            db, organization_id, module_key, definition.subcomponent,
-        ):
+        if not definition.org_level or module is None or not report_enabled_for_organization(db, organization_id, module_key, definition):
             continue
         if not user_satisfies_module_role(
             db, user, module_key, definition.org_role_key, organization_id=organization_id, project_id=None,
@@ -1224,8 +1224,7 @@ def organization_catalogue(db: Session, user: User, organization_id: UUID) -> li
             )
         pickable = [
             p for p in scoped[definition.org_scope]
-            if is_module_enabled_for_project(db, p.id, module_key)
-            and (not definition.subcomponent or is_module_subcomponent_enabled(db, p.id, module_key, definition.subcomponent))
+            if report_enabled_for_project(db, p.id, module_key, definition)
         ]
         entries.append(_entry(module_key, definition, scope="organization", path=path, projects=pickable))
     return entries

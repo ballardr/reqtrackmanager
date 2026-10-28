@@ -3,6 +3,7 @@ import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/tes
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
+import { saveVersion } from "../testing/saveVersionHelpers";
 import { buildFieldCatalogue, buildLayoutSummary } from "../testing/reportLayoutFixtures";
 import { buildDefinition, buildForm, buildPackApi, buildPackSummary } from "../testing/reportPackFixtures";
 import { withToast } from "../testing/storybook-helpers";
@@ -58,8 +59,7 @@ export const EditingAReportEnablesSavingAsANewVersion: Story = {
     const first = within(await view.findByRole("region", { name: "Report 1" }));
     await userEvent.type(first.getByRole("textbox", { name: "File name" }), "-v2");
     await expect(await view.findByText("Unsaved changes")).toBeInTheDocument();
-    await userEvent.type(view.getByRole("textbox", { name: "Note on this change" }), "Renamed the file");
-    await userEvent.click(view.getByRole("button", { name: "Save new version" }));
+    await saveVersion(view.getByRole("button", { name: "Save new version" }), "Renamed the file");
     await waitFor(() => expect(args.api!.save).toHaveBeenCalledWith("pack-1", expect.objectContaining({
       base_version: 2, comment: "Renamed the file",
       definition: expect.objectContaining({ entries: expect.arrayContaining([expect.objectContaining({ filename: "overview-v2" })]) }),
@@ -92,7 +92,7 @@ export const TheServersProblemsAreListed: Story = {
     const view = within(canvasElement);
     const first = within(await view.findByRole("region", { name: "Report 1" }));
     await userEvent.type(first.getByRole("textbox", { name: "File name" }), "x");
-    await userEvent.click(view.getByRole("button", { name: "Save new version" }));
+    await saveVersion(view.getByRole("button", { name: "Save new version" }));
     await expect(await view.findByText("entries[0].format: Must be one of: pdf, docx.")).toBeInTheDocument();
   },
 };
@@ -108,7 +108,7 @@ export const AConflictAsksForAReload: Story = {
     const view = within(canvasElement);
     const first = within(await view.findByRole("region", { name: "Report 1" }));
     await userEvent.type(first.getByRole("textbox", { name: "File name" }), "x");
-    await userEvent.click(view.getByRole("button", { name: "Save new version" }));
+    await saveVersion(view.getByRole("button", { name: "Save new version" }));
     await expect(await view.findByText(/Someone saved a newer version/)).toBeInTheDocument();
   },
 };

@@ -14,14 +14,34 @@ export default meta;
 
 type Story = StoryObj<typeof ReportLayoutWidgetPicker>;
 
-export const ListsPartsGroupedByReport: Story = {
+/** Every module starts collapsed; opening a module shows its reports, collapsed too, and opening one lists its parts. */
+export const ListsPartsAsACollapsedTreeOfModulesAndReports: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const group = canvas.getByRole("region", { name: "Risk Management · Risk register" });
-    await expect(within(group).getByRole("button", { name: "Risk register" })).toBeInTheDocument();
-    await expect(within(group).getByRole("button", { name: "Headline figures" })).toBeInTheDocument();
-    await expect(within(group).getByText("Table")).toBeInTheDocument();
-    await expect(within(group).getByText("Figures")).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Expand Risk Management" })).toHaveAttribute("aria-expanded", "false");
+    await expect(canvas.getByRole("button", { name: "Expand Decision Management" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Risk register" })).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Expand Risk Management" }));
+    await expect(canvas.queryByRole("button", { name: "Headline figures" })).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Expand Risk register" }));
+    await expect(canvas.getByRole("button", { name: "Risk register" })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Headline figures" })).toBeInTheDocument();
+    await expect(canvas.getByText("Table")).toBeInTheDocument();
+    await expect(canvas.getByText("Figures")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Collapse Risk Management" }));
+    await expect(canvas.queryByRole("button", { name: "Headline figures" })).not.toBeInTheDocument();
+  },
+};
+
+/** The module name is said once for its three reports, instead of in front of each. */
+export const SaysTheModuleOnceForItsReports: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Expand Decision Management" }));
+    await expect(canvas.getByRole("button", { name: "Expand Decision register" })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Expand Approval ageing" })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Expand Decision log" })).toBeInTheDocument();
+    await expect(canvas.queryByText(/Decision Management ·/)).not.toBeInTheDocument();
   },
 };
 
@@ -29,6 +49,8 @@ export const ListsPartsGroupedByReport: Story = {
 export const InsertsTheLineWithItsSettings: Story = {
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Expand Risk Management" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Expand Risk register" }));
     await userEvent.click(canvas.getByRole("button", { name: "Risk register" }));
     const settings = within(canvas.getByRole("group", { name: "Settings" }));
     await expect(settings.getByLabelText("Inserts:")).toHaveTextContent("[[widget.risk_management.risk-register.register]]");
@@ -52,6 +74,17 @@ export const FilteringNarrowsTheList: Story = {
     await userEvent.clear(canvas.getByRole("textbox", { name: "Find a widget" }));
     await userEvent.type(canvas.getByRole("textbox", { name: "Find a widget" }), "nothing like it");
     await expect(canvas.getByText("No widget matches.")).toBeInTheDocument();
+  },
+};
+
+/** Searching by a module's name opens it, and the reports under it, without a click. */
+export const SearchingByModuleOpensItsBranches: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.type(canvas.getByRole("textbox", { name: "Find a widget" }), "decision management");
+    await expect(canvas.getByRole("button", { name: "Decision register" })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Decision log" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Risk register" })).not.toBeInTheDocument();
   },
 };
 

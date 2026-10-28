@@ -13013,3 +13013,114 @@ A cheap count pre-pass (record counts per `each` source, multiplied through nest
 - *Remediate:* none needed.
 
 *Not applicable:* no migration, bundle, search, code, MCP tool, audit event or time field; no seed change.
+
+## Custom reports Phase 15: website slice for layouts, the designer and packs (2026-10-28)
+
+The custom-reports material had grown to about 120 dense lines inside the Reports and export page, with no screenshots. It moves to its own nested section, as the Compliance module's pages did.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Four pages under Core Features → Custom reports** (overview, designing a layout, blocks and variables, report packs) replace the section of `reports-and-export.md`, which keeps a short pointer and the background-runs section, since that applies to every file report. Anchors other pages link to (`#report-content`, `#how-reports-name-records`, `#large-reports-are-prepared-in-the-background`) are unchanged. | Agent |
+| 2 | **Eight screenshots at 1440x900 from the seeded demo organisation**: the Reports page running a layout and its variable, the designer's text, outline, document and history views, the pack editor and the pack's record counts. Captured with a throwaway script; the Falcon-3 project's "Spec" terminology was cleared for the capture and restored. | Agent |
+| 3 | **Phase 15 stays open**: the background-reports list, starter layouts list and organisation-wide run have no screenshot yet, and later phases add pages. | Agent |
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a screenshot or page that shows data from another organisation or a real person; documentation that promises behaviour the product does not have.
+- *Verify:* every shot is of the seeded demo organisation (Solstice Robotics, fictional); captions were checked against what each image shows (two captions that said three reports and an unavailable report were corrected).
+- *Remediate:* captions corrected.
+
+*Not applicable:* no code, migration, endpoint, bundle, search, MCP tool, audit event or time field.
+
+## Custom reports Phase 16: a Reports picker with folders, favourites and placements (2026-10-28)
+
+The first review of the custom-reports work asked for: a Reports chooser that can file reports in folders (module reports in their module's folder by default), hides reports of sub-components a project has off, and offers search, favourites and a reports / sheets / packs filter; a filter and search on the Report layouts list; and a widget list whose sections collapse (all closed to start) and nest module then report. A second message added that folders nest and that people with the right authority can move or hide upstream reports to suit themselves.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **A dialog picker, not a drop-down** (`ReportPicker`): a button naming the current report, a dialog with search, a Show filter (Reports, Sheets, Packs), a Favourites folder first and nested folders. | User |
+| 2 | **Favourites are per person, on the server**, in the existing `ui_preferences` bag (`report_favourites`, by stable report key), with no new table or migration. | User (server-side per person) / Agent (the bag) |
+| 3 | **"Sheets" are table layouts**; "Reports" are document layouts and module reports. A catalogue entry carries `kind`. | User |
+| 4 | **Folders are author-chosen** (`folder` on layouts and packs, set in the create and edit form) **and nest** (`A/B`, up to three levels, 40 characters a level, 120 in all). | User |
+| 5 | **Authorised people can move or hide upstream reports.** A `ReportPlacement` row per (organisation or project, report key) holds an optional folder and, for module and platform reports, an optional hidden flag. | User |
+| 6 | **Nearest tier wins, per attribute** (project, then parent projects, then the organisation), the rule action types follow. This is the nested-project check for the new table: a child with no row of its own inherits its parents' placements. | Agent |
+| 7 | **An organisation can place any module report of a module it has enabled**, not only the organisation-wide ones, because its placement reaches every project's picker. | Agent |
+| 8 | **A placement may hide only module and platform reports.** A shared layout or pack is hidden from its own list through the existing definition-suppression tombstone, so a placement can only move it; two mechanisms for one hide would disagree. | Agent |
+| 9 | **Hiding is tidying, not access.** A hidden report still answers on its route and checks the caller's role and module state; the confirm and the docs say so. | Agent |
+| 10 | **The permission is the existing manage-report-layouts one** at each tier (no bypass for a server administrator), since arranging what a team is offered is the same job. | Agent |
+| 11 | **A report spanning several sub-components** declares `any_subcomponents` and is offered while at least one is on (Context & Strategy's change history and summary). Engagement & research yield is deliberately not one of them: engagements stand without Personas, Stakeholders or Needs, and an existing test pins that, through one check (`report_enabled_for_project` / `_organization`) used by the catalogue, the route, the widget list and the module run. `ReportDefinition.subcomponent` is unchanged. | Agent |
+| 12 | **The picker starts collapsed** (only the folder holding the selection is open); a search or filter opens every folder with a match. The widget list follows the same rule. | User (collapsed) / Agent (search opens) |
+| 13 | **`TreeView` gained a controlled mode** (`expanded`, `onToggle`) rather than a second tree component. | Agent |
+| 14 | **No MCP tool for placements**; `create_report_layout` and `update_report_layout` take `folder`, the catalogue entries carry the effective folder, and the skill says so. Arranging the list is a person's job. | Agent |
+
+### Shapes of time and data
+
+`updated_at` on a placement is a past instant in UTC. No scheduled time and no calendar date is added. Placements are configuration, not artefacts: no code, not searched, not linkable (the reason is on `models/report_placement.py`).
+
+### Export and import
+
+Placements travel in the project and organisation bundles (`services/report_placement_bundle.py`): a module report by key, a layout or pack by name. A layout's and a pack's `folder` travel with them. Round-trip tests in `backend/tests/test_report_placements.py`. An invalid folder in a hand-edited bundle is dropped, a placement that names nothing here is a warning.
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a placement used to hide a report from people who should not run it (or read as if it did); a manager placing a report in a scope they cannot reach; a folder name used as markup or a path; a placement key injected to reach another scope's row; a hidden report leaking through the widget list or a pack; ui_preferences growth from favourites.
+- *Verify:* the run routes never consult placements and a test runs a hidden report; placing needs the manage permission and `valid_keys` limits a key to what the scope itself can list (anything else is a 422, with nothing stored); a folder is tidied and size-limited by the server, rendered as text only and never used in a query or path; rows are scoped by organisation and project with cascading foreign keys and removed with their layout or pack; the bag is already size-bounded (200 keys, 32 KiB) and favourites are capped at 100; an imported file is validated again. Audit events record the key and values only.
+- *Remediate:* none needed beyond the above. Residual: a manager can learn the titles of reports in modules their organisation has enabled (already visible to them in the catalogue).
+
+*Not applicable:* no change to authentication, secrets, retention or classification (a placement holds no personal or Restricted data).
+
+## Custom reports Phase 17: text designer fixes (2026-10-28)
+
+The second review of the designer asked for icon buttons with tooltips above the text, a popover for the change note, one searchable list of fields and placeholders, no Document tab, a page size setting and project facts as placeholders. It also asked for a Blockly-like editor in place of the outline (Phase 18), the removal of report content and the project default template (Phase 19) and a Download report action on record lists (Phase 20); those are planned, not built here.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **The Document view is removed**, with its TipTap editor, converter, link dialog and `@tiptap/*` dependencies. Bold, italic, code, lists and links stay in the engine and the text view; the outline and the text cover the same blocks and the Blockly editor will replace the outline. The starter-tree fixture and its export script (used only by the document round-trip test) are gone; the link vectors the backend still tests against moved to `backend/tests/data/`. | User |
+| 2 | **Block shortcuts are icon buttons with tooltips** (`ReportLayoutBlockToolbar`), each keeping the accessible name "Insert block: <name>"; headings are offered by level (1, 2, 3) instead of one Heading button. | User |
+| 3 | **"Save new version" opens a popover for an optional note** (`SaveVersionButton`), in the layout designer and the pack editor alike; there is no note field on the page. | User |
+| 4 | **One field list**: the report and project placeholders and the fields of every name in scope in one list, with a search and a From filter (`ReportLayoutFieldPicker`). | User |
+| 5 | **Page size** is a document layout's `page_size` (A3, A4, A5, Letter, Legal; A4 when absent), written in the `@layout` line in either order with the orientation, set from a Page setup button in the text view and from the outline's Layout settings, and honoured by the PDF, Word and OpenDocument renderers and the width of the HTML view. It is additive to tree schema 1, so no version bump. | Agent |
+| 6 | **New placeholders** `{{project_code}}` and `{{project_description}}` (the project's summary), filled in a layout run; the substituted value stays plain text, never markup. The legacy report content does not fill them (it is removed in Phase 19). | Agent |
+| 7 | **No new endpoint or table**; the field catalogue already lists `PLACEHOLDER_NAMES`. | Agent |
+
+### Shapes of time and data
+
+No time or date field is added. A project's summary is project data the runner can already read (it is shown on the project), so printing it adds no access.
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a project summary printed into a report becoming markup; a layout choosing a page size that makes the renderer allocate without bound; a header word making the text parser accept an unvalidated value.
+- *Verify:* placeholders are substituted as text in one pass and a value is never re-scanned; page sizes come from a fixed table and an unknown name falls back to A4, with the tree check refusing it first; the parser accepts only the listed words, each at most once.
+- *Remediate:* none needed.
+
+*Not applicable:* no migration, bundle section (the tree carries `page_size`), permission, audit event, MCP tool or search change.
+
+## Custom reports Phase 18: the block editor on Blockly (2026-10-28)
+
+The designer's second view, the card outline, is replaced by a Blockly workspace (`ReportLayoutBlocks`). The User chose Blockly, themed, with blocks generated from the server's block schemas, in the second design review (2026-10-28); the rest of the design below was the Agent's.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Blockly 13.4 (Apache-2.0), themed from the app's colour tokens** (read from the CSS custom properties, re-read when `data-theme` changes), zelos renderer. Loaded lazily (`React.lazy` in the designer) so its ~1 MB stays out of the main bundle. | User (library, theming), Agent (renderer, lazy load) |
+| 2 | **Blocks are generated from `BlockType`** (`utils/reportLayoutBlocklyBlocks.ts`): a label, the short fields inline (`text` that is required, `alias`, `tex`, `integer`, `boolean`, `choice`) with a small label each (omitted when it repeats the block's name), a read-only summary of what only the inspector edits, a statement input per child list. A choice or an integer with fewer than ten values is a dropdown with a "not set" option. A module's block type needs no frontend code; a type the catalogue does not describe becomes an `Unknown block` carrying its whole node. | Agent |
+| 3 | **Headings by level** in the palette and the Add menu (Heading 1 to 3, like the text view's toolbar); the block shows its level as a dropdown. | User (headings by level), Agent (levels offered) |
+| 4 | **The inspector beside the workspace shows every field of the selected block** with the shared field components, and the Add block / Add to <list> menus add a block and select it. The inline fields are a quick edit of the same values. Reason: embedding React editors (source, condition, columns, widget settings) in SVG blocks would give two editing worlds, and a plain form is the way in for a person who does not use a pointer. | Agent |
+| 5 | **The tree stays canonical.** A block's `data` keeps its node minus child blocks, inline fields overwrite it on the way back, and a value a control cannot hold stays in `data`, so opening a layout never rewrites it (a story pins tree to blocks and back as the identity, with keys the editor does not draw, an out-of-range level, an unknown type and an empty child list). | Agent |
+| 6 | **Edits that change only values are patched into the blocks in place** (selection, scroll and focus stay); a change of shape redraws the workspace. Blockly deselects a block when focus leaves the workspace, which typing in the inspector does, so the inspector keeps the last block chosen. | Agent |
+| 7 | **A block dropped outside the layout is not part of it**; Blockly's orphan handling greys it and the inspector counts it, so it is neither lost silently nor saved. | Agent |
+| 8 | **Problems from the server's validate check** show as a warning mark on the block and under the field in the inspector. | Agent |
+| 9 | **The card outline is removed** (`ReportLayoutOutline`, its stories, and the tree helpers only it used: move, indent, outdent, duplicate, remove). `ReportLayoutOutlineField` became `ReportLayoutBlockField`. The tab reads **Blocks**. | User (replaced by Blockly), Agent (naming) |
+
+### Shapes of time and data
+
+No time or date field is added; no endpoint, table, migration or bundle section changes (the tree is unchanged, so no schema version bump).
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a hostile or malformed tree reaching the editor (a layout from another tier, an imported bundle) executing something or breaking it; layout text rendered as markup on a block; a new third-party dependency; Blockly's injected styles against a content security policy.
+- *Verify:* block fields draw text through SVG text nodes, never HTML; tooltips are plain text from the server's schema; the editor never uses Blockly's XML or code generators; `data` is parsed with `JSON.parse` inside a try block and used only if it is a plain object; text lengths are limited to the schema's `max_length`; the tree is still validated by the server on every change and on save. The application's policy only restricts framing, so Blockly's `<style>` injection is not blocked. Blockly is an npm dependency (caret range, lockfile synced under Node 24), Apache-2.0, run with sounds off.
+- *Remediate:* none needed.
+
+### Verification
+
+Storybook: 12 new stories for the editor (draws, round trip, field edit, inspector, in-place patch, add menus, levels, warnings, loose block, read-only, table family) and the designer's stories rewritten for the Blocks tab (80 passing across the report component and utility stories). Playwright: the designer spec's two outline tests now drive the Blocks view through the real stack (11 passing). Not yet done: new website screenshot of the Blocks view (the old outline screenshot is removed; the docs slice is part of the website phase after the review checkpoint).

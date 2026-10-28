@@ -1,9 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import { buildReportCatalogueEntry, buildReportResult } from "../testing/reportFixtures";
-import { withRouter, withToast } from "../testing/storybook-helpers";
+import { buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { ReportCatalogue } from "./ReportCatalogue";
 
 const first = buildReportCatalogueEntry();
@@ -15,7 +15,7 @@ const second = buildReportCatalogueEntry({
 
 function mockApis() {
   spyOn(api, "get").mockImplementation(async (path: string) => {
-    if (path.includes("/report-templates")) return [];
+    if (path.includes("/report-templates") || path.includes("/report-placements")) return [];
     if (path.startsWith("/api/v1/report-runs")) return [];
     return buildReportResult({ title: path.includes("second-report") ? "Second report" : "Fixture report" });
   });
@@ -25,45 +25,47 @@ const meta: Meta<typeof ReportCatalogue> = {
   title: "Components/Reports/ReportCatalogue",
   component: ReportCatalogue,
   args: { entries: [first, second], scope: { kind: "project", id: "project-1" }, organizationId: "org-1" },
-  decorators: [withRouter("/projects/project-1/reports", "/projects/:projectId/reports"), withToast()],
+  decorators: [withRouter("/projects/project-1/reports", "/projects/:projectId/reports"), withToast(), withStatefulAuth(buildUser({ ui_preferences: {} }))],
   beforeEach: mockApis,
 };
 export default meta;
 
 type Story = StoryObj<typeof ReportCatalogue>;
 
-/** The first entry is selected and run; its description sits under the picker. */
+/** The first entry is selected and run; its description sits under the picker button. */
 export const SelectsFirstEntryByDefault: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByLabelText("Report")).toHaveValue("fixture-report");
+    await expect(canvas.getByRole("button", { name: "Report: Fixture report" })).toBeInTheDocument();
     await expect(canvas.getByText(first.description)).toBeInTheDocument();
     await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
   },
 };
 
-/** Switching the picker shows the other report and runs it. */
+/** Choosing another report in the picker dialog shows it and runs it. */
 export const SwitchingReportRunsIt: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.selectOptions(canvas.getByLabelText("Report"), "second-report");
+    await userEvent.click(canvas.getByRole("button", { name: "Report: Fixture report" }));
+    await userEvent.click(within(await screen.findByRole("dialog", { name: "Choose a report" })).getByRole("button", { name: /^Second report/ }));
+    await expect(canvas.getByRole("button", { name: "Report: Second report" })).toBeInTheDocument();
     await expect(canvas.getByText(second.description)).toBeInTheDocument();
     await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining("/reports/second-report?format=json")));
   },
 };
 
-/** An extra (non-catalogue) entry is listed first and renders host content. */
+/** An extra (non-catalogue) entry is offered, files under Platform and renders host content. */
 export const ExtraEntryIsOfferedFirst: Story = {
   args: {
     extraEntries: [{ key: "requirements", title: "Requirements report", description: "Host report.", render: () => <p>Host content</p> }],
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const picker = canvas.getByLabelText("Report");
-    await expect(picker).toHaveValue("requirements");
+    await expect(canvas.getByRole("button", { name: "Report: Requirements report" })).toBeInTheDocument();
     await expect(canvas.getByText("Host content")).toBeInTheDocument();
-    const options = within(picker).getAllByRole("option").map((o) => o.textContent);
-    await expect(options).toEqual(["Requirements report", "Fixture report", "Second report"]);
+    await userEvent.click(canvas.getByRole("button", { name: "Report: Requirements report" }));
+    const dialog = await screen.findByRole("dialog", { name: "Choose a report" });
+    await expect(within(dialog).getByRole("button", { name: "Collapse Platform" })).toBeInTheDocument();
   },
 };
 
@@ -72,17 +74,40 @@ export const SingleEntryHasNoPicker: Story = {
   args: { entries: [first] },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.queryByLabelText("Report")).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: /^Report:/ })).not.toBeInTheDocument();
     await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
   },
 };
 
-/** Entries from several modules are prefixed with the module's name. */
-export const PrefixesModuleNameWhenSeveralModules: Story = {
-  args: { entries: [first, buildReportCatalogueEntry({ ...second, module_key: "other_module", module_name: "Other Module" })] },
+/** Each module's reports are filed in a folder of their own, as the server's entries say. */
+export const FilesEachModuleInItsOwnFolder: Story = {
+  args: { entries: [first, buildReportCatalogueEntry({ ...second, module_key: "other_module", module_name: "Other Module", folder: "Other Module" })] },
   play: async ({ canvasElement }) => {
-    const options = within(within(canvasElement).getByLabelText("Report")).getAllByRole("option").map((o) => o.textContent);
-    await expect(options).toEqual(["Fixture Module: Fixture report", "Other Module: Second report"]);
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Report: Fixture report" }));
+    const dialog = await screen.findByRole("dialog", { name: "Choose a report" });
+    await expect(within(dialog).getByRole("button", { name: "Collapse Fixture Module" })).toBeInTheDocument();
+    await expect(within(dialog).getByRole("button", { name: "Expand Other Module" })).toBeInTheDocument();
+  },
+};
+
+/** A placement the organisation set for an entry the catalogue does not hold (the requirements report) moves or hides it. */
+export const AppliesPlacementsToExtraEntries: Story = {
+  args: {
+    extraEntries: [
+      { key: "requirements", title: "Requirements report", description: "Host report.", render: () => <p>Host content</p> },
+    ],
+  },
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.includes("/report-placements/resolved")) {
+        return [{ report_key: "report:platform.requirements", folder: "Core/Documents", hidden: false }];
+      }
+      if (path.includes("/report-templates") || path.startsWith("/api/v1/report-runs")) return [];
+      return buildReportResult({ title: "Fixture report" });
+    });
+  },
+  play: async ({ canvasElement }) => {
+    await expect(await within(canvasElement).findByText(/Core\/Documents/)).toBeInTheDocument();
   },
 };
 

@@ -138,6 +138,7 @@ from app.services.report_content import bundle_entries, portable_entries, replac
 from app.services.report_content_bundle import ContentImageImporter, collect_content_images
 from app.services.report_layout_bundle import export_org_layouts, import_org_layouts
 from app.services.report_pack_bundle import export_org_packs, import_org_packs
+from app.services.report_placement_bundle import export_org_placements, import_org_placements
 from app.services.scoring import seed_missing_scoring_levels
 
 ORG_BUNDLE_KIND = "org-export"
@@ -194,7 +195,9 @@ def build_org_bundle(db: Session, org: Organization, exported_by: User) -> bytes
         for t in report_templates
     ]
 
-    module_bundle_json: dict[str, Any] = {**export_org_layouts(db, org.id), **export_org_packs(db, org.id)}
+    module_bundle_json: dict[str, Any] = {
+        **export_org_layouts(db, org.id), **export_org_packs(db, org.id), **export_org_placements(db, org.id),
+    }
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         module_bundle_json.update(hooks.export(db, org))
 
@@ -680,6 +683,7 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
     imported_layouts: dict[str, UUID] = {}
     import_org_layouts(db, org.id, data, current_user, warnings, merge=False, created=imported_layouts)
     import_org_packs(db, org.id, data, current_user, warnings, merge=False)
+    import_org_placements(db, org.id, data, current_user, warnings)
     _set_imported_content(
         db, SCOPE_ORGANIZATION, org.id, bundle_entries(data, "report_content", _LEGACY_ORG_CONTENT_KEYS), images, warnings,
         imported_layouts,
@@ -871,6 +875,7 @@ def merge_org_bundle(
     imported_layouts: dict[str, UUID] = {}
     import_org_layouts(db, target_org.id, data, current_user, warnings, merge=True, created=imported_layouts)
     import_org_packs(db, target_org.id, data, current_user, warnings, merge=True)
+    import_org_placements(db, target_org.id, data, current_user, warnings)
     _import_report_templates(
         db, target_org, data, current_user, resolutions=resolutions, file_bytes_by_ref=file_bytes_by_ref, warnings=warnings,
         imported_layouts=imported_layouts,

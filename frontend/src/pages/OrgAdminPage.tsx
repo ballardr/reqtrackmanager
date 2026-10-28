@@ -101,9 +101,11 @@ import { defaultResolutions } from "../utils/mergeConflicts";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { reportLayoutApi } from "../api/reportLayouts";
 import { reportPackApi } from "../api/reportPacks";
+import { reportPlacementApi } from "../api/reportPlacements";
 import { Badge } from "../components/Badge";
 import { ReportLayoutsPanel } from "../components/ReportLayoutsPanel";
 import { ReportPacksPanel } from "../components/ReportPacksPanel";
+import { ReportPlacementsPanel } from "../components/ReportPlacementsPanel";
 import { CheckboxField, ColorField, FileField, TextAreaField, TextField, ToggleField, UploadField } from "../components/FormFields";
 import { FormActions } from "../components/FormActions";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
@@ -209,6 +211,7 @@ export function OrgAdminPage() {
   const { orgId, group: groupParam } = useParams<{ orgId: string; group?: string }>();
   const layoutApi = useMemo(() => (orgId ? reportLayoutApi({ kind: "organization", id: orgId }) : null), [orgId]);
   const packApi = useMemo(() => (orgId ? reportPackApi({ kind: "organization", id: orgId }) : null), [orgId]);
+  const placementApi = useMemo(() => (orgId ? reportPlacementApi({ kind: "organization", id: orgId }) : null), [orgId]);
   const { user } = useAuth();
   const { showToast } = useToast();
   const orgLabel = useOrgLabel();
@@ -3373,6 +3376,12 @@ export function OrgAdminPage() {
             {packApi && (
               <CollapsibleSection sectionKey="orgAdmin.reportPacks" title={strings.reportPacks.title}>
                 <ReportPacksPanel api={packApi} />
+              </CollapsibleSection>
+            )}
+
+            {placementApi && (
+              <CollapsibleSection sectionKey="orgAdmin.reportPlacements" title={strings.reportPlacements.title}>
+                <ReportPlacementsPanel api={placementApi} />
               </CollapsibleSection>
             )}
 

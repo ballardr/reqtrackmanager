@@ -45,6 +45,8 @@ export interface ReportLayoutSummary {
   project_id: string | null;
   name: string;
   description: string;
+  /** The author's Reports picker folder, up to three levels written `A/B` (`""` = the default folder). */
+  folder: string;
   family: LayoutFamily;
   current_version: number;
   origin: LayoutOrigin;
@@ -83,6 +85,7 @@ export interface ReportLayoutVersionSummary {
 export interface ReportLayoutCreate {
   name: string;
   description: string;
+  folder?: string;
   family: LayoutFamily;
   tree: ReportLayoutTree;
   comment?: string;
@@ -272,7 +275,7 @@ export interface ReportLayoutApi {
   versions(id: string): Promise<ReportLayoutVersionSummary[]>;
   version(id: string, version: number): Promise<ReportLayoutVersion>;
   save(id: string, body: { tree: ReportLayoutTree; base_version: number; comment?: string }): Promise<ReportLayoutDetail>;
-  update(id: string, body: { name?: string; description?: string }): Promise<ReportLayoutSummary>;
+  update(id: string, body: { name?: string; description?: string; folder?: string }): Promise<ReportLayoutSummary>;
   remove(id: string): Promise<void>;
   parseText(text: string): Promise<TextParseResult>;
   formatTree(tree: ReportLayoutTree): Promise<string>;
@@ -366,5 +369,5 @@ export function treeProblems(err: unknown): { path: string; message: string }[] 
  */
 export async function copyReportLayout(api: ReportLayoutApi, source: ReportLayoutSummary, name: string): Promise<ReportLayoutDetail> {
   const detail = await api.get(source.id);
-  return api.create({ name, description: source.description, family: source.family, tree: detail.current.tree });
+  return api.create({ name, description: source.description, folder: source.folder, family: source.family, tree: detail.current.tree });
 }

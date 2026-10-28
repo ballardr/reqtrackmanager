@@ -2571,9 +2571,9 @@ def require_project_module_enabled(module_key: str):
     return _dependency
 
 
-def require_project_subcomponent_enabled(module_key: str, subcomponent_key: str):
-    """FastAPI dependency factory requiring one project-scoped
-    sub-component of `module_key` to be effectively enabled (`app.modules.
+def require_project_any_subcomponent_enabled(module_key: str, subcomponent_keys: tuple[str, ...]):
+    """FastAPI dependency factory requiring at least one of the project-scoped
+    sub-components `subcomponent_keys` of `module_key` to be effectively enabled (`app.modules.
     registry.is_module_subcomponent_enabled`) for the organisation owning
     the project named by the `project_id` path parameter, for a caller who
     is otherwise a member of that project (Platform
@@ -2596,7 +2596,7 @@ def require_project_subcomponent_enabled(module_key: str, subcomponent_key: str)
         current_user: User = Depends(get_current_user_or_module_frame(module_key)),
         db: Session = Depends(get_db),
     ) -> User:
-        """See the enclosing `require_project_subcomponent_enabled` factory's docstring."""
+        """See the enclosing `require_project_any_subcomponent_enabled` factory's docstring."""
         _enforce_module_frame_scope(request, project_id=project_id)
         check_pat_scope_for_project(request, db, project_id)
         organization_id = _project_organization_id(db, project_id)
@@ -2606,11 +2606,17 @@ def require_project_subcomponent_enabled(module_key: str, subcomponent_key: str)
         _require_org_2fa(db, organization_id, current_user)
         if not get_effective_project_roles(db, current_user.id, project_id):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
-        if not is_module_subcomponent_enabled(db, project_id, module_key, subcomponent_key):
+        if not any(is_module_subcomponent_enabled(db, project_id, module_key, key) for key in subcomponent_keys):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
         return current_user
 
     return _dependency
+
+
+def require_project_subcomponent_enabled(module_key: str, subcomponent_key: str):
+    """FastAPI dependency factory requiring one project-scoped sub-component of `module_key` to be effectively
+    enabled: `require_project_any_subcomponent_enabled` with a single key (see it for the 404-not-403 rationale)."""
+    return require_project_any_subcomponent_enabled(module_key, (subcomponent_key,))
 
 
 def require_project_module_enabled_dynamic(

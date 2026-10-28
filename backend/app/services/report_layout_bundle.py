@@ -38,6 +38,7 @@ from app.models.report_layout import ReportLayout
 from app.models.user import User
 from app.services import report_layout_scope, report_layouts
 from app.services.bundle_common import BundleImportWarnings
+from app.services.report_folders import imported_folder
 from app.services.report_layout_tree import InvalidLayoutError
 
 PROJECT_KEY = "report_layouts"
@@ -52,7 +53,7 @@ def _layout_json(db: Session, layout: ReportLayout) -> dict[str, Any]:
         u.id: u.email for u in db.scalars(select(User).where(User.id.in_({v.created_by for v in versions if v.created_by})))
     } if any(v.created_by for v in versions) else {}
     return {
-        "name": layout.name, "description": layout.description, "family": layout.family,
+        "name": layout.name, "description": layout.description, "folder": layout.folder, "family": layout.family,
         "versions": [
             {
                 "version": v.version, "schema_version": v.schema_version, "tree": v.tree, "comment": v.comment,
@@ -109,8 +110,8 @@ def _import_layout(
             if layout_id is None:
                 saved = report_layouts.create_layout(
                     db, organization_id=organization_id, project_id=project_id, name=name,
-                    description=str(entry.get("description", "")), family=str(family), tree=v["tree"],
-                    actor_id=actor.id, comment=comment,
+                    description=str(entry.get("description", "")), folder=imported_folder(entry.get("folder")), family=str(family),
+                    tree=v["tree"], actor_id=actor.id, comment=comment,
                 )
                 layout_id = saved.layout.id
             else:

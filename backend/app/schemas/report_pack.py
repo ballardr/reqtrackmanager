@@ -23,6 +23,7 @@ class ReportPackCreate(BaseModel):
 
     name: str = Field(min_length=1, max_length=200)
     description: str = ""
+    folder: str = Field(default="", max_length=120)
     definition: dict[str, Any]
     comment: str = ""
 
@@ -32,6 +33,7 @@ class ReportPackUpdate(BaseModel):
 
     name: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = None
+    folder: str | None = Field(default=None, max_length=120)
 
 
 class ReportPackSave(BaseModel):
@@ -76,6 +78,7 @@ class ReportPackOut(BaseModel):
     project_id: UUID | None
     name: str
     description: str
+    folder: str = ""
     current_version: int
     origin: Literal["project", "ancestor", "organization"]
     hidden: bool = False

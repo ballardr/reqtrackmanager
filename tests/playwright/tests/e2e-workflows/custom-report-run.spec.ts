@@ -3,6 +3,7 @@ import fs from "node:fs";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
+import { chooseReport, offersReport, reportPickerButton } from "./reportPicker";
 import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
@@ -78,14 +79,6 @@ test.describe("Custom report run", () => {
     return resp.json();
   }
 
-  /** Picks the report whose title contains `name` in the Reports page's "Report" picker. */
-  async function chooseReport(page: Page, name: string) {
-    const picker = page.getByLabel("Report", { exact: true });
-    const option = picker.locator("option", { hasText: name });
-    await expect(option).toHaveCount(1); // waits for the catalogue to load
-    await picker.selectOption({ label: (await option.textContent())! });
-  }
-
   async function download(page: Page, button: string) {
     await page.getByRole("button", { name: "Export", exact: true }).click();
     const pending = page.waitForEvent("download");
@@ -142,7 +135,8 @@ test.describe("Custom report run", () => {
 
     await test.step("a project that has nothing to do with the layout does not offer it", async () => {
       await page.goto(`/projects/${beta.id}/reports`);
-      await expect(page.getByLabel("Report", { exact: true }).locator("option", { hasText: name })).toHaveCount(0);
+      await expect(reportPickerButton(page)).toBeVisible();
+      expect(await offersReport(page, name)).toBe(false);
     });
   });
 

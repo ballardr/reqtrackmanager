@@ -25,9 +25,13 @@ import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { ActionMenu, type ActionMenuItem } from "./ActionMenu";
+import { useShowMore } from "../hooks/useShowMore";
+import { distinctFolders } from "../utils/reportFolders";
+import { applyReportListFilter, EMPTY_REPORT_LIST_FILTER, type ReportListFilter } from "../utils/reportListFilter";
 import { Badge } from "./Badge";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { DirectoryTable, type DirectoryColumn } from "./DirectoryTable";
+import { ReportListControls } from "./ReportListControls";
 import { ReportLayoutFormModal } from "./ReportLayoutFormModal";
 import { RestoreOrgDefaultsButton } from "./RestoreOrgDefaultsButton";
 import { Spinner } from "./Spinner";
@@ -47,6 +51,7 @@ export function ReportLayoutsPanel({ api }: { api: ReportLayoutApi }) {
   const [layouts, setLayouts] = useState<ReportLayoutSummary[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [filter, setFilter] = useState<ReportListFilter>(EMPTY_REPORT_LIST_FILTER);
   const inProject = api.scope.kind === "project";
 
   const reload = useCallback(async () => {
@@ -70,11 +75,16 @@ export function ReportLayoutsPanel({ api }: { api: ReportLayoutApi }) {
     }
   }
 
+  const visible = (layouts ?? []).filter((layout) => !layout.hidden);
+  const matching = applyReportListFilter(visible, filter, (layout) => layout.family);
+  const { limit, more } = useShowMore(matching.length, JSON.stringify(filter));
+
   if (failed && !layouts) return <p className="text-muted" role="alert">{text.loadFailed}</p>;
   if (!layouts) return <Spinner />;
 
-  const visible = layouts.filter((layout) => !layout.hidden);
   const hidden = layouts.filter((layout) => layout.hidden);
+  const folders = distinctFolders(visible.map((layout) => layout.folder));
+  const filtering = JSON.stringify(filter) !== JSON.stringify(EMPTY_REPORT_LIST_FILTER);
 
   async function copy(layout: ReportLayoutSummary) {
     await run(async () => {
@@ -112,6 +122,7 @@ export function ReportLayoutsPanel({ api }: { api: ReportLayoutApi }) {
       ),
     },
     { key: "kind", label: text.kindHeading, render: (layout) => <Badge>{LAYOUT_FAMILY_LABEL[layout.family]}</Badge> },
+    { key: "folder", label: text.folderHeading, render: (layout) => layout.folder || <span className="text-muted">{text.noFolder}</span> },
     ...(inProject
       ? [{
         key: "shared",
@@ -157,13 +168,20 @@ export function ReportLayoutsPanel({ api }: { api: ReportLayoutApi }) {
           />
         )}
       </div>
+      <ReportListControls
+        sectionKey={`reportLayouts.${api.scope.kind}`} filter={filter} onChange={setFilter} folders={folders}
+        kinds={(Object.keys(LAYOUT_FAMILY_LABEL) as (keyof typeof LAYOUT_FAMILY_LABEL)[]).map((value) => ({ value, label: LAYOUT_FAMILY_LABEL[value] }))}
+        showSource={inProject} matching={matching.length} total={visible.length}
+      />
       <DirectoryTable
         ariaLabel={text.listLabel}
         columns={columns}
-        rows={visible}
+        rows={matching.slice(0, limit)}
+        total={matching.length}
+        onLoadMore={more}
         rowKey={(layout) => layout.id}
         rowHref={(layout) => reportLayoutPath(api.scope, layout.id)}
-        emptyState={<p className="text-muted">{text.empty}</p>}
+        emptyState={<p className="text-muted">{filtering && visible.length > 0 ? strings.reportListControls.noMatch : text.empty}</p>}
       />
 
       {dialog?.kind === "create" && (

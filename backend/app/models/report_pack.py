@@ -47,6 +47,7 @@ class ReportPack(UUIDPKMixin, TimestampMixin, Base):
         project_id: The owning project, or `None` for an organisation-level pack.
         name: Display name, unique within the owner (case-insensitively, checked by the service).
         description: What the pack is for (for example who receives it).
+        folder: The folder the Reports picker files it under (`""` = the picker's default folder).
         current_version: The latest `ReportPackVersion.version`.
         created_by: The author, `None` once that user is deleted.
     """
@@ -71,6 +72,7 @@ class ReportPack(UUIDPKMixin, TimestampMixin, Base):
     )
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text, default="")
+    folder: Mapped[str] = mapped_column(String(120), default="", server_default="")
     current_version: Mapped[int] = mapped_column(Integer, default=1)
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True

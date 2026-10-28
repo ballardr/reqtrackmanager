@@ -6,19 +6,19 @@ import type { BlockField } from "../api/reportLayouts";
 import { buildBlockCatalogue, buildFieldCatalogue, buildWidgets } from "../testing/reportLayoutFixtures";
 import { requiredCaptions } from "../testing/requiredMarkers";
 import type { NameInScope, TreeNode } from "../utils/reportLayoutTree";
-import { ReportLayoutOutlineField, type OutlineEnv } from "./ReportLayoutOutlineField";
+import { ReportLayoutBlockField, type BlockEnv } from "./ReportLayoutBlockField";
 
-const env: OutlineEnv = { blocks: buildBlockCatalogue(), catalogue: buildFieldCatalogue(), widgets: buildWidgets(), variables: [], readOnly: false };
+const env: BlockEnv = { blocks: buildBlockCatalogue(), catalogue: buildFieldCatalogue(), widgets: buildWidgets(), variables: [], readOnly: false };
 const blockOf = (type: string) => buildBlockCatalogue().blocks.find((b) => b.type === type)!;
 const fieldOf = (type: string, key: string): BlockField => blockOf(type).fields.find((f) => f.key === key)!;
 
 function Harness({ field, initial, names = [], problems = [], environment = env }: {
-  field: BlockField; initial: TreeNode; names?: NameInScope[]; problems?: string[]; environment?: OutlineEnv;
+  field: BlockField; initial: TreeNode; names?: NameInScope[]; problems?: string[]; environment?: BlockEnv;
 }) {
   const [node, setNode] = useState(initial);
   return (
     <>
-      <ReportLayoutOutlineField
+      <ReportLayoutBlockField
         field={field} node={node} names={names} env={environment} problems={problems}
         onChange={(key, value) => setNode((current) => {
           const next = { ...current, [key]: value };
@@ -33,7 +33,7 @@ function Harness({ field, initial, names = [], problems = [], environment = env 
 
 /** One field of a block, drawn by its kind from the block's schema, with the server's problems for it beneath. */
 const meta: Meta<typeof Harness> = {
-  title: "Components/ReportLayoutOutlineField",
+  title: "Components/ReportLayoutBlockField",
   component: Harness,
   args: { field: fieldOf("heading", "text"), initial: { type: "heading", text: "Hello" } },
 };
@@ -77,7 +77,7 @@ export const TextThatAllowsPlaceholdersOffersTheNamesInScope: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByText("Insert a field"));
-    await userEvent.click(await canvas.findByRole("button", { name: "Insert Status" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Insert {{req.status}}" }));
     await waitFor(() => expect(nodeOf(canvasElement).text).toBe("Hello{{req.status}}"));
   },
 };

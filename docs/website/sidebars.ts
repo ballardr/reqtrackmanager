@@ -60,6 +60,17 @@ const sidebars: SidebarsConfig = {
         'core-features/links-and-traceability',
         'core-features/tags',
         'core-features/reports-and-export',
+        {
+          type: 'category',
+          label: 'Custom reports',
+          items: [
+            'core-features/custom-reports/overview',
+            'core-features/custom-reports/designing-a-layout',
+            'core-features/custom-reports/blocks-widgets-and-variables',
+            'core-features/custom-reports/report-packs',
+            'core-features/custom-reports/organising-reports',
+          ],
+        },
         'core-features/notifications-and-email',
         'core-features/file-attachments-and-shared-resources',
         'core-features/search-filtering-and-view-mode',

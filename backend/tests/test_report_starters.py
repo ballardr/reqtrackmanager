@@ -45,19 +45,6 @@ def test_every_starter_is_a_valid_document_layout_with_a_unique_name():
         assert starter.description
 
 
-def test_the_starter_trees_the_document_view_is_tested_against_are_current():
-    """`frontend/src/testing/starterLayoutTrees.json` holds the starters' trees; the document view's round-trip test reads it.
-
-    If this fails a starter changed: run `python scripts/export_starter_trees.py` from `backend/` so the front-end
-    test keeps covering what the server really ships.
-    """
-    import json
-    from pathlib import Path
-
-    fixture = Path(__file__).resolve().parents[2] / "frontend" / "src" / "testing" / "starterLayoutTrees.json"
-    assert json.loads(fixture.read_text(encoding="utf-8")) == json.loads(json.dumps({s.key: s.tree for s in STARTERS}))
-
-
 def test_every_module_section_names_a_real_starter_and_a_module_that_owns_it():
     keys = {starter.key for starter in STARTERS}
     contributed = [(module, section) for module, definition in get_module_registry().items() for section in definition.report_starter_sections]

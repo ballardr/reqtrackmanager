@@ -95,7 +95,7 @@ def _summary(db: Session, pack: ReportPack, origin: Origin, *, hidden: bool = Fa
     version = report_packs.current_version(db, pack)
     return ReportPackOut(
         id=pack.id, organization_id=pack.organization_id, project_id=pack.project_id, name=pack.name,
-        description=pack.description, current_version=pack.current_version, origin=origin, hidden=hidden,
+        description=pack.description, folder=pack.folder, current_version=pack.current_version, origin=origin, hidden=hidden,
         editable=editable, entries=len(version.definition.get("entries", [])), updated_at=pack.updated_at,
     )
 
@@ -141,7 +141,7 @@ def _create(db: Session, user: User, body: ReportPackCreate, *, organization_id:
     try:
         saved = report_packs.create_pack(
             db, organization_id=organization_id, project_id=project_id, name=body.name, description=body.description,
-            definition=body.definition, actor_id=user.id, comment=body.comment,
+            folder=body.folder, definition=body.definition, actor_id=user.id, comment=body.comment,
         )
     except (ValueError, InvalidPackError) as exc:
         db.rollback()
@@ -165,7 +165,9 @@ def _save(db: Session, user: User, pack: ReportPack, body: ReportPackSave) -> Re
 
 def _update(db: Session, user: User, pack: ReportPack, body: ReportPackUpdate) -> ReportPack:
     try:
-        report_packs.update_details(db, pack, name=body.name, description=body.description, actor_id=user.id)
+        report_packs.update_details(
+            db, pack, name=body.name, description=body.description, folder=body.folder, actor_id=user.id,
+        )
     except ValueError as exc:
         db.rollback()
         raise _bad_request(exc) from exc

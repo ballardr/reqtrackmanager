@@ -70,13 +70,13 @@ from app.services.report_model import (
     Styled,
     Table,
     finalize_links,
+    page_dimensions_cm,
     text_on,
     text_runs,
 )
 from app.services.report_svg import svg_png
 
 DOCX_AUTHOR = "ReqTrackManager"
-_PAGE_WIDTH_CM, _PAGE_HEIGHT_CM = 21.0, 29.7  # A4
 _MARGIN_CM = 1.5
 _XML_INVALID = re.compile("[^\x09\x0a\x0d\x20-퟿-�\U00010000-\U0010ffff]")
 _HEX_COLOUR = re.compile(r"^#?([0-9A-Fa-f]{6})$")
@@ -133,9 +133,9 @@ def _page_number_field(paragraph) -> None:
 
 
 def _configure_page(doc: DocxDocument, document: ReportDocument) -> float:
-    """Sets A4 size, orientation and margins; returns the usable width in cm."""
+    """Sets the page size, orientation and margins; returns the usable width in cm."""
     section = doc.sections[0]
-    width, height = (_PAGE_HEIGHT_CM, _PAGE_WIDTH_CM) if document.landscape else (_PAGE_WIDTH_CM, _PAGE_HEIGHT_CM)
+    width, height = page_dimensions_cm(document)
     section.orientation = WD_ORIENT.LANDSCAPE if document.landscape else WD_ORIENT.PORTRAIT
     section.page_width, section.page_height = Cm(width), Cm(height)
     section.left_margin = section.right_margin = section.top_margin = section.bottom_margin = Cm(_MARGIN_CM)

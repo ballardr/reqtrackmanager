@@ -30,7 +30,7 @@ export const LAYOUT_TEXT = `@layout document
 export function buildLayoutSummary(overrides: Partial<ReportLayoutSummary> = {}): ReportLayoutSummary {
   return {
     id: "layout-1", organization_id: "org-1", project_id: "project-1", name: "Requirements by component",
-    description: "Every requirement with its component.", family: "document", current_version: 2, origin: "project",
+    description: "Every requirement with its component.", folder: "", family: "document", current_version: 2, origin: "project",
     hidden: false, editable: true, updated_at: "2026-10-20T09:30:00Z", ...overrides,
   };
 }
@@ -201,6 +201,18 @@ export function buildWidgets(): ReportWidget[] {
       key: "risk_management.risk-register.figures", title: "Headline figures", description: "", kind: "figures",
       report_title: "Risk register", module_key: "risk_management", module_name: "Risk Management", params: [],
     },
+    {
+      key: "decisions.decision-register.register", title: "Decision register", description: "Every Decision.", kind: "section",
+      report_title: "Decision register", module_key: "decisions", module_name: "Decision Management", params: [],
+    },
+    {
+      key: "decisions.approval-ageing.ageing", title: "Approval ageing", description: "", kind: "section",
+      report_title: "Approval ageing", module_key: "decisions", module_name: "Decision Management", params: [],
+    },
+    {
+      key: "decisions.decision-log.log", title: "Decision log", description: "", kind: "section",
+      report_title: "Decision log", module_key: "decisions", module_name: "Decision Management", params: [],
+    },
   ];
 }
 
@@ -248,7 +260,7 @@ export function buildLayoutApi(
     list: fn(async () => store.map((layout) => ({ ...layout }))),
     create: fn(async (body) => {
       const created = buildLayoutSummary({
-        id: `layout-${store.length + 1}`, name: body.name, description: body.description, family: body.family, current_version: 1,
+        id: `layout-${store.length + 1}`, name: body.name, description: body.description, folder: body.folder ?? "", family: body.family, current_version: 1,
       });
       store.push(created);
       return { ...created, current: { ...buildLayoutVersion(1), tree: body.tree } };
@@ -268,7 +280,7 @@ export function buildLayoutApi(
       if (stateful) found.current_version = next;
       return { ...found, current_version: next, current: { ...buildLayoutVersion(next), tree: body.tree } };
     }),
-    update: fn(async (id: string, body: { name?: string; description?: string }) => {
+    update: fn(async (id: string, body: { name?: string; description?: string; folder?: string }) => {
       const found = store.find((layout) => layout.id === id) ?? store[0];
       if (stateful) Object.assign(found, body);
       return { ...found, ...body };

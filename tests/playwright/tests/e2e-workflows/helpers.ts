@@ -707,3 +707,16 @@ export async function selectOptionContaining(select: Locator, text: string): Pro
   const label = await select.locator("option", { hasText: text }).first().innerText();
   await select.selectOption({ label });
 }
+
+/**
+ * Saves an editor that keeps versions (the report layout designer, the report pack editor): presses Save new version,
+ * which opens a popover asking for an optional note, then saves from it.
+ *
+ * @param note A note on the change to type first; omit it to save without one.
+ */
+export async function saveNewVersion(page: Page, note?: string): Promise<void> {
+  await page.getByRole("button", { name: "Save new version" }).click();
+  const popover = page.getByRole("dialog", { name: "Save new version" });
+  if (note !== undefined) await popover.getByRole("textbox", { name: "Note on this change" }).fill(note);
+  await popover.getByRole("button", { name: "Save", exact: true }).click();
+}

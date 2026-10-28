@@ -1,12 +1,12 @@
 /**
  * Module: utils/reportLayoutTree
  *
- * Pure helpers the block outline uses to place, move and reach blocks in a layout tree, and to work out which
+ * Pure helpers the block editor uses to reach and add blocks in a layout tree, and to work out which
  * `{{name.field}}` names are in scope at a block.
  *
  * Responsibilities:
  * - Paths: read the server's problem paths (`nodes[1].children[0].level`) into segments and back.
- * - Immutable edits of the tree: set a key, insert, remove, move, indent, outdent and duplicate a block.
+ * - Immutable edits of the tree: set a key, insert a block (moving and removing blocks is the workspace's job).
  * - Scope: the names the enclosing blocks bring in, from each block type's schema (`BlockProvides`).
  *
  * Design decisions: the helpers know where child blocks live only through the block catalogue's `containers`
@@ -106,11 +106,6 @@ export function nodeAt(tree: Tree, addr: NodeAddr): TreeNode | undefined {
   return found !== null && typeof found === "object" ? (found as TreeNode) : undefined;
 }
 
-/** The list a block sits in, and its index there. */
-function split(addr: NodeAddr): { list: Seg[]; index: number } {
-  return { list: addr.slice(0, -1), index: addr[addr.length - 1] as number };
-}
-
 /** The address of the block that holds `addr`, or `null` for a top-level block. */
 export function parentAddr(addr: NodeAddr): NodeAddr | null {
   return addr.length > 2 ? addr.slice(0, -2) : null;
@@ -123,75 +118,9 @@ export function insertNode(tree: Tree, list: Seg[], index: number, node: TreeNod
   return setAt(tree, list, blocks);
 }
 
-/** A copy of the tree without the block at `addr`. */
-export function removeNode(tree: Tree, addr: NodeAddr): Tree {
-  const { list, index } = split(addr);
-  const blocks = listAt(tree, list).filter((_, i) => i !== index);
-  return setAt(tree, list, blocks);
-}
-
 /** A deep copy of a block, so a duplicate shares nothing with the original. */
 export function cloneNode(node: TreeNode): TreeNode {
   return JSON.parse(JSON.stringify(node)) as TreeNode;
-}
-
-/** A copy of the tree with the block at `addr` copied just after itself; the second value is the copy's address. */
-export function duplicateNode(tree: Tree, addr: NodeAddr): { tree: Tree; addr: NodeAddr } | null {
-  const node = nodeAt(tree, addr);
-  if (!node) return null;
-  const { list, index } = split(addr);
-  return { tree: insertNode(tree, list, index + 1, cloneNode(node)), addr: [...list, index + 1] };
-}
-
-/** Moves a block one place up (`-1`) or down (`1`) in its list; `null` at either end. */
-export function moveNode(tree: Tree, addr: NodeAddr, delta: -1 | 1): { tree: Tree; addr: NodeAddr } | null {
-  const { list, index } = split(addr);
-  const blocks = [...listAt(tree, list)];
-  const target = index + delta;
-  if (target < 0 || target >= blocks.length) return null;
-  [blocks[index], blocks[target]] = [blocks[target], blocks[index]];
-  return { tree: setAt(tree, list, blocks), addr: [...list, target] };
-}
-
-/**
- * Whether the block at `addr` can move into the block before it, and which of that block's lists it would join.
- *
- * @param types The block catalogue, to know which blocks hold children.
- * @returns The list key (the previous block's first container), or `null` when there is none.
- */
-export function indentTarget(tree: Tree, addr: NodeAddr, types: BlockType[]): string | null {
-  const { list, index } = split(addr);
-  if (index === 0) return null;
-  const before = listAt(tree, list)[index - 1];
-  const spec = types.find((t) => t.type === before?.type);
-  return spec?.containers[0]?.key ?? null;
-}
-
-/** Moves a block into the end of the block before it (see {@link indentTarget}); `null` when it cannot. */
-export function indentNode(tree: Tree, addr: NodeAddr, types: BlockType[]): { tree: Tree; addr: NodeAddr } | null {
-  const key = indentTarget(tree, addr, types);
-  const node = nodeAt(tree, addr);
-  if (key === null || !node) return null;
-  const { list, index } = split(addr);
-  const without = removeNode(tree, addr);
-  const into = [...list, index - 1, key];
-  const at = listAt(without, into).length;
-  return { tree: insertNode(without, into, at, node), addr: [...into, at] };
-}
-
-/** Moves a block out of its container to just after the block that held it; `null` for a top-level block. */
-export function outdentNode(tree: Tree, addr: NodeAddr): { tree: Tree; addr: NodeAddr } | null {
-  const parent = parentAddr(addr);
-  const node = nodeAt(tree, addr);
-  if (parent === null || !node) return null;
-  const outer = split(parent);
-  const without = removeNode(tree, addr);
-  return { tree: insertNode(without, outer.list, outer.index + 1, node), addr: [...outer.list, outer.index + 1] };
-}
-
-/** A list key a block with this type could hold (its first container), or `null`. */
-export function firstContainer(type: BlockType | undefined): string | null {
-  return type?.containers[0]?.key ?? null;
 }
 
 /**

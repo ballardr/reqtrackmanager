@@ -176,7 +176,9 @@ def heading_anchor(text: str) -> str:
 # The fixed allow-list of `{{name}}` placeholders content may use. Not a
 # template engine: a name is replaced by plain string substitution and anything
 # else (unknown names, other braces) stays literal text.
-PLACEHOLDER_NAMES: tuple[str, ...] = ("project_name", "report_title", "generated_on", "organisation")
+PLACEHOLDER_NAMES: tuple[str, ...] = (
+    "project_name", "project_code", "project_description", "report_title", "generated_on", "organisation",
+)
 _PLACEHOLDER = re.compile(r"\{\{\s*([a-z_]+)\s*\}\}")
 
 
@@ -386,6 +388,13 @@ class Sheet:
     rows: list[list[str]]
 
 
+#: Page sizes a document can ask for, as (short side, long side) in cm.
+PAGE_SIZES_CM: dict[str, tuple[float, float]] = {
+    "A3": (29.7, 42.0), "A4": (21.0, 29.7), "A5": (14.8, 21.0), "Letter": (21.59, 27.94), "Legal": (21.59, 35.56),
+}
+DEFAULT_PAGE_SIZE = "A4"
+
+
 @dataclass
 class ReportDocument:
     """A complete report, ready for any renderer.
@@ -397,12 +406,20 @@ class ReportDocument:
             page, logo, footer); `None` renders the plain default.
         landscape: Whether pages are landscape (wide module tables) rather
             than portrait (the requirement report).
+        page_size: One of `PAGE_SIZES_CM` (A4 unless a layout chooses another).
     """
 
     title: str
     blocks: list[Block] = field(default_factory=list)
     branding: ReportBranding | None = None
     landscape: bool = False
+    page_size: str = DEFAULT_PAGE_SIZE
+
+
+def page_dimensions_cm(document: ReportDocument) -> tuple[float, float]:
+    """The page's (width, height) in cm, turned on its side for a landscape document; A4 for an unknown size."""
+    short, long = PAGE_SIZES_CM.get(document.page_size, PAGE_SIZES_CM[DEFAULT_PAGE_SIZE])
+    return (long, short) if document.landscape else (short, long)
 
 
 _ESCAPED = re.compile(r"\\([*_`\\\[\]])")

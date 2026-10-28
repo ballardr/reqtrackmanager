@@ -37,6 +37,7 @@ export const ComponentsAreLabelledWithTheirModule: Story = {
     const select = canvas.getByRole("combobox", { name: /Component/ }) as HTMLSelectElement;
     await expect(Array.from(select.options).map((o) => o.text)).toEqual([
       "Choose a component…", "Risk Management: Risk register", "Risk Management: Headline figures",
+      "Decision Management: Decision register", "Decision Management: Approval ageing", "Decision Management: Decision log",
     ]);
     await expect(canvas.getByText("This component has no settings.")).toBeInTheDocument();
     await userEvent.selectOptions(select, "risk_management.risk-register.register");

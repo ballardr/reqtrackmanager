@@ -46,6 +46,7 @@ from app.services.report_model import (
     Styled,
     Table,
     finalize_links,
+    page_dimensions_cm,
     text_on,
     text_runs,
 )
@@ -64,7 +65,6 @@ from app.services.report_odf import (
 )
 from app.services.report_svg import svg_png
 
-_PAGE_WIDTH_CM, _PAGE_HEIGHT_CM = 21.0, 29.7  # A4
 _MARGIN_CM = 1.5
 _POINTS_PER_CM = 28.3465
 _PIXELS_PER_CM = 96 / 2.54
@@ -158,8 +158,8 @@ def _named_styles() -> str:
 
 
 def _styles_xml(document: ReportDocument) -> str:
-    """`styles.xml`: fonts, named styles, the page layout (A4, orientation, margins) and the master pages."""
-    width, height = (_PAGE_HEIGHT_CM, _PAGE_WIDTH_CM) if document.landscape else (_PAGE_WIDTH_CM, _PAGE_HEIGHT_CM)
+    """`styles.xml`: fonts, named styles, the page layout (size, orientation, margins) and the master pages."""
+    width, height = page_dimensions_cm(document)
     orientation = "landscape" if document.landscape else "portrait"
     branding = document.branding
     footer = f"{xml_text(branding.footer_text)}  ·  Page " if branding and branding.footer_text else "Page "
@@ -421,7 +421,7 @@ def render_odt_document(document: ReportDocument) -> bytes:
         ODT bytes.
     """
     document = finalize_links(document)
-    width = _PAGE_HEIGHT_CM if document.landscape else _PAGE_WIDTH_CM
+    width = page_dimensions_cm(document)[0]
     package = OdfPackage(MIME_ODT, document.title)
     body = _Body(document, package, width - 2 * _MARGIN_CM)
     body.cover()

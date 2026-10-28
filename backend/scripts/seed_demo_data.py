@@ -566,10 +566,12 @@ DESIGN_FORMULAE_LAYOUT = {
 """A custom report layout with an equation block and equations written inside text, as the designer's Equation shortcut and text view produce."""
 
 
-def create_report_layout(headers: dict, path: str, name: str, description: str, tree: dict) -> dict:
-    """Creates a custom report layout at one tier: `/orgs/{id}` or `/projects/{id}` (followed by `/report-layouts`)."""
+def create_report_layout(headers: dict, path: str, name: str, description: str, tree: dict, folder: str = "") -> dict:
+    """Creates a custom report layout at one tier: `/orgs/{id}` or `/projects/{id}` (followed by `/report-layouts`), filed
+    under `folder` in the Reports picker (up to three levels, `A/B`)."""
     r = httpx.post(
-        f"{BASE}{path}/report-layouts", json={"name": name, "description": description, "family": "document", "tree": tree},
+        f"{BASE}{path}/report-layouts",
+        json={"name": name, "description": description, "folder": folder, "family": "document", "tree": tree},
         headers=headers, timeout=30,
     )
     r.raise_for_status()
@@ -584,10 +586,10 @@ def hide_report_layout(headers: dict, project_id: str, layout_id: str) -> None:
     r.raise_for_status()
 
 
-def create_report_pack(headers: dict, path: str, name: str, description: str, definition: dict) -> dict:
-    """Creates a report pack at one tier: `/orgs/{id}` or `/projects/{id}` (followed by `/report-packs`)."""
+def create_report_pack(headers: dict, path: str, name: str, description: str, definition: dict, folder: str = "") -> dict:
+    """Creates a report pack at one tier: `/orgs/{id}` or `/projects/{id}` (followed by `/report-packs`), filed under `folder`."""
     r = httpx.post(
-        f"{BASE}{path}/report-packs", json={"name": name, "description": description, "definition": definition},
+        f"{BASE}{path}/report-packs", json={"name": name, "description": description, "folder": folder, "definition": definition},
         headers=headers, timeout=30,
     )
     r.raise_for_status()
@@ -2170,6 +2172,7 @@ def main() -> None:
     print("Seeding custom report layouts: an organisation layout every project inherits, Falcon-3's own, and Avionics hiding the organisation's...")
     org_layout = create_report_layout(
         h_pm, f"/orgs/{org['id']}", "Requirements by component", "Every requirement, grouped by component.", REQUIREMENTS_BY_COMPONENT_LAYOUT,
+        folder="Handover/Requirements",
     )
     create_report_layout(
         h_pm, f"/projects/{drone['id']}", "Falcon-3 requirements", "Falcon-3's requirements by component.", REQUIREMENTS_BY_COMPONENT_LAYOUT,
@@ -2177,10 +2180,12 @@ def main() -> None:
     hide_report_layout(h_pm, avionics["id"], org_layout["id"])
     create_report_layout(
         h_pm, f"/orgs/{org['id']}", "Context overview", "Context & Strategy figures and tables, embedded as widgets.", CONTEXT_OVERVIEW_LAYOUT,
+        folder="Handover",
     )
     create_report_layout(
         h_pm, f"/orgs/{org['id']}", "Requirements by category (choose)",
         "Pick the categories when running it: one layout for any selection.", REQUIREMENTS_BY_CATEGORY_LAYOUT,
+        folder="Handover/Requirements",
     )
     create_report_layout(
         h_pm, f"/orgs/{org['id']}", "Design formulae", "Equations in a text block and as blocks of their own.", DESIGN_FORMULAE_LAYOUT,
@@ -2199,8 +2204,15 @@ def main() -> None:
                 {"kind": "layout", "name": "Requirements by component", "format": "docx", "filename": "requirements-by-component"},
             ],
         },
+        folder="Handover",
     )
     create_report_pack_set(h_pm, f"/orgs/{org['id']}", handover["id"], "Safety only", {"categories": ["Safety"]})
+    print("Arranging the Reports list: the organisation files the Decision register under Governance/Decisions...")
+    r = httpx.put(
+        f"{BASE}/orgs/{org['id']}/report-placements", json={"report_key": "report:decisions.d1", "folder": "Governance/Decisions"},
+        headers=h_pm, timeout=30,
+    )
+    r.raise_for_status()
     avionics_components = {"SN": create_component(h_pm, avionics["id"], "Sensors", "SN")}
     avionics_categories = create_categories_for_components(h_pm, avionics["id"], avionics_components, {"SN": ["PERF", "SAF", "FN"]})
     avionics_reqs = seed_project(

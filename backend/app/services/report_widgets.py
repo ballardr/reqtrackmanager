@@ -51,10 +51,8 @@ from app.modules.registry import (
     ReportParamDefinition,
     get_all_reports,
     get_module,
-    is_module_enabled,
-    is_module_enabled_for_project,
-    is_module_subcomponent_enabled,
-    is_org_module_subcomponent_enabled,
+    report_enabled_for_organization,
+    report_enabled_for_project,
 )
 
 #: `<module key>.<slug>.<part>`: the module key and the part are lower-case words joined by `_`, the slug by `-`.
@@ -160,9 +158,7 @@ def widget_available(db: Session, project: Project, widget: WidgetInfo) -> bool:
     This is the gate the report's own project route applies, so a widget never runs where the standalone
     report would answer 404.
     """
-    if widget.definition.subcomponent:
-        return is_module_subcomponent_enabled(db, project.id, widget.module_key, widget.definition.subcomponent)
-    return is_module_enabled_for_project(db, project.id, widget.module_key)
+    return report_enabled_for_project(db, project.id, widget.module_key, widget.definition)
 
 
 def widgets_for_project(db: Session, project: Project) -> list[WidgetInfo]:
@@ -178,12 +174,8 @@ def widgets_for_organization(db: Session, organization_id: uuid.UUID) -> list[Wi
     """
     out = []
     for widget in list_widgets():
-        if not is_module_enabled(db, organization_id, widget.module_key):
-            continue
-        sub = widget.definition.subcomponent
-        if sub and not is_org_module_subcomponent_enabled(db, organization_id, widget.module_key, sub):
-            continue
-        out.append(widget)
+        if report_enabled_for_organization(db, organization_id, widget.module_key, widget.definition):
+            out.append(widget)
     return out
 
 

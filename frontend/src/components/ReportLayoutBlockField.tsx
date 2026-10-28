@@ -1,5 +1,5 @@
 /**
- * Module: components/ReportLayoutOutlineField
+ * Module: components/ReportLayoutBlockField
  *
  * One field of a block in the outline: picks the control for the field's `kind` (from the block's schema) and
  * shows the server's problems for that field beneath it.
@@ -29,7 +29,7 @@ import { ReportLayoutVariablesField } from "./ReportLayoutVariablesField";
 import { WidgetKeyField, WidgetParamsField, WidgetSortField } from "./ReportLayoutWidgetEditor";
 
 /** What every field of every block shares. */
-export interface OutlineEnv {
+export interface BlockEnv {
   blocks: BlockCatalogue;
   catalogue: ReportFieldCatalogue;
   widgets: ReportWidget[];
@@ -48,13 +48,13 @@ type Obj = Record<string, unknown>;
  * @param problems The server's messages for this field.
  * @param onChange Called with the key and its new value (`undefined` removes the key).
  */
-export function ReportLayoutOutlineField({
+export function ReportLayoutBlockField({
   field, node, names, env, problems, onChange,
 }: {
   field: BlockField;
   node: TreeNode;
   names: NameInScope[];
-  env: OutlineEnv;
+  env: BlockEnv;
   problems: string[];
   onChange: (key: string, value: unknown) => void;
 }) {
