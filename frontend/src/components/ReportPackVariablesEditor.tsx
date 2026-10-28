@@ -93,14 +93,19 @@ function parseDefault(variable: PackVariableDeclaration, raw: string): PackVaria
  * @param onChange Called with the new list after any edit.
  * @param catalogue The record types and fields options can come from, or `null` while unavailable.
  * @param disabled Read-only (a pack shared from elsewhere).
+ * @param intro / emptyText Optional wording that replaces the pack's own.
  */
 export function ReportPackVariablesEditor({
-  variables, onChange, catalogue, disabled = false,
+  variables, onChange, catalogue, disabled = false, intro, emptyText,
 }: {
   variables: DraftVariable[];
   onChange: (next: DraftVariable[]) => void;
   catalogue: ReportFieldCatalogue | null;
   disabled?: boolean;
+  /** Replaces the pack wording above the list (the layout outline uses the same editor for a layout's variables). */
+  intro?: string;
+  /** Replaces the pack wording shown when there are no variables. */
+  emptyText?: string;
 }) {
   const strings = useStrings();
   const text = strings.reportPacks;
@@ -118,8 +123,8 @@ export function ReportPackVariablesEditor({
 
   return (
     <div className="stack">
-      <p className="text-muted" style={{ margin: 0 }}>{text.variablesIntro}</p>
-      {variables.length === 0 && <p className="text-muted">{text.noVariables}</p>}
+      <p className="text-muted" style={{ margin: 0 }}>{intro ?? text.variablesIntro}</p>
+      {variables.length === 0 && <p className="text-muted">{emptyText ?? text.noVariables}</p>}
       {variables.map((draft, index) => {
         const v = draft.variable;
         const recordType = catalogue?.types.find((t) => t.type === v.source?.record_type);

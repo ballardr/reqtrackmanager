@@ -209,7 +209,9 @@ def _respond(
 @project_router.get("/{layout_id}/run", response_model=ReportOut, responses=_RESPONSES)
 def run_project_custom_report(
     project_id: UUID, layout_id: UUID,
-    format: CustomReportFormat = Query("json", description="json (default), or pdf, docx, odt, html (document layouts) / csv, xlsx, ods (table layouts)."),
+    format: CustomReportFormat = Query(
+        "json", description="json (default), or pdf, docx, odt, html (document layouts) / csv, xlsx, ods (table layouts).",
+    ),
     include_children: bool = Query(False, description="Also read the records of readable child projects."),
     report_template_id: UUID | None = Query(None, description="An organisation report template's branding for the PDF and Word."),
     variables: str | None = Query(
@@ -260,7 +262,9 @@ def _parse_project_ids(raw: str | None) -> list[UUID] | None:
 @org_router.get("/{layout_id}/run", response_model=ReportOut, responses=_RESPONSES)
 def run_org_custom_report(
     organization_id: UUID, layout_id: UUID,
-    format: CustomReportFormat = Query("json", description="json (default), or pdf, docx, odt, html (document layouts) / csv, xlsx, ods (table layouts)."),
+    format: CustomReportFormat = Query(
+        "json", description="json (default), or pdf, docx, odt, html (document layouts) / csv, xlsx, ods (table layouts).",
+    ),
     project_ids: str | None = Query(
         None, description="Comma-separated projects to include (narrowing only); default every project you can read.",
     ),

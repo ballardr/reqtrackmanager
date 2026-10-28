@@ -5,6 +5,9 @@ What the layout designer needs beyond storing layouts (`services.report_layouts`
 
 - The **field catalogue** for its field picker: every reportable record type the scope can use, with the fields a
   layout may name, plus the global placeholder names.
+- The **block catalogue** for the visual designer: every registered block type with the editor schema it declared
+  (`report_layout_block_schema`), so forms are drawn from data and a module's block type needs no frontend edit.
+- A **tree check** (`check_tree`) that answers every problem with its path and never raises, for live feedback.
 - A **draft preview**: a tree that is not saved is evaluated for the caller exactly as a run would be and returned
   as a standalone HTML page (document family) or as capped sheets (table family).
 
@@ -47,7 +50,19 @@ from app.modules.registry import (
 )
 from app.services import custom_report_run, report_render
 from app.services.report_fields import FieldInfo, field_catalogue
-from app.services.report_layout_tree import GROUP_FIELDS, TREE_SCHEMA_VERSION, TreeError, assert_valid, validate_tree
+from app.services.report_layout_block_schema import FIELD_KINDS, LAYOUT_FIELDS, BlockField, BlockSchema
+from app.services.report_layout_tree import (
+    BLOCK_SPECS,
+    GROUP_FIELDS,
+    LIST_OPERATORS,
+    OPERATORS_BY_KIND,
+    TREE_SCHEMA_VERSION,
+    VALUELESS_OPERATORS,
+    TreeAnalysis,
+    TreeError,
+    assert_valid,
+    validate_tree,
+)
 from app.services.report_model import PLACEHOLDER_NAMES
 
 #: Most rows of one sheet a preview returns.
@@ -171,6 +186,55 @@ def _preview_of(run: custom_report_run.LayoutRun) -> Preview:
             PreviewSheet(s.name, s.columns, s.rows[:PREVIEW_MAX_ROWS], len(s.rows)) for s in evaluated.sheets
         ]
     return Preview(run.family, html, sheets, warnings, records_read, run.duration_ms, len(run.projects))
+
+
+@dataclass(frozen=True)
+class BlockDescription:
+    """One block type for the designer: its registry entry plus its editor schema.
+
+    Attributes:
+        key: The node's `type`.
+        families: Layout families that may contain it.
+        schema: What the form offers; a type that declared none gets a bare one (`described` false).
+        described: Whether the type declared a schema.
+    """
+
+    key: str
+    families: tuple[str, ...]
+    schema: BlockSchema
+    described: bool
+
+
+@dataclass(frozen=True)
+class BlockCatalogue:
+    """Every block type, the layout-level fields and the field kinds the designer can draw."""
+
+    blocks: list[BlockDescription]
+    layout_fields: tuple[BlockField, ...]
+    field_kinds: tuple[str, ...]
+    operators: dict[str, tuple[str, ...]]
+    valueless_operators: tuple[str, ...]
+    list_operators: tuple[str, ...]
+    schema_version: int
+
+
+def block_catalogue() -> BlockCatalogue:
+    """The block types the designer can add, in the order the registry holds them (core first, then modules')."""
+    blocks = [
+        BlockDescription(
+            spec.key, spec.families,
+            spec.schema or BlockSchema(spec.key, "", template={"type": spec.key}), spec.schema is not None,
+        )
+        for spec in BLOCK_SPECS.values()
+    ]
+    return BlockCatalogue(
+        blocks, LAYOUT_FIELDS, FIELD_KINDS, dict(OPERATORS_BY_KIND), VALUELESS_OPERATORS, LIST_OPERATORS, TREE_SCHEMA_VERSION,
+    )
+
+
+def check_tree(tree: dict[str, Any]) -> TreeAnalysis:
+    """Validates a draft tree for live feedback: every problem with its path, nothing raised, nothing stored."""
+    return validate_tree(tree)
 
 
 def validation_errors(tree: dict[str, Any]) -> list[TreeError]:

@@ -18,6 +18,10 @@ changed where it is owned. Running a layout is a later endpoint and needs neithe
 (`services.report_layout_text`) for the designer; they store nothing, need the manage permission and never
 log the text.
 
+`GET .../blocks` lists the block types the visual designer can add with the form each needs
+(`services.report_layout_block_schema`), and `POST .../validate` checks a draft tree and answers every problem with its path;
+neither stores anything and the tree is never logged.
+
 `GET .../widgets` lists the report components a `widget` block can embed (`services.report_widgets`), narrowed to the
 modules the organisation (or project) can use, for the designer's widget picker.
 """
@@ -38,6 +42,11 @@ from app.models.report_layout import ReportLayout, ReportLayoutVersion
 from app.models.user import User
 from app.routers.custom_reports import guard_run
 from app.schemas.report_layout import (
+    ReportBlockCatalogueOut,
+    ReportBlockContainerOut,
+    ReportBlockFieldOut,
+    ReportBlockOut,
+    ReportBlockProvidesOut,
     ReportFieldCatalogueOut,
     ReportFieldOut,
     ReportFieldTypeOut,
@@ -57,7 +66,10 @@ from app.schemas.report_layout import (
     ReportLayoutTextOut,
     ReportLayoutTextParse,
     ReportLayoutTextParseOut,
+    ReportLayoutTreeErrorOut,
     ReportLayoutUpdate,
+    ReportLayoutValidateOut,
+    ReportLayoutValidateRequest,
     ReportLayoutVariablesRequest,
     ReportLayoutVersionOut,
     ReportLayoutVersionSummaryOut,
@@ -84,6 +96,7 @@ from app.services.rbac import (
     require_project_view_or_manage,
 )
 from app.services.report_framework import param_out
+from app.services.report_layout_block_schema import BlockField
 from app.services.report_layout_scope import Origin, ScopedLayout
 from app.services.report_layout_tree import InvalidLayoutError
 from app.services.report_variables import describe_variables
@@ -178,6 +191,45 @@ def _catalogue_out(catalogue: report_layout_designer.FieldCatalogue) -> ReportFi
             for t in catalogue.types
         ],
         placeholders=list(catalogue.placeholders), group_fields=catalogue.group_fields, schema_version=catalogue.schema_version,
+    )
+
+
+def _block_field_out(f: BlockField) -> ReportBlockFieldOut:
+    """One block or layout field as the designer reads it."""
+    return ReportBlockFieldOut(
+        key=f.key, label=f.label, kind=f.kind, required=f.required, help=f.help, max_length=f.max_length,
+        minimum=f.minimum, maximum=f.maximum, default=f.default, choices=list(f.choices), features=list(f.features),
+        depends_on=f.depends_on, families=list(f.families),
+    )
+
+
+def _blocks_out(catalogue: report_layout_designer.BlockCatalogue) -> ReportBlockCatalogueOut:
+    """The block catalogue as the designer reads it."""
+    return ReportBlockCatalogueOut(
+        blocks=[
+            ReportBlockOut(
+                type=b.key, label=b.schema.label, description=b.schema.description, families=list(b.families),
+                fields=[_block_field_out(f) for f in b.schema.fields],
+                containers=[ReportBlockContainerOut(key=c.key, label=c.label) for c in b.schema.containers],
+                provides=ReportBlockProvidesOut(key=b.schema.provides.key, kind=b.schema.provides.kind, default=b.schema.provides.default)
+                if b.schema.provides else None,
+                template=b.schema.template, described=b.described,
+            )
+            for b in catalogue.blocks
+        ],
+        layout_fields=[_block_field_out(f) for f in catalogue.layout_fields],
+        field_kinds=list(catalogue.field_kinds), operators={k: list(v) for k, v in catalogue.operators.items()},
+        valueless_operators=list(catalogue.valueless_operators), list_operators=list(catalogue.list_operators),
+        schema_version=catalogue.schema_version,
+    )
+
+
+def _validate_tree(body: ReportLayoutValidateRequest) -> ReportLayoutValidateOut:
+    """Checks a draft tree; every problem comes back with its path."""
+    analysis = report_layout_designer.check_tree(body.tree)
+    return ReportLayoutValidateOut(
+        ok=analysis.ok, errors=[ReportLayoutTreeErrorOut(path=e.path, message=e.message) for e in analysis.errors],
+        node_count=analysis.node_count,
     )
 
 
@@ -338,6 +390,18 @@ def parse_org_layout_text(body: ReportLayoutTextParse, current_user: User = Depe
 def format_org_layout_text(body: ReportLayoutTextFormat, current_user: User = Depends(manage_org_layouts)) -> ReportLayoutTextOut:
     """Writes a valid tree as its text view; stores nothing."""
     return _format_text(body)
+
+
+@org_router.get("/blocks", response_model=ReportBlockCatalogueOut)
+def list_org_blocks(current_user: User = Depends(manage_org_layouts)) -> ReportBlockCatalogueOut:
+    """The block types the visual designer can add, with the form each needs; the same for every organisation."""
+    return _blocks_out(report_layout_designer.block_catalogue())
+
+
+@org_router.post("/validate", response_model=ReportLayoutValidateOut)
+def validate_org_layout_tree(body: ReportLayoutValidateRequest, current_user: User = Depends(manage_org_layouts)) -> ReportLayoutValidateOut:
+    """Checks a draft tree and answers every problem with its path (200 either way); stores and logs nothing."""
+    return _validate_tree(body)
 
 
 @org_router.get("/fields", response_model=ReportFieldCatalogueOut)
@@ -553,6 +617,20 @@ def format_project_layout_text(
 ) -> ReportLayoutTextOut:
     """Writes a valid tree as its text view; stores nothing."""
     return _format_text(body)
+
+
+@project_router.get("/blocks", response_model=ReportBlockCatalogueOut)
+def list_project_blocks(project_id: UUID, current_user: User = Depends(manage_project_layouts)) -> ReportBlockCatalogueOut:
+    """The block types the visual designer can add, with the form each needs; the same for every project."""
+    return _blocks_out(report_layout_designer.block_catalogue())
+
+
+@project_router.post("/validate", response_model=ReportLayoutValidateOut)
+def validate_project_layout_tree(
+    project_id: UUID, body: ReportLayoutValidateRequest, current_user: User = Depends(manage_project_layouts),
+) -> ReportLayoutValidateOut:
+    """Checks a draft tree and answers every problem with its path (200 either way); stores and logs nothing."""
+    return _validate_tree(body)
 
 
 @project_router.get("/fields", response_model=ReportFieldCatalogueOut)

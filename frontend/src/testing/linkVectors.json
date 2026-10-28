@@ -1,0 +1,78 @@
+{
+ "links": {
+  "allowed": [
+   "https://example.org",
+   "http://example.org/a/b?x=1&y=2#frag",
+   "HTTPS://EXAMPLE.ORG",
+   "https://user@example.org:8443/p",
+   "mailto:team@example.org",
+   "mailto:a@b.co?subject=Hi",
+   "#overview",
+   "#scope-goals-2026",
+   "#überblick",
+   "https://example.org/{{record.code}}"
+  ],
+  "refused": [
+   "",
+   "javascript:alert(1)",
+   "JaVaScRiPt:alert(1)",
+   "data:text/html,<b>x</b>",
+   "file:///etc/passwd",
+   "vbscript:x",
+   "ftp://example.org",
+   "//example.org",
+   "/relative/path",
+   "relative",
+   "http://",
+   "https:///path",
+   "mailto:",
+   "mailto:not an address",
+   "mailto:a@b",
+   "#",
+   "# spaces",
+   "https://example.org/a b",
+   "https://example.org/\"onclick=x",
+   "https://example.org/<script>",
+   "https://e.org/\\x",
+   "https://example.org/\u0000"
+  ]
+ },
+ "anchors": [
+  [
+   "Overview",
+   "overview"
+  ],
+  [
+   "Scope & Goals (2026)",
+   "scope-goals-2026"
+  ],
+  [
+   "  ",
+   "section"
+  ],
+  [
+   "Überblick 1",
+   "überblick-1"
+  ],
+  [
+   "A_b",
+   "a-b"
+  ],
+  [
+   "Req 12.3",
+   "req-12-3"
+  ],
+  [
+   "ALL CAPS",
+   "all-caps"
+  ],
+  [
+   "Naïve café",
+   "naïve-café"
+  ],
+  [
+   "--x--",
+   "x"
+  ]
+ ]
+}

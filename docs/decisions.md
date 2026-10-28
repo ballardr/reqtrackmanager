@@ -12797,3 +12797,219 @@ A cheap count pre-pass (record counts per `each` source, multiplied through nest
 ### Not applicable, checked
 
 *Authentication, RBAC, audit:* no new endpoint or permission; provenance already records the format. *Time:* the only time is the creation time in the metadata (UTC, past instant). *Search, codes, tags, bundles, record export/import, seeds:* no record type or table. *Nested projects:* no definition table. *MCP:* tools return JSON only; no skill change. *SOC 2 policies:* no control regressed, no new dependency; the PDF/Word/ODF renderers still never fetch anything.
+
+## Custom reports Phase 13 Phase 0: the visual designer's views, library and block schemas (2026-10-28)
+
+**Decided by: User** for the views and the schema source (answers to the Phase 0 questions); **Decided by: Agent** for the library, round-trip rule and outline controls. No code changed in this step.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | The designer offers **three views of one tree**: the text view that exists, a block outline and a rich-text document, switchable at any time. The User first asked for all three options (outline, rich-text, hybrid), then clarified they meant three views, not three editors. | User |
+| 2 | Block forms are rendered from **server-published block schemas** (`BlockSpec.fields`). This keeps the module boundary: a module block type registered through `register_block_spec` brings its own form. | User |
+| 3 | Rich-text library TipTap, not Lexical (see plan D28). Checked 2026-10-28: `@tiptap/react` 3.32.0 and `lexical` 0.52.0, both MIT and not deprecated; neither is installed yet. This is a desk comparison, not a measured bake-off; 13c opens with a proof of concept that can reverse it. | Agent |
+| 4 | Rich-text view is document family only and lossless or refused (plan D29). Table-family layouts (`sheet`) have no prose and use outline and text. | Agent |
+| 5 | Phase 8 decision 1 (no client block model) is superseded; the safeguards are in plan D31. | Agent |
+
+*Risk recorded:* three views over one tree is three places a tree can be mis-shown. Mitigations: the designer holds one tree; each view is a pure function of it; the server validates after every edit; a round-trip identity test per converter (text exists; rich-text in 13c); a Playwright test that edits in each view and checks the others show the change.
+
+*Not applicable at this step:* no endpoint, permission, data or audit change; nothing to bundle, search or seed.
+
+## Custom reports Phase 13a: block schemas and the tree check (2026-10-28)
+
+**Decided by: User** for the shape (forms drawn from server-published schemas, Phase 13 Phase 0); the vocabulary below is **Agent**'s.
+
+### What was built
+
+- `services/report_layout_block_schema.py`: `BlockField`, `BlockContainer`, `BlockProvides`, `BlockSchema`, the field `kind`s the designer can draw (`FIELD_KINDS`) and the layout-level fields (`LAYOUT_FIELDS`: orientation, variables). `BlockSpec.schema` (optional, defaults to none) carries it; the ten core blocks declare theirs in `report_layout_tree.py`.
+- `GET …/report-layouts/blocks` and `POST …/report-layouts/validate` at both tiers, behind the existing manage permission (server administrators excluded, as for every layout route). `services/report_layout_designer.py`: `block_catalogue`, `check_tree`.
+- Tests: `tests/test_report_layout_blocks.py` (15): every registered type has a schema, kinds are drawable, `depends_on` names a sibling, templates are recognised nodes, both tiers, permission, nothing stored or logged.
+- Also fixed: two lines over the lint limit in `routers/custom_reports.py` (the ODT format description from Phase 12).
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **A schema describes; `validate` decides.** The editor offers what the schema lists and shows the validator's errors on the card, so a schema out of step with a validator cannot save an invalid tree. | Agent |
+| 2 | **Composite kinds are named (`source`, `columns`, `joins`, `condition`, `widget_*`, `variables`)** rather than expressed as nested generic fields, because each has structure the generic form would lose (a source reads the names in scope). A module block type composes its form from these kinds; an unknown kind is shown as JSON and still validated by the server. | Agent |
+| 3 | **A name a block brings into scope is declared (`provides`)**, so the designer lists `{{alias.field}}` names by walking the tree, with no case for `each` or `group` in the client. | Agent |
+| 4 | **A type with no schema is offered as raw JSON** (`described: false`), and a test fails for a registered type without one. | Agent |
+| 5 | **Schema text (labels, help) is English from the server**, like the validator's messages; the frontend does not translate it. The field-help rule (`strings.help`) governs hand-written forms, not these. | Agent |
+| 6 | **The block list is not gated by module.** No block type belongs to a module today (modules reach layouts through widgets and fields, which are gated). If a module registers a block type, add a `module_key` to the schema then, with the same gate the widget list uses. | Agent |
+| 7 | **`validate` answers 200 with the problems** (like text parse), not 422, because a draft with problems is the normal state of an editor. | Agent |
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* an endpoint that accepts an arbitrary tree; a schema exposing data a caller should not see; the tree logged or stored.
+- *Verify:* `validate` runs `validate_tree`, which is size-capped (`MAX_TREE_BYTES`), depth-capped and node-capped, and reads only the field registry (the same registry the text view endpoints use); it reads no records and writes nothing. The block list is static code metadata, identical for every caller. Both need the manage permission and exclude server administrators. A test asserts no layout row, no audit event and no logged text from a validate call.
+- *Remediate:* none needed.
+
+*Not applicable:* no migration, bundle, search, code, MCP tool or time field; no seed change (no stored data); no user-facing screen yet, so no website or Playwright change (13b's outline is the first surface).
+
+## Custom reports Phase 13b: the block outline (2026-10-28)
+
+**Decided by: User** for the views and the schema-driven forms (Phase 13 Phase 0) and for keeping the composite controls as named kinds (answer to the 13a question); the choices below are **Agent**'s.
+
+### What was built
+
+- `GET …/report-layouts/blocks` also publishes the condition operators per field kind (`operators`, `valueless_operators`, `list_operators`), so the outline never restates the validator's rule. A test now requires every field of a core block to carry help text.
+- Frontend: `ReportLayoutOutline` (cards, controls, problems by block), `ReportLayoutOutlineField` (a control per `kind`), `ReportLayoutSourceEditor`, `ReportLayoutConditionEditor`, `ReportLayoutColumnsEditor` (columns and joins), `ReportLayoutWidgetEditor`, `ReportLayoutVariablesField` (the pack variables editor, now with overridable wording), `ReportLayoutJsonField` (unknown kinds and block types), `CommaListField`, `utils/reportLayoutTree.ts`; `api.blocks()` and `api.validate()`. The designer gained a **Text | Outline** `Tabs` pair.
+- Tests: about 85 story interactions across the new files (including 8 designer stories), one Playwright spec (build a layout in the outline, preview it, save, read it back as text, reload).
+- Also fixed: the pack entries story still expected two formats for a table layout after ODS was added (Phase 12); `ReportLayoutOutline` handles a layout shared read-only.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **The designer keeps the text view's text current while the outline is open**, by calling `text/format` once the tree validates. The preview, the dirty check and the switch back to text then read one string, and no second preview path exists. The cost is a format call per pause; the pause is 400 ms. | Agent |
+| 2 | **Switching reads the text as it stands** (an immediate `text/parse`, not the pause-and-check result), so a clean text is never refused because the check had not finished. A switch back with no outline edits leaves the author's text exactly as typed; one with edits needs a valid outline. | Agent |
+| 3 | **Dirty in the outline compares the tree** (`stableJson`, keys sorted) with the saved version's tree, not the text. | Agent |
+| 4 | **Moves are buttons; focus follows the control just used**, or its opposite when that control is now disabled (a block moved to the end). | Agent |
+| 5 | **Server text drives the forms.** Labels and help come from the block schema; the outline's own wording (menus, buttons, messages) is in `strings.reportOutline`. | Agent |
+| 6 | **The text-only pickers (Fields, Widgets) are hidden in the outline**, since the outline's own forms carry the same choices with the names in scope. | Agent |
+| 7 | **Layout variables reuse the pack variables editor** rather than a second one, with `intro` and `emptyText` props so the wording says layout. | Agent |
+| 8 | **No drag and drop** (plan D30); no condition-value type is checked in the client beyond choosing a control that suits the kind. The server's `validate` is the only judge. | Agent |
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a form that lets a person name a field the catalogue omits (a Restricted or consent-sensitive column); the tree shown or sent with data beyond the caller's access; a layout text echoed into a log or URL; HTML or markup produced from a record value.
+- *Verify:* the field and record-type pickers list only `GET …/fields`, which is the registry's opt-in set, and `validate` rejects any other name; no new endpoint beyond 13a's, which store nothing and never log the tree; the outline draws text with React (escaped), and the preview is the existing sandboxed frame; variables are typed literals (plan D18), and the outline only edits their declarations.
+- *Remediate:* none needed.
+
+*Not applicable:* no migration, bundle, search, code, MCP tool, audit event or time field; no seed change (no stored data). The Phase 13d switcher work (rich-text view) is still open; this phase's switcher is the two-view form of it.
+
+## Custom reports Phase 13c: the document view (2026-10-28)
+
+**Decided by: User** for the view and the library question (three views, Phase 13 Phase 0); the rest is **Agent**'s. The view is built and tested; it is not yet reachable from the designer (the switcher is the next step).
+
+### What was built
+
+- `utils/reportLayoutDoc.ts`: `treeToDoc`, `docToTree`, `parseMarkdown` / `serializeMarkdown`, `addrAt` (an editor position to a tree address), `NotRepresentableError`. No editor dependency.
+- `ReportLayoutRichText` (the TipTap editor), `reportLayoutRichTextExtensions.ts` (the schema), `ReportLayoutRichTextViews.tsx` (a node view per node), `reportLayoutRichTextContext.ts`, and `ReportLayoutSettings` (the layout-level settings and loose problems, now shared with the outline).
+- `backend/scripts/export_starter_trees.py` writes the starters' trees to `frontend/src/testing/starterLayoutTrees.json`; a backend test fails when the file is out of date.
+- Dependencies added (MIT, v3.32.0): `@tiptap/core`, `react`, `pm`, `extensions`, `extension-document`, `-text`, `-paragraph`, `-list`. `npm audit --omit=dev` reports no vulnerabilities; the lockfile was regenerated with `sync-lockfile.sh` under Node 24.
+- Tests: 12 converter interactions (round trip over the three starters and a crafted corpus), 16 editor interactions (typing, lists, Enter in a heading, settings, moves, add, raw source, problems, redraw from outside, refusal, read-only), 3 settings stories, one backend test.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **TipTap is confirmed (plan D28).** The proof of concept passed: the strict schema accepts every document the converter makes (the three starters included), React node views carry the outline's forms, typing a `- ` makes a list, and structural edits redraw the document. Lexical was not built. | Agent |
+| 2 | **Prose is plain text; there are no formatting marks.** The engine does not interpret inline Markdown (bold, links), so offering them would show what the report does not print. What the view adds over the text view is structure typed as such. | Agent |
+| 3 | **A text block is prose only if it round-trips exactly.** The reader understands the canonical spelling (`# Heading` of levels 1 to 4, paragraphs, `- ` bullet lists, blank-line separated); the result must serialise back to the same string, and a paragraph line must not start with anything the server's Markdown reader could take for other syntax (list markers, quotes, fences, tables, HTML, link definitions, images, setext rules) or end in a backslash. Anything else is a raw-Markdown source box. This is plan D29's "lossless or refused" with a lossless fallback for the one block type where refusing would shut the author out. | Agent |
+| 4 | **Everything that is not prose is carried as data.** A block's other keys are one opaque `props` object edited with the outline's forms, a block with child lists becomes a container with a slot per list (read from the catalogue), and a block type the catalogue does not know is a whole-node leaf. A module's block type therefore needs no code here, and a child list present-but-empty is kept distinct from an absent one. | Agent |
+| 5 | **Structural edits go through the tree helpers and redraw the document.** Move, indent, outdent, duplicate and add use the same functions as the outline, so the two views cannot disagree about a rule. The cost: such an edit is one undo step that replaces the document. | Agent |
+| 6 | **The editor never holds a layout the designer does not.** It reports every edit as a tree and redraws only when the tree changes from outside, comparing with the echo of its own edit. | Agent |
+| 7 | **The document view is for document layouts.** A table layout shows a note pointing to the outline and the text. | Agent |
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a new third-party editor dependency; markup or script reaching a layout through paste or typing; a record value becoming markup; the tree logged.
+- *Verify:* the schema has no HTML, link, image or mark node, so pasted rich text is reduced to the allowed nodes and the saved tree is plain strings the server validates again (and the report engine does not interpret inline Markdown); attributes are held as data and not rendered into the HTML; the editor draws text through React and ProseMirror, not as inserted HTML; no new endpoint, request or log line. The packages are MIT, current, not deprecated, and `npm audit --omit=dev` is clean. Dependency adoption follows the vendor-management and change-management policies (a maintained library, pinned through the lockfile, no runtime network access).
+- *Remediate:* none needed.
+
+*Not applicable:* no migration, bundle, search, code, MCP tool, audit event or time field; no seed change. The docs website and the style guide are updated when the view joins the designer's switcher.
+
+## Custom reports Phase 13c2: bold, italic, code and numbered lists in report text (2026-10-28)
+
+**Decided by: User** (2026-10-28, answers to the scope questions): bold, italic, inline code and numbered lists, no links, applied to layouts **and** to report introductions, chapters and appendices. This reverses the neutral model's earlier rule that inline Markdown is not interpreted, and the 13c decision that prose has no formatting marks. The design below is **Agent**'s.
+
+### What was built
+
+- **Engine** (`services/report_model.py`): `Styled(text, bold, italic, code)` as a third part of a `MathText`, `NumberedList`, and a rewritten `markdown_to_blocks` shared by layouts and report content. `report_layout_eval.py` keeps a run's style through placeholder filling and equation finding (`_restyled`). Renderers: HTML (`strong`, `em`, `code`, `ol`), Word (run bold/italic, Courier New, `List Number`), OpenDocument (`text:span` with `T_*` character styles and an `L_Number` list style) and PDF (`<b>`, `<i>`, Courier, a numbered list with `1.`). The on-screen result reads a `MathText` as plain words.
+- **Document view** (`utils/reportLayoutProse.ts`, new; `reportLayoutDoc.ts` imports it): bold, italic and code marks, ordered lists, a formatting toolbar (`ReportLayoutRichTextToolbar`), and a stricter canonical reader and writer. New dependencies: `@tiptap/extension-bold`, `-italic`, `-code` (MIT, 3.32.0, `npm audit` clean).
+- Tests: `backend/tests/test_report_inline_markdown.py` (reader, evaluator, four renderers), 22 story interactions in the document view and 16 in the converter. Checked by eye in LibreOffice (ODT and DOCX) and as a ReportLab PDF. Existing tests that asserted the old verbatim behaviour were updated (`test_report_docx.py`, `test_report_layout_eval.py`).
+- Also fixed: a ReportLab list type finding is gone from the `mypy` baseline (1080 to 1077).
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Three styles only.** `**x**` bold, `*x*` or `_x_` italic, `` `x` `` code. The reader turns off the image, autolink, raw HTML, entity, strikethrough and backslash-escape rules of markdown-it (and, at first, the link rule), so those print as written. (Links were added afterwards at the User's request: see "Custom reports Phase 13c4".) An image alone on its line is still a picture (matched by its own pattern). | Agent |
+| 2 | **Equations are set aside before the reader runs and put back unread**, so `\(a_1 * b_2\)` is never emphasis and the math rules (plan D9) are untouched. | Agent |
+| 3 | **Escapes are only the four we document** (`\*`, `\_`, `` \` ``, `\\`), set aside the same way. A backslash anywhere else (`C:\temp`, an unclosed `\(`) prints as written; the stock escape rule would have dropped it, a regression found by existing tests. | Agent |
+| 4 | **Values are never read for styles.** Placeholders and record values are filled run by run after the Markdown is read, and a value takes the style of the run it sits in (`**{{req.title}}**` prints the title bold) but cannot add one. | Agent |
+| 5 | **A string-only consumer sees plain words.** A styled paragraph is a `MathText` whose string value has no markers (CSV, the on-screen result, the section note); text with no style stays the plain `str` it was. | Agent |
+| 6 | **Behaviour change accepted by the User:** existing text with a matched `*…*`, `**…**`, `_…_` or backtick pair now prints styled, and a line starting `1. ` becomes a numbered list (it was a paragraph per item before). Unmatched markers, `5 * 3` and `snake_case` are unchanged. | User |
+| 7 | **A heading reads as plain words** (it is bold already) and an equation inside a styled run is drawn unstyled. | Agent |
+| 8 | **The document view keeps its safety net.** A text block is prose only if the strict reader and writer reproduce it exactly; the reader refuses anything it is unsure of (a stray `*`, a backslash that is not one of the four escapes, `_` emphasis, a code span holding a backslash or backtick, a styled run touching punctuation and a letter), and it is stricter than the server on purpose, so the worst a mismatch can do is leave a block as a source box. The writer moves leading and trailing space outside the markers, escapes literal markers and trims block edges. | Agent |
+
+### Known limits
+
+- The report content editor (`RichTextEditor`) still offers a **Link** button; a link prints as written text, as before.
+- Nested lists are flattened into one list (the reader's earlier behaviour, now explicit).
+- A styled run that touches punctuation on one side and a letter on the other may not be emphasis to every reader; the document view leaves such text as source.
+- In a code span a backslash escape is applied by the server (the escape is set aside before code spans are read); the document view leaves such code as source.
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a markup or hyperlink path from author text or a record value into four renderers; a style or list injected through a record value or placeholder; equation text altered by the new reader; unescaped words inside the new PDF markup (ReportLab parses markup), ODT XML or HTML; denial of service through crafted emphasis.
+- *Verify:* only three styles are produced and the words in each are escaped by the same choke point as before (`report_document.safe`, `xml_text`, `html.escape`, python-docx's text API), tested with `<` and `&` inside styled runs in HTML, ODT and PDF markup; a value cannot reach the reader (filled afterwards, tested with `**` and a backtick in a title and in an organisation placeholder); links, raw HTML and entities are off and tested to print literally; equations round-trip unchanged. markdown-it-py's emphasis matching is linear for these inputs and the text-size caps (`MAX_TEXT_CHARS`, tree size) are unchanged.
+- *Remediate:* none needed.
+
+*Not applicable:* no migration, bundle, endpoint, permission, audit event or time field; no seed change. The docs website (`reports-and-export.md`), `docs/modules.md` §4w and `docs/solution-architecture.md` are updated.
+
+## Custom reports Phase 13c4: links in report text (2026-10-28)
+
+**Decided by: User** (2026-10-28): links are wanted; clickable kinds are web (`http`, `https`), email (`mailto`) **and links to sections of the same document**; bare web addresses are not linked automatically; an address **may use a placeholder, checked after it is filled in**. This reverses the 13c2 choice of "no links". The design below is **Agent**'s.
+
+### What was built
+
+- **Engine:** `Styled.href`, `link_problem`, `heading_anchor`, `Heading.anchor` and `finalize_links` in `services/report_model.py`; the Markdown reader (markdown-it with its link normalising and validation replaced by a small subclass, `reference` rule off) turns `[words](address)` into a styled run; the evaluator fills the address and checks it on the final text (`checked_link`, one warning that never repeats the address). Renderers: HTML `<a>` with heading ids, Word hyperlinks (external relationship targets, internal bookmarks `sec_<hash>`), OpenDocument `text:a` and `text:bookmark`, PDF `<a href>` and `<a name>`. Every renderer calls `finalize_links` first.
+- **Document view:** a TipTap Link mark (typing or pasting an address does not link it; a click does not follow it; the address must pass `linkProblem`), a Link toolbar button, `ReportLayoutLinkDialog` (web, email or a section picked from the layout's headings; remove link), `sectionsOf(tree)`, link reading and writing in `utils/reportLayoutProse.ts` (links with styled words, edge spaces outside the brackets, `\[` `\]` escapes only where a bracket could open a link).
+- **Shared vectors:** `frontend/src/testing/linkVectors.json` holds addresses (allowed and refused) and headings with their anchors; a backend test and the front end's stories both check it, so the two ports of the rules cannot drift.
+- **Dependency:** `@tiptap/extension-link` 3.32.0 (MIT, `npm audit` clean).
+- Tests: `backend/tests/test_report_links.py` (rules, reader, `finalize_links`, evaluator, four renderers, hostile addresses), converter and dialog stories, 7 editor stories. Checked in LibreOffice (ODT) and as a ReportLab PDF; the PDF file holds `/URI` annotations.
+- Also: markdown-it's reference-definition rule is off, so a line such as `[ref]: https://…` prints as written instead of vanishing; `\[` and `\]` join the escapes (six now).
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **What may be a link**: an absolute `http`/`https` address with a host, `mailto:` with one address, or `#anchor`. Whitespace, control characters, quotes, angle brackets, backslashes and addresses over 2000 characters are refused, so an address can never carry markup. `javascript:`, `data:`, `file:`, `ftp:` and relative paths are refused. | Agent |
+| 2 | **A link that is not allowed stays as written text** (`[x](javascript:…)` prints as typed), and one whose address fails after a record value is filled in becomes its plain words with one warning. | Agent |
+| 3 | **Section anchors** are the heading's words lower-cased with other runs as a hyphen (`Scope & Goals` is `scope-goals`), made unique in reading order by `-2`, `-3`. `finalize_links` computes them on the final document, so headings a layout makes per record are numbered too; a link to a heading that is not there becomes plain words. The dialog lists only headings with literal words, because a heading holding a `{{value}}` has an anchor that depends on the record. | Agent |
+| 4 | **A record value may decide where a link goes** (accepted by the User): `[x]({{record.url}})` is allowed, still limited to the three kinds above. Residual risk: anyone who can edit that record field can point the report's link at any web address; the report's reader sees ordinary link text. Not logged: the address is never in a warning or log line. | User |
+| 5 | **Bare addresses and `<…>` autolinks are not linked.** | User |
+| 6 | **Outside links open in a new tab with `noopener noreferrer nofollow`** in HTML; the designer's preview frame is sandboxed with no permissions, so it shows links but does not follow outside ones (section links work inside the page). | Agent |
+| 7 | **The document view's link rules are a port** (`linkProblem`, `headingAnchor`) kept in step by shared vectors; the view is stricter than the server and leaves a link it is unsure of (an address that is not allowed, a code span or link inside link text, emphasis around a link, nested brackets) as source. | Agent |
+
+### Known limits
+
+- Word bookmark names are a hash of the anchor, so a document edited by hand keeps working only while its headings keep their text.
+- Emphasis wrapped around a link (`*[x](y)*`) is read by the server but shown as source in the document view; write the emphasis inside the link (`[*x*](y)`).
+- The report content editor's Link button now makes working links for the three kinds; any other address it writes prints as typed.
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a script, file or data address as a link; an address carrying quotes or markup into HTML, ODT XML, Word XML or ReportLab markup; a record value choosing a dangerous address; link text or a heading anchor carrying markup; an internal link or bookmark used to confuse a reader; denial of service through many links or very long addresses; a link opening the sandboxed preview or leaking the page.
+- *Verify:* `link_problem` is the single rule, applied by the reader, again by the evaluator on the filled text, and again by `finalize_links` before any renderer (tested with a hostile run built without the reader: it is dropped); the address reaches each format only as an escaped attribute or a relationship target (tested in all four, including `"><b>` and `javascript:`); only three address kinds exist, and a record value cannot produce a fourth; an anchor is letters, digits and hyphens by construction, and a Word bookmark is a hash; addresses are capped at 2000 characters and the existing text, node and block caps bound the number of links; HTML outside links carry `rel="noopener noreferrer nofollow"` and the preview is sandboxed; the PDF link is an annotation, never fetched by the server. The accepted residual (decision 4) is recorded above.
+- *Remediate:* none needed.
+
+*Not applicable:* no migration, bundle, endpoint, permission, audit event or time field; no seed change. The docs website, `docs/modules.md` §4w, the architecture note and the plan are updated.
+
+## Custom reports Phase 13d: the three views in the designer (2026-10-28)
+
+**Decided by: User** (three views of one tree, Phase 13 Phase 0); the switching rules below are **Agent**'s. This closes Phase 13.
+
+### What was built
+
+- `ReportLayoutDesigner`: the `Tabs` set is **Text**, **Outline** and, for a document layout, **Document** (`ReportLayoutRichText`). The two tree views share the one tree (`outlineTree`) and its check, text sync, dirty state and Save, so a switch between them converts nothing.
+- Tests: 5 designer stories (the document view, an edit seen in the outline and the text and saved, no document view for a table layout, a refused layout with the reason, a read-only shared layout) and one Playwright spec (typing in place, bold, a web link and a section link through the dialog with a refused `javascript:` address, preview, save, the same layout in the text and outline views, reload).
+- Docs: the website's designer section, the style guide's text-designer pattern (three views), `docs/modules.md` §4q.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Switching from the text parses the text as it stands** (not the pause-and-check result) and refuses with the reason when it has problems or declares the other kind of layout. | Agent |
+| 2 | **Switching to the text formats the tree only if it changed since it was entered**, so opening a view and leaving it untouched leaves the author's own text exactly as typed. | Agent |
+| 3 | **The document view refuses a tree it cannot show without changing it, before switching** (`treeToDoc` raises `NotRepresentableError`), shows the reason in the designer's note and stays on the current view; the outline can always open the tree. | Agent |
+| 4 | **The Fields and Widgets pickers are text-view tools**; the outline and document carry the same choices in their own forms. | Agent |
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a view that saves a tree the server has not checked; a view that changes text it did not mean to; a view that shows another scope's layout as editable.
+- *Verify:* Save is enabled only for a tree the server's `validate` accepted for exactly that tree (compared by identity), and the server validates again on save; a read-only shared layout renders every tree view without controls (tested for the outline and the document); no new endpoint, request or log line.
+- *Remediate:* none needed.
+
+*Not applicable:* no migration, bundle, search, code, MCP tool, audit event or time field; no seed change.

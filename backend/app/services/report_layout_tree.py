@@ -52,13 +52,14 @@ import json
 import re
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack, contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from typing import Any
 
 from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE, LAYOUT_FAMILIES
 from app.modules.registry import get_module_registry, get_report_field_providers
 from app.services.report_fields import FieldInfo, UnknownReportFieldError, field_catalogue
+from app.services.report_layout_block_schema import BlockContainer, BlockField, BlockProvides, BlockSchema
 from app.services.report_math import MAX_TEX_CHARS, split_math, tex_problem
 from app.services.report_model import PLACEHOLDER_NAMES
 from app.services.report_variables import (
@@ -192,11 +193,14 @@ class BlockSpec:
         key: The `type` value in a node.
         families: The layout families that may contain it.
         validate: `(validator, node, path)` — checks the node's own keys and recurses into children.
+        schema: What the visual designer offers for it (`report_layout_block_schema`); a type without one is
+            shown there as raw JSON, so every type should declare it (a test requires it).
     """
 
     key: str
     families: tuple[str, ...]
     validate: Callable[[TreeValidator, dict[str, Any], str], None]
+    schema: BlockSchema | None = None
 
 
 BLOCK_SPECS: dict[str, BlockSpec] = {}
@@ -1050,6 +1054,111 @@ def _validate_sheet(v: TreeValidator, node: dict[str, Any], path: str) -> None:
         v.columns(node.get("columns"), f"{path}.columns", record_type, aliases=aliases)
 
 
+_PLACEHOLDER_HELP = "Use {{record.field}} for a value and {{project_name}} for the project."
+_SOURCE_FIELD = BlockField(
+    "source", "Records", "source", required=True,
+    help="Where the records come from: all of a type, the records linked to an enclosing record, or a group's members; "
+    "optionally filtered and sorted.",
+)
+_EMPTY_TEXT = BlockField("empty_text", "Text when there is nothing", "text", max_length=500, features=("placeholders",),
+                         help="Shown instead of the block when it finds no records. Leave empty to show nothing.")
+_CHILDREN = BlockContainer("children", "Contents")
+
+_CORE_SCHEMAS: dict[str, BlockSchema] = {
+    "heading": BlockSchema(
+        "Heading", "A heading in the document.",
+        (
+            BlockField("text", "Heading", "text", required=True, max_length=500, features=("placeholders", "math"),
+                       help=f"The heading's words. {_PLACEHOLDER_HELP}"),
+            BlockField("level", "Level", "integer", minimum=1, maximum=4, default=1,
+                       help="1 is the largest. Levels 1 to 4 appear in the contents list."),
+        ),
+        template={"type": "heading", "text": "Heading", "level": 2},
+    ),
+    "text": BlockSchema(
+        "Text", "A paragraph, list or other formatted text.",
+        (BlockField("text", "Text", "longtext", required=True, max_length=MAX_TEXT_CHARS,
+                    features=("placeholders", "math", "markdown"), help=f"Formatted text. {_PLACEHOLDER_HELP}"),),
+        template={"type": "text", "text": "Some text."},
+    ),
+    "page_break": BlockSchema("Page break", "Starts a new page in PDF and Word output.", template={"type": "page_break"}),
+    "equation": BlockSchema(
+        "Equation", "A displayed equation written in TeX.",
+        (BlockField("tex", "TeX", "tex", required=True, max_length=MAX_TEX_CHARS,
+                    help="One line of TeX without spaces at either end, for example \\frac{a}{b} = c."),),
+        template={"type": "equation", "tex": "a = b"},
+    ),
+    "table": BlockSchema(
+        "Table", "A table with one row per record.",
+        (
+            _SOURCE_FIELD,
+            BlockField("columns", "Columns", "columns", required=True, help="The fields to show, in order, with an optional heading each."),
+            _EMPTY_TEXT,
+        ),
+        template={"type": "table", "source": {}, "columns": []},
+    ),
+    "each": BlockSchema(
+        "For each record", "Repeats its contents once for every record found.",
+        (
+            _SOURCE_FIELD,
+            BlockField("as", "Name", "alias", max_length=32, default=DEFAULT_RECORD_ALIAS,
+                       help="What the contents call each record, for example req in {{req.title}}."),
+            _EMPTY_TEXT,
+        ),
+        (_CHILDREN,), BlockProvides("as", "record", DEFAULT_RECORD_ALIAS),
+        template={"type": "each", "source": {}, "children": []},
+    ),
+    "group": BlockSchema(
+        "Group records", "Repeats its contents once for every distinct value of a field.",
+        (
+            _SOURCE_FIELD,
+            BlockField("by", "Group by", "record_field", required=True, depends_on="source",
+                       help="The field whose values form the groups."),
+            BlockField("as", "Name", "alias", max_length=32, default=DEFAULT_GROUP_ALIAS,
+                       help="What the contents call each group; {{grp.value}} and {{grp.count}} are its value and size."),
+        ),
+        (_CHILDREN,), BlockProvides("as", "group", DEFAULT_GROUP_ALIAS),
+        template={"type": "group", "source": {}, "by": "", "children": []},
+    ),
+    "if": BlockSchema(
+        "If", "Shows its contents only when a condition holds, and optionally other contents when it does not.",
+        (BlockField("when", "Condition", "condition", required=True,
+                    help="A test on a field of an enclosing record, or on whether a module is available."),),
+        (_CHILDREN, BlockContainer("else_children", "Otherwise")),
+        template={"type": "if", "when": {}, "children": []},
+    ),
+    "widget": BlockSchema(
+        "Report component", "Embeds a table, the headline figures or the notes of an existing report.",
+        (
+            BlockField("key", "Component", "widget_key", required=True, max_length=100,
+                       help="Which report component to embed."),
+            BlockField("params", "Settings", "widget_params", depends_on="key",
+                       help="The report's own settings. Leave out to use its defaults."),
+            BlockField("sort", "Sort", "widget_sort", depends_on="key",
+                       help="Sort the component's table by its column headings. Leave out for the report's own order."),
+            _EMPTY_TEXT,
+        ),
+        template={"type": "widget", "key": ""},
+    ),
+    "sheet": BlockSchema(
+        "Sheet", "One sheet of a spreadsheet or CSV, one row per record, with optional joined records.",
+        (
+            BlockField("name", "Sheet name", "text", required=True, max_length=31,
+                       help="The tab's name. It cannot contain [ ] : * ? / \\ and must differ from the other sheets."),
+            _SOURCE_FIELD,
+            BlockField("as", "Name", "alias", max_length=32, default=DEFAULT_RECORD_ALIAS,
+                       help="What the columns and joins call the sheet's own records."),
+            BlockField(
+                "joins", "Joins", "joins",
+                help=f"Up to {MAX_JOINS} linked record types to add columns from; a row with nothing linked is kept, with blank cells.",
+            ),
+            BlockField("columns", "Columns", "columns", required=True, help="The fields to show, in order, with an optional heading each."),
+        ),
+        provides=BlockProvides("as", "record", DEFAULT_RECORD_ALIAS),
+        template={"type": "sheet", "name": "Sheet", "source": {}, "columns": []},
+    ),
+}
+
 for _spec in (
     BlockSpec("heading", (FAMILY_DOCUMENT,), _validate_heading),
     BlockSpec("text", (FAMILY_DOCUMENT,), _validate_text),
@@ -1062,7 +1171,7 @@ for _spec in (
     BlockSpec("widget", (FAMILY_DOCUMENT,), _validate_widget),
     BlockSpec("sheet", (FAMILY_TABLE,), _validate_sheet),
 ):
-    register_block_spec(_spec)
+    register_block_spec(replace(_spec, schema=_CORE_SCHEMAS[_spec.key]))
 
 __all__ = [
     "BLOCK_SPECS", "BOOLEAN_KEYS", "DEFAULT_GROUP_ALIAS", "DEFAULT_JOIN_ALIAS", "DEFAULT_RECORD_ALIAS", "GROUP_FIELDS",

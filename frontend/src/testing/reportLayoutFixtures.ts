@@ -10,7 +10,7 @@
 import { fn } from "storybook/test";
 
 import type {
-  PreviewResult, ReportFieldCatalogue, ReportLayoutApi, ReportLayoutDetail, ReportLayoutSummary, ReportLayoutTree,
+  BlockCatalogue, BlockField, BlockType, PreviewResult, ReportFieldCatalogue, TreeCheck, TreeProblem, ReportLayoutApi, ReportLayoutDetail, ReportLayoutSummary, ReportLayoutTree,
   ReportLayoutVersion, ReportWidget, TextParseResult,
 } from "../api/reportLayouts";
 
@@ -80,6 +80,110 @@ export function buildFieldCatalogue(): ReportFieldCatalogue {
     group_fields: { value: "text", count: "number" },
     schema_version: 1,
   };
+}
+
+const field = (key: string, label: string, kind: string, extra: Partial<BlockField> = {}): BlockField => ({
+  key, label, kind, required: false, help: `About ${label.toLowerCase()}.`, max_length: null, minimum: null, maximum: null, default: null,
+  choices: [], features: [], depends_on: null, families: [], ...extra,
+});
+
+const source = field("source", "Records", "source", { required: true });
+const block = (type: string, label: string, template: Record<string, unknown>, extra: Partial<BlockType> = {}): BlockType => ({
+  type, label, description: `${label}.`, families: ["document"], fields: [], containers: [], provides: null, template, described: true, ...extra,
+});
+
+/** The block catalogue the server publishes (the ten core blocks), for stories of the outline. */
+export function buildBlockCatalogue(): BlockCatalogue {
+  return {
+    blocks: [
+      block("heading", "Heading", { type: "heading", text: "Heading", level: 2 }, {
+        fields: [field("text", "Heading", "text", { required: true, max_length: 500, features: ["placeholders"] }), field("level", "Level", "integer", { minimum: 1, maximum: 4, default: 1 })],
+      }),
+      block("text", "Text", { type: "text", text: "Some text." }, {
+        fields: [field("text", "Text", "longtext", { required: true, features: ["placeholders", "markdown"] })],
+      }),
+      block("page_break", "Page break", { type: "page_break" }),
+      block("equation", "Equation", { type: "equation", tex: "a = b" }, { fields: [field("tex", "TeX", "tex", { required: true })] }),
+      block("table", "Table", { type: "table", source: {}, columns: [] }, {
+        fields: [source, field("columns", "Columns", "columns", { required: true }), field("empty_text", "Text when there is nothing", "text")],
+      }),
+      block("each", "For each record", { type: "each", source: {}, children: [] }, {
+        fields: [source, field("as", "Name", "alias", { default: "record" }), field("empty_text", "Text when there is nothing", "text")],
+        containers: [{ key: "children", label: "Contents" }], provides: { key: "as", kind: "record", default: "record" },
+      }),
+      block("group", "Group records", { type: "group", source: {}, by: "", children: [] }, {
+        fields: [source, field("by", "Group by", "record_field", { required: true, depends_on: "source" }), field("as", "Name", "alias", { default: "group" })],
+        containers: [{ key: "children", label: "Contents" }], provides: { key: "as", kind: "group", default: "group" },
+      }),
+      block("if", "If", { type: "if", when: {}, children: [] }, {
+        fields: [field("when", "Condition", "condition", { required: true })],
+        containers: [{ key: "children", label: "Contents" }, { key: "else_children", label: "Otherwise" }],
+      }),
+      block("widget", "Report component", { type: "widget", key: "" }, {
+        fields: [
+          field("key", "Component", "widget_key", { required: true }), field("params", "Settings", "widget_params", { depends_on: "key" }),
+          field("sort", "Sort", "widget_sort", { depends_on: "key" }), field("empty_text", "Text when there is nothing", "text"),
+        ],
+      }),
+      block("sheet", "Sheet", { type: "sheet", name: "Sheet", source: {}, columns: [] }, {
+        families: ["table"],
+        fields: [
+          field("name", "Sheet name", "text", { required: true, max_length: 31 }), source, field("as", "Name", "alias", { default: "record" }),
+          field("joins", "Joins", "joins"), field("columns", "Columns", "columns", { required: true }),
+        ],
+        provides: { key: "as", kind: "record", default: "record" },
+      }),
+    ],
+    layout_fields: [
+      field("orientation", "Page orientation", "choice", { choices: ["portrait", "landscape"], default: "portrait", families: ["document"] }),
+      field("variables", "Variables", "variables"),
+    ],
+    field_kinds: ["text", "longtext", "integer", "boolean", "choice", "tex", "alias", "record_field", "source", "columns", "joins", "condition", "widget_key", "widget_params", "widget_sort", "variables"],
+    operators: {
+      text: ["eq", "ne", "contains", "in", "not_in", "empty", "not_empty"],
+      enum: ["eq", "ne", "in", "not_in", "empty", "not_empty"],
+      number: ["eq", "ne", "gt", "gte", "lt", "lte", "in", "not_in", "empty", "not_empty"],
+    },
+    valueless_operators: ["empty", "not_empty"],
+    list_operators: ["in", "not_in"],
+    schema_version: 1,
+  };
+}
+
+/** A real tree of a small document (a heading, then a For each with a heading and a table inside). */
+export function buildOutlineTree(): ReportLayoutTree {
+  return {
+    schema_version: 1, family: "document", orientation: "portrait",
+    nodes: [
+      { type: "heading", text: "Requirements of {{project_name}}", level: 1 },
+      {
+        type: "each", source: { record_type: "requirement", sort: [{ field: "title" }] }, as: "req",
+        children: [
+          { type: "heading", text: "{{req.code}} {{req.title}}", level: 2 },
+          { type: "table", source: { record_type: "pain_point", linked_from: "req" }, columns: [{ field: "code" }, { field: "title", label: "Pain point" }] },
+        ],
+      },
+    ],
+  };
+}
+
+/** The stand-in checker: empty text or a missing record type is a problem at that path; anything else is fine. */
+export function fakeValidate(tree: ReportLayoutTree): TreeCheck {
+  const errors: TreeProblem[] = [];
+  const walk = (nodes: unknown, prefix: string) => {
+    if (!Array.isArray(nodes)) return;
+    nodes.forEach((raw, i) => {
+      const node = raw as Record<string, unknown>;
+      const here = `${prefix}[${i}]`;
+      if ((node.type === "heading" || node.type === "text") && String(node.text ?? "").trim() === "") errors.push({ path: `${here}.text`, message: "Must not be empty." });
+      const src = node.source as Record<string, unknown> | undefined;
+      if (src && !src.record_type && !src.group) errors.push({ path: `${here}.source.record_type`, message: "Must be a reportable record type: pain_point, requirement." });
+      walk(node.children, `${here}.children`);
+      walk(node.else_children, `${here}.else_children`);
+    });
+  };
+  walk(tree.nodes, "nodes");
+  return { ok: errors.length === 0, errors, node_count: 0 };
 }
 
 /** Two report parts: a table with a setting, and figures. */
@@ -177,6 +281,8 @@ export function buildLayoutApi(
     formatTree: fn(async (tree: ReportLayoutTree) => String(tree.source_text ?? `@layout ${String(tree.family)}\n`)),
     fields: fn(async () => buildFieldCatalogue()),
     widgets: fn(async () => buildWidgets()),
+    blocks: fn(async () => buildBlockCatalogue()),
+    validate: fn(async (tree: ReportLayoutTree) => fakeValidate(tree)),
     preview: fn(async () => buildDocumentPreview()),
     draftVariables: fn(async () => ({ ok: true, variables: [], errors: [] })),
   };

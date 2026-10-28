@@ -7,8 +7,10 @@
  * `/projects/{id}/report-layouts`), so {@link ReportLayoutApi} is one injectable interface bound to a scope by
  * {@link reportLayoutApi}; the project tier adds hiding and restoring inherited layouts.
  *
- * The layout tree (`ReportLayoutTree`) is opaque here: the text view is how a person edits it, and the server
- * validates it, so the client never interprets block shapes.
+ * The layout tree (`ReportLayoutTree`) is plain JSON. The server stays the only parser and validator: the block
+ * outline edits the tree through the schemas `blocks()` publishes (so a module's block type needs no client
+ * code) and asks `validate()` after every change; the client never reads or checks a block's content itself
+ * beyond placing it in the tree.
  */
 import { api, ApiError } from "./client";
 import type { ReportParam, ReportVariable } from "./reports";
@@ -33,7 +35,7 @@ export interface LayoutScope {
   id: string;
 }
 
-/** The saved JSON tree; opaque to the client. */
+/** The saved JSON tree (see the module note: edited through block schemas, validated by the server). */
 export type ReportLayoutTree = Record<string, unknown>;
 
 /** A layout without its tree (`ReportLayoutOut`). */
@@ -143,6 +145,82 @@ export interface ReportWidget {
   params: ReportParam[];
 }
 
+/** One key of a block or of the layout as the outline's form offers it (`ReportBlockFieldOut`). */
+export interface BlockField {
+  key: string;
+  label: string;
+  /** Which control draws it (one of `BlockCatalogue.field_kinds`; an unknown kind is shown as JSON). */
+  kind: string;
+  required: boolean;
+  help: string;
+  max_length: number | null;
+  minimum: number | null;
+  maximum: number | null;
+  default: unknown;
+  choices: string[];
+  /** What a text may contain: `placeholders`, `math`, `markdown`. */
+  features: string[];
+  /** The key of a sibling field this one reads. */
+  depends_on: string | null;
+  /** Families it applies to; empty means all. */
+  families: string[];
+}
+
+/** A list of child blocks a block holds. */
+export interface BlockContainer {
+  key: string;
+  label: string;
+}
+
+/** A name a block brings into scope: `key` holds it, `kind` is `record` or `group`, `default` is used when absent. */
+export interface BlockProvides {
+  key: string;
+  kind: "record" | "group";
+  default: string;
+}
+
+/** One block type the outline can add (`ReportBlockOut`). */
+export interface BlockType {
+  type: string;
+  label: string;
+  description: string;
+  families: LayoutFamily[];
+  fields: BlockField[];
+  containers: BlockContainer[];
+  provides: BlockProvides | null;
+  /** The node a new block starts as (may fail validation until the author fills it in). */
+  template: Record<string, unknown>;
+  /** False for a type that declared no form; the outline shows its node as JSON. */
+  described: boolean;
+}
+
+/** Every block type, the layout-level fields and the control kinds the outline can draw (`ReportBlockCatalogueOut`). */
+export interface BlockCatalogue {
+  blocks: BlockType[];
+  layout_fields: BlockField[];
+  field_kinds: string[];
+  /** The operators a condition accepts on a field of each kind (`text`, `enum`, `number`, `date`, …). */
+  operators: Record<string, string[]>;
+  /** Operators that take no value (`empty`, `not_empty`). */
+  valueless_operators: string[];
+  /** Operators that take a list of values (`in`, `not_in`). */
+  list_operators: string[];
+  schema_version: number;
+}
+
+/** One problem in a tree: `path` is where (`nodes[2].children[0].columns[1].field`; empty for the layout itself). */
+export interface TreeProblem {
+  path: string;
+  message: string;
+}
+
+/** The outcome of checking a tree (`ReportLayoutValidateOut`). */
+export interface TreeCheck {
+  ok: boolean;
+  errors: TreeProblem[];
+  node_count: number;
+}
+
 /** One sheet of a table preview, capped; `total_rows` is the real count. */
 export interface PreviewSheet {
   name: string;
@@ -200,6 +278,10 @@ export interface ReportLayoutApi {
   formatTree(tree: ReportLayoutTree): Promise<string>;
   fields(): Promise<ReportFieldCatalogue>;
   widgets(): Promise<ReportWidget[]>;
+  /** The block types the outline can add, with the form each needs. */
+  blocks(): Promise<BlockCatalogue>;
+  /** Checks a draft tree and lists every problem with its path (nothing is stored). */
+  validate(tree: ReportLayoutTree): Promise<TreeCheck>;
   preview(body: PreviewRequest): Promise<PreviewResult>;
   /** The draft's run-time variables with their defaults and current options (nothing is stored). */
   draftVariables(text: string): Promise<DraftVariables>;
@@ -238,6 +320,8 @@ export function reportLayoutApi(scope: LayoutScope): ReportLayoutApi {
     formatTree: async (tree) => (await api.post<{ text: string }>(`${base}/text/format`, { tree })).text,
     fields: () => api.get<ReportFieldCatalogue>(`${base}/fields`),
     widgets: () => api.get<ReportWidget[]>(`${base}/widgets`),
+    blocks: () => api.get<BlockCatalogue>(`${base}/blocks`),
+    validate: (tree) => api.post<TreeCheck>(`${base}/validate`, { tree }),
     preview: (body) => api.post<PreviewResult>(`${base}/preview`, body),
     draftVariables: (text) => api.post<DraftVariables>(`${base}/variables`, { text }),
   };

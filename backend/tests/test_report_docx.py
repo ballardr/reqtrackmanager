@@ -29,10 +29,12 @@ from app.services.report_model import (
     Gap,
     Heading,
     Image,
+    MathText,
     Note,
     PageBreak,
     Paragraph,
     ReportDocument,
+    Styled,
     Table,
     markdown_to_blocks,
 )
@@ -69,10 +71,12 @@ def _row(code="R-1", name="Boot fast", reasoning="UX", status="draft", component
 
 
 def test_markdown_to_blocks_reads_headings_paragraphs_lists_and_own_line_images():
-    source = "# One\n\n### Three\n\n###### Six\n\ntext *kept literal*\n\n- a\n- b\n\n![alt](attachment:x)\n"
+    source = "# One\n\n### Three\n\n###### Six\n\ntext *styled* and ~~literal~~\n\n- a\n- b\n\n![alt](attachment:x)\n"
     blocks = markdown_to_blocks(source, {"attachment:x": b"png"})
     assert [b for b in blocks if isinstance(b, Heading)] == [Heading("One", 1), Heading("Three", 3), Heading("Six", 4)]
-    assert Paragraph("text *kept literal*") in blocks  # inline Markdown is deliberately not interpreted
+    # Emphasis is a style (the words read without markers); the rest of the inline syntax stays as written.
+    styled = next(b for b in blocks if isinstance(b, Paragraph) and isinstance(b.text, MathText))
+    assert styled.text.parts == ("text ", Styled("styled", italic=True), " and ~~literal~~")
     assert BulletList(["a", "b"]) in blocks
     assert Image(b"png") in blocks
 

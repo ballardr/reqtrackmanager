@@ -16,8 +16,10 @@ Security decisions:
   would otherwise let any author's text turn a download into a 500.
 - Text is only ever set as run or cell text, never as markup, so a `<script>`
   or `<w:...>` string is stored as literal text.
-- No hyperlink, field-code or macro path takes user text. The only field is the
-  fixed `PAGE` number in the footer, and the model carries no links.
+- A hyperlink is written only for a link `report_model.finalize_links` has checked (an absolute http, https or
+  mailto address, or a heading of the same document): the address is a relationship target (external) or a
+  bookmark name derived by hash (internal), never markup. No field-code or macro path takes user text. The only
+  field is the fixed `PAGE` number in the footer.
 - The accent colour reaches an XML attribute, so it is checked against a hex
   pattern and falls back to the default.
 - Equations are Word's own (editable) equation objects when `report_math.omml` has a tested translation, built
@@ -34,6 +36,7 @@ Dependencies: python-docx, `services.report_model`, `services.report_document`
 
 from __future__ import annotations
 
+import hashlib
 import io
 import re
 from collections.abc import Callable
@@ -44,6 +47,7 @@ from docx.document import Document as DocxDocument
 from docx.enum.section import WD_ORIENT
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.opc.constants import RELATIONSHIP_TYPE
 from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import qn
 from docx.shared import Cm, Emu, Pt, RGBColor
@@ -59,10 +63,13 @@ from app.services.report_model import (
     Heading,
     Image,
     Note,
+    NumberedList,
     PageBreak,
     Paragraph,
     ReportDocument,
+    Styled,
     Table,
+    finalize_links,
     text_on,
     text_runs,
 )
@@ -75,6 +82,8 @@ _XML_INVALID = re.compile("[^\x09\x0a\x0d\x20-퟿-�\U00010000-\U0010ffff]")
 _HEX_COLOUR = re.compile(r"^#?([0-9A-Fa-f]{6})$")
 _ZEBRA = "F5F5F5"
 _NOTE_GREY = RGBColor(0x55, 0x55, 0x55)
+#: The font of an inline code span.
+_CODE_FONT = "Courier New"
 
 
 def clean_text(text: str) -> str:
@@ -202,15 +211,60 @@ def _inline_equation(paragraph, equation: Equation) -> None:
         run._r.get_or_add_rPr().append(offset)
 
 
+#: The colour Word gives a hyperlink.
+_LINK_BLUE = RGBColor(0x05, 0x63, 0xC1)
+
+
+def _bookmark_name(anchor: str) -> str:
+    """The Word bookmark name of a heading anchor: letters, digits and underscores only, starting with a letter."""
+    return "sec_" + hashlib.sha1(anchor.encode("utf-8")).hexdigest()[:16]  # noqa: S324 - a name, not a secret
+
+
+def _bookmark(paragraph, anchor: str, number: int) -> None:
+    """Wraps a heading paragraph's content in a bookmark an internal link can point at."""
+    start = OxmlElement("w:bookmarkStart")
+    start.set(qn("w:id"), str(number))
+    start.set(qn("w:name"), _bookmark_name(anchor))
+    end = OxmlElement("w:bookmarkEnd")
+    end.set(qn("w:id"), str(number))
+    properties = paragraph._p.pPr
+    if properties is not None:
+        properties.addnext(start)
+    else:
+        paragraph._p.insert(0, start)
+    paragraph._p.append(end)
+
+
+def _link(paragraph, run: Run, href: str) -> None:
+    """Makes `run` a hyperlink: an external address is a relationship target, `#anchor` a bookmark name."""
+    link = OxmlElement("w:hyperlink")
+    if href.startswith("#"):
+        link.set(qn("w:anchor"), _bookmark_name(href[1:]))
+    else:
+        link.set(qn("r:id"), paragraph.part.relate_to(href, RELATIONSHIP_TYPE.HYPERLINK, is_external=True))
+    link.set(qn("w:history"), "1")
+    run._r.addprevious(link)
+    link.append(run._r)
+    run.font.color.rgb = _LINK_BLUE
+    run.font.underline = True
+
+
 def _add_text(paragraph, value: str, style: Callable[[Run], None] | None = None) -> list[Run]:
     """Appends model text to `paragraph`: a run per plain piece (given `style`), a Word equation or picture per
     inline equation. Returns the plain runs."""
     runs = []
     for part in text_runs(value):
-        if isinstance(part, str):
-            run = paragraph.add_run(clean_text(part))
+        if isinstance(part, str | Styled):
+            run = paragraph.add_run(clean_text(part if isinstance(part, str) else part.text))
             if style is not None:
                 style(run)
+            if isinstance(part, Styled):
+                run.bold = True if part.bold else run.bold
+                run.italic = True if part.italic else run.italic
+                if part.code:
+                    run.font.name = _CODE_FONT
+                if part.href:
+                    _link(paragraph, run, part.href)
             runs.append(run)
         else:
             _inline_equation(paragraph, part)
@@ -304,6 +358,7 @@ def render_docx_document(document: ReportDocument) -> bytes:
     Returns:
         DOCX bytes.
     """
+    document = finalize_links(document)
     doc = Document()
     usable_cm = _configure_page(doc, document)
     accent = _hex(document.branding.accent_color_hex if document.branding else None)
@@ -317,9 +372,14 @@ def render_docx_document(document: ReportDocument) -> bytes:
     _footer(doc, document)
     _cover(doc, document, accent, usable_cm)
 
+    bookmarks = 0
     for block in document.blocks:
         if isinstance(block, Heading):
-            _add_text(doc.add_heading("", level=min(max(block.level, 1), 4)), block.text)
+            heading = doc.add_heading("", level=min(max(block.level, 1), 4))
+            _add_text(heading, block.text)
+            if block.anchor:
+                bookmarks += 1
+                _bookmark(heading, block.anchor, bookmarks)
         elif isinstance(block, Paragraph):
             _add_text(doc.add_paragraph(), block.text)
         elif isinstance(block, Equation):
@@ -332,6 +392,9 @@ def render_docx_document(document: ReportDocument) -> bytes:
         elif isinstance(block, BulletList):
             for item in block.items:
                 _add_text(doc.add_paragraph(style="List Bullet"), item)
+        elif isinstance(block, NumberedList):
+            for item in block.items:
+                _add_text(doc.add_paragraph(style="List Number"), item)
         elif isinstance(block, Image):
             _picture(doc, _svg_png(block.svg) if block.svg is not None else block.data, usable_cm)
         elif isinstance(block, Table):

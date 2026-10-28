@@ -1278,7 +1278,7 @@ flowchart LR
   `table`; `current_version`) and `report_layout_versions` (immutable tree, SHA-256 `tree_hash`, comment). Saving appends a
   version through `services.report_layouts.save_version`, which refuses a save based on a stale version
   (`LayoutConflictError`) and stores nothing for an identical tree. An ORM guard refuses to update a saved version.
-- **Tree.** `{schema_version, family, orientation?, nodes}`. Blocks: `heading`, `text` (restricted Markdown),
+- **Tree.** `{schema_version, family, orientation?, nodes}`. Blocks: `heading`, `text` (restricted Markdown: paragraphs, `#` headings, bullet and numbered lists, `**bold**`, `*italic*`, `` `code` ``; see §4w),
   `table`, `each`, `group`, `if`, `page_break`, `equation` (document); `sheet` (table). Unknown keys are errors. There is no
   expression language and no raw HTML block.
 - **Sources.** A block reads records from `{record_type}` (all of a type in the report's projects),
@@ -1546,10 +1546,46 @@ flowchart LR
   versions' text views, computed in the browser). `utils/reportLayoutText.ts` only helps a person write (names in scope
   at the caret, insertion, snippets, the widget line); the server stays the only parser and validator, so the client
   holds no block model that could drift from the tree.
+- **Block outline (Phase 13b).** The designer's second view edits the same tree: `ReportLayoutOutline` draws one card per block
+  from the block catalogue (`GET .../blocks`), with `ReportLayoutOutlineField` choosing a control by field `kind` (shared field
+  components, plus `ReportLayoutSourceEditor`, `ReportLayoutConditionEditor`, `ReportLayoutColumnsEditor` (also joins),
+  `ReportLayoutWidgetEditor`, `ReportLayoutVariablesField` over the pack variables editor, and `ReportLayoutJsonField` for a kind
+  or block type it does not know). `utils/reportLayoutTree.ts` holds the pure tree edits (insert, move, indent, outdent, duplicate,
+  remove), the names in scope (from each block's `provides`) and the path reading that puts a server problem on its block.
+  The designer holds the tree while the outline is shown, checks it with `POST .../validate` after each pause, keeps the text
+  view's text in step through `text/format` for the preview and for switching back, and saves the tree itself. Moves are buttons;
+  there is no drag-and-drop.
+- **Three views (Phase 13d).** The designer's `Tabs` are **Text**, **Outline** and (document layouts) **Document** (`ReportLayoutRichText`,
+  below). The outline and the document edit the one tree the designer holds, so switching between them converts nothing; from the
+  text the designer parses the text as it stands (an immediate `text/parse`, not the pause-and-check result) and refuses with the
+  reason if it has problems; to the text it formats the tree only if the tree changed since it was entered; to the document it
+  first tries `treeToDoc` and refuses with the `NotRepresentableError` reason. Dirty, Save, the preview and the validate check read
+  the tree in either tree view.
+- **Document view (Phase 13c).** A third way to edit the same tree, for document layouts: `ReportLayoutRichText` is a TipTap editor
+  whose content is `treeToDoc(tree)` and whose every edit is reported as `docToTree(doc)`. `utils/reportLayoutDoc.ts` is the converter
+  (no editor dependency): headings and text blocks are editable prose, a block that holds blocks becomes a container with one slot per
+  child list (from the catalogue's `containers`), and every other block is carried whole as a framed card whose settings reuse the
+  outline's field forms. Prose carries the three styles the engine draws (bold, italic, code, as editor marks) and bullet and numbered
+  lists; `utils/reportLayoutProse.ts` reads and writes the canonical spelling (`**x**`, `*x*`, `` `x` ``, `- `, `1. `). A text block is drawn
+  as prose only when `serialize(parse(markdown)) === markdown` and nothing in it could be read differently by the server's reader
+  (a stray `*`, `_` emphasis, an unknown backslash, a line that could start another Markdown construct); otherwise it stays a
+  raw-Markdown source box, so no text is rewritten. A tree the view cannot show without changing
+  it is refused with the reason (`NotRepresentableError`). The identity `docToTree(treeToDoc(t)) = t` is tested over the three
+  starter layouts (`frontend/src/testing/starterLayoutTrees.json`, written by `backend/scripts/export_starter_trees.py` and checked
+  current by a backend test) and a crafted corpus. A table layout has no document view.
 - **Kind is fixed.** The server parses text without knowing the layout, so the designer compares the text's `@layout`
   kind with the layout's and reports a mismatch as a problem before saving.
-- **Extending.** A new block type needs its server pieces (§4n) and, to be offered as a shortcut, an entry in
-  `BLOCK_SNIPPETS`; the editor, pickers and preview need no change.
+- **Block schemas for the visual designer.** A `BlockSpec` carries a `schema` (`services/report_layout_block_schema.py`):
+  label, description, the block's `fields` (key, label, `kind`, required, help, bounds, choices, `depends_on`), its child
+  lists (`containers`: `children`, an `if`'s `else_children`), the name it brings into scope (`provides`, for example
+  `as`) and a `template` node. `GET .../report-layouts/blocks` (both tiers, manage permission) lists them with the
+  layout-level fields and the field `kind`s the designer can draw; `POST .../report-layouts/validate` takes a tree and
+  answers `{ok, errors: [{path, message}], node_count}` (200 either way, nothing stored, the tree never logged). A schema
+  describes; `BlockSpec.validate` still decides. A type with no schema is offered as raw JSON; a test fails for a
+  registered type without one.
+- **Extending.** A new block type needs its server pieces (§4n), a `schema` (the visual designer draws its form from
+  it) and, to be offered as a shortcut in the text editor, an entry in `BLOCK_SNIPPETS`; the editor, pickers and
+  preview need no change. Build its form from the existing field kinds; a new kind needs a control in the designer.
 
 ### 4r. Custom reports: math (Module 10 Phase 9)
 
@@ -1752,6 +1788,52 @@ flowchart LR
   already used is skipped, so it is safe to repeat and never overwrites an edit. An upgrade seeds nothing by itself.
 - A new module with something to say in a starter adds a section; a new starter adds a `StarterLayout` and a key in
   `services/report_starter_blocks.py`. `backend/tests/test_report_starters.py` validates every starter as assembled.
+
+### 4w. Report text: bold, italic, code and numbered lists (Module 10 Phase 13, text formatting)
+
+The Markdown reader (`report_model.markdown_to_blocks`) is shared by a layout's text block and by a report's introduction, chapters
+and appendices, so both get the same formatting in every document format.
+
+```mermaid
+flowchart LR
+    A["Author's Markdown"] --> B["Set equations aside<br/>(inline and display)"]
+    B --> C["markdown-it<br/>link, image, html, entity rules off"]
+    C --> D["Runs: str and Styled<br/>(bold, italic, code)"]
+    D --> E["Put equations back as written"]
+    E --> F["Fill placeholders per run<br/>(a value is never parsed)"]
+    F --> G["Paragraph / list item as MathText"]
+    G --> H["HTML · DOCX · ODT · PDF<br/>one style each, same words"]
+```
+
+- **Model.** `Styled(text, bold, italic, code)` is a third kind of part in a `MathText` (beside plain strings and `Equation`), and
+  `NumberedList(items)` joins `BulletList`. A `MathText` reads as its words without the markers, so CSV, the on-screen result and every
+  string-only consumer see plain text; text with no style is the plain `str` it always was.
+- **What is a style.** `**x**` bold, `*x*` / `_x_` italic, `***x***` both, `` `x` `` code; `\*`, `\_`, `` \` ``, `\[`, `\]` and `\\` make a marker
+  literal. Everything else stays as written: bare addresses and autolinks, reference-style links, images inside a sentence (an image alone on its line is still a
+  picture), raw HTML, entities, strikethrough. No hyperlink path exists in any renderer.
+- **Links.** `[words](address)` is a `Styled` run with an `href`. `link_problem` allows an absolute `http` or `https` address with a host,
+  `mailto:` with one address, or `#anchor` (a heading of the same document), and refuses whitespace, control characters, quotes,
+  angle brackets, backslashes and anything over 2000 characters. markdown-it's own link normalising and validation are replaced (an
+  address stays exactly as written, so `{{record.url}}` survives to be filled), the autolink, reference and image rules stay off, and a
+  link with an address that is not allowed is kept as written text. In a layout the evaluator fills the address and checks it again on
+  the final text (`checked_link`: a failure drops the link with one warning that never repeats the address); a record value can
+  therefore reach an address (accepted by the User, 2026-10-28) but never produce anything other than an allowed link.
+  `finalize_links` runs first in every renderer: each `Heading` gets an anchor (`heading_anchor`, unique in reading order:
+  `overview`, `overview-2`) and a link to a heading that is not there becomes plain words. HTML writes `<a href>` (outside addresses
+  `rel="noopener noreferrer nofollow" target="_blank"`) and heading ids; Word a relationship target or a bookmark (`sec_` plus a hash
+  of the anchor) with `w:hyperlink`; OpenDocument `text:a` and `text:bookmark`; PDF `<a href>` and `<a name>`. The designer's
+  sandboxed preview shows links but does not follow outside ones.
+- **Safety order.** Equations are set aside before the reader runs and put back unread (a `_` or `*` in TeX is never emphasis);
+  placeholders and record values are filled run by run after the Markdown is read, and a value takes the style of the run it is
+  inside but is never read for styles. The layout evaluator keeps a run's style through placeholder filling and equation finding
+  (`_restyled`); an equation inside a styled run is drawn unstyled.
+- **Renderers.** HTML `<strong>`/`<em>`/`<code>` and `<ol>`; Word run bold/italic, a Courier New code font and the `List Number`
+  style; OpenDocument `text:span` with named character styles (`T_Bold`, `T_Italic`, `T_BoldItalic`, `T_Code`, …) and the `L_Number`
+  list style; PDF `<b>`, `<i>` and `<font face="Courier">` around the escaped words, and a numbered `ListFlowable`. A heading is bold
+  already and reads as plain words.
+- **Behaviour change.** Existing text containing a matched `*…*`, `**…**`, `_…_` or a backtick pair now prints styled, and a line
+  starting `1. ` becomes a numbered list; an unmatched marker, `5 * 3`, `snake_case` and a lone `_` are unchanged. This applies to
+  report introductions, chapters and appendices as well as layouts.
 
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 

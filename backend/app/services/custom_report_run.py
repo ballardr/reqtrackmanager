@@ -100,6 +100,7 @@ from app.services.report_model import (
     Gap,
     Heading,
     Note,
+    NumberedList,
     PageBreak,
     Paragraph,
     ReportDocument,
@@ -403,6 +404,8 @@ def _sections_of_document(blocks: Sequence[Block]) -> tuple[list[ReportSection],
             lines.append(block.text)
         elif isinstance(block, BulletList):
             lines += [f"• {item}" for item in block.items]
+        elif isinstance(block, NumberedList):
+            lines += [f"{number}. {item}" for number, item in enumerate(block.items, start=1)]
         elif isinstance(block, Table):
             sections.append(ReportSection(
                 key=f"section-{len(sections) + 1}", title=" / ".join(text for _, text in trail) or f"Table {len(sections) + 1}",

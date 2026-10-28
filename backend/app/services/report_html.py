@@ -41,10 +41,13 @@ from app.services.report_model import (
     Heading,
     Image,
     Note,
+    NumberedList,
     PageBreak,
     Paragraph,
     ReportDocument,
+    Styled,
     Table,
+    finalize_links,
     text_on,
     text_runs,
 )
@@ -97,9 +100,31 @@ def _esc(text: str) -> str:
     return html.escape(text, quote=True)
 
 
+def _styled(run: Styled) -> str:
+    """A bold / italic / code / link run as HTML: the escaped words inside the matching tags.
+
+    A link was checked by `finalize_links`; its address is escaped as an attribute, and an outside address opens in a
+    new tab without handing over the page (`noopener`, `noreferrer`) or its search weight (`nofollow`).
+    """
+    inner = _esc(run.text)
+    if run.code:
+        inner = f"<code>{inner}</code>"
+    if run.italic:
+        inner = f"<em>{inner}</em>"
+    if run.bold:
+        inner = f"<strong>{inner}</strong>"
+    if run.href is None:
+        return inner
+    if run.href.startswith("#"):
+        return f'<a href="{_esc(run.href)}">{inner}</a>'
+    return f'<a href="{_esc(run.href)}" rel="noopener noreferrer nofollow" target="_blank">{inner}</a>'
+
+
 def _rich(value: str) -> str:
-    """Escaped HTML for model text, with its equations drawn inline (a plain string is just escaped)."""
-    return "".join(_esc(run) if isinstance(run, str) else _equation(run) for run in text_runs(value))
+    """Escaped HTML for model text, with its styles applied and its equations drawn inline (a plain string is just escaped)."""
+    return "".join(
+        _esc(run) if isinstance(run, str) else _styled(run) if isinstance(run, Styled) else _equation(run) for run in text_runs(value)
+    )
 
 
 def _table(block: Table) -> str:
@@ -150,6 +175,7 @@ def render_html_document(document: ReportDocument) -> bytes:
     Returns:
         UTF-8 HTML bytes.
     """
+    document = finalize_links(document)
     accent = _accent(document)
     parts = [f"<h1>{_esc(document.title)}</h1>"]
     branding = document.branding
@@ -159,7 +185,9 @@ def render_html_document(document: ReportDocument) -> bytes:
             parts.insert(0, f'<img class="logo" src="{uri}" alt="">')
     for block in document.blocks:
         if isinstance(block, Heading):
-            parts.append(f"<h{min(max(block.level, 1), 4) + 1}>{_rich(block.text)}</h{min(max(block.level, 1), 4) + 1}>")
+            tag = f"h{min(max(block.level, 1), 4) + 1}"
+            anchor = f' id="{_esc(block.anchor)}"' if block.anchor else ""
+            parts.append(f"<{tag}{anchor}>{_rich(block.text)}</{tag}>")
         elif isinstance(block, Paragraph):
             parts.append(f"<p>{_rich(block.text)}</p>")
         elif isinstance(block, Equation):
@@ -168,6 +196,8 @@ def render_html_document(document: ReportDocument) -> bytes:
             parts.append(f'<p class="note">{_esc(block.text)}</p>')
         elif isinstance(block, BulletList):
             parts.append("<ul>" + "".join(f"<li>{_rich(item)}</li>" for item in block.items) + "</ul>")
+        elif isinstance(block, NumberedList):
+            parts.append("<ol>" + "".join(f"<li>{_rich(item)}</li>" for item in block.items) + "</ol>")
         elif isinstance(block, Image):
             figure = _figure(block)
             if figure:
