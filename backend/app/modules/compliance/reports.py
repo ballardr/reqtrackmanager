@@ -18,9 +18,8 @@ single module's own reporting surface, so — like the evidence-upload
 precedent — it belongs here, reusing `app.services.reports`'s ReportLab/csv
 approach and escaping discipline rather than routing report generation
 through core `services/reports.py`/`routers/reports.py`, which are already
-fully committed to the *requirement*-report shape (`ReportRequirementRow`,
-`ProjectReportConfig`'s intro/chapters/appendices) that has no equivalent
-concept here.
+fully committed to the *requirement*-report shape (`ReportRequirementRow`)
+that has no equivalent concept here.
 
 Two report kinds, one PDF/CSV pair each:
 - Project-level (`generate_project_compliance_pdf`/`_csv`, collected by

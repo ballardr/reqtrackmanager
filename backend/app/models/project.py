@@ -180,16 +180,6 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     # this is not a freeform key-value store.
     terminology: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
-    # The project's report intro/chapters/appendices live in `ReportContent`
-    # rows (models/report_content.py), one per report type.
-    # Pre-selected (not enforced) on the report generation page — a user can
-    # still pick a different template, or none, for a specific generation.
-    # ON DELETE SET NULL: deleting the referenced template must not break
-    # the project row, just fall back to no default.
-    default_report_template_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("report_templates.id", ondelete="SET NULL"), nullable=True
-    )
-
     # Massif (v3): default notification lead time (in days) before a
     # requirement's review_date, used when a requirement doesn't set its own
     # review_lead_days override (C-R-08).

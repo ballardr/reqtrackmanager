@@ -18,7 +18,7 @@ const orgEntry = buildReportCatalogueEntry({
 
 const template: ReportTemplate = {
   id: "tpl-1", organization_id: "org-1", name: "Branded template", accent_color_hex: "#475569",
-  include_cover_page: true, include_logo: true, footer_text: null, content: [],
+  include_cover_page: true, include_logo: true, footer_text: null,
   chapters_per_component: false,
 };
 

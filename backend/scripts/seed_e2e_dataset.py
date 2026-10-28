@@ -262,12 +262,6 @@ def create_link_type(
     return r.json()
 
 
-def put_report_content(headers: dict, path: str, content: list[dict]) -> None:
-    """Saves per-report-type content at one tier: `/orgs/{id}/report-defaults` or `/projects/{id}/report-config`."""
-    r = httpx.put(f"{BASE}{path}", json={"content": content}, headers=headers, timeout=30)
-    r.raise_for_status()
-
-
 REQUIREMENTS_BY_COMPONENT_LAYOUT = {
     "schema_version": 1, "family": "document", "orientation": "portrait",
     "nodes": [
@@ -1061,15 +1055,6 @@ def main() -> None:
     )
     gamma5_reqs = seed_project_content(h_g, gamma5, 2)
     gamma6_reqs = seed_project_content(h_g, gamma6, 2)
-    print("Seeding per-report-type content: Gamma's organisation default for 'all reports', and a requirements"
-          " introduction and chapter on Gamma-5 that its child Gamma-6 (which sets none) inherits.")
-    put_report_content(h_g, f"/orgs/{gamma['id']}/report-defaults", [
-        {"report_key": "*", "intro": "Prepared by {{organisation}} for {{project_name}}.", "chapters": [], "appendices": []},
-    ])
-    put_report_content(h_g, f"/projects/{gamma5['id']}/report-config", [
-        {"report_key": "requirements", "intro": "Gamma-5 requirements, inherited by its child projects.",
-         "chapters": [{"title": "Scope", "body": "Shared by the Gamma-5 programme."}], "appendices": []},
-    ])
     print("Seeding custom report layouts: a Gamma organisation layout, a Gamma-5 layout its child inherits, and Gamma-6"
           " hiding the organisation's.")
     org_layout = create_report_layout(

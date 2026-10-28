@@ -24,13 +24,14 @@ flowchart LR
 
 ## Starter layouts
 
-Every organisation starts with three ready-made document layouts, so a first report needs no design work:
+Every organisation starts with four ready-made document layouts, so a first report needs no design work:
 
 | Starter | What it gives you |
 |---|---|
 | **Business Requirements Document** | Purpose and scope, Pain Points, stakeholders and Personas, needs, Strategy, Future State, requirements, constraints and assumptions, decisions, risks, traceability coverage, Open Questions and the approval state of each record. |
 | **Engineering Specification** | Scope, guiding principles, requirements by component, requirement types, needs, constraints, compliance obligations, decisions, traceability coverage and each requirement's review date. |
 | **Review Package** | What needs a person now: requirements still in draft or reviewed, change requests under review, decisions awaiting approval, open and overdue questions and risk reviews. |
+| **Requirements by Component** | Every requirement grouped under its component and then its category, with its reasoning, status and tags, between an Introduction and an Appendices section for you to write. It is the requirements report as a layout. |
 
 Each section is built from the project's records when you run it, so the document is a view of them, not a copy to keep up to date. A section whose module a project does not use is left out, not printed empty. The starters are ordinary layouts: open one in **Report layouts** to change the words and sections, rename it or delete it. If you delete one, or your organisation was created before the starters existed, choose **Add starter layouts** in the organisation's **Report layouts**; it adds only the starters you do not already have and never changes one you edited.
 
@@ -64,6 +65,6 @@ every run is recorded (which layout and version, who ran it, when, which project
 
 ## Export and import
 
-Layouts, and their introductions, chapters and appendices, travel in a project or organisation [export](../zip-export-import.md).
+Layouts travel in a project or organisation [export](../zip-export-import.md).
 
 See also [designing a layout](./designing-a-layout.md), [blocks, report components and variables](./blocks-widgets-and-variables.md), [report packs](./report-packs.md) and [finding and organising reports](./organising-reports.md).

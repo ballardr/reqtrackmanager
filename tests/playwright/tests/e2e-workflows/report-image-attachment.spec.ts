@@ -1,21 +1,16 @@
 import { expect, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, selectProjectAdminGroup } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
 
 /**
- * End-to-end proof that a report's Markdown content can include an image
- * (`RichTextEditor`'s "Insert image" panel, `utils/markdown.ts`'s
- * `attachment:` reference, `services/reports.py`'s image-flowable
- * rendering): upload an image through the attachment panel while editing
- * a project's report intro, save it, then generate a PDF and confirm a
- * real PDF download comes back — the actual embed-into-PDF-bytes
- * assertion is covered by `backend/tests/test_report_images.py`
- * (`_IMAGE_MARKER in resp.content`); this spec is the browser-driven proof
- * that the *picker* -> *insert* -> *save* -> *generate* path works end to
- * end through the real UI, not just the API.
+ * End-to-end proof that an image reaches a generated requirements report through an organisation resource file:
+ * a Markdown resource holds `![pixel.png](attachment:<image id>)`, the Reports page appends it as a resource
+ * section, and the PDF that downloads embeds the picture (`report_document.resolve_report_images`). The
+ * embed-into-PDF-bytes assertion for cross-organisation and cross-project references is covered by
+ * `backend/tests/test_report_images.py`; this spec is the browser-driven proof of the select -> generate path.
  */
 
 const ADMIN_EMAIL = "admin@example.com";
@@ -29,7 +24,7 @@ const apiBaseUrl = "http://localhost:8000";
 const TINY_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4//8/AAX+Av7czFnnAAAAAElFTkSuQmCC";
 
-test("insert an image into a project's report intro and generate a PDF", async ({ page }) => {
+test("a resource file with an image is appended to the requirements PDF", async ({ page }) => {
   const adminLoginResp = await page.request.post(`${apiBaseUrl}/api/v1/auth/login`, {
     data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
   });
@@ -55,12 +50,28 @@ test("insert an image into a project's report intro and generate a PDF", async (
       })
     ).json()
   ).access_token;
+  const authHeaders = { Authorization: `Bearer ${orgAdminToken}` };
   const project = await (
     await page.request.post(`${apiBaseUrl}/api/v1/projects`, {
-      headers: { Authorization: `Bearer ${orgAdminToken}` },
+      headers: authHeaders,
       data: { organization_id: org.id, name: `E2E Report Image Project ${suffix}`, summary: "" },
     })
   ).json();
+
+  const image = await (
+    await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/resources`, {
+      headers: authHeaders,
+      multipart: { file: { name: "pixel.png", mimeType: "image/png", buffer: Buffer.from(TINY_PNG_BASE64, "base64") } },
+    })
+  ).json();
+  const notesName = `notes-${suffix}.md`;
+  const notes = await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/resources`, {
+    headers: authHeaders,
+    multipart: {
+      file: { name: notesName, mimeType: "text/markdown", buffer: Buffer.from(`![pixel.png](attachment:${image.id})\n`) },
+    },
+  });
+  expect(notes.ok(), await notes.text()).toBeTruthy();
 
   await page.goto("/login");
   await page.getByLabel("Email").fill(orgAdminEmail);
@@ -68,45 +79,14 @@ test("insert an image into a project's report intro and generate a PDF", async (
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 
-  await page.goto(`/projects/${project.id}/admin`);
-  await selectProjectAdminGroup(page, "Report Setup");
+  await page.goto(`/projects/${project.id}/reports`);
 
-  await test.step("upload and insert an image into the report intro", async () => {
-    await page.getByRole("button", { name: "Insert image" }).first().click();
-    const fileInput = page.locator('input[type="file"][accept="image/*"]').first();
-    // setInputFiles only waits for the browser's own file-selection/change
-    // event, not for RichTextEditor's async upload (uploadImage awaits
-    // api.postFile) that follows it — the markdown insert only happens
-    // once that resolves. Wait for the actual upload response so the
-    // assertion below isn't racing a real network round trip against a
-    // fixed timeout (this can genuinely take longer than 5s on a
-    // resource-constrained CI runner than it does locally).
-    await Promise.all([
-      page.waitForResponse((r) => r.url().includes("/resources") && r.request().method() === "POST"),
-      fileInput.setInputFiles({
-        name: "pixel.png",
-        mimeType: "image/png",
-        buffer: Buffer.from(TINY_PNG_BASE64, "base64"),
-      }),
-    ]);
-    // The picker inserts `![pixel.png](attachment:<id>)` at the cursor and
-    // closes itself — confirm the markdown textarea actually received it.
-    const introTextarea = page.locator("textarea").first();
-    await expect(introTextarea).toHaveValue(/!\[pixel\.png\]\(attachment:[0-9a-f-]+\)/);
+  await test.step("select the Markdown resource as an appended section", async () => {
+    await page.getByRole("button", { name: "Resource sections section" }).click();
+    await page.getByLabel(notesName).check();
   });
 
-  // As with the image upload above, the click only waits for the DOM
-  // event, not for saveReportConfig's async PUT — without waiting for the
-  // response here, the subsequent page.goto can outrace the save on a
-  // loaded runner, leaving the report intro (and its image reference)
-  // unpersisted when the PDF is generated below.
-  await Promise.all([
-    page.waitForResponse((r) => r.url().includes("/report-config") && r.request().method() === "PUT"),
-    page.getByRole("button", { name: "Save settings" }).click(),
-  ]);
-
-  await test.step("generate a PDF report and confirm a real PDF downloads", async () => {
-    await page.goto(`/projects/${project.id}/reports`);
+  await test.step("generate a PDF report and confirm a real PDF with the picture downloads", async () => {
     const downloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "Generate PDF" }).click();
     const download = await downloadPromise;

@@ -76,7 +76,7 @@ Three orthogonal axes, kept separate: **layout** (what is reported), **branding 
 | 16 to 16d | Reports picker, folders, favourites, placements, list filters, widget tree, sub-component gate (review 1) | **Done; reviewed by the User 2026-10-28.** (A wider backend regression run was still going when this was written.) |
 | 17 | Text designer fixes (review 2) | **Done 2026-10-28** (built and tested; awaiting the checkpoint review). |
 | 18 | Block editor on Blockly | **Done 2026-10-28** (built and tested; awaiting the checkpoint review). |
-| 19 | Remove report content (after converting it into layouts) and the project default template | Planned, not started |
+| 19 | Remove report content and the project default template | **Done 2026-10-28** (built and tested; awaiting the checkpoint review). The User chose to drop the content, not convert it; decisions log "Custom reports Phase 19". |
 | 20 | Download report from record lists | Planned, not started |
 | R | Review checkpoint: the User reviews Phases 17 to 20 together | After Phase 20 |
 | 15 | Docs website | After the review checkpoint |
@@ -117,7 +117,7 @@ The plan is not closed. The paragraph below is the history of Phases 0 to 15, ke
 | 16d | Reports spanning several sub-components follow them (`any_subcomponents`) | 3 | [x] |
 | 17 | Text designer fixes: icon toolbar with tooltips, Save popover for the change note, one searchable list of fields and placeholders, Document view removed (with TipTap), page size, project placeholders (User review 2, 2026-10-28) | 4 | [x] |
 | 18 | Block editor on Blockly (themed), blocks generated from the server's block schemas, replacing the Outline; heading blocks by level, compact inline-label forms (decisions log "Custom reports Phase 18"; website screenshot left to Phase 15) | 4 | [x] |
-| 19 | Report content (introduction, chapters, appendices) removed everywhere after a migration turns existing content into layouts; the project default branding template removed; widgets for project facts | 4 | [ ] |
+| 19 | Report content (introduction, chapters, appendices) removed everywhere (dropped, not converted: User, 2026-10-28); the project default branding template pointer removed; "Requirements by Component" starter layout as the requirements counterpart (widgets for project facts: the `{{project_code}}` and `{{project_description}}` placeholders of Phase 17) | 4 | [x] |
 | 20 | Download report from record lists: the list actions menu offers a report picker limited to reports that use the list's record type | 4 | [ ] |
 | R | **Review checkpoint (User):** the User reviews Phases 17 to 20 together, once all are built; Phases 16 to 16d were reviewed 2026-10-28. The plan is not closed before it, and Phase 15 (docs) waits for it | 4 | [ ] |
 | 15 | Docs website coverage (incremental; first slice 2026-10-28: nested Custom reports section with eight screenshots, decisions log "Custom reports Phase 15"; background-reports, starters and organisation-run screenshots still to add) | — | [ ] |

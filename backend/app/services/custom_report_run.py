@@ -13,7 +13,7 @@ Responsibilities:
 - Merge: a document gets one top-level heading per project (authored headings move one level down) and a
   page break between projects; a table layout's sheets of the same name are concatenated with a leading
   `Project` column.
-- Output: `result_for` (on-screen), `document_for` (branding, introduction/chapters/appendices),
+- Output: `result_for` (on-screen), `document_for` (branding),
   `render_input_for`, `available_formats`.
 - Provenance: `record_run` writes the `GeneratedReport` row (D11).
 - Catalogue: `project_entries` / `org_entries` describe the runnable layouts like any other report.
@@ -34,11 +34,9 @@ Design decisions:
 - **Formats follow the layout family and come from the renderer registry** (`services.report_render`): a
   document layout gives `json` plus `pdf`, `docx`, `html`, `odt`; a table layout `json` plus `csv` (a zip when it has
   several sheets), `xlsx` and `ods`. A new format is one registration there.
-- **Content tiers key on the layout id** (`custom.<layout id>`), so a layout has its own introduction,
-  chapters and appendices across template, project and organisation like a module report.
 
 Dependencies: `services.report_layout_eval`, `services.report_layout_scope`, `services.report_framework`,
-`services.report_content`, `services.report_document`, `models.generated_report`.
+`services.report_document`, `models.generated_report`.
 """
 
 from __future__ import annotations
@@ -58,18 +56,12 @@ from sqlalchemy.orm import Session
 from app.models.generated_report import SCOPE_ORGANIZATION, SCOPE_PROJECT, STATUS_COMPLETED, GeneratedReport
 from app.models.organization import Organization, ReportTemplate
 from app.models.project import Project
-from app.models.report_content import CUSTOM_REPORT_KEY_PREFIX
 from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE, ReportLayout, ReportLayoutVersion
 from app.models.user import User
 from app.services import definition_suppression, report_layout_scope, report_layouts
 from app.services.client_date import effective_today
 from app.services.downloads import filename_safe
 from app.services.link_graph import ArtefactResolver
-from app.services.report_content import (
-    build_placeholders,
-    content_blocks,
-    resolve_report_content,
-)
 from app.services.report_document import ReportBranding, resolve_branding
 from app.services.report_framework import (
     ReportCatalogueEntryOut,
@@ -130,11 +122,6 @@ class NoProjectsToRunError(LookupError):
 
 class FanOutTooLargeError(ValueError):
     """More than `MAX_FANOUT_PROJECTS` projects were asked for."""
-
-
-def content_key(layout_id: uuid.UUID) -> str:
-    """The `ReportContent.report_key` of a layout's introduction, chapters and appendices."""
-    return f"{CUSTOM_REPORT_KEY_PREFIX}{layout_id}"
 
 
 @dataclass
@@ -449,52 +436,31 @@ def result_for(run: LayoutRun) -> ReportResult:
     )
 
 
-def document_for(
-    run: LayoutRun, *, branding: ReportBranding | None, before: Sequence[Block] = (), after: Sequence[Block] = (),
-) -> ReportDocument:
+def document_for(run: LayoutRun, *, branding: ReportBranding | None) -> ReportDocument:
     """The run's document for the PDF and Word renderers.
 
     Args:
         run: A finished document-family run.
         branding: The organisation template's branding, or `None`.
-        before: The layout's introduction and chapters (`content_blocks_for`).
-        after: Its appendices.
 
     Returns:
-        The document: content before, a scope line, the evaluated blocks, content after.
+        The document: a scope line, the run's notes, then the evaluated blocks.
     """
     document = run.evaluated.document
     assert document is not None
-    blocks: list[Block] = [*before, Note(_scope_line(run)), Gap(0.2), *[Note(n) for n in run.notes], *document.blocks, *after]
+    blocks: list[Block] = [Note(_scope_line(run)), Gap(0.2), *[Note(n) for n in run.notes], *document.blocks]
     return ReportDocument(title=run.layout.name, blocks=blocks, branding=branding, landscape=document.landscape, page_size=document.page_size)
 
 
-def content_blocks_for(
-    db: Session, run: LayoutRun, template: ReportTemplate | None,
-) -> tuple[list[Block], list[Block]]:
-    """The layout's introduction/chapters and appendices (template, project, ancestors, organisation).
-
-    An organisation-wide run has no single project, so only the template and organisation tiers apply.
-    """
-    content = resolve_report_content(db, content_key(run.layout.id), run.organization, run.root_project, template)
-    placeholders = build_placeholders(
-        project_name=run.scope_label, report_title=run.layout.name, generated_on=run.generated_at.date(),
-        organisation=run.organization.name,
-    )
-    return content_blocks(db, run.organization.id, content, placeholders)
-
-
-def render_input_for(
-    run: LayoutRun, *, branding: ReportBranding | None = None, before: Sequence[Block] = (), after: Sequence[Block] = (),
-) -> RenderInput:
-    """What the renderers are given for a run: the document (with branding and content) or the sheets."""
+def render_input_for(run: LayoutRun, *, branding: ReportBranding | None = None) -> RenderInput:
+    """What the renderers are given for a run: the document (with branding) or the sheets."""
     if run.family == FAMILY_DOCUMENT:
-        return RenderInput(run.layout.name, document=document_for(run, branding=branding, before=before, after=after))
+        return RenderInput(run.layout.name, document=document_for(run, branding=branding))
     return RenderInput(run.layout.name, sheets=run.evaluated.sheets)
 
 
 def render_file(db: Session, run: LayoutRun, fmt: str, template: ReportTemplate | None) -> RenderedFile:
-    """Renders a finished run as a file in `fmt`: a document's branding and content tiers, or the sheets.
+    """Renders a finished run as a file in `fmt`: a document's branding, or the sheets.
 
     Args:
         db: Active session (read only).
@@ -505,13 +471,8 @@ def render_file(db: Session, run: LayoutRun, fmt: str, template: ReportTemplate 
     Returns:
         The rendered file.
     """
-    before: list[Block] = []
-    after: list[Block] = []
-    branding = None
-    if run.family == FAMILY_DOCUMENT:
-        before, after = content_blocks_for(db, run, template)
-        branding = resolve_branding(db, run.organization, template)
-    return render(fmt, run.family, render_input_for(run, branding=branding, before=before, after=after))
+    branding = resolve_branding(db, run.organization, template) if run.family == FAMILY_DOCUMENT else None
+    return render(fmt, run.family, render_input_for(run, branding=branding))
 
 
 def file_stem(run: LayoutRun) -> str:
@@ -657,8 +618,8 @@ def org_entries(db: Session, user: User, organization_id: uuid.UUID) -> list[Rep
 
 __all__ = [
     "ENGINE_VERSION", "MAX_FANOUT_PROJECTS", "MODULE_KEY", "FanOutTooLargeError", "LayoutRun",
-    "NoProjectsToRunError", "ProjectsNotInScopeError", "available_formats", "content_blocks_for",
-    "content_key", "document_for", "render_input_for", "merge_evaluations", "org_entries",
+    "NoProjectsToRunError", "ProjectsNotInScopeError", "available_formats",
+    "document_for", "render_input_for", "merge_evaluations", "org_entries",
     "project_entries", "provenance_fields", "record_run", "render_file", "file_stem", "run_params", "result_for",
     "run_organization_layout", "run_project_layout", "slug_for",
 ]

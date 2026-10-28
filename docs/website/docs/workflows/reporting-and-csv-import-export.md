@@ -9,8 +9,8 @@ sidebar_position: 9
 Open a project's **Reports** page:
 
 1. Filter by component, category, status, or keyword to scope what's included.
-2. Optionally pick one of the organisation's **report templates** for a PDF or Word export — an accent colour, cover page, and footer, for consistent on-brand output.
-3. Generate the report with **Generate PDF**, or choose **More formats** for an editable Word file or CSV — a PDF or Word file includes the introduction, chapters and appendices written for that report type (**Project Admin → Report Setup**), falling back to the parent project's and then the organisation's defaults field by field wherever the project leaves one blank. See [Report content](../core-features/reports-and-export.md#report-content).
+2. Optionally pick one of the organisation's **report templates** for a PDF or Word export — an accent colour, cover page, logo and footer, for consistent on-brand output.
+3. Generate the report with **Generate PDF**, or choose **More formats** for an editable Word file or CSV — a PDF or Word file can append the organisation's shared resource files. For an introduction, chapters and appendices, start from the **Requirements by Component** layout (see [Introductions, chapters and appendices](../core-features/reports-and-export.md#introductions-chapters-and-appendices)).
 
 | Reports page |
 | --- |
@@ -76,4 +76,4 @@ The **Risk** register, the **Decisions** list and Compliance **Evidence** have t
 
 ## Where this fits
 
-See [Core Features → Reports and export](../core-features/reports-and-export.md) for report-content editing (Markdown/WYSIWYG, image inserts, organisation defaults), and [Authoring and reviewing requirements](./authoring-and-reviewing-requirements.md) for creating requirements one at a time instead of in bulk.
+See [Core Features → Reports and export](../core-features/reports-and-export.md) for the report formats, branding templates and placeholders, and [Authoring and reviewing requirements](./authoring-and-reviewing-requirements.md) for creating requirements one at a time instead of in bulk.

@@ -27,8 +27,7 @@ Design decisions:
   `attachment:<id>` references to bytes beforehand, restricted to the
   organisation's own shared resources, so the renderer never reasons about
   tenant isolation.
-- A template's intro, chapters and appendices are requirement-report content
-  and are not part of this shell; only its branding is shared.
+- A template carries branding only; authored text belongs to a report layout.
 
 Dependencies: ReportLab, markdown-it-py, `services.files`, `services.branding`, `services.report_fonts`.
 """
@@ -73,7 +72,7 @@ def safe(text: str, *, bold: bool = False) -> str:
 
     ReportLab's `Paragraph` does not treat its `text` argument as plain
     text — it parses a restricted markup language supporting tags such as
-    `<b>`, `<font>`, and `<img src="...">`. Since report content (Markdown
+    `<b>`, `<font>`, and `<img src="...">`. Since report text (Markdown
     sections, requirement names/reasoning, module record titles) is
     user-supplied, passing it to `Paragraph` unescaped would let a
     `<img src="http://internal-host/...">` (or a `file:`-scheme source,
@@ -337,8 +336,7 @@ def image_flowable(image_bytes: bytes):
 
 def resolve_report_images(db: Session, organization_id: UUID, *markdown_texts: str) -> dict[str, bytes]:
     """Scans one or more Markdown strings for `attachment:<uuid>` image
-    references (inserted via the report content editor's attachment panel,
-    `RichTextEditor`'s "Insert image") and resolves each to its bytes.
+    references (written in an organisation shared resource file) and resolves each to its bytes.
 
     Every resolved reference is checked against `organization_id` *and*
     restricted to `is_org_resource=True` assets before its bytes are read.
@@ -346,7 +344,7 @@ def resolve_report_images(db: Session, organization_id: UUID, *markdown_texts: s
     (non-shared) `FileAsset` — most importantly a requirement attachment —
     is gated by *project*-level access in its own right
     (`routers/files.py::download_file` requires `get_effective_project_roles`
-    for exactly that reason), which report content is never itself scoped
+    for exactly that reason), which a shared resource file is never itself scoped
     to check. Without this restriction, a user with report-edit rights on
     Project A could hand-type `attachment:<id>` for a requirement
     attachment belonging to Project B in the same org — one they may have

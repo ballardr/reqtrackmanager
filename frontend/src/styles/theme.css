@@ -985,35 +985,6 @@ a.figure-projects-link:hover {
   color: var(--color-text-muted);
 }
 
-/* components/RichTextEditor.tsx's WYSIWYG surface — a plain
-   contentEditable div styled as `.input`, with just enough block-level
-   spacing for the headings/lists it can contain to be readable while
-   editing (the same tags renderMarkdown/htmlToMarkdown round-trip). */
-.rich-text-editable {
-  cursor: text;
-}
-
-.rich-text-editable:focus {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 1px;
-}
-
-.rich-text-editable h1,
-.rich-text-editable h2,
-.rich-text-editable h3 {
-  margin: 0.3rem 0;
-  font-size: 1.05em;
-}
-
-.rich-text-editable ul {
-  margin: 0.3rem 0;
-  padding-left: 1.3rem;
-}
-
-.rich-text-editable p {
-  margin: 0.3rem 0;
-}
-
 /* Left navigation rail: same theme-aware surface as every other panel
    (--color-surface/-border/-text), not a fixed dark "chrome" independent
    of the active theme — it follows light/dark like the rest of the UI.

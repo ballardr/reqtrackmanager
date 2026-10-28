@@ -94,13 +94,13 @@ def test_markdown_to_blocks_skips_unresolved_images_and_blank_input():
 
 def test_requirement_document_groups_chapters_and_tables():
     rows = [_row("R-2", component="B", c=2), _row("R-1", component="A", c=1)]
-    chaptered = build_requirement_document(project_name="P", pre_markdown="# Intro", rows=rows, post_markdown="# End", chapters_per_component=True)
+    chaptered = build_requirement_document(project_name="P", rows=rows, post_markdown="# End", chapters_per_component=True)
     assert chaptered.title == "P" and chaptered.landscape is False
-    assert [b.text for b in chaptered.blocks if isinstance(b, Heading) and b.level == 1] == ["Intro", "A", "B", "End"]
+    assert [b.text for b in chaptered.blocks if isinstance(b, Heading) and b.level == 1] == ["A", "B", "End"]
     assert sum(isinstance(b, PageBreak) for b in chaptered.blocks) == 2
     table = next(b for b in chaptered.blocks if isinstance(b, Table))
     assert table.columns == ["ID", "Name", "Reasoning", "Status", "Tags"] and table.rows == [["R-1", "Boot fast", "UX", "Draft", ""]]
-    flowing = build_requirement_document(project_name="P", pre_markdown="", rows=rows, post_markdown="", chapters_per_component=False)
+    flowing = build_requirement_document(project_name="P", rows=rows, post_markdown="", chapters_per_component=False)
     assert not [b for b in flowing.blocks if isinstance(b, PageBreak)]
 
 
@@ -108,7 +108,7 @@ def test_requirement_document_tones_the_status_cell_like_the_screen_badge():
     from app.services.report_model import TONE_FILL
 
     rows = [_row("R-1", status="approved"), _row("R-2", status="draft")]
-    document = build_requirement_document(project_name="P", pre_markdown="", rows=rows, post_markdown="", chapters_per_component=False)
+    document = build_requirement_document(project_name="P", rows=rows, post_markdown="", chapters_per_component=False)
     table = next(b for b in document.blocks if isinstance(b, Table))
     assert [table.tone_at(i, 3) for i in range(2)] == ["accent", "muted"]
     assert all(table.tone_at(i, c) is None for i in range(2) for c in (0, 1, 2, 4))
@@ -263,14 +263,13 @@ def test_requirement_report_docx_download(client, admin_token):
     org, token = create_org_admin_in(client, admin_token, "DocxReqOrg")
     project = _seed_requirement(client, token, org["id"], STORED_HOSTILE)
     resp = client.post(
-        f"/api/v1/projects/{project['id']}/reports", json={"format": "docx", "pre_markdown": "# Intro\n\nHello"},
+        f"/api/v1/projects/{project['id']}/reports", json={"format": "docx"},
         headers=auth_headers(token),
     )
     assert resp.status_code == 200, resp.text
     assert resp.headers["content-type"] == DOCX_TYPE
     assert resp.headers["content-disposition"] == 'attachment; filename="Demo Project-requirements.docx"'
     doc = _open(resp.content)
-    assert ("Heading 1", "Intro") in [(p.style.name, p.text) for p in doc.paragraphs]
     assert doc.tables[0].rows[1].cells[1].text == clean_text(STORED_HOSTILE)
     assert doc.tables[0].rows[1].cells[3].text == "Draft"  # label map, not the raw enum
 
@@ -321,9 +320,13 @@ def test_requirement_report_docx_embeds_own_org_images_and_never_another_orgs(cl
     ).json()["id"]
 
     def run(file_id):
+        notes = client.post(
+            f"/api/v1/orgs/{org['id']}/resources",
+            files={"file": ("notes.md", f"![x](attachment:{file_id})\n".encode(), "text/markdown")}, headers=auth_headers(token),
+        ).json()["id"]
         resp = client.post(
             f"/api/v1/projects/{project['id']}/reports",
-            json={"format": "docx", "pre_markdown": f"![x](attachment:{file_id})\n"}, headers=auth_headers(token),
+            json={"format": "docx", "resource_file_ids": [notes]}, headers=auth_headers(token),
         )
         assert resp.status_code == 200, resp.text
         return _open(resp.content)

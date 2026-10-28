@@ -1,20 +1,19 @@
 """
 Module: services.reports
 
-Generates requirement reports as PDF (R-F-01), DOCX and CSV (R-F-02), with support
-for custom Markdown content prepended/appended to the report (R-G-01,
-R-G-02). This module holds only what is specific to requirement reports:
+Generates requirement reports as PDF (R-F-01), DOCX and CSV (R-F-02), with the
+organisation's shared resource files appended as Markdown sections (R-G-04).
+This module holds only what is specific to requirement reports:
 `ReportRequirementRow`, grouping into component chapters and category
-sections, the four-column table and the terminology-aware CSV. The
-intro/chapters/appendices a report carries are resolved by
-`services.report_content`. Everything document-level (branding,
+sections, the five-column table and the terminology-aware CSV. An introduction,
+chapters or appendices are written in a report layout (the "Requirements Report"
+starter), not here. Everything document-level (branding,
 cover page, footer, the Markdown renderer, image resolution, markup escaping)
 lives in `services.report_document`, shared with every module's reports. The
 report is built once as a neutral `ReportDocument` (`services.report_model`) and
 rendered by `report_pdf` or `report_docx`, so the two formats cannot drift.
 
-Image support (`![alt](attachment:<file id>)`, inserted via the report
-content editor's attachment panel) is deliberately resolved from a
+Image support (`![alt](attachment:<file id>)` in a resource file) is deliberately resolved from a
 pre-fetched `images: dict[str, bytes]` mapping passed in by the caller —
 see `report_document.resolve_report_images` for the tenant-isolation check
 that runs before any image reaches the PDF.
@@ -130,29 +129,25 @@ def default_chapters_per_component(rows: list[ReportRequirementRow]) -> bool:
 def build_requirement_document(
     *,
     project_name: str,
-    pre_markdown: str,
     rows: list[ReportRequirementRow],
     post_markdown: str,
     branding: ReportBranding | None = None,
     images: dict[str, bytes] | None = None,
     chapters_per_component: bool = True,
-    placeholders: dict[str, str] | None = None,
 ) -> ReportDocument:
     """Builds the neutral document for a project's requirements report, which
     the PDF and DOCX renderers both consume.
 
     Args:
         project_name: The project's display name, used as the report title.
-        pre_markdown: Custom Markdown rendered before the requirement table
-            (R-G-02, e.g. an introduction).
         rows: The requirement rows to tabulate.
-        post_markdown: Custom Markdown rendered after the requirement table
-            (R-G-01, e.g. appendices).
+        post_markdown: Markdown rendered after the requirement table (the
+            selected resource files, R-G-04).
         branding: Optional selected `ReportTemplate` styling (R-G-05) — an
             accent colour applied to the table header, an optional cover
             page (with the org logo if provided), and an optional footer.
         images: Pre-resolved `attachment:<id>` -> image bytes mapping for
-            any images referenced in `pre_markdown`/`post_markdown` — see
+            any images referenced in `post_markdown` — see
             `report_model.markdown_to_blocks`'s docstring.
         chapters_per_component: When `True` (the default), each component
             gets its own chapter heading and starts on a fresh page, with a
@@ -164,13 +159,11 @@ def build_requirement_document(
             the two applies before calling this — see
             `default_chapters_per_component`'s docstring for that
             precedence.
-        placeholders: Values for the `{{...}}` placeholders in the pre/post
-            Markdown (`report_content.build_placeholders`).
 
     Returns:
         The portrait requirements document.
     """
-    blocks: list[Block] = list(markdown_to_blocks(pre_markdown, images, placeholders))
+    blocks: list[Block] = []
     # Same total width (17.5cm) the single combined table used to sum to —
     # Component/Category don't need their own columns (the chapter-per-component /
     # section-per-category structure below already conveys them), so their
@@ -199,7 +192,7 @@ def build_requirement_document(
                 Gap(0.5),
             ]
 
-    blocks += markdown_to_blocks(post_markdown, images, placeholders)
+    blocks += markdown_to_blocks(post_markdown, images)
     return ReportDocument(title=project_name, blocks=blocks, branding=branding)
 
 

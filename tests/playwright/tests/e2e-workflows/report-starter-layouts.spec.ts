@@ -6,10 +6,10 @@ import { chooseReport } from "./reportPicker";
 import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
-const STARTERS = ["Business Requirements Document", "Engineering Specification", "Review Package"];
+const STARTERS = ["Business Requirements Document", "Engineering Specification", "Review Package", "Requirements by Component"];
 
 /**
- * Job to be done: start a Business Requirements Document, an Engineering Specification or a Review Package from the
+ * Job to be done: start a Business Requirements Document, an Engineering Specification, a Review Package or Requirements by Component from the
  * ready-made layouts every organisation is created with, and bring one back after it was deleted.
  *
  * Each test works in its own disposable organisation (created and deleted through the API), so it passes alone, in
@@ -57,10 +57,11 @@ test.describe("Report starter layouts", () => {
   test("a new organisation has the starters, a project runs one, and a deleted one is brought back", async ({ page, request }) => {
     const { org, headers, project, requirement } = await setup(page, request);
 
-    await test.step("Org Admin lists the three starters", async () => {
+    await test.step("Org Admin lists the starters", async () => {
       await openOrgLayouts(page, org.id);
       const table = page.getByRole("table", { name: "Report layouts" });
-      for (const name of STARTERS) await expect(table.getByRole("link", { name })).toBeVisible();
+      // A link's name starts with the layout name and then its description, which may mention another starter.
+      for (const name of STARTERS) await expect(table.getByRole("link", { name: new RegExp(`^${name}`) })).toBeVisible();
     });
 
     await test.step("a project runs the Business Requirements Document on its own records", async () => {
@@ -68,6 +69,14 @@ test.describe("Report starter layouts", () => {
       await chooseReport(page, "Business Requirements Document");
       await expect(page.getByRole("cell", { name: requirement })).toBeVisible();
       await expect(page.getByRole("heading", { name: /Pain Points/ })).toHaveCount(0); // its module is off in this project, so the section is left out
+    });
+
+    await test.step("a project runs Requirements by Component, which groups requirements under their component", async () => {
+      await page.goto(`/projects/${project.id}/reports`);
+      await chooseReport(page, "Requirements by Component");
+      await expect(page.getByRole("cell", { name: requirement })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Hardware" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Functional" })).toBeVisible();
     });
 
     await test.step("a deleted starter comes back with Add starter layouts, and nothing else changes", async () => {

@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
-import type { ArtefactLinkRule, ArtefactTypeOption, CustomRoleDefinition, CustomRolePreset, EntityScope, LinkTypeDefinition, ModuleRoleDefinition, OrgAdvancedSettings, OrgGroup, OrgModule, OrgModuleSubComponent, OrgPendingInvite, OrgPersonalAccessToken, OrgReportDefaults, OrgRole, OrgSsoConfig, OrgUser, Organization, Permission, ProjectStatusDefinition, UserAccess } from "../api/types";
+import type { ArtefactLinkRule, ArtefactTypeOption, CustomRoleDefinition, CustomRolePreset, EntityScope, LinkTypeDefinition, ModuleRoleDefinition, OrgAdvancedSettings, OrgGroup, OrgModule, OrgModuleSubComponent, OrgPendingInvite, OrgPersonalAccessToken, OrgRole, OrgSsoConfig, OrgUser, Organization, Permission, ProjectStatusDefinition, UserAccess } from "../api/types";
 import { installedModules } from "../modules/registry";
 import { buildLayoutSummary } from "../testing/reportLayoutFixtures";
 import { buildLinkType, buildProjectStatus, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
@@ -59,8 +59,6 @@ function mockOrgAdminApis(overrides: {
   projectStatuses?: ProjectStatusDefinition[]; linkTypes?: LinkTypeDefinition[]; userAccess?: UserAccess;
   pats?: OrgPersonalAccessToken[]; users?: OrgUser[]; orgInvites?: OrgPendingInvite[]; groups?: OrgGroup[];
   modules?: OrgModule[]; moduleRoles?: ModuleRoleDefinition[];
-  // The organisation-tier report content; omitted = the caller is not an org admin (403), the default here.
-  reportDefaults?: OrgReportDefaults;
   // A module's own declared
   // sub-components, keyed by `module_key`; defaults to `[]` per module
   // (every module except Context & Strategy today), matching the real
@@ -119,14 +117,6 @@ function mockOrgAdminApis(overrides: {
     if (path.includes("archived=false")) return [];
     if (path.endsWith("/report-layouts")) return [buildLayoutSummary({ project_id: null, origin: "organization" })];
     if (path.includes("/report-templates")) return [];
-    if (path.includes("/report-types")) return [
-      { key: "requirements", title: "Requirements report", module_name: null },
-      { key: "decisions.r1", title: "Decision log", module_name: "Decision Management" },
-    ];
-    if (path.includes("/report-defaults")) {
-      if (overrides.reportDefaults) return overrides.reportDefaults;
-      throw new ApiError(403, "Forbidden");
-    }
     if (path.includes("/advanced-settings")) {
       if (overrides.advancedForbidden) throw new ApiError(403, "Forbidden");
       return overrides.advanced ?? advanced;
@@ -840,39 +830,10 @@ export const TemplatesAndReportsListsTheReportLayouts: Story = {
   },
 };
 
-/** The organisation's report defaults are written per report type: a tab for "All reports" and each type,
- * saved as the list of entries that hold content, with a Toast on success. */
-export const ReportDefaultsPerReportType: Story = {
+/** A report template is branding only (name, colour, cover, logo, footer): no introduction or chapters. */
+export const NewReportTemplate: Story = {
   beforeEach: () => {
-    mockOrgAdminApis({ reportDefaults: { content: [] } });
-    spyOn(api, "put").mockResolvedValue(undefined);
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Templates & reports" }));
-    const typeSelect = await canvas.findByLabelText("Report type");
-    await expect(within(typeSelect).getAllByRole("option").map((o) => o.textContent)).toEqual([
-      "All reports", "Requirements report", "Decision log",
-    ]);
-    await userEvent.selectOptions(typeSelect, "decisions.r1");
-    // The placeholders the content may use are listed.
-    await expect(canvas.getByText("{{project_name}}")).toBeInTheDocument();
-    await userEvent.click(canvas.getAllByRole("button", { name: "Add chapter" })[0]);
-    await userEvent.type(canvas.getAllByPlaceholderText("Chapter title")[0], "Decision criteria");
-    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
-    await waitFor(() =>
-      expect(api.put).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/report-defaults`, {
-        content: [{ report_key: "decisions.r1", intro: "", chapters: [{ title: "Decision criteria", body: "" }], appendices: [] }],
-      })
-    );
-    await expect(within(document.body).getByText("Report defaults saved.")).toBeInTheDocument();
-  },
-};
-
-/** A report template carries its own content per report type (here the Decision log's chapter). */
-export const NewReportTemplateWithPerTypeContent: Story = {
-  beforeEach: () => {
-    mockOrgAdminApis({ reportDefaults: { content: [] } });
+    mockOrgAdminApis();
     spyOn(api, "post").mockResolvedValue(undefined);
   },
   play: async ({ canvasElement }) => {
@@ -880,19 +841,18 @@ export const NewReportTemplateWithPerTypeContent: Story = {
     await userEvent.click(canvas.getByRole("link", { name: "Templates & reports" }));
     await userEvent.click(await canvas.findByRole("button", { name: "New template" }));
     const dialog = within(document.body).getByRole("dialog", { name: "New template" });
+    await expect(within(dialog).queryByLabelText("Report type")).not.toBeInTheDocument();
     await userEvent.type(within(dialog).getByLabelText("Name", { exact: true }), "Board Pack");
-    await userEvent.selectOptions(within(dialog).getByLabelText("Report type"), "decisions.r1");
-    await userEvent.click(within(dialog).getAllByRole("button", { name: "Add chapter" })[0]);
-    await userEvent.type(within(dialog).getAllByPlaceholderText("Chapter title")[0], "Board summary");
     await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
         `/api/v1/orgs/${ORG_ID}/report-templates`,
-        expect.objectContaining({
-          name: "Board Pack",
-          content: [{ report_key: "decisions.r1", intro: "", chapters: [{ title: "Board summary", body: "" }], appendices: [] }],
-        })
+        expect.objectContaining({ name: "Board Pack" })
       )
+    );
+    await expect(api.post).not.toHaveBeenCalledWith(
+      `/api/v1/orgs/${ORG_ID}/report-templates`,
+      expect.objectContaining({ content: expect.anything() })
     );
   },
 };
@@ -2018,7 +1978,6 @@ function mockProjectsWorkflowWithOneProject(overrides: {
     if (path.includes("/resources")) return [];
     if (path.includes("archived=false")) return [];
     if (path.includes("/report-templates")) return [];
-    if (path.includes("/report-defaults")) throw new ApiError(403, "Forbidden");
     if (path.includes("/advanced-settings")) return advanced;
     if (path.includes("/pats")) return [];
     // The org-scoped page-level `reload()` also

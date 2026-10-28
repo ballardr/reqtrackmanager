@@ -4,14 +4,14 @@
  * The requirement report's configuration and generation surface (R-F-01 PDF,
  * Word, R-F-02 CSV), extracted from `pages/ReportsPage.tsx` so it can sit beside
  * the catalogue reports in the same Reports picker. It
- * carries the project's effective introduction/body chapters/appendices
- * (R-G-01, R-G-02) editable in place, a report-template picker that previews
- * the template's own content when selected (R-G-05), a chapter-per-component/
+ * carries a report-template picker (R-G-05), a chapter-per-component/
  * continuous layout toggle, requirement filters (R-G-03), and organisation
- * shared resource sections (R-G-04). It has its own request model
+ * shared resource sections (R-G-04). An introduction, chapters or appendices
+ * are written in a report layout (the "Requirements by Component" starter),
+ * not here. It has its own request model
  * (`POST /projects/{id}/reports`), which is why it is not a catalogue entry.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { api } from "../api/client";
 import type { ReportDownloadKind } from "../api/reports";
@@ -20,37 +20,19 @@ import type {
   Component,
   FileAsset,
   Project,
-  EffectiveReportContent,
-  ProjectReportConfig,
-  ReportChapter,
   ReportTemplate,
   RequirementStatus,
 } from "../api/types";
-import { REQUIREMENT_STATUS_LABEL, REQUIREMENTS_REPORT_KEY } from "../api/types";
+import { REQUIREMENT_STATUS_LABEL } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { downloadBlob } from "../utils/download";
 import { CollapsibleSection } from "./CollapsibleSection";
-import { ReportChapterListEditor } from "./ReportChapterListEditor";
 import { ReportExportButton } from "./ReportExportButton";
-import { RichTextEditor } from "./RichTextEditor";
 import { Spinner } from "./Spinner";
 import { CheckboxField, TextField } from "./FormFields";
 import { FormGrid } from "./FormGrid";
 import { LabeledSelect } from "./LabeledSelect";
-
-/** Same joining `services/reports.py::_chapters_markdown` does server-side
- * — kept in sync deliberately: the panel sends whatever's currently in the
- * intro/chapters/appendices editors as an explicit `pre_markdown`/
- * `post_markdown` override, rather than leaving them blank and relying on
- * the backend to re-resolve the same content, so what's on screen is
- * exactly what generates. */
-function chaptersToMarkdown(chapters: ReportChapter[]): string {
-  return chapters
-    .filter((c) => c.title)
-    .map((c) => `# ${c.title}\n\n${c.body}`)
-    .join("\n\n");
-}
 
 /**
  * @param project The project the report is generated for.
@@ -72,33 +54,8 @@ export function RequirementReportPanel({ project }: { project: Project }) {
   const [resourceFileIds, setResourceFileIds] = useState<string[]>([]);
   const [reportTemplates, setReportTemplates] = useState<ReportTemplate[]>([]);
   const [reportTemplateId, setReportTemplateId] = useState("");
-  const [reportConfig, setReportConfig] = useState<ProjectReportConfig | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const [chaptersPerComponent, setChaptersPerComponent] = useState<boolean | null>(null);
-
-  const [reportIntro, setReportIntro] = useState("");
-  const [reportChapters, setReportChapters] = useState<ReportChapter[]>([]);
-  const [reportAppendices, setReportAppendices] = useState<ReportChapter[]>([]);
-
-  // The intro/chapters/appendices actually used for a given template
-  // selection, resolved server-side (template, project, ancestor projects,
-  // organisation — `services/report_content.py`) so this page never
-  // re-implements the chain; fetched into the editors below, where they can
-  // still be edited for this one report.
-  const loadEffectiveContent = useCallback(async (templateId: string) => {
-    const params = new URLSearchParams({ report_key: REQUIREMENTS_REPORT_KEY });
-    if (templateId) params.set("template_id", templateId);
-    const effective = await api.get<EffectiveReportContent>(
-      `/api/v1/projects/${projectId}/report-content/effective?${params.toString()}`,
-    );
-    setReportIntro(effective.intro);
-    setReportChapters(effective.chapters);
-    setReportAppendices(effective.appendices);
-  }, [projectId]);
-
-  function selectTemplate(templateId: string) {
-    setReportTemplateId(templateId);
-    loadEffectiveContent(templateId).catch((err) => showToast(toErrorMessage(err, strings.common.error), "error"));
-  }
 
   useEffect(() => {
     if (!projectId) return;
@@ -109,19 +66,15 @@ export function RequirementReportPanel({ project }: { project: Project }) {
       ]);
       setComponents(comps);
       setCategories(cats);
-      const [orgResources, templates, rc] = await Promise.all([
+      const [orgResources, templates] = await Promise.all([
         api.get<FileAsset[]>(`/api/v1/orgs/${project.organization_id}/resources`),
         api.get<ReportTemplate[]>(`/api/v1/orgs/${project.organization_id}/report-templates`),
-        api.get<ProjectReportConfig>(`/api/v1/projects/${projectId}/report-config`),
       ]);
       setResources(orgResources);
       setReportTemplates(templates);
-      setReportConfig(rc);
-      const initialTemplateId = rc.default_report_template_id ?? "";
-      setReportTemplateId(initialTemplateId);
-      await loadEffectiveContent(initialTemplateId);
+      setLoaded(true);
     })();
-  }, [projectId, project.organization_id, loadEffectiveContent]);
+  }, [projectId, project.organization_id]);
 
   function toggleResource(id: string) {
     setResourceFileIds((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]));
@@ -130,12 +83,8 @@ export function RequirementReportPanel({ project }: { project: Project }) {
   async function generate(kind: ReportDownloadKind) {
     setGenerating(kind);
     try {
-      const preMarkdown = [reportIntro, chaptersToMarkdown(reportChapters)].filter(Boolean).join("\n\n");
-      const postMarkdown = chaptersToMarkdown(reportAppendices);
       const blob = await api.postForBlob(`/api/v1/projects/${projectId}/reports`, {
         format: kind,
-        pre_markdown: preMarkdown,
-        post_markdown: postMarkdown,
         include_archived: includeArchived,
         component_id: componentId || null,
         category_id: categoryId || null,
@@ -154,7 +103,7 @@ export function RequirementReportPanel({ project }: { project: Project }) {
     }
   }
 
-  if (!reportConfig) return <Spinner />;
+  if (!loaded) return <Spinner />;
 
   return (
     <div className="stack">
@@ -171,7 +120,7 @@ export function RequirementReportPanel({ project }: { project: Project }) {
             <LabeledSelect help={strings.help.reportBrandingTemplate}
               label={strings.reports.reportTemplate}
               value={reportTemplateId}
-              onChange={selectTemplate}
+              onChange={setReportTemplateId}
               options={reportTemplates.map((tpl) => ({ value: tpl.id, label: tpl.name }))}
               placeholder={strings.reports.noTemplate}
             />
@@ -227,24 +176,6 @@ export function RequirementReportPanel({ project }: { project: Project }) {
           label={strings.reports.includeArchived}
           checked={includeArchived}
           onChange={setIncludeArchived}
-        />
-      </CollapsibleSection>
-
-      <CollapsibleSection sectionKey="reports.introduction" title={strings.reports.introduction} defaultCollapsed>
-        <RichTextEditor rows={4} value={reportIntro} onChange={setReportIntro} organizationId={project.organization_id} />
-      </CollapsibleSection>
-
-      <CollapsibleSection sectionKey="reports.bodyChapters" title={strings.reports.bodyChapters} defaultCollapsed>
-        <ReportChapterListEditor
-          label={strings.reports.bodyChapters} list={reportChapters} setList={setReportChapters}
-          organizationId={project.organization_id}
-        />
-      </CollapsibleSection>
-
-      <CollapsibleSection sectionKey="reports.appendices" title={strings.reports.appendices} defaultCollapsed>
-        <ReportChapterListEditor
-          label={strings.reports.appendices} list={reportAppendices} setList={setReportAppendices}
-          organizationId={project.organization_id}
         />
       </CollapsibleSection>
 

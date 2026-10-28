@@ -57,7 +57,6 @@ from app.models.project import (
 from app.models.project_status import ProjectStatusDefinition
 from app.models.record_policy import OrganizationRecordSensitivityOverride, ServerRecordSensitivityDefault
 from app.models.relationship import ArtefactLink
-from app.models.report_content import ReportContent
 from app.models.report_layout import ReportLayout, ReportLayoutVersion
 from app.models.report_pack import ReportPack, ReportPackSetOverride, ReportPackVariableSet, ReportPackVersion
 from app.models.report_placement import ReportPlacement
@@ -112,7 +111,6 @@ __all__ = [
     "OrgGroup",
     "OrgGroupMember",
     "PendingInvite",
-    "ReportContent",
     "ReportLayout",
     "ReportLayoutVersion",
     "ReportPack",

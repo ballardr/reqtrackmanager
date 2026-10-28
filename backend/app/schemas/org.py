@@ -15,7 +15,6 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.code_rules import ABSOLUTE_MAX_CODE_LENGTH
 from app.models.enums import ExternalUserPolicy, OrgRole, ProjectRole
-from app.schemas.report import ReportContentEntry
 
 
 class OrganizationCreate(BaseModel):
@@ -865,7 +864,6 @@ class ReportTemplateCreate(BaseModel):
     include_cover_page: bool = True
     include_logo: bool = True
     footer_text: str | None = None
-    content: list[ReportContentEntry] = Field(default_factory=list, max_length=100)
     chapters_per_component: bool = True
 
 
@@ -877,7 +875,6 @@ class ReportTemplateOut(BaseModel):
     include_cover_page: bool
     include_logo: bool
     footer_text: str | None = None
-    content: list[ReportContentEntry] = []
     chapters_per_component: bool = True
 
 

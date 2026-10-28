@@ -1,7 +1,7 @@
 """Tests for embedding images in generated PDF reports via
 `![alt](attachment:<file id>)` references (see `services/reports.py`'s
 `_markdown_to_flowables`/`_image_flowable` and
-`routers/reports.py::_resolve_report_images`), including the tenant-
+`report_document.resolve_report_images`, reached through a report's resource files), including the tenant-
 isolation check that stops an attachment reference from leaking a
 different organisation's file into a report."""
 
@@ -45,15 +45,26 @@ def _upload_image(client, token, org_id) -> str:
     return resp.json()["id"]
 
 
+def _pdf_with_markdown(client, token, org_id, project_id, markdown: str):
+    """Generates a PDF whose appended resource section is `markdown` (an organisation resource file)."""
+    uploaded = client.post(
+        f"/api/v1/orgs/{org_id}/resources", files={"file": ("notes.md", markdown.encode(), "text/markdown")},
+        headers=auth_headers(token),
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    return client.post(
+        f"/api/v1/projects/{project_id}/reports",
+        json={"format": "pdf", "resource_file_ids": [uploaded.json()["id"]]}, headers=auth_headers(token),
+    )
+
+
 def test_report_pdf_embeds_a_valid_attachment_image(client, admin_token):
     org, org_admin_token = create_org_admin_in(client, admin_token, "ImageReportOrg")
     project = create_project(client, org_admin_token, org["id"])
     file_id = _upload_image(client, org_admin_token, org["id"])
 
-    resp = client.post(
-        f"/api/v1/projects/{project['id']}/reports",
-        json={"format": "pdf", "pre_markdown": f"# Intro\n\n![a pixel](attachment:{file_id})\n"},
-        headers=auth_headers(org_admin_token),
+    resp = _pdf_with_markdown(
+        client, org_admin_token, org["id"], project["id"], f"# Intro\n\n![a pixel](attachment:{file_id})\n",
     )
     assert resp.status_code == 200, resp.text
     assert resp.headers["content-type"] == "application/pdf"
@@ -70,10 +81,8 @@ def test_report_pdf_silently_skips_attachment_from_a_different_org(client, admin
     org, org_admin_token = create_org_admin_in(client, admin_token, "VictimImageOrg")
     project = create_project(client, org_admin_token, org["id"])
 
-    resp = client.post(
-        f"/api/v1/projects/{project['id']}/reports",
-        json={"format": "pdf", "pre_markdown": f"![cross-org](attachment:{other_file_id})\n"},
-        headers=auth_headers(org_admin_token),
+    resp = _pdf_with_markdown(
+        client, org_admin_token, org["id"], project["id"], f"![cross-org](attachment:{other_file_id})\n",
     )
     assert resp.status_code == 200, resp.text
     assert _IMAGE_MARKER not in resp.content, "a cross-organisation attachment must never be embedded"
@@ -106,10 +115,8 @@ def test_report_pdf_silently_skips_a_same_org_requirement_attachment_from_a_diff
     attachment_file_id = resp.json()["id"]
 
     project = create_project(client, org_admin_token, org["id"], name="Report Project")
-    resp = client.post(
-        f"/api/v1/projects/{project['id']}/reports",
-        json={"format": "pdf", "pre_markdown": f"![borrowed](attachment:{attachment_file_id})\n"},
-        headers=auth_headers(org_admin_token),
+    resp = _pdf_with_markdown(
+        client, org_admin_token, org["id"], project["id"], f"![borrowed](attachment:{attachment_file_id})\n",
     )
     assert resp.status_code == 200, resp.text
     assert _IMAGE_MARKER not in resp.content, "a same-org but non-shared requirement attachment must never be embedded"
@@ -119,9 +126,7 @@ def test_report_pdf_silently_skips_unknown_attachment_reference(client, admin_to
     org, org_admin_token = create_org_admin_in(client, admin_token, "MissingImageOrg")
     project = create_project(client, org_admin_token, org["id"])
 
-    resp = client.post(
-        f"/api/v1/projects/{project['id']}/reports",
-        json={"format": "pdf", "pre_markdown": "![missing](attachment:00000000-0000-0000-0000-000000000000)\n"},
-        headers=auth_headers(org_admin_token),
+    resp = _pdf_with_markdown(
+        client, org_admin_token, org["id"], project["id"], "![missing](attachment:00000000-0000-0000-0000-000000000000)\n",
     )
     assert resp.status_code == 200, resp.text

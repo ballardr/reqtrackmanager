@@ -4,7 +4,7 @@ Module: routers.projects
 Aggregates the `projects` package's per-concern routers — `core` (CRUD,
 import, tree, favourites, files, export, terminology, changes, metrics),
 `hierarchy` (ancestors/children, member sources, effective members,
-access-inheritance materialization), `report_config`, `lifecycle`
+access-inheritance materialization), `lifecycle`
 (archive/unarchive), `stages`, `taxonomy` (components/categories),
 `groups`, `roles` (direct/group/by-email project role assignment,
 pending invites), `module_roles`, and `scoring` (project overrides of
@@ -30,7 +30,6 @@ from app.routers.projects import (
     hierarchy,
     lifecycle,
     module_roles,
-    report_config,
     roles,
     scoring,
     stages,
@@ -47,7 +46,6 @@ _PREFIX = "/api/v1/projects"
 router = APIRouter()
 router.include_router(core.router, prefix=_PREFIX)
 router.include_router(hierarchy.router, prefix=_PREFIX)
-router.include_router(report_config.router, prefix=_PREFIX)
 router.include_router(lifecycle.router, prefix=_PREFIX)
 router.include_router(stages.router, prefix=_PREFIX)
 router.include_router(taxonomy.router, prefix=_PREFIX)

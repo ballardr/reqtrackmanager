@@ -759,126 +759,21 @@ def test_the_organisation_catalogue_offers_a_project_selection_of_what_the_calle
     assert beta["id"] not in str(member_view)
 
 
-def test_content_keys_round_trip():
-    from app.services.report_content import custom_layout_id
-
-    layout_id = uuid.uuid4()
-
-    assert custom_layout_id(custom_report_run.content_key(layout_id)) == layout_id
-    assert custom_layout_id("requirements") is None
-    assert custom_layout_id("custom.not-a-uuid") is None
+# ---- report content is gone -------------------------------------------------------------------------------------
 
 
-# ---- introduction, chapters and appendices (content tiers) -----------------------------------------------------
-
-
-def org_defaults_url(world: World) -> str:
-    return f"/api/v1/orgs/{world.org['id']}/report-defaults"
-
-
-def put_org_content(world: World, layout_id: str, intro: str = "Org intro text") -> Any:
-    return world.client.put(
-        org_defaults_url(world), json={"content": [{"report_key": f"custom.{layout_id}", "intro": intro}]},
-        headers=auth_headers(world.token),
-    )
-
-
-def project_config_url(project: dict) -> str:
-    return f"/api/v1/projects/{project['id']}/report-config"
-
-
-def put_project_content(world: World, project: dict, layout_id: str, intro: str = "Project intro text", **more: str) -> Any:
-    """Replaces the project's content with one entry for `layout_id` plus one per `more` (layout id -> intro)."""
-    entries = {layout_id: intro, **more}
-    return world.client.put(
-        project_config_url(project),
-        json={"content": [{"report_key": f"custom.{lid}", "intro": text} for lid, text in entries.items()]},
-        headers=auth_headers(world.token),
-    )
-
-
-def docx_text(content: bytes) -> str:
-    import zipfile
-
-    with zipfile.ZipFile(io.BytesIO(content)) as z:
-        return z.read("word/document.xml").decode()
-
-
-def test_content_can_be_written_only_for_a_layout_the_scope_can_reach(world, client, admin_token):
-    parent = world.project("Parent")
-    child = world.project("Child", parent=parent)
-    org_layout = make_layout(world, document_tree(), "Org layout")
-    parent_layout = make_layout(world, document_tree(), "Parent layout", project=parent)
-    child_layout = make_layout(world, document_tree(), "Child layout", project=child)
-    foreign = make_layout(World(client, admin_token, "Foreign Org"), document_tree(), "Foreign")
-
-    assert put_org_content(world, org_layout["id"]).status_code == 200
-    assert put_org_content(world, parent_layout["id"]).status_code == 400  # only organisation layouts are shared by every project
-    assert put_org_content(world, foreign["id"]).status_code == 400
-    assert put_org_content(world, str(uuid.uuid4())).status_code == 400
-    assert put_project_content(world, child, org_layout["id"]).status_code == 200
-    assert put_project_content(world, child, parent_layout["id"]).status_code == 200  # inherited from an ancestor
-    assert put_project_content(world, child, child_layout["id"]).status_code == 200
-    assert put_project_content(world, parent, child_layout["id"]).status_code == 400  # a descendant's is not reachable upwards
-
-
-def test_the_editors_offer_the_layouts_the_scope_can_reach(world):
-    parent = world.project("Parent")
-    child = world.project("Child", parent=parent)
-    make_layout(world, document_tree(), "Org layout")
-    make_layout(world, document_tree(), "Parent layout", project=parent)
-    make_layout(world, document_tree(), "Child layout", project=child)
-    h = auth_headers(world.token)
-
-    def custom(url: str) -> list[str]:
-        return [o["title"] for o in world.client.get(url, headers=h).json() if o["module_name"] == "Custom reports"]
-
-    assert custom(f"/api/v1/orgs/{world.org['id']}/report-types") == ["Org layout"]
-    assert sorted(custom(f"/api/v1/projects/{child['id']}/report-types")) == ["Child layout", "Org layout", "Parent layout"]
-    assert sorted(custom(f"/api/v1/projects/{parent['id']}/report-types")) == ["Org layout", "Parent layout"]
-
-
-def test_the_layouts_content_tiers_are_printed_in_the_document(world):
+def test_the_report_content_endpoints_no_longer_exist(world):
     project = world.project("Alpha")
-    world.requirement(project, "A rule")
-    layout = make_layout(world, document_tree(), "Doc")
-    assert put_org_content(world, layout["id"], "Organisation wide intro").status_code == 200
+    h = auth_headers(world.token)
+    urls = [
+        f"/api/v1/projects/{project['id']}/report-config",
+        f"/api/v1/projects/{project['id']}/report-types",
+        f"/api/v1/projects/{project['id']}/report-content/effective?report_key=requirements",
+        f"/api/v1/orgs/{world.org['id']}/report-defaults",
+        f"/api/v1/orgs/{world.org['id']}/report-types",
+    ]
 
-    org_default = docx_text(project_run(world, project, layout, format="docx").content)
-    assert put_project_content(world, project, layout["id"], "Alpha's own intro").status_code == 200
-    project_level = docx_text(project_run(world, project, layout, format="docx").content)
-
-    assert "Organisation wide intro" in org_default
-    assert "Alpha's own intro" in project_level and "Organisation wide intro" not in project_level
-
-
-def test_an_organisation_run_uses_only_the_organisation_tier(world):
-    alpha = world.project("Alpha")
-    world.requirement(alpha, "A rule")
-    layout = make_layout(world, document_tree(), "Everywhere")
-    assert put_org_content(world, layout["id"], "Organisation wide intro").status_code == 200
-    assert put_project_content(world, alpha, layout["id"], "Alpha's own intro").status_code == 200
-
-    text = docx_text(org_run(world, layout, format="docx").content)
-
-    assert "Organisation wide intro" in text and "Alpha's own intro" not in text
-
-
-def test_deleting_a_layout_deletes_the_content_written_for_it(world, db):
-    from app.models.report_content import ReportContent
-
-    project = world.project()
-    layout = make_layout(world, document_tree(), "Doomed")
-    assert put_org_content(world, layout["id"]).status_code == 200
-    assert put_project_content(world, project, layout["id"]).status_code == 200
-    deleted = world.client.delete(
-        f"/api/v1/orgs/{world.org['id']}/report-layouts/{layout['id']}", headers=auth_headers(world.token),
-    )
-    assert deleted.status_code == 204
-
-    left = db.scalars(select(ReportContent).where(ReportContent.report_key == f"custom.{layout['id']}")).all()
-
-    assert left == []
+    assert [world.client.get(url, headers=h).status_code for url in urls] == [404] * len(urls)
 
 
 # ---- bundles ----------------------------------------------------------------------------------------------------
@@ -899,118 +794,72 @@ def import_project(world: World, bundle: bytes, name: str) -> dict:
     return resp.json()
 
 
-def bundled_content_keys(bundle: bytes, member: str = "project.json") -> list[str]:
-    import json
-    import zipfile
-
-    with zipfile.ZipFile(io.BytesIO(bundle)) as z:
-        return [e["report_key"] for e in json.loads(z.read(member)).get("report_content", [])]
-
-
-def test_a_project_bundle_carries_a_layouts_content_by_name(world):
-    source = world.project("Source")
-    own = make_layout(world, document_tree(), "Own report", project=source)
-    inherited = make_layout(world, document_tree(), "Org wide")
-    assert put_project_content(world, source, own["id"], "Own intro", **{inherited["id"]: "Inherited intro"}).status_code == 200
-    bundle = export_project(world, source)
-
-    assert sorted(bundled_content_keys(bundle)) == ["custom:Org wide", "custom:Own report"]
-    assert own["id"] not in str(bundled_content_keys(bundle))
-    copy = import_project(world, bundle, "Copy")["project"]
-
-    config = world.client.get(project_config_url(copy), headers=auth_headers(world.token)).json()
-    layouts = {
-        row["name"]: row["id"]
-        for row in world.client.get(f"/api/v1/projects/{copy['id']}/report-layouts", headers=auth_headers(world.token)).json()
-    }
-    assert {e["report_key"]: e["intro"] for e in config["content"]} == {
-        f"custom.{layouts['Own report']}": "Own intro", f"custom.{layouts['Org wide']}": "Inherited intro",
-    }
-    assert layouts["Own report"] != own["id"]  # the copy has its own layout, and its content points at that one
-
-
-def test_a_bundle_entry_for_a_layout_the_target_lacks_is_skipped_with_a_warning(world):
-    source = world.project("Source")
-    own = make_layout(world, document_tree(), "Own report", project=source)
-    assert put_project_content(world, source, own["id"]).status_code == 200
+def with_json_edit(bundle: bytes, member: str, edit) -> bytes:
+    """A copy of `bundle` whose `member` JSON document has been changed by `edit(parsed)`."""
     import json
     import zipfile
 
     out = io.BytesIO()
-    with zipfile.ZipFile(io.BytesIO(export_project(world, source))) as src, zipfile.ZipFile(out, "w") as dst:
+    with zipfile.ZipFile(io.BytesIO(bundle)) as src, zipfile.ZipFile(out, "w") as dst:
         for item in src.infolist():
             data = src.read(item.filename)
-            if item.filename == "project.json":
+            if item.filename == member:
                 parsed = json.loads(data)
-                parsed["report_layouts"] = []  # the layout did not travel
+                edit(parsed)
                 data = json.dumps(parsed).encode()
             dst.writestr(item, data)
-
-    result = import_project(world, out.getvalue(), "Copy")
-
-    assert any("custom:Own report" in w for w in result["warnings"])
-    assert world.client.get(project_config_url(result["project"]), headers=auth_headers(world.token)).json()["content"] == []
+    return out.getvalue()
 
 
-def test_an_organisation_bundle_carries_organisation_and_template_content_by_name(client, admin_token, world):
-    h = auth_headers(world.token)
-    layout = make_layout(world, document_tree(), "Org wide")
-    assert put_org_content(world, layout["id"], "Org intro").status_code == 200
-    template = client.post(
-        f"/api/v1/orgs/{world.org['id']}/report-templates", json={"name": "Brand"}, headers=h,
-    ).json()
-    updated = client.put(
-        f"/api/v1/orgs/{world.org['id']}/report-templates/{template['id']}",
-        json={"name": "Brand", "content": [{"report_key": f"custom.{layout['id']}", "intro": "Template intro"}]}, headers=h,
+def test_a_project_bundle_carries_layouts_and_no_report_content(world):
+    import json
+    import zipfile
+
+    source = world.project("Source")
+    make_layout(world, document_tree(), "Own report", project=source)
+
+    bundle = export_project(world, source)
+    with zipfile.ZipFile(io.BytesIO(bundle)) as z:
+        project_json = json.loads(z.read("project.json"))
+
+    assert not {"report_content", "report_images", "default_report_template_name"} & project_json.keys()
+    copy = import_project(world, bundle, "Copy")
+    assert copy["warnings"] == []
+    layouts_url = f"/api/v1/projects/{copy['project']['id']}/report-layouts"
+    names = [r["name"] for r in world.client.get(layouts_url, headers=auth_headers(world.token)).json()]
+    assert "Own report" in names
+
+
+def test_an_older_project_bundle_s_report_content_is_not_imported_and_warns_once(world):
+    source = world.project("Source")
+    bundle = with_json_edit(
+        export_project(world, source), "project.json",
+        lambda parsed: parsed.update(report_content=[{"report_key": "requirements", "intro": "Old intro"}]),
     )
-    assert updated.status_code == 200, updated.text
+
+    result = import_project(world, bundle, "Copy")
+
+    assert [w for w in result["warnings"] if "report content has been removed" in w] != []
+    assert len([w for w in result["warnings"] if "report content has been removed" in w]) == 1
+
+
+def test_an_older_organisation_bundle_s_report_content_is_not_imported_and_warns_once(client, admin_token, world):
+    h = auth_headers(world.token)
+    client.post(f"/api/v1/orgs/{world.org['id']}/report-templates", json={"name": "Brand"}, headers=h)
     bundle = client.get(f"/api/v1/orgs/{world.org['id']}/export", headers=h).content
-    assert bundled_content_keys(bundle, "org.json") == ["custom:Org wide"]
+
+    def add_legacy(parsed: dict) -> None:
+        parsed["report_content"] = [{"report_key": "requirements", "intro": "Old org intro"}]
+        parsed["report_templates"][0]["content"] = [{"report_key": "requirements", "intro": "Old template intro"}]
 
     resp = client.post(
         "/api/v1/orgs/import", data={"name": f"Copy {uuid.uuid4().hex[:6]}"},
-        files={"file": ("bundle.zip", bundle, "application/zip")}, headers=auth_headers(admin_token),
+        files={"file": ("bundle.zip", with_json_edit(bundle, "org.json", add_legacy), "application/zip")},
+        headers=auth_headers(admin_token),
     )
+
     assert resp.status_code == 201, resp.text
+    assert len([w for w in resp.json()["warnings"] if "report content has been removed" in w]) == 1
     new_org = resp.json()["organization"]["id"]
-
-    copy_layouts = client.get(f"/api/v1/orgs/{new_org}/report-layouts", headers=h).json()
-    new_id = copy_layouts[0]["id"]
-    defaults = client.get(f"/api/v1/orgs/{new_org}/report-defaults", headers=h).json()
-    templates = client.get(f"/api/v1/orgs/{new_org}/report-templates", headers=h).json()
-    assert [(e["report_key"], e["intro"]) for e in defaults["content"]] == [(f"custom.{new_id}", "Org intro")]
-    assert [(e["report_key"], e["intro"]) for e in templates[0]["content"]] == [(f"custom.{new_id}", "Template intro")]
-    assert new_id != layout["id"]
-
-
-def test_merged_template_content_binds_to_the_layout_the_import_stored(client, admin_token, world):
-    from tests.conftest import create_org_admin_in
-
-    h = auth_headers(world.token)
-    layout = make_layout(world, document_tree(), "Shared name")
-    template = client.post(f"/api/v1/orgs/{world.org['id']}/report-templates", json={"name": "Brand"}, headers=h).json()
-    assert client.put(
-        f"/api/v1/orgs/{world.org['id']}/report-templates/{template['id']}",
-        json={"name": "Brand", "content": [{"report_key": f"custom.{layout['id']}", "intro": "Template intro"}]}, headers=h,
-    ).status_code == 200
-    bundle = client.get(f"/api/v1/orgs/{world.org['id']}/export", headers=h).content
-
-    target, target_token = create_org_admin_in(client, admin_token, "Merge Target")
-    th = auth_headers(target_token)
-    taken = client.post(
-        f"/api/v1/orgs/{target['id']}/report-layouts", json={"name": "Shared name", "family": "document", "tree": document_tree()},
-        headers=th,
-    ).json()
-    assert client.put(
-        f"/api/v1/orgs/{target['id']}/advanced-settings", json={"external_user_policy": "anyone"}, headers=th,
-    ).status_code == 200
-    merged = client.post(
-        f"/api/v1/orgs/{target['id']}/import/merge", files={"file": ("bundle.zip", bundle, "application/zip")},
-        data={"resolutions": "{}"}, headers=th,
-    )
-    assert merged.status_code == 200, merged.text
-
-    layouts = {r["name"]: r["id"] for r in client.get(f"/api/v1/orgs/{target['id']}/report-layouts", headers=th).json()}
-    content = client.get(f"/api/v1/orgs/{target['id']}/report-templates", headers=th).json()[0]["content"]
-    assert layouts["Shared name"] == taken["id"] and "Shared name (imported)" in layouts
-    assert [(e["report_key"], e["intro"]) for e in content] == [(f"custom.{layouts['Shared name (imported)']}", "Template intro")]
+    [template] = client.get(f"/api/v1/orgs/{new_org}/report-templates", headers=h).json()
+    assert template["name"] == "Brand" and "content" not in template

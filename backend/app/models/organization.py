@@ -255,9 +255,6 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     accent_color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
     header_title: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
-    # The organisation's default report intro/chapters/appendices live in
-    # `ReportContent` rows (models/report_content.py), one per report type.
-
     email_footer_company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email_footer_website: Mapped[str | None] = mapped_column(String(500), nullable=True)
     email_footer_address: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -391,9 +388,7 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
 
 class ReportTemplate(UUIDPKMixin, TimestampMixin, Base):
     """A named, reusable PDF report preset for an organisation (R-G-05):
-    branding (accent colour, cover page, logo, footer). Its optional
-    introduction/chapters/appendices are `ReportContent` rows
-    (`scope_type="template"`), one per report type.
+    branding (accent colour, cover page, logo, footer).
 
     Org-scoped (shared across the org's projects) to match how the org logo
     already works. Selected optionally at report-generation time; when none

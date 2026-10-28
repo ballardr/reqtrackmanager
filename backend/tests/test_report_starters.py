@@ -15,7 +15,7 @@ from app.services.report_starters import STARTER_NOTE, STARTERS
 from tests.conftest import auth_headers, create_org_user, login
 from tests.link_world import World
 
-STARTER_NAMES = ["Business Requirements Document", "Engineering Specification", "Review Package"]
+STARTER_NAMES = ["Business Requirements Document", "Engineering Specification", "Review Package", "Requirements by Component"]
 
 
 @pytest.fixture
@@ -163,6 +163,19 @@ def test_the_business_requirements_document_lists_what_the_project_holds(client,
     assert "Slow sign in" in html.text
     assert "The system shall log in users" in html.text
     assert "Business Requirements Document" in html.text
+
+
+def test_requirements_by_component_prints_each_requirement_under_its_component_and_category(world):
+    project = world.project("By component")
+    world.requirement(project, "The system shall log in users")
+
+    html = run_starter(world, project, "Requirements by Component", "html").text
+
+    assert "The system shall log in users" in html
+    assert "<h2" in html and "<h3" in html  # a component heading with a category heading under it
+    assert "Introduction" in html and "Appendices" in html
+    for column in ("ID", "Name", "Reasoning", "Status", "Tags"):
+        assert f">{column}<" in html, column
 
 
 def test_a_part_whose_module_is_off_is_left_out_rather_than_printed_empty(world):
