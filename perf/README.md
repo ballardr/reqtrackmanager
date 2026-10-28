@@ -345,10 +345,43 @@ names. A dirty tree or a commit not on a remote branch marks the run `non_publis
 `python3 perf/scrub_check.py` (also a repository test and part of the pre-commit hook) scans `perf/results/`;
 the runner refuses to write a bundle that fails it, and the archive (only with `--archive`) refuses a directory that fails it. The archive has owners zeroed and times normalised.
 
+## Recording the sizing baseline and comparing runs
+
+`perf/run_baseline.sh <host-label>` is the one command that refreshes the figures in [docs/performance.md](../docs/performance.md)
+and the memory limits in `docker-compose.yml`: the capacity climb at 2, 4 and 6 workers (T2, ten projects, plain and with the
+other record types in the mix) with levels low enough to find the usable one, the same climb at T3, and a full T0-T4 run with
+the soak. It is long (hours; `--repeats 1` shortens it, at the cost of the noise band), so run it unattended. A failed run does not stop the
+next, and the end lists each outcome.
+
+```sh
+# Shared host (also serves production): quiet window, stops if production's health check slows
+PROD_HEALTH_URL=https://prod.example/health perf/run_baseline.sh linux-vm-4c8g
+# Dedicated host (nothing else runs on it)
+DEDICATED=1 perf/run_baseline.sh dell-workstation-wsl2
+```
+
+`perf/compare.py <bundle>` diffs a bundle against the newest earlier comparable bundle of the same host label (or
+`--against <bundle>`), prints what is slower beyond the run's own noise band, which routes issue more statements, which service peaks higher, whether
+the usable capacity fell and what is newly over budget, and exits 1 on a regression (2 when nothing comparable exists). Two
+bundles are comparable only if workers, pool, PostgreSQL settings, caps, seed, dataset version, density and breadth match; otherwise it
+says which input differs and refuses. A quick run (one repeat) has no spread to measure, so it flags only large moves.
+
+```mermaid
+flowchart LR
+    C["code change"] --> Q["run_profile.sh --quick<br/>(minutes)"]
+    Q --> X["compare.py"]
+    X -->|"regression"| F["fix + guard"]
+    X -->|"clean"| M{"a re-measure trigger?"}
+    M -->|"yes"| B["run_baseline.sh<br/>(hours)"]
+    B --> D["update performance.md,<br/>compose limits, deployment.md"]
+```
+
 ## Tests
 
-Tests that pin behaviour (the command builder, anonymisation, the generator and its parity with the API) are in the
-main backend suite and run in CI (`backend/tests/test_perf_runner.py`, `test_perf_dataset.py`). Timing, load and
+Tests that pin behaviour (the command builder, anonymisation, the generator and its parity with the API, the diff in
+`compare.py`, the Compose memory limits) are in the
+main backend suite and run in CI (`backend/tests/test_perf_runner.py`, `test_perf_dataset.py`, `test_perf_compare.py`,
+`test_compose_memory_limits.py`). Timing, load and
 memory numbers are never gated in CI: they are read, from a run.
 
 ## Not built yet (tracked)
@@ -358,7 +391,7 @@ memory numbers are never gated in CI: they are read, from a run.
   the generators or the first runner.
 - Statements run by a streamed response or by a utility command are not in `pgstat.csv` (DML only, by design).
 - Statements run while a streamed response body is produced (some exports) are not counted in `queries.csv`.
-- `compare.py` (run-to-run diff) and the plotting script come with the baseline-recording and website work.
+- The plotting script comes with the docs website work.
 
 ## Re-measure when
 

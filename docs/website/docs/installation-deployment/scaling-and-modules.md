@@ -71,13 +71,26 @@ flowchart LR
 - Live-update WebSocket events reach clients whichever worker they're connected to.
 - `/metrics` combines all workers in a container; scrape each replica separately.
 
-Keep `BACKEND_WORKERS × replicas × (DB_POOL_SIZE + DB_MAX_OVERFLOW + 2)` (17 per worker by default) below PostgreSQL's `max_connections` (100 by default, 3 reserved), and allow about 0.5 GiB of memory per worker (each holds roughly 400 MiB of private memory; workers share almost nothing). Set `BACKEND_WORKERS=1` to run a single process.
+Keep `BACKEND_WORKERS × replicas × (DB_POOL_SIZE + DB_MAX_OVERFLOW + 2)` (17 per worker by default) below PostgreSQL's `max_connections` (100 by default, 3 reserved), and see [Memory limits and sizing](#memory-limits-and-sizing) for memory per worker. Set `BACKEND_WORKERS=1` to run a single process.
 
 :::note PgBouncer is untested
 A connection pooler such as PgBouncer is the usual way past PostgreSQL's connection limit when you add workers, but it has not been tried with this application and is not yet supported: each worker keeps two connections that need a session (the live-update `LISTEN` and a startup lock), which a transaction-mode pooler would break. Until a direct connection setting for those two exists, lower `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` or raise PostgreSQL's `max_connections` instead.
 :::
 
 Each worker serves at most `MAX_CONCURRENT_REQUESTS` requests at once (by default as many as it has database connections, 15); further requests wait, up to `REQUEST_QUEUE_TIMEOUT_SECONDS` (30), and are then refused with `503` and `Retry-After`. Watch the `requests_shed_total` metric: a steady rise means the deployment needs more workers or replicas.
+
+### Memory limits and sizing
+
+Every always-on service has a memory limit in `docker-compose.yml`, set from measured peaks and overridable from `.env` (`0` removes a limit). A service over its limit is killed and restarted, so raise a limit before the load that needs it.
+
+| Service | Variable | Default | Measured |
+|---------|----------|---------|----------|
+| Backend | `BACKEND_MEM_LIMIT` | `3500m` | 4 workers: 1.6 GiB idle, 1.8-2.4 GiB under load on projects up to 1,000 requirements, 4.0-4.5 GiB when every worker runs a report, export or bundle import on a 5,000-requirement project |
+| Database | `DB_MEM_LIMIT` | `2g` | 0.14-0.65 GiB with four workers, about 1 GiB at six |
+| Object storage | `STORAGE_MEM_LIMIT` | `512m` | 30-143 MiB |
+| Frontend / MCP server | `FRONTEND_MEM_LIMIT` / `MCP_MEM_LIMIT` | `128m` / `256m` | about 11 / 57 MiB |
+
+Backend memory follows the worker count and the project size, not the number of users: roughly **0.1 GiB + 0.55 GiB × workers + 0.5 GiB × the number of reports, exports or bundle imports of 5,000-requirement-plus projects that can run at once**. Memory stayed flat over a 30-minute soak at every project size. See the [deployment guide](https://github.com/ballardr/reqtrackmanager/blob/main/docs/deployment.md#sizing-and-memory-limits) for the decision flow.
 
 ## Next steps
 

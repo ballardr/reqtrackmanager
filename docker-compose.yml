@@ -30,6 +30,10 @@ services:
       POSTGRES_DB: reqtrack
       POSTGRES_USER: reqtrack
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in production}
+    # Memory limits (this and the other services) come from the measured peaks in docs/performance.md; sizing and
+    # how to raise them are in docs/deployment.md, "Sizing". Each is overridable from `.env`; 0 removes the limit.
+    # Measured peak 1.1 GiB with six workers on a 1,000-requirement project, more with a larger `shared_buffers`.
+    mem_limit: ${DB_MEM_LIMIT:-2g}
     volumes:
       - reqtrack_db_data:/var/lib/postgresql/data
     # No host port published: nothing outside the Compose network needs
@@ -66,6 +70,8 @@ services:
     configs:
       - source: storage_identity
         target: /etc/seaweedfs/s3.json
+    # Measured peak 143 MiB with a 5,000-requirement project's attachments.
+    mem_limit: ${STORAGE_MEM_LIMIT:-512m}
     volumes:
       - reqtrack_storage_data:/data
     # No host port published: only the backend talks to this over the
@@ -85,20 +91,16 @@ services:
       start_period: 30s
 
   backend:
-    # Deliberately single-process (no `--workers`/replica count here): login
-    # verifies via bcrypt (cost factor 12, ~200ms of CPU-bound work per
-    # call), which already parallelises across whatever cores this
-    # container has (bcrypt's C extension releases the GIL) — so under a
-    # login burst (e.g. many users at shift start), the safe lever is
-    # allocating this container more CPU, not more worker processes.
-    # Naively adding `--workers`/replicas would duplicate the in-process
-    # scheduler (backend/app/services/scheduler.py — daily review-reminder
-    # emails, stage auto-approval sweeps, module jobs), sending N-fold
-    # duplicate emails, since that scheduler has no leader-election guard
-    # yet. See docs/decisions.md, "bcrypt login cost under concurrent load".
+    # BACKEND_WORKERS worker processes (default 4), coordinated through PostgreSQL (startup lock, leader election
+    # for the scheduler and other singleton jobs, LISTEN/NOTIFY): see docs/deployment.md, "Scaling the backend".
+    # Login verifies via bcrypt (cost 12, ~200 ms CPU), which parallelises across the container's cores.
     image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-backend:${IMAGE_TAG:-latest}
     build:
       context: ./backend
+    # Each worker holds about 0.55 GiB, and a report, export or bundle import of a 5,000-requirement project lifts
+    # its worker to about 1 GiB. 3.5g fits four workers on projects up to about 1,000 requirements (2.3 GiB) and six
+    # under mixed load (3.1 GiB); raise it with the worker count or project size (formula in docs/deployment.md).
+    mem_limit: ${BACKEND_MEM_LIMIT:-3500m}
     environment:
       # Worker processes (CPU cores the API can use); see backend/docker-entrypoint.sh.
       BACKEND_WORKERS: ${BACKEND_WORKERS:-4}
@@ -285,6 +287,8 @@ services:
     image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-frontend:${IMAGE_TAG:-latest}
     build:
       context: ./frontend
+    # Static files behind nginx: about 11 MiB measured at idle.
+    mem_limit: ${FRONTEND_MEM_LIMIT:-128m}
     environment:
       # No colon in ${PUBLIC_API_BASE_URL-...} deliberately: with a colon,
       # an explicitly-empty PUBLIC_API_BASE_URL= (same-origin subpath
@@ -326,6 +330,8 @@ services:
     image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-mcp-server:${IMAGE_TAG:-latest}
     build:
       context: ./mcp-server
+    # About 57 MiB measured at idle.
+    mem_limit: ${MCP_MEM_LIMIT:-256m}
     environment:
       REQTRACK_API_URL: http://backend:8000
       REQTRACK_PUBLIC_API_URL: ${PUBLIC_API_BASE_URL-http://localhost:8000}

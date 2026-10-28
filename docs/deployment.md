@@ -107,7 +107,7 @@ If your images live in a different registry/namespace (e.g. a private mirror), o
 | Host | Supported | Notes |
 |------|-----------|-------|
 | x86-64 Linux, Docker Desktop on Intel | `linux/amd64` | Fully tested (unit, backend and end-to-end suites). |
-| Apple silicon, arm64 Linux servers, Raspberry Pi 4/5 | `linux/arm64` | Built natively and smoke tested in CI (the backend starts, migrates and answers authenticated requests); the full test suites are not run on arm. A Raspberry Pi needs a **64-bit** OS (64-bit Raspberry Pi OS or Ubuntu); 32-bit images are not published. Minimum RAM for a Pi has not been measured yet. |
+| Apple silicon, arm64 Linux servers, Raspberry Pi 4/5 | `linux/arm64` | Built natively and smoke tested in CI (the backend starts, migrates and answers authenticated requests); the full test suites are not run on arm. A Raspberry Pi needs a **64-bit** OS (64-bit Raspberry Pi OS or Ubuntu); 32-bit images are not published. A Raspberry Pi 5 (8 GiB, NVMe) ran one worker up to 20,000 requirements in 1.4 GiB of backend memory; boards with less RAM are unmeasured (see [Sizing and memory limits](#sizing-and-memory-limits)). |
 
 CI runners use 4 KB memory pages while a Raspberry Pi 5 uses 16 KB, which some native libraries mishandle; CI cannot catch that, so check a first run on a Pi with `docker compose ps` and the backend logs. The optional MailHog mail catcher in the development stack ([tests/container/](../tests/container/docker-compose.yml)) is amd64-only upstream and is not part of the production stack.
 
@@ -375,7 +375,7 @@ Each backend container runs `BACKEND_WORKERS` uvicorn worker processes (default 
 - **WebSocket broadcasts** fan out to every process via `LISTEN`/`NOTIFY`, so a client receives events whichever process it's connected to.
 - **Metrics:** `/metrics` aggregates all workers of one container (Prometheus multi-process mode); scrape each replica separately.
 
-Sizing: each worker holds up to `DB_POOL_SIZE + DB_MAX_OVERFLOW` database connections (default 5 + 10 = 15) plus two dedicated ones (the `LISTEN` listener and the leadership lock), so keep `BACKEND_WORKERS × replicas × (DB_POOL_SIZE + DB_MAX_OVERFLOW + 2)` (68 for the defaults) under Postgres's `max_connections` (default 100), and budget roughly 150–250 MB of memory per worker. Each worker also admits at most `MAX_CONCURRENT_REQUESTS` requests at a time (default: the pool's 15); the rest wait up to `REQUEST_QUEUE_TIMEOUT_SECONDS` and then get a `503` with `Retry-After`, so a burst queues instead of every thread and connection waiting on the other. `BACKEND_WORKERS=1` restores single-process behaviour (served by `app/serve.py` on a dual-stack socket). Measured on a 100-requirement project, each worker holds about 400 MiB of private memory (workers share almost nothing), so budget about 0.5 GiB per worker rather than 150-250 MB.
+Sizing: each worker holds up to `DB_POOL_SIZE + DB_MAX_OVERFLOW` database connections (default 5 + 10 = 15) plus two dedicated ones (the `LISTEN` listener and the leadership lock), so keep `BACKEND_WORKERS × replicas × (DB_POOL_SIZE + DB_MAX_OVERFLOW + 2)` (68 for the defaults) under Postgres's `max_connections` (default 100). Each worker also admits at most `MAX_CONCURRENT_REQUESTS` requests at a time (default: the pool's 15); the rest wait up to `REQUEST_QUEUE_TIMEOUT_SECONDS` and then get a `503` with `Retry-After`, so a burst queues instead of every thread and connection waiting on the other. `BACKEND_WORKERS=1` restores single-process behaviour (served by `app/serve.py` on a dual-stack socket). Memory per worker is in [Sizing and memory limits](#sizing-and-memory-limits).
 
 **More workers than PostgreSQL's connection limit allows: PgBouncer (not tested, not yet supported).** At six workers with a
 4 + 10 pool the stack held 91 of the 97 connections PostgreSQL allows, so a seventh worker would be refused connections before the
@@ -393,6 +393,36 @@ performance effect is unmeasured. Two things stand in the way, both found by rea
 Until that change is made and measured, the supported ways to add workers are a smaller pool per worker
 (`DB_POOL_SIZE`, `DB_MAX_OVERFLOW`; the per-worker request limit follows it) or a higher PostgreSQL `max_connections` with memory
 to match.
+
+## Sizing and memory limits
+
+Every always-on service has a memory limit in `docker-compose.yml`, set from the peaks in [performance.md](performance.md) and overridable from `.env` (`0` removes a limit). A service over its limit is killed by the kernel and restarted, so raise the limit before the load that needs it, not after the first restart.
+
+| Service | Variable | Default | Measured |
+|---------|----------|---------|----------|
+| `backend` | `BACKEND_MEM_LIMIT` | `3500m` | 4 workers: 1.6 GiB idle, 1.8-2.4 GiB under load on projects up to 1,000 requirements, 4.0-4.5 GiB when every worker runs a report, export or bundle import on a 5,000-requirement project; 6 workers under the mixed load 3.1 GiB |
+| `db` | `DB_MEM_LIMIT` | `2g` | 0.14-0.65 GiB with four workers from 30 to 20,000 requirements, 1.0-1.1 GiB at six workers under the capacity climb (default `shared_buffers` 128 MB); add the extra if you raise `shared_buffers` |
+| `storage` | `STORAGE_MEM_LIMIT` | `512m` | 30-143 MiB |
+| `frontend` | `FRONTEND_MEM_LIMIT` | `128m` | about 11 MiB |
+| `mcp-server` | `MCP_MEM_LIMIT` | `256m` | about 57 MiB |
+
+Backend memory is a worker count and a project size, not a user count:
+
+> backend limit ≈ 0.1 GiB + 0.55 GiB × `BACKEND_WORKERS` + 0.5 GiB × *H*
+
+where *H* is how many reports, project exports or bundle imports of a project of about 5,000 requirements or more can run at once (at most `BACKEND_WORKERS`). Those requests hold the whole project in the worker, which then peaks near 1 GiB instead of 0.55 GiB. The default covers four workers on projects up to about 1,000 requirements, and six under mixed load; a deployment with large projects raises it (four workers, 5,000-requirement projects, heavy requests expected: `BACKEND_MEM_LIMIT=4800m`). A rise in the limit has to fit the host's RAM together with the database and the operating system. The backend logs a `WARNING` at start if its limit is below that formula for its worker count with no heavy request.
+
+```mermaid
+flowchart TD
+    A["Largest project: how many requirements?"] --> B{"Up to ~1,000?"}
+    B -->|yes| C["BACKEND_WORKERS = cores for the API<br/>(default 4); default limits"]
+    B -->|"5,000 or more"| D["Add 0.5 GiB per concurrent heavy request<br/>to BACKEND_MEM_LIMIT; set shared_buffers<br/>to the database size (a quarter of RAM at most)"]
+    C --> E["Host RAM ≥ backend + db + storage limits<br/>+ 1 GiB for the system"]
+    D --> E
+    E --> F["Workers × (DB_POOL_SIZE + DB_MAX_OVERFLOW + 2) < max_connections"]
+```
+
+Memory did not grow over a 30-minute soak at any project size (the backend's trend after warm-up was flat or falling), so a limit is a ceiling for load, not a leak guard. The measurements were taken on amd64 Linux; a Raspberry Pi 5 with 8 GiB ran one worker comfortably (1.4 GiB backend at 20,000 requirements). Four workers need about 2.3 GiB for the backend alone before the database, so run one or two on a 4 GiB board (unmeasured).
 
 ## Troubleshooting
 

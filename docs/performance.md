@@ -34,6 +34,35 @@ flowchart LR
   (4-8 s at 20,000), CSV export (3.5 s), PDF report (39 s), project export (12 s) and project import (115 s Linux,
   186 s Dell at the run's commit; faster after F8, not re-measured).
 
+## Sizing: memory per service (Linux server, 4 workers)
+
+Memory is what the stack needs on a host and what `docker-compose.yml` caps ([deployment.md](deployment.md#sizing-and-memory-limits)). Peaks are the
+largest `docker stats` sample of any scenario at that tier (full run, commit d01093ea, 30-minute soak per tier; the Dell
+workstation agrees within 10%, and the other-types runs at T2/T3, commit a9014996, sit inside these ranges).
+
+| Service | Idle | T0-T2 (30-1,000 requirements) | T3 (5,000) | T4 (20,000) | Default limit |
+|---------|------|-------------------------------|------------|-------------|---------------|
+| Backend (4 workers) | 1.6 GiB (4 x 0.4 private + parent) | 1.8-2.4 GiB (soak 2.2) | 2.1-4.5 GiB | 1.8-4.4 GiB | 3.5 GiB |
+| Database | | 0.12-0.32 GiB | 0.11-0.39 GiB | 0.24-0.65 GiB | 2 GiB |
+| Object storage | | 30-136 MiB | 68-143 MiB | 58-112 MiB | 512 MiB |
+
+- **Where the backend peak comes from.** Browse, search, links and edit stay at 1.8-2.4 GiB at every tier. The report, export,
+  bundle and record-import scenarios hold the whole project in the worker, which peaks near 1 GiB (O7): at T3 and T4 the four
+  workers together reach 4.0-4.5 GiB. A worker costs 0.4 GiB at idle and 0.53 GiB under ordinary load, so the backend limit is
+  0.1 GiB + 0.55 GiB x workers + 0.5 GiB x concurrent heavy requests on projects of 5,000 requirements or more.
+- **No leak.** The soak's backend trend after warm-up was flat or falling at every tier (T0 2,155 to 2,154 MiB, T2 2,252 to
+  2,233, T3 3,085 to 2,942, T4 3,488 to 3,489), so a limit is a ceiling for load, not a leak guard.
+- **Six workers** under the mixed capacity load (ten projects, T2): backend 2.7-3.1 GiB, database 0.97-1.06 GiB (default
+  `shared_buffers`).
+- **The T3 backend peak (4.5 GiB) touched the perf stack's own 4.5 GiB cap** in `import_preview`. It was not killed, and T3
+  with heavy requests is exactly the case the default limit does not cover: a deployment with 5,000-requirement projects raises
+  `BACKEND_MEM_LIMIT` (4.8 GiB for four workers) or runs fewer workers.
+- **Not measured:** frontend and MCP server are not part of the perf stack; their limits come from a one-off idle `docker stats`
+  (about 11 and 57 MiB) with generous headroom. Boards under 8 GiB, and the default four workers on a Pi, are unmeasured.
+- **Re-measure** with `perf/run_baseline.sh` (its third run is the memory and scaling baseline) and compare with
+  `perf/compare.py`; when a number here moves, change the default limits in `docker-compose.yml` and the table in
+  [deployment.md](deployment.md#sizing-and-memory-limits) in the same change.
+
 ## Capacity (T2, 1,000 requirements; the `capacity` scenario)
 
 A **connection** here is one simulated client making about one API request a second (the browse mix, with about one
