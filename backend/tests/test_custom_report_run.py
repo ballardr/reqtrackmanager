@@ -16,7 +16,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models.generated_report import GeneratedReport
 from app.services import custom_report_run, link_graph, report_layout_eval
-from app.services.report_layout_tree import empty_tree
+from app.services.report_layout_tree import empty_tree, record_types_of
 from tests.conftest import auth_headers, create_org_user, login
 from tests.link_world import REQ, World
 
@@ -738,6 +738,38 @@ def test_the_project_catalogue_lists_runnable_layouts_with_their_formats(world):
     assert custom["Doc"]["module_name"] == "Custom reports" and custom["Doc"]["params"] == []
     assert len({e["slug"] for e in entries}) == len(entries)
     assert custom["Sheet"]["slug"].startswith("custom-sheet-") and custom["Sheet"]["key"] == sheet["id"]
+
+
+def test_record_types_of_a_tree_are_its_sources_and_its_widgets_types():
+    tree = {
+        **empty_tree("document"),
+        "nodes": [
+            {"type": "each", "source": {"record_type": REQ}, "children": [
+                {"type": "each", "source": {"record_type": "risk", "linked_from": "record"}, "children": []},
+            ]},
+            {"type": "widget", "key": "decisions.decision-register.register"},
+            {"type": "widget", "key": "no.such.widget"},
+            {"type": "text", "text": "No source here"},
+        ],
+    }
+
+    assert record_types_of(tree) == sorted({REQ, "risk", "decision"})
+    assert record_types_of({"nodes": [{"type": "page_break"}]}) == []
+    assert record_types_of("not a tree") == []
+
+
+def test_the_catalogue_names_the_record_types_each_report_uses(world):
+    world.enable("decisions")
+    project = world.project()
+    make_layout(world, document_tree(), "Doc", project=project)
+    make_layout(world, sheet_tree("A"), "Sheet")
+
+    entries = world.client.get(f"/api/v1/projects/{project['id']}/report-catalogue", headers=auth_headers(world.token)).json()
+    custom = {e["title"]: e for e in entries if e["module_key"] == "custom_reports"}
+    register = [e for e in entries if e["slug"] == "decision-register"]
+
+    assert custom["Doc"]["record_types"] == [REQ] and custom["Sheet"]["record_types"] == [REQ]
+    assert register and register[0]["record_types"] == ["decision"]
 
 
 def test_the_organisation_catalogue_offers_a_project_selection_of_what_the_caller_can_read(world):

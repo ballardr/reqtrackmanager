@@ -2903,6 +2903,12 @@ const en = {
   },
   recordTables: {
     menuLabel: "List actions",
+    downloadReport: "Download report",
+    downloadReportIntro: (label: string) => `Reports that use ${label.toLowerCase()}. Choose one to see it and download it.`,
+    downloadReportNone: (label: string) => `No report uses ${label.toLowerCase()}.`,
+    downloadReportLoading: "Loading reports…",
+    downloadReportBack: "Choose another report",
+    downloadReportLoadFailed: "Could not load reports.",
     exportAs: (format: string) => `Export as ${format}`,
     importFromCsv: "Import from CSV",
     downloadTemplate: "Download import template",

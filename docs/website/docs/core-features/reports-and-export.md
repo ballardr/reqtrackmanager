@@ -106,6 +106,8 @@ flowchart LR
 
 ## CSV export and import
 
+A record list can also offer the reports that use its records: open the list's **List actions** menu (the ⋮ button beside **New**) and choose **Download report**. Only reports that read that kind of record are listed, in the same folders as the Reports page; choose one to see it and download it in place.
+
 The same Reports page exports requirements as CSV — every field, including custom field values and target stage — and the Requirements page's **List actions** menu (CSV that re-imports and updates records by code) reverse the trip, mapping a spreadsheet's columns back onto a project's fields. See [Requirements management](./requirements-management.md#csv-import-and-export) for the import side.
 
 ## Where this fits
