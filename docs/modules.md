@@ -1433,13 +1433,9 @@ flowchart LR
   if `svglib` cannot), Word embeds a PNG (`python-docx` cannot take SVG), HTML inlines it. Text in an SVG is drawn
   with the bundled DejaVu font; a module producing a diagram wraps its own labels. A figure that cannot be drawn is
   skipped, never an error.
-- **Content tiers.** The layout's own introduction, chapters and appendices are `ReportContent` rows keyed
-  `custom.<layout id>` (template, project, ancestors, organisation, as for any report; an organisation-wide run uses the
-  template and organisation tiers). `report_content.is_valid_report_key` accepts the key only for a layout the scope can
-  reach (a project: its effective layouts; the organisation and its templates: the organisation's own), the editors list
-  those layouts under "Custom reports", and deleting a layout deletes its content. In a bundle the key is
-  `custom:<layout name>` (an id means nothing elsewhere) and an import binds it to the layout it created, else to the
-  layout of that name the scope can reach; layouts are imported before report content for that reason.
+- **No separate introduction, chapters or appendices.** A layout's own text blocks carry them; report content as a
+  stored tier (template, project, organisation) was removed, so the PDF, Word and OpenDocument renderers add nothing
+  around the evaluated blocks but the scope line and notes. The "Requirements by Component" starter shows the pattern.
 - **Provenance** (`models/generated_report.py`). Every run writes one `generated_reports` row after rendering succeeds
   (so a refused or failed run leaves none): layout id, name, version and tree hash, caller, UTC time, engine version,
   format, parameters, the projects covered, the widgets that ran (§4p), records read per type, block/row/hidden counts, the
@@ -1766,8 +1762,9 @@ flowchart LR
 
 ### 4v. Custom reports: starter layouts (Module 10 Phase 11)
 
-Every organisation is created with three ready-made document layouts: **Business Requirements Document**, **Engineering
-Specification** and **Review Package**. They are ordinary organisation layouts once written (editable, versioned, hideable, shared
+Every organisation is created with four ready-made document layouts: **Business Requirements Document**, **Engineering
+Specification**, **Review Package** and **Requirements by Component** (the requirements report grouped by component and category,
+with an Introduction and Appendices to write). They are ordinary organisation layouts once written (editable, versioned, hideable, shared
 with projects), so an organisation adapts one rather than cloning it first.
 
 ```mermaid
@@ -1792,8 +1789,8 @@ flowchart LR
 
 ### 4w. Report text: bold, italic, code and numbered lists (Module 10 Phase 13, text formatting)
 
-The Markdown reader (`report_model.markdown_to_blocks`) is shared by a layout's text block and by a report's introduction, chapters
-and appendices, so both get the same formatting in every document format.
+The Markdown reader (`report_model.markdown_to_blocks`) is shared by a layout's text block and by the resource-file sections the
+requirements report appends, so both get the same formatting in every document format.
 
 ```mermaid
 flowchart LR
@@ -1834,7 +1831,7 @@ flowchart LR
   already and reads as plain words.
 - **Behaviour change.** Existing text containing a matched `*…*`, `**…**`, `_…_` or a backtick pair now prints styled, and a line
   starting `1. ` becomes a numbered list; an unmatched marker, `5 * 3`, `snake_case` and a lone `_` are unchanged. This applies to
-  report introductions, chapters and appendices as well as layouts.
+  layouts and appended resource files.
 
 ### 4x. Reports picker: folders, placements and the sub-component gate (Module 10 Phase 16)
 
@@ -1934,12 +1931,9 @@ REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
   ignored.
 - **Branding.** `?report_template_id=` applies an organisation report template's
   accent colour, cover page, logo and footer to the PDF and DOCX (400 for another
-  organisation's template). A template's, project's and organisation's
-  authored intro, chapters and appendices for this report are applied to the PDF
-  and DOCX: content is keyed `"<module_key>.<report key>"` (the `ReportDefinition.key`),
-  so declaring a report is all a module does; there is no per-module edit
-  (`services/report_content.py`). Organisation-wide runs use the template and
-  organisation tiers only.
+  organisation's template). A report prints its own scope line, notes and sections;
+  authored text around a report is written in a layout that embeds its widgets
+  (§4p), so declaring a report is all a module does.
 - **Validation.** A definition with a duplicate key/slug, malformed parameter,
   `org_level` without an `org_role_key`, an unknown sub-component, or an
   `org_role_key` that is not an org-scoped role is excluded and logged: no

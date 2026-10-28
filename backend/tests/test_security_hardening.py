@@ -169,7 +169,7 @@ def test_cannot_nest_org_group_from_another_organization(client, admin_token, or
 
 
 def test_report_content_is_escaped_against_markup_injection(client, admin_token, org_id):
-    """Requirement names/report markdown containing markup-like syntax must render as literal text,
+    """Requirement names/resource-file markdown containing markup-like syntax must render as literal text,
     not be interpreted by ReportLab as a tag (the SSRF/local-file-read vector)."""
     project = create_project(client, admin_token, org_id)
     component_id, category_id = create_component_and_category(client, admin_token, project["id"])
@@ -182,10 +182,13 @@ def test_report_content_is_escaped_against_markup_injection(client, admin_token,
         headers=auth_headers(admin_token),
     )
 
+    notes = client.post(
+        f"/api/v1/orgs/{org_id}/resources",
+        files={"file": ("notes.md", b'<img src="file:///etc/passwd"/>', "text/markdown")}, headers=auth_headers(admin_token),
+    ).json()["id"]
     resp = client.post(
         f"/api/v1/projects/{project['id']}/reports",
-        json={"format": "pdf", "pre_markdown": '<img src="file:///etc/passwd"/>', "post_markdown": ""},
-        headers=auth_headers(admin_token),
+        json={"format": "pdf", "resource_file_ids": [notes]}, headers=auth_headers(admin_token),
     )
     assert resp.status_code == 200
     assert resp.content[:5] == b"%PDF-"

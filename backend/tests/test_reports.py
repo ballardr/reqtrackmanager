@@ -10,7 +10,7 @@ from app.services.reports import (
     default_chapters_per_component,
     generate_csv_report,
 )
-from tests.conftest import auth_headers, create_component_and_category, create_org_user, create_project, login
+from tests.conftest import auth_headers, create_component_and_category, create_project
 
 
 def _seed_requirement(client, admin_token, org_id):
@@ -108,7 +108,7 @@ def test_pdf_report_generates_valid_pdf(client, admin_token, org_id):
     project = _seed_requirement(client, admin_token, org_id)
     resp = client.post(
         f"/api/v1/projects/{project['id']}/reports",
-        json={"format": "pdf", "pre_markdown": "# Introduction\nSome context.", "post_markdown": "# Appendix\n- item one"},
+        json={"format": "pdf"},
         headers=auth_headers(admin_token),
     )
     assert resp.status_code == 200
@@ -206,114 +206,6 @@ def test_csv_report_endpoint_reflects_projects_saved_terminology_override(client
     assert resp.status_code == 200
     header_line = resp.content.decode("utf-8").splitlines()[0]
     assert header_line == "ID,Name,Module,Topic,Status,Reasoning,Clarification,Tags"
-
-
-def test_report_config_persists_and_is_used_as_pdf_default(client, admin_token, org_id):
-    project = _seed_requirement(client, admin_token, org_id)
-
-    empty = client.get(f"/api/v1/projects/{project['id']}/report-config", headers=auth_headers(admin_token)).json()
-    assert empty == {"default_report_template_id": None, "content": []}
-
-    saved = client.put(
-        f"/api/v1/projects/{project['id']}/report-config",
-        json={"content": [{
-            "report_key": "requirements",
-            "intro": "Welcome to the report.",
-            "chapters": [{"title": "Scope", "body": "What this covers."}],
-            "appendices": [{"title": "Glossary", "body": "Terms used."}],
-        }]},
-        headers=auth_headers(admin_token),
-    )
-    assert saved.status_code == 200
-    assert saved.json()["content"][0]["intro"] == "Welcome to the report."
-
-    reread = client.get(f"/api/v1/projects/{project['id']}/report-config", headers=auth_headers(admin_token)).json()
-    assert reread["content"][0]["chapters"] == [{"title": "Scope", "body": "What this covers."}]
-
-    # Generating without ad-hoc pre/post markdown should fall back to the
-    # persisted config rather than producing a bare report.
-    resp = client.post(
-        f"/api/v1/projects/{project['id']}/reports", json={"format": "pdf"}, headers=auth_headers(admin_token)
-    )
-    assert resp.status_code == 200
-    assert resp.content[:5] == b"%PDF-"
-
-
-def test_report_config_is_readable_by_a_plain_stakeholder_not_just_a_manager(client, admin_token, org_id):
-    """Regression: GET report-config was gated to require_project_manage,
-    even though it's read-only content stakeholders/members need to
-    generate reports (C-U-03) — ReportsPage.tsx and ProjectAdminPage.tsx's
-    single Promise.all reload both fetch it, so this silently 403'd (and,
-    for ProjectAdminPage, hung the whole page on its loading spinner) for
-    any project role below manager/administrator. PUT stays manage-only."""
-    project = _seed_requirement(client, admin_token, org_id)
-    user_id = create_org_user(client, admin_token, org_id, "stakeholder_report@example.com", role="member")
-    client.post(
-        f"/api/v1/projects/{project['id']}/roles",
-        json={"user_id": user_id, "role": "stakeholder"},
-        headers=auth_headers(admin_token),
-    )
-    stakeholder_token = login(client, "stakeholder_report@example.com", "Password123!")
-
-    resp = client.get(f"/api/v1/projects/{project['id']}/report-config", headers=auth_headers(stakeholder_token))
-    assert resp.status_code == 200
-
-    denied = client.put(
-        f"/api/v1/projects/{project['id']}/report-config",
-        json={"content": [{"report_key": "requirements", "intro": "Should not be allowed."}]},
-        headers=auth_headers(stakeholder_token),
-    )
-    assert denied.status_code == 403
-
-
-def test_project_falls_back_to_organisation_report_defaults(client, admin_token, org_id):
-    """A project with no report content of its own (R-G-01/R-G-02) should
-    use the organisation's defaults field-by-field, and the effective
-    endpoint says where each field came from — the same "narrower scope
-    overrides a broader default" shape used for branding."""
-    project = _seed_requirement(client, admin_token, org_id)
-    effective_url = f"/api/v1/projects/{project['id']}/report-content/effective?report_key=requirements"
-
-    defaults = client.put(
-        f"/api/v1/orgs/{org_id}/report-defaults",
-        json={"content": [{
-            "report_key": "requirements", "intro": "Org-wide introduction.",
-            "chapters": [{"title": "Standard scope", "body": "Applies to every project."}],
-        }]},
-        headers=auth_headers(admin_token),
-    )
-    assert defaults.status_code == 200
-    assert defaults.json()["content"][0]["intro"] == "Org-wide introduction."
-
-    fetched = client.get(f"/api/v1/orgs/{org_id}/report-defaults", headers=auth_headers(admin_token)).json()
-    assert fetched["content"][0]["chapters"] == [{"title": "Standard scope", "body": "Applies to every project."}]
-
-    # The project's own config holds nothing; the effective view inherits the org's.
-    own = client.get(f"/api/v1/projects/{project['id']}/report-config", headers=auth_headers(admin_token)).json()
-    assert own["content"] == []
-    effective = client.get(effective_url, headers=auth_headers(admin_token)).json()
-    assert effective["intro"] == "Org-wide introduction."
-    assert effective["intro_source"]["scope_type"] == "organization"
-    assert effective["chapters_source"]["scope_type"] == "organization"
-    # Appendices default is empty, so nothing set them.
-    assert effective["appendices_source"] is None
-
-    # The project's own intro, once set, takes priority over the org default.
-    client.put(
-        f"/api/v1/projects/{project['id']}/report-config",
-        json={"content": [{"report_key": "requirements", "intro": "Project-specific introduction."}]},
-        headers=auth_headers(admin_token),
-    )
-    overridden = client.get(effective_url, headers=auth_headers(admin_token)).json()
-    assert overridden["intro"] == "Project-specific introduction."
-    assert overridden["intro_source"]["scope_type"] == "project"
-    # Chapters weren't set on the project, so the org default still applies there.
-    assert overridden["chapters"] == [{"title": "Standard scope", "body": "Applies to every project."}]
-    assert overridden["chapters_source"]["scope_type"] == "organization"
-
-    resp = client.post(f"/api/v1/projects/{project['id']}/reports", json={"format": "pdf"}, headers=auth_headers(admin_token))
-    assert resp.status_code == 200
-    assert resp.content[:5] == b"%PDF-"
 
 
 def test_default_chapters_per_component_heuristic():

@@ -3,42 +3,16 @@ import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/tes
 
 import { ApiError, api } from "../api/client";
 import type { ReportCatalogueEntry } from "../api/reports";
-import type { EffectiveReportContent, ProjectReportConfig, ReportTemplate } from "../api/types";
+import type { ReportTemplate } from "../api/types";
 import { buildReportCatalogueEntry, buildReportResult } from "../testing/reportFixtures";
 import { buildProject, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { ReportsPage } from "./ReportsPage";
 
 const PROJECT_ID = "project-1";
 
-const reportConfig: ProjectReportConfig = { default_report_template_id: null, content: [] };
-
-/** The server-resolved content for the requirements report (`.../report-content/effective`): the project's
- * own, or — with `template_id` — the selected template's introduction on top of it. */
-function effectiveContent(templateId: string | null): EffectiveReportContent {
-  return templateId
-    ? {
-        report_key: "requirements", intro: "Template-provided introduction.",
-        chapters: [{ title: "Overview", body: "Template chapter body." }], appendices: [],
-        intro_source: { scope_type: "template", scope_id: "tpl-1", scope_name: "Branded template", report_key: "requirements" },
-        chapters_source: { scope_type: "template", scope_id: "tpl-1", scope_name: "Branded template", report_key: "requirements" },
-        appendices_source: null,
-      }
-    : {
-        report_key: "requirements", intro: "This project delivers the Atlas platform.",
-        chapters: [{ title: "Scope", body: "What this covers." }], appendices: [],
-        intro_source: { scope_type: "project", scope_id: PROJECT_ID, scope_name: "Atlas Platform", report_key: "requirements" },
-        chapters_source: { scope_type: "organization", scope_id: "org-1", scope_name: "Acme", report_key: "requirements" },
-        appendices_source: null,
-      };
-}
-
 const template: ReportTemplate = {
   id: "tpl-1", organization_id: "org-1", name: "Branded template", accent_color_hex: "#475569",
   include_cover_page: true, include_logo: true, footer_text: null,
-  content: [{
-    report_key: "requirements", intro: "Template-provided introduction.",
-    chapters: [{ title: "Overview", body: "Template chapter body." }], appendices: [],
-  }],
   chapters_per_component: false,
 };
 
@@ -52,10 +26,6 @@ function mockReportsApis(opts: { templates?: ReportTemplate[]; resources?: unkno
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return buildProject({ id: PROJECT_ID, organization_id: "org-1", name: "Atlas Platform" });
     if (path.includes("/resources")) return opts.resources ?? [];
     if (path.includes("/report-templates")) return opts.templates ?? [template];
-    if (path.includes("/report-content/effective")) {
-      return effectiveContent(new URL(path, "http://x").searchParams.get("template_id"));
-    }
-    if (path.includes("/report-config")) return reportConfig;
     throw new Error(`unmocked path: ${path}`);
   });
 }
@@ -81,7 +51,7 @@ export const GeneratePdf: Story = {
     await waitFor(() =>
       expect(api.postForBlob).toHaveBeenCalledWith(
         `/api/v1/projects/${PROJECT_ID}/reports`,
-        expect.objectContaining({ format: "pdf", pre_markdown: expect.stringContaining("Atlas platform") })
+        expect.objectContaining({ format: "pdf", report_template_id: null })
       )
     );
   },
@@ -101,24 +71,32 @@ export const GenerateWord: Story = {
     await waitFor(() =>
       expect(api.postForBlob).toHaveBeenCalledWith(
         `/api/v1/projects/${PROJECT_ID}/reports`,
-        expect.objectContaining({ format: "docx", pre_markdown: expect.stringContaining("Atlas platform") })
+        expect.objectContaining({ format: "docx" })
       )
     );
   },
 };
 
-/** Selecting a report template swaps the intro/chapters editors to the content
- * the server resolves for that template (`.../report-content/effective?template_id=`);
- * the page never re-implements the resolution chain itself. */
-export const SelectingTemplateSwapsIntroContent: Story = {
-  beforeEach: () => mockReportsApis(),
+/** The selected branding template is sent with the PDF request; the page carries no introduction or chapter
+ * editors (those are written in a report layout). */
+export const SelectedTemplateIsSentWithTheRequest: Story = {
+  beforeEach: () => {
+    mockReportsApis();
+    spyOn(api, "postForBlob").mockResolvedValue(new Blob(["pdf"], { type: "application/pdf" }));
+  },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Template & layout section" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Template & layout section" }));
     await waitFor(() => expect(canvas.getByLabelText("Report template")).toBeInTheDocument());
     await userEvent.selectOptions(canvas.getByLabelText("Report template"), "tpl-1");
-    await userEvent.click(canvas.getByRole("button", { name: "Introduction section" }));
-    await waitFor(() => expect(canvas.getByDisplayValue("Template-provided introduction.")).toBeInTheDocument());
+    await expect(canvas.queryByRole("button", { name: "Introduction section" })).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Generate PDF" }));
+    await waitFor(() =>
+      expect(api.postForBlob).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/reports`,
+        expect.objectContaining({ format: "pdf", report_template_id: "tpl-1" })
+      )
+    );
   },
 };
 

@@ -34,6 +34,13 @@ from app.services.files import upload_file
 MAX_IMPORT_UPLOAD_BYTES = 200 * 1024 * 1024
 MAX_BUNDLE_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024
 
+#: Keys older bundles carried report introductions, chapters, appendices and a default branding template under.
+#: They are no longer imported; a bundle that holds any gets one warning.
+LEGACY_REPORT_CONTENT_KEYS: tuple[str, ...] = (
+    "report_content", "report_images", "report_intro", "report_chapters", "report_appendices",
+    "default_report_template_name",
+)
+
 
 def enforce_upload_size_limit(data: bytes, *, what: str) -> None:
     """Rejects an uploaded file before it's parsed at all if its raw size

@@ -1785,60 +1785,6 @@ export function notificationLink(n: Notification): string | null {
   return null;
 }
 
-export interface ReportChapter {
-  title: string;
-  body: string;
-}
-
-/** The sentinel report key for "every report without an entry of its own". */
-export const ALL_REPORTS_KEY = "*";
-/** The key of the requirements report (a module report is `<module_key>.<report_key>`). */
-export const REQUIREMENTS_REPORT_KEY = "requirements";
-
-/** The introduction, chapters and appendices one scope holds for one report type. */
-export interface ReportContentEntry {
-  report_key: string;
-  intro: string;
-  chapters: ReportChapter[];
-  appendices: ReportChapter[];
-}
-
-/** A report type content can be written for (`GET .../report-types`). */
-export interface ReportTypeOption {
-  key: string;
-  title: string;
-  module_name: string | null;
-}
-
-/** A project's own report setup: its default template and the content it owns. */
-export interface ProjectReportConfig {
-  default_report_template_id: string | null;
-  content: ReportContentEntry[];
-}
-
-export interface OrgReportDefaults {
-  content: ReportContentEntry[];
-}
-
-/** Where an effective report-content value came from. */
-export interface ReportContentSource {
-  scope_type: "template" | "project" | "organization" | "project_summary";
-  scope_id: string;
-  scope_name: string;
-  report_key: string;
-}
-
-/** The content a report of one type would use, with each field's source (`null` = nothing set it). */
-export interface EffectiveReportContent {
-  report_key: string;
-  intro: string;
-  chapters: ReportChapter[];
-  appendices: ReportChapter[];
-  intro_source: ReportContentSource | null;
-  chapters_source: ReportContentSource | null;
-  appendices_source: ReportContentSource | null;
-}
-
 export type ExternalUserPolicy = "disabled" | "org_domain_only" | "anyone";
 
 /** SSO group→role mapping used to live here (`sso_group_mappings`) — it's
@@ -2189,7 +2135,6 @@ export interface ReportTemplate {
   include_cover_page: boolean;
   include_logo: boolean;
   footer_text: string | null;
-  content: ReportContentEntry[];
   chapters_per_component: boolean;
 }
 

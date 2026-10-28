@@ -5,7 +5,8 @@ Small builders for the layout blocks of the starter report layouts, shared by th
 (`services.report_starters`) and by the sections modules contribute (`ModuleDefinition.report_starter_sections`).
 
 Responsibilities:
-- Name the starters (`BUSINESS_REQUIREMENTS_DOCUMENT`, `ENGINEERING_SPECIFICATION`, `REVIEW_PACKAGE`) so a module's
+- Name the starters (`BUSINESS_REQUIREMENTS_DOCUMENT`, `ENGINEERING_SPECIFICATION`, `REVIEW_PACKAGE`,
+  `REQUIREMENTS_BY_COMPONENT`) so a module's
   section and the core assembler agree on a key.
 - Build a heading, a line of text, a table over a record type, a widget and a headed section as layout-tree dicts.
 
@@ -25,6 +26,7 @@ Node = dict[str, Any]
 BUSINESS_REQUIREMENTS_DOCUMENT = "business-requirements-document"
 ENGINEERING_SPECIFICATION = "engineering-specification"
 REVIEW_PACKAGE = "review-package"
+REQUIREMENTS_BY_COMPONENT = "requirements-by-component"
 
 
 def heading(text: str, level: int = 2) -> Node:

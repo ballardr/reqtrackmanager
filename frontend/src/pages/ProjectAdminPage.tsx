@@ -29,17 +29,12 @@ import type {
   PrincipalRef,
   PrincipalUsage,
   ProjectModuleSubComponent,
-  ProjectReportConfig,
   ProjectRole,
   ProjectRoleInheritanceMode,
   ProjectStage,
   ProjectStatusDefinition,
-  EffectiveReportContent,
-  ReportContentEntry,
-  ReportTypeOption,
-  ReportTemplate,
 } from "../api/types";
-import { ALL_REPORTS_KEY, CUSTOM_FIELD_TYPE_LABEL, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import { CUSTOM_FIELD_TYPE_LABEL, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
 import type { StagedMember } from "../components/AddMembersModal";
 import { AddMembersModal } from "../components/AddMembersModal";
 import { CollapsibleSection } from "../components/CollapsibleSection";
@@ -58,9 +53,6 @@ import { FilterPanel } from "../components/FilterPanel";
 import { Modal } from "../components/Modal";
 import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
 import { ProjectMembersTable } from "../components/ProjectMembersTable";
-import { ReportContentEditor } from "../components/ReportContentEditor";
-import type { InheritedContent } from "../components/reportContentInheritance";
-import { inheritedFromEffective } from "../components/reportContentInheritance";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { ResourceMenu } from "../components/ResourceMenu";
 import { SidePanel } from "../components/SidePanel";
@@ -378,18 +370,6 @@ export function ProjectAdminPage() {
   // --- Action types (project-scoped, per docs/decisions.md) ------------
   const [actionTypes, setActionTypes] = useState<ActionTypeDefinition[]>([]);
 
-  // The content this project itself owns, per report type (what the editor edits), the types content can be
-  // written for, and — per type, loaded as its tab is opened — what a blank field would inherit.
-  const [reportContent, setReportContent] = useState<ReportContentEntry[]>([]);
-  const [reportTypes, setReportTypes] = useState<ReportTypeOption[]>([]);
-  const [inheritedReportContent, setInheritedReportContent] = useState<Record<string, InheritedContent>>({});
-  const [reportTemplates, setReportTemplates] = useState<ReportTemplate[]>([]);
-  const [defaultReportTemplateId, setDefaultReportTemplateId] = useState("");
-  // Same reasoning as settingsDirtyRef/terminologyDirtyRef above, for the
-  // fields `saveReportConfig()` submits.
-  const reportConfigDirtyRef = useRef(false);
-  const activeReportTypeRef = useRef<string>(ALL_REPORTS_KEY);
-
   const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
   const [newFieldKind, setNewFieldKind] = useState<CustomFieldEntityKind>("requirement");
   const [newFieldName, setNewFieldName] = useState("");
@@ -448,15 +428,13 @@ export function ProjectAdminPage() {
     // invoked — not whenever it happens to reach the `loadGroups` line
     // near the bottom. See `loadGroupsRequestIdRef`'s own comment.
     const groupsRequestId = ++loadGroupsRequestIdRef.current;
-    const [p, s, c, cat, cf, rc, at, rtypes] = await Promise.all([
+    const [p, s, c, cat, cf, at] = await Promise.all([
       api.get<Project>(`/api/v1/projects/${projectId}`),
       api.get<ProjectStage[]>(`/api/v1/projects/${projectId}/stages`),
       api.get<Component[]>(`/api/v1/projects/${projectId}/components`),
       api.get<Category[]>(`/api/v1/projects/${projectId}/categories`),
       api.get<CustomFieldDefinition[]>(`/api/v1/projects/${projectId}/custom-fields`),
-      api.get<ProjectReportConfig>(`/api/v1/projects/${projectId}/report-config`),
       api.get<ActionTypeDefinition[]>(`/api/v1/projects/${projectId}/action-types`),
-      api.get<ReportTypeOption[]>(`/api/v1/projects/${projectId}/report-types`),
     ]);
     setProject(p);
     if (!settingsDirtyRef.current) {
@@ -482,11 +460,6 @@ export function ProjectAdminPage() {
     await loadGroups(groupSearch, 0, false, groupSort, groupsRequestId);
     setCustomFields(cf);
     setActionTypes(at);
-    if (!reportConfigDirtyRef.current) {
-      setReportContent(rc.content);
-      setDefaultReportTemplateId(rc.default_report_template_id ?? "");
-    }
-    setReportTypes(rtypes);
 
     // The rest of this page's data sources — none of these fetches depend
     // on each other's *results* (each is its own independent GET, keyed
@@ -501,7 +474,7 @@ export function ProjectAdminPage() {
     // for its budget rather than a flaky assertion (see docs/decisions.md).
     // Batched into one `Promise.all` so they run concurrently instead.
     const [
-      orgUsers, orgGroups, orgForOrgSettings, reportTemplates, orgProjectStatuses,
+      orgUsers, orgGroups, orgForOrgSettings, orgProjectStatuses,
       orgProjects, memberSources, memberTableGroups, effectiveMembers, groupRoles,
       pendingInvites, availableModuleRoles, projectModulesLoaded,
     ] = await Promise.all([
@@ -518,7 +491,6 @@ export function ProjectAdminPage() {
       // "project access already implies org membership" reasoning above
       // for the unfiltered org users/groups calls.
       api.get<Organization>(`/api/v1/orgs/${p.organization_id}`),
-      api.get<ReportTemplate[]>(`/api/v1/orgs/${p.organization_id}/report-templates`),
       api.get<ProjectStatusDefinition[]>(`/api/v1/orgs/${p.organization_id}/project-statuses`),
       // Hierarchical projects (docs/decisions.md). Parent selector options
       // are restricted server-side to the caller's own accessible set
@@ -553,7 +525,6 @@ export function ProjectAdminPage() {
     setOrgGroups(orgGroups);
     setOrgForceLinksLocked(orgForOrgSettings.force_require_change_request_for_approved_links);
     setCodePolicy(orgForOrgSettings.project_code_policy);
-    setReportTemplates(reportTemplates);
     setOrgProjectStatuses(orgProjectStatuses);
     setOrgProjects(orgProjects);
     setMemberSources(memberSources);
@@ -661,36 +632,6 @@ export function ProjectAdminPage() {
       showToast(toErrorMessage(err, strings.admin.resendInviteError), "error");
     } finally {
       setResendingInviteId(null);
-    }
-  }
-
-  async function saveReportConfig() {
-    try {
-      await api.put(`/api/v1/projects/${projectId}/report-config`, {
-        content: reportContent,
-        default_report_template_id: defaultReportTemplateId || null,
-      });
-      reportConfigDirtyRef.current = false;
-      showToast(strings.reports.reportSetupSaved);
-      setInheritedReportContent({});
-      loadInheritedReportContent(activeReportTypeRef.current);
-      reload();
-    } catch (err) {
-      showToast(toErrorMessage(err, strings.common.error), "error");
-    }
-  }
-
-  /** Loads what a blank field of `reportKey` would inherit (its tab was just opened, or the config was saved). */
-  async function loadInheritedReportContent(reportKey: string) {
-    activeReportTypeRef.current = reportKey;
-    if (reportKey === ALL_REPORTS_KEY) return;
-    try {
-      const effective = await api.get<EffectiveReportContent>(
-        `/api/v1/projects/${projectId}/report-content/effective?report_key=${encodeURIComponent(reportKey)}`,
-      );
-      setInheritedReportContent((prev) => ({ ...prev, [reportKey]: inheritedFromEffective(effective, projectId ?? "") }));
-    } catch {
-      // The editor still works without the hint; a failed lookup is not worth interrupting the user.
     }
   }
 
@@ -2733,21 +2674,6 @@ export function ProjectAdminPage() {
       <div className="stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.reportSetup}</h2>
         <p className="text-muted" style={{ margin: 0 }}>{strings.admin.reportSetupHint}</p>
-        {reportTemplates.length > 0 && (
-          <CollapsibleSection sectionKey="projectAdmin.reportSetup.defaultTemplate" title={strings.admin.defaultTemplateSection} defaultCollapsed={false}>
-            <LabeledSelect helpNotNeeded
-              label={strings.admin.defaultReportTemplate}
-              value={defaultReportTemplateId}
-              onChange={(next) => {
-                reportConfigDirtyRef.current = true;
-                setDefaultReportTemplateId(next);
-              }}
-              options={reportTemplates.map((tpl) => ({ value: tpl.id, label: tpl.name }))}
-              placeholder={strings.reports.noTemplate}
-              hint={strings.admin.defaultReportTemplateHint}
-            />
-          </CollapsibleSection>
-        )}
         {layoutApi && (
           <CollapsibleSection sectionKey="projectAdmin.reportSetup.layouts" title={strings.reportLayouts.title} defaultCollapsed={false}>
             <ReportLayoutsPanel api={layoutApi} />
@@ -2763,23 +2689,6 @@ export function ProjectAdminPage() {
             <ReportPlacementsPanel api={placementApi} />
           </CollapsibleSection>
         )}
-        <CollapsibleSection sectionKey="projectAdmin.reportSetup.content" title={strings.admin.reportContent} defaultCollapsed={false}>
-          <ReportContentEditor
-            idPrefix="project-report-content"
-            reportTypes={reportTypes}
-            value={reportContent}
-            onChange={(entries) => {
-              reportConfigDirtyRef.current = true;
-              setReportContent(entries);
-            }}
-            organizationId={project?.organization_id}
-            inherited={inheritedReportContent}
-            onActiveChange={loadInheritedReportContent}
-          />
-        </CollapsibleSection>
-        <button className="btn btn-primary" onClick={saveReportConfig} style={{ alignSelf: "flex-start" }}>
-          {strings.admin.saveSettings}
-        </button>
       </div>
       )}
 

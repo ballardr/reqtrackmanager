@@ -52,35 +52,18 @@ def test_generating_a_pdf_report_with_a_template_selected_succeeds(client, admin
     assert resp.content[:4] == b"%PDF"
 
 
-def test_org_admin_can_set_intro_and_chapters_on_a_template(client, admin_token, org_id):
+def test_a_template_is_branding_only(client, admin_token, org_id):
+    """A template has no introduction, chapters or appendices: a `content` field is ignored and never returned."""
     resp = client.post(
         f"/api/v1/orgs/{org_id}/report-templates",
-        json={
-            "name": "Content Template",
-            "content": [{
-                "report_key": "requirements", "intro": "Template intro text",
-                "chapters": [{"title": "Ch1", "body": "Chapter body"}],
-                "appendices": [{"title": "App1", "body": "Appendix body"}],
-            }],
-        },
+        json={"name": "Branding Only", "content": [{"report_key": "requirements", "intro": "Ignored"}]},
         headers=auth_headers(admin_token),
     )
-    assert resp.status_code == 201, resp.text
-    template = resp.json()
-    [entry] = template["content"]
-    assert entry["intro"] == "Template intro text"
-    assert entry["chapters"] == [{"title": "Ch1", "body": "Chapter body"}]
-    assert entry["appendices"] == [{"title": "App1", "body": "Appendix body"}]
 
-    resp = client.put(
-        f"/api/v1/orgs/{org_id}/report-templates/{template['id']}",
-        json={"name": "Content Template", "content": [{"report_key": "requirements", "intro": "Updated intro"}]},
-        headers=auth_headers(admin_token),
-    )
-    assert resp.status_code == 200
-    [entry] = resp.json()["content"]
-    assert entry["intro"] == "Updated intro"
-    assert entry["chapters"] == []
+    assert resp.status_code == 201, resp.text
+    assert "content" not in resp.json()
+    listed = client.get(f"/api/v1/orgs/{org_id}/report-templates", headers=auth_headers(admin_token)).json()
+    assert all("content" not in t for t in listed)
 
 
 def test_generating_a_report_with_a_foreign_orgs_template_id_is_rejected(client, admin_token, org_id):
@@ -122,30 +105,12 @@ def test_report_template_chapters_per_component_round_trips(client, admin_token,
     assert resp.json()["chapters_per_component"] is True
 
 
-def test_project_default_report_template_round_trips_and_rejects_foreign_org(client, admin_token, org_id):
+def test_a_project_has_no_default_report_template(client, admin_token, org_id):
     project = create_project(client, admin_token, org_id)
-    template = client.post(
-        f"/api/v1/orgs/{org_id}/report-templates", json={"name": "House Style"}, headers=auth_headers(admin_token),
+
+    assert "default_report_template_id" not in client.get(
+        f"/api/v1/projects/{project['id']}", headers=auth_headers(admin_token),
     ).json()
-
-    resp = client.put(
-        f"/api/v1/projects/{project['id']}/report-config",
-        json={"default_report_template_id": template["id"]},
-        headers=auth_headers(admin_token),
-    )
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["default_report_template_id"] == template["id"]
-
-    fetched = client.get(f"/api/v1/projects/{project['id']}/report-config", headers=auth_headers(admin_token)).json()
-    assert fetched["default_report_template_id"] == template["id"]
-
-    other_org, other_admin_token = create_org_admin_in(client, admin_token, "Org For Default Template Isolation")
-    foreign_template = client.post(
-        f"/api/v1/orgs/{other_org['id']}/report-templates", json={"name": "Foreign"}, headers=auth_headers(other_admin_token),
-    ).json()
-    resp = client.put(
-        f"/api/v1/projects/{project['id']}/report-config",
-        json={"default_report_template_id": foreign_template["id"]},
-        headers=auth_headers(admin_token),
-    )
-    assert resp.status_code == 400
+    assert client.put(
+        f"/api/v1/projects/{project['id']}/report-config", json={}, headers=auth_headers(admin_token),
+    ).status_code in (404, 405)

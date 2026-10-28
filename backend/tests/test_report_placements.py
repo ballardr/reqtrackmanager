@@ -198,7 +198,8 @@ def test_a_layout_or_pack_can_be_moved_but_not_hidden_by_a_placement(world):
     assert catalogue(world, project_url(project))[key]["folder"] == "Mine"
     assert place(world, project_url(project), key, hidden=True).status_code == 422
     assert place(world, project_url(project), f"pack:{pack['id']}", folder="Mine").status_code == 200
-    resolved = {r["report_key"]: r for r in world.client.get(project_url(project, "/report-placements/resolved"), headers=auth_headers(world.token)).json()}
+    resolved_rows = world.client.get(project_url(project, "/report-placements/resolved"), headers=auth_headers(world.token)).json()
+    resolved = {r["report_key"]: r for r in resolved_rows}
     assert resolved[f"pack:{pack['id']}"]["folder"] == "Mine"
 
 

@@ -29,7 +29,6 @@ import type {
   OrgPendingInvite,
   OrgPersonalAccessToken,
   OrgProjectSummary,
-  OrgReportDefaults,
   OrgRole,
   OrgSsoConfig,
   OrgUser,
@@ -40,8 +39,6 @@ import type {
   ProjectListItem,
   ProjectRole,
   ProjectStatusDefinition,
-  ReportContentEntry,
-  ReportTypeOption,
   ReportTemplate,
   ScimTokenCreated,
   ScimTokenStatus,
@@ -83,7 +80,6 @@ import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
 import { OverridePill } from "../components/OverridePill";
 import { PermissionPicker } from "../components/PermissionPicker";
 import { ProjectMembersTable } from "../components/ProjectMembersTable";
-import { ReportContentEditor } from "../components/ReportContentEditor";
 import { OrganizationCodePanel } from "../components/OrganizationCodePanel";
 import { PersonalDataPolicyPanel } from "../components/PersonalDataPolicyPanel";
 import { ProjectCodePolicyPanel } from "../components/ProjectCodePolicyPanel";
@@ -510,17 +506,12 @@ export function OrgAdminPage() {
   const [scimGeneratedToken, setScimGeneratedToken] = useState<string | null>(null);
   const [scimError, setScimError] = useState<string | null>(null);
 
-  const [orgReportDefaultsAvailable, setOrgReportDefaultsAvailable] = useState(false);
-  const [orgReportContent, setOrgReportContent] = useState<ReportContentEntry[]>([]);
-  const [reportTypes, setReportTypes] = useState<ReportTypeOption[]>([]);
-
   const [reportTemplates, setReportTemplates] = useState<ReportTemplate[]>([]);
   const [newTemplateName, setNewTemplateName] = useState("");
   const [newTemplateAccentColor, setNewTemplateAccentColor] = useState("#475569");
   const [newTemplateIncludeCoverPage, setNewTemplateIncludeCoverPage] = useState(true);
   const [newTemplateIncludeLogo, setNewTemplateIncludeLogo] = useState(true);
   const [newTemplateFooterText, setNewTemplateFooterText] = useState("");
-  const [newTemplateContent, setNewTemplateContent] = useState<ReportContentEntry[]>([]);
   const [newTemplateChaptersPerComponent, setNewTemplateChaptersPerComponent] = useState(true);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   // The create/edit form for a report template is a brand-new (or, when
@@ -753,30 +744,6 @@ export function OrgAdminPage() {
       setScimStatus(await api.get<ScimTokenStatus>(`/api/v1/orgs/${orgId}/scim-token`));
     } catch (err) {
       if (!(err instanceof ApiError && err.status === 403)) throw err;
-    }
-
-    try {
-      const rd = await api.get<OrgReportDefaults>(`/api/v1/orgs/${orgId}/report-defaults`);
-      setOrgReportDefaultsAvailable(true);
-      setOrgReportContent(rd.content);
-      setReportTypes(await api.get<ReportTypeOption[]>(`/api/v1/orgs/${orgId}/report-types`));
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 403) {
-        setOrgReportDefaultsAvailable(false);
-      } else {
-        throw err;
-      }
-    }
-  }
-
-  async function saveOrgReportDefaults() {
-    if (!orgId) return;
-    try {
-      await api.put(`/api/v1/orgs/${orgId}/report-defaults`, { content: orgReportContent });
-      showToast(strings.reports.reportDefaultsSaved);
-      reload();
-    } catch (err) {
-      showToast(toErrorMessage(err, strings.common.error), "error");
     }
   }
 
@@ -1953,7 +1920,6 @@ export function OrgAdminPage() {
     setNewTemplateIncludeCoverPage(true);
     setNewTemplateIncludeLogo(true);
     setNewTemplateFooterText("");
-    setNewTemplateContent([]);
     setNewTemplateChaptersPerComponent(true);
   }
 
@@ -1974,7 +1940,6 @@ export function OrgAdminPage() {
     setNewTemplateIncludeCoverPage(tpl.include_cover_page);
     setNewTemplateIncludeLogo(tpl.include_logo);
     setNewTemplateFooterText(tpl.footer_text ?? "");
-    setNewTemplateContent(tpl.content);
     setNewTemplateChaptersPerComponent(tpl.chapters_per_component);
     setTemplateFormOpen(true);
   }
@@ -1987,7 +1952,6 @@ export function OrgAdminPage() {
       include_cover_page: newTemplateIncludeCoverPage,
       include_logo: newTemplateIncludeLogo,
       footer_text: newTemplateFooterText || null,
-      content: newTemplateContent,
       chapters_per_component: newTemplateChaptersPerComponent,
     };
     const editing = editingTemplateId !== null;
@@ -3351,22 +3315,6 @@ export function OrgAdminPage() {
 
         {activeGroup === "templates-reports" && (
           <div className="stack">
-            {orgReportDefaultsAvailable && (
-              <CollapsibleSection sectionKey="orgAdmin.reportDefaults" title={strings.admin.reportDefaults}>
-                <p className="text-muted" style={{ margin: 0 }}>{strings.admin.reportDefaultsHint(orgLabel)}</p>
-                <ReportContentEditor
-                  idPrefix="org-report-defaults"
-                  reportTypes={reportTypes}
-                  value={orgReportContent}
-                  onChange={setOrgReportContent}
-                  organizationId={orgId}
-                />
-                <button className="btn btn-primary" onClick={saveOrgReportDefaults} style={{ alignSelf: "flex-start" }}>
-                  {strings.admin.saveSettings}
-                </button>
-              </CollapsibleSection>
-            )}
-
             {layoutApi && (
               <CollapsibleSection sectionKey="orgAdmin.reportLayouts" title={strings.reportLayouts.title}>
                 <ReportLayoutsPanel api={layoutApi} />
@@ -3455,19 +3403,6 @@ export function OrgAdminPage() {
                       label={strings.admin.includeLogo(orgLabel)} checked={newTemplateIncludeLogo}
                       onChange={setNewTemplateIncludeLogo}
                     />
-                    <FormGridFull>
-                      <div className="stack" style={{ gap: "var(--space-1)" }}>
-                        <strong>{strings.admin.templateContent}</strong>
-                        <ReportContentEditor
-                          idPrefix="template-report-content"
-                          reportTypes={reportTypes}
-                          value={newTemplateContent}
-                          onChange={setNewTemplateContent}
-                          organizationId={orgId}
-                        />
-                        <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.admin.templateContentHint(orgLabel)}</span>
-                      </div>
-                    </FormGridFull>
                     <FormGridFull>
                       <CheckboxField help={strings.help.reportChapterDefault}
                         label={strings.admin.templateChaptersPerComponent} checked={newTemplateChaptersPerComponent}

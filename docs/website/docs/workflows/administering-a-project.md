@@ -29,7 +29,7 @@ sidebar_position: 12
 
 ## Report setup
 
-**Project Admin → Report Setup** sets the project's default report template and the introduction, chapters and appendices of each report type, each labelled with where its value is inherited from (a parent project or the organisation). See [Reports and export → Report content](../core-features/reports-and-export.md#report-content).
+**Project Admin → Report Setup** holds the project's report layouts, report packs and where each report appears. Introductions, chapters and appendices are written in a layout; there is no default report template per project (pick a branding template when generating). See [Reports and export](../core-features/reports-and-export.md#introductions-chapters-and-appendices).
 
 ## Terminology
 

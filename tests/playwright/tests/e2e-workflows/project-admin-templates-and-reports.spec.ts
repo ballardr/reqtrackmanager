@@ -5,16 +5,16 @@ import { ensureExpanded, loginAs, openProject, PERSONAS, PROJECT_NAMES, selectOr
 /**
  * Job to be done: an org admin defines a reusable report template (accent
  * colour, cover page/logo toggles, footer, chapter-per-component default —
- * R-G-05), a project can select it as its default (used to pre-populate
- * the report generation page), and a project can be marked usable as a
- * template for future project creation (C-E-04).
+ * R-G-05), and a project can be marked usable as a template for future
+ * project creation (C-E-04). A template is branding only; a project has no
+ * default template and no report content to set.
  *
  * Uses Gamma (single-org admin, `/orgs` redirects straight to its admin
  * page) to stay isolated from the Alpha/Beta specs in this suite.
  */
 
 test.describe("org report templates and project report setup", () => {
-  test("create/edit/delete an org report template, select it as a project default, mark a project as a template", async ({
+  test("create/edit/delete an org report template, see that a project has no default template, mark a project as a template", async ({
     page,
   }) => {
     const templateName = `E2E Corporate Template ${Date.now()}`;
@@ -27,8 +27,7 @@ test.describe("org report templates and project report setup", () => {
     // other CollapsibleSections within the same "Templates & reports"
     // resource-menu group can be
     // left expanded/collapsed server-side by an earlier spec sharing this
-    // same Gamma admin persona, and "Report Defaults" — the other section
-    // in this group — has its own "Name"-adjacent fields too. A page-wide,
+    // same Gamma admin persona. A page-wide,
     // unscoped query is a strict-mode violation waiting to happen whenever
     // that section is already open. (Sections in *other* resource-menu
     // groups, e.g. "Organisation users" or "SMTP & email", are unmounted
@@ -72,31 +71,19 @@ test.describe("org report templates and project report setup", () => {
       await expect(reportTemplatesSection.getByText(revisedName)).toBeVisible();
     });
 
-    await test.step("select it as Gamma-1's default report template", async () => {
+    await test.step("a project's Report Setup has layouts and no default template or report content", async () => {
       // Org Admin's own "Projects" section is management-only (user
       // access), not a navigation link — go via the real Projects list.
       await page.goto("/projects");
       await openProject(page, PROJECT_NAMES.gamma1);
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
       await selectProjectAdminGroup(page, "Report Setup");
-      await page.getByLabel("Default report template").selectOption({ label: revisedName });
-      // Wait for the save's own PUT to actually land before reloading — a
-      // bare click() races the async `saveReportConfig()` against the
-      // immediate reload below, which can reload before the request even
-      // reaches the server and read the pre-save state back (same fix
-      // `preferences-and-theme.spec.ts`'s "pronouns save and persist" step
-      // and `requirements-and-cr-filters.spec.ts`'s view-mode-persistence
-      // step already use for this identical race).
-      await Promise.all([
-        page.waitForResponse((r) => r.url().includes("/report-config") && r.request().method() === "PUT"),
-        page.getByRole("button", { name: "Save settings" }).click(),
-      ]);
-      await page.reload();
-      await selectProjectAdminGroup(page, "Report Setup");
-      await expect(page.getByLabel("Default report template")).toHaveValue(/.+/);
+      await expect(page.getByRole("button", { name: "New layout" })).toBeVisible();
+      await expect(page.getByLabel("Default report template")).toHaveCount(0);
+      await expect(page.getByLabel("Report type")).toHaveCount(0);
     });
 
-    await test.step("the selected default is pre-selected on the report generation page", async () => {
+    await test.step("the report generation page offers the template, pre-selecting none", async () => {
       await page.getByRole("link", { name: "Reports", exact: true }).click();
       await expect(page.getByText("Template & layout")).toBeVisible();
     });

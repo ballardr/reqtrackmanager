@@ -609,14 +609,6 @@ const en = {
     customFields: "Custom fields",
     newCustomField: "New field",
     reportSetup: "Report Setup",
-    reportContent: "Report content",
-    // Distinct wording from `defaultReportTemplate` (the field's own
-    // label, kept as-is for accessibility) deliberately — an identical
-    // CollapsibleSection title would make its own aria-label ("Default
-    // report template section") a substring match for `getByLabel`
-    // queries targeting the field itself, a real ambiguity, not just an
-    // accessible-naming nicety.
-    defaultTemplateSection: "Default template",
     // Project Admin's own
     // "Modules" tab: a project's whole-module enablement override and,
     // for a module with sub-components, its own per-sub-component
@@ -659,17 +651,9 @@ const en = {
     includeCoverPage: "Include cover page",
     includeLogo: (org: string) => `Include ${org} logo`,
     footerText: "Footer text",
-    templateContentHint: (org: string) =>
-      `Optional. When set for a report type, this overrides the {project}'s own (or ${org} default) introduction, chapters and appendices for any report of that type generated using this template — leave a report type blank to keep using the {project}'s own content.`,
-    templateContent: "Report content",
-    reportDefaults: "Report Defaults",
-    reportDefaultsHint: (org: string) =>
-      `Used as the default introduction, chapters and appendices, per report type, for any {project} in this ${org} that — and whose parent {projects} — haven't set their own. See each {project}'s Report Setup tab.`,
     reportSetupHint:
-      "The introduction, chapters and appendices below are used as the default for each report type generated for this {project}, unless overridden when generating. A report type with nothing here uses its parent {project}'s, then the organisation's.",
+      "Report layouts, report packs and where reports appear for this {project}. Write an introduction, chapters and appendices in a layout.",
     templateChaptersPerComponent: "Chapter per {component} by default",
-    defaultReportTemplate: "Default report template",
-    defaultReportTemplateHint: "Pre-selected on this {project}'s report generation page — a user can still pick a different template, or none, for a specific report.",
     components: "{Components}",
     componentsAndCategories: "{Components} & {categories}",
     componentTreeHint: "{Categories} are nested under one {component} each. A {requirement}'s identifier combines its {component}'s and {category}'s prefixes, e.g. SW-PERF-014.",
@@ -1859,35 +1843,7 @@ const en = {
     allStatuses: "All statuses",
     keywordFilter: "Keyword",
     includeArchived: "Include archived {requirements}",
-    introduction: "Introduction",
-    bodyChapters: "Body chapters",
-    appendices: "Appendices",
     resourceSections: "Resource sections",
-    // Per-report-type content editor (`ReportContentEditor`).
-    contentTypes: "Report type",
-    typeWithContent: (title: string) => `${title} (has content)`,
-    allReports: "All reports",
-    allReportsHint:
-      "Used by any report type that has no content of its own at this level. A report type's own content always wins over this.",
-    typeHint: (title: string) => `Content for the ${title} only.`,
-    contentSetFor: (titles: string) => `Content set for: ${titles}.`,
-    noContentSet: "No content set at this level.",
-    useInherited: "Use inherited",
-    nothingInherited: "Nothing is inherited, so the report prints none.",
-    inheritedFrom: (name: string) => `Inherited from ${name}`,
-    inheritedOrganisation: (name: string) => `Organisation default (${name})`,
-    inheritedTemplate: (name: string) => `Template ${name}`,
-    inheritedDescription: (name: string) => `${name} description`,
-    inheritedPreview: "Inherited content",
-    placeholdersTitle: "Placeholders",
-    placeholdersHint: "Type these in any text above; they are replaced when the report is generated.",
-    placeholderProjectName: "the {project}'s name (the organisation's for organisation-wide reports)",
-    placeholderReportTitle: "the title printed on the report",
-    placeholderGeneratedOn: "the date it is generated (YYYY-MM-DD)",
-    placeholderOrganisation: "the organisation's name",
-    reportSetupSaved: "Report setup saved.",
-    reportDefaultsSaved: "Report defaults saved.",
-    effectiveLoading: "Loading inherited content…",
   },
   // Background runs of custom reports: the panel on the Reports pages.
   reportVariables: {

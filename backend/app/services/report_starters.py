@@ -4,8 +4,8 @@ Module: services.report_starters
 Starter report layouts: ready-made document layouts an organisation starts from.
 
 Responsibilities:
-- Declare the starters (`STARTERS`): a Business Requirements Document, an Engineering Specification and a
-  Review Package. A starter holds the parts about core records and its own words; every other part is contributed
+- Declare the starters (`STARTERS`): a Business Requirements Document, an Engineering Specification, a
+  Review Package and Requirements by Component. A starter holds the parts about core records and its own words; every other part is contributed
   by the module whose records it shows (`ModuleDefinition.report_starter_sections`) and merged in by `order`.
 - `add_starter_layouts`: write the starters an organisation does not yet have as ordinary organisation layouts.
 
@@ -46,6 +46,7 @@ from app.services.report_layouts import LayoutNameTakenError
 from app.services.report_starter_blocks import (
     BUSINESS_REQUIREMENTS_DOCUMENT,
     ENGINEERING_SPECIFICATION,
+    REQUIREMENTS_BY_COMPONENT,
     REVIEW_PACKAGE,
     heading,
     section,
@@ -209,7 +210,44 @@ REVIEW = StarterLayout(
     ),
 )
 
-STARTERS: tuple[StarterLayout, ...] = (BUSINESS_REQUIREMENTS, SPECIFICATION, REVIEW)
+BY_COMPONENT = StarterLayout(
+    key=REQUIREMENTS_BY_COMPONENT,
+    name="Requirements by Component",
+    description=(
+        "Every requirement grouped by component and then category, with its reasoning, status and tags: the "
+        "requirements report as a layout, ready for an introduction, chapters and appendices."
+    ),
+    orientation="portrait",
+    core_parts=(
+        (10, section("Introduction", "Replace this paragraph with the purpose and scope of the requirements below.")),
+        (20, (
+            {
+                "type": "group", "source": {"record_type": "requirement"}, "by": "component", "as": "comp",
+                "children": [
+                    heading("{{comp.value}}", 2),
+                    {
+                        "type": "group", "source": {"group": "comp"}, "by": "category", "as": "cat",
+                        "children": [
+                            heading("{{cat.value}}", 3),
+                            {
+                                "type": "table", "source": {"group": "cat", "sort": [{"field": "code"}]},
+                                "columns": [
+                                    {"field": "code", "label": "ID"}, {"field": "title", "label": "Name"},
+                                    {"field": "reasoning", "label": "Reasoning"}, {"field": "status", "label": "Status"},
+                                    {"field": "tags", "label": "Tags"},
+                                ],
+                                "empty_text": "No requirements.",
+                            },
+                        ],
+                    },
+                ],
+            },
+        )),
+        (90, section("Appendices", "Replace this paragraph with any supporting material.")),
+    ),
+)
+
+STARTERS: tuple[StarterLayout, ...] = (BUSINESS_REQUIREMENTS, SPECIFICATION, REVIEW, BY_COMPONENT)
 """Every starter, in the order they are written and listed."""
 
 

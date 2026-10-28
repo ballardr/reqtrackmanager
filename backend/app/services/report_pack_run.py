@@ -346,10 +346,7 @@ def _report_entry(
     outcome.records = sum(len(section.rows) for section in result.sections)
     outcome.record_counts = {"rows": outcome.records}
     if render:
-        outcome.content = render_module_report(
-            db, result, entry["format"], module_key=module_key, definition=definition, organization=organization,
-            project=project, template=template,
-        )
+        outcome.content = render_module_report(db, result, entry["format"], organization=organization, template=template)
         outcome.extension = entry["format"]
     outcome.status = STATUS_INCLUDED
     return outcome

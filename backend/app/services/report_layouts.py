@@ -38,7 +38,6 @@ from app.models.report_layout import LAYOUT_FAMILIES, ReportLayout, ReportLayout
 from app.models.report_placement import ReportPlacement
 from app.services import definition_suppression
 from app.services.audit import log_event
-from app.services.report_content import delete_layout_content
 from app.services.report_folders import clean_folder
 from app.services.report_layout_scope import LAYOUT_KIND
 from app.services.report_layout_tree import TREE_SCHEMA_VERSION, assert_valid, tree_hash
@@ -253,14 +252,13 @@ def update_details(
 
 
 def delete_layout(db: Session, layout: ReportLayout, *, actor_id: uuid.UUID | None) -> None:
-    """Deletes a layout and every version of it, every project's tombstone that hid it and the report content written for it."""
+    """Deletes a layout and every version of it, and every project's tombstone that hid it."""
     log_event(
         db, entity_type="report_layout", entity_id=layout.id, action="deleted", actor_id=actor_id,
         organization_id=layout.organization_id, project_id=layout.project_id,
         detail={"family": layout.family, "versions": layout.current_version},
     )
     definition_suppression.forget_definition(db, LAYOUT_KIND, layout.id)  # no foreign key holds a project's tombstone
-    delete_layout_content(db, layout.id)  # nor does the content (introduction, chapters, appendices) written for it
     db.execute(delete(ReportPlacement).where(ReportPlacement.report_key == f"layout:{layout.id}"))  # nor a placement
     db.delete(layout)
     db.flush()

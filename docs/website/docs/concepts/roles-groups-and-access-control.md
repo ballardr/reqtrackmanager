@@ -8,7 +8,7 @@ sidebar_position: 4
 
 Access control is enforced by the server at two levels, and they answer different questions:
 
-- **Organisation roles** — `org_admin`, `project_creator`, `member` — govern administration of the organisation itself: users, groups, SSO, branding, report defaults.
+- **Organisation roles** — `org_admin`, `project_creator`, `member` — govern administration of the organisation itself: users, groups, SSO, branding, report templates.
 - **Project roles** — `project_manager`, `project_administrator`, `stakeholder`, `member` — govern what someone can do inside one specific project: author and review requirements, approve change requests, manage project settings, or just view.
 
 A project manager implies administrator and stakeholder capabilities on that project, and any assigned role implies baseline (view) access — roles are additive, not a single fixed rank. On top of these fixed roles, an organisation can also define its own **custom roles** for finer-grained cases the fixed set doesn't cover, and delegate who may assign roles at all — see [Role Management](../core-features/role-management.md).
