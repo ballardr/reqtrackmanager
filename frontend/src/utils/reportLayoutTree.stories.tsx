@@ -3,11 +3,10 @@ import { expect } from "storybook/test";
 
 import { buildBlockCatalogue, buildOutlineTree } from "../testing/reportLayoutFixtures";
 import {
-  duplicateNode, formatPath, getAt, indentNode, indentTarget, insertNode, moveNode, namesInScope, nodeAt, outdentNode, owningNode,
-  parsePath, removeNode, setAt, stableJson, summarise,
+  formatPath, getAt, insertNode, namesInScope, nodeAt, owningNode, parsePath, setAt, stableJson, summarise,
 } from "./reportLayoutTree";
 
-/** The pure helpers behind the block outline, exercised as plain functions (the stories render nothing). */
+/** The pure helpers behind the block editor, exercised as plain functions (the stories render nothing). */
 const meta: Meta = { title: "Utils/reportLayoutTree", render: () => <p>Pure helpers; see the interactions.</p> };
 export default meta;
 
@@ -49,61 +48,12 @@ export const SettingAValueCopiesAndNeverMutates: Story = {
   },
 };
 
-export const InsertingAndRemovingKeepOrder: Story = {
+export const InsertingKeepsOrderAndNeverMutates: Story = {
   play: async () => {
     const tree = buildOutlineTree();
     const added = insertNode(tree, ["nodes"], 1, { type: "page_break" });
     await expect(kinds(added)).toEqual(["heading", "page_break", "each"]);
-    await expect(kinds(removeNode(added, ["nodes", 1]))).toEqual(["heading", "each"]);
     await expect(kinds(tree)).toEqual(["heading", "each"]);
-  },
-};
-
-export const MovingSwapsNeighboursAndStopsAtTheEnds: Story = {
-  play: async () => {
-    const tree = buildOutlineTree();
-    const down = moveNode(tree, ["nodes", 0], 1);
-    await expect(kinds(down!.tree)).toEqual(["each", "heading"]);
-    await expect(down!.addr).toEqual(["nodes", 1]);
-    await expect(moveNode(tree, ["nodes", 0], -1)).toBeNull();
-    await expect(moveNode(tree, ["nodes", 1], 1)).toBeNull();
-  },
-};
-
-export const IndentingNestsIntoTheBlockAboveIfItHoldsChildren: Story = {
-  play: async () => {
-    const tree = insertNode(buildOutlineTree(), ["nodes"], 1, { type: "heading", text: "Later" });
-    await expect(kinds(tree)).toEqual(["heading", "heading", "each"]);
-    // The first block has nothing above; a heading above cannot hold children.
-    await expect(indentTarget(tree, ["nodes", 0], types)).toBeNull();
-    await expect(indentTarget(tree, ["nodes", 1], types)).toBeNull();
-    // The each (index 2) follows a heading, so it cannot go in; a block after the each can.
-    const withTail = insertNode(tree, ["nodes"], 3, { type: "text", text: "Tail" });
-    const nested = indentNode(withTail, ["nodes", 3], types)!;
-    await expect(nested.addr).toEqual(["nodes", 2, "children", 2]);
-    await expect(kinds(nested.tree)).toEqual(["heading", "heading", "each"]);
-    await expect(nodeAt(nested.tree, nested.addr)).toMatchObject({ type: "text", text: "Tail" });
-  },
-};
-
-export const OutdentingPlacesTheBlockAfterItsParent: Story = {
-  play: async () => {
-    const tree = buildOutlineTree();
-    const out = outdentNode(tree, ["nodes", 1, "children", 0])!;
-    await expect(out.addr).toEqual(["nodes", 2]);
-    await expect(kinds(out.tree)).toEqual(["heading", "each", "heading"]);
-    await expect((nodeAt(out.tree, ["nodes", 1])!.children as unknown[]).length).toBe(1);
-    await expect(outdentNode(tree, ["nodes", 0])).toBeNull();
-  },
-};
-
-export const DuplicatesShareNothingWithTheOriginal: Story = {
-  play: async () => {
-    const tree = buildOutlineTree();
-    const copy = duplicateNode(tree, ["nodes", 1])!;
-    await expect(copy.addr).toEqual(["nodes", 2]);
-    const edited = setAt(copy.tree, ["nodes", 2, "children", 0, "text"], "Only the copy");
-    await expect(getAt(edited, ["nodes", 1, "children", 0, "text"])).toBe("{{req.code}} {{req.title}}");
   },
 };
 

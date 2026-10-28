@@ -30,7 +30,7 @@ Responsibilities:
 - Let other block types add their text form (`register_text_form`), as they add a validator and an evaluator.
 
 Grammar (one statement per line; indentation is cosmetic):
-- `@layout document [portrait|landscape]` or `@layout table` is the first line.
+- `@layout document [portrait|landscape] [A3|A4|A5|Letter|Legal]` or `@layout table` is the first line.
 - A block opens with `@name ...`; `each`, `group`, `if` (with `@else`), `table`, `sheet` and an explicit
   `@text` end with `@end`. `heading`, `page_break` and the quoted `@text "..."` are one line.
 - A source is a record type, or `in <group name>`, followed by clauses in any order: `from <name>`,
@@ -100,6 +100,7 @@ LOGIC_WORDS = ("and", "or", "not")
 MAX_BRACKET_DEPTH = 8
 INDENT = "  "
 ORIENTATION_WORDS = ("portrait", "landscape")
+PAGE_SIZE_WORDS = ("A3", "A4", "A5", "Letter", "Legal")
 SOURCE_CLAUSES = ("from", "via", "direction", "archived", "where", "sort")
 EXTRA_CLAUSES = ("as", "by", "empty")
 
@@ -749,9 +750,15 @@ class _Parser:
         if family not in (FAMILY_DOCUMENT, FAMILY_TABLE):
             raise _Syntax(f"The layout must be a {FAMILY_DOCUMENT} or a {FAMILY_TABLE}, not {family!r}.", offset + 2)
         self.tree["family"] = family
-        orientation = cur.accept(*ORIENTATION_WORDS)
-        if orientation:
-            self.tree["orientation"] = orientation
+        # The orientation and the page size may come in either order, each at most once.
+        for _ in range(2):
+            word = cur.accept(*ORIENTATION_WORDS, *PAGE_SIZE_WORDS)
+            if not word:
+                break
+            key = "orientation" if word in ORIENTATION_WORDS else "page_size"
+            if key in self.tree:
+                raise _Syntax(f"The {key.replace('_', ' ')} is written once.", offset)
+            self.tree[key] = word
         cur.expect_end()
 
     def _directive(self, raw: str, stripped: str, line_no: int) -> None:
@@ -1061,6 +1068,8 @@ def format_tree(tree: dict[str, Any]) -> str:
     header = f"@layout {tree['family']}"
     if "orientation" in tree:
         header += f" {tree['orientation']}"
+    if "page_size" in tree:
+        header += f" {tree['page_size']}"
     writer.line(0, header)
     for declaration in tree.get("variables", []):
         writer.line(0, _variable_text(declaration))

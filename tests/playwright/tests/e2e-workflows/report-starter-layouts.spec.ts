@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
+import { chooseReport } from "./reportPicker";
 import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
@@ -64,10 +65,7 @@ test.describe("Report starter layouts", () => {
 
     await test.step("a project runs the Business Requirements Document on its own records", async () => {
       await page.goto(`/projects/${project.id}/reports`);
-      const picker = page.getByLabel("Report", { exact: true });
-      const option = picker.locator("option", { hasText: "Business Requirements Document" });
-      await expect(option).toHaveCount(1); // waits for the catalogue to load
-      await picker.selectOption({ label: (await option.textContent())! });
+      await chooseReport(page, "Business Requirements Document");
       await expect(page.getByRole("cell", { name: requirement })).toBeVisible();
       await expect(page.getByRole("heading", { name: /Pain Points/ })).toHaveCount(0); // its module is off in this project, so the section is left out
     });

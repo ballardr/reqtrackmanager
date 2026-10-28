@@ -114,7 +114,7 @@ def _summary(layout: ReportLayout, origin: Origin, *, hidden: bool = False, edit
     """A layout's summary as one scope sees it."""
     return ReportLayoutOut(
         id=layout.id, organization_id=layout.organization_id, project_id=layout.project_id, name=layout.name,
-        description=layout.description, family=layout.family, current_version=layout.current_version,
+        description=layout.description, folder=layout.folder, family=layout.family, current_version=layout.current_version,
         origin=origin, hidden=hidden, editable=editable, updated_at=layout.updated_at,
     )
 
@@ -287,7 +287,7 @@ def _create(db: Session, user: User, body: ReportLayoutCreate, *, organization_i
     try:
         saved = report_layouts.create_layout(
             db, organization_id=organization_id, project_id=project_id, name=body.name, description=body.description,
-            family=body.family, tree=body.tree, actor_id=user.id, comment=body.comment,
+            folder=body.folder, family=body.family, tree=body.tree, actor_id=user.id, comment=body.comment,
         )
     except (ValueError, InvalidLayoutError) as exc:
         db.rollback()
@@ -309,7 +309,9 @@ def _save(db: Session, user: User, layout: ReportLayout, body: ReportLayoutSave)
 
 def _update(db: Session, user: User, layout: ReportLayout, body: ReportLayoutUpdate) -> ReportLayout:
     try:
-        report_layouts.update_details(db, layout, name=body.name, description=body.description, actor_id=user.id)
+        report_layouts.update_details(
+            db, layout, name=body.name, description=body.description, folder=body.folder, actor_id=user.id,
+        )
     except ValueError as exc:
         db.rollback()
         raise _bad_request(exc) from exc

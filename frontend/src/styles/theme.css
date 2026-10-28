@@ -2798,36 +2798,48 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
   text-decoration: underline;
 }
 
-/* Report layout outline: blocks as nested cards; a block with problems is outlined in the danger colour. */
-.outline-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
+/* Report layout block editor: the Blockly workspace beside the inspector for the selected block. */
+.blocks-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem);
+  gap: var(--space-4);
+  align-items: start;
 }
 
-.outline-block {
+@media (max-width: 60rem) {
+  .blocks-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.blocks-stage {
+  position: relative;
+  height: 70vh;
+  min-height: 26rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.blocks-workspace {
+  position: absolute;
+  inset: 0;
+}
+
+.blocks-inspector {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: var(--space-3);
 }
 
-.outline-block[data-invalid="true"] {
-  border-color: var(--color-danger);
+.blocklyText.rl-block-title {
+  font-weight: 700;
 }
 
-.outline-block-body {
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--color-border);
-}
-
-.outline-container {
-  padding-left: var(--space-4);
-  border-left: 2px solid var(--color-border);
+.blocklyText.rl-summary {
+  font-style: italic;
+  opacity: 0.85;
 }
 
 .outline-field-problems {
@@ -2883,72 +2895,3 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
   background: color-mix(in srgb, var(--color-danger) 20%, transparent);
 }
 
-/* Report layout document view: blocks as framed cards around editable prose. */
-.rich-editor .ProseMirror {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  outline: none;
-}
-
-.rich-block {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-3);
-}
-
-.rich-block[data-invalid="true"] {
-  border-color: var(--color-danger);
-}
-
-.rich-block-settings {
-  margin: var(--space-3) 0;
-  padding: var(--space-3);
-  background: var(--color-surface-alt);
-  border-radius: var(--radius-md);
-}
-
-.rich-slot {
-  margin-top: var(--space-3);
-  padding-left: var(--space-4);
-  border-left: 2px solid var(--color-border);
-}
-
-.rich-heading {
-  font-weight: 600;
-  margin-top: var(--space-2);
-}
-
-.rich-heading-1 { font-size: 1.6rem; }
-.rich-heading-2 { font-size: 1.35rem; }
-.rich-heading-3 { font-size: 1.15rem; }
-.rich-heading-4 { font-size: 1rem; }
-
-.rich-prose {
-  margin-top: var(--space-2);
-  white-space: pre-wrap;
-}
-
-.rich-prose > p,
-.rich-prose > ul,
-.rich-prose > h3 {
-  margin: 0 0 var(--space-2);
-}
-
-.rich-prose h3[data-level="1"] { font-size: 1.3rem; }
-.rich-prose h3[data-level="2"] { font-size: 1.15rem; }
-.rich-prose h3[data-level="3"],
-.rich-prose h3[data-level="4"] { font-size: 1rem; }
-
-.rich-prose code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  background: var(--color-surface-alt);
-  border-radius: var(--radius-sm);
-  padding: 0 0.25em;
-}
-
-.rich-prose ul,
-.rich-prose ol {
-  padding-left: var(--space-5);
-}

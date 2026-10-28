@@ -67,6 +67,12 @@ export interface ReportCatalogueEntry {
   params: ReportParam[];
   /** A custom report's run-time variables (its run form); empty for a module report, which declares `params`. */
   variables: ReportVariable[];
+  /** What the picker filters on: a table layout is a `sheet`. */
+  kind: "report" | "sheet";
+  /** Where the picker files it (the effective folder path: a placement, else the author's, else the default). */
+  folder: string;
+  /** The stable name placements use (`report:<module>.<key>` or `layout:<id>`). */
+  placement_key: string;
 }
 
 /** A custom report layout's run-time variable as the run form shows it (`ReportVariableOut`). */

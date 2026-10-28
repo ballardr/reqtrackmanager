@@ -95,6 +95,8 @@ MAX_TREE_BYTES = 512_000
 MAX_ERRORS = 50
 
 ORIENTATIONS = ("portrait", "landscape")
+#: The page sizes a document layout can choose (`services.report_model.PAGE_SIZES_CM`); A4 when none is written.
+PAGE_SIZES = ("A3", "A4", "A5", "Letter", "Legal")
 DIRECTIONS = ("both", "outgoing", "incoming")
 DEFAULT_RECORD_ALIAS = "record"
 DEFAULT_GROUP_ALIAS = "group"
@@ -290,7 +292,7 @@ class TreeValidator:
             self.error("", f"The layout is too large ({size} bytes; the limit is {MAX_TREE_BYTES}).")
             return self.analysis
 
-        self.check_keys(tree, "", required=("schema_version", "family", "nodes"), optional=("orientation", "variables"))
+        self.check_keys(tree, "", required=("schema_version", "family", "nodes"), optional=("orientation", "page_size", "variables"))
         if tree.get("schema_version") != TREE_SCHEMA_VERSION:
             self.error("schema_version", f"Must be {TREE_SCHEMA_VERSION}.")
         declared = tree.get("family")
@@ -305,6 +307,11 @@ class TreeValidator:
                 self.error("orientation", "Only a document layout has a page orientation.")
             elif tree["orientation"] not in ORIENTATIONS:
                 self.error("orientation", f"Must be one of: {', '.join(ORIENTATIONS)}.")
+        if "page_size" in tree:
+            if declared != FAMILY_DOCUMENT:
+                self.error("page_size", "Only a document layout has a page size.")
+            elif tree["page_size"] not in PAGE_SIZES:
+                self.error("page_size", f"Must be one of: {', '.join(PAGE_SIZES)}.")
         if "variables" in tree:
             self.variable_declarations(tree["variables"], "variables")
         nodes = tree.get("nodes")

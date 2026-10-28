@@ -47,6 +47,7 @@ class ReportLayout(UUIDPKMixin, TimestampMixin, Base):
         project_id: The owning project, or `None` for an organisation-level layout.
         name: Display name, unique within the owner (case-insensitively, checked by the service).
         description: What the layout reports.
+        folder: The folder the Reports picker files it under (`""` = the picker's default folder).
         family: `document` (PDF, DOCX, ODT, HTML ...) or `table` (CSV, XLSX, ODS ...); fixed at creation.
         current_version: The latest `ReportLayoutVersion.version`.
         created_by: The author, `None` once that user is deleted.
@@ -72,6 +73,7 @@ class ReportLayout(UUIDPKMixin, TimestampMixin, Base):
     )
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text, default="")
+    folder: Mapped[str] = mapped_column(String(120), default="", server_default="")
     family: Mapped[str] = mapped_column(String(20))
     current_version: Mapped[int] = mapped_column(Integer, default=1)
     created_by: Mapped[uuid.UUID | None] = mapped_column(

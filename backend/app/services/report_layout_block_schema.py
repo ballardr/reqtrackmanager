@@ -135,6 +135,10 @@ LAYOUT_FIELDS: tuple[BlockField, ...] = (
         help="How pages are laid out in PDF and Word output. A table layout has no pages.", families=("document",),
     ),
     BlockField(
+        "page_size", "Page size", "choice", choices=("A3", "A4", "A5", "Letter", "Legal"), default="A4",
+        help="The paper size of PDF, Word and OpenDocument output. A table layout has no pages.", families=("document",),
+    ),
+    BlockField(
         "variables", "Variables", "variables",
         help="Values the person running the report chooses, for example which categories to include. "
         "They narrow what the report shows; they are not access control.",

@@ -3,6 +3,7 @@ import fs from "node:fs";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
+import { chooseReport } from "./reportPicker";
 import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectProjectAdminGroup } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
@@ -65,13 +66,6 @@ test.describe("Custom report variables", () => {
     });
     expect(resp.ok(), await resp.text()).toBeTruthy();
     return resp.json();
-  }
-
-  async function chooseReport(page: Page, name: string) {
-    const picker = page.getByLabel("Report", { exact: true });
-    const option = picker.locator("option", { hasText: name });
-    await expect(option).toHaveCount(1); // waits for the catalogue to load
-    await picker.selectOption({ label: (await option.textContent())! });
   }
 
   async function choose(page: Page, ...categories: string[]) {

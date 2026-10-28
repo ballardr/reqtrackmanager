@@ -29,15 +29,17 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
 from app.models.report_layout import LAYOUT_FAMILIES, ReportLayout, ReportLayoutVersion
+from app.models.report_placement import ReportPlacement
 from app.services import definition_suppression
 from app.services.audit import log_event
 from app.services.report_content import delete_layout_content
+from app.services.report_folders import clean_folder
 from app.services.report_layout_scope import LAYOUT_KIND
 from app.services.report_layout_tree import TREE_SCHEMA_VERSION, assert_valid, tree_hash
 
@@ -115,6 +117,7 @@ def create_layout(
     tree: dict[str, Any],
     actor_id: uuid.UUID | None,
     comment: str = "",
+    folder: str = "",
 ) -> SavedLayout:
     """Creates a layout and its version 1.
 
@@ -123,6 +126,7 @@ def create_layout(
         organization_id: The owning organisation.
         project_id: The owning project, or `None` for an organisation-level layout.
         name / description: Display text.
+        folder: The Reports picker folder (`""` for none).
         family: `document` or `table`; fixed for the layout's life.
         tree: The layout tree.
         actor_id: The author.
@@ -132,12 +136,13 @@ def create_layout(
         The stored layout and version.
 
     Raises:
-        ValueError: A bad name, description, family, or a project outside the organisation.
+        ValueError: A bad name, description, folder, family, or a project outside the organisation.
         InvalidLayoutError: The tree is not valid.
         LayoutNameTakenError: The owner already has a layout of that name.
     """
     name = _clean_name(name)
     _check_text(description, MAX_DESCRIPTION_CHARS, "description")
+    folder = clean_folder(folder)
     _check_text(comment, MAX_COMMENT_CHARS, "comment")
     if family not in LAYOUT_FAMILIES:
         raise ValueError(f"The family is one of: {', '.join(LAYOUT_FAMILIES)}.")
@@ -149,7 +154,7 @@ def create_layout(
     _assert_name_free(db, organization_id, project_id, name)
 
     layout = ReportLayout(
-        organization_id=organization_id, project_id=project_id, name=name, description=description,
+        organization_id=organization_id, project_id=project_id, name=name, description=description, folder=folder,
         family=family, current_version=1, created_by=actor_id,
     )
     try:
@@ -218,12 +223,13 @@ def save_version(
 
 
 def update_details(
-    db: Session, layout: ReportLayout, *, name: str | None = None, description: str | None = None, actor_id: uuid.UUID | None,
+    db: Session, layout: ReportLayout, *, name: str | None = None, description: str | None = None,
+    folder: str | None = None, actor_id: uuid.UUID | None,
 ) -> ReportLayout:
-    """Renames or re-describes a layout (not a new version: the tree is unchanged).
+    """Renames, re-describes or re-files a layout (not a new version: the tree is unchanged).
 
     Raises:
-        ValueError: A bad name or description.
+        ValueError: A bad name, description or folder.
         LayoutNameTakenError: The new name is taken.
     """
     changed: list[str] = []
@@ -234,6 +240,9 @@ def update_details(
     if description is not None and description != layout.description:
         layout.description = _check_text(description, MAX_DESCRIPTION_CHARS, "description")
         changed.append("description")
+    if folder is not None and (new_folder := clean_folder(folder)) != layout.folder:
+        layout.folder = new_folder
+        changed.append("folder")
     if changed:
         db.flush()
         log_event(
@@ -252,6 +261,7 @@ def delete_layout(db: Session, layout: ReportLayout, *, actor_id: uuid.UUID | No
     )
     definition_suppression.forget_definition(db, LAYOUT_KIND, layout.id)  # no foreign key holds a project's tombstone
     delete_layout_content(db, layout.id)  # nor does the content (introduction, chapters, appendices) written for it
+    db.execute(delete(ReportPlacement).where(ReportPlacement.report_key == f"layout:{layout.id}"))  # nor a placement
     db.delete(layout)
     db.flush()
 

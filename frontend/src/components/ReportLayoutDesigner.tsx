@@ -7,12 +7,10 @@
  * Responsibilities:
  * - Load a layout and show its current tree as the text view (`ReportLayoutApi.formatTree`), editable in a
  *   monospace box with block shortcuts; a layout shared from elsewhere opens read-only with a "make a copy" route.
- * - Edit the same tree in three views, switchable at any time: the text view, the block outline
- *   (`ReportLayoutOutline`) and, for a document layout, the document (`ReportLayoutRichText`). The two tree views
- *   edit one copy of the tree, which it checks with the server's `validate` a moment after each change and uses to
- *   keep the text view's text up to date, so the preview, Save and the switch back to text all read one layout.
- *   Moving between the outline and the document needs no conversion. A view that cannot show the layout as it
- *   stands (text with problems; a tree the document cannot show without changing it) refuses the switch, with the reason.
+ * - Edit the same tree in two views, switchable at any time: the text view and the block editor
+ *   (`ReportLayoutBlocks`). The block editor edits one copy of the tree, which it checks with the server's `validate` a
+ *   moment after each change and uses to keep the text view's text up to date, so the preview, Save and the switch
+ *   back to text all read one layout. A switch from text that has problems is refused, with the reason.
  * - Check the text a moment after typing stops (`parseText`) and list every problem by line, each jumping to its
  *   line; Save is available only for text that parsed cleanly, and sends the parsed tree with the version the
  *   author started from, so a concurrent save is reported (409) instead of overwritten.
@@ -24,7 +22,7 @@
  * holds no block model that could drift from the tree (the WYSIWYG editor later edits the same tree). The saved
  * text is the author's own, not re-formatted, so Save never reflows what they typed. Pickers only insert text.
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -37,22 +35,21 @@ import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import {
-  aliasesInScope, asBlock, BLOCK_SNIPPETS, insertAt, insertionRange, lineOfOffset, offsetOfLine,
+  aliasesInScope, asBlock, insertAt, insertionRange, lineOfOffset, offsetOfLine,
 } from "../utils/reportLayoutText";
-import { NotRepresentableError, treeToDoc } from "../utils/reportLayoutDoc";
 import { stableJson, type Tree } from "../utils/reportLayoutTree";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { Badge } from "./Badge";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { TextField } from "./FormFields";
+import { ReportLayoutBlockToolbar } from "./ReportLayoutBlockToolbar";
 import { ReportLayoutFieldPicker } from "./ReportLayoutFieldPicker";
 import { ReportLayoutFormModal } from "./ReportLayoutFormModal";
 import { ReportLayoutHistory } from "./ReportLayoutHistory";
-import { ReportLayoutOutline } from "./ReportLayoutOutline";
-import { ReportLayoutRichText } from "./ReportLayoutRichText";
+import { ReportLayoutPageSetup } from "./ReportLayoutPageSetup";
 import { ReportLayoutPreviewPanel } from "./ReportLayoutPreviewPanel";
 import { ReportLayoutWidgetPicker } from "./ReportLayoutWidgetPicker";
 import { RecordHeader } from "./RecordHeader";
+import { SaveVersionButton } from "./SaveVersionButton";
 import { Spinner } from "./Spinner";
 import { Tabs, tabPanelProps, type TabDef } from "./Tabs";
 
@@ -62,13 +59,16 @@ export const TEXT_CHECK_DELAY_MS = 400;
 const EDITOR_MAX_LINES = 40;
 
 type MainTab = "design" | "history";
-type EditView = "text" | "outline" | "document";
+/** Blockly is large, so the block editor is fetched only when the author opens the Blocks view. */
+const ReportLayoutBlocks = lazy(() => import("./ReportLayoutBlocks").then((m) => ({ default: m.ReportLayoutBlocks })));
+
+type EditView = "text" | "blocks";
 /** The views that edit the tree itself (the text view edits text). */
 const isTreeView = (view: EditView) => view !== "text";
 type AsideTab = "preview" | "fields" | "widgets";
 type Dialog = "details" | "delete" | "reload" | "leave";
 
-/** The outcome of checking one exact outline tree. */
+/** The outcome of checking one exact block-editor tree. */
 interface TreeChecked {
   tree: Tree;
   /** `null` when the check itself could not run. */
@@ -112,8 +112,8 @@ export function ReportLayoutDesigner({
   const [widgets, setWidgets] = useState<ReportWidget[] | null>(null);
   const [blockTypes, setBlockTypes] = useState<BlockCatalogue | null>(null);
   const [view, setView] = useState<EditView>("text");
-  /** The tree the outline edits, and the tree it started from (so a switch back leaves unedited text alone). */
-  const [outlineTree, setOutlineTree] = useState<Tree | null>(null);
+  /** The tree the block editor edits, and the tree it started from (so a switch back leaves unedited text alone). */
+  const [blockTree, setBlockTree] = useState<Tree | null>(null);
   const [enteredTree, setEnteredTree] = useState<Tree | null>(null);
   const [treeChecked, setTreeChecked] = useState<TreeChecked | null>(null);
   /** The tree whose text view is in `draft`: the preview runs on the text, so it waits until the text is for the tree on screen. */
@@ -122,7 +122,6 @@ export function ReportLayoutDesigner({
   const [toolsFailed, setToolsFailed] = useState(false);
   const [tab, setTab] = useState<MainTab>("design");
   const [aside, setAside] = useState<AsideTab>("preview");
-  const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveProblems, setSaveProblems] = useState<string[]>([]);
   const [conflict, setConflict] = useState<number | null>(null);
@@ -141,7 +140,7 @@ export function ReportLayoutDesigner({
       setSaved(written);
       setDraft(written);
       setView("text");
-      setOutlineTree(null);
+      setBlockTree(null);
       setEnteredTree(null);
       setViewNote(null);
       setChecked(null);
@@ -183,10 +182,10 @@ export function ReportLayoutDesigner({
     return () => clearTimeout(timer);
   }, [draft, loaded, api, beginCheck]);
 
-  // In the outline: check the tree once editing pauses, and keep the text view's text in step with it.
+  // In the block editor: check the tree once editing pauses, and keep the text view's text in step with it.
   useEffect(() => {
-    if (!loaded || !isTreeView(view) || outlineTree === null) return;
-    const tree = outlineTree;
+    if (!loaded || !isTreeView(view) || blockTree === null) return;
+    const tree = blockTree;
     const timer = setTimeout(() => {
       const isLatest = beginCheck();
       api.validate(tree).then(
@@ -205,7 +204,7 @@ export function ReportLayoutDesigner({
       );
     }, TEXT_CHECK_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [outlineTree, view, loaded, api, beginCheck]);
+  }, [blockTree, view, loaded, api, beginCheck]);
 
   // Put the caret where an insertion left it, once the new text is in the box.
   useLayoutEffect(() => {
@@ -217,8 +216,8 @@ export function ReportLayoutDesigner({
     el.setSelectionRange(at, at);
   }, [draft]);
 
-  const outlineChanged = isTreeView(view) && outlineTree !== null && detail !== null && stableJson(outlineTree) !== stableJson(detail.current.tree);
-  const dirty = loaded && (isTreeView(view) ? outlineChanged : draft !== saved);
+  const blocksChanged = isTreeView(view) && blockTree !== null && detail !== null && stableJson(blockTree) !== stableJson(detail.current.tree);
+  const dirty = loaded && (isTreeView(view) ? blocksChanged : draft !== saved);
   useEffect(() => {
     if (!dirty) return;
     const warn = (event: BeforeUnloadEvent) => event.preventDefault();
@@ -237,10 +236,10 @@ export function ReportLayoutDesigner({
     // The server parses text without knowing the layout, so a first line naming the other kind is caught here.
     ...(wrongKind ? [{ line: 1, column: null, message: text.familyMismatch(LAYOUT_FAMILY_LABEL[detail.family].toLowerCase()) }] : []),
   ];
-  const outlineCurrent = treeChecked !== null && treeChecked.tree === outlineTree ? treeChecked : null;
-  const outlineProblems = outlineCurrent?.result?.errors ?? [];
+  const blockCurrent = treeChecked !== null && treeChecked.tree === blockTree ? treeChecked : null;
+  const blockProblems = blockCurrent?.result?.errors ?? [];
   const valid = isTreeView(view)
-    ? outlineCurrent?.result?.ok === true
+    ? blockCurrent?.result?.ok === true
     : current?.result?.ok === true && current.result.tree !== null && !wrongKind;
   const aliases = aliasesInScope(draft, caretLine);
   const originLabel = LAYOUT_ORIGIN_LABEL[detail.origin];
@@ -274,9 +273,9 @@ export function ReportLayoutDesigner({
     if (next === view) return;
     setViewNote(null);
     if (next === "text") {
-      if (outlineTree !== null && enteredTree !== null && stableJson(outlineTree) !== stableJson(enteredTree)) {
+      if (blockTree !== null && enteredTree !== null && stableJson(blockTree) !== stableJson(enteredTree)) {
         try {
-          setDraft(await api.formatTree(outlineTree));
+          setDraft(await api.formatTree(blockTree));
         } catch {
           setViewNote(strings.reportOutline.outlineFormatFailed);
           return;
@@ -286,7 +285,7 @@ export function ReportLayoutDesigner({
       setView("text");
       return;
     }
-    let tree = outlineTree;
+    let tree = blockTree;
     if (view === "text") {
       // Read the text as it stands now rather than waiting for the pause-and-check, so the switch never refuses a clean text.
       let parsed: TextParseResult | null = current?.result ?? null;
@@ -303,17 +302,8 @@ export function ReportLayoutDesigner({
         return;
       }
     }
-    if (next === "document" && tree && blockTypes) {
-      try {
-        treeToDoc(tree, blockTypes.blocks);
-      } catch (err) {
-        if (!(err instanceof NotRepresentableError)) throw err;
-        setViewNote(strings.reportOutline.richNotShown(`${err.path}: ${err.message}`));
-        return;
-      }
-    }
     if (view === "text") {
-      setOutlineTree(tree);
+      setBlockTree(tree);
       setEnteredTree(tree);
       setTextFor(tree);
       setTreeChecked(null);
@@ -321,13 +311,14 @@ export function ReportLayoutDesigner({
     setView(next);
   }
 
-  async function save() {
-    const tree = isTreeView(view) ? outlineCurrent?.tree : current?.result?.tree;
-    if (!tree || !detail) return;
+  /** Saves the tree on screen as a new version with `note`; resolves to whether a version was stored. */
+  async function save(note: string): Promise<boolean> {
+    const tree = isTreeView(view) ? blockCurrent?.tree : current?.result?.tree;
+    if (!tree || !detail) return false;
     setSaving(true);
     setSaveProblems([]);
     try {
-      const result = await api.save(layoutId, { tree, base_version: detail.current_version, comment: note.trim() });
+      const result = await api.save(layoutId, { tree, base_version: detail.current_version, comment: note });
       showToast(result.current_version === detail.current_version ? text.noChanges : text.saved(result.current_version));
       setDetail(result);
       const written = isTreeView(view) ? await api.formatTree(tree) : draft;
@@ -337,13 +328,14 @@ export function ReportLayoutDesigner({
         setEnteredTree(tree);
         setTextFor(tree);
       }
-      setNote("");
+      return true;
     } catch (err) {
       const newer = conflictVersion(err);
       const found = treeProblems(err);
       if (newer !== null) setConflict(newer);
       else if (found.length > 0) setSaveProblems(found.map((p) => text.treeProblem(p.path, p.message)));
       else showToast(toErrorMessage(err, text.saveFailed), "error");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -369,7 +361,6 @@ export function ReportLayoutDesigner({
     ...(editable && view === "text" ? [{ key: "fields" as const, label: text.fieldsTab }, { key: "widgets" as const, label: text.widgetsTab }] : []),
   ];
   const textTools = editable && view === "text";
-  const blocks = BLOCK_SNIPPETS.filter((b) => b.families.includes(detail.family));
 
   return (
     <div className="stack">
@@ -432,26 +423,16 @@ export function ReportLayoutDesigner({
             )}
             <Tabs<EditView>
               idPrefix="layout-view"
-              tabs={[
-                { key: "text", label: outline.textView }, { key: "outline", label: outline.outlineView },
-                ...(detail.family === "document" ? [{ key: "document" as const, label: outline.documentView }] : []),
-              ]}
+              tabs={[{ key: "text", label: outline.textView }, { key: "blocks", label: outline.outlineView }]}
               active={view} onChange={(next) => void switchView(next)}
             />
             {viewNote && <p role="alert" style={{ color: "var(--color-danger)", margin: 0 }}>{viewNote}</p>}
             {view === "text" && (
               <div {...tabPanelProps("layout-view", "text")} className="stack">
               {editable && (
-                <div className="row" role="toolbar" aria-label={text.insertBlock} style={{ flexWrap: "wrap" }}>
-                  {blocks.map((block) => (
-                    <button
-                      key={block.key} type="button" className="btn btn-sm"
-                      aria-label={`${text.insertBlock}: ${text.blockLabels[block.key]}`}
-                      onClick={() => insert(block.text, true)}
-                    >
-                      {text.blockLabels[block.key]}
-                    </button>
-                  ))}
+                <div className="row" style={{ alignItems: "center", gap: "var(--space-3)" }}>
+                  <ReportLayoutBlockToolbar family={detail.family} onInsert={(snippet) => insert(snippet, true)} />
+                  <ReportLayoutPageSetup text={draft} onChange={setDraft} />
                 </div>
               )}
               <AutoGrowTextarea
@@ -497,24 +478,19 @@ export function ReportLayoutDesigner({
             )}
             {isTreeView(view) && (
               <div {...tabPanelProps("layout-view", view)} className="stack">
-                {outlineTree && blockTypes && catalogue && widgets ? (
+                {blockTree && blockTypes && catalogue && widgets ? (
                   <>
-                    {view === "document" ? (
-                      <ReportLayoutRichText
-                        tree={outlineTree} onChange={setOutlineTree} family={detail.family} blocks={blockTypes} catalogue={catalogue}
-                        widgets={widgets} problems={outlineProblems} readOnly={!editable}
+                    <Suspense fallback={<Spinner />}>
+                      <ReportLayoutBlocks
+                        tree={blockTree} onChange={setBlockTree} family={detail.family} blocks={blockTypes} catalogue={catalogue}
+                        widgets={widgets} problems={blockProblems} readOnly={!editable}
                       />
-                    ) : (
-                      <ReportLayoutOutline
-                        tree={outlineTree} onChange={setOutlineTree} family={detail.family} blocks={blockTypes} catalogue={catalogue}
-                        widgets={widgets} problems={outlineProblems} readOnly={!editable}
-                      />
-                    )}
+                    </Suspense>
                     <div aria-live="polite">
-                      {outlineCurrent === null && <span className="text-muted">{outline.outlineChecking}</span>}
-                      {outlineCurrent && outlineCurrent.result === null && <span role="alert" style={{ color: "var(--color-danger)" }}>{strings.common.error}</span>}
-                      {outlineCurrent?.result?.ok === true && <span className="text-muted">{outline.outlineNoProblems}</span>}
-                      {outlineProblems.length > 0 && <strong>{outline.outlineProblemsTitle(outlineProblems.length)}</strong>}
+                      {blockCurrent === null && <span className="text-muted">{outline.outlineChecking}</span>}
+                      {blockCurrent && blockCurrent.result === null && <span role="alert" style={{ color: "var(--color-danger)" }}>{strings.common.error}</span>}
+                      {blockCurrent?.result?.ok === true && <span className="text-muted">{outline.outlineNoProblems}</span>}
+                      {blockProblems.length > 0 && <strong>{outline.outlineProblemsTitle(blockProblems.length)}</strong>}
                     </div>
                     {saveProblems.length > 0 && (
                       <ul className="layout-problems" role="alert">
@@ -526,14 +502,8 @@ export function ReportLayoutDesigner({
               </div>
             )}
             {editable && (
-              <div className="row" style={{ alignItems: "flex-end" }}>
-                <TextField helpNotNeeded
-                  label={text.changeNoteLabel} value={note} onChange={setNote} placeholder={text.changeNotePlaceholder}
-                  inputProps={{ maxLength: 500 }}
-                />
-                <button type="button" className="btn btn-primary" disabled={!valid || !dirty || saving} onClick={() => void save()}>
-                  {text.saveVersion}
-                </button>
+              <div className="row">
+                <SaveVersionButton disabled={!valid || !dirty} saving={saving} onSave={save} />
               </div>
             )}
           </div>
@@ -542,7 +512,7 @@ export function ReportLayoutDesigner({
             <Tabs<AsideTab> idPrefix="layout-designer-tools" tabs={asideTabs} active={textTools ? aside : "preview"} onChange={setAside} />
             <div {...tabPanelProps("layout-designer-tools", "preview")} hidden={textTools && aside !== "preview"}>
               <ReportLayoutPreviewPanel
-                api={api} text={draft} name={detail.name} disabled={!valid || (isTreeView(view) && textFor !== outlineTree)} projectOptions={projectOptions}
+                api={api} text={draft} name={detail.name} disabled={!valid || (isTreeView(view) && textFor !== blockTree)} projectOptions={projectOptions}
               />
             </div>
             {textTools && toolsFailed && aside !== "preview" && <p className="text-muted" role="alert">{text.loadToolsFailed}</p>}

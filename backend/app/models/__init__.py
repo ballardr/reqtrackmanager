@@ -60,6 +60,7 @@ from app.models.relationship import ArtefactLink
 from app.models.report_content import ReportContent
 from app.models.report_layout import ReportLayout, ReportLayoutVersion
 from app.models.report_pack import ReportPack, ReportPackSetOverride, ReportPackVariableSet, ReportPackVersion
+from app.models.report_placement import ReportPlacement
 from app.models.requirement import (
     Baseline,
     BaselineItem,
@@ -118,6 +119,7 @@ __all__ = [
     "ReportPackSetOverride",
     "ReportPackVariableSet",
     "ReportPackVersion",
+    "ReportPlacement",
     "ReportTemplate",
     "ServerSettings",
     "UserOrgRole",

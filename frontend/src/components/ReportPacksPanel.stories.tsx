@@ -109,3 +109,26 @@ export const DeletingAnOwnPackNeedsTheNameTyped: Story = {
     await waitFor(() => expect(args.api!.remove).toHaveBeenCalledWith("pack-1"));
   },
 };
+
+/** A pack's folder is listed, and search and the folder filter narrow the list like layouts'. */
+export const ShowsFoldersAndNarrowsBySearchAndFolder: Story = {
+  args: {
+    api: buildPackApi([
+      buildPackSummary({ id: "p1", name: "Board pack", folder: "Governance" }),
+      buildPackSummary({ id: "p2", name: "Team pack", folder: "Delivery/Weekly" }),
+      buildPackSummary({ id: "p3", name: "Loose pack", folder: "" }),
+    ]),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = within(await canvas.findByRole("table", { name: "Report packs" }));
+    await expect(table.getByText("Delivery/Weekly")).toBeInTheDocument();
+    await userEvent.selectOptions(canvas.getByLabelText("Folder"), "Delivery");
+    await expect(table.getByText("Team pack")).toBeInTheDocument();
+    await expect(table.queryByText("Board pack")).not.toBeInTheDocument();
+    await userEvent.selectOptions(canvas.getByLabelText("Folder"), "Any");
+    await userEvent.type(canvas.getByRole("textbox", { name: "Search this list" }), "loose");
+    await expect(table.getByText("Loose pack")).toBeInTheDocument();
+    await expect(table.queryByText("Team pack")).not.toBeInTheDocument();
+  },
+};

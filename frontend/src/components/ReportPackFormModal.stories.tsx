@@ -6,7 +6,7 @@ import { requiredCaptions } from "../testing/requiredMarkers";
 import { withToast } from "../testing/storybook-helpers";
 import { ReportPackFormModal } from "./ReportPackFormModal";
 
-/** Create and edit dialog of a report pack: a name and a description. */
+/** Create and edit dialog of a report pack: a name, a description and a folder. */
 const meta: Meta<typeof ReportPackFormModal> = {
   title: "Components/Reports/ReportPackFormModal",
   component: ReportPackFormModal,
@@ -26,7 +26,7 @@ export const CreatingStartsAnEmptyPack: Story = {
     await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Board pack");
     await userEvent.click(dialog.getByRole("button", { name: "Create" }));
     await waitFor(() => expect(args.api!.create).toHaveBeenCalledWith({
-      name: "Board pack", description: "", definition: { schema_version: 1, entries: [] },
+      name: "Board pack", description: "", folder: "", definition: { schema_version: 1, entries: [] },
     }));
     await waitFor(() => expect(args.onSaved).toHaveBeenCalled());
   },
@@ -40,7 +40,7 @@ export const EditingRenamesWithoutTouchingTheDefinition: Story = {
     await userEvent.clear(name);
     await userEvent.type(name, "Renamed");
     await userEvent.click(dialog.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(args.api!.update).toHaveBeenCalledWith("pack-1", { name: "Renamed", description: "For the external team." }));
+    await waitFor(() => expect(args.api!.update).toHaveBeenCalledWith("pack-1", { name: "Renamed", description: "For the external team.", folder: "" }));
   },
 };
 
@@ -51,5 +51,19 @@ export const ATakenNameIsShownInTheDialog: Story = {
     await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Taken");
     await userEvent.click(dialog.getByRole("button", { name: "Create" }));
     await expect(await dialog.findByText(/already exists here/)).toBeInTheDocument();
+  },
+};
+
+/** The folder is optional, suggests the folders packs already use and is saved tidied. */
+export const FolderSuggestsExistingFoldersAndIsSavedTidied: Story = {
+  args: { api: buildPackApi([buildPackSummary({ folder: "Handover" })]) },
+  play: async ({ args }) => {
+    const dialog = within(await screen.findByRole("dialog", { name: "New report pack" }));
+    await expect(requiredCaptions(document.body)).toEqual(["Name"]);
+    await waitFor(() => expect(document.querySelectorAll("datalist option").length).toBe(1));
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Filed pack");
+    await userEvent.type(dialog.getByRole("combobox", { name: "Folder" }), "  Handover /  Annual ");
+    await userEvent.click(dialog.getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(args.api!.create).toHaveBeenCalledWith(expect.objectContaining({ folder: "Handover/Annual" })));
   },
 };

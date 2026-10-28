@@ -48,6 +48,7 @@ from app.services.report_model import (
     Styled,
     Table,
     finalize_links,
+    page_dimensions_cm,
     text_on,
     text_runs,
 )
@@ -94,6 +95,13 @@ def _data_uri(data: bytes) -> str | None:
     except Exception:  # noqa: BLE001 - not an image: skipped, as in the other renderers
         return None
     return f"data:{media_type};base64,{base64.b64encode(data).decode('ascii')}" if media_type else None
+
+
+def _page_width_rem(document: ReportDocument) -> float:
+    """The width of the page in the HTML view: 50rem for a portrait A4 and 70rem for a landscape one, scaled by the
+    page's short side for any other size."""
+    short = min(page_dimensions_cm(document))
+    return round((70 if document.landscape else 50) * short / 21.0, 1)
 
 
 def _esc(text: str) -> str:
@@ -211,7 +219,7 @@ def render_html_document(document: ReportDocument) -> bytes:
     if branding and branding.footer_text:
         parts.append(f"<footer>{_esc(branding.footer_text)}</footer>")
     css = _CSS % {
-        "accent": accent, "width": "70rem" if document.landscape else "50rem", "head_text": "#" + text_on(accent.lstrip("#")),
+        "accent": accent, "width": f"{_page_width_rem(document):g}rem", "head_text": "#" + text_on(accent.lstrip("#")),
     }
     page = (
         '<!doctype html>\n<html lang="en"><head><meta charset="utf-8">'

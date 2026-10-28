@@ -1,7 +1,7 @@
 /**
  * Module: components/ReportLayoutFormModal
  *
- * The create and edit dialog of a report layout: its name and description (both modes, through the one
+ * The create and edit dialog of a report layout: its name, description and folder (both modes, through the one
  * `ReportLayoutFields` group) and, when creating, the kind of report (document or table), which cannot change
  * afterwards. Creating starts the layout empty; the designer is where its content is written.
  *
@@ -14,15 +14,21 @@ import type { LayoutFamily, ReportLayoutApi, ReportLayoutDetail, ReportLayoutSum
 import { LAYOUT_FAMILY_LABEL } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage } from "../context/ToastContext";
+import { useFolderSuggestions } from "../hooks/useFolderSuggestions";
+import { folderProblem, tidyFolder } from "../utils/reportFolders";
 import { FormActions } from "./FormActions";
 import { TextAreaField, TextField } from "./FormFields";
 import { LabeledSelect } from "./LabeledSelect";
+import { ReportFolderField } from "./ReportFolderField";
 import { Modal } from "./Modal";
 
 /** The fields a layout's create and edit forms share, so a field added later reaches both. */
 export function ReportLayoutFields({
-  name, description, onName, onDescription,
-}: { name: string; description: string; onName: (value: string) => void; onDescription: (value: string) => void }) {
+  name, description, folder, folders, onName, onDescription, onFolder,
+}: {
+  name: string; description: string; folder: string; folders: string[];
+  onName: (value: string) => void; onDescription: (value: string) => void; onFolder: (value: string) => void;
+}) {
   const strings = useStrings().reportLayouts;
   return (
     <>
@@ -30,6 +36,7 @@ export function ReportLayoutFields({
         label={strings.nameLabel} value={name} onChange={onName} inputProps={{ maxLength: 200, autoFocus: true }}
       />
       <TextAreaField helpNotNeeded label={strings.descriptionLabel} value={description} onChange={onDescription} />
+      <ReportFolderField value={folder} onChange={onFolder} suggestions={folders} />
     </>
   );
 }
@@ -52,6 +59,8 @@ export function ReportLayoutFormModal({
   const text = strings.reportLayouts;
   const [name, setName] = useState(layout?.name ?? "");
   const [description, setDescription] = useState(layout?.description ?? "");
+  const [folder, setFolder] = useState(layout?.folder ?? "");
+  const folders = useFolderSuggestions(api.list);
   const [family, setFamily] = useState<LayoutFamily>(layout?.family ?? "document");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -62,12 +71,12 @@ export function ReportLayoutFormModal({
     try {
       let saved: ReportLayoutSummary | ReportLayoutDetail;
       if (layout) {
-        saved = await api.update(layout.id, { name: name.trim(), description });
+        saved = await api.update(layout.id, { name: name.trim(), description, folder: tidyFolder(folder) });
       } else {
         // The server writes the empty tree of a family, so the client never spells out the tree's shape.
         const parsed = await api.parseText(`@layout ${family}\n`);
         if (!parsed.tree) throw new Error(strings.common.error);
-        saved = await api.create({ name: name.trim(), description, family, tree: parsed.tree });
+        saved = await api.create({ name: name.trim(), description, folder: tidyFolder(folder), family, tree: parsed.tree });
       }
       onSaved(saved, !layout);
       onClose();
@@ -81,7 +90,10 @@ export function ReportLayoutFormModal({
   return (
     <Modal title={layout ? text.editTitle : text.createTitle} onClose={onClose}>
       <div className="stack">
-        <ReportLayoutFields name={name} description={description} onName={setName} onDescription={setDescription} />
+        <ReportLayoutFields
+          name={name} description={description} folder={folder} folders={folders}
+          onName={setName} onDescription={setDescription} onFolder={setFolder}
+        />
         {!layout && (
           <LabeledSelect required
             label={text.familyLabel}
@@ -97,7 +109,7 @@ export function ReportLayoutFormModal({
           onCancel={onClose}
           onSave={() => void save()}
           saveLabel={layout ? strings.common.save : text.createButton}
-          saveDisabled={busy || name.trim() === ""}
+          saveDisabled={busy || name.trim() === "" || folderProblem(folder) !== null}
           cancelDisabled={busy}
         />
       </div>

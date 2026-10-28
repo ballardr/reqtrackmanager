@@ -4,9 +4,24 @@ import { readFile } from "node:fs/promises";
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
 import { deleteOrgOnCleanup, expectTidyStatBlocks, installCleanupHook, loginAs, logout, PASSWORD } from "../../e2e-workflows/helpers";
+import { chooseReport, listReports, reportPickerButton } from "../../e2e-workflows/reportPicker";
 
 const API_BASE_URL = "http://localhost:8000";
 const CS = "context_strategy";
+
+/** Every Context & Strategy report: the URL slug (also the download's file name) and the title the picker shows. */
+const CS_REPORTS = [
+  { slug: "pain-point-prioritisation", title: "Pain Point prioritisation" },
+  { slug: "strategy-cascade", title: "Strategy cascade and alignment" },
+  { slug: "pain-point-coverage", title: "Pain Point coverage and ageing" },
+  { slug: "open-question-register", title: "Open Question register" },
+  { slug: "future-state-roadmap", title: "Future State roadmap" },
+  { slug: "guiding-principle-usage", title: "Guiding Principle register and usage" },
+  { slug: "strategy-change-history", title: "Strategy change history" },
+  { slug: "summary", title: "Context & Strategy summary" },
+  { slug: "upgrade-drivers", title: "Upgrade drivers" },
+];
+const CS_TITLES = CS_REPORTS.map((r) => r.title);
 
 /**
  * Job to be done:
@@ -81,30 +96,22 @@ async function setup(page: Page, request: APIRequestContext) {
   return { org, project, headers, titles, question, suffix };
 }
 
-/** The "Report" picker on the Reports surfaces. */
-function picker(page: Page) {
-  return page.getByRole("combobox", { name: "Report", exact: true });
-}
-
 test.describe("Context & Strategy: Reports UI", () => {
   test("the project Reports page offers catalogue reports beside the requirement report", async ({ page, request }) => {
     const { project } = await setup(page, request);
     await page.goto(`/projects/${project.id}/reports`);
 
-    await expect(picker(page)).toHaveValue("requirements");
+    await expect(reportPickerButton(page)).toHaveAttribute("aria-label", "Report: Requirements report");
     await expect(page.getByRole("button", { name: "Generate PDF" })).toBeVisible();
-    // With more than one report source the picker prefixes each title with its module name.
-    const options = await picker(page).locator("option").allTextContents();
-    expect(options[0]).toBe("Requirements report");
-    expect(options).toEqual(expect.arrayContaining([
-      "Context & Strategy: Pain Point prioritisation", "Context & Strategy: Open Question register", "Context & Strategy: Strategy cascade and alignment",
+    expect(await listReports(page)).toEqual(expect.arrayContaining([
+      "Requirements report", "Pain Point prioritisation", "Open Question register", "Strategy cascade and alignment",
     ]));
 
     // The selection is the URL, so a report is linkable and survives a reload.
-    await picker(page).selectOption("open-question-register");
+    await chooseReport(page, "Open Question register");
     await expect(page).toHaveURL(/report=open-question-register/);
     await page.reload();
-    await expect(picker(page)).toHaveValue("open-question-register");
+    await expect(reportPickerButton(page)).toHaveAttribute("aria-label", "Report: Open Question register");
   });
 
   test("R1 shows the matrix, ranked list and Blocker, and switches model and roll-up", async ({ page, request }) => {
@@ -257,16 +264,15 @@ test.describe("Context & Strategy: Reports UI", () => {
       headers, data: { name: "E2E Reports Branding", accent_color_hex: "#112233" },
     })).json();
     await page.goto(`/projects/${project.id}/reports`);
-    await expect(picker(page)).toBeVisible();
+    await expect(reportPickerButton(page)).toBeVisible();
 
-    const reports = (await picker(page).locator("option").evaluateAll((els) =>
-      els.map((e) => ({ value: (e as HTMLOptionElement).value, label: e.textContent ?? "" })),
-    )).filter((o) => o.value !== "requirements");
+    const offered = await listReports(page);
+    const reports = CS_REPORTS.filter((r) => offered.includes(r.title));
     expect(reports.length).toBeGreaterThanOrEqual(7);
 
     for (const report of reports) {
-      await test.step(`${report.label}: PDF and CSV`, async () => {
-        await picker(page).selectOption(report.value);
+      await test.step(`${report.title}: PDF and CSV`, async () => {
+        await chooseReport(page, report.title);
         await expect(page.getByRole("button", { name: "Export" })).toBeVisible();
         for (const kind of ["PDF", "CSV"] as const) {
           await page.getByRole("button", { name: "Export" }).click();
@@ -274,14 +280,14 @@ test.describe("Context & Strategy: Reports UI", () => {
             page.waitForEvent("download"),
             page.getByRole("button", { name: `Download ${kind} report` }).click(),
           ]);
-          expect(download.suggestedFilename()).toBe(`${report.value}.${kind.toLowerCase()}`);
-          await expect(page.getByText(`Downloaded ${report.label.replace(/^[^:]+: /, "")} (${kind}).`)).toBeVisible();
+          expect(download.suggestedFilename()).toBe(`${report.slug}.${kind.toLowerCase()}`);
+          await expect(page.getByText(`Downloaded ${report.title} (${kind}).`)).toBeVisible();
         }
       });
     }
 
     await test.step("the CSV is the report's first section, scoped to the screen's values", async () => {
-      await picker(page).selectOption("pain-point-prioritisation");
+      await chooseReport(page, "Pain Point prioritisation");
       await page.getByRole("button", { name: "Export" }).click();
       const [download] = await Promise.all([
         page.waitForEvent("download"),
@@ -296,7 +302,7 @@ test.describe("Context & Strategy: Reports UI", () => {
     });
 
     await test.step("the chosen branding template is sent with the PDF download", async () => {
-      await picker(page).selectOption("pain-point-prioritisation");
+      await chooseReport(page, "Pain Point prioritisation");
       await page.getByRole("combobox", { name: "Branding template" }).selectOption({ label: template.name });
       await page.getByRole("button", { name: "Export" }).click();
       const pdf = page.waitForResponse((r) => r.url().includes("format=pdf") && r.url().includes(`report_template_id=${template.id}`));
@@ -317,8 +323,8 @@ test.describe("Context & Strategy: Reports UI", () => {
     await page.goto(`/projects/${project.id}/reports`);
     await expect(page.getByRole("button", { name: "Generate PDF" })).toBeVisible();
     // The platform Record list report keeps the picker, but no Context & Strategy report is in it.
-    const options = await picker(page).locator("option").allTextContents();
-    expect(options.filter((o) => o.startsWith("Context & Strategy: "))).toEqual([]);
+    const offered = await listReports(page);
+    expect(offered.filter((title) => CS_TITLES.includes(title))).toEqual([]);
   });
 
   test("a disabled sub-component removes only its own reports", async ({ page, request }) => {
@@ -329,10 +335,10 @@ test.describe("Context & Strategy: Reports UI", () => {
     expect(off.ok(), await off.text()).toBeTruthy();
 
     await page.goto(`/projects/${project.id}/reports`);
-    await expect(picker(page)).toBeVisible();
-    const options = await picker(page).locator("option").allTextContents();
-    expect(options).toContain("Context & Strategy: Pain Point prioritisation");
-    expect(options).not.toContain("Context & Strategy: Open Question register");
+    await expect(reportPickerButton(page)).toBeVisible();
+    const offered = await listReports(page);
+    expect(offered).toContain("Pain Point prioritisation");
+    expect(offered).not.toContain("Open Question register");
   });
 
   test("organisation reports are listed for an org admin and need the org role for anyone else", async ({ page, request }) => {
@@ -350,10 +356,10 @@ test.describe("Context & Strategy: Reports UI", () => {
       await page.goto(`/orgs/${org.id}/overview`);
       await page.getByRole("link", { name: "Reports", exact: true }).click();
       await expect(page).toHaveURL(new RegExp(`/orgs/${org.id}/overview/reports`));
-      await picker(page).selectOption({ label: "Pain Point prioritisation" });
+      await chooseReport(page, "Pain Point prioritisation");
       await expect(page.getByRole("table", { name: "Ranked Pain Points" })).toContainText(titles.major);
       // Project-only reports (e.g. the Strategy cascade) are not org-wide.
-      expect(await picker(page).locator("option").allTextContents()).not.toContain("Strategy cascade and alignment");
+      expect(await listReports(page)).not.toContain("Strategy cascade and alignment");
     });
 
     await test.step("an org report can be narrowed to one project with the Project picker", async () => {
@@ -392,25 +398,24 @@ test.describe("Context & Strategy: Reports UI", () => {
       await expect(ranking.getByRole("columnheader", { name: "Project", exact: true })).toBeVisible();
     });
 
-    await test.step("a project member without the org report role sees no Reports group", async () => {
+    await test.step("a project member without the org report role is offered no Context & Strategy report", async () => {
       await logout(page);
       await loginAs(page, memberEmail, PASSWORD);
       await page.goto(`/orgs/${org.id}/overview`);
       await expect(page.getByRole("heading", { name: /E2E Reports UI/ })).toBeVisible();
-      await expect(page.getByRole("link", { name: "Reports", exact: true })).toHaveCount(0);
+      // Every member sees the Reports group for the organisation's own layouts (the starters), but not this module's reports.
       await page.goto(`/orgs/${org.id}/overview/reports`);
-      // The platform Record list report keeps the picker, but no Context & Strategy report is in it.
-    const options = await picker(page).locator("option").allTextContents();
-    expect(options.filter((o) => o.startsWith("Context & Strategy: "))).toEqual([]);
+      const offered = await listReports(page);
+      expect(offered.filter((title) => CS_TITLES.includes(title))).toEqual([]);
     });
 
-    await test.step("granting the org role makes the group appear", async () => {
+    await test.step("granting the org role makes the module's organisation reports appear", async () => {
       const grant = await request.post(`${API_BASE_URL}/api/v1/orgs/${org.id}/users/${member.user_id}/module-roles`, {
         headers: headers, data: { module_key: CS, role_key: "org_reports_viewer" },
       });
       expect(grant.status()).toBe(204);
-      await page.goto(`/orgs/${org.id}/overview`);
-      await expect(page.getByRole("link", { name: "Reports", exact: true })).toBeVisible();
+      await page.goto(`/orgs/${org.id}/overview/reports`);
+      expect(await listReports(page)).toContain("Pain Point prioritisation");
     });
   });
 });

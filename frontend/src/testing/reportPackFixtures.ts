@@ -39,7 +39,7 @@ export function buildDefinition(overrides: Partial<ReportPackDefinition> = {}): 
 /** A pack summary (the project's own, editable). */
 export function buildPackSummary(overrides: Partial<ReportPackSummary> = {}): ReportPackSummary {
   return {
-    id: "pack-1", organization_id: "org-1", project_id: "project-1", name: "Handover pack", description: "For the external team.",
+    id: "pack-1", organization_id: "org-1", project_id: "project-1", name: "Handover pack", description: "For the external team.", folder: "",
     current_version: 2, origin: "project", hidden: false, editable: true, entries: 3, updated_at: "2026-10-20T09:30:00Z", ...overrides,
   };
 }
@@ -122,7 +122,7 @@ export function buildPackApi(
     scope: { kind, id: kind === "project" ? "project-1" : "org-1" },
     list: fn(async () => store.map((pack) => ({ ...pack }))),
     create: fn(async (body) => {
-      const created = buildPackSummary({ id: `pack-${store.length + 1}`, name: body.name, description: body.description, current_version: 1, entries: body.definition.entries.length });
+      const created = buildPackSummary({ id: `pack-${store.length + 1}`, name: body.name, description: body.description, folder: body.folder ?? "", current_version: 1, entries: body.definition.entries.length });
       store.push(created);
       return { ...created, current: { ...buildPackDetail().current, version: 1, definition: body.definition } };
     }),

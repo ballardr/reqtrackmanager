@@ -3,6 +3,7 @@ import fs from "node:fs";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
+import { chooseReport } from "./reportPicker";
 import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
@@ -73,9 +74,7 @@ test.describe("Custom report background run", () => {
         }),
       );
       await page.goto(`/projects/${project.id}/reports`);
-      const picker = page.getByLabel("Report", { exact: true });
-      await expect(picker.locator("option", { hasText: layoutName })).toHaveCount(1);
-      await picker.selectOption({ label: (await picker.locator("option", { hasText: layoutName }).textContent())! });
+      await chooseReport(page, layoutName);
       await page.getByRole("button", { name: "Export", exact: true }).click();
       await page.getByRole("button", { name: "Download PDF report" }).click();
       await expect(page.getByText(/being prepared in the background/)).toBeVisible();

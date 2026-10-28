@@ -74,10 +74,9 @@ def test_an_anchor_is_the_headings_words_lower_cased_with_hyphens():
     ]
 
 
-def test_the_shared_vectors_the_editor_is_tested_against_agree_with_the_server():
-    """`frontend/src/testing/linkVectors.json` holds addresses and headings with the answers; the front end's port of
-    these rules is tested against the same file, so the two cannot drift apart unseen."""
-    vectors = json.loads((Path(__file__).resolve().parents[2] / "frontend" / "src" / "testing" / "linkVectors.json").read_text(encoding="utf-8"))
+def test_the_link_vectors_agree_with_the_server():
+    """`tests/data/link_vectors.json` holds addresses and headings with the answers the rules must give."""
+    vectors = json.loads((Path(__file__).resolve().parent / "data" / "link_vectors.json").read_text(encoding="utf-8"))
 
     assert all(link_problem(href) is None for href in vectors["links"]["allowed"])
     assert all(link_problem(href) is not None for href in vectors["links"]["refused"])

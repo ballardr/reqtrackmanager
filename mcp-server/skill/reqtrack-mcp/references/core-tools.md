@@ -36,7 +36,7 @@ Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (st
 
 Creates a custom report layout and its version 1. Needs the layout-management permission for the scope.
 
-Parameters: `name*` (string), `family*` (string), `tree*` (object), `description` (string), `comment` (string), `project_id` (string), `organization_id` (string)
+Parameters: `name*` (string), `family*` (string), `tree*` (object), `description` (string), `comment` (string), `folder` (string), `project_id` (string), `organization_id` (string)
 
 ## `create_requirement` (write)
 
@@ -330,9 +330,9 @@ Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (st
 
 ## `update_report_layout` (write)
 
-Renames or re-describes a layout the scope owns (its tree is changed with `save_report_layout_version`).
+Renames, re-describes or re-files a layout the scope owns (its tree is changed with `save_report_layout_version`).
 
-Parameters: `layout_id*` (string), `name` (string), `description` (string), `project_id` (string), `organization_id` (string)
+Parameters: `layout_id*` (string), `name` (string), `description` (string), `folder` (string), `project_id` (string), `organization_id` (string)
 
 ## `update_requirement` (write)
 

@@ -11,7 +11,7 @@
 import type { BlockCatalogue, LayoutFamily, TreeProblem } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";
 import { owningNode, setAt, type Tree } from "../utils/reportLayoutTree";
-import { ReportLayoutOutlineField, type OutlineEnv } from "./ReportLayoutOutlineField";
+import { ReportLayoutBlockField, type BlockEnv } from "./ReportLayoutBlockField";
 
 /**
  * @param tree The layout tree.
@@ -28,7 +28,7 @@ export function ReportLayoutSettings({
   onChange: (next: Tree) => void;
   family: LayoutFamily;
   blocks: BlockCatalogue;
-  env: OutlineEnv;
+  env: BlockEnv;
   problems: TreeProblem[];
 }) {
   const text = useStrings().reportOutline;
@@ -48,7 +48,7 @@ export function ReportLayoutSettings({
           <summary><strong>{text.settingsTitle}</strong></summary>
           <div className="stack" style={{ marginTop: "var(--space-3)" }}>
             {fields.map((field) => (
-              <ReportLayoutOutlineField
+              <ReportLayoutBlockField
                 key={field.key} field={field} node={tree} names={[]} env={env}
                 problems={layoutProblems.filter((p) => aboutField(p, field.key)).map((p) => p.message)}
                 onChange={(key, value) => onChange(setAt(tree, [key], value))}

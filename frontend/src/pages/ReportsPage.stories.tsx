@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
 import type { ReportCatalogueEntry } from "../api/reports";
@@ -45,7 +45,7 @@ const template: ReportTemplate = {
 function mockReportsApis(opts: { templates?: ReportTemplate[]; resources?: unknown[]; catalogue?: ReportCatalogueEntry[] } = {}) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path.endsWith("/report-catalogue")) return opts.catalogue ?? [];
-    if (path.startsWith("/api/v1/report-runs")) return [];
+    if (path.startsWith("/api/v1/report-runs") || path.includes("/report-placements")) return [];
     if (path.includes("/modules/")) return buildReportResult();
     if (path.includes("/components")) return [];
     if (path.includes("/categories")) return [];
@@ -175,10 +175,12 @@ export const CatalogueReportsAppearBesideTheRequirementReport: Story = {
   beforeEach: () => mockReportsApis({ catalogue: [buildReportCatalogueEntry()] }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByLabelText("Report")).toBeInTheDocument());
-    await expect(canvas.getByLabelText("Report")).toHaveValue("requirements");
+    await expect(await canvas.findByRole("button", { name: "Report: Requirements report" })).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Generate PDF" })).toBeInTheDocument();
-    await userEvent.selectOptions(canvas.getByLabelText("Report"), "fixture-report");
+    await userEvent.click(canvas.getByRole("button", { name: "Report: Requirements report" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Choose a report" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Expand Fixture Module" }));
+    await userEvent.click(dialog.getByRole("button", { name: /^Fixture report/ }));
     await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
     await expect(canvas.queryByRole("button", { name: "Generate PDF" })).not.toBeInTheDocument();
   },
@@ -190,7 +192,7 @@ export const NoCatalogueReportsHidesThePicker: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("button", { name: "Generate PDF" })).toBeInTheDocument());
-    await expect(canvas.queryByLabelText("Report")).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: /^Report:/ })).not.toBeInTheDocument();
   },
 };
 

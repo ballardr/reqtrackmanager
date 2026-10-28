@@ -94,6 +94,8 @@ export interface ReportPackSummary {
   project_id: string | null;
   name: string;
   description: string;
+  /** The author's Reports picker folder, up to three levels written `A/B` (`""` = the default folder). */
+  folder: string;
   current_version: number;
   origin: PackOrigin;
   /** Hidden in the project asking (only ever listed to someone who can manage the project's packs). */
@@ -155,11 +157,11 @@ export interface ReportPackSet {
 export interface ReportPackApi {
   scope: LayoutScope;
   list(): Promise<ReportPackSummary[]>;
-  create(body: { name: string; description: string; definition: ReportPackDefinition; comment?: string }): Promise<ReportPackDetail>;
+  create(body: { name: string; description: string; folder?: string; definition: ReportPackDefinition; comment?: string }): Promise<ReportPackDetail>;
   get(id: string): Promise<ReportPackDetail>;
   versions(id: string): Promise<ReportPackVersionSummary[]>;
   save(id: string, body: { definition: ReportPackDefinition; base_version: number; comment?: string }): Promise<ReportPackDetail>;
-  update(id: string, body: { name?: string; description?: string }): Promise<ReportPackSummary>;
+  update(id: string, body: { name?: string; description?: string; folder?: string }): Promise<ReportPackSummary>;
   remove(id: string): Promise<void>;
   sets(packId: string): Promise<ReportPackSet[]>;
   createSet(packId: string, body: { name: string; values: PackValues }): Promise<ReportPackSet>;

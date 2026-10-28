@@ -59,7 +59,7 @@ from app.models.generated_report import SCOPE_ORGANIZATION, SCOPE_PROJECT, STATU
 from app.models.organization import Organization, ReportTemplate
 from app.models.project import Project
 from app.models.report_content import CUSTOM_REPORT_KEY_PREFIX
-from app.models.report_layout import FAMILY_DOCUMENT, ReportLayout, ReportLayoutVersion
+from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE, ReportLayout, ReportLayoutVersion
 from app.models.user import User
 from app.services import definition_suppression, report_layout_scope, report_layouts
 from app.services.client_date import effective_today
@@ -94,6 +94,7 @@ from app.services.report_layout_eval import (
     evaluate_layout,
 )
 from app.services.report_model import (
+    DEFAULT_PAGE_SIZE,
     Block,
     BulletList,
     Equation,
@@ -366,7 +367,9 @@ def merge_evaluations(parts: Sequence[tuple[Project, EvaluatedLayout]], title: s
                 blocks.append(PageBreak())
             blocks.append(Heading(project.name, 1))
             blocks += [Heading(b.text, min(b.level + 1, 4)) if isinstance(b, Heading) else b for b in part.document.blocks]
-        document = ReportDocument(title=title, blocks=blocks, landscape=parts[0][1].document.landscape if parts[0][1].document else False)
+        document = ReportDocument(title=title, blocks=blocks, landscape=parts[0][1].document.landscape if parts[0][1].document else False,
+            page_size=parts[0][1].document.page_size if parts[0][1].document else DEFAULT_PAGE_SIZE,
+        )
     else:
         merged: dict[str, Sheet] = {}
         for project, part in parts:
@@ -463,7 +466,7 @@ def document_for(
     document = run.evaluated.document
     assert document is not None
     blocks: list[Block] = [*before, Note(_scope_line(run)), Gap(0.2), *[Note(n) for n in run.notes], *document.blocks, *after]
-    return ReportDocument(title=run.layout.name, blocks=blocks, branding=branding, landscape=document.landscape)
+    return ReportDocument(title=run.layout.name, blocks=blocks, branding=branding, landscape=document.landscape, page_size=document.page_size)
 
 
 def content_blocks_for(
@@ -620,6 +623,7 @@ def _entry(
         supports_project_multi_filter=scope != "project",
         projects=[ReportProjectOut(id=p.id, name=p.name) for p in projects], params=[],
         variables=[ReportVariableOut.model_validate(v) for v in form],
+        kind="sheet" if layout.family == FAMILY_TABLE else "report", folder=layout.folder,
     )
 
 

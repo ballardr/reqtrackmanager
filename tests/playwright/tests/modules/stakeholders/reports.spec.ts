@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
 
 import { installCleanupHook } from "../../e2e-workflows/helpers";
+import { chooseReport, listReports, reportPickerButton } from "../../e2e-workflows/reportPicker";
 import { API_BASE_URL, setUpOrg } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -22,9 +23,6 @@ installCleanupHook();
 
 type Headers = Record<string, string>;
 
-/** The picker prefixes each title with its module name once more than one report source is listed. */
-const reportLabel = (title: string): string => `Stakeholders & Personas: ${title}`;
-
 const REPORTS = [
   "Power/interest grid", "Persona validation", "Need coverage", "Engagement staleness", "Engagement & research yield",
 ];
@@ -36,11 +34,6 @@ async function post<T>(page: Page, url: string, headers: Headers, data: object):
 }
 
 const projectBase = (projectId: string) => `${API_BASE_URL}/api/v1/projects/${projectId}/modules/stakeholders`;
-
-/** The "Report" picker on the project Reports page. */
-function picker(page: Page) {
-  return page.getByRole("combobox", { name: "Report", exact: true });
-}
 
 /** Creates a project Stakeholder rated by level name (Low/Medium/High); either may be left unset. */
 async function stakeholder(
@@ -62,14 +55,13 @@ test.describe("Stakeholders & Personas: Reports", () => {
   test("the project report picker lists all five reports", async ({ page }) => {
     const { project } = await setUpOrg(page, "RepPick");
     await page.goto(`/projects/${project.id}/reports`);
-    await expect(picker(page)).toBeVisible();
-    const options = await picker(page).locator("option").allTextContents();
-    expect(options).toEqual(expect.arrayContaining(REPORTS.map(reportLabel)));
+    await expect(reportPickerButton(page)).toBeVisible();
+    expect(await listReports(page)).toEqual(expect.arrayContaining(REPORTS));
 
-    await picker(page).selectOption({ label: reportLabel("Power/interest grid") });
+    await chooseReport(page, "Power/interest grid");
     await expect(page).toHaveURL(/report=power-interest-grid/);
     await page.reload();
-    await expect(picker(page)).toHaveValue("power-interest-grid");
+    await expect(reportPickerButton(page)).toHaveAttribute("aria-label", "Report: Power/interest grid");
   });
 
   test("S1 places each Stakeholder in its quadrant, links to it and lists the unscored", async ({ page }) => {
@@ -117,7 +109,7 @@ test.describe("Stakeholders & Personas: Reports", () => {
     await expect(page.getByText(outside)).toHaveCount(0);
     await expect(page.getByRole("region", { name: "Manage closely" }).getByText(inside)).toBeVisible();
 
-    await picker(page).selectOption({ label: reportLabel("Engagement staleness") });
+    await chooseReport(page, "Engagement staleness");
     await expect(page.getByLabel("Group", { exact: true })).toHaveCount(1);
     const stale = page.waitForRequest((r) => r.url().includes("engagement-staleness") && r.url().includes(`group_id=${group.id}`));
     await page.getByLabel("Group", { exact: true }).selectOption({ label: `Team ${suffix}` });
@@ -132,11 +124,11 @@ test.describe("Stakeholders & Personas: Reports", () => {
     const { org, project, adminHeaders, suffix } = await setUpOrg(page, "RepDownload");
     await stakeholder(page, adminHeaders, org.id, project.id, `Downloader ${suffix}`, "High", "High", { target_cadence: "weekly" });
     await page.goto(`/projects/${project.id}/reports`);
-    await expect(picker(page)).toBeVisible();
+    await expect(reportPickerButton(page)).toBeVisible();
 
     for (const title of REPORTS) {
       await test.step(`${title}: PDF and CSV`, async () => {
-        await picker(page).selectOption({ label: reportLabel(title) });
+        await chooseReport(page, title);
         await expect(page.getByRole("button", { name: "Export" })).toBeVisible();
         for (const kind of ["PDF", "CSV"] as const) {
           await page.getByRole("button", { name: "Export" }).click();

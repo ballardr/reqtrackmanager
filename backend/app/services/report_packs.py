@@ -28,14 +28,16 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
 from app.models.report_pack import ReportPack, ReportPackVersion
+from app.models.report_placement import ReportPlacement
 from app.services import definition_suppression
 from app.services.audit import log_event
+from app.services.report_folders import clean_folder
 from app.services.report_pack_definition import PACK_SCHEMA_VERSION, assert_valid, definition_hash
 from app.services.report_pack_scope import PACK_KIND
 
@@ -99,7 +101,7 @@ def _assert_name_free(
 
 def create_pack(
     db: Session, *, organization_id: uuid.UUID, project_id: uuid.UUID | None, name: str, description: str,
-    definition: dict[str, Any], actor_id: uuid.UUID | None, comment: str = "",
+    definition: dict[str, Any], actor_id: uuid.UUID | None, comment: str = "", folder: str = "",
 ) -> SavedPack:
     """Creates a pack and its version 1.
 
@@ -108,6 +110,7 @@ def create_pack(
         organization_id: The owning organisation.
         project_id: The owning project, or `None` for an organisation-level pack.
         name / description: Display text.
+        folder: The Reports picker folder (`""` for none).
         definition: The pack definition.
         actor_id: The author.
         comment: A note on this first version.
@@ -116,12 +119,13 @@ def create_pack(
         The stored pack and version.
 
     Raises:
-        ValueError: A bad name or description, or a project outside the organisation.
+        ValueError: A bad name, description or folder, or a project outside the organisation.
         InvalidPackError: The definition is not valid.
         PackNameTakenError: The owner already has a pack of that name.
     """
     name = _clean_name(name)
     _check_text(description, MAX_DESCRIPTION_CHARS, "description")
+    folder = clean_folder(folder)
     _check_text(comment, MAX_COMMENT_CHARS, "comment")
     if project_id is not None:
         project = db.get(Project, project_id)
@@ -130,7 +134,7 @@ def create_pack(
     assert_valid(definition)
     _assert_name_free(db, organization_id, project_id, name)
     pack = ReportPack(
-        organization_id=organization_id, project_id=project_id, name=name, description=description,
+        organization_id=organization_id, project_id=project_id, name=name, description=description, folder=folder,
         current_version=1, created_by=actor_id,
     )
     try:
@@ -183,12 +187,13 @@ def save_version(
 
 
 def update_details(
-    db: Session, pack: ReportPack, *, name: str | None = None, description: str | None = None, actor_id: uuid.UUID | None,
+    db: Session, pack: ReportPack, *, name: str | None = None, description: str | None = None,
+    folder: str | None = None, actor_id: uuid.UUID | None,
 ) -> ReportPack:
-    """Renames or re-describes a pack (not a new version: the definition is unchanged).
+    """Renames, re-describes or re-files a pack (not a new version: the definition is unchanged).
 
     Raises:
-        ValueError: A bad name or description.
+        ValueError: A bad name, description or folder.
         PackNameTakenError: The new name is taken.
     """
     changed: list[str] = []
@@ -199,6 +204,9 @@ def update_details(
     if description is not None and description != pack.description:
         pack.description = _check_text(description, MAX_DESCRIPTION_CHARS, "description")
         changed.append("description")
+    if folder is not None and (new_folder := clean_folder(folder)) != pack.folder:
+        pack.folder = new_folder
+        changed.append("folder")
     if changed:
         db.flush()
         log_event(
@@ -215,6 +223,7 @@ def delete_pack(db: Session, pack: ReportPack, *, actor_id: uuid.UUID | None) ->
         organization_id=pack.organization_id, project_id=pack.project_id, detail={"versions": pack.current_version},
     )
     definition_suppression.forget_definition(db, PACK_KIND, pack.id)  # no foreign key holds a project's tombstone
+    db.execute(delete(ReportPlacement).where(ReportPlacement.report_key == f"pack:{pack.id}"))  # nor a placement
     db.delete(pack)
     db.flush()
 

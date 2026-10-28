@@ -1,10 +1,12 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import * as Blockly from "blockly/core";
 import { expect, fn, mocked, screen, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError } from "../api/client";
 import {
   buildLayoutApi, buildLayoutDetail, buildLayoutSummary, buildOutlineTree, fakeValidate, LAYOUT_TEXT, TEXT_CHECKED_MS,
 } from "../testing/reportLayoutFixtures";
+import { saveVersion } from "../testing/saveVersionHelpers";
 import { withRouter } from "../testing/storybook-helpers";
 import { ReportLayoutDesigner } from "./ReportLayoutDesigner";
 
@@ -88,11 +90,10 @@ export const SavingSendsTheParsedTreeAndTheVersionItStartedFrom: Story = {
     editor.focus();
     editor.setSelectionRange(editor.value.length, editor.value.length);
     await userEvent.keyboard("Closing words.");
-    await userEvent.type(canvas.getByRole("textbox", { name: "Note on this change" }), "Added closing words");
     await expect(canvas.getByText("Unsaved changes")).toBeInTheDocument();
     const save = canvas.getByRole("button", { name: "Save new version" });
     await waitFor(() => expect(save).toBeEnabled(), { timeout: TEXT_CHECKED_MS });
-    await userEvent.click(save);
+    await saveVersion(save, "Added closing words");
     await waitFor(() => expect(args.api.save).toHaveBeenCalledWith(
       "layout-1",
       expect.objectContaining({ base_version: 2, comment: "Added closing words", tree: expect.objectContaining({ family: "document" }) }),
@@ -119,7 +120,7 @@ export const SavingATreeTheServerRefusesShowsItsProblems: Story = {
     await userEvent.keyboard("More.");
     const save = canvas.getByRole("button", { name: "Save new version" });
     await waitFor(() => expect(save).toBeEnabled(), { timeout: TEXT_CHECKED_MS });
-    await userEvent.click(save);
+    await saveVersion(save);
     await expect(await canvas.findByText("nodes[0].text: Unknown field.")).toBeInTheDocument();
   },
 };
@@ -139,7 +140,7 @@ export const ASaveThatFindsTheLayoutMovedOnOffersAReload: Story = {
     await userEvent.keyboard("Mine. ");
     const save = canvas.getByRole("button", { name: "Save new version" });
     await waitFor(() => expect(save).toBeEnabled(), { timeout: TEXT_CHECKED_MS });
-    await userEvent.click(save);
+    await saveVersion(save);
     await expect(await canvas.findByRole("alert")).toHaveTextContent("Someone saved version 3 while you were editing.");
     await userEvent.click(canvas.getByRole("button", { name: "Reload latest" }));
     await userEvent.click(within(await screen.findByRole("dialog", { name: "Replace your text with the latest version?" })).getByRole("button", { name: "Reload latest" }));
@@ -179,7 +180,7 @@ export const FieldsInsertUsingTheNameInScopeAtTheCaret: Story = {
     // The line inside the "For each requirement ... as req" block.
     await caretAtLine(editor, 6);
     await userEvent.click(canvas.getByRole("tab", { name: "Fields" }));
-    await userEvent.click(await canvas.findByRole("button", { name: "Insert Status" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Insert {{req.status}}" }));
     await expect(editor.value.split("\n")[5]).toBe("{{req.status}}  @heading level=2 {{req.code}} {{req.title}}");
   },
 };
@@ -191,6 +192,8 @@ export const WidgetsInsertOnTheirOwnLine: Story = {
     editor.focus();
     editor.setSelectionRange(editor.value.length, editor.value.length);
     await userEvent.click(canvas.getByRole("tab", { name: "Widgets" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Expand Risk Management" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Expand Risk register" }));
     await userEvent.click(await canvas.findByRole("button", { name: "Headline figures" }));
     await userEvent.click(canvas.getByRole("button", { name: "Insert widget" }));
     await expect(editor.value.endsWith("[[widget.risk_management.risk-register.figures]]\n")).toBe(true);
@@ -290,9 +293,9 @@ export const AFailedLoadIsReported: Story = {
   },
 };
 
-// ---- the block outline --------------------------------------------------------------------------------------------
+// ---- the block editor ---------------------------------------------------------------------------------------------
 
-/** The outline tree with its first heading's words taken from the text view's `@heading` line (a stand-in for the server's parser). */
+/** The block tree with its first heading's words taken from the text view's `@heading` line (a stand-in for the server's parser). */
 function treeFromText(text: string) {
   const tree = buildOutlineTree();
   const words = /^@heading (.*)$/m.exec(text)?.[1];
@@ -301,7 +304,7 @@ function treeFromText(text: string) {
 }
 
 /** An api whose saved layout is a real tree and whose text conversion mentions the first heading, so a switch is visible. */
-function outlineApi() {
+function blocksApi() {
   const written = (tree: { nodes?: unknown }) => `@layout document\n@heading ${String((tree.nodes as { text?: string }[])[0]?.text ?? "")}\n`;
   return buildLayoutApi([buildLayoutSummary()], {
     stateful: false,
@@ -316,19 +319,25 @@ function outlineApi() {
   });
 }
 
-const toOutline = async (canvasElement: HTMLElement) => {
+const toBlocks = async (canvasElement: HTMLElement) => {
   const canvas = within(canvasElement);
   await editorOf(canvasElement);
-  await userEvent.click(canvas.getByRole("tab", { name: "Outline" }));
+  await userEvent.click(canvas.getByRole("tab", { name: "Blocks" }));
   return canvas;
 };
 
-export const SwitchingToTheOutlineShowsTheLayoutAsBlocks: Story = {
-  args: { api: outlineApi() },
+/** The first heading block of the block editor's workspace, once Blockly has drawn it. */
+async function firstHeading(): Promise<Blockly.BlockSvg> {
+  await waitFor(() => expect(Blockly.getMainWorkspace()?.getAllBlocks(false).some((b) => b.type === "rl_heading")).toBe(true));
+  return (Blockly.getMainWorkspace() as Blockly.WorkspaceSvg).getAllBlocks(false).find((b) => b.type === "rl_heading") as Blockly.BlockSvg;
+}
+
+export const SwitchingToTheBlocksShowsTheLayoutAsBlocks: Story = {
+  args: { api: blocksApi() },
   play: async ({ canvasElement }) => {
-    const canvas = await toOutline(canvasElement);
-    await expect(await canvas.findByRole("region", { name: "Layout outline" })).toBeInTheDocument();
-    await expect(canvas.getAllByRole("listitem", { name: "Heading block 1" })[0]).toBeInTheDocument();
+    const canvas = await toBlocks(canvasElement);
+    await expect(await canvas.findByRole("region", { name: "Block editor" })).toBeInTheDocument();
+    await expect((await firstHeading()).getFieldValue("text")).toBe("Requirements of {{project_name}}");
     await expect(await canvas.findByText("No problems.", undefined, { timeout: TEXT_CHECKED_MS })).toBeInTheDocument();
     // Nothing edited: nothing to save, and the text-only pickers are not offered.
     await expect(canvas.getByRole("button", { name: "Save new version" })).toBeDisabled();
@@ -337,18 +346,15 @@ export const SwitchingToTheOutlineShowsTheLayoutAsBlocks: Story = {
   },
 };
 
-export const EditingInTheOutlineSavesTheEditedTree: Story = {
-  args: { api: outlineApi() },
+export const EditingABlockSavesTheEditedTree: Story = {
+  args: { api: blocksApi() },
   play: async ({ canvasElement, args }) => {
-    const canvas = await toOutline(canvasElement);
-    const heading = within(canvas.getAllByRole("listitem", { name: "Heading block 1" })[0]);
-    const box = await heading.findByRole("textbox", { name: "Heading" });
-    await userEvent.clear(box);
-    await userEvent.type(box, "Edited title");
-    await expect(canvas.getByText("Unsaved changes")).toBeInTheDocument();
+    const canvas = await toBlocks(canvasElement);
+    (await firstHeading()).setFieldValue("Edited title", "text");
+    await expect(await canvas.findByText("Unsaved changes")).toBeInTheDocument();
     const save = canvas.getByRole("button", { name: "Save new version" });
     await waitFor(() => expect(save).toBeEnabled(), { timeout: TEXT_CHECKED_MS });
-    await userEvent.click(save);
+    await saveVersion(save);
     await waitFor(() => expect(args.api.save).toHaveBeenCalledWith(
       "layout-1",
       expect.objectContaining({ base_version: 2, tree: expect.objectContaining({ nodes: expect.arrayContaining([expect.objectContaining({ text: "Edited title" })]) }) }),
@@ -357,46 +363,45 @@ export const EditingInTheOutlineSavesTheEditedTree: Story = {
   },
 };
 
-export const AnOutlineWithProblemsCannotBeSavedAndShowsThemOnTheBlock: Story = {
-  args: { api: outlineApi() },
+export const BlocksWithProblemsCannotBeSavedAndShowThemInTheInspector: Story = {
+  args: { api: blocksApi() },
   play: async ({ canvasElement }) => {
-    const canvas = await toOutline(canvasElement);
-    const heading = within(canvas.getAllByRole("listitem", { name: "Heading block 1" })[0]);
-    await userEvent.clear(await heading.findByRole("textbox", { name: "Heading" }));
+    const canvas = await toBlocks(canvasElement);
+    const heading = await firstHeading();
+    heading.setFieldValue("", "text");
     await expect(await canvas.findByText("1 problem to fix", undefined, { timeout: TEXT_CHECKED_MS })).toBeInTheDocument();
-    await expect(heading.getByText("Must not be empty.")).toBeInTheDocument();
+    await waitFor(() => expect(heading.getIcon(Blockly.icons.IconType.WARNING)).toBeTruthy());
+    Blockly.common.setSelected(heading);
+    await expect(await canvas.findByText("Must not be empty.")).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Save new version" })).toBeDisabled();
     await expect(canvas.getByRole("button", { name: "Run preview" })).toBeDisabled();
   },
 };
 
-export const SwitchingBackToTextShowsTheOutlinesChanges: Story = {
-  args: { api: outlineApi() },
+export const SwitchingBackToTextShowsTheBlocksChanges: Story = {
+  args: { api: blocksApi() },
   play: async ({ canvasElement }) => {
-    const canvas = await toOutline(canvasElement);
-    const heading = within(canvas.getAllByRole("listitem", { name: "Heading block 1" })[0]);
-    const box = await heading.findByRole("textbox", { name: "Heading" });
-    await userEvent.clear(box);
-    await userEvent.type(box, "Renamed");
+    const canvas = await toBlocks(canvasElement);
+    (await firstHeading()).setFieldValue("Renamed", "text");
     await userEvent.click(canvas.getByRole("tab", { name: "Text" }));
-    await expect((await editorOf(canvasElement)).value).toBe("@layout document\n@heading Renamed\n");
+    await waitFor(async () => expect((await editorOf(canvasElement)).value).toBe("@layout document\n@heading Renamed\n"));
     await expect(canvas.getByText("Unsaved changes")).toBeInTheDocument();
   },
 };
 
 export const SwitchingBackWithoutEditsLeavesTheTextAsTyped: Story = {
-  args: { api: outlineApi() },
+  args: { api: blocksApi() },
   play: async ({ canvasElement }) => {
-    const canvas = await toOutline(canvasElement);
+    const canvas = await toBlocks(canvasElement);
     await userEvent.click(canvas.getByRole("tab", { name: "Text" }));
-    // The original text is untouched: not re-formatted just because the outline was opened.
+    // The original text is untouched: not re-formatted just because the blocks were opened.
     await expect((await editorOf(canvasElement)).value).toBe("@layout document\n@heading Requirements of {{project_name}}\n");
     await expect(canvas.queryByText("Unsaved changes")).not.toBeInTheDocument();
   },
 };
 
-export const TheOutlineIsRefusedWhileTheTextHasProblems: Story = {
-  args: { api: outlineApi() },
+export const TheBlocksAreRefusedWhileTheTextHasProblems: Story = {
+  args: { api: blocksApi() },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const editor = await editorOf(canvasElement);
@@ -404,128 +409,41 @@ export const TheOutlineIsRefusedWhileTheTextHasProblems: Story = {
     editor.setSelectionRange(0, 0);
     await userEvent.keyboard("BROKEN ");
     await canvas.findByRole("button", { name: "Line 1, column 1: Unknown word BROKEN." }, { timeout: TEXT_CHECKED_MS });
-    await userEvent.click(canvas.getByRole("tab", { name: "Outline" }));
-    await expect(await canvas.findByText("Fix the problems in the text first; the outline needs a layout that reads cleanly.")).toBeInTheDocument();
-    await expect(canvas.queryByRole("region", { name: "Layout outline" })).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("tab", { name: "Blocks" }));
+    await expect(await canvas.findByText("Fix the problems in the text first; the block editor needs a layout that reads cleanly.")).toBeInTheDocument();
+    await expect(canvas.queryByRole("region", { name: "Block editor" })).not.toBeInTheDocument();
   },
 };
 
-export const AnOutlineWithProblemsCannotBeShownAsTextYet: Story = {
-  args: { api: outlineApi() },
+export const BlocksWithProblemsCannotBeShownAsTextYet: Story = {
+  args: { api: blocksApi() },
   play: async ({ canvasElement }) => {
-    const canvas = await toOutline(canvasElement);
-    const heading = within(canvas.getAllByRole("listitem", { name: "Heading block 1" })[0]);
-    await userEvent.clear(await heading.findByRole("textbox", { name: "Heading" }));
+    const canvas = await toBlocks(canvasElement);
+    (await firstHeading()).setFieldValue("", "text");
+    await expect(await canvas.findByText("1 problem to fix", undefined, { timeout: TEXT_CHECKED_MS })).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("tab", { name: "Text" }));
-    await expect(await canvas.findByText("The outline has problems, so it cannot be shown as text yet. Fix them first.")).toBeInTheDocument();
-    await expect(canvas.getByRole("region", { name: "Layout outline" })).toBeInTheDocument();
+    await expect(await canvas.findByText("The blocks have problems, so they cannot be shown as text yet. Fix them first.")).toBeInTheDocument();
+    await expect(canvas.getByRole("region", { name: "Block editor" })).toBeInTheDocument();
   },
 };
 
-export const ASharedLayoutOpensItsOutlineReadOnly: Story = {
+export const ASharedLayoutOpensItsBlocksReadOnly: Story = {
   args: { api: buildLayoutApi([buildLayoutSummary({ editable: false, origin: "organization" })], { stateful: false, parseText: async () => ({ ok: true, tree: buildOutlineTree(), errors: [] }) }) },
   play: async ({ canvasElement }) => {
-    const canvas = await toOutline(canvasElement);
-    await expect(await canvas.findByRole("region", { name: "Layout outline" })).toBeInTheDocument();
+    const canvas = await toBlocks(canvasElement);
+    await expect(await canvas.findByRole("region", { name: "Block editor" })).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Add block" })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Save new version" })).not.toBeInTheDocument();
   },
 };
 
-
-// ---- the document view --------------------------------------------------------------------------------------------
-
-const toDocument = async (canvasElement: HTMLElement) => {
-  const canvas = within(canvasElement);
-  await editorOf(canvasElement);
-  await userEvent.click(canvas.getByRole("tab", { name: "Document" }));
-  return canvas;
-};
-
-export const TheDocumentViewShowsTheLayoutAsEditableProseAndBlocks: Story = {
-  args: { api: outlineApi() },
-  play: async ({ canvasElement }) => {
-    const canvas = await toDocument(canvasElement);
-    const region = within(await canvas.findByRole("region", { name: "Layout document" }));
-    await expect(await region.findByText("Requirements of {{project_name}}")).toBeInTheDocument();
-    await expect(region.getByText("For each record")).toBeInTheDocument();
-    await expect(await canvas.findByText("No problems.", undefined, { timeout: TEXT_CHECKED_MS })).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Save new version" })).toBeDisabled();
-    await expect(canvas.queryByRole("tab", { name: "Fields" })).not.toBeInTheDocument();
-  },
-};
-
-export const AnEditInTheDocumentIsInTheOutlineAndTheTextAndSavesTheSameTree: Story = {
-  args: { api: outlineApi() },
-  play: async ({ canvasElement, args }) => {
-    const canvas = await toDocument(canvasElement);
-    const heading = await within(await canvas.findByRole("region", { name: "Layout document" })).findByText("Requirements of {{project_name}}");
-    await userEvent.click(heading);
-    const selection = window.getSelection();
-    selection?.selectAllChildren(heading);
-    selection?.collapseToEnd();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    await userEvent.keyboard(" (draft)");
-    await expect(await canvas.findByText("Unsaved changes")).toBeInTheDocument();
-    // The outline shows the same edit: nothing converts between the two tree views.
-    await userEvent.click(canvas.getByRole("tab", { name: "Outline" }));
-    const first = within(canvas.getAllByRole("listitem", { name: "Heading block 1" })[0]);
-    await expect(await first.findByRole("textbox", { name: "Heading" })).toHaveValue("Requirements of {{project_name}} (draft)");
-    // The text view reads it too.
-    await userEvent.click(canvas.getByRole("tab", { name: "Text" }));
-    await waitFor(async () => expect((await editorOf(canvasElement)).value).toBe("@layout document\n@heading Requirements of {{project_name}} (draft)\n"));
-    // ...and saving from the document view sends the edited tree.
-    await userEvent.click(canvas.getByRole("tab", { name: "Document" }));
-    const save = canvas.getByRole("button", { name: "Save new version" });
-    await waitFor(() => expect(save).toBeEnabled(), { timeout: TEXT_CHECKED_MS });
-    await userEvent.click(save);
-    await waitFor(() => expect(args.api.save).toHaveBeenCalledWith(
-      "layout-1",
-      expect.objectContaining({ tree: expect.objectContaining({ nodes: expect.arrayContaining([expect.objectContaining({ text: "Requirements of {{project_name}} (draft)" })]) }) }),
-    ));
-  },
-};
-
-export const ATableLayoutHasNoDocumentView: Story = {
-  args: {
-    api: buildLayoutApi([buildLayoutSummary({ family: "table" })], {
-      stateful: false, parseText: async () => ({ ok: true, tree: { schema_version: 1, family: "table", nodes: [] }, errors: [] }),
-    }),
-  },
+/** Two views edit a layout: the text and the blocks. There is no separate document view. */
+export const TheDesignerHasTextAndBlocksViewsOnly: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await editorOf(canvasElement);
-    await expect(canvas.getByRole("tab", { name: "Outline" })).toBeInTheDocument();
+    await expect(canvas.getByRole("tab", { name: "Text" })).toBeInTheDocument();
+    await expect(canvas.getByRole("tab", { name: "Blocks" })).toBeInTheDocument();
     await expect(canvas.queryByRole("tab", { name: "Document" })).not.toBeInTheDocument();
-  },
-};
-
-export const ALayoutTheDocumentCannotShowIsRefusedWithTheReason: Story = {
-  args: {
-    api: buildLayoutApi([buildLayoutSummary()], {
-      stateful: false,
-      parseText: async () => ({
-        ok: true, errors: [], tree: { schema_version: 1, family: "document", nodes: [{ type: "each", source: { record_type: "requirement" }, children: "nope" }] },
-      }),
-    }),
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = await toDocument(canvasElement);
-    await expect(await canvas.findByText(/The document view cannot show this layout without changing it: nodes\[0\]\.children/)).toBeInTheDocument();
-    await expect(canvas.queryByRole("region", { name: "Layout document" })).not.toBeInTheDocument();
-    // The text view is where it still is, and the outline can still open it.
-    await userEvent.click(canvas.getByRole("tab", { name: "Outline" }));
-    await expect(await canvas.findByRole("region", { name: "Layout outline" })).toBeInTheDocument();
-  },
-};
-
-export const ASharedLayoutOpensItsDocumentReadOnly: Story = {
-  args: { api: buildLayoutApi([buildLayoutSummary({ editable: false, origin: "organization" })], { stateful: false, parseText: async () => ({ ok: true, tree: buildOutlineTree(), errors: [] }) }) },
-  play: async ({ canvasElement }) => {
-    const canvas = await toDocument(canvasElement);
-    const region = within(await canvas.findByRole("region", { name: "Layout document" }));
-    await region.findByText("Requirements of {{project_name}}");
-    await expect(region.queryByRole("button", { name: "Add block" })).not.toBeInTheDocument();
-    await expect(canvas.queryByRole("button", { name: "Save new version" })).not.toBeInTheDocument();
   },
 };
