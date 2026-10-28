@@ -48,10 +48,11 @@ export default meta;
 
 type Story = StoryObj<typeof ReportDownloadDialog>;
 
-/** Only reports that use the list's record type are offered: an engagement report is not on a requirements list. */
+/** Only reports that use the list's record type are offered: an engagement report is not on a requirements list. The folders open collapsed the first time. */
 export const OffersOnlyReportsThatUseTheType: Story = {
   play: async () => {
     const dialog = within(await screen.findByRole("dialog", { name: "Download report" }));
+    await userEvent.click(await dialog.findByRole("button", { name: "Expand Requirements" }));
     await expect(await dialog.findByRole("button", { name: /^Requirement coverage/ })).toBeInTheDocument();
     await expect(dialog.getByRole("button", { name: /^Decision trace/ })).toBeInTheDocument();
     await expect(dialog.queryByText(/Engagement yield/)).not.toBeInTheDocument();
@@ -62,6 +63,7 @@ export const OffersOnlyReportsThatUseTheType: Story = {
 export const ChoosingAReportRunsItAndCanGoBack: Story = {
   play: async () => {
     const dialog = within(await screen.findByRole("dialog", { name: "Download report" }));
+    await userEvent.click(await dialog.findByRole("button", { name: "Expand Requirements" }));
     await userEvent.click(await dialog.findByRole("button", { name: /^Requirement coverage/ }));
     await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining("/reports/requirement-coverage?format=json")));
     await userEvent.click(dialog.getByRole("button", { name: "Choose another report" }));
@@ -83,6 +85,7 @@ export const AnOrganisationListUsesTheOrganisationCatalogue: Story = {
   args: { projectId: undefined, ownedByOrganization: true, recordType: "engagement", recordLabel: "Engagements" },
   play: async () => {
     const dialog = within(await screen.findByRole("dialog", { name: "Download report" }));
+    await userEvent.click(await dialog.findByRole("button", { name: "Expand Research" }));
     await expect(await dialog.findByRole("button", { name: /^Engagement yield/ })).toBeInTheDocument();
     await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/v1/orgs/org-1/report-catalogue"));
   },

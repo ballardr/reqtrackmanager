@@ -13183,3 +13183,31 @@ No time or date field is added. `record_types` is derived data (a list of regist
 ### Verification
 
 Backend: `record_types_of` and the catalogue field are pinned in `test_custom_report_run.py`; the reports, framework, placements and record-list report suites pass. Frontend: stories for the dialog and for the menu item; `tsc -b` and eslint clean. Playwright `list-download-report.spec.ts` (only the matching report is listed in its folder, it runs and downloads a PDF, Choose another returns to the list).
+
+## Custom reports Phase 21: pickers remember their folders; star on the right (2026-10-29)
+
+The third review asked that the report picker open the way it was left, not always with Platform expanded, and that the favourite star sit on the right of the report's row.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Open folders are a per-person preference**, `ui_preferences.report_picker_folders`: an object of folder ids by picker. No backend change (the bag is open-ended and size-bounded). | Agent |
+| 2 | **Each place names its picker** with a required `pickerId` (`project-reports`, `organization-reports`, `record-list-download`), so one picker's folders do not open another's. | Agent |
+| 3 | **First use is fully collapsed**, the Favourites folder and the selection's folder included; the old "open the selection's folder" and "Platform is open" rules go, and the record-list dialog no longer opens every folder. | Agent |
+| 4 | **A search opens every folder holding a match but never writes the saved state**, so clearing it restores the person's layout. Folder ids come from folder paths, so a saved id for a folder that no longer exists is harmless; the list is capped at 100. | Agent |
+| 5 | **The star is the last control of the row** (title and description, kind badge, star). | User |
+
+### Shapes of time and data
+
+No time or date is involved; the preference is a list of strings.
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a preference carrying something sensitive; an unbounded write.
+- *Verify:* the value is folder names the person can already see in the picker; the existing `ui_preferences` limits (key count, size) apply.
+- *Remediate:* none needed.
+
+*Not applicable:* no authentication, secret, classification, permission, audit or retention change; no MCP tool; no module-boundary edit; no new table or bundle data; no user/group field.
+
+### Verification
+
+Storybook: `ReportPicker` (collapsed first time, remembers, search leaves the saved folders, star on the right), `ReportCatalogue` and `ReportDownloadDialog` updated. Playwright `report-picker-and-folders.spec.ts` (remembered across close and reload) and `list-download-report.spec.ts` updated; the picker helper finds report rows by `data-report-picker-item`, not by the star's position. `tsc` and eslint clean.

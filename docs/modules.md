@@ -1861,7 +1861,7 @@ flowchart LR
   several, the ones it spans (`any_subcomponents`, offered while at least one is enabled). `report_enabled_for_project` and
   `report_enabled_for_organization` (`modules/registry.py`) are the one check the catalogue, the report route, the
   widget list and the module run all use.
-- Favourites are not a table: they are a list of report keys in the person's `ui_preferences` (`report_favourites`).
+- Favourites are not a table: they are a list of report keys in the person's `ui_preferences` (`report_favourites`). The folders left open are kept the same way (`report_picker_folders`: folder ids by picker; each host names its picker with `pickerId`), and a picker opens fully collapsed the first time.
 - Frontend: `ReportPicker` (dialog over the shared `TreeView` in controlled mode), `ReportPlacementsPanel` (Org Admin and
   Project Admin), `ReportListControls` (search, filters and paging of the layouts and packs lists) and `ReportFolderField`.
 

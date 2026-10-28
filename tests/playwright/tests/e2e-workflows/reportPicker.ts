@@ -43,7 +43,7 @@ async function expandAllFolders(dialog: Locator): Promise<void> {
 export async function listReports(page: Page): Promise<string[]> {
   const dialog = await openReportPicker(page);
   await expandAllFolders(dialog);
-  const titles = await dialog.locator("li button[aria-pressed='false'] + button, li button[aria-pressed='true'] + button").evaluateAll(
+  const titles = await dialog.locator("button[data-report-picker-item]").evaluateAll(
     (buttons) => buttons.map((b) => (b.querySelector("span > span") ?? b).textContent ?? ""),
   );
   await page.keyboard.press("Escape");

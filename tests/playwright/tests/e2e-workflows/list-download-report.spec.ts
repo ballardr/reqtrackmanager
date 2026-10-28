@@ -55,9 +55,11 @@ test.describe("Download report from a record list", () => {
     await chooseListAction(page, "Download report");
     const dialog = page.getByRole("dialog", { name: "Download report" });
 
-    await test.step("only the report that reads requirements is listed, in its folder", async () => {
+    await test.step("only the report that reads requirements is listed, in its folder, which starts collapsed", async () => {
+      await expect(dialog.getByRole("button", { name: "Expand Specs" })).toBeVisible();
+      await expect(dialog.getByRole("button", { name: new RegExp(`^${forRequirements}`) })).toHaveCount(0);
+      await dialog.getByRole("button", { name: "Expand Specs" }).click();
       await expect(dialog.getByRole("button", { name: new RegExp(`^${forRequirements}`) })).toBeVisible();
-      await expect(dialog.getByText("Specs", { exact: true })).toBeVisible();
       await expect(dialog.getByText(forOthers)).toHaveCount(0);
     });
 
@@ -69,7 +71,7 @@ test.describe("Download report from a record list", () => {
       expect(fs.readFileSync((await (await pending).path())!).subarray(0, 5).toString()).toBe("%PDF-");
     });
 
-    await test.step("Choose another report returns to the list", async () => {
+    await test.step("Choose another report returns to the list, with the folder still open", async () => {
       await dialog.getByRole("button", { name: "Choose another report" }).click();
       await expect(dialog.getByRole("button", { name: new RegExp(`^${forRequirements}`) })).toBeVisible();
     });
