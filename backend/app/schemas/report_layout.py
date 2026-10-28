@@ -218,6 +218,98 @@ class ReportFieldCatalogueOut(BaseModel):
     schema_version: int
 
 
+class ReportBlockFieldOut(BaseModel):
+    """One key of a block (or of the layout) as the designer's form offers it (`services.report_layout_block_schema.BlockField`)."""
+
+    key: str
+    label: str
+    kind: str
+    required: bool
+    help: str
+    max_length: int | None
+    minimum: int | None
+    maximum: int | None
+    default: Any
+    choices: list[str]
+    features: list[str]
+    depends_on: str | None
+    families: list[str]
+
+
+class ReportBlockContainerOut(BaseModel):
+    """A list of child blocks a block holds."""
+
+    key: str
+    label: str
+
+
+class ReportBlockProvidesOut(BaseModel):
+    """A name a block brings into scope: `key` holds it, `kind` is `record` or `group`, `default` is used when absent."""
+
+    key: str
+    kind: str
+    default: str
+
+
+class ReportBlockOut(BaseModel):
+    """One block type the designer can add.
+
+    Attributes:
+        type: The `type` value of a node.
+        label / description: How the designer names and explains it.
+        families: The layout families that may contain it.
+        fields: The keys of a node, in form order.
+        containers: Child lists, in order.
+        provides: The name it brings into scope, if any.
+        template: The node a new block starts as (may fail validation until filled in).
+        described: False for a type that declared no schema; the designer shows its node as JSON.
+    """
+
+    type: str
+    label: str
+    description: str
+    families: list[str]
+    fields: list[ReportBlockFieldOut]
+    containers: list[ReportBlockContainerOut]
+    provides: ReportBlockProvidesOut | None
+    template: dict[str, Any]
+    described: bool
+
+
+class ReportBlockCatalogueOut(BaseModel):
+    """Every block type, the layout-level fields, the field kinds the designer has a control for and the operators a
+    condition accepts for each kind of field (so the designer never restates the validator's rule)."""
+
+    blocks: list[ReportBlockOut]
+    layout_fields: list[ReportBlockFieldOut]
+    field_kinds: list[str]
+    operators: dict[str, list[str]]
+    valueless_operators: list[str]
+    list_operators: list[str]
+    schema_version: int
+
+
+class ReportLayoutValidateRequest(BaseModel):
+    """A tree to check (nothing is stored or run)."""
+
+    tree: dict[str, Any]
+
+
+class ReportLayoutTreeErrorOut(BaseModel):
+    """One problem in a tree: `path` is where (`nodes[2].children[0].columns[1].field`; empty for the layout itself)."""
+
+    path: str
+    message: str
+
+
+class ReportLayoutValidateOut(BaseModel):
+    """Whether the tree may be saved and run, and every problem found (at most 50)."""
+
+    ok: bool
+    errors: list[ReportLayoutTreeErrorOut]
+    node_count: int
+
+
 class ReportLayoutPreviewRequest(BaseModel):
     """A draft to evaluate: its text view or its tree (exactly one).
 

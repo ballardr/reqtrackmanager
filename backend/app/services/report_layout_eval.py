@@ -45,6 +45,10 @@ Design decisions:
   is drawn inline, in a `MathText`); sheets of the table family show the TeX as written. TeX that
   fails the allow-list or cannot be drawn is shown as its source with one warning (never the TeX itself), and a run
   draws at most `MAX_EQUATIONS` equations, so a layout over thousands of records cannot make typesetting unbounded.
+- **Styles belong to the author's words.** Bold, italic and code runs come from the Markdown reader (`MathText` with
+  `Styled` parts). A run's placeholders are filled and its equations found run by run, and a substituted value takes
+  the run's style (a record title inside `**{{req.title}}**` prints bold) but is never read for styles itself.
+  An equation inside a styled run is drawn unstyled.
 - Past instants stay UTC and dates are plain dates (`format_value`); no server-local time or
   timezone conversion happens here.
 
@@ -70,7 +74,7 @@ import time
 import uuid
 from collections import defaultdict
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from typing import Any
 
@@ -98,12 +102,16 @@ from app.services.report_model import (
     Heading,
     MathText,
     Note,
+    NumberedList,
     PageBreak,
     Paragraph,
     ReportDocument,
     Sheet,
+    Styled,
     Table,
+    link_problem,
     markdown_to_blocks,
+    text_runs,
 )
 from app.services.report_traversal import MAX_LINKED, MAX_ROOTS, LinkDirection, linked_records, root_records
 from app.services.report_variables import (
@@ -134,6 +142,13 @@ MAX_RECORDED_VERSIONS = 20_000
 Key = tuple[str, uuid.UUID]
 Scope = dict[str, "Bound"]
 
+
+
+def _restyled(part: str | Equation | Styled, run: str | Equation | Styled) -> list[str | Equation | Styled]:
+    """`part` (filled text or an equation) as it sits inside `run`: a string takes the run's style and link, nothing else changes."""
+    if isinstance(part, str) and isinstance(run, Styled):
+        return [Styled(part, run.bold, run.italic, run.code, run.href)] if part else []
+    return [part] if not isinstance(part, str) or part else []
 
 class LayoutLimitError(RuntimeError):
     """A run exceeded its work, output or time limit; the caller offers an async run or a narrower layout."""
@@ -543,9 +558,34 @@ class _Run:
         ]
         return MathText(parts) if any(isinstance(p, Equation) for p in parts) else "".join(str(p) for p in parts)
 
+    def checked_link(self, run: Styled, scope: Scope) -> Styled | str:
+        """`run` with its link address filled in and checked: the run itself, or without the link (with one warning) when
+        the address, once filled in, is not allowed. A record value can reach an address, so the check is made here,
+        on the final text, never on the template."""
+        if run.href is None:
+            return run
+        href = "".join(piece for piece, _ in self.fill_pieces(run.href, scope))
+        if link_problem(href) is None:
+            return replace(run, href=href)
+        self.warn("A link address was not allowed once filled in, so its text is shown without the link.")
+        plain = replace(run, href=None)
+        return plain if (plain.bold or plain.italic or plain.code) else plain.text
+
     def rich(self, text: str, scope: Scope) -> str:
-        """`text` with placeholders filled and its equations found, for a heading or a list item."""
-        return self.inline_text(self.fill_pieces(text, scope))
+        """`text` with placeholders filled and its equations found, for a heading or a list item.
+
+        Styled runs (bold, italic, code) from the Markdown reader keep their style: each run is filled and scanned on
+        its own and the strings it yields take the run's style.
+        """
+        if not isinstance(text, MathText):
+            return self.inline_text(self.fill_pieces(text, scope))
+        parts: list[str | Equation | Styled] = []
+        for run in text_runs(text):
+            run = self.checked_link(run, scope) if isinstance(run, Styled) else run  # noqa: PLW2901
+            plain = run.text if isinstance(run, Styled) else run
+            for part in text_runs(self.inline_text(self.fill_pieces(str(plain), scope))):
+                parts.extend(_restyled(part, run))
+        return MathText(parts)
 
     def cell_of(self, record: ReportRecord, key: str) -> str:
         """A field as a document table cell: its text, with equations drawn when the field is math-capable."""
@@ -558,31 +598,41 @@ class _Run:
         """A text block's paragraph with its placeholders filled and its equations found (see the module docstring).
 
         Inline equations stay in the paragraph's `MathText`; a display equation ends the paragraph and is a block.
+        Styled runs keep their style; the paragraph is a `MathText` when it holds equations or styles.
         """
-        pieces = self.fill_pieces(text, scope)
-        found = self._segments(pieces)
-        if found is None:
-            return [Paragraph("".join(piece for piece, _ in pieces))]
+        runs = text_runs(text)
+        if not isinstance(text, MathText):
+            runs = (text,)
         blocks: list[Block] = []
-        parts: list[str | Equation] = []
+        parts: list[str | Equation | Styled] = []
 
         def flush() -> None:
             nonlocal parts
-            if any(isinstance(p, Equation) for p in parts):
+            if any(not isinstance(p, str) for p in parts):
                 blocks.append(Paragraph(MathText(parts)))
             elif "".join(str(p) for p in parts).strip():
                 blocks.append(Paragraph("".join(str(p) for p in parts)))
             parts = []
 
-        for segment in found:
-            if segment.kind == "text":
-                parts.append(segment.value)
-            elif segment.kind == "inline":
-                parts.append(self.math_part(segment.value, False))
-            else:
-                flush()
-                shown = self.math_part(segment.value, True)
-                blocks.append(shown if isinstance(shown, Equation) else Paragraph(shown))
+        for run in runs:
+            run = self.checked_link(run, scope) if isinstance(run, Styled) else run  # noqa: PLW2901
+            plain = run.text if isinstance(run, Styled) else run
+            pieces = self.fill_pieces(str(plain), scope)
+            found = self._segments(pieces)
+            if found is None:
+                if not isinstance(text, MathText):
+                    return [Paragraph("".join(piece for piece, _ in pieces))]
+                parts.extend(_restyled("".join(piece for piece, _ in pieces), run))
+                continue
+            for segment in found:
+                if segment.kind == "text":
+                    parts.extend(_restyled(segment.value, run))
+                elif segment.kind == "inline":
+                    parts.extend(_restyled(self.math_part(segment.value, False), run))
+                else:
+                    flush()
+                    shown = self.math_part(segment.value, True)
+                    blocks.append(shown if isinstance(shown, Equation) else Paragraph(shown))
         flush()
         return blocks
 
@@ -598,6 +648,8 @@ class _Run:
                 out.extend(self.paragraph_blocks(block.text, scope))
             elif isinstance(block, BulletList):
                 out.append(BulletList([self.rich(item, scope) for item in block.items]))
+            elif isinstance(block, NumberedList):
+                out.append(NumberedList([self.rich(item, scope) for item in block.items]))
             else:
                 out.append(block)
         return out

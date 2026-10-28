@@ -13,8 +13,9 @@ Design decisions:
   stays proportional to the size of the file instead of costing about 10 KB of objects per row.
 - **Every string passes `report_odf.xml_text` or `xml_attr`**, so record text is only ever element content: a
   `<script>`, `<text:...>` or `<draw:...>` string is stored as literal text. Colours are checked as six hex digits,
-  lengths are formatted from numbers, and an image's type is sniffed from its bytes. There is no link, macro,
-  field code or external object; the one field is the fixed page number.
+  lengths are formatted from numbers, and an image's type is sniffed from its bytes. A link is written only for an address
+  `report_model.finalize_links` has checked, as an attribute value; there is no macro, field code or external object, and
+  the one field is the fixed page number.
 - **Equations are pictures** (the same drawing the PDF embeds, with a baseline offset inline), then the author's
   source when one cannot be drawn. They are not native formula objects: those need an embedded sub-document in
   StarMath/MathML whose rendering differs between office suites, so a picture is the faithful form (`docs/decisions.md`,
@@ -38,10 +39,13 @@ from app.services.report_model import (
     Heading,
     Image,
     Note,
+    NumberedList,
     PageBreak,
     Paragraph,
     ReportDocument,
+    Styled,
     Table,
+    finalize_links,
     text_on,
     text_runs,
 )
@@ -55,6 +59,7 @@ from app.services.report_odf import (
     length_cm,
     namespace_attrs,
     raster_info,
+    xml_attr,
     xml_text,
 )
 from app.services.report_svg import svg_png
@@ -87,6 +92,31 @@ def _paragraph_style(name: str, *, parent: str | None = "Standard", para: str = 
     return f'<style:style style:name="{name}" style:family="paragraph"{parent_attr}{extra}>{paragraph}{run}</style:style>'
 
 
+#: The character styles of bold / italic / code runs, by name, as `style:text-properties` attributes.
+_SPAN_STYLES: dict[str, str] = {
+    "T_Bold": 'fo:font-weight="bold"',
+    "T_Italic": 'fo:font-style="italic"',
+    "T_BoldItalic": 'fo:font-weight="bold" fo:font-style="italic"',
+    "T_Code": 'fo:font-family="\'Courier New\'" style:font-family-generic="modern"',
+    "T_BoldCode": 'fo:font-weight="bold" fo:font-family="\'Courier New\'" style:font-family-generic="modern"',
+    "T_ItalicCode": 'fo:font-style="italic" fo:font-family="\'Courier New\'" style:font-family-generic="modern"',
+    "Internet_20_link": (
+        'fo:color="#0563c1" style:text-underline-style="solid" style:text-underline-width="auto" style:text-underline-color="font-color"'
+    ),
+    "T_BoldItalicCode": 'fo:font-weight="bold" fo:font-style="italic" fo:font-family="\'Courier New\'" style:font-family-generic="modern"',
+}
+
+
+def _text_style(name: str, properties: str) -> str:
+    """One character style (the style of a `text:span`)."""
+    return f'<style:style style:name="{name}" style:family="text"><style:text-properties {properties}/></style:style>'
+
+
+def _span_style(run: Styled) -> str:
+    """The name of the character style for a run's combination of bold, italic and code."""
+    return "T_" + ("Bold" if run.bold else "") + ("Italic" if run.italic else "") + ("Code" if run.code else "")
+
+
 def _named_styles() -> str:
     """The `office:styles` content that does not depend on the document: default text, headings, notes, the list."""
     sizes = {1: 16, 2: 14, 3: 12, 4: 11}
@@ -113,7 +143,13 @@ def _named_styles() -> str:
         + _paragraph_style("Note", text=f'fo:font-size="8.5pt" fo:font-style="italic" fo:color="{_NOTE_GREY}"')
         + _paragraph_style("Footer", para='fo:text-align="center" fo:margin-bottom="0cm"', text='fo:font-size="8pt"')
         + _paragraph_style("List_20_Bullet", extra=' style:display-name="List Bullet"', para='fo:margin-bottom="0.05cm"')
+        + _paragraph_style("List_20_Number", extra=' style:display-name="List Number"', para='fo:margin-bottom="0.05cm"')
         + _paragraph_style("Display_20_Equation", para='fo:text-align="center"')
+        + "".join(_text_style(name, props) for name, props in _SPAN_STYLES.items())
+        + '<text:list-style style:name="L_Number"><text:list-level-style-number text:level="1" style:num-suffix="." style:num-format="1">'
+        '<style:list-level-properties text:list-level-position-and-space-mode="label-alignment">'
+        '<style:list-level-label-alignment text:label-followed-by="listtab" text:list-tab-stop-position="0.9cm" '
+        'fo:text-indent="-0.6cm" fo:margin-left="0.9cm"/></style:list-level-properties></text:list-level-style-number></text:list-style>'
         + '<text:list-style style:name="L_Bullet"><text:list-level-style-bullet text:level="1" text:bullet-char="•">'
         '<style:list-level-properties text:list-level-position-and-space-mode="label-alignment">'
         '<style:list-level-label-alignment text:label-followed-by="listtab" text:list-tab-stop-position="0.9cm" '
@@ -231,11 +267,24 @@ class _Body:
     # --- text ------------------------------------------------------------------------------------------------
 
     def _inline(self, value: str) -> str:
-        """Paragraph content for model text: escaped text, and a picture (else the source) per inline equation."""
+        """Paragraph content for model text: escaped text, a character-styled span per bold / italic / code run, and a
+        picture (else the source) per inline equation."""
         return "".join(
-            xml_text(part) if isinstance(part, str) else (self._equation_frame(part) or xml_text(part.text))
+            xml_text(part) if isinstance(part, str)
+            else self._styled(part) if isinstance(part, Styled)
+            else (self._equation_frame(part) or xml_text(part.text))
             for part in text_runs(value)
         )
+
+    def _styled(self, run: Styled) -> str:
+        """A bold / italic / code / link run: a character-styled span, inside a link when it has one (an address was
+        checked by `finalize_links`; it is an attribute value, escaped, never markup)."""
+        inner = xml_text(run.text)
+        if run.bold or run.italic or run.code:
+            inner = f'<text:span text:style-name="{_span_style(run)}">{inner}</text:span>'
+        if run.href:
+            inner = f'<text:a xlink:type="simple" xlink:href={xml_attr(run.href)} text:style-name="Internet_20_link">{inner}</text:a>'
+        return inner
 
     def _paragraph(self, style: str, content: str) -> None:
         self.chunks.append(f'<text:p text:style-name="{style}">{content}</text:p>')
@@ -312,7 +361,10 @@ class _Body:
         """Adds one neutral block."""
         if isinstance(block, Heading):
             level = min(max(block.level, 1), 4)
-            self.chunks.append(f'<text:h text:style-name="Heading_20_{level}" text:outline-level="{level}">{self._inline(block.text)}</text:h>')
+            mark = f"<text:bookmark text:name={xml_attr(block.anchor)}/>" if block.anchor else ""
+            self.chunks.append(
+                f'<text:h text:style-name="Heading_20_{level}" text:outline-level="{level}">{mark}{self._inline(block.text)}</text:h>',
+            )
         elif isinstance(block, Paragraph):
             self._paragraph("Standard", self._inline(block.text))
         elif isinstance(block, Equation):
@@ -325,6 +377,12 @@ class _Body:
             )
             if items:
                 self.chunks.append(f'<text:list text:style-name="L_Bullet">{items}</text:list>')
+        elif isinstance(block, NumberedList):
+            items = "".join(
+                f'<text:list-item><text:p text:style-name="List_20_Number">{self._inline(item)}</text:p></text:list-item>' for item in block.items
+            )
+            if items:
+                self.chunks.append(f'<text:list text:style-name="L_Number">{items}</text:list>')
         elif isinstance(block, Image):
             data = block.data
             if block.svg is not None:
@@ -362,6 +420,7 @@ def render_odt_document(document: ReportDocument) -> bytes:
     Returns:
         ODT bytes.
     """
+    document = finalize_links(document)
     width = _PAGE_HEIGHT_CM if document.landscape else _PAGE_WIDTH_CM
     package = OdfPackage(MIME_ODT, document.title)
     body = _Body(document, package, width - 2 * _MARGIN_CM)

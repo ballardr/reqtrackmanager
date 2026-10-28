@@ -130,7 +130,7 @@ def test_html_headings_tones_page_breaks_and_gaps():
         ],
     ))
 
-    assert "<h2>One</h2>" in out and "<h5>Deep</h5>" in out
+    assert '<h2 id="one">One</h2>' in out and '<h5 id="deep">Deep</h5>' in out  # a heading carries its anchor
     assert out.count('class="page-break"') == 1 and 'class="compact"' in out
     assert f'style="background-color:#{TONE_FILL["danger"]}' in out
     assert out.count('style="background-color:#') == 1  # only the toned cell carries a style

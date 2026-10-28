@@ -26,6 +26,7 @@ from __future__ import annotations
 import html
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
@@ -56,10 +57,13 @@ from app.services.report_model import (
     Heading,
     Image,
     Note,
+    NumberedList,
     PageBreak,
     Paragraph,
     ReportDocument,
+    Styled,
     Table,
+    finalize_links,
     text_runs,
 )
 from app.services.report_svg import svg_flowable
@@ -109,11 +113,35 @@ def _inline_equation(equation: Equation, images: _InlineImages) -> str:
     return f'<img src="{path}" width="{drawn.width:.2f}" height="{drawn.height:.2f}" valign="{-drawn.descent:.2f}"/>'
 
 
+def _styled_markup(run: Styled, *, bold: bool) -> str:
+    """Paragraph markup for a bold / italic / code run: the escaped words inside the matching tags."""
+    inner = safe(run.text, bold=bold or run.bold)
+    if run.code:
+        inner = f'<font face="Courier">{inner}</font>'
+    if run.italic:
+        inner = f"<i>{inner}</i>"
+    if run.bold and not bold:
+        inner = f"<b>{inner}</b>"
+    if run.href:
+        # A link was checked by `finalize_links`; its address is an escaped attribute value, never markup.
+        inner = f'<a href="{html.escape(run.href, quote=True)}" color="#0563C1"><u>{inner}</u></a>'
+    return inner
+
+
 def _markup(value: str, images: _InlineImages, *, bold: bool = False) -> str:
-    """Paragraph markup for model text: its runs escaped, its equations drawn inline."""
+    """Paragraph markup for model text: its runs escaped, its styles applied and its equations drawn inline."""
     return "".join(
-        safe(run, bold=bold) if isinstance(run, str) else _inline_equation(run, images) for run in text_runs(value)
+        safe(run, bold=bold) if isinstance(run, str)
+        else _styled_markup(run, bold=bold) if isinstance(run, Styled)
+        else _inline_equation(run, images)
+        for run in text_runs(value)
     )
+
+
+def _list(items: list[str], images: _InlineImages, bullet_type: str) -> ListFlowable:
+    """A bulleted (`"bullet"`) or numbered (`"1"`) list of marked-up items."""
+    flowables: list[Any] = [ListItem(RlParagraph(_markup(item, images), STYLES["BodyText"])) for item in items]
+    return ListFlowable(flowables, bulletType=bullet_type, bulletFormat="%s." if bullet_type == "1" else None)
 
 
 def _display_equation(block: Equation, usable_width: float) -> list:
@@ -185,6 +213,7 @@ def render_pdf_document(document: ReportDocument) -> bytes:
     Returns:
         PDF bytes.
     """
+    document = finalize_links(document)
     branding = document.branding
     accent = colors.HexColor((branding or ReportBranding(accent_color_hex=DEFAULT_ACCENT_COLOR_HEX)).accent_color_hex)
     pagesize = landscape(A4) if document.landscape else A4
@@ -195,15 +224,18 @@ def render_pdf_document(document: ReportDocument) -> bytes:
     images = _InlineImages()
     for block in document.blocks:
         if isinstance(block, Heading):
-            story.append(RlParagraph(_markup(block.text, images, bold=True), STYLES[f"Heading{min(max(block.level, 1), 4)}"]))
+            target = f'<a name="{html.escape(block.anchor, quote=True)}"/>' if block.anchor else ""
+            story.append(RlParagraph(target + _markup(block.text, images, bold=True), STYLES[f"Heading{min(max(block.level, 1), 4)}"]))
         elif isinstance(block, Paragraph):
             story.append(RlParagraph(_markup(block.text, images), STYLES["BodyText"]))
         elif isinstance(block, Equation):
             story.extend(_display_equation(block, usable_width))
         elif isinstance(block, Note):
             story.append(RlParagraph(safe(block.text), _NOTE))
+        elif isinstance(block, NumberedList):
+            story.append(_list(block.items, images, "1"))
         elif isinstance(block, BulletList):
-            story.append(ListFlowable([ListItem(RlParagraph(_markup(i, images), STYLES["BodyText"])) for i in block.items], bulletType="bullet"))
+            story.append(_list(block.items, images, "bullet"))
         elif isinstance(block, Image):
             flowable = svg_flowable(block.svg, usable_width) if block.svg is not None else image_flowable(block.data)
             if flowable is not None:

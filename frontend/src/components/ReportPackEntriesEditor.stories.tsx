@@ -65,7 +65,7 @@ export const ChoosingATableLayoutOffersItsFormats: Story = {
     const first = within(await within(canvasElement).findByRole("region", { name: "Report 1" }));
     await userEvent.selectOptions(first.getByRole("combobox", { name: /^Layout/ }), "Requirement rows");
     const format = first.getByRole("combobox", { name: /^Format/ });
-    await expect(within(format).getAllByRole("option").map((o) => o.textContent)).toEqual(["CSV", "Excel workbook"]);
+    await expect(within(format).getAllByRole("option").map((o) => o.textContent)).toEqual(["CSV", "Excel workbook", "OpenDocument spreadsheet"]);
     await expect(format).toHaveValue("csv");
   },
 };
