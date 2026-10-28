@@ -124,6 +124,7 @@ from app.services.record_tables_core import (
     bool_cell,
     bool_parser,
     cached_lookup,
+    count_rows,
     date_parser,
     enum_filter,
     enum_parser,
@@ -377,6 +378,7 @@ STRATEGY_TABLE = RecordTableProvider(
         can_create=_all_org_members_may_create,
         can_update=_org_owner_check(user_satisfies_owner_role, StrategyScope.ORGANIZATION),
     ),
+    count=lambda db, user, project_id: count_rows(db, Strategy, project_id, live_only=True),
 )
 
 
@@ -502,6 +504,7 @@ FUTURE_STATE_TABLE = RecordTableProvider(
         can_create=_all_org_members_may_create,
         can_update=_org_owner_check(user_satisfies_future_state_owner_role, FutureStateScope.ORGANIZATION),
     ),
+    count=lambda db, user, project_id: count_rows(db, FutureState, project_id, live_only=True),
 )
 
 
@@ -624,6 +627,7 @@ GUIDING_PRINCIPLE_TABLE = RecordTableProvider(
         can_create=_all_org_members_may_create,
         can_update=_org_owner_check(user_satisfies_guiding_principle_owner_role, GuidingPrincipleScope.ORGANIZATION),
     ),
+    count=lambda db, user, project_id: count_rows(db, GuidingPrinciple, project_id, live_only=True),
 )
 
 
@@ -841,6 +845,7 @@ PAIN_POINT_TABLE = RecordTableProvider(
     can_update=_may_manage_pain_points,
     approval_gated=True,
     read_only_reason=lambda prepared, pain_point: edits.PAIN_POINT_LOCKED if is_pain_point_locked(pain_point) else None,
+    count=lambda db, user, project_id: count_rows(db, PainPoint, project_id, live_only=True),
 )
 
 
@@ -926,6 +931,7 @@ OPEN_QUESTION_TABLE = RecordTableProvider(
     can_create=_all_may_create,
     can_update=_may_manage_open_questions,
     approval_gated=True,
+    count=lambda db, user, project_id: count_rows(db, OpenQuestion, project_id, live_only=True),
 )
 
 

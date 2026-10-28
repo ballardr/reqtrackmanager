@@ -58,6 +58,9 @@ class AuditEvent(UUIDPKMixin, Base):
     __table_args__ = (
         Index("ix_audit_events_entity", "entity_type", "entity_id"),
         Index("ix_audit_events_project_type", "project_id", "entity_type", "created_at"),
+        # A record's change history asks for a project's events about one record by id alone (its events may carry
+        # several entity types), which `ix_audit_events_project_type` cannot narrow.
+        Index("ix_audit_events_project_entity", "project_id", "entity_id"),
         # A record's activity timeline asks for the generic link events naming it at either end by the id kept in
         # `detail`; these partial expression indexes make that a lookup, not a read of every link event of the project.
         Index("ix_audit_events_link_source", sa_text("(detail ->> 'source_id')"), postgresql_where=sa_text("entity_type = 'artefact_link'")),

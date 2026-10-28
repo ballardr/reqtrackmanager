@@ -91,6 +91,7 @@ from app.services.rbac import get_effective_permissions, permission_satisfied, u
 from app.services.record_tables import PrincipalCells
 from app.services.record_tables_core import (
     bool_cell,
+    count_rows,
     date_parser,
     enum_filter,
     instant_cell,
@@ -238,6 +239,7 @@ EVIDENCE_TABLE = RecordTableProvider(
     gate=(COMPLIANCE_MODULE_KEY, None),
     can_create=_may_manage_evidence,
     can_update=_may_manage_evidence,
+    count=lambda db, user, project_id: count_rows(db, ComplianceEvidence, project_id, live_only=True),
 )
 
 

@@ -67,6 +67,7 @@ from app.services.principals import principal_ref
 from app.services.record_tables import PrincipalCells
 from app.services.record_tables_core import (
     cached_lookup,
+    count_rows,
     date_parser,
     enum_filter,
     enum_parser,
@@ -328,6 +329,7 @@ RISK_TABLE = RecordTableProvider(
     can_create=_may_create,
     can_update=_may_manage,
     approval_gated=True,
+    count=lambda db, user, project_id: count_rows(db, Risk, project_id, live_only=True),
 )
 
 RECORD_TABLES: dict[str, RecordTableProvider] = {RISK_ARTEFACT_TYPE: RISK_TABLE}

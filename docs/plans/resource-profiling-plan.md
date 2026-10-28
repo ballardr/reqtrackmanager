@@ -14,7 +14,7 @@
 | 3 | In-process profiling of the backend (memory + CPU) | [x] built 2026-10-25 |
 | 4 | PostgreSQL profiling | [x] built 2026-10-25 |
 | 4b | Scaling findings and fixes | [x] done 2026-10-27: F1-F10 fixed with guards and verified on the Linux server; open items O4, O6-O10 are recorded in `docs/performance.md` with their next step |
-| 4c | Other record types and the links between them | [ ] 6 of 7 steps done 2026-10-27 (1 review, 2 guard, 3 generators, 4 link dataset, 5 scenarios, 6 findings F14-F17 fixed); open: 7 verification on the Linux server (and any fix its numbers flag) |
+| 4c | Other record types and the links between them | [ ] 6 of 7 steps done; step 7 (server run) done 2026-10-28 with its findings fixed (F14-F20, code and guards complete); open: one more server run to confirm capacity recovers after F20, then close 4c |
 | 5 | Record baselines, set limits, document sizing | [ ] |
 | 6 | Docs website: results, plots, test-method diagrams | [ ] |
 

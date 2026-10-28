@@ -669,3 +669,49 @@ def test_the_dataset_entry_the_runner_writes_passes_the_bundle_check(client, tmp
         tmp_path / "bundle", host={"arch": "x86_64"}, run={"schema_version": 1}, datasets=[entry], samples=[], latency=[],
     )
     assert "dataset.json" in written and "latency.csv" in written
+
+
+def test_every_overview_count_equals_the_rows_of_the_types_default_list(client, admin_token):
+    """The project overview counts a type with its provider's `count` hook, not by building the type's list. The hook must
+    give what the list would: this compares them for every type that has both, on a generated project in which some
+    records of every type are archived (the case a shortcut like this usually gets wrong)."""
+    from app.models.user import User
+    from app.modules.registry import RecordFilters, get_record_table_providers
+
+    manifest = _generate(client, "single")
+    project_id = uuid.UUID(manifest["projects"][0]["id"])
+    org = manifest["organisations"][0]
+    db = SessionLocal()
+    try:
+        archivable = [r[0] for r in db.execute(text(
+            "select table_name from information_schema.columns where column_name = 'is_archived' "
+            "and table_name in (select table_name from information_schema.columns where column_name = 'project_id')"
+        ))]
+        for table in archivable:
+            db.execute(text(f'update "{table}" set is_archived = true where id in (select id from "{table}" '  # noqa: S608
+                            f"where project_id = :p and is_archived = false limit 2)"), {"p": project_id})
+        db.commit()
+        user = db.scalar(select(User).where(User.id == uuid.UUID(org["user_ids"][0])))
+        checked, mismatches = [], []
+        for artefact_type, provider in get_record_table_providers().items():
+            if provider.count is None or not provider.in_overview:
+                continue
+            rows = provider.list_records(db, user, project_id, RecordFilters())
+            owned = provider.organization_owned
+            expected = sum(1 for row in rows if owned is None or not owned(row))
+            got = provider.count(db, user, project_id)
+            checked.append(artefact_type)
+            if got != expected:
+                mismatches.append(f"{artefact_type}: count hook {got}, default list {expected}")
+        assert not mismatches, mismatches
+        assert {"risk", "decision", "pain_point", "persona", "stakeholder", "engagement", "research_finding"} <= set(checked)
+    finally:
+        db.close()
+
+
+def test_every_overview_type_has_a_count_hook(client):
+    """Without one the overview builds the type's whole list to count it, on every dashboard view."""
+    from app.modules.registry import get_record_table_providers
+
+    missing = [t for t, p in get_record_table_providers().items() if p.in_overview and p.count is None]
+    assert not missing, f"record types counted by building their whole list: {sorted(missing)}"

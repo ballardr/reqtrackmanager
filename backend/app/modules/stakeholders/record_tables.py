@@ -127,6 +127,7 @@ from app.services.record_tables_core import (
     bool_cell,
     bool_parser,
     cached_lookup,
+    count_rows,
     date_parser,
     enum_filter,
     enum_parser,
@@ -440,6 +441,7 @@ PERSONA_TABLE = RecordTableProvider(
         can_create=_may_manage_org_personas,
         can_update=_may_manage_org_personas,
     ),
+    count=lambda db, user, project_id: count_rows(db, Persona, project_id, live_only=True),
 )
 
 
@@ -637,6 +639,7 @@ STAKEHOLDER_TABLE = RecordTableProvider(
         can_create=_may_manage_org_stakeholders,
         can_update=_may_manage_org_stakeholders,
     ),
+    count=lambda db, user, project_id: count_rows(db, Stakeholder, project_id, live_only=True),
 )
 
 
@@ -764,6 +767,7 @@ GROUP_TABLE = RecordTableProvider(
         can_create=_may_manage_org_groups,
         can_update=_may_manage_org_groups,
     ),
+    count=lambda db, user, project_id: count_rows(db, StakeholderGroup, project_id, live_only=False),
 )
 
 
@@ -827,6 +831,7 @@ NEED_TABLE = RecordTableProvider(
     gate=(MODULE_KEY, "stakeholder_need"),
     can_create=_may_manage_needs,
     can_update=_may_manage_needs,
+    count=lambda db, user, project_id: count_rows(db, StakeholderNeed, project_id, live_only=True),
 )
 
 
@@ -964,6 +969,7 @@ ENGAGEMENT_TABLE = RecordTableProvider(
     gate=(MODULE_KEY, None),
     can_create=_may_manage_engagements,
     can_update=_may_manage_engagements,
+    count=lambda db, user, project_id: count_rows(db, Engagement, project_id, live_only=False),
 )
 
 
@@ -1037,6 +1043,7 @@ FINDING_TABLE = RecordTableProvider(
     gate=(MODULE_KEY, RESEARCH_SUBCOMPONENT),
     can_create=_may_manage_findings,
     can_update=_may_manage_findings,
+    count=lambda db, user, project_id: count_rows(db, ResearchFinding, project_id, live_only=False),
 )
 
 
