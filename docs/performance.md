@@ -1,6 +1,8 @@
 # Performance findings
 
-The commands that produced these figures are in [perf/README.md](../perf/README.md), "Run recipes".
+The commands that produced these figures are in [perf/README.md](../perf/README.md), "Run recipes"; running them on a server
+(tmux so a dropped connection does not end a run, and the `sudo` fix for an empty commit hash) is in
+[Running on a server](../perf/README.md#running-on-a-server-tmux-and-sudo).
 
 What the profiling runs (`perf/`, how-to in [perf/README.md](../perf/README.md)) found about how the product scales,
 and what was done. One entry per finding, latest state only. Numbers are from Docker Desktop on a Mac (amd64, one

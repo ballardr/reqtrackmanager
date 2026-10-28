@@ -135,17 +135,53 @@ flowchart LR
   four workers hold at most 68 of PostgreSQL's 97 usable connections. Raise workers or replicas and the sum must stay
   below `max_connections` (default 100, 3 reserved).
 
+## Running on a server (tmux and sudo)
+
+A full run takes hours, so start it where a dropped connection cannot end it, and make sure the commit is recorded.
+
+```mermaid
+flowchart LR
+    A["ssh to the host"] --> B["tmux new -s perf"]
+    B --> C["sudo (if Docker needs it)"]
+    C --> D["perf/run_baseline.sh or run_profile.sh"]
+    D -->|"detach: Ctrl-b d"| E["ssh may drop; run continues"]
+    E -->|"tmux attach -t perf"| D
+```
+
+**tmux**
+- Start it before the run, and start `sudo` inside it: `tmux new -s perf`. Detach with Ctrl-b then `d`; reattach with
+  `tmux attach -t perf` (`tmux ls` lists sessions).
+- To scroll with the mouse wheel, enable mouse support once: `echo "set -g mouse on" >> ~/.tmux.conf`, then
+  `tmux source-file ~/.tmux.conf` inside tmux (or start a new session). Without it the wheel scrolls nothing; keyboard
+  scrollback is Ctrl-b then `[` (leave with `q`).
+- The runner tears its stack down when it is interrupted (Ctrl-C). Closing the tmux window or killing the session
+  does not give it that chance: run `perf/run_profile.sh <label> --cleanup` afterwards.
+
+**sudo (when Docker needs root)**
+- *The commit shows as empty in the bundle's name.* The runner reads the commit with `git rev-parse HEAD`. Git refuses a
+  repository owned by another user (the "dubious ownership" check), so as root it returns nothing. Tell root's git the
+  checkout is safe, once, using the exact path the run uses:
+
+  ```sh
+  sudo git config --global --add safe.directory /path/to/reqtrackmanager
+  ```
+
+  This edits root's `~root/.gitconfig` only. A one-off `git -c safe.directory=... ` does not help, because the runner
+  calls plain `git`.
+- *`sudo` drops environment variables.* Pass them inline, not before `sudo`:
+  `sudo PROD_HEALTH_URL=https://prod.example/health perf/run_baseline.sh <label>`, or use `sudo -E`. `DEDICATED=1` is the same.
+- *Files are owned by root.* The bundle under `perf/results/` is, so `sudo chown -R "$USER" perf/results/<label>` before
+  copying it. Under `sudo`, `~` may be root's home: set `--cache-dir` to a path you choose if you want the dataset
+  snapshots in a known place.
+- Run it from a clean checkout of a pushed commit, as above; a dirty tree marks the bundle `non_publishable`.
+
 ## Run recipes
 
-Commands for the runs this project's findings and sizing are based on. Run each inside `tmux new -s perf` (detach with
-Ctrl-b then d, reattach with `tmux attach -t perf`) so a dropped SSH session does not end it. To scroll the output with the mouse wheel, enable tmux mouse support once
-(`echo "set -g mouse on" >> ~/.tmux.conf`, then `tmux source-file ~/.tmux.conf` inside tmux or start a new session);
-without it the wheel scrolls nothing, and keyboard scrollback is Ctrl-b then `[` (exit with `q`). Results land under
+Commands for the runs this project's findings and sizing are based on. On a server, read
+[Running on a server](#running-on-a-server-tmux-and-sudo) first. Results land under
 `perf/results/<label>/<date>-<commit>/`; copy that directory to wherever you collect results (add `--archive` to
 also get a `.tar.gz` of it beside the directory). Dataset snapshots are the one thing kept outside the project
-(`--cache-dir`, default `~/.cache/reqtrack-perf`). Run from a pushed commit: a dirty tree or an unpushed commit marks the bundle non-publishable. If the
-commit shows as empty in the bundle's name, git cannot read the repository as the user running the script (root):
-`git config --global --add safe.directory <path to the repository>`.
+(`--cache-dir`, default `~/.cache/reqtrack-perf`). Run from a pushed commit: a dirty tree or an unpushed commit marks the bundle non-publishable.
 
 ```sh
 # Read what a run will create and what it will not touch (any host)
