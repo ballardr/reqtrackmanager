@@ -78,7 +78,7 @@ export function ReportDownloadDialog({
       ) : (
         <div className="stack">
           <p className="text-muted">{text.downloadReportIntro(recordLabel)}</p>
-          <ReportPickerPanel items={items} selectedId="" onSelect={setChosen} />
+          <ReportPickerPanel pickerId="record-list-download" items={items} selectedId="" onSelect={setChosen} />
         </div>
       )}
     </Modal>

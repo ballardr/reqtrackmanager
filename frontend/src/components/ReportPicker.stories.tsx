@@ -17,7 +17,7 @@ const items: ReportPickerItem[] = [
 /** Hosts the picker with a selection it can change, so a story sees the button follow the choice. */
 function Host({ initial = "requirements" }: { initial?: string }) {
   const [selected, setSelected] = useState(initial);
-  return <ReportPicker items={items} selectedId={selected} onSelect={setSelected} />;
+  return <ReportPicker pickerId="story" items={items} selectedId={selected} onSelect={setSelected} />;
 }
 
 /**
@@ -45,16 +45,59 @@ export const ShowsTheCurrentReportAndItsFolder: Story = {
   },
 };
 
-/** Only the folder holding the selection starts open; the others are collapsed until opened. */
-export const OpensTheSelectionsFolderOnly: Story = {
+/** The first time a picker opens, every folder is collapsed, the selection's included. */
+export const OpensFullyCollapsedTheFirstTime: Story = {
   play: async ({ canvasElement }) => {
     await userEvent.click(within(canvasElement).getByRole("button", { name: "Report: Requirements report" }));
     const d = await dialog();
-    await expect(d.getByRole("button", { name: "Collapse Platform" })).toBeInTheDocument();
+    await expect(d.getByRole("button", { name: "Expand Platform" })).toBeInTheDocument();
     await expect(d.getByRole("button", { name: "Expand Risk Management" })).toBeInTheDocument();
     await expect(d.queryByRole("button", { name: /^Risk register/ })).not.toBeInTheDocument();
     await userEvent.click(d.getByRole("button", { name: "Expand Risk Management" }));
     await expect(d.getByRole("button", { name: /^Risk register/ })).toBeInTheDocument();
+  },
+};
+
+/** Closing and reopening shows the same folders open, and a different picker keeps its own folders. */
+export const RemembersTheOpenFolders: Story = {
+  play: async ({ canvasElement }) => {
+    const open = () => userEvent.click(within(canvasElement).getByRole("button", { name: /^Report:/ }));
+    await open();
+    let d = await dialog();
+    await userEvent.click(d.getByRole("button", { name: "Expand Risk Management" }));
+    await userEvent.click(d.getByRole("button", { name: "Expand Handover" }));
+    await userEvent.click(d.getByRole("button", { name: "Collapse Handover" }));
+    await userEvent.keyboard("{Escape}");
+    await open();
+    d = await dialog();
+    await expect(d.getByRole("button", { name: "Collapse Risk Management" })).toBeInTheDocument();
+    await expect(d.getByRole("button", { name: "Expand Handover" })).toBeInTheDocument();
+    await expect(d.getByRole("button", { name: "Expand Platform" })).toBeInTheDocument();
+  },
+};
+
+/** Searching opens the folders for the match but does not overwrite what was open: clearing the search restores it. */
+export const SearchDoesNotChangeTheSavedFolders: Story = {
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: /^Report:/ }));
+    const d = await dialog();
+    await userEvent.type(d.getByRole("textbox", { name: "Search reports" }), "register");
+    await expect(d.getByRole("button", { name: /^Risk register/ })).toBeInTheDocument();
+    await userEvent.clear(d.getByRole("textbox", { name: "Search reports" }));
+    await expect(d.getByRole("button", { name: "Expand Risk Management" })).toBeInTheDocument();
+  },
+};
+
+/** The favourite star is the last control of the row, after the report's button. */
+export const StarIsOnTheRightOfTheRow: Story = {
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: /^Report:/ }));
+    const d = await dialog();
+    await userEvent.click(d.getByRole("button", { name: "Expand Risk Management" }));
+    const star = d.getByRole("button", { name: "Add Risk register to favourites" });
+    const report = d.getByRole("button", { name: /^Risk register/ });
+    await expect(report.compareDocumentPosition(star) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await expect(star.nextElementSibling).toBeNull();
   },
 };
 
@@ -99,19 +142,20 @@ export const FiltersByKind: Story = {
   },
 };
 
-/** A starred report also appears in the Favourites folder, which is first and open; unstarring removes it. */
+/** A starred report also appears in the Favourites folder, which is first and, like any folder, opens when asked; unstarring removes it. */
 export const FavouritesAreListedFirst: Story = {
   play: async ({ canvasElement }) => {
     await userEvent.click(within(canvasElement).getByRole("button", { name: "Report: Requirements report" }));
     let d = await dialog();
-    await expect(d.queryByRole("button", { name: "Collapse Favourites" })).not.toBeInTheDocument();
+    await expect(d.queryByRole("button", { name: /Favourites$/ })).not.toBeInTheDocument();
     await userEvent.click(d.getByRole("button", { name: "Expand Risk Management" }));
     await userEvent.click(d.getByRole("button", { name: "Add Risk register to favourites" }));
     d = await dialog();
+    await userEvent.click(d.getByRole("button", { name: "Expand Favourites" }));
     await expect(d.getByRole("button", { name: "Collapse Favourites" })).toBeInTheDocument();
     await expect(d.getAllByRole("button", { name: /^Risk register/ }).length).toBeGreaterThan(1);
     await userEvent.click(d.getAllByRole("button", { name: "Remove Risk register from favourites" })[0]);
-    await expect((await dialog()).queryByRole("button", { name: "Collapse Favourites" })).not.toBeInTheDocument();
+    await expect((await dialog()).queryByRole("button", { name: /Favourites$/ })).not.toBeInTheDocument();
   },
 };
 

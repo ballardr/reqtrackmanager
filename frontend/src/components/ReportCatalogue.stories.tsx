@@ -47,7 +47,9 @@ export const SwitchingReportRunsIt: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "Report: Fixture report" }));
-    await userEvent.click(within(await screen.findByRole("dialog", { name: "Choose a report" })).getByRole("button", { name: /^Second report/ }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Choose a report" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Expand Fixture Module" }));
+    await userEvent.click(dialog.getByRole("button", { name: /^Second report/ }));
     await expect(canvas.getByRole("button", { name: "Report: Second report" })).toBeInTheDocument();
     await expect(canvas.getByText(second.description)).toBeInTheDocument();
     await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining("/reports/second-report?format=json")));
@@ -65,7 +67,7 @@ export const ExtraEntryIsOfferedFirst: Story = {
     await expect(canvas.getByText("Host content")).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Report: Requirements report" }));
     const dialog = await screen.findByRole("dialog", { name: "Choose a report" });
-    await expect(within(dialog).getByRole("button", { name: "Collapse Platform" })).toBeInTheDocument();
+    await expect(within(dialog).getByRole("button", { name: "Expand Platform" })).toBeInTheDocument();
   },
 };
 
@@ -85,7 +87,7 @@ export const FilesEachModuleInItsOwnFolder: Story = {
   play: async ({ canvasElement }) => {
     await userEvent.click(within(canvasElement).getByRole("button", { name: "Report: Fixture report" }));
     const dialog = await screen.findByRole("dialog", { name: "Choose a report" });
-    await expect(within(dialog).getByRole("button", { name: "Collapse Fixture Module" })).toBeInTheDocument();
+    await expect(within(dialog).getByRole("button", { name: "Expand Fixture Module" })).toBeInTheDocument();
     await expect(within(dialog).getByRole("button", { name: "Expand Other Module" })).toBeInTheDocument();
   },
 };

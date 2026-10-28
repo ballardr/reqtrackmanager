@@ -76,15 +76,26 @@ test.describe("Report picker, folders and placements", () => {
       await expect(reportPickerButton(page)).toContainText("Platform");
     });
 
-    await test.step("folders nest and start collapsed, apart from the one holding the selection", async () => {
+    await test.step("folders nest and every one starts collapsed the first time", async () => {
       const dialog = await openReportPicker(page);
-      await expect(dialog.getByRole("button", { name: "Collapse Platform" })).toBeVisible();
+      await expect(dialog.getByRole("button", { name: "Expand Platform" })).toBeVisible();
       await expect(dialog.getByRole("button", { name: "Expand Handover" })).toBeVisible();
       await dialog.getByRole("button", { name: "Expand Handover" }).click();
       await expect(dialog.getByRole("button", { name: new RegExp(`^${pack}`) })).toBeVisible();
       await dialog.getByRole("button", { name: "Expand Quarterly" }).click();
       await expect(dialog.getByRole("button", { name: new RegExp(`^${doc}`) })).toBeVisible();
       await page.keyboard.press("Escape");
+    });
+
+    await test.step("the folders left open are open again after closing the dialog and after a reload", async () => {
+      for (const reload of [false, true]) {
+        if (reload) await page.reload();
+        const dialog = await openReportPicker(page);
+        await expect(dialog.getByRole("button", { name: "Collapse Handover" })).toBeVisible();
+        await expect(dialog.getByRole("button", { name: "Collapse Quarterly" })).toBeVisible();
+        await expect(dialog.getByRole("button", { name: "Expand Platform" })).toBeVisible();
+        await page.keyboard.press("Escape");
+      }
     });
 
     await test.step("search opens the matching folders and the type filter narrows to sheets or packs", async () => {
@@ -107,6 +118,7 @@ test.describe("Report picker, folders and placements", () => {
       await page.keyboard.press("Escape");
       await page.reload();
       const reopened = await openReportPicker(page);
+      await reopened.getByRole("button", { name: "Expand Favourites" }).click();
       await expect(reopened.getByRole("button", { name: "Collapse Favourites" })).toBeVisible();
       await expect(reopened.getByRole("button", { name: new RegExp(`^${doc}`) }).first()).toBeVisible();
       await page.keyboard.press("Escape");

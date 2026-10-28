@@ -112,19 +112,6 @@ export function allFolderIds<T>(nodes: FolderNode<T>[]): string[] {
   return nodes.flatMap((node) => (node.kind === "folder" ? [node.id, ...allFolderIds(node.children)] : []));
 }
 
-/** The ids of the folders on the way down to the item with `itemId` (to open the folder holding the selection). */
-export function folderIdsToItem<T>(nodes: FolderNode<T>[], itemId: string, prefix = "f"): string[] {
-  for (const node of nodes) {
-    if (node.kind === "item") {
-      if (node.id === `${prefix}:item:${itemId}`) return [];
-      continue;
-    }
-    const inside = folderIdsToItem(node.children, itemId, prefix);
-    if (inside.length > 0 || node.children.some((child) => child.id === `${prefix}:item:${itemId}`)) return [node.id, ...inside];
-  }
-  return [];
-}
-
 /** Every distinct folder path in `paths` and the paths above them, sorted (what a form offers as suggestions). */
 export function distinctFolders(paths: string[]): string[] {
   const seen = new Map<string, string>();

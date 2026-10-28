@@ -14,10 +14,10 @@ The button at the top of the Reports page names the current report and the folde
 | --- |
 | ![The Reports picker open, with search, the Show filter and reports in folders](../../../static/img/screenshots/report-picker.png) |
 
-- **Folders.** Reports are filed in folders, which can hold folders (up to three levels, such as *Handover / Quarterly*). A module's reports start in a folder named after the module; your own layouts and packs are in the folder you gave them, or in **Custom reports** and **Report packs** when you gave none. Only the folder holding the current report starts open, so a long list stays short.
+- **Folders.** Reports are filed in folders, which can hold folders (up to three levels, such as *Handover / Quarterly*). A module's reports start in a folder named after the module; your own layouts and packs are in the folder you gave them, or in **Custom reports** and **Report packs** when you gave none. Every folder starts collapsed the first time, so a long list stays short; after that the picker opens with the folders you left open (each place that offers reports, such as the Reports page and a record list's **Download report**, remembers its own).
 - **Search** finds a report by its title, description or folder; every folder that still holds a match opens.
 - **Show** narrows to **Reports**, **Sheets** (layouts made of tables, for Excel or CSV) or **Packs**.
-- **Favourites.** The star beside a report adds it to your **Favourites** folder, which is listed first. Favourites belong to you, are kept on the server, and follow you to another browser.
+- **Favourites.** The star on the right of a report's row adds it to your **Favourites** folder, which is listed first. Favourites belong to you, are kept on the server, and follow you to another browser.
 - A report the project cannot offer is not listed: a module that is off, or a sub-component of a module that is off (a report that spans several, such as the Context & Strategy summary, is listed while at least one of them is on).
 
 The chosen report is in the page's link (`?report=…`), so a link to a report opens it.

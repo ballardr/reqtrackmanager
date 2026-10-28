@@ -7,15 +7,19 @@
  * Responsibilities:
  * - List every offered report in a tree of folders (`utils/reportFolders`), nested up to three levels, with a
  *   Favourites folder first; search and the type filter open every folder that still holds a match.
- * - Star and unstar a report: favourites are kept per person in their `ui_preferences` bag (`report_favourites`, by the
- *   report's stable placement key), so they follow the person across browsers.
+ * - Star and unstar a report (the star is on the right of its row): favourites are kept per person in their
+ *   `ui_preferences` bag (`report_favourites`, by the report's stable placement key), so they follow the person across
+ *   browsers.
+ * - Remember which folders were open, per person and per picker (`report_picker_folders`, keyed by the `pickerId` each
+ *   host passes), so reopening shows the same folders open; a picker opens fully collapsed the first time.
  * - Report the choice through `onSelect`; the host (`ReportCatalogue`) keeps the selection in the URL.
  *
  * `ReportPickerPanel` is the same search, filter and tree without the dialog, for another dialog to embed.
  *
  * Design decisions: a dialog rather than a native `<select>` because a tree, search and stars do not fit one; the
- * expansion state is held here and overridden (everything open) only while a filter is active, so clearing the search
- * returns to the person's own layout. Pure presentation over already-loaded items.
+ * saved expansion state is overridden (everything open) only while a filter is active and is never written then, so
+ * clearing the search returns to the person's own layout. Folder ids are derived from folder paths, so an id saved for
+ * a folder that no longer exists is harmless; the list is capped. Pure presentation over already-loaded items.
  *
  * Dependencies: `Modal`, `TreeView`, `useUiPreference`.
  */
@@ -24,7 +28,7 @@ import { useMemo, useState } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
 import { useUiPreference } from "../hooks/useUiPreference";
-import { allFolderIds, buildFolderTree, folderIdsToItem, type FolderNode } from "../utils/reportFolders";
+import { allFolderIds, buildFolderTree, type FolderNode } from "../utils/reportFolders";
 import { Badge } from "./Badge";
 import { TextField } from "./FormFields";
 import { LabeledSelect } from "./LabeledSelect";
@@ -47,12 +51,33 @@ export interface ReportPickerItem {
 }
 
 const FAVOURITES_KEY = "report_favourites";
+const OPEN_FOLDERS_KEY = "report_picker_folders";
+const MAX_OPEN_FOLDERS = 100;
 const MAX_FAVOURITES = 100;
 const FAVOURITES_PREFIX = "fav";
 const TREE_PREFIX = "f";
 const FAVOURITES_FOLDER_ID = `${FAVOURITES_PREFIX}:favourites`;
 
 type KindFilter = "all" | ReportPickerKind;
+
+/**
+ * The folders the person left open in one picker, kept in their `ui_preferences` (an object of folder ids by picker).
+ *
+ * @param pickerId Names the picker, so each remembers its own folders.
+ * @returns The open folder ids and a setter for one folder's state. A value that is not a list of ids reads as none.
+ */
+function useOpenFolders(pickerId: string): [Set<string>, (id: string, open: boolean) => void] {
+  const [saved, setSaved] = useUiPreference<Record<string, string[]>>(OPEN_FOLDERS_KEY, {});
+  const stored = saved[pickerId];
+  const open = useMemo(() => new Set(Array.isArray(stored) ? stored.filter((id) => typeof id === "string") : []), [stored]);
+  function setOpen(id: string, isOpen: boolean) {
+    const next = new Set(open);
+    if (isOpen) next.add(id);
+    else next.delete(id);
+    setSaved({ ...saved, [pickerId]: [...next].slice(-MAX_OPEN_FOLDERS) });
+  }
+  return [open, setOpen];
+}
 
 /** The type filter's options: reports, sheets and packs, each matching one `kind`. */
 function useKindOptions(): { value: KindFilter; label: string }[] {
@@ -66,13 +91,14 @@ function useKindOptions(): { value: KindFilter; label: string }[] {
 }
 
 /**
+ * @param pickerId Names this picker for the folders it remembers (one per place it is used).
  * @param items Everything on offer.
  * @param selectedId The chosen item's id.
  * @param onSelect Called with the id of the report the person picked (the dialog then closes).
  */
 export function ReportPicker({
-  items, selectedId, onSelect,
-}: { items: ReportPickerItem[]; selectedId: string; onSelect: (id: string) => void }) {
+  pickerId, items, selectedId, onSelect,
+}: { pickerId: string; items: ReportPickerItem[]; selectedId: string; onSelect: (id: string) => void }) {
   const text = useStrings().reportPicker;
   const [open, setOpen] = useState(false);
   const selected = items.find((item) => item.id === selectedId) ?? items[0];
@@ -93,7 +119,7 @@ export function ReportPicker({
       <span className="text-muted" style={{ fontSize: "0.9rem" }}>{selected.description}</span>
       {open && (
         <ReportPickerDialog
-          items={items} selectedId={selected.id}
+          pickerId={pickerId} items={items} selectedId={selected.id}
           onSelect={(id) => {
             setOpen(false);
             onSelect(id);
@@ -110,12 +136,12 @@ function favouriteKeyOf(item: ReportPickerItem): string {
 }
 
 function ReportPickerDialog({
-  items, selectedId, onSelect, onClose,
-}: { items: ReportPickerItem[]; selectedId: string; onSelect: (id: string) => void; onClose: () => void }) {
+  pickerId, items, selectedId, onSelect, onClose,
+}: { pickerId: string; items: ReportPickerItem[]; selectedId: string; onSelect: (id: string) => void; onClose: () => void }) {
   const text = useStrings().reportPicker;
   return (
     <Modal title={text.title} onClose={onClose} size="lg">
-      <ReportPickerPanel items={items} selectedId={selectedId} onSelect={onSelect} />
+      <ReportPickerPanel pickerId={pickerId} items={items} selectedId={selectedId} onSelect={onSelect} />
     </Modal>
   );
 }
@@ -124,13 +150,14 @@ function ReportPickerDialog({
  * The picker's search, type filter and folder tree without a dialog around it, so another dialog can embed it
  * (the record lists' "Download report" does).
  *
+ * @param pickerId Names this picker for the folders it remembers (one per place it is used).
  * @param items Everything on offer.
- * @param selectedId The highlighted item's id (`""` for none, which opens every folder).
+ * @param selectedId The highlighted item's id (`""` for none).
  * @param onSelect Called with the id of the report the person picked.
  */
 export function ReportPickerPanel({
-  items, selectedId, onSelect,
-}: { items: ReportPickerItem[]; selectedId: string; onSelect: (id: string) => void }) {
+  pickerId, items, selectedId, onSelect,
+}: { pickerId: string; items: ReportPickerItem[]; selectedId: string; onSelect: (id: string) => void }) {
   const text = useStrings().reportPicker;
   const kindOptions = useKindOptions();
   const [search, setSearch] = useState("");
@@ -158,11 +185,7 @@ export function ReportPickerPanel({
     return [favouritesFolder, ...folders];
   }, [shown, favouriteSet, text.favourites]);
 
-  // Opens on the chosen report's folders; with none chosen (an embedded picker) every folder is open.
-  const [openIds, setOpenIds] = useState<Set<string>>(() => {
-    const folders = buildFolderTree(items, (i) => i.folder, (i) => i.title, (i) => i.id, TREE_PREFIX);
-    return new Set([FAVOURITES_FOLDER_ID, ...(selectedId === "" ? allFolderIds(folders) : folderIdsToItem(folders, selectedId, TREE_PREFIX))]);
-  });
+  const [openIds, setFolderOpen] = useOpenFolders(pickerId);
   const expanded = useMemo(() => (filtering ? new Set(allFolderIds(tree)) : openIds), [filtering, tree, openIds]);
 
   function toggleFavourite(item: ReportPickerItem) {
@@ -187,13 +210,7 @@ export function ReportPickerPanel({
           nodeLabel={(node) => node.name}
           expanded={expanded}
           onToggle={(id, isOpen) => {
-            if (filtering) return;
-            setOpenIds((current) => {
-              const next = new Set(current);
-              if (isOpen) next.add(id);
-              else next.delete(id);
-              return next;
-            });
+            if (!filtering) setFolderOpen(id, isOpen);
           }}
           renderNode={(node) => (node.kind === "folder" ? (
             <span className="row" style={{ gap: "var(--space-1)", alignItems: "center" }}>
@@ -228,16 +245,8 @@ function PickerRow({
   return (
     <span className="row" style={{ gap: "var(--space-1)", alignItems: "center", flex: 1 }}>
       <button
-        type="button" className="btn" style={{ padding: "0.15rem" }} aria-pressed={favourite}
-        aria-label={favourite ? text.removeFavourite(item.title) : text.addFavourite(item.title)}
-        title={favourite ? text.removeFavourite(item.title) : text.addFavourite(item.title)}
-        onClick={() => onToggleFavourite(item)}
-      >
-        <Star aria-hidden="true" fill={favourite ? "currentColor" : "none"} />
-      </button>
-      <button
         type="button" className={selected ? "btn btn-primary" : "btn"} aria-current={selected ? "true" : undefined}
-        style={{ textAlign: "left", flex: 1 }} onClick={() => onSelect(item.id)}
+        data-report-picker-item="" style={{ textAlign: "left", flex: 1 }} onClick={() => onSelect(item.id)}
       >
         <span className="stack" style={{ gap: 0 }}>
           <span>{item.title}</span>
@@ -245,6 +254,14 @@ function PickerRow({
         </span>
       </button>
       {item.kind !== "report" && <Badge>{text.kind[item.kind]}</Badge>}
+      <button
+        type="button" className="btn" style={{ padding: "0.15rem" }} aria-pressed={favourite}
+        aria-label={favourite ? text.removeFavourite(item.title) : text.addFavourite(item.title)}
+        title={favourite ? text.removeFavourite(item.title) : text.addFavourite(item.title)}
+        onClick={() => onToggleFavourite(item)}
+      >
+        <Star aria-hidden="true" fill={favourite ? "currentColor" : "none"} />
+      </button>
     </span>
   );
 }

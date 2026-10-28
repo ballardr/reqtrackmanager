@@ -43,6 +43,7 @@ export interface ExtraReportEntry {
   placementKey?: string;
 }
 
+/** Where a host's extra report files unless a placement moves it. */
 const DEFAULT_EXTRA_FOLDER = "Platform";
 
 /** The picker item of an extra entry, with the scope's placement (a folder, or hidden) applied. */
@@ -91,7 +92,7 @@ export function ReportCatalogue({
     <div className="stack">
       {options.length > 1 && (
         <ReportPicker
-          items={options}
+          pickerId={`${scope.kind}-reports`} items={options}
           selectedId={selected.id}
           onSelect={(id) => {
             const next = new URLSearchParams(searchParams);
