@@ -1552,7 +1552,10 @@ flowchart LR
   rewrites it (a round-trip story pins this). The inspector beside the workspace shows every field of the selected block with the
   shared field components (`ReportLayoutBlockField`, `ReportLayoutSourceEditor`, `ReportLayoutConditionEditor`,
   `ReportLayoutColumnsEditor` (also joins), `ReportLayoutWidgetEditor`, `ReportLayoutVariablesField`, and `ReportLayoutJsonField`
-  for a kind or block type it does not know) and "Add block" / "Add to <list>" menus, the route without a pointer. An inspector
+  for a kind or block type it does not know) and "Add to <list>" menus. There is no Blockly toolbox: "Add block" above the canvas
+  (`paletteEntries`: Heading by level, Text and Table first, then the rest by name) adds at the place a select beside it states
+  (after the selected block, inside it, or the end of the layout), creating the block in the workspace so one Ctrl/Cmd+Z undoes
+  it. The canvas has the page's width; the inspector goes under it by container query when the editor is narrow. An inspector
   edit that changes only values is patched into the blocks in place; a change of shape redraws the workspace. Blockly deselects
   when focus leaves the workspace, so the inspector keeps showing the last block chosen. The designer holds the tree while the
   blocks are shown, checks it with `POST .../validate` after each pause, keeps the text view's text in step through `text/format`

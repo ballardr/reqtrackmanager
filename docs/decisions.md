@@ -13351,3 +13351,21 @@ The third review found the folder field a text box prone to misspelling that gav
 
 Backend (`test_report_folders.py`): add, nested levels listed, folders in use listed, duplicate (case-insensitive) and unusable paths refused, additive nesting with `own` flags, an inherited folder not changeable, rename moving layouts, packs, placements and sub-folders, sibling clash refused, delete moving up one level without deleting a report (first-level goes to the top level), a project moving only its own reports, permission, audit without titles, cascade on project delete, and both bundle round trips (a bad path warned about). Storybook: `ReportFolderChooser` (tree, choose, add, Enter not submitting the form, depth limit, rename, delete with confirm, inherited folder locked), the layout, pack and placement dialogs. Playwright (`report-picker-and-folders.spec.ts`): a folder is chosen, added, renamed and deleted from the layout form and the layout follows; the organisation move step builds its nested folder in the chooser.
 
+
+
+## Custom reports Phase 27: designer layout review (2026-10-29)
+
+The User's screenshot showed the Blocks view working as built but starved: the design column was half the page, the inspector took 22rem of it and Blockly's always-open palette filled the rest, so the layout's own blocks were not visible, and the inspector's Text field read as a second text view. The fix is layout first, then the palette.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **The Blocks view takes the page's width.** The design grid is one column in Blocks (`layout-designer--blocks`); the preview no longer sits beside it by default. The inspector sits beside the canvas while the editor is at least 44rem wide and under it otherwise, decided by a container query on the editor itself, so a preview panel that narrows the editor stacks the inspector rather than squeezing the canvas. | User |
+| 2 | **The Blockly flyout palette is removed** (it took a column and listed the least useful blocks first). **Add block** above the canvas is the one way to add a block; it lists the blocks from the server's schemas under "Most used" (Heading 1 to 3, Text, Table) and "Other blocks" (by name). Blocks on the canvas still drag. | User |
+| 3 | **A block lands where a stated line says.** Beside the dropdown a select names the place: after the selected block, inside it (one option per child list, default for a container), or at the end of the layout; with nothing selected the line reads "Adding at the end of the layout". The new block is selected at once so its settings open. "Add to <list>" in the inspector stays. Trade-off: a new block can no longer be dropped straight into a nested spot, only inserted next to or inside the selection and then dragged; if authors miss it, the palette comes back as a toggle that is off by default. | Agent (rule and wording; the User asked that the dropdown must not guess a location) |
+| 4 | **The addition is made in the workspace, not by rewriting the tree,** so it is one undo step (Ctrl+Z, Cmd+Z on a Mac: Blockly maps the shortcut to the platform's key) and reaches the tree through the same change events as a dragged block. Selection is deferred one tick because the closing menu returns focus to its button, which would deselect the block. | Agent |
+| 5 | **The preview is a dialog or an optional panel.** In Blocks, **Preview** opens it in a dialog and **Preview panel** (a toggle) shows it beside the blocks; the toggle is a per-person preference (`report_layout_preview_beside`, default off). The text view keeps its Preview, Fields and Widgets tabs beside the editor. A closed dialog drops the run result and the variable values; the run is a click away. | Agent |
+| 6 | **Not applicable:** no backend, schema, migration, bundle, permission, time or person-field change (a layout is unchanged; the preference is a UI preference). | Agent |
+
+### Verification
+
+Storybook: Add block with nothing, a leaf and a container selected (inside by default, then After), undo, the order of the list, the designer's Preview dialog and panel toggle. Playwright (`report-layout-designer.spec.ts`): the canvas is wide with no palette and no preview, blocks land after the selection and at the end, undo removes the last block, the preview opens in a dialog and beside the blocks.

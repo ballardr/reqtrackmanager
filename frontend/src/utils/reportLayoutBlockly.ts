@@ -10,7 +10,8 @@
  *   inspector beside the workspace.
  * - Turn tree nodes into block states and back without losing any key: everything a block does not draw lives in
  *   the block's `data`, so a key the editor does not know survives an edit.
- * - List the palette: one entry per block type, with the headings offered by level.
+ * - List the blocks an author can add: one entry per block type, with the headings offered by level, the most-used
+ *   types first.
  *
  * Design decisions: the tree stays canonical (the editor never keeps a second model); a block's `data` is the node
  * minus its child blocks, and inline fields overwrite it on the way back. A value an inline control cannot hold
@@ -50,13 +51,15 @@ export interface BlockState {
   data?: string;
 }
 
-/** One draggable entry in the palette. */
+/** One block an author can add. */
 export interface PaletteEntry {
-  /** Unique within the palette (`heading:2`, `table`). */
+  /** Unique within the list (`heading:2`, `table`). */
   key: string;
   type: BlockType;
-  /** The node the dragged block starts as. */
+  /** The node the added block starts as. */
   template: TreeNode;
+  /** Whether the type is one of the most used (listed first, under its own heading). */
+  common: boolean;
 }
 
 /** Block kinds with a short value that fits on the block: the author edits them in place. */
@@ -64,6 +67,8 @@ const INLINE_KINDS = new Set(["text", "alias", "tex", "integer", "boolean", "cho
 
 /** Headings are offered by level (the text view's toolbar does the same), each as its own palette entry. */
 const PALETTE_LEVELS: Record<string, number[]> = { heading: [1, 2, 3] };
+/** The block types most layouts start from, in the order they are offered; every other type follows, by name. */
+const COMMON_TYPES = ["heading", "text", "table"];
 
 /**
  * @returns Whether the field is drawn on the block (otherwise the inspector edits it). An optional text is a
@@ -269,18 +274,24 @@ export function looseBlockCount(state: { blocks?: { blocks?: BlockState[] } }): 
 }
 
 /**
- * The palette for a layout family: each block type that suits it, headings by level.
- *
+ * @returns The blocks that can be added to a layout of `family`: the common types (Heading, Text, Table) first, then
+ *   the rest by name, so the list reads by how often a block is wanted.
  * @param types Every block type.
  * @param family The layout's family.
  */
 export function paletteEntries(types: BlockType[], family: LayoutFamily): PaletteEntry[] {
+  const rank = (type: BlockType) => {
+    const at = COMMON_TYPES.indexOf(type.type);
+    return at === -1 ? COMMON_TYPES.length : at;
+  };
   return types
     .filter((type) => type.families.includes(family))
+    .sort((a, b) => rank(a) - rank(b) || (rank(a) < COMMON_TYPES.length ? 0 : a.label.localeCompare(b.label)))
     .flatMap((type) => {
+      const common = rank(type) < COMMON_TYPES.length;
       const levels = PALETTE_LEVELS[type.type];
-      if (!levels) return [{ key: type.type, type, template: type.template }];
-      return levels.map((level) => ({ key: `${type.type}:${level}`, type, template: { ...type.template, level } }));
+      if (!levels) return [{ key: type.type, type, template: type.template, common }];
+      return levels.map((level) => ({ key: `${type.type}:${level}`, type, template: { ...type.template, level }, common }));
     });
 }
 

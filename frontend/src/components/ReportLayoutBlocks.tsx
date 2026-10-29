@@ -3,36 +3,39 @@
  *
  * The block editor: a layout drawn as blocks on a Blockly workspace, with the selected block's full form (every
  * field, including source, columns, condition, widget settings and long text) in an inspector beside it. It is the
- * designer's second view of the layout tree.
+ * designer's second view of the layout tree. The canvas takes the page's width; the inspector sits beside it when
+ * there is room and under it when there is not.
  *
  * Responsibilities:
  * - Draw the tree as blocks and write every edit back to the tree through `onChange`; the tree is the designer's,
  *   this component holds no second model (`utils/reportLayoutBlockly` does the conversion without losing a key).
- * - Generate the block types and the palette from the server's block schemas, so a module's block type needs no
- *   code here; show the server's problems as warnings on the blocks and in the inspector.
+ * - Generate the block types and the Add block list from the server's block schemas, so a module's block type needs
+ *   no code here; show the server's problems as warnings on the blocks and in the inspector.
  * - Keep the inspector's edits and the workspace in step: an edit that changes only values is patched into the
  *   blocks in place (selection and scroll stay), a change in shape rebuilds the workspace.
- * - Offer the same additions without a pointer ("Add block", "Add to <list>") and follow the app's light and dark
- *   themes.
+ * - Add blocks from one dropdown ("Add block") at a place it names: after the selected block, inside it, or at the
+ *   end of the layout. The block is created in the workspace itself, so Ctrl+Z undoes the addition like a drag.
+ * - Follow the app's light and dark themes.
  *
- * Design decisions: Blockly is loaded lazily by the designer (`React.lazy`), keeping its ~1 MB out of the main
+ * Design decisions: there is no Blockly toolbox (flyout palette): it took a column of the canvas and listed the least
+ * used blocks first; the dropdown is the one way to add and says where the block will land. Blockly is loaded lazily by the designer (`React.lazy`), keeping its ~1 MB out of the main
  * bundle. Blocks carry short fields inline as a quick edit; the inspector holds every field with the shared field
  * editors, reused as they are, because embedding React inside SVG blocks would give two editing worlds, and a plain
  * form is the route for people who do not use a pointer. A block
  * dropped outside the layout is not part of it and is counted, not silently dropped. Validity is the server's.
  */
 import * as Blockly from "blockly/core";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { BlockCatalogue, BlockType, LayoutFamily, ReportFieldCatalogue, ReportWidget, TreeProblem } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";
 import {
   ROOT_INPUT, ROOT_TYPE, SUMMARY_FIELD, blockSummary, chainToNodes, controlValue, inlineFields, layoutType, looseBlockCount,
-  nodeData, paletteEntries, shapeOf, treeToWorkspaceState, workspaceStateToTree, type BlockState,
+  nodeData, nodeToBlockState, paletteEntries, shapeOf, treeToWorkspaceState, workspaceStateToTree, type BlockState,
 } from "../utils/reportLayoutBlockly";
-import { buildTheme, registerBlocks, toolboxFor } from "../utils/reportLayoutBlocklyBlocks";
+import { buildTheme, registerBlocks } from "../utils/reportLayoutBlocklyBlocks";
 import {
-  cloneNode, formatPath, insertNode, listAt, namesInScope, nodeAt, parsePath, problemsForNode, setAt, stableJson, type Tree, type TreeNode,
+  cloneNode, formatPath, listAt, namesInScope, nodeAt, parsePath, problemsForNode, setAt, stableJson, summarise, type Seg, type Tree, type TreeNode,
 } from "../utils/reportLayoutTree";
 import { MenuButton } from "./MenuButton";
 import { ReportLayoutJsonField } from "./ReportLayoutJsonField";
@@ -95,18 +98,33 @@ function patchChain(first: Blockly.Block | null, nodes: unknown, types: BlockTyp
   }
 }
 
+/** Where Add block would put a block: a child list of the tree, the index in it and the words that say so. */
+interface AddTarget {
+  list: Seg[];
+  index: number;
+  label: string;
+}
+
+/** Names a block for the "Adding after: …" line: its type and the start of its text ("Heading – Requirements"). */
+function describeBlock(node: TreeNode, type: BlockType | undefined): string {
+  const label = type?.label ?? String(node.type ?? "?");
+  const start = summarise(node, 30);
+  return start === "" ? label : `${label} – ${start}`;
+}
+
 /**
  * @param tree The layout tree.
  * @param onChange Called with the edited tree.
- * @param family The layout's family; only block types for it are in the palette.
+ * @param family The layout's family; only block types for it can be added.
  * @param blocks The block catalogue.
  * @param catalogue The record types and fields.
  * @param widgets The report components a widget block can embed.
  * @param problems The server's problems for the tree.
  * @param readOnly A layout shared from elsewhere: shown, not editable.
+ * @param toolbarEnd Controls the designer puts at the end of the toolbar above the canvas (the preview buttons).
  */
 export function ReportLayoutBlocks({
-  tree, onChange, family, blocks, catalogue, widgets, problems, readOnly = false,
+  tree, onChange, family, blocks, catalogue, widgets, problems, readOnly = false, toolbarEnd,
 }: {
   tree: Tree;
   onChange: (next: Tree) => void;
@@ -116,6 +134,7 @@ export function ReportLayoutBlocks({
   widgets: ReportWidget[];
   problems: TreeProblem[];
   readOnly?: boolean;
+  toolbarEnd?: ReactNode;
 }) {
   const text = useStrings().reportOutline;
   const host = useRef<HTMLDivElement>(null);
@@ -129,8 +148,8 @@ export function ReportLayoutBlocks({
   const [selected, setSelected] = useState<string | null>(null);
   const [loose, setLoose] = useState(0);
   const [ready, setReady] = useState(false);
-  /** The path of a block just added: it is selected once the workspace has it, so its settings are at hand. */
-  const pendingSelect = useRef<string | null>(null);
+  /** The place chosen in the Add block dropdown (an index into `targets`) and the block it was chosen for. */
+  const [chosenTarget, setChosenTarget] = useState({ selected: null as string | null, index: 0 });
 
   const types = blocks.blocks;
   const layoutLabel = text.layoutBlock;
@@ -145,7 +164,6 @@ export function ReportLayoutBlocks({
     const ws = Blockly.inject(host.current, {
       readOnly,
       theme: buildTheme(),
-      toolbox: readOnly ? undefined : toolboxFor(paletteEntries(types, family), types),
       renderer: "zelos",
       sounds: false,
       trashcan: !readOnly,
@@ -189,7 +207,7 @@ export function ReportLayoutBlocks({
       ws.dispose();
     };
     // The tree is read through `shown`, so a keystroke never rebuilds the workspace.
-  }, [types, family, readOnly, layoutLabel, unknownLabel]);
+  }, [types, readOnly, layoutLabel, unknownLabel]);
 
   // A tree that did not come from the workspace (the inspector, the settings) is patched in, or redrawn if its shape changed.
   useEffect(() => {
@@ -212,13 +230,6 @@ export function ReportLayoutBlocks({
     } finally {
       Blockly.Events.enable();
     }
-    const pending = pendingSelect.current;
-    pendingSelect.current = null;
-    if (pending) {
-      const id = [...indexPaths(ws)].find(([, path]) => path === pending)?.[0];
-      const block = id ? ws.getBlockById(id) : null;
-      if (block) Blockly.common.setSelected(block);
-    }
   }, [tree, types]);
 
   // The server's problems appear as warnings on the blocks they belong to.
@@ -237,77 +248,147 @@ export function ReportLayoutBlocks({
     }
   }, [problems, tree, ready]);
 
-  function addTo(list: (string | number)[], template: TreeNode) {
-    const index = listAt(tree, list).length;
-    pendingSelect.current = formatPath([...list, index]);
-    onChange(insertNode(tree, list, index, cloneNode(template)));
+  const addable = useMemo(() => paletteEntries(types, family), [types, family]);
+  const addr = selected ? parsePath(selected) : null;
+  const node = addr ? nodeAt(tree, addr) : undefined;
+  const type = node ? types.find((t) => t.type === node.type) : undefined;
+
+  /** Where a block can be added: the end of the layout, and, for the selected block, after it or inside each child list. */
+  const layoutLength = listAt(tree, [ROOT_INPUT]).length;
+  const targets = useMemo((): AddTarget[] => {
+    const end: AddTarget = { list: [ROOT_INPUT], index: layoutLength, label: text.addingAtEnd };
+    if (!addr || !node) return [end];
+    const name = describeBlock(node, type);
+    const parent = addr.slice(0, -1);
+    const at = addr[addr.length - 1];
+    const inside = (type?.containers ?? []).map((container): AddTarget => {
+      const children = node[container.key];
+      return { list: [...addr, container.key], index: Array.isArray(children) ? children.length : 0, label: text.addingInside(name, container.label) };
+    });
+    const after: AddTarget = { list: parent, index: typeof at === "number" ? at + 1 : layoutLength, label: text.addingAfter(name) };
+    // A container takes the new block inside by default; any other block, after it.
+    return [...inside, after, end];
+  }, [addr, node, type, layoutLength, text]);
+  // A different selected block starts again from its default place.
+  const target = targets[chosenTarget.selected === selected ? Math.min(chosenTarget.index, targets.length - 1) : 0];
+
+  /**
+   * Adds a block made from `template` to the child list `list` at `index`, as one undoable step, and selects it so its
+   * settings open in the inspector. The block is made in the workspace and reaches the tree through its change events,
+   * like a block dragged in.
+   */
+  function addAt(list: Seg[], index: number, template: TreeNode) {
+    const ws = workspace.current;
+    if (!ws) return;
+    const paths = indexPaths(ws);
+    const containerKey = String(list[list.length - 1]);
+    const owner = list.length === 1 ? ws.getTopBlocks(false).find((b) => b.type === ROOT_TYPE) : ws.getBlockById([...paths].find(([, p]) => p === formatPath(list.slice(0, -1)))?.[0] ?? "");
+    const connection = owner?.getInput(containerKey)?.connection;
+    if (!owner || !connection) return;
+    Blockly.Events.setGroup(true);
+    try {
+      const block = Blockly.serialization.blocks.append(nodeToBlockState(cloneNode(template), types), ws, { recordUndo: true }) as Blockly.BlockSvg;
+      let before: Blockly.Block | null = null;
+      for (let at = connection.targetBlock(), i = 0; at && i < index; at = at.getNextBlock(), i += 1) before = at;
+      if (before?.nextConnection && block.previousConnection) before.nextConnection.connect(block.previousConnection);
+      else if (block.previousConnection) connection.connect(block.previousConnection);
+      // The menu that was clicked gives focus back to its button as it closes, which would deselect the block, so wait for that.
+      setTimeout(() => {
+        if (!block.isDeadOrDying()) Blockly.common.setSelected(block);
+      }, 0);
+    } finally {
+      Blockly.Events.setGroup(false);
+    }
   }
 
-  const addable = paletteEntries(types, family);
-  const addEntries = (list: (string | number)[], label: string) => (
+  /** A dropdown listing every block that can be added, which adds the chosen one at `place`. */
+  const addMenu = (label: string, place: () => { list: Seg[]; index: number }) => (
     <MenuButton
       label={label} menuLabel={label}
       items={addable.map((entry) => ({
         key: entry.key,
         label: entry.template.level !== undefined ? `${entry.type.label} ${String(entry.template.level)}` : entry.type.label,
-        onSelect: () => addTo(list, entry.template),
+        group: entry.common ? text.commonBlocks : text.otherBlocks,
+        onSelect: () => {
+          const at = place();
+          addAt(at.list, at.index, entry.template);
+        },
       }))}
     />
   );
-
-  const addr = selected ? parsePath(selected) : null;
-  const node = addr ? nodeAt(tree, addr) : undefined;
-  const type = node ? types.find((t) => t.type === node.type) : undefined;
 
   return (
     <div className="stack" role="region" aria-label={text.blocksLabel}>
       <ReportLayoutSettings tree={tree} onChange={onChange} family={family} blocks={blocks} env={env} problems={problems} />
       <p className="text-muted" style={{ margin: 0 }}>{readOnly ? text.blocksReadOnlyHint : text.blocksHint}</p>
-      <div className="blocks-layout">
-        <div className="blocks-stage">
-          <div ref={host} className="blocks-workspace" aria-label={text.workspaceLabel} />
-        </div>
-        <aside className="stack blocks-inspector" aria-label={text.inspectorLabel}>
-          {!readOnly && <div>{addEntries([ROOT_INPUT], text.addBlock)}</div>}
-          {loose > 0 && <p role="status" className="text-muted" style={{ margin: 0 }}>{text.looseBlocks(loose)}</p>}
-          {node && addr && selected ? (
-            <div className="stack" data-testid="block-inspector">
-              <strong>{type?.label ?? String(node.type ?? "?")}</strong>
-              {(() => {
-                // Problems about the block as a whole, or a key no field is drawn for (a typo in JSON, a child list's own limit).
-                const found = problemsForNode(problems, selected);
-                const drawn = new Set(type?.described ? type.fields.map((f) => f.key) : []);
-                const stray = [...found.byKey.entries()].filter(([key]) => !drawn.has(key)).flatMap(([, list]) => list);
-                const messages = [...found.own, ...stray];
-                return messages.length > 0 ? (
-                  <ul className="outline-field-problems" role="alert">{messages.map((m, i) => <li key={i}>{m}</li>)}</ul>
-                ) : null;
-              })()}
-              {type && type.described ? (
-                type.fields.map((field) => (
-                  <ReportLayoutBlockField
-                    key={field.key} field={field} node={node} names={namesInScope(tree, addr, types)} env={env}
-                    problems={problemsForNode(problems, selected).byKey.get(field.key) ?? []}
-                    onChange={(key, value) => onChange(setAt(tree, [...addr, key], value))}
+      <div className="row blocks-toolbar">
+        {!readOnly && (
+          <>
+            {addMenu(text.addBlock, () => target)}
+            {targets.length > 1 ? (
+              <select
+                className="input blocks-target" aria-label={text.addWhere} value={targets.indexOf(target)}
+                onChange={(e) => setChosenTarget({ selected, index: Number(e.target.value) })}
+              >
+                {targets.map((option, index) => <option key={index} value={index}>{option.label}</option>)}
+              </select>
+            ) : (
+              <span className="text-muted" role="status">{target.label}</span>
+            )}
+          </>
+        )}
+        {toolbarEnd && <span className="blocks-toolbar-end">{toolbarEnd}</span>}
+      </div>
+      <div className="blocks-host">
+        <div className="blocks-layout">
+          <div className="blocks-stage">
+            <div ref={host} className="blocks-workspace" aria-label={text.workspaceLabel} />
+          </div>
+          <aside className="stack blocks-inspector" aria-label={text.inspectorLabel}>
+            {loose > 0 && <p role="status" className="text-muted" style={{ margin: 0 }}>{text.looseBlocks(loose)}</p>}
+            {node && addr && selected ? (
+              <div className="stack" data-testid="block-inspector">
+                <strong>{text.inspectorTitle(type?.label ?? String(node.type ?? "?"))}</strong>
+                {(() => {
+                  // Problems about the block as a whole, or a key no field is drawn for (a typo in JSON, a child list's own limit).
+                  const found = problemsForNode(problems, selected);
+                  const drawn = new Set(type?.described ? type.fields.map((f) => f.key) : []);
+                  const stray = [...found.byKey.entries()].filter(([key]) => !drawn.has(key)).flatMap(([, list]) => list);
+                  const messages = [...found.own, ...stray];
+                  return messages.length > 0 ? (
+                    <ul className="outline-field-problems" role="alert">{messages.map((m, i) => <li key={i}>{m}</li>)}</ul>
+                  ) : null;
+                })()}
+                {type && type.described ? (
+                  type.fields.map((field) => (
+                    <ReportLayoutBlockField
+                      key={field.key} field={field} node={node} names={namesInScope(tree, addr, types)} env={env}
+                      problems={problemsForNode(problems, selected).byKey.get(field.key) ?? []}
+                      onChange={(key, value) => onChange(setAt(tree, [...addr, key], value))}
+                    />
+                  ))
+                ) : (
+                  <ReportLayoutJsonField
+                    label={text.unknownBlock(String(node.type ?? "?"))} value={node} disabled={readOnly}
+                    onChange={(next) => {
+                      if (next !== null && typeof next === "object" && !Array.isArray(next)) onChange(setAt(tree, addr, next));
+                    }}
                   />
-                ))
-              ) : (
-                <ReportLayoutJsonField
-                  label={text.unknownBlock(String(node.type ?? "?"))} value={node} disabled={readOnly}
-                  onChange={(next) => {
-                    if (next !== null && typeof next === "object" && !Array.isArray(next)) onChange(setAt(tree, addr, next));
-                  }}
-                />
-              )}
-              {!readOnly && type?.containers.map((container) => (
-                <div key={container.key}>{addEntries([...addr, container.key], text.addInside(container.label))}</div>
-              ))}
-              {type && type.fields.length === 0 && type.containers.length === 0 && <p className="text-muted" style={{ margin: 0 }}>{text.noSettings}</p>}
-            </div>
-          ) : (
-            <p className="text-muted" style={{ margin: 0 }}>{text.selectBlock}</p>
-          )}
-        </aside>
+                )}
+                {!readOnly && type?.containers.map((container) => (
+                  <div key={container.key}>
+                    {addMenu(text.addInside(container.label), () => ({
+                      list: [...addr, container.key], index: Array.isArray(node[container.key]) ? (node[container.key] as unknown[]).length : 0,
+                    }))}
+                  </div>
+                ))}
+                {type && type.fields.length === 0 && type.containers.length === 0 && <p className="text-muted" style={{ margin: 0 }}>{text.noSettings}</p>}
+              </div>
+            ) : (
+              <p className="text-muted" style={{ margin: 0 }}>{text.selectBlock}</p>
+            )}
+          </aside>
+        </div>
       </div>
     </div>
   );

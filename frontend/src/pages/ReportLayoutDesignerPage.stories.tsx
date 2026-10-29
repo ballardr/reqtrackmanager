@@ -3,13 +3,14 @@ import { expect, type MockInstance, spyOn, within } from "storybook/test";
 
 import { api } from "../api/client";
 import { buildFieldCatalogue, buildLayoutDetail, buildWidgets, LAYOUT_TEXT, treeOf } from "../testing/reportLayoutFixtures";
-import { buildProjectListItem, withRouter } from "../testing/storybook-helpers";
+import { buildProjectListItem, buildUser, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
 import { ReportLayoutDesignerPage } from "./ReportLayoutDesignerPage";
 
 /** The designer of one layout, opened by URL for a project or for an organisation. */
 const meta: Meta<typeof ReportLayoutDesignerPage> = {
   title: "Pages/ReportLayoutDesignerPage",
   component: ReportLayoutDesignerPage,
+  decorators: [withStatefulAuth(buildUser({ ui_preferences: {} }))],
 };
 export default meta;
 

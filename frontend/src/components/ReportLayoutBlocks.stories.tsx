@@ -134,17 +134,85 @@ export const InspectorEditsReachTheBlockWithoutRedrawing: Story = {
   },
 };
 
-export const AddBlockAppendsToTheLayoutFromTheMenu: Story = {
+/** Adds a block of `name` from the Add block menu. */
+async function addFromMenu(canvas: ReturnType<typeof within>, name: string) {
+  await userEvent.click(canvas.getByRole("button", { name: "Add block" }));
+  await userEvent.click(await screen.findByRole("menuitem", { name }));
+}
+
+export const AddBlockWithNothingSelectedAppendsToTheLayoutAndSaysSo: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const ws = await workspaceOf();
-    await userEvent.click(canvas.getByRole("button", { name: "Add block" }));
-    await userEvent.click(await screen.findByRole("menuitem", { name: "Page break" }));
+    await expect(canvas.getByText("Adding at the end of the layout")).toBeInTheDocument();
+    await addFromMenu(canvas, "Page break");
     await waitFor(() => expect(treeOf(canvasElement).nodes.map((n) => n.type)).toEqual(["heading", "each", "page_break"]));
     await waitFor(() => expect(blocksOf(ws, "page_break")).toHaveLength(1));
-    // The new block is selected, so its settings are at hand.
+    // The new block is selected, so its settings are at hand, and the inspector is titled by it.
     await waitFor(() => expect(Blockly.common.getSelected()).toBe(blocksOf(ws, "page_break")[0]));
-    await expect(await canvas.findByTestId("block-inspector")).toHaveTextContent("Page break");
+    await expect(await canvas.findByTestId("block-inspector")).toHaveTextContent("Page break block");
+  },
+};
+
+export const AddBlockWithALeafSelectedAddsAfterIt: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const ws = await workspaceOf();
+    Blockly.common.setSelected(blocksOf(ws, "heading")[0]);
+    const where = await canvas.findByRole("combobox", { name: "Where to add the block" });
+    // A heading holds no blocks, so the only places are after it and the end of the layout; after is the default.
+    await expect(where).toHaveDisplayValue(/^Adding after: Heading – Requirements/);
+    await expect(within(where).getAllByRole("option")).toHaveLength(2);
+    await addFromMenu(canvas, "Page break");
+    await waitFor(() => expect(treeOf(canvasElement).nodes.map((n) => n.type)).toEqual(["heading", "page_break", "each"]));
+    await waitFor(() => expect(Blockly.common.getSelected()).toBe(blocksOf(ws, "page_break")[0]));
+  },
+};
+
+export const AddBlockWithAContainerSelectedAddsInsideByDefaultOrAfterIt: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const ws = await workspaceOf();
+    Blockly.common.setSelected(blocksOf(ws, "each")[0]);
+    const where = await canvas.findByRole("combobox", { name: "Where to add the block" });
+    await expect(where).toHaveDisplayValue(/^Adding inside: .* – Contents$/);
+    await addFromMenu(canvas, "Equation");
+    await waitFor(() => expect((treeOf(canvasElement).nodes[1].children as { type: string }[]).map((n) => n.type)).toEqual(["heading", "table", "equation"]));
+    // The new block becomes the selection; then select the container again and choose After.
+    await waitFor(() => expect(Blockly.common.getSelected()).toBe(blocksOf(ws, "equation")[0]));
+    Blockly.common.setSelected(blocksOf(ws, "each")[0]);
+    await waitFor(() => expect(canvas.getByRole("combobox", { name: "Where to add the block" })).toHaveDisplayValue(/^Adding inside: /));
+    const after = within(canvas.getByRole("combobox", { name: "Where to add the block" })).getAllByRole("option").find((o) => /^Adding after: /.test(o.textContent ?? ""));
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Where to add the block" }), after as HTMLOptionElement);
+    await addFromMenu(canvas, "Page break");
+    await waitFor(() => expect(treeOf(canvasElement).nodes.map((n) => n.type)).toEqual(["heading", "each", "page_break"]));
+    await expect((treeOf(canvasElement).nodes[1].children as unknown[]).length).toBe(3);
+  },
+};
+
+/** The addition is made in the workspace, so the editor's own undo takes it back like a dragged block. */
+export const AnAddedBlockCanBeUndone: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const ws = await workspaceOf();
+    await addFromMenu(canvas, "Page break");
+    await waitFor(() => expect(treeOf(canvasElement).nodes).toHaveLength(3));
+    ws.undo(false);
+    await waitFor(() => expect(treeOf(canvasElement).nodes.map((n) => n.type)).toEqual(["heading", "each"]));
+    // The block is gone from the canvas too, not left loose beside the layout.
+    await waitFor(() => expect(blocksOf(ws, "page_break")).toHaveLength(0));
+  },
+};
+
+export const TheMostUsedBlocksAreListedFirst: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await workspaceOf();
+    await userEvent.click(canvas.getByRole("button", { name: "Add block" }));
+    const names = (await screen.findAllByRole("menuitem")).map((item) => item.textContent);
+    await expect(names.slice(0, 5).map((n) => n?.trim())).toEqual(["Heading 1", "Heading 2", "Heading 3", "Text", "Table"]);
+    await expect(screen.getByText("Most used")).toBeInTheDocument();
+    await expect(screen.getByText("Other blocks")).toBeInTheDocument();
   },
 };
 

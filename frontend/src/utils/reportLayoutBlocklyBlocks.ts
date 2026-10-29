@@ -2,7 +2,7 @@
  * Module: utils/reportLayoutBlocklyBlocks
  *
  * Everything the block editor needs from Blockly itself: the block types generated from the server's block
- * schemas, the theme drawn from the app's colour tokens, and the palette (toolbox) definition.
+ * schemas and the theme drawn from the app's colour tokens.
  *
  * Responsibilities:
  * - Register one Blockly block type per layout block type (`BlockType`): a label, its short fields inline with a
@@ -20,10 +20,7 @@ import * as Blockly from "blockly/core";
 import * as En from "blockly/msg/en";
 
 import type { BlockField, BlockType } from "../api/reportLayouts";
-import {
-  ROOT_INPUT, ROOT_TYPE, SUMMARY_FIELD, UNKNOWN_TYPE, UNSET, blockName, dropdownValues, inlineFields, inspectorFields, nodeToBlockState,
-  type PaletteEntry,
-} from "./reportLayoutBlockly";
+import { ROOT_INPUT, ROOT_TYPE, SUMMARY_FIELD, UNKNOWN_TYPE, UNSET, blockName, dropdownValues, inlineFields, inspectorFields } from "./reportLayoutBlockly";
 
 /** The text the editor puts on its blocks (the app's strings, passed in so this module holds none). */
 export interface BlockLabels {
@@ -162,15 +159,4 @@ export function registerBlocks(types: BlockType[], labels: BlockLabels): void {
       },
     };
   }
-}
-
-/** The entries of the palette as a Blockly flyout toolbox. */
-export function toolboxFor(entries: PaletteEntry[], types: BlockType[]): Blockly.utils.toolbox.ToolboxDefinition {
-  return {
-    kind: "flyoutToolbox",
-    contents: entries.map((entry) => {
-      const state = nodeToBlockState(entry.template, types);
-      return { kind: "block", type: state.type, fields: state.fields, data: state.data } as Blockly.utils.toolbox.BlockInfo;
-    }),
-  };
 }
