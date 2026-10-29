@@ -4,7 +4,7 @@ import { expect, screen, spyOn, userEvent, within } from "storybook/test";
 import { api } from "../api/client";
 import { buildReportCatalogueEntry, buildReportResult } from "../testing/reportFixtures";
 import { buildProject, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
-import { ReportsMenuButton } from "./ReportsMenuButton";
+import { ReportsButton } from "./ReportsButton";
 
 function mockApis() {
   spyOn(api, "get").mockImplementation(async (path: string) => {
@@ -16,30 +16,34 @@ function mockApis() {
   });
 }
 
-const meta: Meta<typeof ReportsMenuButton> = {
-  title: "Components/Reports/ReportsMenuButton",
-  component: ReportsMenuButton,
+const meta: Meta<typeof ReportsButton> = {
+  title: "Components/Reports/ReportsButton",
+  component: ReportsButton,
   args: { scope: { kind: "project", id: "project-1" }, organizationId: "org-1", project: buildProject({ id: "project-1" }) },
   decorators: [withToast(), withStatefulAuth(buildUser({ ui_preferences: {} }))],
   beforeEach: mockApis,
 };
 export default meta;
 
-type Story = StoryObj<typeof ReportsMenuButton>;
+type Story = StoryObj<typeof ReportsButton>;
 
-/** The menu offers the two views; choosing one opens the dialog on it, and Escape closes it again. */
-export const OpensTheDialogOnEitherView: Story = {
+/** One click on Reports opens the chooser, and Escape closes it again. */
+export const OpensTheChooserInOneClick: Story = {
   decorators: [withRouter("/projects/project-1", "/projects/:projectId")],
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "Reports" }));
-    await userEvent.click(await screen.findByRole("menuitem", { name: "Background reports…" }));
-    await expect(await screen.findByRole("dialog", { name: "Background reports" })).toBeInTheDocument();
+    await expect(await screen.findByRole("dialog", { name: "Reports" })).toBeInTheDocument();
+    await expect(screen.queryByRole("menuitem")).not.toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
     await expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  },
+};
 
-    await userEvent.click(canvas.getByRole("button", { name: "Reports" }));
-    await userEvent.click(await screen.findByRole("menuitem", { name: "Choose a report…" }));
+/** An old `?reports=runs` link (the removed background-reports view) lands on the chooser. */
+export const AnOldRunsLinkOpensTheChooser: Story = {
+  decorators: [withRouter("/projects/project-1?reports=runs", "/projects/:projectId")],
+  play: async () => {
     await expect(await screen.findByRole("dialog", { name: "Reports" })).toBeInTheDocument();
   },
 };

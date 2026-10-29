@@ -355,7 +355,6 @@ test.describe("Context & Strategy: Reports UI", () => {
     await test.step("an org admin sees the Reports menu and its org-wide reports", async () => {
       await page.goto(`/orgs/${org.id}/overview`);
       await page.getByRole("button", { name: "Reports", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Choose a report…" }).click();
       await expect(page).toHaveURL(new RegExp(`/orgs/${org.id}/overview\\?reports=choose`));
       await chooseReport(page, "Pain Point prioritisation");
       await expect(page.getByRole("table", { name: "Ranked Pain Points" })).toContainText(titles.major);

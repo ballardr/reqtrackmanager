@@ -92,6 +92,9 @@ export const ResolvesNotificationLinks: Story = {
     await expect(link("change_request")).toBe("/projects/p-1/change-requests/x-1");
     await expect(link("not_a_type")).toBe("/projects/p-1");
     await expect(link("risk", null)).toBeNull();
+    // A background report opens its own page, for a project run and for an organisation-wide run (no project).
+    await expect(link("generated_report", "p-1", "run-1")).toBe("/report-runs/run-1");
+    await expect(link("generated_report", null, "run-1")).toBe("/report-runs/run-1");
   },
 };
 

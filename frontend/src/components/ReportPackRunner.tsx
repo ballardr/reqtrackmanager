@@ -42,7 +42,7 @@ import {
 } from "../api/reports";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
-import { REPORT_RUN_QUEUED_EVENT } from "../hooks/useReportRuns";
+import { REPORT_RUN_QUEUED_EVENT } from "../hooks/useActiveReportRuns";
 import { useReportTemplates } from "../hooks/useReportTemplates";
 import { downloadBlob } from "../utils/download";
 import { Badge } from "./Badge";

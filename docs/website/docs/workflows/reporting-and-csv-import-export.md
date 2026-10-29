@@ -6,7 +6,7 @@ sidebar_position: 9
 
 ## Generating a PDF, Word or CSV report
 
-Open the **Reports** menu at the top of the project overview, choose **Choose a report…**, and pick the **Requirements report**:
+Click **Reports** at the top of the project overview, and pick the **Requirements report**:
 
 1. Filter by component, category, status, or keyword to scope what's included.
 2. Optionally pick one of the organisation's **report templates** for a PDF or Word export — an accent colour, cover page, logo and footer, for consistent on-brand output.

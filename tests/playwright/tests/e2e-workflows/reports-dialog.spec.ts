@@ -13,7 +13,7 @@ test.describe("Reports dialog", () => {
   installCleanupHook();
   const API = "http://localhost:8000/api/v1";
 
-  test("the overview's Reports menu opens the dialog on a report or on the background reports", async ({ page }) => {
+  test("the overview's Reports button opens the report chooser in one click", async ({ page }) => {
     const project = await createDisposableProject(page.request, PERSONAS.orgAdminAlphaBeta.email, "E2E Reports Dialog");
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await page.goto(`/projects/${project.projectId}`);
@@ -24,7 +24,6 @@ test.describe("Reports dialog", () => {
 
     await test.step("Choose a report opens the dialog on the first report", async () => {
       await page.getByRole("button", { name: "Reports", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Choose a report…" }).click();
       const dialog = page.getByRole("dialog", { name: "Reports" });
       await expect(dialog.getByRole("button", { name: /^Report:/ })).toBeVisible();
       await expect(page).toHaveURL(/reports=choose/);
@@ -34,13 +33,6 @@ test.describe("Reports dialog", () => {
       await page.keyboard.press("Escape");
       await expect(page.getByRole("dialog")).toHaveCount(0);
       await expect(page).not.toHaveURL(/reports=/);
-    });
-
-    await test.step("Background reports shows the person's runs, or says there are none", async () => {
-      await page.getByRole("button", { name: "Reports", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Background reports…" }).click();
-      const dialog = page.getByRole("dialog", { name: "Background reports" });
-      await expect(dialog.getByRole("region", { name: "Background reports" }).or(dialog.getByText(/no background reports/))).toBeVisible();
     });
   });
 

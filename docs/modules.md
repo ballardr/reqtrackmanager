@@ -1679,7 +1679,17 @@ flowchart LR
 - **Authorisation.** The job runs with the requester's resolver, after re-checking that the account is active, the
   organisation is active, they still hold a role in the project or organisation and the layout is still reachable and not
   hidden. Only the requester lists (`GET /api/v1/report-runs[?organization_id=]`), reads, downloads or deletes a run; another
-  person's run is a 404. Download re-checks the same access and the expiry.
+  person's run is a 404. Download re-checks the same access and the expiry. `?active=true` narrows the list to runs
+  that are queued or running (the top-bar indicator).
+- **Generate again.** `POST /api/v1/report-runs/{id}/again` (`report_run_jobs.requeue`) queues a fresh run of an
+  `expired` or `failed` run's stored request (format, scope, branding template, variable values, pack set): the requester,
+  the layout or pack's reach and its *current* version are checked again, the old file is never reused, the queue limit
+  applies and the response says whether the definition changed since (`definition_changed`). 404 not the caller's or the
+  report is gone or unreachable; 409 the run is waiting, running or still downloadable; 422 the stored values no longer fit;
+  429 too many queued.
+- **Where the person meets a run.** There is no list page. The `report_run_finished` notification links to
+  `/report-runs/:id` (`ReportRunDialog`: Download, or the expired/failed explanation with Generate again) and a clock with
+  a count in the top bar (`ReportRunsIndicator`, polling `?active=true`) shows runs still in progress.
 - **Retention.** `effective_retention_days`: `Organization.report_output_retention_days` (Org Admin > Templates & reports >
   Background reports), else `report_output_default_retention_days` (7), never above `report_output_max_retention_days` (30).
   The expiry pass (every 15 minutes) deletes the object of a `ready` row past `expires_at` and marks it `expired` (file

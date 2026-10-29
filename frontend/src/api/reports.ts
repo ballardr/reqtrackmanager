@@ -270,10 +270,26 @@ export const reportsApi = {
   },
 };
 
+/** A fresh run queued by "generate again" (`ReportRunAgainOut`). */
+export interface ReportRunAgain {
+  run: ReportRun;
+  /** The layout or pack was edited since the run it repeats, so the new file may differ for that reason. */
+  definition_changed: boolean;
+}
+
 /** The caller's own background runs. */
 export const reportRunsApi = {
-  list: (organizationId?: string) =>
-    api.get<ReportRun[]>(`/api/v1/report-runs${organizationId ? `?organization_id=${organizationId}` : ""}`),
+  /** The runs, newest first; `active` narrows to those waiting or being prepared. */
+  list: (options: { organizationId?: string; active?: boolean } = {}) => {
+    const query = new URLSearchParams();
+    if (options.organizationId) query.set("organization_id", options.organizationId);
+    if (options.active) query.set("active", "true");
+    const text = query.toString();
+    return api.get<ReportRun[]>(`/api/v1/report-runs${text ? `?${text}` : ""}`);
+  },
+  get: (id: string) => api.get<ReportRun>(`/api/v1/report-runs/${id}`),
+  /** Queues a fresh run of an expired or failed run's stored request. */
+  again: (id: string) => api.post<ReportRunAgain>(`/api/v1/report-runs/${id}/again`),
   download: (id: string) => api.getForBlob(`/api/v1/report-runs/${id}/download`),
   /** Deletes the stored file (or cancels a waiting run); returns the run as it now is. */
   remove: (id: string) => api.delete<ReportRun>(`/api/v1/report-runs/${id}`),

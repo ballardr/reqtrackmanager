@@ -10,7 +10,8 @@ const API = "http://localhost:8000/api/v1";
 
 /**
  * Job to be done: a report too big to produce while waiting is prepared in the background; the person is told it
- * has started, is notified when it is ready, downloads it, and can delete the stored file. Nobody else can fetch it.
+ * has started, sees it in the top bar while it is prepared, is notified when it is ready, opens it from the
+ * notification, downloads it, and can generate it again once the file has been removed. Nobody else can fetch it.
  *
  * A layout big enough to pass the synchronous limits would need ~100,000 records, so the test answers the
  * synchronous run with the same 409 the server sends for one; the queueing, the leader's job loop, the stored file,
@@ -63,7 +64,7 @@ test.describe("Custom report background run", () => {
     return { org, project, headers, layoutName, suffix };
   }
 
-  test("a report too big to wait for is prepared in the background, downloaded by its requester and deleted", async ({ page, request }) => {
+  test("a report too big to wait for is prepared in the background, opened from its notification, downloaded and generated again", async ({ page, request }) => {
     const { project, headers, layoutName } = await setup(page, request);
 
     await test.step("a file run that is too big is queued instead, and the person is told", async () => {
@@ -80,26 +81,32 @@ test.describe("Custom report background run", () => {
       await expect(page.getByText(/being prepared in the background/)).toBeVisible();
     });
 
-    const panel = page.getByRole("region", { name: "Background reports" });
-    await test.step("the Background reports list shows it and, once the server has produced it, offers the file", async () => {
-      await page.goto(`/projects/${project.id}?reports=runs`);
-      await expect(panel.getByRole("row", { name: new RegExp(layoutName) })).toBeVisible();
-      await expect(panel.getByText("Ready")).toBeVisible({ timeout: 60_000 });
+    await test.step("the Reports button opens the chooser directly, with no background-reports view", async () => {
+      await page.goto(`/projects/${project.id}`);
+      await page.getByRole("button", { name: "Reports", exact: true }).click();
+      await expect(page.getByRole("dialog", { name: "Reports" })).toBeVisible();
+      await expect(page.getByRole("menuitem")).toHaveCount(0);
+      await page.keyboard.press("Escape");
     });
 
-    await test.step("the person was notified", async () => {
+    await test.step("the person was notified once the server produced it", async () => {
       // The notification is written just after the run is marked ready.
       await expect
         .poll(async () => {
           const notifications = await (await request.get(`${API}/notifications`, { headers })).json();
           return notifications.map((n: { title: string }) => n.title);
-        })
+        }, { timeout: 60_000 })
         .toContain(`Report ready: ${layoutName}`);
     });
 
-    await test.step("the stored file is a real PDF", async () => {
+    await test.step("clicking the notification opens the report and downloads a real PDF", async () => {
+      await page.goto(`/projects/${project.id}`);
+      await page.getByRole("button", { name: "Notifications", exact: true }).click();
+      await page.getByText(`Report ready: ${layoutName}`).click();
+      const dialog = page.getByRole("dialog", { name: layoutName });
+      await expect(dialog.getByText("Ready", { exact: true })).toBeVisible();
       const pending = page.waitForEvent("download");
-      await panel.getByRole("button", { name: `Download ${layoutName}` }).click();
+      await dialog.getByRole("button", { name: "Download", exact: true }).click();
       const file = await pending;
       expect(fs.readFileSync((await file.path())!).subarray(0, 5).toString()).toBe("%PDF-");
     });
@@ -112,14 +119,62 @@ test.describe("Custom report background run", () => {
       expect((await request.get(`${API}/report-runs`, { headers: serverHeaders })).status()).toBe(200);
     });
 
-    await test.step("deleting the stored file asks first and leaves the run listed as expired", async () => {
-      await panel.getByRole("button", { name: `Delete file ${layoutName}` }).click();
-      await page.getByRole("dialog", { name: "Delete file" }).getByRole("button", { name: "Delete file" }).click();
-      await expect(page.getByText("The report file was deleted.")).toBeVisible();
-      await expect(panel.getByText("Expired")).toBeVisible();
-      await expect(panel.getByRole("button", { name: `Download ${layoutName}` })).toHaveCount(0);
+    await test.step("once the file is removed the same link says so and generates the report again", async () => {
+      const [run] = await (await request.get(`${API}/report-runs`, { headers })).json();
+      expect((await request.delete(`${API}/report-runs/${run.id}`, { headers })).ok()).toBeTruthy();
+      await page.goto(`/report-runs/${run.id}`);
+      const dialog = page.getByRole("dialog", { name: layoutName });
+      await expect(dialog.getByText(/removed after its retention period/)).toBeVisible();
+      await dialog.getByRole("button", { name: "Generate again" }).click();
+      await expect(dialog.getByText(/fresh run of this report has been queued/)).toBeVisible();
+      await expect
+        .poll(async () => {
+          const runs = await (await request.get(`${API}/report-runs`, { headers })).json();
+          return runs.filter((r: { status: string }) => r.status === "ready").length;
+        }, { timeout: 60_000 })
+        .toBe(1);
+      const runs = await (await request.get(`${API}/report-runs`, { headers })).json();
+      expect(runs).toHaveLength(2);
+      expect(runs.map((r: { id: string }) => r.id)).toContain(run.id);
     });
+  });
 
+  test("a failed background report shows its reason and offers to generate it again", async ({ page, request }) => {
+    const { project, layoutName } = await setup(page, request);
+    const run = {
+      id: "00000000-0000-4000-8000-000000000001", organization_id: "x", project_id: project.id, scope: "project",
+      layout_name: layoutName, layout_version: 1, format: "pdf", status: "failed", created_at: "2026-10-29T01:00:00Z",
+      started_at: "2026-10-29T01:00:05Z", finished_at: "2026-10-29T01:01:00Z", expires_at: null, output_filename: null,
+      output_size: null, error: "The report took too long to produce. Narrow the layout or select fewer projects.",
+    };
+    await page.route(`**/api/v1/report-runs/${run.id}`, (route) => route.fulfill({ json: run }));
+
+    await page.goto(`/report-runs/${run.id}`);
+
+    const dialog = page.getByRole("dialog", { name: layoutName });
+    await expect(dialog.getByRole("alert")).toContainText("The report took too long to produce.");
+    await expect(dialog.getByRole("button", { name: "Generate again" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Download", exact: true })).toHaveCount(0);
+  });
+
+  test("the top bar shows the reports still being prepared and hides when there are none", async ({ page, request }) => {
+    const { project } = await setup(page, request);
+    let active: unknown[] = [];
+    await page.route(/\/api\/v1\/report-runs\?active=true/, (route) => route.fulfill({ json: active }));
+
+    await page.goto(`/projects/${project.id}`);
+    await expect(page.getByRole("button", { name: /being prepared/ })).toHaveCount(0);
+
+    active = [{
+      id: "00000000-0000-4000-8000-000000000002", organization_id: "x", project_id: project.id, scope: "project",
+      layout_name: "Quarterly review", layout_version: 1, format: "docx", status: "running", created_at: "2026-10-29T01:00:00Z",
+      started_at: "2026-10-29T01:00:05Z", finished_at: null, expires_at: null, output_filename: null, output_size: null, error: null,
+    }];
+    await page.evaluate(() => window.dispatchEvent(new Event("reqtrack:report-run-queued")));
+    await page.getByRole("button", { name: "1 report being prepared" }).click();
+    const popover = page.getByRole("dialog", { name: "Reports being prepared" });
+    await expect(popover.getByText("Quarterly review")).toBeVisible();
+    await expect(popover.getByRole("button")).toHaveCount(0);
   });
 
   test("an organisation admin sets how long background report files are kept", async ({ page, request }) => {

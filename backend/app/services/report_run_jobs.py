@@ -12,6 +12,7 @@ Responsibilities:
 - `expire`: deletes stored files past their expiry (row kept as `expired`), reaps jobs stuck `running`, and
   deletes provenance rows older than the platform retention.
 - `list_for`, `get_for`, `read_output`, `delete_output`: the requester's view of their own runs.
+- `requeue`: "generate again" for an expired or failed run: a fresh run of the stored request, as the requester now.
 - `run_job_loop`: the singleton loop that drives all of the above (started through the lifespan's
   `start_singletons`, so exactly one process works the queue).
 
@@ -33,6 +34,11 @@ Design decisions:
   object first and the row's file columns after, so a failed delete is retried on the next pass.
 - **Messages are safe to show.** A failure stores a fixed sentence per cause (limits, access, render), never
   an exception string, because the row is readable by the requester and must not carry record content.
+
+- **Generate again is a new run, never the old file.** `requeue` re-checks the requester and the report's reach, runs
+  the layout or pack's *current* version with the stored format, scope and variable values, and always goes through the
+  queue (so a large one is bounded like any other and the person is notified again). It is refused while the original
+  is still waiting, running or downloadable.
 
 Dependencies: `services.custom_report_run`, `services.files` (storage backend), `services.notifications`,
 `models.generated_report`.
@@ -74,7 +80,7 @@ from app.services.notifications import notify
 from app.services.rbac import get_effective_org_roles, get_effective_project_roles
 from app.services.report_document import load_report_template
 from app.services.report_layout_eval import ASYNC_TIMEOUT_SECONDS, LayoutLimitError, LayoutTimeoutError
-from app.services.report_variables import VariableValueError
+from app.services.report_variables import VariableValueError, resolve_values
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +112,14 @@ class TooManyActiveRunsError(RuntimeError):
 
 class RunNotAvailableError(LookupError):
     """The run does not exist, is not the caller's, has no stored file or the caller lost access."""
+
+
+class RepeatNotNeededError(ValueError):
+    """The run is still waiting, being prepared or downloadable, so there is nothing to generate again."""
+
+
+class RepeatRefusedError(ValueError):
+    """The stored request can no longer be run as it was (its values or format no longer fit the report)."""
 
 
 def effective_retention_days(organization: Organization) -> int:
@@ -514,7 +528,9 @@ def _clear_output(row: GeneratedReport, status: str) -> None:
 # --- the requester's view -------------------------------------------------------------------------------------
 
 
-def list_for(db: Session, user: User, organization_id: uuid.UUID | None = None, *, limit: int = 50) -> list[GeneratedReport]:
+def list_for(
+    db: Session, user: User, organization_id: uuid.UUID | None = None, *, limit: int = 50, active_only: bool = False,
+) -> list[GeneratedReport]:
     """The caller's own background runs (in one organisation, or all), newest first.
 
     Args:
@@ -522,6 +538,7 @@ def list_for(db: Session, user: User, organization_id: uuid.UUID | None = None, 
         user: The caller.
         organization_id: Restrict to this organisation, or `None` for all.
         limit: Most rows to return.
+        active_only: Only runs that are waiting or being prepared (the top-bar indicator's list).
 
     Returns:
         Their runs that were queued in the background (those with a job state other than `completed`).
@@ -529,6 +546,8 @@ def list_for(db: Session, user: User, organization_id: uuid.UUID | None = None, 
     query = select(GeneratedReport).where(GeneratedReport.requested_by == user.id, GeneratedReport.status != "completed")
     if organization_id is not None:
         query = query.where(GeneratedReport.organization_id == organization_id)
+    if active_only:
+        query = query.where(GeneratedReport.status.in_(_ACTIVE))
     return list(db.scalars(query.order_by(GeneratedReport.created_at.desc()).limit(limit)).all())
 
 
@@ -569,6 +588,95 @@ def read_output(db: Session, user: User, run_id: uuid.UUID) -> tuple[GeneratedRe
         return row, get_storage_backend().read(row.output_key)
     except FileNotFoundError as exc:
         raise RunNotAvailableError("This report is no longer available.") from exc
+
+
+def requeue(db: Session, user: User, run_id: uuid.UUID) -> tuple[GeneratedReport, bool]:
+    """Queues a fresh run of an expired or failed run's stored request (the caller commits).
+
+    The report is looked up again as it is now: the requester's access, the layout or pack's reach and its current
+    version, and the stored variable values checked against that version. Nothing of the old file is reused.
+
+    Args:
+        db: Active session.
+        user: The caller (must be the run's requester).
+        run_id: The expired or failed run.
+
+    Returns:
+        The new `queued` row and whether the layout or pack has a newer version than the one the old run used.
+
+    Raises:
+        RunNotAvailableError: Not the caller's run, or the report is gone or no longer reachable by the caller.
+        RepeatNotNeededError: The run is waiting, being prepared or still downloadable.
+        RepeatRefusedError: The stored values or format no longer fit the report's current version.
+        TooManyActiveRunsError: The caller already has `MAX_ACTIVE_PER_USER` active background runs.
+    """
+    old = get_for(db, user, run_id)
+    if old.status not in (STATUS_EXPIRED, STATUS_FAILED):
+        raise RepeatNotNeededError("This report is already available or being prepared.")
+    organization = db.get(Organization, old.organization_id)
+    if not _can_run(db, user, old, organization):
+        raise RunNotAvailableError("You can no longer run this report.")
+    assert organization is not None
+    project = db.get(Project, old.project_id) if old.project_id else None
+    params = old.params or {}
+    template_id = uuid.UUID(params["report_template_id"]) if params.get("report_template_id") else None
+    if template_id is not None and load_report_template(db, organization.id, template_id) is None:
+        template_id = None  # the branding was deleted since; the report still runs, unbranded
+    requested = [uuid.UUID(p) for p in params["requested_project_ids"]] if params.get("requested_project_ids") is not None else None
+    include_children = bool(params.get("include_children"))
+    if params.get("kind") == "pack":
+        return _requeue_pack(db, user, old, organization, project, template_id, requested, include_children)
+    layout = db.get(ReportLayout, old.layout_id)
+    if layout is None or (old.scope == SCOPE_PROJECT and project is None):
+        raise RunNotAvailableError("This report no longer exists.")
+    if project is not None:
+        scoped = report_layout_scope.reachable_layout(db, project, layout.id)
+        if scoped is None or scoped.hidden:
+            raise RunNotAvailableError("This report is no longer available for this project.")
+    elif layout.organization_id != organization.id or layout.project_id is not None:
+        raise RunNotAvailableError("This report no longer exists.")
+    version = report_layouts.get_version(db, layout.id, layout.current_version)
+    assert version is not None  # a layout always has its current version
+    if old.format not in custom_report_run.available_formats(layout.family, version.tree):
+        raise RepeatRefusedError(f"The layout can no longer be produced as {old.format.upper()}. Run it again from the Reports dialog.")
+    try:
+        values = resolve_values(version.tree.get("variables"), params.get("variables"), today=effective_today())
+    except VariableValueError as exc:
+        raise RepeatRefusedError("The values this report was run with no longer fit the layout. Run it again from the Reports dialog.") from exc
+    row = enqueue(
+        db, user, organization=organization, project=project, layout=layout, version=version, fmt=old.format,
+        report_template_id=template_id, include_children=include_children, requested_project_ids=requested, variables=values,
+    )
+    return row, version.version != old.layout_version
+
+
+def _requeue_pack(
+    db: Session, user: User, old: GeneratedReport, organization: Organization, project: Project | None,
+    template_id: uuid.UUID | None, requested: list[uuid.UUID] | None, include_children: bool,
+) -> tuple[GeneratedReport, bool]:
+    """`requeue` for a pack run (see there for the arguments and errors)."""
+    params = old.params
+    pack = db.get(ReportPack, uuid.UUID(params["pack_id"]))
+    if pack is None or (old.scope == SCOPE_PROJECT and project is None):
+        raise RunNotAvailableError("This report no longer exists.")
+    if project is not None:
+        scoped = report_pack_scope.reachable_pack(db, project, pack.id)
+        if scoped is None or scoped.hidden:
+            raise RunNotAvailableError("This report is no longer available for this project.")
+    elif pack.organization_id != organization.id or pack.project_id is not None:
+        raise RunNotAvailableError("This report no longer exists.")
+    version = report_packs.current_version(db, pack)
+    set_id = uuid.UUID(params["variable_set_id"]) if params.get("variable_set_id") else None
+    try:
+        report_pack_run.check_request(db, pack, version, project, params.get("variables"), set_id)
+    except (report_pack_run.UnknownSetError, VariableValueError) as exc:
+        raise RepeatRefusedError("The values this report was run with no longer fit the pack. Run it again from the Reports dialog.") from exc
+    row = enqueue_pack(
+        db, user, organization=organization, project=project, pack=pack, version=version, report_template_id=template_id,
+        include_children=include_children, requested_project_ids=requested, variables=params.get("variables"),
+        variable_set_id=set_id,
+    )
+    return row, version.version != old.layout_version
 
 
 def delete_output(db: Session, user: User, run_id: uuid.UUID) -> GeneratedReport:
@@ -629,7 +737,7 @@ async def run_job_loop() -> None:
 
 
 __all__ = [
-    "EXPIRY_INTERVAL_SECONDS", "MAX_ACTIVE_PER_USER", "MAX_OUTPUT_BYTES", "RunNotAvailableError",
-    "TooManyActiveRunsError", "delete_output", "effective_retention_days", "enqueue",
-    "expire", "get_for", "list_for", "read_output", "run_job", "run_job_loop", "run_next",
+    "EXPIRY_INTERVAL_SECONDS", "MAX_ACTIVE_PER_USER", "MAX_OUTPUT_BYTES", "RepeatNotNeededError", "RepeatRefusedError",
+    "RunNotAvailableError", "TooManyActiveRunsError", "delete_output", "effective_retention_days", "enqueue", "expire",
+    "get_for", "list_for", "read_output", "requeue", "run_job", "run_job_loop", "run_next",
 ]

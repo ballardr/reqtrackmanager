@@ -21,6 +21,7 @@ import { OrgLoginPage } from "./pages/OrgLoginPage";
 import { OrgOverviewPage } from "./pages/OrgOverviewPage";
 import { PreferencesPage } from "./pages/PreferencesPage";
 import { HelpRedirectPage } from "./pages/HelpRedirectPage";
+import { ReportRunPage } from "./pages/ReportRunPage";
 import { ProjectActionsPage } from "./pages/ProjectActionsPage";
 import { ProjectAdminPage } from "./pages/ProjectAdminPage";
 import { ProjectFilesPage } from "./pages/ProjectFilesPage";
@@ -84,6 +85,7 @@ function ProtectedRoutes() {
         <Route path="/projects" element={<ProjectListPage />} />
         <Route path="/favourites" element={<FavouritesPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
+        <Route path="/report-runs/:runId" element={<ReportRunPage />} />
         <Route path="/orgs" element={<OrgListPage />} />
         <Route path="/orgs/:orgId/admin/:group?" element={<OrgAdminPage />} />
         <Route path="/orgs/:orgId/report-layouts/:layoutId" element={<ReportLayoutDesignerPage />} />
