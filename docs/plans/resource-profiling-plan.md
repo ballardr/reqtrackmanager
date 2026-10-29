@@ -15,7 +15,7 @@
 | 4 | PostgreSQL profiling | [x] built 2026-10-25 |
 | 4b | Scaling findings and fixes | [x] done 2026-10-27: F1-F10 fixed with guards and verified on the Linux server; open items O4, O6-O10 are recorded in `docs/performance.md` with their next step |
 | 4c | Other record types and the links between them | [x] done 2026-10-28: 7 of 7 steps; findings F14-F20 fixed with guards and verified on the Linux server (capacity 157 to 225 req/s); open items O12, O13, O19-O21 carried to Phase 5 |
-| 5 | Record baselines, set limits, document sizing | [~] in progress 2026-10-28: memory limits, sizing docs, `compare.py` and `run_baseline.sh` built; the capacity and baseline runs on the Linux server and the Dell workstation are the user's to run, then the capacity rows of the sizing tables are filled |
+| 5 | Record baselines, set limits, document sizing | [~] 2026-10-29: baselines run on the Linux server, Dell workstation and Raspberry Pi; limits, capacity-by-worker table and sizing docs written from them; F21 (scenarios) and F22 (record export/import statements) fixed; open before closing: O22 (worker memory high-water: two cheap fixes ruled out, worker recycling untested, streaming exports is the structural fix), a re-run on the servers to confirm F21/F22, a clean full backend suite |
 | 6 | Docs website: results, plots, test-method diagrams | [ ] |
 
 ```mermaid

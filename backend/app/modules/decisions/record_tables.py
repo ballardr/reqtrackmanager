@@ -50,7 +50,7 @@ from app.modules.registry import (
 )
 from app.services import tags as tag_service
 from app.services.principals import principal_ref
-from app.services.record_tables import PrincipalCells
+from app.services.record_tables import PrincipalCells, find_many_by_code
 from app.services.record_tables_core import (
     cached_lookup,
     count_rows,
@@ -192,6 +192,7 @@ DECISION_TABLE = RecordTableProvider(
     columns=_decision_columns,
     list_records=_list_decisions,
     find=_find,
+    find_many=find_many_by_code(Decision, "project_id"),
     prepare=lambda db, project, records: _Prepared(db, records),
     create=_create,
     update=_update,

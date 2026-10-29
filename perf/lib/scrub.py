@@ -42,7 +42,7 @@ ALLOWED_FILES: dict = {
         "schema_version", "host_label", "commit", "date", "mode", "tiers", "breadth", "density", "seed", "profiles_version",
         "scenarios", "repeats", "workers", "workers_auto", "image_source", "caps", "shared_host", "non_publishable", "non_publishable_reasons",
         "aborted", "comparable_with", "durations_s", "scenario_users", "warmup_s", "measure_s", "snapshot_used", "startup_seconds",
-        "migrations_applied", "notes", "profiling", "heap_live_mib", "heap_peak_mib", "postgres", "db_pool",
+        "migrations_applied", "notes", "profiling", "heap_live_mib", "heap_peak_mib", "postgres", "db_pool", "backend_memory",
     },
     "dataset.json": {"schema_version", "datasets"},
     "samples.csv": {"tier", "scenario", "repeat", "service", "t_seconds", "mem_mib", "mem_limit_mib", "cpu_percent"},

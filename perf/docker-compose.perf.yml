@@ -54,6 +54,9 @@ services:
     environment:
       EMAIL_DELIVERY: disabled
       PERF_STACK: "1"
+      # Memory experiments (--malloc-arena-max, --limit-max-requests); empty leaves the application's default.
+      MALLOC_ARENA_MAX: ${PERF_MALLOC_ARENA_MAX:-}
+      UVICORN_LIMIT_MAX_REQUESTS: ${PERF_LIMIT_MAX_REQUESTS:-}
       # Per-route database statement totals (backend/app/profiling.py), written as files in the container and read by
       # the runner with `exec`; no endpoint, so it adds no surface. Cost: one list append per statement.
       PROFILE_MODE: "true"

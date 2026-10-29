@@ -134,6 +134,8 @@ class Options:
         archive: Also write a `.tar.gz` of each bundle beside it, inside the results directory.
         watch_url: A read-only health URL to poll and abort on (production's `/health`).
         worker_sweep: Backend worker counts to run one after another, each as its own run (`--workers-sweep`), or None.
+        malloc_arena_max / limit_max_requests: Backend memory experiments: glibc's `MALLOC_ARENA_MAX`, and uvicorn's
+            `--limit-max-requests` (a worker is replaced after that many requests); None leaves the application's default.
         pg_shared_buffers / pg_work_mem: PostgreSQL's `shared_buffers` and `work_mem` for the perf stack's database (for
             example `512MB`, `16MB`), or None for PostgreSQL's defaults (128MB, 4MB).
         db_pool_size / db_max_overflow: Per-worker database pool (`DB_POOL_SIZE`, `DB_MAX_OVERFLOW`); None for the
@@ -173,6 +175,8 @@ class Options:
     capacity_tier: Optional[str] = None
     pg_shared_buffers: Optional[str] = None
     pg_work_mem: Optional[str] = None
+    malloc_arena_max: Optional[int] = None
+    limit_max_requests: Optional[int] = None
     db_pool_size: Optional[int] = None
     db_max_overflow: Optional[int] = None
     worker_sweep: Optional[tuple] = None
@@ -276,11 +280,16 @@ def parse_args(argv: list) -> Options:
         "--capacity-users", help="comma-separated simulated-user levels for the capacity scenario (default 16,32,64,128,256 in full mode, "
                                  "16,64 in quick); it runs at T2 only and is a heavy scenario (--allow-heavy or --dedicated)",
     )
+    parser.add_argument("--malloc-arena-max", type=int, help="glibc MALLOC_ARENA_MAX for the backend (1-64), to test whether worker memory is allocator retention")
+    parser.add_argument("--limit-max-requests", type=int, help="replace each backend worker after this many requests (uvicorn --limit-max-requests, 100-1000000)")
     parser.add_argument("--watch-url", help="a health URL (production's /health) to poll with GET; the run aborts if it slows or fails")
     args = parser.parse_args(argv)
     for flag, value in (("--pg-shared-buffers", args.pg_shared_buffers), ("--pg-work-mem", args.pg_work_mem)):
         if value is not None and not re.fullmatch(r"[1-9][0-9]{0,5}(MB|GB)", value):
             parser.error(f"{flag} takes a size such as 512MB or 2GB")
+    for flag, value, low, high in (("--malloc-arena-max", args.malloc_arena_max, 1, 64), ("--limit-max-requests", args.limit_max_requests, 100, 1_000_000)):
+        if value is not None and not low <= value <= high:
+            parser.error(f"{flag} must be between {low} and {high}")
     for flag, value, low in (("--db-pool-size", args.db_pool_size, 1), ("--db-max-overflow", args.db_max_overflow, 0)):
         if value is not None and not low <= value <= 200:
             parser.error(f"{flag} must be between {low} and 200")
@@ -323,7 +332,7 @@ def parse_args(argv: list) -> Options:
         breadth=args.breadth, density=args.density, seed=args.seed, repeats=args.repeats, workers=1 if args.profiling == "heap" else (None if args.workers == "auto" else int(args.workers)), max_cpus=args.max_cpus,
         max_mem=args.max_mem, dedicated=args.dedicated, allow_heavy=args.allow_heavy or args.dedicated, soak_minutes=args.soak_minutes,
         plan=args.plan, cleanup=args.cleanup, images=args.images, storage=args.storage, keep=args.keep, out=args.out,
-        cache_dir=args.cache_dir, archive=args.archive, watch_url=args.watch_url, max_load_per_core=args.max_load_per_core, capacity_users=capacity_users, capacity_tier=args.capacity_tier, pg_shared_buffers=args.pg_shared_buffers, pg_work_mem=args.pg_work_mem, db_pool_size=args.db_pool_size, db_max_overflow=args.db_max_overflow, worker_sweep=worker_sweep, scenarios=args.scenarios.split(",") if args.scenarios else None, profiling=args.profiling,
+        cache_dir=args.cache_dir, archive=args.archive, watch_url=args.watch_url, max_load_per_core=args.max_load_per_core, capacity_users=capacity_users, capacity_tier=args.capacity_tier, pg_shared_buffers=args.pg_shared_buffers, pg_work_mem=args.pg_work_mem, malloc_arena_max=args.malloc_arena_max, limit_max_requests=args.limit_max_requests, db_pool_size=args.db_pool_size, db_max_overflow=args.db_max_overflow, worker_sweep=worker_sweep, scenarios=args.scenarios.split(",") if args.scenarios else None, profiling=args.profiling,
     )
 
 
@@ -339,7 +348,7 @@ def render_env_file(env: dict) -> str:
 
 def stack_environment(
     *, caps: resources.Caps, workers: int, backend_image: str, loadgen_image: str, generate: Callable[[], str] = lambda: secrets.token_urlsafe(24),
-    profiling: str = "none", db_pool: tuple = (None, None), pg: tuple = (None, None),
+    profiling: str = "none", db_pool: tuple = (None, None), pg: tuple = (None, None), memory: tuple = (None, None),
 ) -> dict:
     """The perf stack's environment: fresh throwaway credentials, images, caps and worker count. Nothing is read
     from the operator's environment or any `.env`.
@@ -352,6 +361,7 @@ def stack_environment(
         profiling: The profiling mode; `heap` starts the backend as one worker under memray.
         db_pool: `(DB_POOL_SIZE, DB_MAX_OVERFLOW)`; None leaves the application's default.
         pg: `(shared_buffers, work_mem)` for the database; None leaves PostgreSQL's default.
+        memory: `(MALLOC_ARENA_MAX, limit-max-requests)` for the backend; None leaves the default.
 
     Returns:
         The variables for the env file; `SECRET_KEYS` names those to mask.
@@ -371,6 +381,9 @@ def stack_environment(
     for name, value in zip(("PERF_PG_SHARED_BUFFERS", "PERF_PG_WORK_MEM"), pg):
         if value is not None:
             env[name] = value
+    for name, value in zip(("PERF_MALLOC_ARENA_MAX", "PERF_LIMIT_MAX_REQUESTS"), memory):
+        if value is not None:
+            env[name] = str(value)
     if profiling == "heap":
         env["PROFILE_MEMRAY"] = "1"
     return env
@@ -1076,7 +1089,7 @@ class ProfileRun:
 
         self.work = Path(tempfile.mkdtemp(prefix=f"{compose.PROJECT}-"))
         self.work.chmod(0o700)
-        self.env = stack_environment(caps=caps, workers=caps.workers, backend_image=backend_image, loadgen_image="reqtrack-perf-loadgen:build", generate=self._generate, profiling=options.profiling, db_pool=(options.db_pool_size, options.db_max_overflow), pg=(options.pg_shared_buffers, options.pg_work_mem))
+        self.env = stack_environment(caps=caps, workers=caps.workers, backend_image=backend_image, loadgen_image="reqtrack-perf-loadgen:build", generate=self._generate, profiling=options.profiling, db_pool=(options.db_pool_size, options.db_max_overflow), pg=(options.pg_shared_buffers, options.pg_work_mem), memory=(options.malloc_arena_max, options.limit_max_requests))
         env_file = self.work / "perf.env"
         env_file.write_text(render_env_file(self.env))
         env_file.chmod(0o600)
@@ -1181,6 +1194,8 @@ class ProfileRun:
             "aborted": self.aborted, "snapshot_used": [d["snapshot_used"] for d in details],
             "startup_seconds": [d["startup_seconds"] for d in details], "profiling": self.options.profiling, "notes": self.notes,
             **({"postgres": self.pg_settings} if self.pg_settings else {}), **({"db_pool": self.db_pool} if self.db_pool else {}),
+            **({"backend_memory": {k: v for k, v in (("malloc_arena_max", self.options.malloc_arena_max), ("limit_max_requests", self.options.limit_max_requests)) if v is not None}}
+               if self.options.malloc_arena_max is not None or self.options.limit_max_requests is not None else {}),
             **self.heap_totals,
         }
         directory = bundle.unused_bundle_dir(

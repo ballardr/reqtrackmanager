@@ -49,6 +49,8 @@ flowchart LR
 `--workers auto` (the default) picks the most the CPU and memory budget supports, at most 4 (the production default), at about 0.5 GiB per worker plus 0.5 GiB for the parent. A budget that cannot run one worker is refused. The chosen count and `workers_auto` are recorded in `run.json`; a full run with an automatic count carries a note, because the headline comparison between hosts needs the same count: name it (`--workers 2`) for runs you intend to compare.
 
 
+`--malloc-arena-max N` and `--limit-max-requests N` are backend memory experiments (glibc's arena count; replace a worker after N requests, two or more workers). Both are recorded in `run.json` as `backend_memory`, and `compare.py` will not diff a tuned run against an untuned one.
+
 `--db-pool-size` and `--db-max-overflow` set each worker's database pool (the application defaults are 5 and 10). More workers
 need a smaller pool: `workers x (pool + overflow + 2)` must stay under the 97 connections PostgreSQL allows clients, and the
 runner refuses a combination that does not fit and suggests one that does (eight workers: `--db-pool-size 3 --db-max-overflow 7`).

@@ -23,6 +23,7 @@ Dependencies: locust.
 
 from __future__ import annotations
 
+import csv
 import io
 import random
 import uuid
@@ -260,6 +261,32 @@ class ExportCsv(PerfUser):
         self.get(f"{self.base}/records/requirement/export", "GET /records/requirement/export (csv)", timeout=LONG_TIMEOUT)
 
 
+#: The import accepts at most this many data rows and bytes (413 above; `services/record_tables.py`): a larger export is cut to fit.
+IMPORT_CAP_ROWS = 4000
+IMPORT_CAP_BYTES = 4 * 1024 * 1024
+
+
+def _within_import_cap(data: bytes) -> bytes:
+    """The first rows of an exported CSV that the import accepts, so a project larger than the cap still measures its preview.
+
+    Args:
+        data: The exported CSV (UTF-8, quoted multi-line cells allowed).
+
+    Returns:
+        `data` unchanged when it fits, else the header and as many leading rows as fit the row and byte caps.
+    """
+    if len(data) <= IMPORT_CAP_BYTES and data.count(b"\n") <= IMPORT_CAP_ROWS:
+        return data
+    rows = list(csv.reader(io.StringIO(data.decode("utf-8-sig"))))
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\n")
+    for row in rows[: IMPORT_CAP_ROWS + 1]:
+        writer.writerow(row)
+        if out.tell() > IMPORT_CAP_BYTES:
+            break
+    return out.getvalue().encode("utf-8")
+
+
 class ImportPreview(PerfUser):
     """Previewing a CSV import of the project's own export (every row an update, validated and rolled back)."""
 
@@ -268,7 +295,7 @@ class ImportPreview(PerfUser):
 
     def on_start(self) -> None:
         super().on_start()
-        self.csv = self.client.get(f"{self.base}/records/requirement/export", name="setup: export", timeout=LONG_TIMEOUT).content
+        self.csv = _within_import_cap(self.client.get(f"{self.base}/records/requirement/export", name="setup: export", timeout=LONG_TIMEOUT).content)
 
     @task
     def preview(self) -> None:
@@ -339,11 +366,19 @@ class Attachment(PerfUser):
     def on_start(self) -> None:
         super().on_start()
         self.payload = random.Random(1).randbytes(ATTACHMENT_BYTES)
+        # A direct attachment is refused (409) once a requirement is approved, and about half the generated ones are:
+        # upload to a draft this user creates, so the scenario measures the upload and not the refusal.
+        response = self.client.post(
+            f"{self.base}/requirements", name="setup: create draft",
+            json={"name": f"Perf attachments {uuid.uuid4().hex[:8]}", "reasoning": "Holds the load generator's uploads.",
+                  "component_id": self.project["component_id"], "category_id": self.project["category_id"]},
+        )
+        self.draft_id = response.json()["id"]
 
     @task
     def upload(self) -> None:
         self.client.post(
-            f"{self.base}/requirements/{self.requirement_id()}/files", files={"file": (f"perf-{uuid.uuid4().hex[:6]}.bin", io.BytesIO(self.payload), "application/octet-stream")},
+            f"{self.base}/requirements/{self.draft_id}/files", files={"file": (f"perf-{uuid.uuid4().hex[:6]}.bin", io.BytesIO(self.payload), "application/octet-stream")},
             name="POST /requirements/{id}/files (256 KB)", timeout=LONG_TIMEOUT,
         )
 

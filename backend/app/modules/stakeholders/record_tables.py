@@ -122,7 +122,7 @@ from app.modules.stakeholders.service import (
 from app.schemas.principal import PrincipalRef
 from app.services import tags as tag_service
 from app.services.principals import principal_ref
-from app.services.record_tables import PrincipalCells, parse_principal_cell
+from app.services.record_tables import PrincipalCells, find_many_by_code, parse_principal_cell
 from app.services.record_tables_core import (
     bool_cell,
     bool_parser,
@@ -280,20 +280,19 @@ def _persona_owned_by_org(persona: Persona) -> bool:
 
 def _prepare_personas(db: Session, project: Project, records: list[Persona]) -> _Prepared:
     prepared = _Prepared(db, records, PERSONA_ARTEFACT_TYPE, version_model=PersonaVersion, version_fk="persona_id")
-    prepared.extra["types"] = {
-        (v.org_type_id, v.project_type_id): PERSONA_TYPES.display_name(db, org_type_id=v.org_type_id, project_type_id=v.project_type_id) or ""
-        for v in prepared.versions.values()
-    }
+    names = PERSONA_TYPES.display_names(db, [(v.org_type_id, v.project_type_id) for v in prepared.versions.values()])
+    prepared.extra["types"] = {key: name or "" for key, name in names.items()}
     return prepared
 
 
 def _filter_personas(db: Session, records: list[Persona], filters: RecordFilters) -> list[Persona]:
     status, type_name = enum_filter(filters, "status", PersonaStatus), filters.one("type")
     versions = _version_map(db, PersonaVersion, "persona_id", records)
+    names = PERSONA_TYPES.display_names(db, [(v.org_type_id, v.project_type_id) for v in versions.values()]) if type_name else {}
     out = []
     for p in records:
         v = versions[p.id]
-        name = PERSONA_TYPES.display_name(db, org_type_id=v.org_type_id, project_type_id=v.project_type_id) if type_name else None
+        name = names.get((v.org_type_id, v.project_type_id))
         if (status is None or v.status == status) and (type_name is None or name == type_name) and _search_hit(
             filters, p.unique_code, v.name, v.role_title
         ):
@@ -421,6 +420,7 @@ PERSONA_TABLE = RecordTableProvider(
     columns=_persona_columns,
     list_records=_list_personas,
     find=_find_persona,
+    find_many=find_many_by_code(Persona, "project_id", Persona.scope == PersonaScope.PROJECT),
     prepare=_prepare_personas,
     create=_create_persona,
     update=_update_persona,
@@ -434,6 +434,7 @@ PERSONA_TABLE = RecordTableProvider(
         columns=lambda db, organization: _persona_columns_for(_org_type_choices(PERSONA_TYPES, db, organization)),
         list_records=_list_org_personas,
         find=_find_org_persona,
+        find_many=find_many_by_code(Persona, "organization_id", Persona.scope == PersonaScope.ORGANIZATION),
         prepare=lambda db, organization, records: _prepare_personas(db, None, records),
         create=_create_org_persona,
         update=_update_org_persona,
@@ -460,10 +461,8 @@ def _stakeholder_owned_by_org(stakeholder: Stakeholder) -> bool:
 
 def _prepare_stakeholders(db: Session, project: Project, records: list[Stakeholder]) -> _Prepared:
     prepared = _Prepared(db, records, STAKEHOLDER_ARTEFACT_TYPE, version_model=StakeholderVersion, version_fk="stakeholder_id")
-    prepared.extra["types"] = {
-        (v.org_type_id, v.project_type_id): STAKEHOLDER_TYPES.display_name(db, org_type_id=v.org_type_id, project_type_id=v.project_type_id) or ""
-        for v in prepared.versions.values()
-    }
+    names = STAKEHOLDER_TYPES.display_names(db, [(v.org_type_id, v.project_type_id) for v in prepared.versions.values()])
+    prepared.extra["types"] = {key: name or "" for key, name in names.items()}
     level_ids = {i for v in prepared.versions.values() for i in (v.influence_level_id, v.interest_level_id) if i}
     prepared.extra["levels"] = {
         level.id: level.name for level in db.scalars(select(ScoringLevel).where(ScoringLevel.id.in_(level_ids)))
@@ -486,10 +485,11 @@ def _filter_stakeholders(
             direct_only=bool(filters.flag("direct_only")), group_by=None,
         )
     versions = _version_map(db, StakeholderVersion, "stakeholder_id", records)
+    names = STAKEHOLDER_TYPES.display_names(db, [(v.org_type_id, v.project_type_id) for v in versions.values()]) if type_name else {}
     out = []
     for s in records:
         v = versions[s.id]
-        name = STAKEHOLDER_TYPES.display_name(db, org_type_id=v.org_type_id, project_type_id=v.project_type_id) if type_name else None
+        name = names.get((v.org_type_id, v.project_type_id))
         if (status is None or v.status == status) and (type_name is None or name == type_name) and _search_hit(
             filters, s.unique_code, v.name, v.role, v.organisation_group
         ):
@@ -619,6 +619,7 @@ STAKEHOLDER_TABLE = RecordTableProvider(
     columns=_stakeholder_columns,
     list_records=_list_stakeholders,
     find=_find_stakeholder,
+    find_many=find_many_by_code(Stakeholder, "project_id", Stakeholder.scope == StakeholderScope.PROJECT),
     prepare=_prepare_stakeholders,
     create=_create_stakeholder,
     update=_update_stakeholder,
@@ -632,6 +633,7 @@ STAKEHOLDER_TABLE = RecordTableProvider(
         columns=lambda db, organization: _stakeholder_columns_for(_org_type_choices(STAKEHOLDER_TYPES, db, organization)),
         list_records=_list_org_stakeholders,
         find=_find_org_stakeholder,
+        find_many=find_many_by_code(Stakeholder, "organization_id", Stakeholder.scope == StakeholderScope.ORGANIZATION),
         prepare=lambda db, organization, records: _prepare_stakeholders(db, None, records),
         create=_create_org_stakeholder,
         update=_update_org_stakeholder,
@@ -747,6 +749,7 @@ GROUP_TABLE = RecordTableProvider(
     columns=_group_columns,
     list_records=_list_groups,
     find=_find_group,
+    find_many=find_many_by_code(StakeholderGroup, "project_id", StakeholderGroup.scope == StakeholderScope.PROJECT),
     prepare=_prepare_groups,
     create=_create_group,
     update=_update_group,
@@ -760,6 +763,7 @@ GROUP_TABLE = RecordTableProvider(
         columns=lambda db, organization: _group_columns(db, None),
         list_records=_list_org_groups,
         find=_find_org_group,
+        find_many=find_many_by_code(StakeholderGroup, "organization_id", StakeholderGroup.scope == StakeholderScope.ORGANIZATION),
         prepare=lambda db, organization, records: _prepare_groups(db, None, records, organization.id),
         create=_create_group,
         update=_update_group,
@@ -824,6 +828,7 @@ NEED_TABLE = RecordTableProvider(
     columns=_need_columns,
     list_records=_list_needs,
     find=_find_need,
+    find_many=find_many_by_code(StakeholderNeed, "project_id"),
     prepare=lambda db, project, records: _Prepared(db, records, NEED_ARTEFACT_TYPE, version_model=StakeholderNeedVersion, version_fk="need_id"),
     create=_create_need,
     update=_update_need,
@@ -962,6 +967,7 @@ ENGAGEMENT_TABLE = RecordTableProvider(
     columns=_engagement_columns,
     list_records=_list_engagements,
     find=_find_engagement,
+    find_many=find_many_by_code(Engagement, "project_id"),
     prepare=_prepare_engagements,
     create=_create_engagement,
     update=_update_engagement,
@@ -1036,6 +1042,7 @@ FINDING_TABLE = RecordTableProvider(
     columns=_finding_columns,
     list_records=_list_findings,
     find=_find_finding,
+    find_many=find_many_by_code(ResearchFinding, "project_id"),
     prepare=_prepare_findings,
     create=_create_finding,
     update=_update_finding,

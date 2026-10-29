@@ -45,7 +45,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import analyse  # noqa: E402
 
 # A bundle is comparable only when these `run.json` inputs are equal (the commit is the thing being compared).
-COMPARABLE_INPUTS = ("host_label", "workers", "db_pool", "postgres", "caps", "seed", "profiles_version", "density", "breadth")
+COMPARABLE_INPUTS = ("host_label", "workers", "db_pool", "postgres", "backend_memory", "caps", "seed", "profiles_version", "density", "breadth")
 
 REQUIRED_FILES = ("run.json", "dataset.json", "latency.csv", "queries.csv", "samples.csv")
 

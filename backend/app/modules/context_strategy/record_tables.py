@@ -119,7 +119,7 @@ from app.services import tags as tag_service
 from app.services.client_date import effective_today
 from app.services.principals import principal_ref
 from app.services.rbac import user_satisfies_module_role
-from app.services.record_tables import PrincipalCells
+from app.services.record_tables import PrincipalCells, find_many_by_code
 from app.services.record_tables_core import (
     bool_cell,
     bool_parser,
@@ -356,6 +356,7 @@ STRATEGY_TABLE = RecordTableProvider(
     columns=_strategy_columns,
     list_records=_list_strategies,
     find=_find_strategy,
+    find_many=find_many_by_code(Strategy, "project_id", Strategy.scope == StrategyScope.PROJECT),
     prepare=lambda db, project, records: _Prepared(db, records, STRATEGY_ARTEFACT_TYPE, version_model=StrategyVersion, version_fk="strategy_id"),
     create=_create_strategy,
     update=_update_strategy,
@@ -369,6 +370,7 @@ STRATEGY_TABLE = RecordTableProvider(
         columns=lambda db, organization: _strategy_columns(db, None),
         list_records=_list_org_strategies,
         find=_find_org_scoped(Strategy, StrategyScope.ORGANIZATION),
+        find_many=find_many_by_code(Strategy, "organization_id", Strategy.scope == StrategyScope.ORGANIZATION),
         prepare=lambda db, organization, records: _Prepared(
             db, records, STRATEGY_ARTEFACT_TYPE, version_model=StrategyVersion, version_fk="strategy_id",
         ),
@@ -480,6 +482,7 @@ FUTURE_STATE_TABLE = RecordTableProvider(
     columns=_future_state_columns,
     list_records=_list_future_states,
     find=_find_future_state,
+    find_many=find_many_by_code(FutureState, "project_id", FutureState.scope == FutureStateScope.PROJECT),
     prepare=lambda db, project, records: _Prepared(
         db, records, FUTURE_STATE_ARTEFACT_TYPE, version_model=FutureStateVersion, version_fk="future_state_id",
     ),
@@ -495,6 +498,7 @@ FUTURE_STATE_TABLE = RecordTableProvider(
         columns=lambda db, organization: _future_state_columns(db, None),
         list_records=_list_org_future_states,
         find=_find_org_scoped(FutureState, FutureStateScope.ORGANIZATION),
+        find_many=find_many_by_code(FutureState, "organization_id", FutureState.scope == FutureStateScope.ORGANIZATION),
         prepare=lambda db, organization, records: _Prepared(
             db, records, FUTURE_STATE_ARTEFACT_TYPE, version_model=FutureStateVersion, version_fk="future_state_id",
         ),
@@ -601,6 +605,7 @@ GUIDING_PRINCIPLE_TABLE = RecordTableProvider(
     columns=_guiding_principle_columns,
     list_records=_list_guiding_principles,
     find=_find_guiding_principle,
+    find_many=find_many_by_code(GuidingPrinciple, "project_id", GuidingPrinciple.scope == GuidingPrincipleScope.PROJECT),
     prepare=lambda db, project, records: _Prepared(
         db, records, GUIDING_PRINCIPLE_ARTEFACT_TYPE, version_model=GuidingPrincipleVersion,
         version_fk="guiding_principle_id", owners_on_version=True,
@@ -617,6 +622,7 @@ GUIDING_PRINCIPLE_TABLE = RecordTableProvider(
         columns=lambda db, organization: _guiding_principle_columns(db, None),
         list_records=_list_org_guiding_principles,
         find=_find_org_scoped(GuidingPrinciple, GuidingPrincipleScope.ORGANIZATION),
+        find_many=find_many_by_code(GuidingPrinciple, "organization_id", GuidingPrinciple.scope == GuidingPrincipleScope.ORGANIZATION),
         prepare=lambda db, organization, records: _Prepared(
             db, records, GUIDING_PRINCIPLE_ARTEFACT_TYPE, version_model=GuidingPrincipleVersion,
             version_fk="guiding_principle_id", owners_on_version=True,
@@ -836,6 +842,7 @@ PAIN_POINT_TABLE = RecordTableProvider(
     columns=_pain_point_columns,
     list_records=_list_pain_points,
     find=_find_pain_point,
+    find_many=find_many_by_code(PainPoint, "project_id"),
     prepare=_prepare_pain_points,
     create=_create_pain_point,
     update=_update_pain_point,
@@ -923,6 +930,7 @@ OPEN_QUESTION_TABLE = RecordTableProvider(
     columns=_open_question_columns,
     list_records=_list_open_questions,
     find=_find_open_question,
+    find_many=find_many_by_code(OpenQuestion, "project_id"),
     prepare=lambda db, project, records: _Prepared(db, records, OPEN_QUESTION_ARTEFACT_TYPE),
     create=_create_open_question,
     update=_update_open_question,

@@ -929,6 +929,51 @@ def _find_record(db: Session, project: Project, provider: RecordTableProvider, c
     return found
 
 
+def find_many_by_code(model: Any, owner_column: str, *conditions: Any) -> Callable[[Session, Any, Sequence[str]], dict[str, Any]]:
+    """A provider's `find_many`: the records of `model` owned by the project (or organisation) with these codes, in
+    one statement per 500 codes.
+
+    Args:
+        model: The record model (it has `unique_code` and the `owner_column`).
+        owner_column: `project_id` for a project's records, `organization_id` for an organisation's own.
+        *conditions: Further conditions the provider's `find` applies (for example a `scope` equal to its value).
+
+    Returns:
+        A function `(db, owner, codes) -> {UPPER code: record}`; a code with no record is absent.
+    """
+    column = getattr(model, owner_column)
+
+    def find_many(db: Session, owner: Any, codes: Sequence[str]) -> dict[str, Any]:
+        wanted = sorted({c.upper() for c in codes})
+        found: dict[str, Any] = {}
+        for start in range(0, len(wanted), 500):
+            rows = db.scalars(select(model).where(column == owner.id, *conditions, model.unique_code.in_(wanted[start:start + 500])))
+            found.update({row.unique_code.upper(): row for row in rows})
+        return found
+
+    return find_many
+
+
+def _find_many_exported(
+    find_many: Callable[[Session, Any, Sequence[str]], dict[str, Any]], db: Session, owner: Project | Organization, codes: Sequence[str]
+) -> dict[str, Any]:
+    """`_find_record` / `_find_org_record` for many codes: each as exported (bare, or qualified with the owner's code) in one lookup.
+
+    Args:
+        find_many: The provider's (or organisation tier's) `find_many`.
+        db: Active session.
+        owner: The project, or the organisation for its own records.
+        codes: The codes as written in the file.
+
+    Returns:
+        `{UPPER code as written: record}`; a code with no record is absent.
+    """
+    prefix = f"{owner.code.upper()}-" if owner.code else None
+    variants = {code.upper(): (code[len(prefix):].upper() if prefix and code.upper().startswith(prefix) else None) for code in codes}
+    found = find_many(db, owner, sorted({c for pair in variants.items() for c in pair if c}))
+    return {up: record for up, stripped in variants.items() if (record := found.get(up) or (found.get(stripped) if stripped else None)) is not None}
+
+
 def _find_org_record(db: Session, organization: Organization, tier: OrganizationRecordTable, code: str) -> Any | None:
     """The record among **this organisation's own** for a code as exported: qualified with the organisation code, or bare."""
     found = tier.find(db, organization, code)
@@ -958,6 +1003,7 @@ class _ImportTarget:
         project: The project, or `None` at the organisation tier.
         columns: The provider's columns for this tier.
         find: Finds a record of this tier by the code in the file.
+        find_many: Finds the records for many codes at once (`{UPPER code: record}`), or `None` to call `find` per code.
         prepare: Batch lookups for the "before" cells, or `None`.
         create / update: The provider's write paths, already `None` where the caller lacks the right.
         code_of / id_of: Read a record's code and id.
@@ -968,6 +1014,7 @@ class _ImportTarget:
     project: Project | None
     columns: Sequence[RecordColumn]
     find: Callable[[str], Any | None]
+    find_many: Callable[[list[str]], dict[str, Any]] | None
     prepare: Callable[[list[Any]], Any] | None
     create: Callable[[RecordImportContext, Mapping[str, Any]], Any] | None
     update: Callable[[RecordImportContext, Any, Mapping[str, Any]], None] | None
@@ -1014,6 +1061,7 @@ def run_import(
     target = _ImportTarget(
         organization=db.get(Organization, project.organization_id), project=project, columns=list(provider.columns(db, project)),
         find=lambda code: _find_record(db, project, provider, code),
+        find_many=(lambda codes: _find_many_exported(provider.find_many, db, project, codes)) if provider.find_many is not None else None,
         prepare=(lambda records: provider.prepare(db, project, records)) if provider.prepare is not None else None,
         create=provider.create if may_create else None, update=provider.update if may_update else None,
         code_of=provider.code_of, id_of=provider.id_of, place="project",
@@ -1043,6 +1091,7 @@ def run_org_import(
     target = _ImportTarget(
         organization=organization, project=None, columns=list(tier.columns(db, organization)),
         find=lambda code: _find_org_record(db, organization, tier, code),
+        find_many=(lambda codes: _find_many_exported(tier.find_many, db, organization, codes)) if tier.find_many is not None else None,
         prepare=(lambda records: tier.prepare(db, organization, records)) if tier.prepare is not None else None,
         create=tier.create if may_create else None, update=tier.update if may_update else None,
         code_of=provider.code_of, id_of=provider.id_of, place="organisation",
@@ -1094,10 +1143,13 @@ def _import_rows(
     found_by_code: dict[str, Any] = {}
     batch_prepared = None
     if has_code_column and update_fn is not None:
-        for row in file_rows:
-            code = read_cell(row.get(CODE_COLUMN, ""))
-            if code and code.upper() not in found_by_code:
-                found_by_code[code.upper()] = target.find(code)
+        codes_in_file = {read_cell(row.get(CODE_COLUMN, "")).upper(): read_cell(row.get(CODE_COLUMN, "")) for row in file_rows}
+        codes_in_file.pop("", None)
+        if target.find_many is not None:
+            found_by_code = target.find_many(list(codes_in_file.values()))
+            found_by_code.update({up: None for up in codes_in_file if up not in found_by_code})
+        else:
+            found_by_code = {up: target.find(code) for up, code in codes_in_file.items()}
         named = [record for record in found_by_code.values() if record is not None]
         if named and target.prepare is not None:
             batch_prepared = target.prepare(named)

@@ -36,34 +36,78 @@ flowchart LR
   (4-8 s at 20,000), CSV export (3.5 s), PDF report (39 s), project export (12 s) and project import (115 s Linux,
   186 s Dell at the run's commit; faster after F8, not re-measured).
 
-## Sizing: memory per service (Linux server, 4 workers)
+## Sizing: memory per service (full runs, 4 workers, commits 38efb504 and 874d93b9, 2026-10-28)
 
 Memory is what the stack needs on a host and what `docker-compose.yml` caps ([deployment.md](deployment.md#sizing-and-memory-limits)). Peaks are the
-largest `docker stats` sample of any scenario at that tier (full run, commit d01093ea, 30-minute soak per tier; the Dell
-workstation agrees within 10%, and the other-types runs at T2/T3, commit a9014996, sit inside these ranges).
+largest `docker stats` sample of any scenario at that tier in one run of every scenario in order, with a 30-minute soak per tier
+(Linux server: capped at 4.5 GiB for the backend; Dell workstation: 15.7 GiB cap, so it shows what the workers want when nothing stops them).
 
-| Service | Idle | T0-T2 (30-1,000 requirements) | T3 (5,000) | T4 (20,000) | Default limit |
-|---------|------|-------------------------------|------------|-------------|---------------|
-| Backend (4 workers) | 1.6 GiB (4 x 0.4 private + parent) | 1.8-2.4 GiB (soak 2.2) | 2.1-4.5 GiB | 1.8-4.4 GiB | 3.5 GiB |
-| Database | | 0.12-0.32 GiB | 0.11-0.39 GiB | 0.24-0.65 GiB | 2 GiB |
-| Object storage | | 30-136 MiB | 68-143 MiB | 58-112 MiB | 512 MiB |
+| Service | Idle | T0-T1 (30-100 requirements) | T2 (1,000) | T3 (5,000) | T4 (20,000) | Default limit |
+|---------|------|-----------------------------|------------|------------|-------------|---------------|
+| Backend, 4 workers (Linux / Dell) | 1.7 GiB | 3.1-4.0 / 2.7-2.8 GiB | 4.4 / 4.6 GiB | 4.5 (at its cap) / 8.3 GiB | 4.5 (at its cap) / 11.4 GiB | 5 GiB |
+| Database | | 0.4 GiB | 0.8 GiB | 0.8-0.9 GiB | 1.1 / 3.0 GiB | 2 GiB |
+| Object storage | | up to 0.6 GiB | 0.4-0.45 GiB | 0.3 GiB | 0.1-0.17 GiB | 1 GiB |
 
-- **Where the backend peak comes from.** Browse, search, links and edit stay at 1.8-2.4 GiB at every tier. The report, export,
-  bundle and record-import scenarios hold the whole project in the worker, which peaks near 1 GiB (O7): at T3 and T4 the four
-  workers together reach 4.0-4.5 GiB. A worker costs 0.4 GiB at idle and 0.53 GiB under ordinary load, so the backend limit is
-  0.1 GiB + 0.55 GiB x workers + 0.5 GiB x concurrent heavy requests on projects of 5,000 requirements or more.
-- **No leak.** The soak's backend trend after warm-up was flat or falling at every tier (T0 2,155 to 2,154 MiB, T2 2,252 to
-  2,233, T3 3,085 to 2,942, T4 3,488 to 3,489), so a limit is a ceiling for load, not a leak guard.
+- **A worker's memory is a high-water mark, not a per-request cost.** A worker starts at 0.42 GiB, sits at 0.45-0.55 GiB while it
+  only reads, and does not give memory back after a heavy request: it stays at the largest request it has ever served. After one
+  organisation bundle export a T0 worker holds 0.8-0.9 GiB and a T2 worker 1.1-1.6 GiB; at T3 a record-import preview takes a
+  worker to **2.3 GiB** and a report to 1.1-2.4 GiB; at T4 workers reach 2-3 GiB. The backend therefore needs **workers x the
+  high-water of the heaviest request a worker will serve**, because every worker eventually serves one. The earlier model
+  (0.55 GiB per worker plus 0.5 GiB per concurrent heavy request) described the first heavy request only and understated the
+  steady state by 2x or more (O22).
+- **The Linux server's backend sat at its 4.5 GiB cap at T3 and T4 and probably had workers killed** (inferred; the bundle has no
+  OOM counter): `bundle_import` failed 53 of 53 at T3 within 4 ms, as a restarting backend would, and a worker's private memory
+  fell to 0.41 GiB at T4. The Dell shows the same requests needing 8.3 GiB (T3) and 11.4 GiB (T4) with room to grow.
+- **No leak in the soak** at T0-T2 (trend flat). The soak's backend memory is whatever the earlier scenarios already ratcheted to.
 - **Six workers** under the mixed capacity load (ten projects, T2): backend 2.7-3.1 GiB, database 0.97-1.06 GiB (default
-  `shared_buffers`).
-- **The T3 backend peak (4.5 GiB) touched the perf stack's own 4.5 GiB cap** in `import_preview`. It was not killed, and T3
-  with heavy requests is exactly the case the default limit does not cover: a deployment with 5,000-requirement projects raises
-  `BACKEND_MEM_LIMIT` (4.8 GiB for four workers) or runs fewer workers.
+  `shared_buffers`). With the recommended `shared_buffers` 512 MB and `work_mem` 16 MB at T3 the database reached **1.7 GiB (Linux) and
+  2.7 GiB (Dell)**, over the default 2 GiB limit: raise `DB_MEM_LIMIT` when you raise those settings.
+- **Object storage** peaked at 0.54-0.6 GiB with the attachment scenario (the earlier 143 MiB was measured while about half the
+  uploads were refused, see F21), touching the 544 MiB cap on the Linux run.
+- **Raspberry Pi 5, one worker** (2.7 GiB budget): backend 0.58 GiB (T0), 0.63 (T2), 0.79 (T3), 1.38 (T4); database 0.12-0.46 GiB. The
+  Pi did not run the heavy scenarios (reports, bundles), whose high-water would add to these.
 - **Not measured:** frontend and MCP server are not part of the perf stack; their limits come from a one-off idle `docker stats`
-  (about 11 and 57 MiB) with generous headroom. Boards under 8 GiB, and the default four workers on a Pi, are unmeasured.
+  (about 11 and 57 MiB) with generous headroom. Boards under 8 GiB, and four workers on a Pi, are unmeasured.
 - **Re-measure** with `perf/run_baseline.sh` (its third run is the memory and scaling baseline) and compare with
   `perf/compare.py`; when a number here moves, change the default limits in `docker-compose.yml` and the table in
   [deployment.md](deployment.md#sizing-and-memory-limits) in the same change.
+
+## Capacity by worker count and host (T2, ten projects, commits 38efb504 and 874d93b9, 2026-10-28)
+
+The same climb (levels 32, 64, 128, 192, 256, 384 connections; the dataset with every record type; pool 4 + 10) on three hosts. **Usable** is the
+highest level that delivered 90% of the offered rate with p95 under 1 s and under 1% failures, judged level by level; **peak** is
+the most requests per second any level delivered. A connection is one simulated client making about one request a second (see above);
+active people use 5-10 s per request. No run failed a request.
+
+| Host (backend cores / database cores) | Workers | Usable (plain) | Peak (plain) | Usable (mixed with the other types) | Peak (mixed) |
+|------|---------|----------------|--------------|-------------------------------------|--------------|
+| Linux server (6 / 3 cores; shared with production) | 1 | 64 connections, 62 req/s | 63 req/s | 32, 31 req/s | 37 |
+| | 2 | 64, 63 req/s | 124 | 32, 31 | 58 |
+| | 4 | 128, 125 req/s (625-1,250 active people) | 202 | 64, 62 | 121 |
+| | 6 | **192, 188 req/s (940-1,880 active people)** | 233 | **128, 124 req/s (620-1,240)** | 163 |
+| Dell workstation (WSL2, same caps) | 1 | 32, 31 req/s | 50 | 32, 30 | 31 |
+| | 2 | 64, 62 | 91 | 32, 31 | 58 |
+| | 4 | 64, 63 | 139 | 64, 63 | 76 |
+| | 6 | 64, 63 | 120 | 64, 62 | 90 |
+| Raspberry Pi 5 (1 / 0.5 cores of its 2.7 GiB budget) | 1 | 8 connections, 8 req/s (40-80 active people) | 14.5 | below the lowest level (8 connections: 88% delivered, p95 1.4 s) | 10 |
+| Linux, T3 (ten projects of 5,000), 6 workers, `shared_buffers` 512 MB | 6 | 64, 63 req/s | 143 | | |
+| Dell, T3, same | 6 | 64, 62 req/s | 103 | | |
+
+- **Throughput scales with workers on the Linux server up to about four, then flattens**: 62 req/s per worker for one or two, 50 for
+  four, 39 for six. Beyond four the stack is CPU-bound on the backend (563% of its 600% cap with six workers in the mixed run) and
+  on the database (3 cores), and 91 of 97 database connections are held (O9, O15).
+- **The other types cost a third to half of the capacity**: with them in the mix the usable level halves (six workers: 192 to 128
+  connections, 233 to 163 req/s at the peak), because lists, link reads, exports and search of 15 more types are in the mix.
+- **The Dell is about 1.4x more expensive per request and gets worse past four workers**: 22-27 ms of backend CPU per request at
+  64 connections against 16-20 ms on the Linux server, and six workers deliver less than four (120 against 139 req/s, usable level
+  64 at every worker count from two up). Same core count and caps, so the difference is the host (WSL2, an Intel CPU, and more
+  contention among workers); it is a result about that host, not about the code (O23).
+- **The Pi serves about 8 requests a second of this mix for one worker**: 40-80 active people, a tenth of a one-worker Linux
+  server. The CPU limits it (its caps give the backend one core of a 2.7 GiB budget); it is a small-team host, and a project with
+  the other record types in heavy use is beyond its first level.
+- **A larger project cuts the ceiling by about 40%** (T3 against T2 on the Linux server: 143 against 233 req/s at the peak), as in the earlier T3 run (O12).
+- People figures follow the earlier assumption (one request per 5 s for a busy person, per 10 s for a relaxed one, a third of the signed-in
+  people active); replace it with your own usage.
 
 ## Capacity (T2, 1,000 requirements; the `capacity` scenario)
 
@@ -226,6 +270,8 @@ Neither run has a level that meets the 1 s p95 budget, because the lowest level 
 | F18 | **The link graph, the activity timeline and the link-type list resolved access once per project and record.** On a nested tree of 31 projects (T1) a depth-2 graph from a hub ran **960 statements** (1,092 from a requirement hub), the activity timeline **719**, and `link-types` **117** (35 identical lookups, one per seeded link type). The runner's N+1 check flagged them | Each project the graph reaches had its roles, module state and organisation looked up again for each record; `ensure_org_seeds` looked up every seeded link type one by one | The three read-only routes run inside the request-scoped lookup caches the project export uses, `related_projects` preloads the roles of the ancestors and of each level of descendants in bulk, and the seed check reads the organisation's link types once | Statements: link graph 960 to 312 (353 from the requirement hub, from 1,092), activity 719 to 216, `link-types` 117 to 73. What remains is about ten statements per related project (module roles and custom-role grants, read per project) | `test_scaling_shapes.py` (`activity` check), `test_batched_list_helpers.py` (seeds are one lookup) |
 | F19 | **The risk, persona and stakeholder lists named each row's type with two lookups per row** (risks 117 statements for 43 typed rows, stakeholders 76), and the exports looked up each project's type vocabulary one row at a time. The probes created untyped records, so the guard did not see it; the runner's N+1 check did | `display_name` was called per row, and the exports resolved each project type row and its organisation type separately | `TypeVocabulary.display_names` names a whole list's types in two statements, the exports prime them (and which are project-local) for the block, and the probes now create typed records round robin | Risks 117 to 33, stakeholders 76 to 30, personas 40 to 28; organisation export of 31 projects 7,037 to 5,492 statements (what remains is a fixed cost per project) | `test_scaling_shapes.py` (typed records for risk, persona, stakeholder, pain point and decision) |
 | F20 | **The server run's capacity profile showed three costs that scale with the data, not with the request.** With every record type loaded (about 75,000 rows per project) the six-worker climb delivered **157 req/s** (61% of 256 connections) against about 240 in the earlier recipe, backend CPU 548% of 600%, and the database spent most of its time in: (1) the activity timeline's two audit queries, **20 ms and 15 ms per call, 1.9 million blocks read** over the run; (2) the dashboard, which **built every module type's whole default list** to count its records (1,012 calls each loading all pain points and all decisions); (3) the page-of-50 requirement list (O12) | (1) `_legacy_link_entries` matched `entity_type LIKE '%_link'` (no index) and searched each row's JSON as text, and a record's change history filtered a project's events by record id with no matching index; (2) only the three core types had a `count` hook on their record-table provider, so the other fourteen fell back to `list_records` | (1) a closed list of the four legacy link event types, so the project and type index applies, and migration 0110 `ix_audit_events_project_entity (project_id, entity_id)`; (2) a `count` hook (one `COUNT(*)`) for every project-owned module type | **Verified on the Linux server (commit a9014996, same recipe):** `capacity` at 256 connections **157 to 225 req/s** (384: 161 to 231; 512: 237), p95 2.6 s to 1.7 s, cache hit rate 92% to 99.7%; `capacity_mixed` 122 to 150 req/s. The two audit statements fell from 20 and 15 ms to about 4 ms each, the dashboard from 2.5 s to 1.2 s mean at 256 connections, and the dashboard's list-building statements left the top of `pgstat.csv`. Back at the earlier recipe's 240 req/s on a dataset about ten times larger | `test_audit_event_indexes.py` (both indexes used; every legacy link event type listed), `test_every_overview_type_has_a_count_hook` and `test_every_overview_count_equals_the_rows_of_the_types_default_list` |
+| F21 | **The attachment and record-import-preview scenarios measured refusals, not the work.** About half of attachment uploads failed at every tier on every host (238 of 480 at T0 on the Linux server), and the T3 requirement import preview failed 165 of 165 | The attachment scenario uploaded to a random generated requirement and about half of those are approved, which answers `409` by design (a direct attachment is refused once a requirement is locked); the preview sent the project's whole export, which at 5,000 requirements exceeds the import's 5,000-row and 5 MB cap and answers `413` by design | The attachment scenario creates a draft requirement and uploads to it; the preview scenario cuts the exported CSV to 4,000 rows and 4 MB | Scenario change only, no product change; the 143 MiB object-storage peak and the upload latencies measured before were of the accepted half. **Not yet re-measured:** the next run should show no `attachment` or T3 `import_preview` failures | None (a scenario fix); the failure counts in a bundle show a return |
+| F22 | **A type's own CSV export and import preview issued statements in proportion to the records.** `GET /records/{type}/export` ran 71 statements per request at T0 and 708 at T4, and `POST /records/{type}/import` (the preview) 101 at T0 and 1,946 at T3, in the full run; the guard showed one extra statement per record in the import of every one of 16 types and two per distinct type in the risk, persona and stakeholder exports. The scaling guard did not cover them | The import looked up each named record by its own `find`; the three tables named each row's type with a lookup per type (the shape F19 fixed for the lists) | `RecordTableProvider.find_many` (one statement per 500 codes) for every project and organisation provider, used by the import for the codes in the file; `TypeVocabulary.display_names` in the risk, persona and stakeholder tables, the risk and stakeholder reports and the stakeholder type filter | Statements going from 3 to 9 records, before then after: requirement import 91 to 103, then flat; risk export 91 to 103, then flat; risk import 113 to 131, then flat; persona and stakeholder export 76 to 88, then flat; no check of any type grows now. **Not yet re-measured on the server:** run `lists_by_type`/`export_by_type`/`import_preview_by_type` at T2-T3 and compare with `perf/compare.py` | `test_scaling_shapes.py` (`record_export` and `record_import` for every type; the export imports back with no failed row and an unknown code is still an error) |
 
 ## What has and has not been measured
 
@@ -303,6 +349,8 @@ whose cost grows with the total number of link events in the project.
 | O19 | The link graph, activity timeline and other reads that cross nested projects still cost about ten statements for each related project (module roles and custom-role grants are read per project by `get_effective_permissions`): 312 statements for a depth-2 graph across 31 projects. Bounded by the number of related projects (capped), not by records | Local profile of a nested 3x5 tree at T1 | Batch the module-role and custom-grant reads for a set of projects in `services/rbac.py` (access-control code: needs its own review against the access-control policy and tests of the batched answers against the per-project ones); measure first whether it matters at the server's tree sizes |
 | O20 | The project and organisation bundle exports spill about 500 MiB of temporary files each at T2 (`work_mem` 4 MB) and peak at 640 MiB per worker. They finish in 4-5 s, so it costs little, but it is disk I/O on a shared server | `pgdb.csv`, run 2 | Re-run the exports with `--pg-work-mem 16MB` and `32MB` and record the change before advising a setting |
 | O21 | A single slow request of 400-700 ms appears in almost every request class in the first repeat of each scenario (the mean is 15-50 ms), independent of type; likely the first request each of the four workers serves after warm-up (imports, caches, connection) | `latency.csv` max_ms, run 1 | Check whether it is the first request per worker: a longer warm-up, or logging the first request's time. Not yet explained |
+| O22 | **A worker never gives memory back, so the backend needs workers x the heaviest request's high-water.** A worker is 0.42 GiB at idle and stays at the largest it has ever been: 0.8-0.9 GiB after one organisation bundle export at T0, 1.1-1.6 GiB at T2, 2.3 GiB after a requirement import preview at T3, 2-3 GiB at T4. Four workers reach 4.4-4.6 GiB at T2 and 8.3-11.4 GiB at T3-T4 on the Dell; the Linux server's 4.5 GiB cap was hit at T3-T4 and workers were probably killed. **Tested on the Mac (one worker, T2, organisation export then three more exports): idle 446 MiB, 709 after the exports; with `MALLOC_ARENA_MAX=2` 671 (idle 437); with a full garbage collection plus `malloc_trim` after every request over 2 s 660 (idle 438); the differences are inside the run-to-run noise, so neither lowers the high-water.** A memray heap profile after the same exports showed 572 MiB live against 415 MiB after a browse-only run: about 160 MiB of live Python objects (SQLAlchemy instances and rows, psycopg2 buffers, UUIDs) plus fragmentation that CPython does not return, not per-thread allocator pools | `processes.csv`, `samples.csv`, the Linux and Dell full runs; Mac runs of 2026-10-28/29 (`--malloc-arena-max`, `--profiling heap`) | The two cheap knobs are ruled out. Open: `LIMIT_MAX_REQUESTS` (uvicorn `--limit-max-requests`, now passed through by `docker-compose.yml`, off by default) replaces a worker after N requests and so hands its memory back; it needs two or more workers, so it was not tested on the Mac (the headroom check refused). Test it on the server with `perf/run_profile.sh <label> --full --tiers T2 --scenarios org_bundle_export,bundle_export,export_by_type --workers 2 --limit-max-requests 200`, and compare the `processes.csv` private memory with a run without the flag. The structural fix is to stream the exports and the bundle build and to import in chunks instead of holding the project (O7), its own change with tests. Until then size memory with the formula in the sizing section |
+| O23 | On the Dell workstation the backend spends 22-27 ms of CPU per request at 64 connections against 16-20 ms on the Linux server, and six workers deliver less than four (120 against 139 req/s) | `run.json` notes, capacity runs | Likely WSL2 and the CPU rather than the code; repeat on a second Linux host before concluding. Does not change the sizing on Linux |
 | O14 | (Planned as Phase 4c in `docs/plans/resource-profiling-plan.md`, with the links between types as its main subject.) Other record types are unmeasured and, by reading the code, likely carry the shapes fixed for requirements (list builds every row then slices; no paging on the module lists; one lookup per row for versions, comments and links) | `TRACKED_GAPS`, code review | A follow-up phase: a registry-driven scaling-shape test (statements and rows read at two sizes, per type) in the main suite, generators for the highest-volume types (change requests, risks, decisions, pain points), then the capacity climb with their lists in the mix |
 | O15 | PgBouncer (or any pooler) is the usual way past the 97-connection limit but is untested and unsupported: the live-update `LISTEN` and the startup advisory lock use the request engine and need a direct connection | `services/pubsub.py`, `services/process_coordination.py` | Add a direct URL setting for those two, then measure; documented as untested in `docs/deployment.md` |
 | O4 | At 20,000 requirements the buffer cache hit rate falls to 86% (attachment) and 66% (soak) with the default `shared_buffers` of 128 MB; every other scenario stays above 99%, and no scenario wrote a temp file or deadlocked | `pgdb.csv`, Linux and Dell T4 | Re-run the soak at `shared_buffers` 512 MB and 1 GB and record the change before advising a setting |

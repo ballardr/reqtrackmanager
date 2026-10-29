@@ -1643,6 +1643,9 @@ class OrganizationRecordTable:
         list_records: `(db, user, organization, filters) -> records`: the organisation's own records, with the
             filters of the organisation list (the endpoint and the provider share one query).
         find: `(db, organization, unique_code) -> record | None`, searching **this organisation's own records only**.
+        find_many: `(db, organization, codes) -> {UPPER code: record}`: `find` for many codes in one statement (see
+            `services.record_tables.find_many_by_code`), so an import reads the named records once, not once per row. `None`
+            falls back to `find` per code.
         prepare: `(db, organization, records) -> prepared`: batch lookups handed to every column's `get`.
         create: `(ctx, values) -> record` through the organisation endpoint's own create path (`ctx.project` is
             `None`; use `ctx.organization`). `None` for a type import cannot create.
@@ -1656,6 +1659,7 @@ class OrganizationRecordTable:
     columns: Callable[[Session, Any], Sequence[RecordColumn]]
     list_records: Callable[[Session, Any, Any, RecordFilters], list[Any]]
     find: Callable[[Session, Any, str], Any | None]
+    find_many: Callable[[Session, Any, Sequence[str]], dict[str, Any]] | None = None
     prepare: Callable[[Session, Any, list[Any]], Any] | None = None
     create: Callable[[RecordImportContext, Mapping[str, Any]], Any] | None = None
     update: Callable[[RecordImportContext, Any, Mapping[str, Any]], None] | None = None
@@ -1682,6 +1686,9 @@ class RecordTableProvider:
             list endpoint (the endpoint and the provider share one query function, so a filter reaches both).
             Archived rows only when asked, as the list does.
         find: `(db, project, unique_code) -> record | None`, searching **this project only**.
+        find_many: `(db, project, codes) -> {UPPER code: record}`: `find` for many codes in one statement
+            (`services.record_tables.find_many_by_code`), so an import reads the named records once, not once per row.
+            `None` falls back to `find` per code.
         prepare: `(db, project, records) -> prepared`: batch lookups handed to every column's `get`.
         create: `(ctx, values) -> record` through the type's own create path; `values` holds every importable
             column in the file, parsed. `None` for a type that import cannot create.
@@ -1722,6 +1729,7 @@ class RecordTableProvider:
     columns: Callable[[Session, Any], Sequence[RecordColumn]]
     list_records: Callable[[Session, Any, uuid.UUID, RecordFilters], list[Any]]
     find: Callable[[Session, Any, str], Any | None]
+    find_many: Callable[[Session, Any, Sequence[str]], dict[str, Any]] | None = None
     prepare: Callable[[Session, Any, list[Any]], Any] | None = None
     create: Callable[[RecordImportContext, Mapping[str, Any]], Any] | None = None
     update: Callable[[RecordImportContext, Any, Mapping[str, Any]], None] | None = None

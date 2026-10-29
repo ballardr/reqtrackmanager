@@ -85,12 +85,12 @@ Every always-on service has a memory limit in `docker-compose.yml`, set from mea
 
 | Service | Variable | Default | Measured |
 |---------|----------|---------|----------|
-| Backend | `BACKEND_MEM_LIMIT` | `3500m` | 4 workers: 1.6 GiB idle, 1.8-2.4 GiB under load on projects up to 1,000 requirements, 4.0-4.5 GiB when every worker runs a report, export or bundle import on a 5,000-requirement project |
-| Database | `DB_MEM_LIMIT` | `2g` | 0.14-0.65 GiB with four workers, about 1 GiB at six |
-| Object storage | `STORAGE_MEM_LIMIT` | `512m` | 30-143 MiB |
+| Backend | `BACKEND_MEM_LIMIT` | `5g` | 4 workers: 1.8-2.4 GiB while only reading, 4.4-4.6 GiB once the workers have served an organisation export, bundle or report on a 1,000-requirement project, 8.3 GiB at 5,000 requirements, 11.4 GiB at 20,000 |
+| Database | `DB_MEM_LIMIT` | `2g` | 0.4-0.8 GiB with four workers, about 1 GiB at six; up to 2.7 GiB at 5,000 requirements with a larger `shared_buffers` |
+| Object storage | `STORAGE_MEM_LIMIT` | `1g` | 0.1-0.6 GiB |
 | Frontend / MCP server | `FRONTEND_MEM_LIMIT` / `MCP_MEM_LIMIT` | `128m` / `256m` | about 11 / 57 MiB |
 
-Backend memory follows the worker count and the project size, not the number of users: roughly **0.1 GiB + 0.55 GiB × workers + 0.5 GiB × the number of reports, exports or bundle imports of 5,000-requirement-plus projects that can run at once**. Memory stayed flat over a 30-minute soak at every project size. See the [deployment guide](https://github.com/ballardr/reqtrackmanager/blob/main/docs/deployment.md#sizing-and-memory-limits) for the decision flow.
+A backend worker keeps the memory of the heaviest request it has served, so backend memory follows the worker count and the project size, not the number of users: roughly **0.1 GiB + 1.2 GiB × workers** for projects up to 1,000 requirements, and about 2.4 GiB per worker around 5,000. Every worker eventually serves a heavy request, so count all of them; with larger projects raise the limit or run fewer workers. Memory stayed flat over a 30-minute soak once the first heavy requests had run. See the [deployment guide](https://github.com/ballardr/reqtrackmanager/blob/main/docs/deployment.md#sizing-and-memory-limits) for the decision flow.
 
 ## Next steps
 

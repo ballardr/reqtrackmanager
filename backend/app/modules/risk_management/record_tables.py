@@ -64,7 +64,7 @@ from app.modules.risk_management.treatment import effective_treatment_counts
 from app.services import tags as tag_service
 from app.services.client_date import effective_today
 from app.services.principals import principal_ref
-from app.services.record_tables import PrincipalCells
+from app.services.record_tables import PrincipalCells, find_many_by_code
 from app.services.record_tables_core import (
     cached_lookup,
     count_rows,
@@ -112,11 +112,8 @@ class _Prepared:
         } if ids else {}
         self.people = PrincipalCells.load(db, [principal_ref(v.owner_type, v.owner_id) for v in self.versions.values()])
         self.tags = tag_service.tag_names_for_records(db, RISK_ARTEFACT_TYPE, ids) if ids else {}
-        self.type_names: dict[uuid.UUID, str] = {}
-        for version in self.versions.values():
-            type_id = version.project_type_id
-            if type_id is not None and type_id not in self.type_names:
-                self.type_names[type_id] = RISK_TYPES.display_name(db, org_type_id=None, project_type_id=type_id) or ""
+        names = RISK_TYPES.display_names(db, [(None, v.project_type_id) for v in self.versions.values() if v.project_type_id is not None])
+        self.type_names: dict[uuid.UUID, str] = {type_id: name or "" for (_org, type_id), name in names.items()}
         self.level_names = {
             level.id: level.name
             for levels in list_levels(db, project.organization_id, RISK_SCORING_SCHEME_KEY).values() for level in levels
@@ -321,6 +318,7 @@ RISK_TABLE = RecordTableProvider(
     columns=_risk_columns,
     list_records=_list_risks,
     find=_find,
+    find_many=find_many_by_code(Risk, "project_id"),
     prepare=lambda db, project, records: _Prepared(db, project, records),
     create=_create,
     update=_update,

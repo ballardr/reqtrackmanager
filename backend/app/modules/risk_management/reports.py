@@ -173,13 +173,10 @@ def _load_rows(db: Session, req: ReportContext, *, include_archived: bool = Fals
     effective = effective_treatment_counts(db, [r.id for r, _ in pairs])
     tags = req.tag_text(db, RISK_ARTEFACT_TYPE, [r.id for r, _ in pairs])
     contexts = {p.id: load_rating_context(db, p) for p in projects}
-    type_names: dict[uuid.UUID, str] = {}
+    named = RISK_TYPES.display_names(db, [(None, v.project_type_id) for _r, v in pairs if v.project_type_id is not None])
+    type_names: dict[uuid.UUID, str] = {type_id: name or "" for (_org, type_id), name in named.items()}
     rows: list[RiskRow] = []
     for risk, version in pairs:
-        if version.project_type_id is not None and version.project_type_id not in type_names:
-            type_names[version.project_type_id] = RISK_TYPES.display_name(
-                db, org_type_id=None, project_type_id=version.project_type_id,
-            ) or ""
         inherent, residual = rate_version(contexts[risk.project_id], version)
         rows.append(RiskRow(
             risk, version, by_id[risk.project_id], inherent, residual,

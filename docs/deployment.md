@@ -400,17 +400,17 @@ Every always-on service has a memory limit in `docker-compose.yml`, set from the
 
 | Service | Variable | Default | Measured |
 |---------|----------|---------|----------|
-| `backend` | `BACKEND_MEM_LIMIT` | `3500m` | 4 workers: 1.6 GiB idle, 1.8-2.4 GiB under load on projects up to 1,000 requirements, 4.0-4.5 GiB when every worker runs a report, export or bundle import on a 5,000-requirement project; 6 workers under the mixed load 3.1 GiB |
-| `db` | `DB_MEM_LIMIT` | `2g` | 0.14-0.65 GiB with four workers from 30 to 20,000 requirements, 1.0-1.1 GiB at six workers under the capacity climb (default `shared_buffers` 128 MB); add the extra if you raise `shared_buffers` |
-| `storage` | `STORAGE_MEM_LIMIT` | `512m` | 30-143 MiB |
-| `frontend` | `FRONTEND_MEM_LIMIT` | `128m` | about 11 MiB |
-| `mcp-server` | `MCP_MEM_LIMIT` | `256m` | about 57 MiB |
+| `backend` | `BACKEND_MEM_LIMIT` | `5g` | 4 workers: 1.7 GiB idle, 1.8-2.4 GiB while only reading, 4.4-4.6 GiB once the workers have served an organisation export, bundle or report on a project of 1,000 requirements, 8.3 GiB at 5,000 and 11.4 GiB at 20,000 |
+| `db` | `DB_MEM_LIMIT` | `2g` | 0.4-0.8 GiB with four workers up to 1,000 requirements, about 1 GiB at six workers; 1.7-2.7 GiB at 5,000 requirements with `shared_buffers` 512 MB: raise it with that setting |
+| `storage` | `STORAGE_MEM_LIMIT` | `1g` | 0.1-0.6 GiB, the top under sustained attachment uploads |
+| `frontend` | `FRONTEND_MEM_LIMIT` | `128m` | about 11 MiB (idle snapshot) |
+| `mcp-server` | `MCP_MEM_LIMIT` | `256m` | about 57 MiB (idle snapshot) |
 
-Backend memory is a worker count and a project size, not a user count:
+A backend worker keeps the memory of the heaviest request it has served, so memory is a worker count and a project size, not a user count:
 
-> backend limit ≈ 0.1 GiB + 0.55 GiB × `BACKEND_WORKERS` + 0.5 GiB × *H*
+> backend limit ≈ 0.1 GiB + `BACKEND_WORKERS` × the high-water of a worker (about 1.2 GiB for projects up to 1,000 requirements, 2.4 GiB around 5,000, 3 GiB and more at 20,000)
 
-where *H* is how many reports, project exports or bundle imports of a project of about 5,000 requirements or more can run at once (at most `BACKEND_WORKERS`). Those requests hold the whole project in the worker, which then peaks near 1 GiB instead of 0.55 GiB. The default covers four workers on projects up to about 1,000 requirements, and six under mixed load; a deployment with large projects raises it (four workers, 5,000-requirement projects, heavy requests expected: `BACKEND_MEM_LIMIT=4800m`). A rise in the limit has to fit the host's RAM together with the database and the operating system. The backend logs a `WARNING` at start if its limit is below that formula for its worker count with no heavy request.
+Every worker eventually serves a heavy request (a report, a project or organisation export, a bundle or CSV import), so count all of them. The default covers four workers on projects up to about 1,000 requirements. A deployment with larger projects raises it (four workers on 5,000-requirement projects: `BACKEND_MEM_LIMIT=10g`), or runs fewer workers, which also cuts throughput: see the capacity table in [performance.md](performance.md). A rise in the limit has to fit the host's RAM together with the database and the operating system. The backend logs a `WARNING` at start if its limit is below the formula for its worker count at 1,000 requirements.
 
 ```mermaid
 flowchart TD
@@ -422,7 +422,7 @@ flowchart TD
     E --> F["Workers × (DB_POOL_SIZE + DB_MAX_OVERFLOW + 2) < max_connections"]
 ```
 
-Memory did not grow over a 30-minute soak at any project size (the backend's trend after warm-up was flat or falling), so a limit is a ceiling for load, not a leak guard. The measurements were taken on amd64 Linux; a Raspberry Pi 5 with 8 GiB ran one worker comfortably (1.4 GiB backend at 20,000 requirements). Four workers need about 2.3 GiB for the backend alone before the database, so run one or two on a 4 GiB board (unmeasured).
+Memory did not grow over a 30-minute soak (the growth happens at the first heavy request, then stops), so a limit is a ceiling for load, not a leak guard. The measurements were taken on amd64 Linux and a Windows (WSL2) workstation; a Raspberry Pi 5 with 8 GiB ran one worker with a 0.6 GiB backend up to 1,000 requirements and 1.4 GiB at 20,000, but serves only about 8 requests a second of the mixed load (40-80 active people). Four workers need about 4.9 GiB for the backend alone before the database, so run one or two on a 4 GiB board (unmeasured).
 
 ## Troubleshooting
 

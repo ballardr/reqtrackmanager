@@ -254,7 +254,8 @@ def test_caps_env_matches_the_variables_the_override_reads():
     text = (_PERF / "docker-compose.perf.yml").read_text()
     wanted = set(re.findall(r"\$\{(PERF_[A-Z_]+)", text))
     provided = set(resources.plan_caps(8, 16, max_mem_gib=5).env()) | {"PERF_USER_PASSWORD", "PERF_BACKEND_IMAGE", "PERF_LOADGEN_IMAGE"}
-    optional = {"PERF_PG_SHARED_BUFFERS", "PERF_PG_WORK_MEM"}  # set only by --pg-shared-buffers / --pg-work-mem; the override has defaults
+    # set only by --pg-shared-buffers / --pg-work-mem / --malloc-arena-max / --limit-max-requests; the override has defaults
+    optional = {"PERF_PG_SHARED_BUFFERS", "PERF_PG_WORK_MEM", "PERF_MALLOC_ARENA_MAX", "PERF_LIMIT_MAX_REQUESTS"}
     assert wanted - optional <= provided
 
 
@@ -1947,3 +1948,21 @@ def test_a_field_outside_the_allowlist_fails_the_bundle_but_keeps_every_measurem
         )
     assert (directory / "latency.csv").read_text().count("GET /x") == 1
     assert (directory / "dataset.json").exists() and (directory / "run.json").exists()
+
+
+def test_backend_memory_experiment_options_reach_the_stack_environment_and_are_validated():
+    """`--malloc-arena-max` and `--limit-max-requests` set the perf stack's backend variables only when given, and
+    out-of-range values are refused, so an experiment cannot silently run with a setting the operator did not mean."""
+    from perf import run_profile
+    from perf.lib import resources
+
+    options = run_profile.parse_args(["lab-host", "--malloc-arena-max", "2", "--limit-max-requests", "500"])
+    assert (options.malloc_arena_max, options.limit_max_requests) == (2, 500)
+    caps = resources.plan_caps(16, 64, max_cpus=12, max_mem_gib=8, workers=2)
+    env = run_profile.stack_environment(caps=caps, workers=2, backend_image="x", loadgen_image="y", memory=(2, 500))
+    assert (env["PERF_MALLOC_ARENA_MAX"], env["PERF_LIMIT_MAX_REQUESTS"]) == ("2", "500")
+    plain = run_profile.stack_environment(caps=caps, workers=2, backend_image="x", loadgen_image="y")
+    assert "PERF_MALLOC_ARENA_MAX" not in plain and "PERF_LIMIT_MAX_REQUESTS" not in plain
+    for bad in (["--malloc-arena-max", "0"], ["--malloc-arena-max", "65"], ["--limit-max-requests", "10"]):
+        with pytest.raises(SystemExit):
+            run_profile.parse_args(["lab-host", *bad])

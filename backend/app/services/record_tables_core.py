@@ -75,7 +75,7 @@ from app.services.labels import CHANGE_REQUEST_STATUS_TONE, REQUIREMENT_STATUS_T
 from app.services.principals import principal_ref, validate_principal
 from app.services.project_hierarchy import resolve_effective_action_types
 from app.services.rbac import get_effective_project_roles
-from app.services.record_tables import PrincipalCells, parse_principal_cell
+from app.services.record_tables import PrincipalCells, find_many_by_code, parse_principal_cell
 from app.services.search_core import humanise_labels
 
 CAN_EDIT_ROLES = (ProjectRole.PROJECT_MANAGER, ProjectRole.PROJECT_ADMINISTRATOR, ProjectRole.STAKEHOLDER)
@@ -500,6 +500,7 @@ REQUIREMENT_TABLE = RecordTableProvider(
     columns=_requirement_columns,
     list_records=_list_requirements,
     find=_find_requirement,
+    find_many=find_many_by_code(Requirement, "project_id"),
     prepare=_prepare_requirements,
     create=_create_requirement,
     update=_update_requirement,
@@ -603,6 +604,7 @@ ACTION_TABLE = RecordTableProvider(
     columns=_action_columns,
     list_records=_list_actions,
     find=_find_action,
+    find_many=find_many_by_code(RequirementAction, "project_id"),
     prepare=lambda db, project, records: _ActionTable(db, project, records),
     create=_create_action,
     update=_update_action,
@@ -743,6 +745,7 @@ CHANGE_REQUEST_TABLE = RecordTableProvider(
     columns=_change_request_columns,
     list_records=_list_change_requests,
     find=_find_change_request,
+    find_many=find_many_by_code(ChangeRequest, "project_id"),
     prepare=lambda db, project, records: _ChangeRequestTable(db, project, records),
     filter_params=frozenset({"cr_status", "active_only", "target_stage_id", "search"}),
     count=lambda db, user, project_id: count_rows(db, ChangeRequest, project_id, live_only=False),

@@ -14,7 +14,7 @@ set -e
 export PROMETHEUS_MULTIPROC_DIR="${PROMETHEUS_MULTIPROC_DIR:-/tmp/prometheus-multiproc}"
 rm -rf "$PROMETHEUS_MULTIPROC_DIR"
 mkdir -p "$PROMETHEUS_MULTIPROC_DIR"
-# Warn when the container's memory limit (cgroup v2, else v1) cannot hold the workers: about 0.55 GiB each plus the
+# Warn when the container's memory limit (cgroup v2, else v1) cannot hold the workers: about 1.2 GiB each (the heaviest request a worker has served stays in it) plus the
 # parent (docs/deployment.md, "Sizing and memory limits"). The kernel would OOM-kill the backend under load, not at start.
 workers="${BACKEND_WORKERS:-4}"
 limit=""
@@ -24,12 +24,15 @@ done
 case "$limit" in
     ''|*[!0-9]*) ;;  # no limit ("max") or unreadable
     *)
-        needed=$(( workers * 560 + 100 ))
+        needed=$(( workers * 1200 + 100 ))
         if [ $(( limit / 1048576 )) -lt "$needed" ]; then
             echo "WARNING: the memory limit is $(( limit / 1048576 )) MiB but $workers workers need about $needed MiB; lower BACKEND_WORKERS or raise BACKEND_MEM_LIMIT" >&2
         fi
         ;;
 esac
+# An empty value must mean "not set" (compose passes an empty string when an override is blank).
+[ -n "${MALLOC_ARENA_MAX:-}" ] || unset MALLOC_ARENA_MAX
+[ -n "${UVICORN_LIMIT_MAX_REQUESTS:-}" ] || unset UVICORN_LIMIT_MAX_REQUESTS
 # `::` is dual-stack on Linux (accepts IPv4 and IPv6); 0.0.0.0 would be IPv4 only.
 # One worker is served in-process, where uvicorn's `--host ::` ends up IPv6 only (asyncio sets IPV6_V6ONLY), so that
 # case binds its own dual-stack socket (app/serve.py). Extra uvicorn arguments apply to the multi-worker path only.

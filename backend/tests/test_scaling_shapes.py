@@ -44,7 +44,8 @@ TRACKED_GAPS = frozenset(
 
 #: `{artefact type: {check: finding}}` for a check whose statements grow with the records today. Checks are `list`,
 #: `detail`, `comments`, `links` (the link graph of a record with N linked requirements), `activity` (its timeline) and
-#: `export` (the project bundle, which carries every module's records).
+#: `export` (the project bundle, which carries every module's records), `record_export` (the type's own CSV export, the list's
+#: Export action) and `record_import` (the preview of importing that CSV back, every row an update).
 KNOWN_GROWING: dict[str, dict[str, str]] = {}
 
 
@@ -99,6 +100,33 @@ def _measure_export(client, token: str, project_id: str) -> int:
         resp = client.get(url, headers=auth_headers(token))
     assert resp.status_code == 200
     return statements.count
+
+
+def _measure_record_table(client, token: str, project_id: str, artefact_type: str) -> dict[str, int]:
+    """Statements for the type's CSV export and for the preview of importing that CSV back (a type that cannot be imported
+    gives only the export), each after an identical first request."""
+    headers = auth_headers(token)
+    export = f"/api/v1/projects/{project_id}/records/{artefact_type}/export"
+    first = client.get(export, headers=headers)
+    assert first.status_code == 200, f"{export}: {first.status_code} {first.text[:200]}"
+    with _Statements() as statements:
+        csv_bytes = client.get(export, headers=headers).content
+    counts = {"record_export": statements.count}
+    url = f"/api/v1/projects/{project_id}/records/{artefact_type}/import?dry_run=true"
+    files = {"file": ("records.csv", csv_bytes, "text/csv")}
+    attempt = client.post(url, files=files, headers=headers)
+    if attempt.status_code == 200:
+        # Every row of the type's own export is found again (none is an error), so the batched lookup of the named
+        # records matches what a lookup per row finds; a code that names no record is still reported as one.
+        assert attempt.json()["failed"] == 0, attempt.text[:300]
+        with _Statements() as statements:
+            assert client.post(url, files=files, headers=headers).status_code == 200
+        counts["record_import"] = statements.count
+        unknown = client.post(url, files={"file": ("records.csv", b"code\nZZZ-999\n", "text/csv")}, headers=headers)
+        assert unknown.status_code == 200 and unknown.json()["failed"] == 1, unknown.text[:300]
+    else:
+        assert attempt.status_code in (403, 404, 422), f"{url}: {attempt.status_code} {attempt.text[:200]}"
+    return counts
 
 
 def _first_link_option(api: _Api, project_id: str, artefact_type: str, artefact_id: str) -> dict | None:
@@ -157,6 +185,7 @@ def _growth(artefact_type: str, client, admin_token: str) -> dict[str, tuple[int
     small = {
         "list": _measure(api, base), "links": _measure(api, graph), "activity": _measure(api, activity),
         "export": _measure_export(client, token, project_id),
+        **_measure_record_table(client, token, project_id, artefact_type),
     }
     if probe.has_detail:
         small["detail"] = _measure(api, f"{base}/{first}")
@@ -171,6 +200,7 @@ def _growth(artefact_type: str, client, admin_token: str) -> dict[str, tuple[int
     large = {
         "list": _measure(api, base), "links": _measure(api, graph), "activity": _measure(api, activity),
         "export": _measure_export(client, token, project_id),
+        **_measure_record_table(client, token, project_id, artefact_type),
     }
     if probe.has_detail:
         large["detail"] = _measure(api, f"{base}/{first}")
@@ -201,7 +231,8 @@ def test_known_growing_names_only_probed_types_and_real_checks():
     probed = set(get_scaling_probes())
     assert set(KNOWN_GROWING) <= probed, sorted(set(KNOWN_GROWING) - probed)
     for artefact_type, checks in KNOWN_GROWING.items():
-        assert set(checks) <= {"list", "detail", "comments", "links", "activity", "export"}, (artefact_type, sorted(checks))
+        known = {"list", "detail", "comments", "links", "activity", "export", "record_export", "record_import"}
+        assert set(checks) <= known, (artefact_type, sorted(checks))
         assert all(reason.strip() for reason in checks.values()), artefact_type
 
 

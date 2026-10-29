@@ -24,7 +24,7 @@ pytestmark = pytest.mark.skipif(not COMPOSE.is_file(), reason="repository root n
 ALWAYS_ON = {"db": "DB_MEM_LIMIT", "storage": "STORAGE_MEM_LIMIT", "backend": "BACKEND_MEM_LIMIT",
              "frontend": "FRONTEND_MEM_LIMIT", "mcp-server": "MCP_MEM_LIMIT"}
 
-MIB_PER_WORKER = 560  # measured private memory of one worker under load (docs/performance.md, Sizing)
+MIB_PER_WORKER = 1200  # a worker's high-water after the heaviest request on a project up to 1,000 requirements (docs/performance.md, Sizing)
 UNITS = {"m": 1, "g": 1024}
 
 
@@ -80,8 +80,8 @@ def _run_entrypoint(tmp_path, limit: str, workers: int) -> str:
 
 
 def test_the_entrypoint_warns_when_the_memory_limit_cannot_hold_the_workers(tmp_path):
-    """Four workers need about 2.3 GiB: a 1 GiB limit warns, a 3.5 GiB limit and "max" (no limit) stay silent."""
+    """Four workers need about 4.9 GiB: a 1 GiB limit warns, a 5 GiB limit and "max" (no limit) stay silent."""
     assert "WARNING" in _run_entrypoint(tmp_path, str(1024 * 1024 * 1024), 4)
-    assert _run_entrypoint(tmp_path, str(3500 * 1024 * 1024), 4) == ""
+    assert _run_entrypoint(tmp_path, str(5000 * 1024 * 1024), 4) == ""
     assert _run_entrypoint(tmp_path, "max\n", 4) == ""
-    assert _run_entrypoint(tmp_path, str(2048 * 1024 * 1024), 2) == ""  # two workers need about 1.2 GiB
+    assert _run_entrypoint(tmp_path, str(3072 * 1024 * 1024), 2) == ""  # two workers need about 2.5 GiB; 2 GiB would warn, 3 GiB not
