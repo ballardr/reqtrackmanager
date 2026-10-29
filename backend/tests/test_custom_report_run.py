@@ -772,6 +772,21 @@ def test_the_catalogue_names_the_record_types_each_report_uses(world):
     assert register and register[0]["record_types"] == ["decision"]
 
 
+def test_the_catalogue_flags_a_view_only_report_and_still_lists_it(world):
+    """The summary pack is read on screen, so a record list's download dialog skips it; it stays in the catalogue
+    (the Reports dialog shows it) and an ordinary report is not flagged."""
+    world.enable("decisions")
+    world.enable("context_strategy")
+    project = world.project()
+
+    entries = world.client.get(f"/api/v1/projects/{project['id']}/report-catalogue", headers=auth_headers(world.token)).json()
+    by_slug = {e["slug"]: e for e in entries}
+
+    assert by_slug["summary"]["view_only"] is True
+    assert by_slug["decision-register"]["view_only"] is False
+    assert {e["slug"] for e in entries if e["view_only"]} == {"summary"}
+
+
 def test_the_organisation_catalogue_offers_a_project_selection_of_what_the_caller_can_read(world):
     alpha, beta = world.project("Alpha"), world.project("Beta")
     make_layout(world, sheet_tree("A"), "Everywhere")

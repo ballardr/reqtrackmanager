@@ -402,6 +402,37 @@ def test_a_module_report_entry_may_take_every_file_format_and_each_makes_its_fil
     assert all(e["status"] == "included" for e in manifest(archive)["entries"])
 
 
+def test_a_pack_lists_the_record_types_its_entries_read(world, scene):
+    mine = make_layout(world, "Mine", requirements_tree("document", CATEGORIES), project=scene)
+    both = created(world, org_url(world), "Both", definition(layout_entry("Overview"), D1))
+    only_report = created(world, org_url(world), "Decisions only", definition(D1))
+    nothing = created(world, org_url(world), "Missing", definition(layout_entry("No such layout")))
+    own = created(world, project_url(scene), "Own", definition(layout_entry(mine["name"])))
+
+    org_list = {p["name"]: p for p in world.client.get(org_url(world), headers=auth_headers(world.token)).json()}
+    assert both["record_types"] == sorted([REQ, "decision"]) == org_list["Both"]["record_types"]
+    assert org_list["Decisions only"]["record_types"] == ["decision"]
+    assert nothing["record_types"] == [] == org_list["Missing"]["record_types"]
+
+    project_list = {p["name"]: p for p in world.client.get(project_url(scene), headers=auth_headers(world.token)).json()}
+    assert project_list["Both"]["record_types"] == sorted([REQ, "decision"])
+    assert project_list["Own"]["record_types"] == [REQ] == own["record_types"]
+    assert only_report["id"] in {p["id"] for p in project_list.values()}
+
+    # The single-pack reads and writes carry the types too, as the asking project reaches the layouts.
+    detail = world.client.get(project_url(scene, f"/{both['id']}"), headers=auth_headers(world.token)).json()
+    assert detail["record_types"] == sorted([REQ, "decision"])
+    saved = world.client.put(
+        project_url(scene, f"/{own['id']}/definition"),
+        json={"definition": definition(D1), "base_version": 1}, headers=auth_headers(world.token),
+    ).json()
+    assert saved["record_types"] == ["decision"]
+
+    # The organisation tier cannot reach a project's own layout, so the same name there reads nothing.
+    on_org = created(world, org_url(world), "Org points at project layout", definition(layout_entry(mine["name"])))
+    assert on_org["record_types"] == []
+
+
 def test_a_pack_runs_into_a_zip_with_a_manifest_and_flat_numbered_files(world, scene):
     pack = created(world, org_url(world), "Handover", definition(
         layout_entry("Overview", "docx", filename="overview"), layout_entry("Rows", "xlsx", filename="../../rows"),

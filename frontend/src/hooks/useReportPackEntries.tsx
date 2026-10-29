@@ -62,6 +62,7 @@ export function useReportPackEntries(
         kind: "pack" as const,
         folder: pack.folder || text.defaultFolder,
         placementKey: packPlacementKey(pack.id),
+        recordTypes: pack.record_types,
         description: pack.description || text.description,
         render: () => <ReportPackRunner key={pack.id} api={api} organizationId={organizationId} name={pack.name} />,
       };

@@ -38,6 +38,9 @@ test.describe("Download report from a record list", () => {
     });
     await loginAs(page, adminEmail, PASSWORD);
     const headers = await login(adminEmail, PASSWORD);
+    // The Context & Strategy summary names requirements but is read on screen, not downloaded.
+    const enabled = await request.put(`${API}/orgs/${org.id}/modules/context_strategy`, { headers, data: { enabled: true } });
+    expect(enabled.ok(), await enabled.text()).toBeTruthy();
     const project = await (await request.post(`${API}/projects`, {
       headers, data: { organization_id: org.id, name: `List report ${suffix}`, summary: "" },
     })).json();
@@ -48,6 +51,19 @@ test.describe("Download report from a record list", () => {
         headers, data: { name, description: "E2E layout", family: "document", folder, tree: layout(recordType) },
       });
       expect(created.ok(), await created.text()).toBeTruthy();
+    }
+
+    // A pack is offered where any report in it reads the list's type, so only the first of these two is.
+    const packForRequirements = `E2E Requirements pack ${suffix}`;
+    const packForOthers = `E2E Change requests pack ${suffix}`;
+    for (const [name, layoutName] of [[packForRequirements, forRequirements], [packForOthers, forOthers]]) {
+      const made = await request.post(`${API}/projects/${project.id}/report-packs`, {
+        headers, data: {
+          name, description: "E2E pack", folder: "Bundles",
+          definition: { schema_version: 1, entries: [{ kind: "layout", name: layoutName, format: "pdf" }] },
+        },
+      });
+      expect(made.ok(), await made.text()).toBeTruthy();
     }
 
     await page.goto(`/projects/${project.id}`);
@@ -63,17 +79,43 @@ test.describe("Download report from a record list", () => {
       await expect(dialog.getByText(forOthers)).toHaveCount(0);
     });
 
-    await test.step("the chosen report is run and downloads as a PDF", async () => {
+    await test.step("a report meant to be viewed is not offered, even when searched for", async () => {
+      const catalogue = await (await request.get(`${API}/projects/${project.id}/report-catalogue`, { headers })).json();
+      expect(catalogue.find((e: { slug: string; view_only: boolean }) => e.slug === "summary")?.view_only).toBe(true);
+      await dialog.getByLabel("Search reports").fill("summary");
+      await expect(dialog.getByText("Context & Strategy summary")).toHaveCount(0);
+      await dialog.getByLabel("Search reports").fill("");
+    });
+
+    await test.step("choosing a report moves to step 2, which names the project and shows no report preview", async () => {
+      await expect(dialog.getByRole("listitem").filter({ hasText: "Choose a report" })).toHaveAttribute("aria-current", "step");
       await dialog.getByRole("button", { name: new RegExp(`^${forRequirements}`) }).click();
+      await expect(dialog.getByRole("listitem").filter({ hasText: "Configure and download" })).toHaveAttribute("aria-current", "step");
+      await expect(dialog.getByText(project.name)).toBeVisible();
+      await expect(dialog.getByRole("table")).toHaveCount(0);
+    });
+
+    await test.step("the chosen report downloads as a PDF", async () => {
       await dialog.getByRole("button", { name: "Export", exact: true }).click();
       const pending = page.waitForEvent("download");
       await page.getByRole("button", { name: "Download PDF report" }).click();
       expect(fs.readFileSync((await (await pending).path())!).subarray(0, 5).toString()).toBe("%PDF-");
     });
 
-    await test.step("Choose another report returns to the list, with the folder still open", async () => {
-      await dialog.getByRole("button", { name: "Choose another report" }).click();
+    await test.step("Back returns to step 1, with the folder still open", async () => {
+      await dialog.getByRole("button", { name: "Back" }).click();
       await expect(dialog.getByRole("button", { name: new RegExp(`^${forRequirements}`) })).toBeVisible();
+    });
+
+    await test.step("a pack that reads requirements is offered too, and downloads as one zip", async () => {
+      await dialog.getByRole("button", { name: "Expand Bundles" }).click();
+      await expect(dialog.getByText(packForOthers)).toHaveCount(0);
+      await dialog.getByRole("button", { name: new RegExp(`^${packForRequirements}`) }).click();
+      await expect(dialog.getByRole("listitem").filter({ hasText: "Configure and download" })).toHaveAttribute("aria-current", "step");
+      await expect(dialog.getByText(project.name)).toBeVisible();
+      const pending = page.waitForEvent("download");
+      await dialog.getByRole("button", { name: "Download zip" }).click();
+      expect(fs.readFileSync((await (await pending).path())!).subarray(0, 2).toString()).toBe("PK");
     });
   });
 });

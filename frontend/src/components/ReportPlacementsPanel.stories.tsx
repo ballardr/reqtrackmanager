@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, screen, userEvent, waitFor, within } from "storybook/test";
 
+import { buildFolderApi } from "../testing/reportFolderFixtures";
 import { buildPlacement, buildPlacementApi, buildPlacements } from "../testing/reportPlacementFixtures";
 import { withToast } from "../testing/storybook-helpers";
 import { ReportPlacementsPanel } from "./ReportPlacementsPanel";
@@ -13,7 +14,7 @@ const meta: Meta<typeof ReportPlacementsPanel> = {
   title: "Components/Reports/ReportPlacementsPanel",
   component: ReportPlacementsPanel,
   decorators: [withToast()],
-  args: { api: buildPlacementApi() },
+  args: { api: buildPlacementApi(), folderApi: buildFolderApi() },
 };
 export default meta;
 
@@ -38,28 +39,29 @@ export const MovingAReportToANestedFolderShowsTheDefaultBesideIt: Story = {
     await userEvent.click(rows.getByRole("button", { name: "Actions for Decision register" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "Move to folder…" }));
     const dialog = within(await screen.findByRole("dialog", { name: "Move Decision register" }));
-    const folder = dialog.getByRole("combobox", { name: "Folder" });
-    await userEvent.clear(folder);
-    await userEvent.type(folder, "Governance / Decisions");
+    await expect(await dialog.findByRole("radio", { name: "Decision Management" })).toBeChecked(); // its default folder is offered
+    await userEvent.click(dialog.getByRole("button", { name: "New folder inside" }));
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name of the new folder inside Decision Management" }), "Governance");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
+    await expect(await dialog.findByRole("radio", { name: "Governance" })).toBeChecked();
     await userEvent.click(dialog.getByRole("button", { name: "Move" }));
-    await waitFor(() => expect(args.api!.set).toHaveBeenCalledWith({ report_key: "report:decisions.d1", folder: "Governance/Decisions" }));
-    await expect(await rows.findByText("Governance/Decisions")).toBeInTheDocument();
+    await waitFor(() => expect(args.api!.set).toHaveBeenCalledWith({ report_key: "report:decisions.d1", folder: "Decision Management/Governance" }));
+    await expect(await rows.findByText("Decision Management/Governance")).toBeInTheDocument();
     await expect(rows.getByText("Default: Decision Management")).toBeInTheDocument();
     await expect(await within(document.body).findByText("Report moved.")).toBeInTheDocument();
   },
 };
 
-export const AFolderTooDeepIsFlaggedAndCannotBeSaved: Story = {
-  play: async ({ canvasElement }) => {
+/** The top level is a choice of its own: it files the report outside every folder. */
+export const AReportCanBeFiledAtTheTopLevel: Story = {
+  play: async ({ canvasElement, args }) => {
     const rows = await table(canvasElement);
     await userEvent.click(rows.getByRole("button", { name: "Actions for Decision register" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "Move to folder…" }));
     const dialog = within(await screen.findByRole("dialog", { name: "Move Decision register" }));
-    const folder = dialog.getByRole("combobox", { name: "Folder" });
-    await userEvent.clear(folder);
-    await userEvent.type(folder, "a/b/c/d");
-    await expect(dialog.getByRole("alert")).toHaveTextContent("at most 3 levels");
-    await expect(dialog.getByRole("button", { name: "Move" })).toBeDisabled();
+    await userEvent.click(await dialog.findByRole("radio", { name: "Top level" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Move" }));
+    await waitFor(() => expect(args.api!.set).toHaveBeenCalledWith({ report_key: "report:decisions.d1", folder: "" }));
   },
 };
 

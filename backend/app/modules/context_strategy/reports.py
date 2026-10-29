@@ -1499,6 +1499,7 @@ _REPORTS: tuple[ReportDefinition, ...] = (
         any_subcomponents=("strategy", "future_state", "pain_point", "guiding_principle", "open_question"),
         params=(_MODEL_KEY, _ROLLUP, _STALE_MONTHS, _SINCE),
         record_types=("pain_point", "strategy", "future_state", "open_question", "guiding_principle", "requirement"),
+        view_only=True,
     ),
     ReportDefinition(
         "r9", "upgrade-drivers", "Upgrade drivers",

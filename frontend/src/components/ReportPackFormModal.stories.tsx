@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, screen, userEvent, waitFor, within } from "storybook/test";
 
+import { buildFolderApi } from "../testing/reportFolderFixtures";
 import { buildPackApi, buildPackSummary } from "../testing/reportPackFixtures";
 import { requiredCaptions } from "../testing/requiredMarkers";
 import { withToast } from "../testing/storybook-helpers";
@@ -11,7 +12,7 @@ const meta: Meta<typeof ReportPackFormModal> = {
   title: "Components/Reports/ReportPackFormModal",
   component: ReportPackFormModal,
   decorators: [withToast()],
-  args: { onClose: fn(), onSaved: fn() },
+  args: { onClose: fn(), onSaved: fn(), folderApi: buildFolderApi() },
 };
 export default meta;
 
@@ -54,16 +55,15 @@ export const ATakenNameIsShownInTheDialog: Story = {
   },
 };
 
-/** The folder is optional, suggests the folders packs already use and is saved tidied. */
-export const FolderSuggestsExistingFoldersAndIsSavedTidied: Story = {
-  args: { api: buildPackApi([buildPackSummary({ folder: "Handover" })]) },
+/** The folder is optional (so unmarked), chosen from the scope's folders and saved with the pack. */
+export const FolderIsChosenFromTheTreeAndSaved: Story = {
+  args: { api: buildPackApi([]) },
   play: async ({ args }) => {
     const dialog = within(await screen.findByRole("dialog", { name: "New report pack" }));
     await expect(requiredCaptions(document.body)).toEqual(["Name"]);
-    await waitFor(() => expect(document.querySelectorAll("datalist option").length).toBe(1));
     await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Filed pack");
-    await userEvent.type(dialog.getByRole("combobox", { name: "Folder" }), "  Handover /  Annual ");
+    await userEvent.click(await dialog.findByRole("radio", { name: "Quarterly" }));
     await userEvent.click(dialog.getByRole("button", { name: "Create" }));
-    await waitFor(() => expect(args.api!.create).toHaveBeenCalledWith(expect.objectContaining({ folder: "Handover/Annual" })));
+    await waitFor(() => expect(args.api!.create).toHaveBeenCalledWith(expect.objectContaining({ folder: "Handover/Quarterly" })));
   },
 };

@@ -2,8 +2,10 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
+import type { ReportPackSummary } from "../api/reportPacks";
 import type { ReportRun } from "../api/reports";
 import { buildProject } from "../testing/storybook-helpers";
+import { buildForm, buildPackSummary } from "../testing/reportPackFixtures";
 import { buildReportCatalogueEntry, buildReportResult } from "../testing/reportFixtures";
 import { buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { ReportsDialog } from "./ReportsDialog";
@@ -16,11 +18,13 @@ const run: ReportRun = {
   error: null,
 };
 
-function mockApis(runs: ReportRun[] = []) {
+function mockApis(runs: ReportRun[] = [], packs: ReportPackSummary[] = []) {
   return () => {
     spyOn(api, "get").mockImplementation(async (path: string) => {
       if (path.endsWith("/report-catalogue")) return [entry];
-      if (path.includes("/report-templates") || path.includes("/report-placements") || path.includes("/report-packs")) return [];
+      if (path.endsWith("/report-packs")) return packs;
+      if (path.endsWith("/form")) return buildForm();
+      if (path.includes("/report-templates") || path.includes("/report-placements")) return [];
       if (path.startsWith("/api/v1/report-runs")) return runs;
       if (path.includes("/components") || path.includes("/categories") || path.includes("/resources")) return [];
       return buildReportResult({ title: "Fixture report" });
@@ -91,5 +95,32 @@ export const BackgroundReportsViewIsEmpty: Story = {
   play: async () => {
     const dialog = within(await screen.findByRole("dialog", { name: "Background reports" }));
     await expect(await dialog.findByText(/You have no background reports/)).toBeInTheDocument();
+  },
+};
+
+const pack = buildPackSummary({ id: "pack-1", name: "Handover pack", folder: "Bundles" });
+
+/** A project's dialog lists its report packs beside its reports. */
+export const OffersReportPacksForAProject: Story = {
+  beforeEach: mockApis([], [pack]),
+  play: async () => {
+    const dialog = within(await screen.findByRole("dialog", { name: "Reports" }));
+    await userEvent.click(await dialog.findByRole("button", { name: "Report: Requirements report" }));
+    const picker = within(await screen.findByRole("dialog", { name: "Choose a report" }));
+    await userEvent.click(picker.getByRole("button", { name: "Expand Bundles" }));
+    await expect(picker.getByRole("button", { name: /^Handover pack/ })).toBeInTheDocument();
+  },
+};
+
+/** An organisation's dialog lists its report packs too. */
+export const OffersReportPacksForAnOrganisation: Story = {
+  args: { scope: { kind: "organization", id: "org-1" }, project: undefined },
+  beforeEach: mockApis([], [pack]),
+  play: async () => {
+    const dialog = within(await screen.findByRole("dialog", { name: "Reports" }));
+    await userEvent.click(await dialog.findByRole("button", { name: /^Report:/ }));
+    const picker = within(await screen.findByRole("dialog", { name: "Choose a report" }));
+    await userEvent.click(picker.getByRole("button", { name: "Expand Bundles" }));
+    await expect(picker.getByRole("button", { name: /^Handover pack/ })).toBeInTheDocument();
   },
 };

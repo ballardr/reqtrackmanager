@@ -436,3 +436,15 @@ export const OrganisationFiguresOpenAProjectList: Story = {
     );
   },
 };
+
+/** With the result off (the record list's download dialog) the report is not run for the screen, yet it still offers its download. */
+export const WithoutResultItIsNotRunOnScreen: Story = {
+  args: { showResult: false },
+  beforeEach: () => mockRunApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("button", { name: "Export" })).toBeInTheDocument();
+    await expect(api.get).not.toHaveBeenCalledWith(expect.stringContaining("/reports/fixture-report"));
+    await expect(canvas.queryByRole("table")).not.toBeInTheDocument();
+  },
+};

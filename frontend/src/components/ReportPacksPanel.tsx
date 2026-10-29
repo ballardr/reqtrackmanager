@@ -176,6 +176,7 @@ export function ReportPacksPanel({ api }: { api: ReportPackApi }) {
       {dialog?.kind === "create" && (
         <ReportPackFormModal
           api={api}
+          onFoldersChanged={() => void reload()}
           onClose={() => setDialog(null)}
           onSaved={(saved) => {
             showToast(text.created);
@@ -186,6 +187,7 @@ export function ReportPacksPanel({ api }: { api: ReportPackApi }) {
       {dialog?.kind === "edit" && (
         <ReportPackFormModal
           api={api}
+          onFoldersChanged={() => void reload()}
           pack={dialog.pack}
           onClose={() => setDialog(null)}
           onSaved={() => {

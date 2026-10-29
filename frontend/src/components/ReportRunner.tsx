@@ -8,6 +8,8 @@
  * module's own view, falling back to `ReportViewer` for a report with none.
  *
  * Responsibilities:
+ * - With `showResult` off (the record list's download dialog) only configure and download: nothing is run for
+ *   the screen, so no result is fetched or shown.
  * - Own the run values (declared parameters, `include_children`) and re-run
  *   the report when they change (debounced, so typing in a text parameter
  *   does not fire a request per keystroke; the first run is immediate).
@@ -77,6 +79,7 @@ function initialValues(entry: ReportCatalogueEntry): ReportRunValues {
  * @param scope What it runs against: a project or an organisation, by id.
  * @param organizationId The owning organisation, for the branding template list.
  * @param focusSection A section key to scroll to once the report has loaded (a figure's "see the gap table" link).
+ * @param showResult False to show the parameters and the download menu without running the report on screen.
  */
 /** How a download kind is named to the user (toasts). */
 const DOWNLOAD_NAME: Record<ReportFileKind, string> = {
@@ -85,13 +88,14 @@ const DOWNLOAD_NAME: Record<ReportFileKind, string> = {
 };
 
 export function ReportRunner({
-  entry, scope, organizationId, focusSection,
+  entry, scope, organizationId, focusSection, showResult = true,
 }: {
   entry: ReportCatalogueEntry;
   scope: { kind: "project" | "organization"; id: string };
   /** The owning organisation (branding templates); `undefined` offers no template choice. */
   organizationId: string | undefined;
   focusSection?: string;
+  showResult?: boolean;
 }) {
   const strings = useStrings();
   const { showToast } = useToast();
@@ -116,7 +120,7 @@ export function ReportRunner({
   const blocked = missing.length > 0;
 
   useEffect(() => {
-    if (blocked) return undefined;
+    if (blocked || !showResult) return undefined;
     let cancelled = false;
     const timer = setTimeout(
       () => {
@@ -136,7 +140,7 @@ export function ReportRunner({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [entry, blocked, runValues, signature]);
+  }, [entry, blocked, showResult, runValues, signature]);
 
   // Bring a linked-to gap table into view once its report has rendered (once per arrival, not per re-run).
   const scrolled = useRef<string | null>(null);
@@ -182,7 +186,7 @@ export function ReportRunner({
     }
   }
 
-  const busy = !blocked && settled?.signature !== signature;
+  const busy = showResult && !blocked && settled?.signature !== signature;
   const error = busy ? null : (settled?.error ?? null);
   const view = getReportView(entry.module_key, entry.key);
   // Figures link to pages in a project report; an organisation report spans projects, so a figure opens a
