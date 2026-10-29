@@ -17,7 +17,7 @@ function mockApis(packs: ReportPackSummary[] = []) {
       if (path.endsWith("/report-catalogue")) return [entry];
       if (path.endsWith("/report-packs")) return packs;
       if (path.endsWith("/form")) return buildForm();
-      if (path.includes("/report-templates") || path.includes("/report-placements")) return [];
+      if (path.includes("/report-placements")) return [];
       if (path.includes("/components") || path.includes("/categories") || path.includes("/resources")) return [];
       return buildReportResult({ title: "Fixture report" });
     });
@@ -46,6 +46,20 @@ export const OffersTheRequirementReportAndTheCatalogue: Story = {
     const picker = within(await screen.findByRole("dialog", { name: "Choose a report" }));
     await expect(picker.getByRole("button", { name: "Expand Platform" })).toBeInTheDocument();
     await expect(picker.getByRole("button", { name: "Expand Fixture Module" })).toBeInTheDocument();
+  },
+};
+
+/** The requirement report offers only its layout and resource sections: no requirement filters (the requirements list's
+ * Export and Download report carry those) and no branding template choice (the organisation's default applies). */
+export const RequirementReportHasNoFiltersOrBranding: Story = {
+  play: async () => {
+    const dialog = within(await screen.findByRole("dialog", { name: "Reports" }));
+    await expect(await dialog.findByRole("button", { name: "Generate PDF" })).toBeInTheDocument();
+    await expect(dialog.getByLabelText("Chapter layout")).toBeInTheDocument();
+    await expect(dialog.queryByText("Filters")).not.toBeInTheDocument();
+    await expect(dialog.queryByLabelText("Report template")).not.toBeInTheDocument();
+    await expect(dialog.queryByLabelText("Branding template")).not.toBeInTheDocument();
+    await expect(api.get).not.toHaveBeenCalledWith(expect.stringContaining("/report-templates"));
   },
 };
 

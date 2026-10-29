@@ -43,7 +43,6 @@ import {
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { REPORT_RUN_QUEUED_EVENT } from "../hooks/useActiveReportRuns";
-import { useReportTemplates } from "../hooks/useReportTemplates";
 import { downloadBlob } from "../utils/download";
 import { Badge } from "./Badge";
 import { LabeledSelect } from "./LabeledSelect";
@@ -69,29 +68,23 @@ function zipName(name: string): string {
 
 /**
  * @param api The calls that run this pack.
- * @param organizationId The owning organisation (branding templates).
  * @param name The pack's name (the download's file name and the toasts).
  * @param includeChildren Project runs: also read readable child projects.
  */
 export function ReportPackRunner({
-  api, organizationId, name, includeChildren = false,
+  api, name, includeChildren = false,
 }: {
   api: ReportPackRunApi;
-  organizationId: string;
   name: string;
   includeChildren?: boolean;
 }) {
   const strings = useStrings();
   const text = strings.reportPacks;
   const { showToast } = useToast();
-  const templates = useReportTemplates(organizationId);
   const [form, setForm] = useState<ReportPackForm | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [values, setValues] = useState<VariableValues>({});
   const [setId, setSetId] = useState("");
-  const [templateId, setTemplateId] = useState("");
-  // What a download uses when none is chosen (unless the pack names its own): the organisation's default.
-  const defaultTemplate = templates.find((t) => t.is_default);
   const [preview, setPreview] = useState<{ signature: string; result: ReportPackPreview | null; error: string | null } | null>(null);
   const [downloading, setDownloading] = useState(false);
   const hasPreviewed = useRef(false);
@@ -117,9 +110,8 @@ export function ReportPackRunner({
     if (!form) return null;
     const out: ReportPackRunBody = { variables: chosen(form, values), include_children: includeChildren || undefined };
     if (setId) out.variable_set_id = setId;
-    if (templateId) out.report_template_id = templateId;
     return out;
-  }, [form, values, setId, templateId, includeChildren]);
+  }, [form, values, setId, includeChildren]);
   const signature = JSON.stringify(body);
 
   useEffect(() => {
@@ -197,15 +189,6 @@ export function ReportPackRunner({
           />
         )}
         <ReportVariablesForm variables={form.variables} values={values} onChange={setVariable} />
-        {templates.length > 0 && (
-          <LabeledSelect help={strings.help.reportBrandingTemplate}
-            label={text.brandingLabel}
-            value={templateId}
-            onChange={setTemplateId}
-            options={templates.map((t) => ({ value: t.id, label: t.name }))}
-            placeholder={defaultTemplate ? strings.reports.templateDefaultNamed(defaultTemplate.name) : strings.reports.noTemplate}
-          />
-        )}
       </div>
       {form.sets.find((s) => s.id === setId)?.warnings.map((warning) => (
         <p key={warning} role="status" className="text-muted" style={{ margin: 0 }}>{warning}</p>

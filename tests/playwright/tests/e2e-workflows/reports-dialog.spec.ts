@@ -43,7 +43,7 @@ test.describe("Reports dialog", () => {
     await expect(page.getByRole("dialog", { name: "Reports" }).getByLabel("Record type")).toBeVisible();
   });
 
-  test("the organisation's default template is offered by name and a layout can choose its own", async ({ page }) => {
+  test("the organisation's default template applies without a choice in the dialog, and only one is the default", async ({ page }) => {
     const project = await createDisposableProject(page.request, PERSONAS.orgAdminAlphaBeta.email, "E2E Default Template");
     const name = `E2E Default ${Date.now()}`;
     const created = await page.request.post(`${API}/orgs/${project.organizationId}/report-templates`, {
@@ -58,10 +58,18 @@ test.describe("Reports dialog", () => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await page.goto(`/projects/${project.projectId}?reports=choose`);
 
-    await test.step("the requirement report names the default instead of 'none'", async () => {
+    await test.step("the requirement report offers no template choice and no requirement filters", async () => {
       const dialog = page.getByRole("dialog", { name: "Reports" });
-      await expect(dialog.getByLabel("Report template")).toHaveValue("");
-      await expect(dialog.getByLabel("Report template").locator("option", { hasText: `Default (${name})` })).toHaveCount(1);
+      await expect(dialog.getByRole("button", { name: "Generate PDF" })).toBeVisible();
+      await expect(dialog.getByLabel("Report template")).toHaveCount(0);
+      await expect(dialog.getByLabel("Branding template")).toHaveCount(0);
+      await expect(dialog.getByText("Filters", { exact: true })).toHaveCount(0);
+    });
+
+    await test.step("a download names no template: the server applies the default", async () => {
+      const request = page.waitForRequest((r) => r.method() === "POST" && r.url().endsWith(`/projects/${project.projectId}/reports`));
+      await page.getByRole("dialog", { name: "Reports" }).getByRole("button", { name: "Generate PDF" }).click();
+      expect((await request).postDataJSON()).not.toHaveProperty("report_template_id");
     });
 
     await test.step("only one template is the default", async () => {

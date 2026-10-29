@@ -258,11 +258,13 @@ test.describe("Context & Strategy: Reports UI", () => {
     await expect(page.getByRole("region", { name: "Accepted Pain Points with no Requirement" })).toBeVisible();
   });
 
-  test("every catalogue report downloads as PDF and CSV, and a branding template passes through", async ({ page, request }) => {
+  test("every catalogue report downloads as PDF and CSV, with no branding choice on the download", async ({ page, request }) => {
     const { project, org, headers, titles } = await setup(page, request);
-    const template = await (await request.post(`${API_BASE_URL}/api/v1/orgs/${org.id}/report-templates`, {
+    // A template exists, yet the download offers no choice of it.
+    const created = await request.post(`${API_BASE_URL}/api/v1/orgs/${org.id}/report-templates`, {
       headers, data: { name: "E2E Reports Branding", accent_color_hex: "#112233" },
-    })).json();
+    });
+    expect(created.ok(), await created.text()).toBeTruthy();
     await page.goto(`/projects/${project.id}?reports=choose`);
     await expect(reportPickerButton(page)).toBeVisible();
 
@@ -301,13 +303,14 @@ test.describe("Context & Strategy: Reports UI", () => {
       expect(csv.split("\n")[0]).toMatch(/,Tags\r?$/);
     });
 
-    await test.step("the chosen branding template is sent with the PDF download", async () => {
+    await test.step("there is no branding choice: the PDF download names no template", async () => {
       await chooseReport(page, "Pain Point prioritisation");
-      await page.getByRole("combobox", { name: "Branding template" }).selectOption({ label: template.name });
+      await expect(page.getByRole("combobox", { name: "Branding template" })).toHaveCount(0);
       await page.getByRole("button", { name: "Export" }).click();
-      const pdf = page.waitForResponse((r) => r.url().includes("format=pdf") && r.url().includes(`report_template_id=${template.id}`));
+      const pdf = page.waitForResponse((r) => r.url().includes("format=pdf"));
       await page.getByRole("button", { name: "Download PDF report" }).click();
       const response = await pdf;
+      expect(response.url()).not.toContain("report_template_id");
       expect(response.status()).toBe(200);
       expect(response.headers()["content-type"]).toContain("application/pdf");
     });

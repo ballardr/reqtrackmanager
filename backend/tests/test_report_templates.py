@@ -193,7 +193,10 @@ def world(client, admin_token) -> World:
 def _layout(world: World, **extra) -> dict:
     resp = world.client.post(
         f"/api/v1/orgs/{world.org['id']}/report-layouts",
-        json={"name": "Branded layout", "family": "document", "tree": {**empty_tree("document"), "nodes": [{"type": "heading", "text": "Hi"}]}, **extra},
+        json={
+            "name": "Branded layout", "family": "document",
+            "tree": {**empty_tree("document"), "nodes": [{"type": "heading", "text": "Hi"}]}, **extra,
+        },
         headers=auth_headers(world.token),
     )
     assert resp.status_code == 201, resp.text
@@ -269,3 +272,51 @@ def test_a_project_bundle_restores_a_layouts_template_by_name(world):
     assert imported.json()["warnings"] == []
     listed = world.client.get(f"/api/v1/projects/{imported.json()['project']['id']}/report-layouts", headers=h).json()
     assert [layout["report_template_id"] for layout in listed if layout["name"] == "P layout"] == [own["id"]]
+
+
+# ---- a download picks its branding itself: the layout's own template, else the organisation's default, else none -----
+
+
+def _footer_text(content: bytes) -> str:
+    """The text of every footer part in a Word file (a template's footer text is how a download shows its branding)."""
+    with zipfile.ZipFile(io.BytesIO(content)) as archive:
+        return " ".join(archive.read(n).decode() for n in archive.namelist() if n.startswith("word/footer"))
+
+
+def _download_docx(world: World, project: dict, layout: dict) -> bytes:
+    resp = world.client.get(
+        f"/api/v1/projects/{project['id']}/custom-reports/{layout['id']}/run", params={"format": "docx"},
+        headers=auth_headers(world.token),
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.content
+
+
+def test_a_download_uses_the_layouts_template_else_the_default_else_none(world):
+    """The download dialog offers no branding choice, so the server alone decides which template applies."""
+    org_id, project = world.org["id"], world.project()
+    layout = _layout(world)
+    assert "BRAND-DEFAULT" not in _footer_text(_download_docx(world, project, layout))  # nothing set: unbranded
+
+    _template(world.client, world.token, org_id, "Org default", is_default=True, footer_text="BRAND-DEFAULT")
+    assert "BRAND-DEFAULT" in _footer_text(_download_docx(world, project, layout))  # the organisation's default
+
+    own = _template(world.client, world.token, org_id, "Layout own", footer_text="BRAND-OWN")
+    owned = _layout(world, name="Owned layout", report_template_id=own["id"])
+    footer = _footer_text(_download_docx(world, project, owned))
+    assert "BRAND-OWN" in footer and "BRAND-DEFAULT" not in footer  # the layout's override beats the default
+
+
+def test_a_module_report_download_uses_the_organisations_default_only(world):
+    """A catalogue report has no per-report template: with no `report_template_id` the default applies, else none."""
+    project = world.project()
+    url = f"/api/v1/projects/{project['id']}/reports"
+    h = auth_headers(world.token)
+    unbranded = world.client.post(url, json={"format": "docx"}, headers=h)
+    assert unbranded.status_code == 200, unbranded.text
+    assert "BRAND-DEFAULT" not in _footer_text(unbranded.content)
+
+    _template(world.client, world.token, world.org["id"], "Org default", is_default=True, footer_text="BRAND-DEFAULT")
+    branded = world.client.post(url, json={"format": "docx"}, headers=h)
+    assert branded.status_code == 200, branded.text
+    assert "BRAND-DEFAULT" in _footer_text(branded.content)

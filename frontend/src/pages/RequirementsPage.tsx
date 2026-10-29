@@ -122,7 +122,14 @@ export function RequirementsPage() {
   const [search, setSearch] = useUrlText("q");
   const [statusFilter, setStatusFilter] = useUrlChoice<RequirementStatus>("status", STATUS_OPTIONS);
   const [completedFilter, setCompletedFilter] = useUrlFlag("completed");
-  const [targetStageFilter, setTargetStageFilter] = useUrlText("stage");
+  // The target version is a range by the versions' order. `stage` is the single-version form older links and
+  // bookmarks use: it is read as a range of one and dropped as soon as either end is changed.
+  const [legacyStage, setLegacyStage] = useUrlText("stage");
+  const [stageFromParam, setStageFromParam] = useUrlText("stage_from");
+  const [stageToParam, setStageToParam] = useUrlText("stage_to");
+  const stageFrom = stageFromParam || legacyStage;
+  const stageTo = stageToParam || legacyStage;
+  const [componentFilter, setComponentFilter] = useUrlText("component");
   const [categoryFilter, setCategoryFilter] = useUrlText("category");
   const [hasCommentsOnly, setHasCommentsOnly] = useUrlFlag("comments");
   const [onlyWatched, setOnlyWatched] = useUrlFlag("watched");
@@ -175,13 +182,22 @@ export function RequirementsPage() {
     if (search) params.set("search", search);
     if (statusFilter) params.set("status", statusFilter);
     if (completedFilter) params.set("is_completed", "true");
-    if (targetStageFilter) params.set("target_stage_id", targetStageFilter);
+    if (stageFrom) params.set("target_stage_from_id", stageFrom);
+    if (stageTo) params.set("target_stage_to_id", stageTo);
+    if (componentFilter) params.set("component_id", componentFilter);
     if (categoryFilter) params.set("category_id", categoryFilter);
     if (hasCommentsOnly) params.set("has_comments", "true");
     if (onlyWatched) params.set("only_watched", "true");
     if (includeArchived) params.set("include_archived", "true");
     addSharedListFilters(params, tagFilter, projectScope);
     return params;
+  }
+
+  /** Sets one end of the target version range, keeping the other end a legacy `stage` link implied. */
+  function setStageRange(from: string, to: string) {
+    setLegacyStage("");
+    setStageFromParam(from);
+    setStageToParam(to);
   }
 
   function listParams(offset: number): URLSearchParams {
@@ -258,7 +274,7 @@ export function RequirementsPage() {
   }
 
   useLoadOnChange(reload, [
-    projectId, search, statusFilter, completedFilter, targetStageFilter, categoryFilter,
+    projectId, search, statusFilter, completedFilter, stageFrom, stageTo, componentFilter, categoryFilter,
     hasCommentsOnly, onlyWatched, includeArchived, sort, tagFilter.query, projectScope.scope,
   ]);
 
@@ -560,12 +576,32 @@ export function RequirementsPage() {
                 ))}
               </select>
             </FilterField>
-            <FilterField label="Target version">
-              <select className="input" value={targetStageFilter} onChange={(e) => setTargetStageFilter(e.target.value)}>
-                <option value="">All versions</option>
+            <FilterField label={strings.requirements.targetVersionFrom}>
+              <select className="input" value={stageFrom} onChange={(e) => setStageRange(e.target.value, stageTo)}>
+                <option value="">{strings.requirements.firstVersion}</option>
                 {stages.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
+                  </option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterField label={strings.requirements.targetVersionTo}>
+              <select className="input" value={stageTo} onChange={(e) => setStageRange(stageFrom, e.target.value)}>
+                <option value="">{strings.requirements.lastVersion}</option>
+                {stages.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </FilterField>
+            <FilterField label={strings.requirements.component}>
+              <select className="input" value={componentFilter} onChange={(e) => setComponentFilter(e.target.value)}>
+                <option value="">{strings.requirements.allComponents}</option>
+                {components.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
                   </option>
                 ))}
               </select>

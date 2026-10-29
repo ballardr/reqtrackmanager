@@ -15,7 +15,7 @@ const second = buildReportCatalogueEntry({
 
 function mockApis() {
   spyOn(api, "get").mockImplementation(async (path: string) => {
-    if (path.includes("/report-templates") || path.includes("/report-placements")) return [];
+    if (path.includes("/report-placements")) return [];
     if (path.startsWith("/api/v1/report-runs")) return [];
     return buildReportResult({ title: path.includes("second-report") ? "Second report" : "Fixture report" });
   });
@@ -24,7 +24,7 @@ function mockApis() {
 const meta: Meta<typeof ReportCatalogue> = {
   title: "Components/Reports/ReportCatalogue",
   component: ReportCatalogue,
-  args: { entries: [first, second], scope: { kind: "project", id: "project-1" }, organizationId: "org-1" },
+  args: { entries: [first, second], scope: { kind: "project", id: "project-1" } },
   decorators: [withRouter("/projects/project-1/reports", "/projects/:projectId/reports"), withToast(), withStatefulAuth(buildUser({ ui_preferences: {} }))],
   beforeEach: mockApis,
 };
@@ -104,7 +104,7 @@ export const AppliesPlacementsToExtraEntries: Story = {
       if (path.includes("/report-placements/resolved")) {
         return [{ report_key: "report:platform.requirements", folder: "Core/Documents", hidden: false }];
       }
-      if (path.includes("/report-templates") || path.startsWith("/api/v1/report-runs")) return [];
+      if (path.startsWith("/api/v1/report-runs")) return [];
       return buildReportResult({ title: "Fixture report" });
     });
   },

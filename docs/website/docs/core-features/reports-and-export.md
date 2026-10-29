@@ -6,13 +6,13 @@ sidebar_position: 5
 
 ## Generating a report
 
-A project's **Reports** button (at the top of the project overview) opens a dialog that generates a PDF, Word (DOCX) or CSV export of its requirements, filtered by component, category, status, or keyword, with the organisation's shared resource files appended as extra sections. **Generate PDF** is the main button; **More formats** offers the Word file and CSV. A PDF or Word export can use one of the organisation's **report templates** — an accent colour, an optional cover page, logo and footer text — for consistent, on-brand output across projects.
+A project's **Reports** button (at the top of the project overview) opens a dialog that generates a PDF, Word (DOCX) or CSV export of its requirements, with the organisation's shared resource files appended as extra sections. **Generate PDF** is the main button; **More formats** offers the Word file and CSV. To export only some requirements (one component, a range of target versions, a status or tag), filter the **Requirements** list and use its **Export** or **Download report**, which carry the list's filters. A PDF or Word export is branded with one of the organisation's **report templates** — an accent colour, an optional cover page, logo and footer text — for consistent, on-brand output across projects.
 
-**Which template is used.** The one you choose in the dialog; otherwise the report layout's own template (set in **Layout details → Branding template**, available when editing a layout); otherwise the organisation's **default template** (tick **Default template** on a report template; only one template can be the default); otherwise none. The dialog names the template that will apply, for example *Default (House style)*.
+**Which template is used.** You do not choose one when downloading. A report layout's own template applies (set in **Layout details → Branding template**, available when editing a layout); otherwise the organisation's **default template** (tick **Default template** on a report template; only one template can be the default); otherwise none. Reports from modules and the requirements report use the organisation's default template.
 
 | Reports |
 | --- |
-| Filtered PDF/Word/CSV export with a selectable organisation branding template |
+| PDF/Word/CSV export of the requirements, branded with the organisation's default template |
 | ![Reports page with filters and a selected branding template](../../static/img/screenshots/reports-page.png) |
 
 The same dialog can also offer reports from enabled modules (for example [Context & Strategy's](../modules/context-strategy-module/reports.md) and [Decision Management's](../modules/decision-management-module/reports.md)) in the same **Report** picker, a dialog with search, folders and favourites (see [Finding and organising reports](./custom-reports/organising-reports.md)). A module report is offered only while its module, and the sub-component it belongs to, is on for the project. When no module report applies, the picker is hidden and the page is the requirements report alone.

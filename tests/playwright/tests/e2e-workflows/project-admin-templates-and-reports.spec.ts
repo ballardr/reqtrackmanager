@@ -83,11 +83,12 @@ test.describe("org report templates and project report setup", () => {
       await expect(page.getByLabel("Report type")).toHaveCount(0);
     });
 
-    await test.step("the requirement report offers the template, pre-selecting none while the organisation has no default", async () => {
+    await test.step("the requirement report offers no template choice", async () => {
       await page.getByRole("link", { name: "Overview", exact: true }).click();
       await page.getByRole("button", { name: "Reports", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Reports" });
-      await expect(dialog.getByLabel("Report template")).toHaveValue("");
+      await expect(dialog.getByRole("button", { name: "Generate PDF" })).toBeVisible();
+      await expect(dialog.getByLabel("Report template")).toHaveCount(0);
       await expect(dialog.getByText("Template & layout")).toHaveCount(0);
     });
 

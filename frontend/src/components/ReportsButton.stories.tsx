@@ -9,7 +9,7 @@ import { ReportsButton } from "./ReportsButton";
 function mockApis() {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path.endsWith("/report-catalogue")) return [buildReportCatalogueEntry({ folder: "Fixture Module" })];
-    if (path.includes("/report-templates") || path.includes("/report-placements") || path.includes("/report-packs")) return [];
+    if (path.includes("/report-placements") || path.includes("/report-packs")) return [];
     if (path.startsWith("/api/v1/report-runs")) return [];
     if (path.includes("/components") || path.includes("/categories") || path.includes("/resources")) return [];
     return buildReportResult({ title: "Fixture report" });
