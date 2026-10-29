@@ -295,6 +295,136 @@ def test_a_requester_who_has_since_lost_access_cannot_download_the_file(world, d
     assert download(world, run["id"], member).status_code in (401, 403, 404)
 
 
+# ---- generating again and the in-progress list ------------------------------------------------------------------
+
+
+def again(world: World, run_id: str, token: str | None = None):
+    return world.client.post(f"/api/v1/report-runs/{run_id}/again", headers=auth_headers(token or world.token))
+
+
+def test_an_expired_run_can_be_generated_again_as_a_fresh_queued_run(world, db):
+    project, layout, run = prepared(world)
+    drain()
+    world.client.delete(f"/api/v1/report-runs/{run['id']}", headers=auth_headers(world.token))
+    assert get_run(world, run["id"]).json()["status"] == "expired"
+
+    resp = again(world, run["id"])
+
+    assert resp.status_code == 202, resp.text
+    body = resp.json()
+    assert body["run"]["id"] != run["id"] and body["run"]["status"] == "queued" and body["run"]["format"] == "pdf"
+    assert body["definition_changed"] is False
+    drain()
+    new_row = run_row(db, body["run"]["id"])
+    assert new_row.status == "ready" and new_row.layout_id == uuid.UUID(layout["id"])
+    assert download(world, body["run"]["id"]).content.startswith(b"%PDF")
+    assert run_row(db, run["id"]).status == "expired"  # the old row stays as provenance
+
+
+def test_a_failed_run_can_be_generated_again_and_says_when_the_layout_changed(world, db):
+    project, layout, run = prepared(world)
+    row = run_row(db, run["id"])
+    row.status, row.error = "failed", report_run_jobs.FAILURE_OTHER
+    db.commit()
+    world.client.put(
+        f"/api/v1/projects/{project['id']}/report-layouts/{layout['id']}/tree",
+        json={"tree": document_tree("v2 {{record.title}}"), "base_version": layout["current_version"]},
+        headers=auth_headers(world.token),
+    )
+
+    body = again(world, run["id"]).json()
+
+    assert body["definition_changed"] is True
+    assert run_row(db, body["run"]["id"]).layout_version == layout["current_version"] + 1  # today's version, not the old one
+
+
+def test_a_run_that_is_waiting_preparing_or_downloadable_is_not_generated_again(world, db):
+    _, _, run = prepared(world)
+    assert again(world, run["id"]).status_code == 409  # waiting
+    drain()
+    assert again(world, run["id"]).status_code == 409  # ready: download it
+
+
+def test_generating_again_keeps_the_format_scope_and_variable_values(world, db):
+    project = world.project()
+    world.requirement(project, "One")
+    layout = make_layout(world, sheet_tree(), "Sheet", project=project)
+    run = queue(world, project, layout, format="xlsx", include_children=True).json()
+    drain()
+    world.client.delete(f"/api/v1/report-runs/{run['id']}", headers=auth_headers(world.token))
+
+    body = again(world, run["id"]).json()
+
+    new_row = run_row(db, body["run"]["id"])
+    assert new_row.format == "xlsx" and new_row.project_id == uuid.UUID(project["id"])
+    assert new_row.params["include_children"] is True and new_row.params["variables"] == run_row(db, run["id"]).params["variables"]
+
+
+def test_only_the_requester_can_generate_a_run_again(world, db):
+    project, layout, run = prepared(world)
+    row = run_row(db, run["id"])
+    row.status = "expired"
+    db.commit()
+    other = member_in(world, project)
+
+    assert again(world, run["id"], token=other).status_code == 404
+
+
+def test_a_requester_who_lost_access_cannot_generate_again(world, db):
+    from app.models.user import User
+
+    project = world.project()
+    world.requirement(project, "One")
+    layout = make_layout(world, document_tree(), "Doc", project=project)
+    member = member_in(world, project)
+    run = queue(world, project, layout, token=member).json()
+    row = run_row(db, run["id"])
+    row.status = "expired"
+    db.get(User, row.requested_by).is_archived = True
+    db.commit()
+
+    assert again(world, run["id"], token=member).status_code in (401, 403, 404)
+
+
+def test_a_deleted_layout_cannot_be_generated_again(world, db):
+    project, layout, run = prepared(world)
+    drain()
+    world.client.delete(f"/api/v1/report-runs/{run['id']}", headers=auth_headers(world.token))
+    deleted = world.client.delete(f"/api/v1/projects/{project['id']}/report-layouts/{layout['id']}", headers=auth_headers(world.token))
+    assert deleted.status_code in (200, 204), deleted.text
+
+    assert again(world, run["id"]).status_code == 404
+
+
+def test_generating_again_counts_against_the_queue_limit(world, db, monkeypatch):
+    _, _, first = prepared(world)
+    _, _, second = prepared(world)
+    drain()
+    for run in (first, second):
+        world.client.delete(f"/api/v1/report-runs/{run['id']}", headers=auth_headers(world.token))
+    monkeypatch.setattr(report_run_jobs, "MAX_ACTIVE_PER_USER", 1)
+
+    assert again(world, first["id"]).status_code == 202
+    assert again(world, second["id"]).status_code == 429
+
+
+def test_the_list_can_be_narrowed_to_runs_in_progress(world, db):
+    _, _, waiting = prepared(world)
+    project = world.project()
+    world.requirement(project, "Two")
+    done_layout = make_layout(world, document_tree(), "Done", project=project)
+    done = queue(world, project, done_layout).json()
+    row = run_row(db, done["id"])
+    row.status = "ready"
+    db.commit()
+
+    everything = world.client.get("/api/v1/report-runs", headers=auth_headers(world.token)).json()
+    active = world.client.get("/api/v1/report-runs?active=true", headers=auth_headers(world.token)).json()
+
+    assert {r["id"] for r in everything} >= {waiting["id"], done["id"]}
+    assert [r["id"] for r in active] == [waiting["id"]]
+
+
 # ---- removing and expiring -------------------------------------------------------------------------------------
 
 

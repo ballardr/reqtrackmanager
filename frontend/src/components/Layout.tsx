@@ -19,6 +19,7 @@ import { installedModules } from "../modules/registry";
 import { APP_VERSION, BUILD_DATE, GIT_SHA } from "../version";
 import { HeaderSearch } from "./HeaderSearch";
 import { NotificationBell } from "./NotificationBell";
+import { ReportRunsIndicator } from "./ReportRunsIndicator";
 import { NavRailLink } from "./NavRailLink";
 import { ProjectNavSection } from "./ProjectNavSection";
 import { Tooltip } from "./Tooltip";
@@ -199,6 +200,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
         {user && (
           <div className="row">
             <HeaderSearch />
+            <ReportRunsIndicator />
             <NotificationBell />
             {clientConfig?.help_enabled && (
               <Tooltip label={strings.nav.help}>

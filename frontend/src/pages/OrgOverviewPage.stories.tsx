@@ -187,14 +187,13 @@ const orgReport = buildReportCatalogueEntry({
   path: `/api/v1/orgs/${ORG_ID}/modules/fixture_report_module/reports/fixture-report`,
 });
 
-/** The "Reports" menu beside the title appears only when the organisation catalogue lists a report the caller can
+/** The "Reports" button beside the title appears only when the organisation catalogue lists a report the caller can
  * run, and opens a dialog that lists it generically (no module is named here). */
-export const ReportsMenuOpensTheReportsDialog: Story = {
+export const ReportsButtonOpensTheReportsDialog: Story = {
   beforeEach: () => mockOrgOverviewApis({ reports: [orgReport] }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole("button", { name: "Reports" }));
-    await userEvent.click(await screen.findByRole("menuitem", { name: "Choose a report…" }));
     const dialog = within(await screen.findByRole("dialog", { name: "Reports" }));
     await expect(await dialog.findByText(/Acme Corp · generated/)).toBeInTheDocument();
   },

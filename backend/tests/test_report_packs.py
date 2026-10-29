@@ -1151,6 +1151,23 @@ def test_a_pack_job_with_nothing_runnable_fails_with_a_fixed_sentence(world, sce
     assert row["status"] == "failed" and "None of the reports" in row["error"]
 
 
+def test_an_expired_pack_run_is_generated_again_with_its_set_and_values(world, scene, db):
+    pack = created(world, org_url(world), "Handover again", definition(layout_entry("Overview", "docx"), variables=[CATEGORIES]))
+    chosen = save_set(world, sets_url(org_url(world), pack), "Alpha", {"categories": ["Security"]}).json()
+    run_id = queue_pack(world, scene, pack, {"variable_set_id": chosen["id"]}).json()["id"]
+    drain()
+    world.client.delete(f"/api/v1/report-runs/{run_id}", headers=auth_headers(world.token))
+
+    resp = world.client.post(f"/api/v1/report-runs/{run_id}/again", headers=auth_headers(world.token))
+
+    assert resp.status_code == 202, resp.text
+    fresh = resp.json()["run"]
+    assert fresh["id"] != run_id and fresh["format"] == "zip" and fresh["layout_name"] == "Handover again"
+    assert drain() >= 1
+    done = world.client.get(f"/api/v1/report-runs/{fresh['id']}/download", headers=auth_headers(world.token))
+    assert done.status_code == 200 and manifest(zipfile.ZipFile(io.BytesIO(done.content)))["variable_set"] == "Alpha"
+
+
 def test_a_hidden_pack_cannot_be_queued_and_only_the_requester_downloads(world, scene):
     pack = created(world, org_url(world), "Default pack", definition(layout_entry("Rows", "csv", variables={"categories": ["Billing"]})))
     queued = queue_pack(world, scene, pack)

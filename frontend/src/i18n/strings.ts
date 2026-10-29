@@ -1845,9 +1845,6 @@ const en = {
   },
   reports: {
     title: "Reports",
-    menuLabel: "Reports menu",
-    chooseReport: "Choose a report…",
-    backgroundReports: "Background reports…",
     generatePdf: "Generate PDF",
     // A long report table is paged on screen; exports still carry every row.
     tableShowing: (shown: number, total: number) => `Showing ${shown} of ${total} rows`,
@@ -1867,7 +1864,6 @@ const en = {
     includeArchived: "Include archived {requirements}",
     resourceSections: "Resource sections",
   },
-  // Background runs of custom reports: the panel on the Reports pages.
   reportVariables: {
     groupLabel: "Report variables",
     choose: "Choose…",
@@ -2054,34 +2050,35 @@ const en = {
     queueFailed: "Could not queue the pack.",
     defaultFolder: "Report packs",
   },
+  // Background runs of custom reports: the dialog a notification opens and the top-bar indicator.
   reportRuns: {
-    title: "Background reports",
-    description:
-      "Reports too big to produce while you wait are prepared in the background and you are notified when they are ready. Only you can download one, and the file is deleted when it expires.",
-    listLabel: "Background reports",
-    empty: "You have no background reports. A report too big to produce while you wait is prepared here, and you are notified when it is ready.",
-    reportHeading: "Report",
-    formatHeading: "Format",
-    statusHeading: "Status",
-    requestedHeading: "Requested",
-    expiresHeading: "Available until",
-    actionsHeading: "Actions",
-    download: "Download",
-    remove: "Delete file",
-    cancel: "Cancel",
-    removed: "The report file was deleted.",
-    cancelled: "The report was cancelled.",
-    downloaded: (name: string) => `Downloaded ${name}.`,
-    downloadFailed: "Could not download the report.",
-    loadFailed: "Your background reports could not be loaded.",
     queued: (title: string) =>
       `${title} is too big to produce while you wait. It is being prepared in the background and you will be notified when it is ready.`,
     queueFailed: "Could not start the report in the background.",
-    notReady: "—",
-    confirmRemove: (name: string, waiting: boolean) =>
-      waiting
-        ? `Cancel ${name}? It has not started, and you can request it again later.`
-        : `Delete the stored file for ${name}? You can produce the report again at any time.`,
+    // The dialog a "report ready" notification opens.
+    notFound: "This report is not in your list of background reports.",
+    loadFailed: "Could not load this report.",
+    formatLine: (format: string, size: string | null) => (size ? `${format} · ${size}` : format),
+    requested: (when: string) => `Requested ${when}`,
+    readyUntil: (when: string) => `Your report is ready. You can download it until ${when}.`,
+    download: "Download",
+    downloaded: (name: string) => `Downloaded ${name}.`,
+    downloadFailed: "Could not download the report. It may have expired.",
+    preparing: "This report is still being prepared. You will be notified when it is ready, and you can leave this page.",
+    expired: "This file was removed after its retention period. You can generate the report again.",
+    failed: (reason: string) => `This report could not be produced. ${reason}`,
+    generateAgain: "Generate again",
+    generateAgainNote:
+      "Generating again runs the report afresh with today's data and your current access. It is not a copy of the old file.",
+    generatingAgain: "Generating…",
+    generatedAgain: "A fresh run of this report has been queued. You will be notified when it is ready.",
+    generatedAgainChanged: "The report was edited since the earlier run, so the new file follows its latest version.",
+    generateAgainFailed: "Could not generate the report again.",
+    // The top-bar indicator of reports being prepared.
+    indicatorLabel: (count: number) => `${count} ${count === 1 ? "report" : "reports"} being prepared`,
+    indicatorTitle: "Reports being prepared",
+    indicatorHint: "You will be notified when each one is ready.",
+    rowStatus: (statusLabel: string, when: string) => `${statusLabel} · requested ${when}`,
   },
   // Custom report layouts: the list (Org Admin and Project Admin "Report layouts") and the designer.
   reportOutline: {

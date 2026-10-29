@@ -47,7 +47,7 @@ import {
   variableDefaults,
   variablesRunValue,
 } from "../api/reports";
-import { REPORT_RUN_QUEUED_EVENT } from "../hooks/useReportRuns";
+import { REPORT_RUN_QUEUED_EVENT } from "../hooks/useActiveReportRuns";
 import { useReportTemplates } from "../hooks/useReportTemplates";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { getReportView } from "../modules/registry";

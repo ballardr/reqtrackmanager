@@ -6,7 +6,7 @@ sidebar_position: 5
 
 ## Generating a report
 
-A project's **Reports** menu (at the top of the project overview, **Choose a report…**) opens a dialog that generates a PDF, Word (DOCX) or CSV export of its requirements, filtered by component, category, status, or keyword, with the organisation's shared resource files appended as extra sections. **Generate PDF** is the main button; **More formats** offers the Word file and CSV. A PDF or Word export can use one of the organisation's **report templates** — an accent colour, an optional cover page, logo and footer text — for consistent, on-brand output across projects.
+A project's **Reports** button (at the top of the project overview) opens a dialog that generates a PDF, Word (DOCX) or CSV export of its requirements, filtered by component, category, status, or keyword, with the organisation's shared resource files appended as extra sections. **Generate PDF** is the main button; **More formats** offers the Word file and CSV. A PDF or Word export can use one of the organisation's **report templates** — an accent colour, an optional cover page, logo and footer text — for consistent, on-brand output across projects.
 
 **Which template is used.** The one you choose in the dialog; otherwise the report layout's own template (set in **Layout details → Branding template**, available when editing a layout); otherwise the organisation's **default template** (tick **Default template** on a report template; only one template can be the default); otherwise none. The dialog names the template that will apply, for example *Default (House style)*.
 
@@ -96,26 +96,31 @@ A **custom report** is a report layout somebody designed in the organisation's o
 
 ## Large reports are prepared in the background
 
-When you download a file that is too big to produce while you wait, the dialog says so ("It is being prepared in the background and you will be notified when it is ready") and the report joins **Background reports**, a list under the report. The server works through the queue, allows a bigger report than a download you wait for, and **notifies you** (in the app, and by email if your notification settings send it) when the file is ready or could not be produced.
+When you download a file that is too big to produce while you wait, the dialog says so ("It is being prepared in the background and you will be notified when it is ready"). The server works through the queue, allows a bigger report than a download you wait for, and **notifies you** (in the app, and by email if your notification settings send it) when the file is ready or could not be produced. While it is being prepared, a **clock with a count** appears in the top bar beside the notification bell; click it to see which reports are still being prepared.
+
+**Click the notification** to open the report in a dialog and **Download** it. If the file has been removed, or the report failed, the same dialog says why and offers **Generate again**.
 
 ```mermaid
 flowchart LR
-    A["Download too big<br/>to wait for"] --> B["Waiting"]
+    A["Download too big<br/>to wait for"] --> B["Waiting<br/>(clock in the top bar)"]
     B --> C["Preparing"]
     C --> D["Ready<br/>(notification)"]
     C --> F["Failed<br/>(notification, with the reason)"]
-    D -->|"download, until it expires"| G["Your file"]
-    D -->|"Delete file, or the retention passes"| H["Expired<br/>(file deleted)"]
+    D -->|"click the notification, Download"| G["Your file"]
+    D -->|"the retention passes"| H["Expired<br/>(file deleted)"]
+    H -->|"Generate again"| B
+    F -->|"Generate again"| B
 ```
 
 - **Only you can download it.** The file belongs to the person who asked for it; nobody else, including administrators, can fetch it. It is produced with your access at that moment, and downloading it re-checks that you still have access to what it covers.
-- **It is kept for a limited time.** An organisation administrator sets how many days a file is kept in **Org Admin → Templates & reports → Background reports**, up to a maximum the platform sets; leave it blank to use the platform default (7 days). When the time passes, or when you choose **Delete file**, the file is deleted. The record of the run (which layout and version, when, how many records) stays, as for any run.
-- **A waiting report can be cancelled**; one being prepared cannot be stopped, and at most five of your reports can be waiting or being prepared at once.
+- **It is kept for a limited time.** An organisation administrator sets how many days a file is kept in **Org Admin → Templates & reports → Background reports**, up to a maximum the platform sets; leave it blank to use the platform default (7 days). When the time passes the file is deleted. The record of the run (which layout and version, when, how many records) stays, as for any run.
+- **Generate again is a fresh run, not the old file.** It runs the report's current version with today's data and your access at that moment, using the format and values of the earlier run, and notifies you again. The dialog tells you when the report was edited since the earlier run. It is refused if the report no longer exists or you can no longer run it.
+- At most five of your reports can be waiting or being prepared at once.
 - A report that is too large even for the background (or whose access you lose before it runs) shows as **Failed** with the reason.
 
 ## CSV export and import
 
-A record list can also offer the reports that use its records: open the list's **List actions** menu (the ⋮ button beside **New**) and choose **Download report**. Only reports (and report packs) that read that kind of record are listed, in the same folders as the Reports dialog; choose one (step 1), then set it up and download it (step 2), which names the project the report will run for. A pack asks for its choices and downloads as one zip. The report is not shown in the dialog, and a report meant to be read on screen, such as the Context & Strategy summary, is not listed; open it from the **Reports** menu on the project overview instead.
+A record list can also offer the reports that use its records: open the list's **List actions** menu (the ⋮ button beside **New**) and choose **Download report**. Only reports (and report packs) that read that kind of record are listed, in the same folders as the Reports dialog; choose one (step 1), then set it up and download it (step 2), which names the project the report will run for. A pack asks for its choices and downloads as one zip. The report is not shown in the dialog, and a report meant to be read on screen, such as the Context & Strategy summary, is not listed; open it with the **Reports** button on the project overview instead.
 
 The Reports dialog exports requirements as CSV — every field, including custom field values and target stage — and the Requirements page's **List actions** menu (CSV that re-imports and updates records by code) reverse the trip, mapping a spreadsheet's columns back onto a project's fields. See [Requirements management](./requirements-management.md#csv-import-and-export) for the import side.
 

@@ -86,7 +86,6 @@ test.describe("org report templates and project report setup", () => {
     await test.step("the requirement report offers the template, pre-selecting none while the organisation has no default", async () => {
       await page.getByRole("link", { name: "Overview", exact: true }).click();
       await page.getByRole("button", { name: "Reports", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Choose a report…" }).click();
       const dialog = page.getByRole("dialog", { name: "Reports" });
       await expect(dialog.getByLabel("Report template")).toHaveValue("");
       await expect(dialog.getByText("Template & layout")).toHaveCount(0);

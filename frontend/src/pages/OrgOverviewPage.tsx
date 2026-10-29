@@ -4,7 +4,7 @@ import { useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { Organization, OrgModule, OrgOverviewStats } from "../api/types";
 import { EntitySwitcher } from "../components/EntitySwitcher";
-import { ReportsMenuButton } from "../components/ReportsMenuButton";
+import { ReportsButton } from "../components/ReportsButton";
 import { ResourceMenu, type ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { Spinner } from "../components/Spinner";
 import { StatBar, type StatBarItem } from "../components/StatBar";
@@ -30,7 +30,7 @@ const OVERVIEW_GROUP_KEY = "overview";
  * auto-redirect, reused rather than duplicated — see that component's own
  * docstring) or directly at `/orgs/:orgId/overview`.
  *
- * A "Reports" menu beside the title opens the Reports dialog (`ReportsMenuButton`), shown only when the caller can
+ * A "Reports" button beside the title opens the Reports dialog (`ReportsButton`), shown only when the caller can
  * run at least one organisation report or pack.
  *
  * A stats header (project/requirement/member counts, total file storage —
@@ -138,7 +138,7 @@ export function OrgOverviewPage() {
         />
         {hasReports && (
           <div style={{ marginLeft: "auto" }}>
-            <ReportsMenuButton scope={{ kind: "organization", id: orgId }} organizationId={orgId} />
+            <ReportsButton scope={{ kind: "organization", id: orgId }} organizationId={orgId} />
           </div>
         )}
       </div>

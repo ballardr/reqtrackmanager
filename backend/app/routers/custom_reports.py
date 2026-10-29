@@ -17,6 +17,7 @@ A file run that passes the synchronous limits answers 409 with `detail.code == "
 queues it in the background:
 
 - `POST .../custom-reports/{layout_id}/runs` (project and organisation): queues the same run (202 + the run).
+- `POST /api/v1/report-runs/{id}/again`: queues a fresh run of an expired or failed run's stored request.
 - `GET /api/v1/report-runs`, `GET /api/v1/report-runs/{id}`, `GET /api/v1/report-runs/{id}/download`,
   `DELETE /api/v1/report-runs/{id}`: the caller's own background runs; the file is downloadable only by the
   requester, until it expires (`services.report_run_jobs`).
@@ -402,6 +403,13 @@ class ReportRunOut(BaseModel):
         )
 
 
+class ReportRunAgainOut(BaseModel):
+    """The fresh run queued by "generate again", and whether the report was edited since the old one."""
+
+    run: ReportRunOut
+    definition_changed: bool = Field(description="The layout or pack has a newer version than the run it repeats.")
+
+
 def _queue(
     db: Session, user: User, organization: Organization, project: Project | None, layout: ReportLayout,
     version: ReportLayoutVersion, fmt: str, template: ReportTemplate | None, *, include_children: bool = False,
@@ -499,10 +507,11 @@ def _own_run(db: Session, user: User, run_id: UUID, request: Request) -> Generat
 @runs_router.get("", response_model=list[ReportRunOut])
 def list_report_runs(
     organization_id: UUID | None = Query(None, description="Only runs in this organisation."),
+    active: bool = Query(False, description="Only runs that are waiting or being prepared."),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ) -> list[ReportRunOut]:
     """The caller's own background runs, newest first (nobody else's)."""
-    rows = report_run_jobs.list_for(db, current_user, organization_id)
+    rows = report_run_jobs.list_for(db, current_user, organization_id, active_only=active)
     return [ReportRunOut.of(r) for r in rows]
 
 
@@ -531,6 +540,35 @@ def download_report_run(
     assert row.output_filename is not None
     stem, _, extension = row.output_filename.rpartition(".")
     return file_response(content, stem, extension)
+
+
+@runs_router.post("/{run_id}/again", response_model=ReportRunAgainOut, status_code=status.HTTP_202_ACCEPTED)
+def run_report_again(
+    run_id: UUID, request: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> ReportRunAgainOut:
+    """Queues a fresh run of an expired or failed run's stored request, as the caller now.
+
+    The report's current version runs with today's data and the caller's present access; the old file is never
+    reused. The caller is notified when the new file is ready.
+
+    Raises:
+        HTTPException: 404 not the caller's run, or the report is gone or no longer reachable; 409 the run is
+            waiting, being prepared or still downloadable; 422 the stored values or format no longer fit the report;
+            429 too many background runs already queued.
+    """
+    _own_run(db, current_user, run_id, request)
+    try:
+        row, changed = report_run_jobs.requeue(db, current_user, run_id)
+    except report_run_jobs.RunNotAvailableError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except report_run_jobs.RepeatNotNeededError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except report_run_jobs.RepeatRefusedError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+    except report_run_jobs.TooManyActiveRunsError as exc:
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, str(exc)) from exc
+    db.commit()
+    return ReportRunAgainOut(run=ReportRunOut.of(row), definition_changed=changed)
 
 
 @runs_router.delete("/{run_id}", response_model=ReportRunOut)

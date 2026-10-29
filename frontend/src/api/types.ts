@@ -1776,6 +1776,8 @@ export function activityEntryLink(entry: ChangeEntry, projectId: string): { to: 
  * project X" carries no specific entity, just the project itself).
  */
 export function notificationLink(n: Notification): string | null {
+  // A background report: its page offers the download, or a fresh run once the file has been removed.
+  if (n.entity_type === "generated_report" && n.entity_id) return `/report-runs/${n.entity_id}`;
   if (n.project_id && n.entity_type && n.entity_id) {
     if (n.entity_type === "requirement") return `/projects/${n.project_id}/requirements/${n.entity_id}`;
     if (n.entity_type === "change_request") return `/projects/${n.project_id}/change-requests/${n.entity_id}`;
