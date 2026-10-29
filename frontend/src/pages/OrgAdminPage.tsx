@@ -99,9 +99,7 @@ import { reportLayoutApi } from "../api/reportLayouts";
 import { reportPackApi } from "../api/reportPacks";
 import { reportPlacementApi } from "../api/reportPlacements";
 import { Badge } from "../components/Badge";
-import { ReportLayoutsPanel } from "../components/ReportLayoutsPanel";
-import { ReportPacksPanel } from "../components/ReportPacksPanel";
-import { ReportPlacementsPanel } from "../components/ReportPlacementsPanel";
+import { ReportSetupPanel } from "../components/ReportSetupPanel";
 import { CheckboxField, ColorField, FileField, TextAreaField, TextField, ToggleField, UploadField } from "../components/FormFields";
 import { FormActions } from "../components/FormActions";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
@@ -3319,21 +3317,9 @@ export function OrgAdminPage() {
 
         {activeGroup === "templates-reports" && (
           <div className="stack">
-            {layoutApi && (
-              <CollapsibleSection sectionKey="orgAdmin.reportLayouts" title={strings.reportLayouts.title}>
-                <ReportLayoutsPanel api={layoutApi} />
-              </CollapsibleSection>
-            )}
-
-            {packApi && (
-              <CollapsibleSection sectionKey="orgAdmin.reportPacks" title={strings.reportPacks.title}>
-                <ReportPacksPanel api={packApi} />
-              </CollapsibleSection>
-            )}
-
-            {placementApi && (
-              <CollapsibleSection sectionKey="orgAdmin.reportPlacements" title={strings.reportPlacements.title}>
-                <ReportPlacementsPanel api={placementApi} />
+            {layoutApi && packApi && placementApi && (
+              <CollapsibleSection sectionKey="orgAdmin.reportSetup" title={strings.admin.reportSetup} defaultCollapsed={false}>
+                <ReportSetupPanel layoutApi={layoutApi} packApi={packApi} placementApi={placementApi} />
               </CollapsibleSection>
             )}
 

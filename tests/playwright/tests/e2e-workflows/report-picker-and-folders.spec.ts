@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, searchReportSetup, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
 import { chooseReport, listReports, openReportPicker, reportPickerButton } from "./reportPicker";
 
 const API = "http://localhost:8000/api/v1";
@@ -131,6 +131,55 @@ test.describe("Report picker, folders and placements", () => {
     });
   });
 
+  test("the picker is a file-manager list: keyboard, remembered folders, and nothing clipped at phone width", async ({ page, request }) => {
+    const { org, headers, projects, suffix } = await setup(page, request);
+    const doc = `List doc ${suffix}`;
+    await createLayout(request, headers, `${API}/orgs/${org.id}`, doc, "document", "Handover/Quarterly");
+    await page.goto(`/projects/${projects[0].id}?reports=choose`);
+
+    await test.step("it is a tree grid with a sortable Name header, a folder icon button and a type icon per report", async () => {
+      const dialog = await openReportPicker(page);
+      const grid = dialog.getByRole("treegrid", { name: "Reports" });
+      await expect(grid.getByRole("columnheader", { name: "Name" })).toHaveAttribute("aria-sort", "ascending");
+      await grid.getByRole("columnheader", { name: "Name" }).getByRole("button").click();
+      await expect(grid.getByRole("columnheader", { name: "Name" })).toHaveAttribute("aria-sort", "descending");
+      await grid.getByRole("button", { name: "Expand Handover" }).click();
+      await grid.getByRole("button", { name: "Expand Quarterly" }).click();
+      await expect(grid.getByRole("img", { name: "Report" }).first()).toBeVisible();
+      await page.keyboard.press("Escape");
+    });
+
+    await test.step("arrow keys open and close folders and Enter chooses the focused report", async () => {
+      const dialog = await openReportPicker(page);
+      const grid = dialog.getByRole("treegrid", { name: "Reports" });
+      const folderRow = (name: string) => grid.getByRole("row").filter({ has: page.getByRole("button", { name: new RegExp(`^(Expand|Collapse) ${name}$`) }) });
+      const handover = folderRow("Handover");
+      await expect(handover).toHaveAttribute("aria-expanded", "true");
+      await handover.focus();
+      await page.keyboard.press("ArrowLeft");
+      await expect(handover).toHaveAttribute("aria-expanded", "false");
+      await page.keyboard.press("ArrowRight");
+      await expect(handover).toHaveAttribute("aria-expanded", "true");
+      await page.keyboard.press("ArrowRight");
+      await expect(folderRow("Quarterly")).toBeFocused();
+      await page.keyboard.press("ArrowRight");
+      await page.keyboard.press("ArrowRight");
+      await expect(grid.getByRole("row").filter({ hasText: doc })).toBeFocused();
+      await page.keyboard.press("Enter");
+      await expect(dialog).toHaveCount(0);
+      await expect(page).toHaveURL(/report=custom-list-doc/);
+    });
+
+    await test.step("at phone width the list does not scroll sideways", async () => {
+      await page.setViewportSize({ width: 360, height: 700 });
+      const dialog = await openReportPicker(page);
+      const grid = dialog.getByRole("treegrid", { name: "Reports" });
+      const overflow = await grid.evaluate((el) => el.scrollWidth - el.clientWidth);
+      expect(overflow).toBeLessThanOrEqual(0);
+      await page.keyboard.press("Escape");
+    });
+  });
+
   test("an organisation moves and hides upstream reports and a project overrides that", async ({ page, request }) => {
     const { org, projects } = await setup(page, request);
     const [alpha, beta] = projects;
@@ -138,8 +187,7 @@ test.describe("Report picker, folders and placements", () => {
     await test.step("the organisation moves one module report to a nested folder and hides another", async () => {
       await page.goto(`/orgs/${org.id}/admin`);
       await selectOrgAdminGroup(page, "Templates & reports");
-      await ensureExpanded(page, "Report folders");
-      const table = page.getByRole("table", { name: "Reports and where they are filed" });
+      let table = await searchReportSetup(page, "Decision register");
       await table.getByRole("button", { name: "Actions for Decision register" }).click();
       await page.getByRole("menuitem", { name: "Move to folder…" }).click();
       const dialog = page.getByRole("dialog", { name: "Move Decision register" });
@@ -153,9 +201,10 @@ test.describe("Report picker, folders and placements", () => {
       await expect(dialog.getByRole("radio", { name: "Decisions" })).toBeChecked();
       await dialog.getByRole("button", { name: "Move" }).click();
       await expect(page.getByText("Report moved.")).toBeVisible();
-      await expect(table.getByText("Governance/Decisions")).toBeVisible();
+      await expect(table.getByRole("button", { name: "Collapse Decisions" })).toBeVisible();
       await expect(table.getByText("Default: Decision Management")).toBeVisible();
 
+      table = await searchReportSetup(page, "Approval ageing");
       await table.getByRole("button", { name: "Actions for Approval ageing" }).click();
       await page.getByRole("menuitem", { name: "Hide from the list" }).click();
       await expect(page.getByText(/anyone with access can still run it/)).toBeVisible();
@@ -176,11 +225,10 @@ test.describe("Report picker, folders and placements", () => {
     await test.step("a project shows what the organisation hid, and names who hid it", async () => {
       await page.goto(`/projects/${alpha.id}/admin`);
       await selectProjectAdminGroup(page, "Report Setup");
-      await ensureExpanded(page, "Report folders");
-      const table = page.getByRole("table", { name: "Reports and where they are filed" });
+      const table = await searchReportSetup(page, "Approval ageing");
       await expect(table.getByText("Hidden (the organisation)")).toBeVisible();
-      await expect(table.getByText(/Default: Decision Management · the organisation/)).toBeVisible();
-      await table.getByRole("button", { name: "Actions for Approval ageing" }).click();
+      await expect((await searchReportSetup(page, "Decision register")).getByText(/Default: Decision Management · the organisation/)).toBeVisible();
+      await (await searchReportSetup(page, "Approval ageing")).getByRole("button", { name: "Actions for Approval ageing" }).click();
       await page.getByRole("menuitem", { name: "Show in the list" }).click();
       await expect(page.getByText("Report shown in the list.")).toBeVisible();
       await page.goto(`/projects/${alpha.id}?reports=choose`);
@@ -195,8 +243,7 @@ test.describe("Report picker, folders and placements", () => {
     await test.step("a project can go back to following the organisation", async () => {
       await page.goto(`/projects/${alpha.id}/admin`);
       await selectProjectAdminGroup(page, "Report Setup");
-      await ensureExpanded(page, "Report folders");
-      const table = page.getByRole("table", { name: "Reports and where they are filed" });
+      const table = await searchReportSetup(page, "Approval ageing");
       await table.getByRole("button", { name: "Actions for Approval ageing" }).click();
       await page.getByRole("menuitem", { name: "Follow the default again" }).click();
       await expect(page.getByText("Back to following the default.")).toBeVisible();
@@ -219,7 +266,8 @@ test.describe("Report picker, folders and placements", () => {
     const openForm = async () => {
       await page.goto(`/projects/${alpha.id}/admin`);
       await selectProjectAdminGroup(page, "Report Setup");
-      await page.getByRole("table", { name: "Report layouts" }).getByRole("button", { name: `Actions for ${name}` }).click();
+      const grid = await searchReportSetup(page, name);
+      await grid.getByRole("button", { name: `Actions for ${name}` }).click();
       await page.getByRole("menuitem", { name: "Edit details" }).click();
       return page.getByRole("dialog", { name: "Layout details" });
     };
@@ -281,24 +329,22 @@ test.describe("Report picker, folders and placements", () => {
     await test.step("search matches the name or the folder and the filters narrow further", async () => {
       await page.goto(`/projects/${alpha.id}/admin`);
       await selectProjectAdminGroup(page, "Report Setup");
-      const table = page.getByRole("table", { name: "Report layouts" });
-      await expect(table.getByRole("link", { name: filed })).toBeVisible();
-      await expect(table.getByText("Handover/Quarterly")).toBeVisible();
-      const search = page.getByRole("textbox", { name: "Search this list" }).first();
-      await search.fill("quarterly");
-      await expect(table.getByRole("link", { name: filed })).toBeVisible();
-      await expect(table.getByRole("link", { name: plain })).toHaveCount(0);
-      await search.fill("");
-      await page.getByLabel("Kind").first().selectOption("Table");
-      await expect(table.getByRole("link", { name: rows })).toBeVisible();
-      await expect(table.getByRole("link", { name: filed })).toHaveCount(0);
-      await page.getByLabel("Kind").first().selectOption("Any");
-      await page.getByLabel("Folder").first().selectOption("Handover");
-      await expect(table.getByRole("link", { name: filed })).toBeVisible(); // a folder filter keeps what is inside it
-      await expect(table.getByRole("link", { name: rows })).toBeVisible();
-      await expect(table.getByRole("link", { name: plain })).toHaveCount(0);
+      const grid = page.getByRole("treegrid", { name: "Reports, packs and tables" });
+      const item = (title: string) => grid.getByRole("button", { name: new RegExp(`^${title}`) });
+      const search = page.getByRole("textbox", { name: "Search reports" });
+      await search.fill("quarterly"); // matches the folder Handover/Quarterly
+      await expect(item(filed)).toBeVisible();
+      await expect(item(plain)).toHaveCount(0);
+      await search.fill(rows);
+      await page.getByLabel("Type").first().selectOption("Tables");
+      await expect(item(rows)).toBeVisible();
+      await page.getByLabel("Type").first().selectOption("Packs");
+      await expect(item(rows)).toHaveCount(0);
+      await page.getByLabel("Type").first().selectOption("Any");
       await search.fill("zzzz-nothing");
       await expect(page.getByText("Nothing matches these filters.")).toBeVisible();
+      await search.fill("");
+      await expect(grid.getByRole("button", { name: "Expand Handover" })).toHaveAttribute("aria-expanded", "false"); // back to the person's own folders
     });
 
     await test.step("the widget list starts collapsed and says each module once", async () => {

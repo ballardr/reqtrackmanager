@@ -34,11 +34,6 @@ export const PACK_ENTRY_STATUS_LABEL: Record<"included" | "not_available", strin
 /** The file formats an entry can be produced in: any layout's formats, or any of a module report's. */
 export type PackFormat = "pdf" | "docx" | "odt" | "html" | "csv" | "xlsx" | "ods";
 
-/** What a person calls each format. */
-export const PACK_FORMAT_LABEL: Record<PackFormat, string> = {
-  pdf: "PDF", docx: "Word", odt: "OpenDocument text", html: "HTML page", csv: "CSV", xlsx: "Excel workbook", ods: "OpenDocument spreadsheet",
-};
-
 /** The formats a module report entry can take: every format the Export menu offers for a report. */
 export const REPORT_ENTRY_FORMATS: PackFormat[] = ["pdf", "docx", "odt", "html", "csv", "xlsx", "ods"];
 

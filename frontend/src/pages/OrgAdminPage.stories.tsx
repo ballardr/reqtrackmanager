@@ -116,6 +116,8 @@ function mockOrgAdminApis(overrides: {
     if (path.includes("/resources")) return [];
     if (path.includes("archived=false")) return [];
     if (path.endsWith("/report-layouts")) return [buildLayoutSummary({ project_id: null, origin: "organization" })];
+    // Report Setup merges these three lists with the layouts: empty is a valid answer for each.
+    if (path.endsWith("/report-packs") || path.endsWith("/report-placements") || path.endsWith("/report-folders")) return [];
     if (path.includes("/report-templates")) return [];
     if (path.includes("/advanced-settings")) {
       if (overrides.advancedForbidden) throw new ApiError(403, "Forbidden");
@@ -823,10 +825,9 @@ export const TemplatesAndReportsListsTheReportLayouts: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("link", { name: "Templates & reports" }));
-    const table = await canvas.findByRole("table", { name: "Report layouts" });
-    await expect(within(table).getByRole("link", { name: /Requirements by component/ })).toHaveAttribute(
-      "href", expect.stringContaining("/orgs/org-1/report-layouts/layout-1"),
-    );
+    const grid = within(await canvas.findByRole("treegrid", { name: "Reports, packs and tables" }));
+    await userEvent.click(grid.getByRole("button", { name: "Expand Custom reports" }));
+    await expect(grid.getByRole("button", { name: /^Requirements by component/ })).toBeInTheDocument();
   },
 };
 

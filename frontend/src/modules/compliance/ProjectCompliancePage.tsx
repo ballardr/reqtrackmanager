@@ -96,7 +96,7 @@ export function ProjectCompliancePage() {
   const [selected, setSelected] = useState<ProjectCompliance | null>(null);
   const [assigning, setAssigning] = useState(false);
 
-  async function downloadReport(kind: "pdf" | "csv") {
+  async function downloadReport(kind: complianceApi.ComplianceReportKind) {
     if (!projectId || !project) return;
     try {
       const blob = await api.getForBlob(`/api/v1/projects/${projectId}/modules/compliance/reports?format=${kind}`);
@@ -203,7 +203,7 @@ export function ProjectCompliancePage() {
             <button className="btn btn-primary" onClick={() => setAssigning(true)}>
               Assign standard
             </button>
-            <ReportExportButton onDownload={downloadReport} />
+            <ReportExportButton onDownload={downloadReport} kinds={complianceApi.COMPLIANCE_REPORT_KINDS} />
           </div>
           <DirectoryTable
             ariaLabel="Compliance standards assigned to this project"

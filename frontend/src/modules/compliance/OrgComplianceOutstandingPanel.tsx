@@ -219,7 +219,7 @@ export function OrgComplianceOutstandingPanel({ orgId }: { orgId: string }) {
     return top !== null && top.id === subSectionFilter;
   }
 
-  async function downloadReport(kind: "pdf" | "csv") {
+  async function downloadReport(kind: complianceApi.ComplianceReportKind) {
     try {
       // Scoped to this panel's own current filters — matches
       // `OrgComplianceStandardsPanel.tsx`'s identical convention.
@@ -268,7 +268,7 @@ export function OrgComplianceOutstandingPanel({ orgId }: { orgId: string }) {
     <div className="side-grid">
       <div className="stack">
         <div className="row" style={{ justifyContent: "flex-end" }}>
-          <ReportExportButton onDownload={downloadReport} />
+          <ReportExportButton onDownload={downloadReport} kinds={complianceApi.COMPLIANCE_REPORT_KINDS} />
         </div>
         {(category === "" || category === "non_compliant") && (
           <section className="card stack">

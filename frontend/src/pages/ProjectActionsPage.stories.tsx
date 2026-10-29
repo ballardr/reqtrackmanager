@@ -6,7 +6,7 @@ import type { ActionTypeDefinition, OrgUser, RequirementAction } from "../api/ty
 import { buildRecordColumns } from "../testing/recordTablesFixtures";
 import { buildActionType, buildRequirementAction, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { ProjectActionsPage } from "./ProjectActionsPage";
-import { chooseListAction, openListMenu } from "../testing/listActionsMenu";
+import { openListMenu, chooseExport } from "../testing/listActionsMenu";
 
 const PROJECT_ID = "project-1";
 
@@ -78,7 +78,7 @@ export const ExportAndImportAreOnTheTitleRow: Story = {
     await waitFor(() => expect(canvas.getByText("Review password reset flow")).toBeInTheDocument());
     await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
-    await chooseListAction(canvas, "Export as CSV");
+    await chooseExport(canvas, "CSV");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/requirement_action/export"));
   },
 };

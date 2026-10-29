@@ -11,10 +11,32 @@ export async function openListMenu(page: Page): Promise<Locator> {
 }
 
 /**
+ * Opens the menu, then Download shown items, and clicks one format.
+ *
+ * @param page The page showing the list.
+ * @param format The format's name as the submenu shows it: "CSV", "PDF", "Word", "ODT" or "ODS".
+ * @param kind For a list showing several record kinds, the heading the item sits under (e.g. "Stakeholders").
+ */
+export async function chooseExport(page: Page, format: string, kind?: string): Promise<void> {
+  const menu = await openListMenu(page);
+  const parentName = "Download shown items";
+  if (kind) {
+    await menu
+      .getByText(kind, { exact: true })
+      .locator("xpath=following-sibling::div[contains(@class,'menu-submenu-host')][1]")
+      .getByRole("menuitem", { name: parentName, exact: true })
+      .click();
+  } else {
+    await menu.getByRole("menuitem", { name: parentName, exact: true }).click();
+  }
+  await page.getByRole("menu", { name: parentName }).getByRole("menuitem", { name: new RegExp(`^${format}( |$)`) }).click();
+}
+
+/**
  * Opens the menu and clicks one item.
  *
  * @param page The page showing the list.
- * @param item The item's accessible name, e.g. "Export as CSV" or "Import from CSV".
+ * @param item The item's accessible name, e.g. "Download report" or "Import from CSV".
  * @param kind For a list showing several record kinds, the heading the item sits under (e.g. "Stakeholders").
  */
 export async function chooseListAction(page: Page, item: string, kind?: string): Promise<void> {

@@ -143,6 +143,12 @@ export interface RecordTablesApi {
   saveRow: (projectId: string, recordType: string, code: string, cells: Record<string, string>, expected: Record<string, string>) => Promise<GridRow>;
 }
 
+/**
+ * The formats of the record-list menu's Download shown items: the CSV that re-imports first, then the record-list
+ * report as PDF, Word and OpenDocument text and spreadsheet. HTML and Excel are left to Download report.
+ */
+export const RECORD_LIST_EXPORT_KINDS: readonly ReportDownloadKind[] = ["csv", "pdf", "docx", "odt", "ods"];
+
 const ownerRoot = (owner: RecordOwner) => (owner.projectId ? `/api/v1/projects/${owner.projectId}` : `/api/v1/orgs/${owner.organizationId}`);
 const base = (owner: RecordOwner, recordType: string) => `${ownerRoot(owner)}/records/${recordType}`;
 

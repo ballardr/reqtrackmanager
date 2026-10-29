@@ -24,14 +24,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   isNothingToRun,
   PACK_ENTRY_STATUS_LABEL,
-  PACK_FORMAT_LABEL,
-  type PackFormat,
   type PackValues,
   type ReportPackForm,
   type ReportPackPreview,
   type ReportPackRunApi,
   type ReportPackRunBody,
 } from "../api/reportPacks";
+import { reportFormatLabel, reportFormatTitle } from "../api/reportFormats";
 import {
   hasVariableValue,
   isAsyncRequired,
@@ -224,7 +223,7 @@ export function ReportPackRunner({
                       {entry.reason && <span className="text-muted" style={{ fontSize: "0.85rem" }}>{entry.reason}</span>}
                     </span>
                   </td>
-                  <td>{PACK_FORMAT_LABEL[entry.format as PackFormat] ?? entry.format}</td>
+                  <td title={reportFormatTitle(entry.format)}>{reportFormatLabel(entry.format)}</td>
                   <td><Badge tone={entry.status === "included" ? "accent" : "warning"}>{PACK_ENTRY_STATUS_LABEL[entry.status]}</Badge></td>
                   <td>{entry.status === "included" ? entry.records : ""}</td>
                 </tr>

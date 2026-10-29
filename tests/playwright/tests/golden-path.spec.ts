@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { clickAndAwaitSave, selectProjectAdminGroup } from "./e2e-workflows/helpers";
-import { chooseListAction } from "./listActions";
+import { chooseListAction, chooseExport } from "./listActions";
 
 /**
  * End-to-end golden path against the running tests/container/docker-compose.yml stack:
@@ -213,7 +213,7 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
 
   await test.step("export requirements as a full-fidelity CSV", async () => {
     const downloadPromise = page.waitForEvent("download");
-    await chooseListAction(page, "Export as CSV");
+    await chooseExport(page, "CSV");
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toBe("requirements-export.csv");
   });

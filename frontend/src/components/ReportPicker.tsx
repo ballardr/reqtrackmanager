@@ -14,28 +14,29 @@
  *   host passes), so reopening shows the same folders open; a picker opens fully collapsed the first time.
  * - Report the choice through `onSelect`; the host (`ReportCatalogue`) keeps the selection in the URL.
  *
- * `ReportPickerPanel` is the same search, filter and tree without the dialog, for another dialog to embed.
+ * `ReportPickerPanel` is the same search, filter and folder list (`FolderTreeList`, a file manager's list view) without the dialog, for another dialog to embed.
  *
  * Design decisions: a dialog rather than a native `<select>` because a tree, search and stars do not fit one; the
  * saved expansion state is overridden (everything open) only while a filter is active and is never written then, so
  * clearing the search returns to the person's own layout. Folder ids are derived from folder paths, so an id saved for
  * a folder that no longer exists is harmless; the list is capped. Pure presentation over already-loaded items.
  *
- * Dependencies: `Modal`, `TreeView`, `useUiPreference`.
+ * Dependencies: `Modal`, `FolderTreeList`, `useUiPreference`.
  */
 import { ChevronDown, Star } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
+import { useOpenFolders } from "../hooks/useOpenFolders";
 import { useUiPreference } from "../hooks/useUiPreference";
 import { allFolderIds, buildFolderTree, type FolderNode } from "../utils/reportFolders";
-import { Badge } from "./Badge";
+import { FolderTreeList } from "./FolderTreeList";
+import { ReportKindIcon, type ReportKind } from "./ReportKindIcon";
 import { TextField } from "./FormFields";
 import { LabeledSelect } from "./LabeledSelect";
 import { Modal } from "./Modal";
-import { TreeView } from "./TreeView";
 
-export type ReportPickerKind = "report" | "sheet" | "pack";
+export type ReportPickerKind = ReportKind;
 
 /** One report the picker offers. */
 export interface ReportPickerItem {
@@ -51,33 +52,12 @@ export interface ReportPickerItem {
 }
 
 const FAVOURITES_KEY = "report_favourites";
-const OPEN_FOLDERS_KEY = "report_picker_folders";
-const MAX_OPEN_FOLDERS = 100;
 const MAX_FAVOURITES = 100;
 const FAVOURITES_PREFIX = "fav";
 const TREE_PREFIX = "f";
 const FAVOURITES_FOLDER_ID = `${FAVOURITES_PREFIX}:favourites`;
 
 type KindFilter = "all" | ReportPickerKind;
-
-/**
- * The folders the person left open in one picker, kept in their `ui_preferences` (an object of folder ids by picker).
- *
- * @param pickerId Names the picker, so each remembers its own folders.
- * @returns The open folder ids and a setter for one folder's state. A value that is not a list of ids reads as none.
- */
-function useOpenFolders(pickerId: string): [Set<string>, (id: string, open: boolean) => void] {
-  const [saved, setSaved] = useUiPreference<Record<string, string[]>>(OPEN_FOLDERS_KEY, {});
-  const stored = saved[pickerId];
-  const open = useMemo(() => new Set(Array.isArray(stored) ? stored.filter((id) => typeof id === "string") : []), [stored]);
-  function setOpen(id: string, isOpen: boolean) {
-    const next = new Set(open);
-    if (isOpen) next.add(id);
-    else next.delete(id);
-    setSaved({ ...saved, [pickerId]: [...next].slice(-MAX_OPEN_FOLDERS) });
-  }
-  return [open, setOpen];
-}
 
 /** The type filter's options: reports, sheets and packs, each matching one `kind`. */
 function useKindOptions(): { value: KindFilter; label: string }[] {
@@ -180,7 +160,7 @@ export function ReportPickerPanel({
     if (starred.length === 0) return folders;
     const favouritesFolder: FolderNode<ReportPickerItem> = {
       id: FAVOURITES_FOLDER_ID, kind: "folder", name: text.favourites, path: "", count: starred.length,
-      children: buildFolderTree(starred, () => "", (i) => i.title, (i) => i.id, FAVOURITES_PREFIX),
+      children: buildFolderTree(starred, () => "", (i) => i.title, (i) => i.id, FAVOURITES_PREFIX), pinned: true,
     };
     return [favouritesFolder, ...folders];
   }, [shown, favouriteSet, text.favourites]);
@@ -205,63 +185,37 @@ export function ReportPickerPanel({
       {shown.length === 0 ? (
         <p className="text-muted">{text.noMatch}</p>
       ) : (
-        <TreeView
+        <FolderTreeList
           nodes={tree}
-          nodeLabel={(node) => node.name}
+          label={text.listLabel}
           expanded={expanded}
           onToggle={(id, isOpen) => {
             if (!filtering) setFolderOpen(id, isOpen);
           }}
-          renderNode={(node) => (node.kind === "folder" ? (
-            <span className="row" style={{ gap: "var(--space-1)", alignItems: "center" }}>
-              <strong>{node.name}</strong>
-              <Badge>{text.folderCount(node.count)}</Badge>
-            </span>
-          ) : (
-            <PickerRow
-              item={node.item as ReportPickerItem}
-              selected={(node.item as ReportPickerItem).id === selectedId}
-              favourite={favouriteSet.has(favouriteKeyOf(node.item as ReportPickerItem))}
-              onSelect={onSelect}
-              onToggleFavourite={toggleFavourite}
-            />
-          ))}
+          itemView={(item) => ({ icon: <ReportKindIcon kind={item.kind} />, iconLabel: text.kind[item.kind], description: item.description })}
+          isSelected={(item) => item.id === selectedId}
+          onOpenItem={(item) => onSelect(item.id)}
+          folderBadge={(node) => text.folderCount(node.count)}
+          renderItemActions={(item) => (
+            <FavouriteStar item={item} favourite={favouriteSet.has(favouriteKeyOf(item))} onToggle={toggleFavourite} />
+          )}
         />
       )}
     </div>
   );
 }
 
-function PickerRow({
-  item, selected, favourite, onSelect, onToggleFavourite,
-}: {
-  item: ReportPickerItem;
-  selected: boolean;
-  favourite: boolean;
-  onSelect: (id: string) => void;
-  onToggleFavourite: (item: ReportPickerItem) => void;
-}) {
+function FavouriteStar({
+  item, favourite, onToggle,
+}: { item: ReportPickerItem; favourite: boolean; onToggle: (item: ReportPickerItem) => void }) {
   const text = useStrings().reportPicker;
+  const label = favourite ? text.removeFavourite(item.title) : text.addFavourite(item.title);
   return (
-    <span className="row" style={{ gap: "var(--space-1)", alignItems: "center", flex: 1 }}>
-      <button
-        type="button" className={selected ? "btn btn-primary" : "btn"} aria-current={selected ? "true" : undefined}
-        data-report-picker-item="" style={{ textAlign: "left", flex: 1 }} onClick={() => onSelect(item.id)}
-      >
-        <span className="stack" style={{ gap: 0 }}>
-          <span>{item.title}</span>
-          {item.description && <span style={{ fontSize: "0.85rem", opacity: 0.8 }}>{item.description}</span>}
-        </span>
-      </button>
-      {item.kind !== "report" && <Badge>{text.kind[item.kind]}</Badge>}
-      <button
-        type="button" className="btn" style={{ padding: "0.15rem" }} aria-pressed={favourite}
-        aria-label={favourite ? text.removeFavourite(item.title) : text.addFavourite(item.title)}
-        title={favourite ? text.removeFavourite(item.title) : text.addFavourite(item.title)}
-        onClick={() => onToggleFavourite(item)}
-      >
-        <Star aria-hidden="true" fill={favourite ? "currentColor" : "none"} />
-      </button>
-    </span>
+    <button
+      type="button" className="btn" style={{ padding: "0.15rem" }} aria-pressed={favourite} aria-label={label} title={label}
+      onClick={() => onToggle(item)}
+    >
+      <Star aria-hidden="true" fill={favourite ? "currentColor" : "none"} />
+    </button>
   );
 }

@@ -6,7 +6,7 @@ import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { withToast } from "../../testing/storybook-helpers";
 import { ProjectComplianceDetail } from "./ProjectComplianceDetail";
 import type { ProjectCompliance, ProjectComplianceStatus } from "./types";
-import { chooseListAction, openListMenu } from "../../testing/listActionsMenu";
+import { openListMenu, chooseExport } from "../../testing/listActionsMenu";
 
 const PROJECT_ID = "proj-1";
 const ORG_ID = "org-1";
@@ -157,7 +157,7 @@ export const AssessmentsAndRequiredActionsExportForThisAssignment: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await chooseListAction(canvas, "Export as CSV", "Assessments");
+    await chooseExport(canvas, "CSV", "Assessments");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/records/project_compliance_requirement/export?assignment=pc-1`
     ));

@@ -48,6 +48,8 @@ export interface FolderNode<T> extends TreeViewNode<FolderNode<T>> {
   item?: T;
   /** For a folder, how many items it holds, sub-folders included. */
   count: number;
+  /** A folder that stays first whatever the sort (the Favourites folder). */
+  pinned?: boolean;
 }
 
 /** The id of a folder node (stable across renders, so expansion survives). */
@@ -63,10 +65,12 @@ export function folderNodeId(path: string, prefix = "f"): string {
  * @param titleOf The item's title (its name in the tree, and its sort key).
  * @param idOf A unique id for the item.
  * @param prefix Distinguishes the ids of two trees shown at once (the favourites folder repeats items).
+ * @param emptyFolders Folder paths to show even with nothing filed in them (a setup list shows the folders that exist).
  * @returns The top-level folders first, then top-level items, each level sorted by name.
  */
 export function buildFolderTree<T>(
   items: T[], folderOf: (item: T) => string, titleOf: (item: T) => string, idOf: (item: T) => string, prefix = "f",
+  emptyFolders: string[] = [],
 ): FolderNode<T>[] {
   const root: FolderNode<T> = { id: "", kind: "folder", name: "", path: "", children: [], count: 0 };
   const folders = new Map<string, FolderNode<T>>();
@@ -86,6 +90,7 @@ export function buildFolderTree<T>(
     }
     return parent;
   };
+  for (const path of emptyFolders) folderFor(folderLevels(path));
   for (const item of items) {
     const levels = folderLevels(folderOf(item));
     const folder = folderFor(levels);

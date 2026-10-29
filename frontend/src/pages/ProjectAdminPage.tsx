@@ -72,9 +72,7 @@ import { reportLayoutApi } from "../api/reportLayouts";
 import { reportPackApi } from "../api/reportPacks";
 import { reportPlacementApi } from "../api/reportPlacements";
 import { Badge } from "../components/Badge";
-import { ReportLayoutsPanel } from "../components/ReportLayoutsPanel";
-import { ReportPacksPanel } from "../components/ReportPacksPanel";
-import { ReportPlacementsPanel } from "../components/ReportPlacementsPanel";
+import { ReportSetupPanel } from "../components/ReportSetupPanel";
 import { CheckboxField, InlineTextInput, TextAreaField, TextField, ToggleField } from "../components/FormFields";
 import { InlineSelect, LabeledSelect } from "../components/LabeledSelect";
 import { FormActions } from "../components/FormActions";
@@ -2674,20 +2672,8 @@ export function ProjectAdminPage() {
       <div className="stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.reportSetup}</h2>
         <p className="text-muted" style={{ margin: 0 }}>{strings.admin.reportSetupHint}</p>
-        {layoutApi && (
-          <CollapsibleSection sectionKey="projectAdmin.reportSetup.layouts" title={strings.reportLayouts.title} defaultCollapsed={false}>
-            <ReportLayoutsPanel api={layoutApi} />
-          </CollapsibleSection>
-        )}
-        {packApi && (
-          <CollapsibleSection sectionKey="projectAdmin.reportSetup.packs" title={strings.reportPacks.title} defaultCollapsed={false}>
-            <ReportPacksPanel api={packApi} />
-          </CollapsibleSection>
-        )}
-        {placementApi && (
-          <CollapsibleSection sectionKey="projectAdmin.reportSetup.placements" title={strings.reportPlacements.title} defaultCollapsed>
-            <ReportPlacementsPanel api={placementApi} />
-          </CollapsibleSection>
+        {layoutApi && packApi && placementApi && (
+          <ReportSetupPanel layoutApi={layoutApi} packApi={packApi} placementApi={placementApi} />
         )}
       </div>
       )}

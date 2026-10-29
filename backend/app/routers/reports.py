@@ -44,7 +44,10 @@ from app.services.reports import (
     default_chapters_per_component,
     generate_csv_report,
     generate_docx_report,
+    generate_html_report,
+    generate_odt_report,
     generate_pdf_report,
+    generate_sheet_report,
 )
 from app.services.requirements import get_current_version, get_keywords
 
@@ -118,20 +121,26 @@ def generate_report(
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
     """Generates a requirements report in `payload.format` — PDF (R-F-01),
-    DOCX or CSV (R-F-02). Requirement collection/filtering (R-G-03) is
+    DOCX, ODT, HTML, or the flat table as CSV, XLSX or ODS (R-F-02). Requirement collection/filtering (R-G-03) is
     identical for every format; only CSV's branching below is genuinely
     format-specific (no branding/markdown/chapters concept for a flat
-    export). PDF and DOCX are rendered from the same neutral document
+    export). The document formats are rendered from the same neutral document
     (`services.report_model`).
 
     The selected resource files (R-G-04) follow the requirement tables. An
     introduction, chapters or appendices belong to a report layout, not here."""
     project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
     rows = _collect_rows(db, project_id, payload)
 
+    stem = f"{filename_safe(project.name, fallback='project')}-requirements"
     if payload.format == "csv":
-        csv_bytes = generate_csv_report(rows, terminology=project.terminology)
-        return file_response(csv_bytes, f"{filename_safe(project.name, fallback='project')}-requirements", "csv")
+        return file_response(generate_csv_report(rows, terminology=project.terminology), stem, "csv")
+    if payload.format in ("xlsx", "ods"):
+        return file_response(
+            generate_sheet_report(payload.format, rows, project.name, terminology=project.terminology), stem, payload.format,
+        )
 
     org = db.get(Organization, project.organization_id)
     resource_markdown = _resource_sections_markdown(db, project, payload.resource_file_ids)
@@ -154,9 +163,11 @@ def generate_report(
         chapters_per_component = default_chapters_per_component(rows)
 
     images = resolve_report_images(db, project.organization_id, resource_markdown)
-    generate = generate_docx_report if payload.format == "docx" else generate_pdf_report
+    generate = {
+        "pdf": generate_pdf_report, "docx": generate_docx_report, "odt": generate_odt_report, "html": generate_html_report,
+    }[payload.format]
     document_bytes = generate(
         project_name=project.name, rows=rows, post_markdown=resource_markdown,
         branding=branding, images=images, chapters_per_component=chapters_per_component,
     )
-    return file_response(document_bytes, f"{filename_safe(project.name, fallback='project')}-requirements", payload.format)
+    return file_response(document_bytes, stem, payload.format)

@@ -78,7 +78,8 @@ test.describe("org report templates and project report setup", () => {
       await openProject(page, PROJECT_NAMES.gamma1);
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
       await selectProjectAdminGroup(page, "Report Setup");
-      await expect(page.getByRole("button", { name: "New layout" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "New", exact: true })).toBeVisible();
+      await expect(page.getByRole("treegrid", { name: "Reports, packs and tables" })).toBeVisible();
       await expect(page.getByLabel("Default report template")).toHaveCount(0);
       await expect(page.getByLabel("Report type")).toHaveCount(0);
     });

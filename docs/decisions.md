@@ -13417,3 +13417,115 @@ The requirement report in the Reports dialog loses its Filters section, and no d
 ### Verification
 
 Backend: `test_requirement_list_filters.py` (component, inclusive range by order, names ignored, backwards or foreign range empty, single stage, the shared export route); `test_report_templates.py` pins that a download uses the layout's template, else the organisation default, else none, and that a module report uses the default only. Storybook: `RequirementsPage` (component and range sent, an end cleared), `ReportsDialog` (no filters or template choice), `ReportRunner` (no branding choice, no `report_template_id` on any format). Playwright: `requirements-component-and-version-range-filters.spec.ts` (filters, Export carries the range, the old `stage` link) and the three specs that used the template select updated. The website text was corrected; the screenshots (the Reports dialog and the Export menu beside the branding selector) wait for the review checkpoint.
+
+## Custom reports Phase 30: one report format label map (2026-10-29)
+
+ODT and ODS were named in full ("Download OpenDocument spreadsheet report") on buttons and overflowed narrow dialogs, while PDF, HTML and CSV were acronyms; the names were also spelled out separately in three places (`ReportExportButton`, `ReportRunner`'s toast names, `api/reportPacks.ts`).
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | `frontend/src/api/reportFormats.ts` holds `REPORT_FORMAT`, one `{ label, title }` per `ReportFileKind` (`label` the short name on buttons, list cells, options and toasts; `title` the full name, a tooltip). `ReportExportButton`, the `ReportRunner` toasts, the pack entry editor and the pack run table read it; `PACK_FORMAT_LABEL` and the per-component maps are gone. | Agent |
+| 2 | Only ODT and ODS change meaning: **Word** and **Excel** stay as people call them. The pack screens previously said "Excel workbook" and "HTML page" where the Export menu said "Excel" and "HTML"; one map means the short forms ("Excel", "HTML") everywhere, with the long form as the tooltip. | User (ODT/ODS only, Word and Excel unchanged); Agent (unifying the pack screens) |
+| 3 | The full name is the button's `title` rather than its accessible name: the visible text ("Download ODT report") must stay inside the accessible name, so the tooltip is exposed as the description. | Agent |
+| 4 | `scripts/check_report_format_labels.py` (and `backend/tests/test_report_format_labels.py`) fails a string literal spelling out "OpenDocument text" or "OpenDocument spreadsheet" in frontend code outside the map; comments, prose help text, stories and tests are excluded. Baseline empty. | Agent |
+| 5 | **Not applicable:** no backend, table, migration, bundle, MCP, seed or style-guide-pattern change; no new form field. The record-list menu's `Export as Word file` wording belongs to Phase 31, which rebuilds that menu on the same map. | Agent |
+
+### Security review (identify → verify → remediate)
+
+Display-only change: no authorization, scoping, logging, secret or data-retention code was touched; nothing new is logged.
+
+### Verification
+
+Storybook: `ReportExportButton` (labels and tooltips for ODT and ODS, no full name in the visible text), `ReportRunner` (toast names), `ReportPackEntriesEditor` (option labels). Playwright specs `custom-report-run` and `report-docx-export` updated to the new button names and toast text. The label check runs as a backend test. The website text and screenshots wait for the review checkpoint.
+
+## Custom reports Phase 31: every download surface offers every format (2026-10-29)
+
+ODT and ODS (and, for the requirement and compliance reports, HTML, Excel and the rest) were missing from several places that offer CSV, PDF or Word. The inventory below classifies every surface that lists a file format; the **User** directed (2026-10-29) that the compliance reports be fixed to offer all formats rather than be recorded as a gap.
+
+### Inventory
+
+| Surface | Before | Now |
+|---|---|---|
+| Record-list menu (`ListActions`) | CSV, PDF, Word flat | **Download shown items** submenu: CSV, PDF, Word, ODT, ODS (backend `reports/record-list` already rendered every format) |
+| Requirement report (`POST /projects/{id}/reports`, `RequirementReportPanel`) | PDF, Word, CSV | PDF, Word, ODT, HTML, CSV, Excel, ODS (`ReportRequest.format`; table formats from `requirement_table`, the same rows as the CSV) |
+| Project and organisation compliance reports (five Export buttons) | PDF, CSV | PDF, Word, ODT, HTML, CSV, Excel, ODS (`modules/compliance/report_files.py`) |
+| Module reports, custom layouts, report runner, packs, organisation record tables | already every format | no change |
+| MCP (`run_report`, report tools) | JSON only; packs and layouts take the formats the renderers register | no change: no tool takes a file format, so the skill and module tool reference are unchanged |
+| Bundle, audit, standard JSON/zip exports | not documents or spreadsheets | not applicable |
+
+### Decisions
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | The record-list menu has two first-level entries for downloads, **Download report** and **Download shown items**; the latter opens a second list (CSV first with the hint "re-imports", then PDF, Word, ODT, ODS). The template and import items follow, with no separate heading. HTML and Excel are not on the list (`EXEMPT` in `test_report_download_surfaces.py` says why); they remain in Download report. | User (menu shape); Agent (HTML and Excel left off) |
+| 2 | ODT and ODS are export-only: CSV stays the one file that re-imports, so "the exported file is the import file" is unchanged. | User |
+| 3 | `ActionMenu` gains a generic submenu (`ActionMenuItem.children`, plus `hint` and `title` on any item): opens on click, Enter, Space, Right, and on hover after 150 ms; beside the parent on the side with room (position fixed, so the popover's overflow never clips it), inline beneath it under 640px. A menu with a submenu gets Up/Down/Home/End/Right/Left/Escape; Escape closes the submenu before the menu. Flat menus are unchanged (still Tab). | Agent |
+| 4 | The compliance reports keep their ReportLab PDF and CSV writers. Word, ODT and HTML are rendered from a neutral `ReportDocument` built beside them, Excel and ODS from a `Sheet` of the same table the CSV uses (`project_compliance_table`, `org_compliance_table`), so the table formats cannot drift. The neutral model has single-line cells, so a requirement is one cell of bold-labelled runs separated by " · " in the new formats and on separate lines in the PDF. Rebuilding the PDF on the neutral document would lose that. | Agent |
+| 5 | The compliance document formats apply no branding template (the PDF never did). | Agent |
+| 6 | `backend/tests/test_report_download_surfaces.py` fails when a renderer is registered but a surface does not offer it without a reason: the requirement report, both compliance reports, the report framework and record-list route, the frontend format map, the record-list menu, the requirement panel and the compliance exports. | Agent |
+| 7 | **Not applicable:** no migration, no new table, no module registry change, no bundle change, no seed change, no new form field. The compliance routes' format parameter is now `ComplianceReportFormat`; `xlsx` is no longer a 422 there. | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: the compliance and requirement report routes gained formats; the record-list route already served them. Verify: authorisation is unchanged (the same `_require_view`/`_require_manage` and `require_project_view` dependencies run before any format is chosen); the collectors, and so the data, are identical for every format. Excel and ODS go through `render_xlsx`/`render_ods`, which store every cell as text and prefix formula characters (`csv_safe`), and a test pins that a formula-looking justification is not a formula in ODS; HTML escapes through the shared renderer; no text from a record is logged. Remediate: nothing found. Observation, unchanged by this phase and not required by the logging policy: a requirement or compliance report download is not an audit event (a record-list export is, as `records_exported`, in every format). Compliance reports have no row cap for document formats, as the PDF had none.
+
+### Verification
+
+Backend: `test_compliance_reports.py` (every format for the project and organisation report, sheet parity with the CSV columns and formula guard), `test_reports.py` (every format of the requirement report, shared table and formula guard), `test_report_download_surfaces.py`. Storybook: `ActionMenu` (submenu by click, by hover, by keyboard), `ListActions` (menu shape, every format carries the filters, narrow width), `RequirementReportPanel`; every list page's export story now uses `chooseExport`. Playwright: `list-download-shown-items-formats.spec.ts` (Change requests: submenu, hover, ODT and ODS download), and the existing list-export, requirement report and project compliance specs updated. Website: reports-and-export, the reporting workflow and the compliance reporting page. The screenshots of the Export controls wait for the review checkpoint.
+
+## Custom reports Phase 32: folder tree list (2026-10-29)
+
+The report chooser drew folders as a nested list of buttons. It is now a file manager's list view, built as one shared component so the report setup list can reuse it.
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | `FolderTreeList` (generic over the item type, over the existing `FolderNode` tree) replaces `TreeView` in `ReportPicker`; `TreeView` stays for the other trees. Layout is a CSS grid of ARIA `treegrid` rows (not a `<table>`), so a row can take keyboard focus: header with a sortable Name column, optional further columns, folder rows with a chevron and folder icon, item rows with a type icon, indent 1.25rem per level, banded rows with rounded ends from the theme tokens. | Agent |
+| 2 | Folders come first at each level, then items, each by the chosen column; a `pinned` folder (Favourites) stays on top whatever the sort. | Agent (folders first, as the plan stated) |
+| 3 | A folder's chevron, icon and name are one button named "Expand X" / "Collapse X"; an item's type icon sits outside its button (role `img`, named Report, Sheet or Pack) so the button's name stays the title and existing selectors and the saved-folder behaviour keep working. | Agent |
+| 4 | Keyboard: the rows are one roving tab stop; Up/Down/Home/End, Right (open, then step in), Left (close, then to the parent), Enter. The inner name buttons are not tab stops; trailing controls (the star) are. | Agent |
+| 5 | Open state stays controlled by the caller (`expanded`/`onToggle`), so the saved layout per picker, search opening every folder without writing it, and the first-use all-collapsed rule are unchanged. | Agent |
+| 6 | An open empty folder shows a muted "Empty folder" row; the chooser itself never builds one (a folder exists only while it holds a report) but the setup list will. | Agent |
+| 7 | The `Kind` badge on packs and sheets is replaced by the type icon (the plan's Phase 34 reaches the same end for the setup list). No extra columns in the chooser: the mechanism (`columns`, `sortValue`, `hideBelow`) is proved in stories for Phase 33 and 34. | Agent |
+| 8 | **Not applicable:** no backend, migration, bundle, MCP, seed or search change; no new form field (the search box and type filter already carry their labels). Time shape: none. | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: presentation only; no new request, no new data, no authorisation change. Verify: rows render titles and descriptions as React text (no HTML injection); the folder id used in a selector is escaped with `CSS.escape`. Remediate: nothing found.
+
+### Verification
+
+Storybook: `FolderTreeList` (folders first, deep indent, empty folder, empty list, Name sort, column sort, mouse, keyboard, narrow width, themes) and `ReportPicker` (type icons, favourites pinned when sorted, keyboard choice); the picker, catalogue, dialog and download dialog stories pass. Playwright: `report-picker-and-folders.spec.ts` gained "the picker is a file-manager list" (sort header, type icons, arrow keys and Enter, no sideways scroll at 360px); the Reports dialog and list-download specs pass unchanged. Style guide: new "Pattern: folder tree list". Website: the picker description. Screenshots wait for the review checkpoint.
+
+
+## Custom reports Phase 33: Report setup as one list (2026-10-29)
+
+Report setup had three sections (Layouts, Packs, Report folders). It is now one folder list, `ReportSetupPanel`, in the chooser's shape (`FolderTreeList`), in Project Admin → Report Setup and Org Admin → Templates & reports. The layouts, packs and placements panels, `ReportListControls` and `utils/reportListFilter` are removed.
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | The user asked for packs to be in the same list as layouts, for the Report folders section to go, and for the list to show as a folder list consistent with the picker; they confirmed the list is meant to hold module and platform reports too (they were only reachable through the Report folders section). | User |
+| 2 | **Client-side merge** of the placement, layout, pack and folder lists (`utils/reportSetupRows`), joined by the placement key (`layout:<id>`, `pack:<id>`, `report:<module>.<key>`); no combined endpoint. A layout or pack the placement list omits (hidden in a project) is added from its own list so it can be shown again. | Agent (the plan preferred a client merge) |
+| 3 | The row model has three types (layout, pack, module report) and a shape (report, sheet, pack) that picks the icon; `rowCan` derives the actions once. A hidden row stays in the list with a **Hidden** badge and a **Show** action, so no state is only reachable through a bulk button; `RestoreOrgDefaultsButton` stays for the bulk case (layouts and packs only). | Agent |
+| 4 | **Move to folder** is on every row. Moving an owned layout or pack edits its own folder (`update`), moving any other row sets this scope's placement, so one action works everywhere. The owned dialog names the first row "No folder (the default)" and the placement dialog "Top level", because an empty folder means the default for the first and the top level for the second. | Agent |
+| 5 | Folder rows carry **New folder inside**, **Rename** and **Delete** (rename and delete only for a folder the scope owns, from the folder list's `own` flag); the **New** menu creates a layout, pack or folder. `FolderTreeList` gained `renderFolderActions`, `buildFolderTree` gained `emptyFolders` (folders that exist but hold nothing show, except while filtering). | Agent |
+| 6 | A module report's name button opens **Move to folder** (the one thing a manager does to it here); a layout opens the designer and a pack the editor. | Agent |
+| 7 | The old **Kind** column is not carried over: the type icon says it (the plan's next phase gives the list its column chooser for Version, Folder and the rest). `useOpenFolders` (extracted from `ReportPicker`) remembers open folders per person and scope; search or any filter opens every folder with a match and does not overwrite the saved layout. | Agent |
+| 8 | **Nested projects:** unchanged. A child shows the parent's and organisation's rows as shared and its own placements as overrides, exactly as the three lists did. **Not applicable:** no backend, migration, bundle, MCP, seed or search change; no new project-scoped table; users/groups parity (no person field); time shape (none, "Last changed" is a past instant shown in the browser's zone). | Agent |
+
+### Coverage of the removed sections
+
+| Capability | Where it is now |
+|---|---|
+| Layouts: new, starter layouts, open, view, edit details, copy, delete, hide in a project, restore hidden | New menu; Add starter layouts (organisation); row menu; Add organisation defaults |
+| Packs: new, open, view, edit details, copy, delete, hide, restore | New menu; row menu; Add organisation defaults |
+| Report folders: move, reset folder, hide, show, follow the default again | row menu (Move to folder…, Reset folder to default, Hide/Show, Follow the default again) |
+| Folder tree: new folder, rename, delete (previously only inside a move/edit dialog) | folder row menu and the New menu; the dialogs still offer them |
+| Search, Kind/Module/Status/Shared-from filters | one search plus Type, Show and (project) Shared from filters |
+
+### Security review (identify → verify → remediate)
+
+Identify: presentation only; every call is an existing, already-authorised endpoint, so no new request, data or permission. Verify: titles, descriptions and folder names render as React text; folder paths go to the API in a body or query string as before; delete keeps its typed-name confirm and hiding its confirm; a 403 on any list shows the load failure rather than a partial list. Remediate: nothing found.
+
+### Verification
+
+Storybook: `ReportSetupPanel` (20 stories: every row type's actions, move, hide and restore, folders, filters, organisation and project variants, load failure), `ReportMoveDialog`, `ReportFolderNameDialog`, `FolderTreeList` folder actions. Playwright: `report-setup-list.spec.ts` (new: type icons, no Kind column, module report in the list, type filter, folder make/rename/move/delete) and the four specs that drove the old sections (`report-picker-and-folders`, `report-layout-designer`, `custom-report-packs`, `project-admin-templates-and-reports`) updated and passing. Style guide, `docs/modules.md` and the website's organising-reports, designing-a-layout and overview pages updated; the Report folders screenshot is dropped until the review checkpoint recaptures screenshots.

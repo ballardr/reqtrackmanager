@@ -878,24 +878,35 @@ def generate_project_compliance_pdf(project_name: str, data: ProjectComplianceRe
     return build_pdf(story, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm)
 
 
+def project_compliance_table(data: ProjectComplianceReportData) -> tuple[list[str], list[list[str]]]:
+    """The project report's main table as a header and plain-text rows (one per requirement per assigned standard).
+
+    Shared by the CSV export and the spreadsheet sheet so their columns cannot drift; the cells are not yet guarded
+    against spreadsheet formulas (each writer does that)."""
+    header = [
+        "Standard reference", "Standard name", "Version", "Requirement path", "Requirement reference", "Requirement title",
+        "Applicability", "Applicability source", "Compliance status", "Justification", "Notes", "Approval state",
+        "Approval decided at", "Approved/rejected by", "Decision note", "Required actions", "Evidence",
+    ]
+    rows = [[
+        r.standard_reference, r.standard_name, r.version_label, r.requirement_path, r.requirement_reference,
+        r.requirement_name, r.effective_applicability, r.applicability_source, r.compliance_status, r.justification,
+        r.notes, r.approval_state, r.approval_decided_at, r.approval_decided_by_email, r.decision_note,
+        r.required_actions_summary, r.evidence_titles,
+    ] for r in data.requirement_rows]
+    return header, rows
+
+
 def generate_project_compliance_csv(data: ProjectComplianceReportData) -> bytes:
     """Builds a flat, one-row-per-requirement CSV export of a project's
     compliance assessments — see this module's own docstring for why CSV
     carries only this main table, not the PDF's other appendices."""
+    header, rows = project_compliance_table(data)
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow([
-        "Standard reference", "Standard name", "Version", "Requirement path", "Requirement reference", "Requirement title",
-        "Applicability", "Applicability source", "Compliance status", "Justification", "Notes", "Approval state",
-        "Approval decided at", "Approved/rejected by", "Decision note", "Required actions", "Evidence",
-    ])
-    for r in data.requirement_rows:
-        writer.writerow([csv_safe(v) for v in [
-            r.standard_reference, r.standard_name, r.version_label, r.requirement_path, r.requirement_reference,
-            r.requirement_name, r.effective_applicability, r.applicability_source, r.compliance_status, r.justification,
-            r.notes, r.approval_state, r.approval_decided_at, r.approval_decided_by_email, r.decision_note,
-            r.required_actions_summary, r.evidence_titles,
-        ]])
+    writer.writerow(header)
+    for row in rows:
+        writer.writerow([csv_safe(v) for v in row])
     return buffer.getvalue().encode("utf-8")
 
 
@@ -1172,20 +1183,29 @@ def generate_org_compliance_pdf(org_name: str, data: OrgComplianceReportData) ->
     return build_pdf(story, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm)
 
 
+def org_compliance_table(data: OrgComplianceReportData) -> tuple[list[str], list[list[str]]]:
+    """The organisation report's main table as a header and plain-text rows (one per project and assigned standard
+    version); shared by the CSV export and the spreadsheet sheet."""
+    header = [
+        "Project", "Standard reference", "Standard name", "Version", "Compliance %", "Overall status", "Approval status",
+        "Total requirements", "Applicable", "Not applicable", "Non-compliant count", "Target compliance date",
+    ]
+    rows = [[str(v) for v in [
+        a.project_name, a.standard_reference, a.standard_name, a.version_label, f"{a.compliance_percentage:.1f}",
+        a.overall_compliance_state, a.overall_approval_state, a.total_requirements, a.applicable_count,
+        a.not_applicable_count, a.non_compliant_count, a.target_compliance_date,
+    ]] for a in data.assignment_rows]
+    return header, rows
+
+
 def generate_org_compliance_csv(data: OrgComplianceReportData) -> bytes:
     """Builds a flat, one-row-per-(project, assigned standard version) CSV
     export of the organisation-wide roll-up — see this module's own
     docstring for why CSV carries only this main table."""
+    header, rows = org_compliance_table(data)
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow([
-        "Project", "Standard reference", "Standard name", "Version", "Compliance %", "Overall status", "Approval status",
-        "Total requirements", "Applicable", "Not applicable", "Non-compliant count", "Target compliance date",
-    ])
-    for a in data.assignment_rows:
-        writer.writerow([csv_safe(str(v)) for v in [
-            a.project_name, a.standard_reference, a.standard_name, a.version_label, f"{a.compliance_percentage:.1f}",
-            a.overall_compliance_state, a.overall_approval_state, a.total_requirements, a.applicable_count,
-            a.not_applicable_count, a.non_compliant_count, a.target_compliance_date,
-        ]])
+    writer.writerow(header)
+    for row in rows:
+        writer.writerow([csv_safe(v) for v in row])
     return buffer.getvalue().encode("utf-8")

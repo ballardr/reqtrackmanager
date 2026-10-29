@@ -160,7 +160,7 @@ export function OutstandingPanel({ projectId, orgId }: { projectId: string; orgI
     return params;
   }
 
-  async function downloadReport(kind: "pdf" | "csv") {
+  async function downloadReport(kind: complianceApi.ComplianceReportKind) {
     try {
       // Scoped to this panel's own current Standard/Standard version/Sub-
       // section filters — matches `OrgComplianceOutstandingPanel.tsx`'s
@@ -198,7 +198,7 @@ export function OutstandingPanel({ projectId, orgId }: { projectId: string; orgI
             projectId={projectId} recordType="compliance_required_action_assessment" kindLabel="outstanding required actions"
             filters={actionFilterParams().toString()}
           />
-          <ReportExportButton onDownload={downloadReport} />
+          <ReportExportButton onDownload={downloadReport} kinds={complianceApi.COMPLIANCE_REPORT_KINDS} />
         </div>
         <section className="card stack">
           <h3 style={{ margin: 0 }}>Non-compliant requirements ({filteredNonCompliant.length})</h3>

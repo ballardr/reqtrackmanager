@@ -26,12 +26,16 @@ import io
 from dataclasses import dataclass
 from itertools import groupby
 
+from app.models.report_layout import FAMILY_TABLE
 from app.services.csv_safety import csv_safe
 from app.services.labels import REQUIREMENT_STATUS_TONE, requirement_status_label
 from app.services.report_document import ReportBranding
 from app.services.report_docx import render_docx_document
-from app.services.report_model import Block, Gap, Heading, PageBreak, ReportDocument, Table, markdown_to_blocks
+from app.services.report_html import render_html_document
+from app.services.report_model import Block, Gap, Heading, PageBreak, ReportDocument, Sheet, Table, markdown_to_blocks
+from app.services.report_odt import render_odt_document
 from app.services.report_pdf import render_pdf_document
+from app.services.report_render import RenderInput, render
 
 __all__ = [
     "ReportBranding",
@@ -220,6 +224,76 @@ def generate_docx_report(**kwargs) -> bytes:
     return render_docx_document(build_requirement_document(**kwargs))
 
 
+def generate_odt_report(**kwargs) -> bytes:
+    """Builds an OpenDocument text report of a project's requirements.
+
+    Args:
+        **kwargs: As for `build_requirement_document`.
+
+    Returns:
+        The generated ODT file content as bytes.
+    """
+    return render_odt_document(build_requirement_document(**kwargs))
+
+
+def generate_html_report(**kwargs) -> bytes:
+    """Builds a standalone HTML report of a project's requirements.
+
+    Args:
+        **kwargs: As for `build_requirement_document`.
+
+    Returns:
+        The generated HTML page as bytes.
+    """
+    return render_html_document(build_requirement_document(**kwargs))
+
+
+def requirement_table(rows: list[ReportRequirementRow], terminology: dict[str, str] | None = None) -> tuple[list[str], list[list[str]]]:
+    """The requirement rows as a header and plain-text rows: the table behind the CSV, Excel and OpenDocument
+    spreadsheet exports (R-F-02), so their columns cannot drift. Cells are not yet guarded against spreadsheet
+    formulas; each writer does that.
+
+    Args:
+        rows: The requirement rows to export.
+        terminology: The project's terminology overrides (C-C-03); renders the "Component"/"Category" header cells in
+            the project's own words. `None`, or a missing key, gives the English default.
+
+    Returns:
+        `(header, body rows)`.
+    """
+    terminology = terminology or {}
+    component_label = (terminology.get("component") or "component").capitalize()
+    category_label = (terminology.get("category") or "category").capitalize()
+    header = ["ID", "Name", component_label, category_label, "Status", "Reasoning", "Clarification", "Tags"]
+    body = [[
+        row.unique_code, row.name, row.component_name, row.category_name, requirement_status_label(row.status),
+        row.reasoning, row.clarification, row.tags,
+    ] for row in rows]
+    return header, body
+
+
+def generate_sheet_report(
+    fmt: str, rows: list[ReportRequirementRow], title: str, terminology: dict[str, str] | None = None,
+) -> bytes:
+    """Builds an Excel (`xlsx`) or OpenDocument spreadsheet (`ods`) export of requirement rows.
+
+    Args:
+        fmt: `xlsx` or `ods`.
+        rows: The requirement rows to export.
+        title: The workbook title.
+        terminology: As for `requirement_table`.
+
+    Returns:
+        The workbook bytes.
+
+    Raises:
+        KeyError: `fmt` is not a table-family format.
+    """
+    header, body = requirement_table(rows, terminology)
+    sheet = Sheet(name="Requirements", columns=header, rows=body)
+    return render(fmt, FAMILY_TABLE, RenderInput(title=title, sheets=[sheet])).content
+
+
 def generate_csv_report(rows: list[ReportRequirementRow], terminology: dict[str, str] | None = None) -> bytes:
     """Builds a CSV export of requirement rows (R-F-02).
 
@@ -237,16 +311,10 @@ def generate_csv_report(rows: list[ReportRequirementRow], terminology: dict[str,
     Returns:
         The generated CSV file content as bytes.
     """
-    terminology = terminology or {}
-    component_label = (terminology.get("component") or "component").capitalize()
-    category_label = (terminology.get("category") or "category").capitalize()
+    header, body = requirement_table(rows, terminology)
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(["ID", "Name", component_label, category_label, "Status", "Reasoning", "Clarification", "Tags"])
-    for row in rows:
-        writer.writerow([
-            csv_safe(row.unique_code), csv_safe(row.name), csv_safe(row.component_name),
-            csv_safe(row.category_name), csv_safe(requirement_status_label(row.status)), csv_safe(row.reasoning),
-            csv_safe(row.clarification), csv_safe(row.tags),
-        ])
+    writer.writerow(header)
+    for row in body:
+        writer.writerow([csv_safe(cell) for cell in row])
     return buffer.getvalue().encode("utf-8")

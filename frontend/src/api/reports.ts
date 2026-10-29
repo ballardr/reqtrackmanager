@@ -29,16 +29,14 @@ export interface ReportParam {
 }
 
 /**
- * The file formats a record list or module report can be downloaded in (the JSON form is the on-screen run).
- * A custom table report's `csv` is a zip of one CSV per sheet when it has several sheets.
+ * Every file format a report can be downloaded in (the JSON form is the on-screen run): the document family (PDF,
+ * Word, OpenDocument text, HTML) and the table family (CSV, Excel, OpenDocument spreadsheet). A custom table
+ * report's `csv` is a zip of one CSV per sheet when it has several sheets. `REPORT_FORMAT` names each one.
  */
-export type ReportDownloadKind = "pdf" | "docx" | "csv";
+export type ReportFileKind = "pdf" | "docx" | "odt" | "html" | "csv" | "xlsx" | "ods";
 
-/**
- * Every file format a catalogue report may offer: the downloads above plus a custom report's HTML page, Excel workbook
- * and OpenDocument text (`odt`) and spreadsheet (`ods`) files.
- */
-export type ReportFileKind = ReportDownloadKind | "html" | "xlsx" | "odt" | "ods";
+/** The formats a record list or requirement report is downloaded in; every format is offered. */
+export type ReportDownloadKind = ReportFileKind;
 
 /** One runnable report (`ReportCatalogueEntryOut`). */
 export interface ReportCatalogueEntry {

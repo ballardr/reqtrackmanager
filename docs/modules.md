@@ -1534,8 +1534,8 @@ flowchart LR
   and version that are never added to the session, so the caller's own read access, the work/output/time caps and the
   fan-out rules apply unchanged; it writes no `generated_reports` row and no audit event (nothing was produced to keep)
   and never logs the text. Refusals (413, 408, 404, 422) are the run route's (`routers.custom_reports.guard_run`).
-- **Frontend.** `api/reportLayouts.ts` (`ReportLayoutApi`, one injectable interface per scope), `ReportLayoutsPanel` (the
-  list in Project Admin's Report Setup and Org Admin's Templates & reports), `ReportLayoutFormModal` (create and edit share
+- **Frontend.** `api/reportLayouts.ts` (`ReportLayoutApi`, one injectable interface per scope), `ReportSetupPanel` (the
+  one folder list of layouts, packs and module reports in Project Admin's Report Setup and Org Admin's Templates & reports), `ReportLayoutFormModal` (create and edit share
   `ReportLayoutFields`), `ReportLayoutDesigner` (page `/projects/:id/report-layouts/:layoutId`, `/orgs/:id/report-layouts/:layoutId`),
   `ReportLayoutFieldPicker`, `ReportLayoutWidgetPicker` (reuses `ReportParamsForm`), `ReportLayoutPreviewPanel` (a
   sandboxed frame with an empty `sandbox` attribute for the HTML) and `ReportLayoutHistory` (a line diff of two
@@ -1881,8 +1881,8 @@ flowchart LR
   `report_enabled_for_organization` (`modules/registry.py`) are the one check the catalogue, the report route, the
   widget list and the module run all use.
 - Favourites are not a table: they are a list of report keys in the person's `ui_preferences` (`report_favourites`). The folders left open are kept the same way (`report_picker_folders`: folder ids by picker; each host names its picker with `pickerId`), and a picker opens fully collapsed the first time.
-- Frontend: `ReportPicker` (dialog over the shared `TreeView` in controlled mode), `ReportPlacementsPanel` (Org Admin and
-  Project Admin), `ReportListControls` (search, filters and paging of the layouts and packs lists) and `ReportFolderField`.
+- Frontend: `ReportPicker` (dialog over the shared `FolderTreeList`), `ReportSetupPanel` (Org Admin and
+  Project Admin: layouts, packs and module reports as one folder list, merged client-side in `utils/reportSetupRows` from the layout, pack, placement and folder lists) and `ReportFolderChooser`.
 
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 

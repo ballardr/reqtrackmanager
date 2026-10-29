@@ -8,7 +8,7 @@ import { buildCandidate, buildGraph, buildOption } from "../testing/artefactLink
 import { buildRecordColumns } from "../testing/recordTablesFixtures";
 import { buildChangeRequest, buildRequirement, buildUser, withRouter, withStatefulAuth, withTerminology, withToast } from "../testing/storybook-helpers";
 import { ChangeRequestsPage } from "./ChangeRequestsPage";
-import { chooseListAction } from "../testing/listActionsMenu";
+import { chooseExport } from "../testing/listActionsMenu";
 
 const PROJECT_ID = "project-1";
 
@@ -94,7 +94,7 @@ export const ExportIsOnTheTitleRowAndThereIsNoImport: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("link", { name: "Reset password" })).toBeInTheDocument());
-    await chooseListAction(canvas, "Export as CSV");
+    await chooseExport(canvas, "CSV");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/change_request/export?active_only=true"));
     await expect(canvas.queryByText("Import")).not.toBeInTheDocument();
   },

@@ -31,18 +31,9 @@ import { Download } from "lucide-react";
 import { useRef, useState } from "react";
 import type { ReactNode } from "react";
 
+import { REPORT_FORMAT } from "../api/reportFormats";
 import type { ReportFileKind } from "../api/reports";
 import { Popover } from "./Popover";
-
-const OPTION_LABEL: Record<ReportFileKind, string> = {
-  pdf: "Download PDF report",
-  docx: "Download Word report",
-  csv: "Download CSV report",
-  html: "Download HTML report",
-  xlsx: "Download Excel report",
-  odt: "Download OpenDocument text report",
-  ods: "Download OpenDocument spreadsheet report",
-};
 
 /**
  * `kinds` lists the formats on offer (default PDF and CSV, what the compliance
@@ -90,9 +81,9 @@ export function ReportExportButton<K extends ReportFileKind = "pdf" | "csv">({
             {kinds.map((kind) => (
               <button
                 key={kind} type="button" className="btn" style={{ justifyContent: "flex-start" }} disabled={downloading !== null}
-                onClick={() => handleDownload(kind)}
+                title={REPORT_FORMAT[kind].title} onClick={() => handleDownload(kind)}
               >
-                <Download /> {downloading === kind ? "…" : OPTION_LABEL[kind]}
+                <Download /> {downloading === kind ? "…" : `Download ${REPORT_FORMAT[kind].label} report`}
               </button>
             ))}
             {extras.map((extra) => (

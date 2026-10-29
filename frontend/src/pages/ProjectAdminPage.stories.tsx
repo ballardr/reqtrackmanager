@@ -132,6 +132,8 @@ function mockProjectAdminApis(
     if (path.includes("/groups")) return groupsForThisStory;
     if (path.includes("/custom-fields")) return customFields;
     if (path.endsWith("/report-layouts")) return [buildLayoutSummary({ project_id: PROJECT_ID })];
+    // Report Setup merges these three lists with the layouts: empty is a valid answer for each.
+    if (path.endsWith("/report-packs") || path.endsWith("/report-placements") || path.endsWith("/report-folders")) return [];
     if (path.includes("/report-templates")) return [];
     // Hierarchical projects (docs/decisions.md). Checked before the plain
     // "/users" check below — /orgs/{id}/users also matches that.
@@ -1139,13 +1141,13 @@ export const ReportSetupTab: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Report Setup" }));
-    await canvas.findByRole("table", { name: "Report layouts" });
+    await canvas.findByRole("treegrid", { name: "Reports, packs and tables" });
     await expect(canvas.queryByLabelText("Report type")).not.toBeInTheDocument();
     await expect(canvas.queryByLabelText("Default report template")).not.toBeInTheDocument();
   },
 };
 
-/** Report Setup lists the project's report layouts, each opening in the designer. */
+/** Report Setup lists the project's report layouts in one folder list, each opening in the designer. */
 export const ReportSetupListsTheReportLayouts: Story = {
   beforeEach: () => {
     mockProjectAdminApis();
@@ -1153,11 +1155,10 @@ export const ReportSetupListsTheReportLayouts: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Report Setup" }));
-    const table = await canvas.findByRole("table", { name: "Report layouts" });
-    await expect(within(table).getByRole("link", { name: /Requirements by component/ })).toHaveAttribute(
-      "href", expect.stringContaining("/report-layouts/layout-1"),
-    );
-    await expect(canvas.getByRole("button", { name: "New layout" })).toBeInTheDocument();
+    const grid = within(await canvas.findByRole("treegrid", { name: "Reports, packs and tables" }));
+    await userEvent.click(grid.getByRole("button", { name: "Expand Custom reports" }));
+    await expect(grid.getByRole("button", { name: /^Requirements by component/ })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "New" })).toBeInTheDocument();
   },
 };
 

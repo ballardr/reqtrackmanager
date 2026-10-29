@@ -4,7 +4,7 @@ import { expect, type Page, test } from "@playwright/test";
 
 import { installCleanupHook } from "./helpers";
 import { API_BASE_URL, setUpOrg } from "../modules/stakeholders/helpers";
-import { chooseListAction, expectListAction } from "../listActions";
+import { expectListAction, chooseExport } from "../listActions";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -20,7 +20,7 @@ installCleanupHook();
 /** Downloads the open list's CSV through the shared List actions menu and returns its text. `kind` is the heading of the record kind when the list shows several. */
 async function exportCsv(page: Page, kind?: string): Promise<string> {
   const downloadPromise = page.waitForEvent("download");
-  await chooseListAction(page, "Export as CSV", kind);
+  await chooseExport(page, "CSV", kind);
   return fs.readFileSync((await (await downloadPromise).path())!, "utf-8");
 }
 

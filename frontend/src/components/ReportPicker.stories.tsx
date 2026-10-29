@@ -171,5 +171,46 @@ export const ChoosingAReportClosesTheDialog: Story = {
   },
 };
 
+/** Each report carries a type icon named for what it is, and the list is a file-manager style grid of folders and reports. */
+export const ReportsAreAListWithTypeIcons: Story = {
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Report: Requirements report" }));
+    const d = await dialog();
+    await expect(d.getByRole("treegrid", { name: "Reports" })).toBeInTheDocument();
+    await userEvent.click(d.getByRole("button", { name: "Expand Handover" }));
+    await expect(d.getByRole("img", { name: "Pack" })).toBeInTheDocument();
+    await userEvent.click(d.getByRole("button", { name: "Expand Quarterly" }));
+    await expect(d.getByRole("img", { name: "Sheet" })).toBeInTheDocument();
+    await expect(d.getByRole("img", { name: "Report" })).toBeInTheDocument();
+  },
+};
+
+/** Reversing the Name sort keeps Favourites on top and folders before reports. */
+export const FavouritesStayFirstWhenSorted: Story = {
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Report: Requirements report" }));
+    const d = await dialog();
+    await userEvent.click(d.getByRole("button", { name: "Expand Risk Management" }));
+    await userEvent.click(d.getByRole("button", { name: "Add Risk register to favourites" }));
+    const grid = (await dialog()).getByRole("treegrid", { name: "Reports" });
+    await userEvent.click(within(grid).getByRole("button", { name: "Name" }));
+    await expect(within(grid).getAllByRole("row")[1]).toHaveTextContent("Favourites");
+  },
+};
+
+/** Arrow keys walk the report list and Enter chooses the focused report. */
+export const KeyboardChoosesAReport: Story = {
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Report: Requirements report" }));
+    const d = await dialog();
+    await userEvent.click(d.getByRole("button", { name: "Expand Decision Management" }));
+    const row = d.getByRole("button", { name: /^Decision register/ }).closest<HTMLElement>("[role=row]")!;
+    row.focus();
+    await userEvent.keyboard("{Enter}");
+    await expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await expect(within(canvasElement).getByRole("button", { name: "Report: Decision register" })).toBeInTheDocument();
+  },
+};
+
 export const LightTheme: Story = { ...ShowsTheCurrentReportAndItsFolder, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...ShowsTheCurrentReportAndItsFolder, globals: { theme: "dark" } };

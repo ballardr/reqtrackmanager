@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 
 import { createDisposableProject, installCleanupHook, loginAs, PERSONAS } from "./helpers";
-import { chooseListAction } from "../listActions";
+import { chooseExport } from "../listActions";
 
 /**
  * Job to be done: bulk-importing requirements from a CSV whose headers don't match the server's column names
@@ -99,7 +99,7 @@ test.describe("CSV import wizard", () => {
     await page.reload();
     await expect(page.getByText(reqName, { exact: true })).toBeVisible();
     const downloadPromise = page.waitForEvent("download");
-    await chooseListAction(page, "Export as CSV");
+    await chooseExport(page, "CSV");
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toBe("requirements-export.csv");
     const exportedCsv = fs.readFileSync((await download.path())!, "utf-8");

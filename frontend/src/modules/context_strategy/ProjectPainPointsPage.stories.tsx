@@ -7,7 +7,7 @@ import { buildProject, buildScoringScheme, buildUser, withRouter, withStatefulAu
 import { scoreValue, scoringSummary } from "./painPointScoringFixtures";
 import { ProjectPainPointsPage } from "./ProjectPainPointsPage";
 import type { EffectivePainPointType, PainPoint, PainPointScoringSummary } from "./types";
-import { chooseListAction, openListMenu } from "../../testing/listActionsMenu";
+import { openListMenu, chooseExport } from "../../testing/listActionsMenu";
 
 const PROJECT_ID = "project-1";
 
@@ -298,7 +298,7 @@ export const ExportCarriesThePageFilters: Story = {
     await waitFor(() => expect(canvas.getByText("Competitive pricing pressure")).toBeInTheDocument());
     await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
-    await chooseListAction(canvas, "Export as CSV");
+    await chooseExport(canvas, "CSV");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/pain_point/export?status=triaged&search=pric&hide_intentional=true"));
   },
 };

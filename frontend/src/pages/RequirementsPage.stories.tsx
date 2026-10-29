@@ -12,7 +12,7 @@ import { buildCandidate, buildOption } from "../testing/artefactLinksFixtures";
 import { buildRecordColumns } from "../testing/recordTablesFixtures";
 import { buildVocabulary } from "../testing/tagsFixtures";
 import { RequirementsPage } from "./RequirementsPage";
-import { chooseListAction, openListMenu } from "../testing/listActionsMenu";
+import { openListMenu, chooseExport } from "../testing/listActionsMenu";
 
 const PROJECT_ID = "project-1";
 
@@ -133,7 +133,7 @@ export const ExportAndImportAreOnTheTitleRow: Story = {
     await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
     await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
-    await chooseListAction(canvas, "Export as CSV");
+    await chooseExport(canvas, "CSV");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/requirement/export"));
   },
 };

@@ -6,7 +6,7 @@ import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { buildProject, withRouter, withToast } from "../../testing/storybook-helpers";
 import { ProjectStrategiesPage } from "./ProjectStrategiesPage";
 import type { Strategy } from "./types";
-import { chooseListAction, openListMenu } from "../../testing/listActionsMenu";
+import { openListMenu, chooseExport } from "../../testing/listActionsMenu";
 
 const PROJECT_ID = "project-1";
 
@@ -85,7 +85,7 @@ export const ExportCarriesThePageFilters: Story = {
     await waitFor(() => expect(canvas.getByText("Lead the regional market")).toBeInTheDocument());
     await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
-    await chooseListAction(canvas, "Export as CSV");
+    await chooseExport(canvas, "CSV");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/strategy/export"));
   },
 };

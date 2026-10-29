@@ -133,6 +133,16 @@ test.describe("Compliance Module: project compliance view", () => {
     const csvDownload = await csvDownloadPromise;
     expect(csvDownload.suggestedFilename()).toContain("compliance-report.csv");
 
+    // Every other format the platform renders is offered too: Word, ODT, HTML, Excel and ODS.
+    await page.getByRole("button", { name: "Export", exact: true }).click();
+    const formatMenu = page.getByRole("dialog", { name: "Export" });
+    for (const name of ["Word", "ODT", "HTML", "Excel", "ODS"]) {
+      await expect(formatMenu.getByRole("button", { name: `Download ${name} report` })).toBeVisible();
+    }
+    const odtDownloadPromise = page.waitForEvent("download");
+    await formatMenu.getByRole("button", { name: "Download ODT report" }).click();
+    expect((await odtDownloadPromise).suggestedFilename()).toContain("compliance-report.odt");
+
     // --- Drill into the assignment; the one requirement should be listed.
     await page.getByText(new RegExp(reference)).click();
     await expect(page.getByText(requirementName)).toBeVisible();

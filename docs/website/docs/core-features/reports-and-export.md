@@ -6,7 +6,7 @@ sidebar_position: 5
 
 ## Generating a report
 
-A project's **Reports** button (at the top of the project overview) opens a dialog that generates a PDF, Word (DOCX) or CSV export of its requirements, with the organisation's shared resource files appended as extra sections. **Generate PDF** is the main button; **More formats** offers the Word file and CSV. To export only some requirements (one component, a range of target versions, a status or tag), filter the **Requirements** list and use its **Export** or **Download report**, which carry the list's filters. A PDF or Word export is branded with one of the organisation's **report templates** — an accent colour, an optional cover page, logo and footer text — for consistent, on-brand output across projects.
+A project's **Reports** button (at the top of the project overview) opens a dialog that generates a PDF, Word (DOCX), ODT, HTML, CSV, Excel or ODS export of its requirements, with the organisation's shared resource files appended as extra sections. **Generate PDF** is the main button; **More formats** offers every other format (the document formats carry the chapter layout, the table formats CSV, Excel and ODS are one flat table). To export only some requirements (one component, a range of target versions, a status or tag), filter the **Requirements** list and use its **Export** or **Download report**, which carry the list's filters. A PDF or Word export is branded with one of the organisation's **report templates** — an accent colour, an optional cover page, logo and footer text — for consistent, on-brand output across projects.
 
 **Which template is used.** You do not choose one when downloading. A report layout's own template applies (set in **Layout details → Branding template**, available when editing a layout); otherwise the organisation's **default template** (tick **Default template** on a report template; only one template can be the default); otherwise none. Reports from modules and the requirements report use the organisation's default template.
 
@@ -86,7 +86,7 @@ For any other kind of record, the **Reports** picker offers **Record list**: cho
 
 ## Custom reports
 
-A **custom report** is a report layout somebody designed in the organisation's or a project's **Report layouts**: a document or a set of tables, run for the project (or each project you can read) and downloaded as PDF, Word, OpenDocument, HTML, Excel or CSV. A **report pack** downloads several reports as one zip. They have their own section:
+A **custom report** is a report layout somebody designed in the organisation's or a project's **Report Setup**: a document or a set of tables, run for the project (or each project you can read) and downloaded as PDF, Word, OpenDocument, HTML, Excel or CSV. A **report pack** downloads several reports as one zip. They have their own section:
 
 - [Custom reports](./custom-reports/overview.md): what they are, the starter layouts, running and formats, provenance
 - [Designing a layout](./custom-reports/designing-a-layout.md): the text and block views, page setup, preview, versions
@@ -120,7 +120,7 @@ flowchart LR
 
 ## CSV export and import
 
-A record list can also offer the reports that use its records: open the list's **List actions** menu (the ⋮ button beside **New**) and choose **Download report**. Only reports (and report packs) that read that kind of record are listed, in the same folders as the Reports dialog; choose one (step 1), then set it up and download it (step 2), which names the project the report will run for. A pack asks for its choices and downloads as one zip. The report is not shown in the dialog, and a report meant to be read on screen, such as the Context & Strategy summary, is not listed; open it with the **Reports** button on the project overview instead.
+A record list can also be downloaded as it is shown: open the list's **List actions** menu (the ⋮ button beside **New**) and choose **Download shown items**, which opens a second list of formats: CSV (the file that imports again), PDF, Word, ODT and ODS. The list's filters apply. The same menu's **Download report** offers the reports that use its records; only reports (and report packs) that read that kind of record are listed, in the same folders as the Reports dialog; choose one (step 1), then set it up and download it (step 2), which names the project the report will run for. A pack asks for its choices and downloads as one zip. The report is not shown in the dialog, and a report meant to be read on screen, such as the Context & Strategy summary, is not listed; open it with the **Reports** button on the project overview instead.
 
 The Reports dialog exports requirements as CSV — every field, including custom field values and target stage — and the Requirements page's **List actions** menu (CSV that re-imports and updates records by code) reverse the trip, mapping a spreadsheet's columns back onto a project's fields. See [Requirements management](./requirements-management.md#csv-import-and-export) for the import side.
 
