@@ -54,7 +54,7 @@ import io
 import json
 import zipfile
 from datetime import UTC, date, datetime
-from typing import Any
+from typing import IO, Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -113,6 +113,8 @@ from app.services.bundle_common import (
     enforce_upload_size_limit,
     enforce_zip_uncompressed_size_limit,
     import_bundled_file,
+    new_bundle_file,
+    write_json_entry,
 )
 from app.services.change_request_summary import CHANGE_REQUEST_ARTEFACT_TYPE, CHANGE_REQUEST_CODE_PREFIX
 from app.services.codes import generate_project_code
@@ -560,7 +562,7 @@ def count_cross_project_links(db: Session, project_id: UUID) -> int:
     ) or 0
 
 
-def build_project_bundle(db: Session, project: Project, exported_by: User) -> bytes:
+def build_project_bundle(db: Session, project: Project, exported_by: User) -> IO[bytes]:
     """Builds a project export bundle: a zip containing `manifest.json`
     (self-describing envelope), `project.json` (structure + full history),
     and `files/` (every requirement/comment attachment's raw bytes).
@@ -571,7 +573,7 @@ def build_project_bundle(db: Session, project: Project, exported_by: User) -> by
         exported_by: The user performing the export (recorded in the manifest).
 
     Returns:
-        The zip file's bytes.
+        The finished zip as a spooled file (`bundle_common.iter_bundle_file` sends and closes it); the caller owns it.
     """
     org = db.get(Organization, project.organization_id)
     project_json, file_assets_by_id = collect_project_data(db, project)
@@ -583,13 +585,18 @@ def build_project_bundle(db: Session, project: Project, exported_by: User) -> by
         "excluded_cross_project_links": count_cross_project_links(db, project.id),
     }
 
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("manifest.json", json.dumps(manifest, indent=2))
-        zf.writestr("project.json", json.dumps(project_json, indent=2))
-        for asset in file_assets_by_id.values():
-            zf.writestr(f"files/{asset.id}_{asset.filename}", read_file(asset))
-    return buffer.getvalue()
+    bundle = new_bundle_file()
+    try:
+        with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("manifest.json", json.dumps(manifest, indent=2))
+            write_json_entry(zf, "project.json", project_json)
+            del project_json
+            for asset in file_assets_by_id.values():
+                zf.writestr(f"files/{asset.id}_{asset.filename}", read_file(asset))
+    except BaseException:
+        bundle.close()
+        raise
+    return bundle
 
 
 def _read_bundle(zip_bytes: bytes, expected_kind: str) -> tuple[dict, dict, zipfile.ZipFile]:

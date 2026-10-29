@@ -19,7 +19,8 @@ import json
 from datetime import UTC
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -60,6 +61,7 @@ from app.schemas.org import (
     OrgProjectSummaryOut,
 )
 from app.services.audit import log_event
+from app.services.bundle_common import bundle_size, iter_bundle_file
 from app.services.custom_role_presets import seed_custom_role_presets
 from app.services.definitions import seed_link_types, seed_project_statuses
 from app.services.downloads import filename_safe
@@ -167,10 +169,13 @@ def export_organization(
     # Read-only: each person, group, tag list and attachment set is read once for the whole export, not once per
     # record of every project.
     with memoize_module_state(), memoize_user_lookups():
-        zip_bytes = build_org_bundle(db, org, current_user)
-    return Response(
-        content=zip_bytes, media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{filename_safe(org.name, fallback="organization")}-export.zip"'},
+        bundle = build_org_bundle(db, org, current_user)
+    return StreamingResponse(
+        iter_bundle_file(bundle), media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename_safe(org.name, fallback="organization")}-export.zip"',
+            "Content-Length": str(bundle_size(bundle)),
+        },
     )
 
 

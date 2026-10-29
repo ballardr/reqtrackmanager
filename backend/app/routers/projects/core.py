@@ -19,6 +19,7 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
@@ -67,6 +68,7 @@ from app.schemas.project import (
 )
 from app.services import tags as tag_service
 from app.services.audit import log_event
+from app.services.bundle_common import bundle_size, iter_bundle_file
 from app.services.changes import get_project_changes
 from app.services.codes import assign_project_code, change_project_code
 from app.services.definitions import get_default_project_status_id, seed_action_types
@@ -849,10 +851,13 @@ def export_project(project: Project = Depends(require_project_manage), current_u
     """
     # Read-only: each person or group named on many records is looked up once, not once per record.
     with memoize_module_state(), memoize_user_lookups():
-        zip_bytes = build_project_bundle(db, project, current_user)
-    return Response(
-        content=zip_bytes, media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{filename_safe(project.name, fallback="project")}-export.zip"'},
+        bundle = build_project_bundle(db, project, current_user)
+    return StreamingResponse(
+        iter_bundle_file(bundle), media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename_safe(project.name, fallback="project")}-export.zip"',
+            "Content-Length": str(bundle_size(bundle)),
+        },
     )
 
 

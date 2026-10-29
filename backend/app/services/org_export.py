@@ -99,7 +99,7 @@ import json
 import zipfile
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import IO, Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -121,6 +121,8 @@ from app.services.bundle_common import (
     enforce_upload_size_limit,
     enforce_zip_uncompressed_size_limit,
     import_bundled_file,
+    new_bundle_file,
+    write_json_entry,
 )
 from app.services.custom_role_presets import seed_custom_role_presets
 from app.services.definitions import seed_link_types, seed_project_statuses
@@ -150,7 +152,7 @@ _PROJECT_RESOLUTIONS = {"skip", "import_as_copy"}
 _REPORT_TEMPLATE_RESOLUTIONS = {"keep_existing", "use_import"}
 
 
-def build_org_bundle(db: Session, org: Organization, exported_by: User) -> bytes:
+def build_org_bundle(db: Session, org: Organization, exported_by: User) -> IO[bytes]:
     """Builds an organisation export bundle: `manifest.json`, `org.json`
     (settings/members/groups/report templates), `projects/<ref>/project.json`
     per project (same shape `services.project_export` produces standalone),
@@ -163,16 +165,30 @@ def build_org_bundle(db: Session, org: Organization, exported_by: User) -> bytes
         exported_by: The user performing the export (recorded in the manifest).
 
     Returns:
-        The zip file's bytes.
+        The finished zip as a spooled file (`bundle_common.iter_bundle_file` sends and closes it); the caller owns it.
+        Each project is written into it as soon as it is collected and then dropped, so the export holds one
+        project's data at a time, not every project's.
     """
+    bundle = new_bundle_file()
+    try:
+        with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as zf:
+            _write_org_bundle(db, org, exported_by, zf)
+    except BaseException:
+        bundle.close()
+        raise
+    return bundle
+
+
+def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zipfile.ZipFile) -> None:
+    """Writes every entry of the organisation bundle into the open zip `zf` (see `build_org_bundle`)."""
     file_assets_by_id: dict[UUID, FileAsset] = {}
 
     projects = list(db.scalars(select(Project).where(Project.organization_id == org.id).order_by(Project.created_at)))
     project_ref_by_id = {p.id: f"P-{i + 1}" for i, p in enumerate(projects)}
-    projects_json: dict[str, dict[str, Any]] = {}
     for p in projects:
         project_json, project_files = collect_project_data(db, p)
-        projects_json[project_ref_by_id[p.id]] = project_json
+        write_json_entry(zf, f"projects/{project_ref_by_id[p.id]}/project.json", project_json)
+        del project_json
         file_assets_by_id.update(project_files)
 
     report_templates = list(db.scalars(select(ReportTemplate).where(ReportTemplate.organization_id == org.id)))
@@ -264,15 +280,10 @@ def build_org_bundle(db: Session, org: Organization, exported_by: User) -> bytes
         "project_bundle_format_version": PROJECT_BUNDLE_FORMAT_VERSION,
     }
 
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("manifest.json", json.dumps(manifest, indent=2))
-        zf.writestr("org.json", json.dumps(org_json, indent=2))
-        for ref, project_json in projects_json.items():
-            zf.writestr(f"projects/{ref}/project.json", json.dumps(project_json, indent=2))
-        for asset in file_assets_by_id.values():
-            zf.writestr(f"files/{asset.id}_{asset.filename}", read_file(asset))
-    return buffer.getvalue()
+    zf.writestr("manifest.json", json.dumps(manifest, indent=2))
+    write_json_entry(zf, "org.json", org_json)
+    for asset in file_assets_by_id.values():
+        zf.writestr(f"files/{asset.id}_{asset.filename}", read_file(asset))
 
 
 def _parse_org_bundle(zip_bytes: bytes) -> tuple[dict[str, Any], dict[str, Any], dict[str, bytes], dict[str, dict[str, Any]]]:
