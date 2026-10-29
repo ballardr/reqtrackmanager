@@ -1855,6 +1855,12 @@ flowchart LR
 - `GET/PUT /api/v1/{orgs|projects}/{id}/report-placements` lists everything a scope can place (hidden included, so it can
   be restored) and sets one override; `GET .../report-placements/resolved` is the read for any member. The permission
   is the existing manage-report-layouts one at each tier. Changes are audited (`report_placement`).
+- **`ReportFolder`** (`models/report_folder.py`, `services/report_folder_store.py`) keeps a folder nothing is filed in yet, one row per
+  (organisation or project, path). The listing is those rows plus every folder a visible layout, pack or placement uses (a project
+  also sees its ancestors' and the organisation's); `GET/POST/PATCH/DELETE /api/v1/{orgs|projects}/{id}/report-folders` lists,
+  adds, renames and deletes (path in the body or query string). Rename and delete change only what the scope owns; a delete moves
+  what was filed in it up one level and deletes no report. Same permission as layouts; audited (`report_folder`); both bundles carry
+  the rows (`services/report_folder_bundle.py`).
 - Placements travel in both bundles (`services/report_placement_bundle.py`): a module report by key, a layout or pack by name,
   resolved after the layouts and packs are imported; a name with nothing to apply to is a warning.
 - **Sub-components.** A `ReportDefinition` names the sub-component it needs (`subcomponent`) or, for a report spanning
@@ -1954,6 +1960,8 @@ REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
   registered artefact types the report names (`backend/tests/test_report_record_codes.py` fails for a
   report that declares none, or an unregistered type). A custom view renders the server's `code`
   string and does not format it again.
+- **Read-only reports.** `ReportDefinition.view_only=True` marks a report meant to be read on screen (a summary pack). The catalogue entry carries `view_only`; a record list's "Download report" leaves it out, the Reports dialog still shows it, and its `parts` remain widgets. Nothing in core names a report.
+- **Packs on a record list.** `ReportPackOut.record_types` is the sorted union of the types its entries read (a module report's `ReportDefinition.record_types`, a layout tree's `record_types_of`), resolved for the asking scope (`report_pack_run.pack_record_types`); a record list's "Download report" offers a pack when its types include the list's.
 - **Cells are untrusted.** CSV cells go through `csv_safe`, PDF cells through
   `report_document.safe` and DOCX cells through `report_docx.clean_text`. Do not put Restricted data (secrets, file content) in
   a result: report reads are not audit-logged, on the basis that every field is

@@ -143,7 +143,14 @@ test.describe("Report picker, folders and placements", () => {
       await table.getByRole("button", { name: "Actions for Decision register" }).click();
       await page.getByRole("menuitem", { name: "Move to folder…" }).click();
       const dialog = page.getByRole("dialog", { name: "Move Decision register" });
-      await dialog.getByRole("combobox", { name: "Folder" }).fill("Governance / Decisions");
+      await dialog.getByRole("radio", { name: "Top level" }).click();
+      await dialog.getByRole("button", { name: "New folder", exact: true }).click();
+      await dialog.getByRole("textbox", { name: "Name of the new folder" }).fill("Governance");
+      await dialog.getByRole("button", { name: "Add", exact: true }).click();
+      await dialog.getByRole("button", { name: "New folder inside" }).click();
+      await dialog.getByRole("textbox", { name: "Name of the new folder inside Governance" }).fill("Decisions");
+      await dialog.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(dialog.getByRole("radio", { name: "Decisions" })).toBeChecked();
       await dialog.getByRole("button", { name: "Move" }).click();
       await expect(page.getByText("Report moved.")).toBeVisible();
       await expect(table.getByText("Governance/Decisions")).toBeVisible();
@@ -195,6 +202,68 @@ test.describe("Report picker, folders and placements", () => {
       await expect(page.getByText("Back to following the default.")).toBeVisible();
       await page.goto(`/projects/${alpha.id}?reports=choose`);
       expect(await listReports(page)).not.toContain("Approval ageing");
+    });
+  });
+
+  test("a folder is chosen, added, renamed and deleted from the layout form without losing a report", async ({ page, request }) => {
+    const { headers, projects, suffix } = await setup(page, request);
+    const [alpha] = projects;
+    const base = `${API}/projects/${alpha.id}`;
+    const name = `Foldered layout ${suffix}`;
+    const layout = await createLayout(request, headers, base, name, "document", "Handover/Quarterly");
+    const folderOf = async () => {
+      const rows = await (await request.get(`${base}/report-layouts`, { headers })).json();
+      return rows.find((row: { id: string }) => row.id === layout.id).folder as string;
+    };
+
+    const openForm = async () => {
+      await page.goto(`/projects/${alpha.id}/admin`);
+      await selectProjectAdminGroup(page, "Report Setup");
+      await page.getByRole("table", { name: "Report layouts" }).getByRole("button", { name: `Actions for ${name}` }).click();
+      await page.getByRole("menuitem", { name: "Edit details" }).click();
+      return page.getByRole("dialog", { name: "Layout details" });
+    };
+
+    await test.step("the form shows the layout's folder chosen in a tree and offers no free text", async () => {
+      const dialog = await openForm();
+      await expect(dialog.getByRole("radio", { name: "Quarterly" })).toBeChecked();
+      await expect(dialog.getByRole("combobox", { name: "Folder" })).toHaveCount(0);
+    });
+
+    await test.step("a new folder is added inside the chosen one and the layout is saved into it", async () => {
+      const dialog = page.getByRole("dialog", { name: "Layout details" });
+      await dialog.getByRole("button", { name: "New folder inside" }).click();
+      await dialog.getByRole("textbox", { name: "Name of the new folder inside Handover/Quarterly" }).fill("Archive");
+      await dialog.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(page.getByText("Folder Handover/Quarterly/Archive added.")).toBeVisible();
+      await expect(dialog.getByRole("radio", { name: "Archive" })).toBeChecked();
+      await dialog.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(page.getByText("Layout details saved.")).toBeVisible();
+      expect(await folderOf()).toBe("Handover/Quarterly/Archive");
+    });
+
+    await test.step("renaming a folder moves the layout with it", async () => {
+      const dialog = await openForm();
+      await dialog.getByRole("radio", { name: "Handover" }).click();
+      await dialog.getByRole("button", { name: "Rename", exact: true }).click();
+      await dialog.getByRole("textbox", { name: "New name for Handover" }).fill("Delivery");
+      await dialog.getByRole("button", { name: "Save name" }).click();
+      await expect(page.getByText(/Renamed to Delivery\. 1 filed item followed\./)).toBeVisible();
+      await expect(dialog.getByRole("radio", { name: "Delivery" })).toBeChecked();
+      expect(await folderOf()).toBe("Delivery/Quarterly/Archive");
+    });
+
+    await test.step("deleting a folder asks first, then moves the layout up a level and deletes no report", async () => {
+      const dialog = page.getByRole("dialog", { name: "Layout details" });
+      await dialog.getByRole("radio", { name: "Quarterly" }).click();
+      await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+      const confirm = page.getByRole("dialog", { name: "Delete the folder Delivery/Quarterly?" });
+      await expect(confirm.getByText(/No report is deleted/)).toBeVisible();
+      await confirm.getByRole("button", { name: "Delete", exact: true }).click();
+      await expect(page.getByText(/Folder Delivery\/Quarterly deleted\. 1 filed item moved up\./)).toBeVisible();
+      await expect(dialog.getByRole("radio", { name: "Delivery" })).toBeChecked();
+      await dialog.getByRole("button", { name: "Cancel" }).click();
+      expect(await folderOf()).toBe("Delivery/Archive");
     });
   });
 

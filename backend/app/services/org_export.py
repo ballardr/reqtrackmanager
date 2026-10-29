@@ -133,6 +133,7 @@ from app.services.project_export import (
     new_project_from_bundle_data,
 )
 from app.services.rbac import would_create_org_group_cycle
+from app.services.report_folder_bundle import export_org_folders, import_org_folders
 from app.services.report_layout_bundle import export_org_layouts, import_org_layouts
 from app.services.report_pack_bundle import export_org_packs, import_org_packs
 from app.services.report_placement_bundle import export_org_placements, import_org_placements
@@ -187,6 +188,7 @@ def build_org_bundle(db: Session, org: Organization, exported_by: User) -> bytes
 
     module_bundle_json: dict[str, Any] = {
         **export_org_layouts(db, org.id), **export_org_packs(db, org.id), **export_org_placements(db, org.id),
+        **export_org_folders(db, org.id),
     }
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         module_bundle_json.update(hooks.export(db, org))
@@ -654,6 +656,7 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
     import_org_layouts(db, org.id, data, current_user, warnings, merge=False)
     import_org_packs(db, org.id, data, current_user, warnings, merge=False)
     import_org_placements(db, org.id, data, current_user, warnings)
+    import_org_folders(db, org.id, data, current_user, warnings)
     _warn_legacy_report_content(data, warnings)
     # Default project statuses/link types, same as any other new
     # organisation (`routers/orgs.py::create_organization`) — a bundle
@@ -839,6 +842,7 @@ def merge_org_bundle(
     import_org_layouts(db, target_org.id, data, current_user, warnings, merge=True)
     import_org_packs(db, target_org.id, data, current_user, warnings, merge=True)
     import_org_placements(db, target_org.id, data, current_user, warnings)
+    import_org_folders(db, target_org.id, data, current_user, warnings)
     _warn_legacy_report_content(data, warnings)
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         hooks.import_(db, target_org, data, users, warnings, resolutions)

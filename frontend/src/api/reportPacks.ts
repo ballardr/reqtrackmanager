@@ -103,6 +103,8 @@ export interface ReportPackSummary {
   /** The asking scope owns it; an inherited pack is changed where it lives. */
   editable: boolean;
   entries: number;
+  /** The record types its reports read, sorted: a record list offers the packs that read its type. */
+  record_types: string[];
   updated_at: string;
 }
 

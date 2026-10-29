@@ -71,6 +71,8 @@ class ReportPackOut(BaseModel):
         hidden: Hidden in the project asking (never for its own packs).
         editable: Whether the asking scope owns it.
         entries: How many reports it lists.
+        record_types: The record types the reports it lists read, sorted (a record list offers the packs that read
+            its type); an entry the asking scope cannot reach adds none.
     """
 
     id: UUID
@@ -84,6 +86,7 @@ class ReportPackOut(BaseModel):
     hidden: bool = False
     editable: bool = True
     entries: int = 0
+    record_types: list[str] = []
     updated_at: datetime
 
 

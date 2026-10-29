@@ -63,6 +63,7 @@ from app.services import custom_report_run, report_layout_scope, report_layouts,
 from app.services.client_date import effective_today
 from app.services.report_framework import readable_projects
 from app.services.report_layout_eval import LayoutLimitError
+from app.services.report_layout_tree import record_types_of
 from app.services.report_module_run import (
     ModuleReportUnavailableError,
     find_report,
@@ -246,6 +247,37 @@ def _find_layout(
             return None
         return scoped.layout
     return None
+
+
+def pack_record_types(
+    db: Session, organization_id: uuid.UUID, project: Project | None, definition: Mapping[str, Any],
+) -> list[str]:
+    """The record types a pack's entries read, sorted: the declared types of each module report and the types the
+    tree of each layout reads, as the asking scope reaches them (a layout it cannot reach, or a report that is not
+    installed, adds none).
+
+    Args:
+        db: Active session.
+        organization_id: The pack's organisation.
+        project: The asking project, or `None` for the organisation tier.
+        definition: The pack's definition.
+
+    Returns:
+        The distinct type keys, alphabetically.
+    """
+    organization = db.get(Organization, organization_id)
+    found: set[str] = set()
+    for entry in definition.get("entries", []):
+        if entry.get("kind") == "report":
+            report = find_report(entry["module_key"], entry["report"])
+            if report is not None:
+                found.update(report.record_types)
+        elif organization is not None:
+            layout = _find_layout(db, organization, project, entry)
+            version = report_layouts.get_version(db, layout.id, layout.current_version) if layout is not None else None
+            if version is not None:
+                found.update(record_types_of(version.tree))
+    return sorted(found)
 
 
 def _clock_left(deadline: float) -> None:

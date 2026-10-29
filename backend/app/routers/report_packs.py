@@ -91,12 +91,19 @@ project_router = APIRouter(prefix="/api/v1/projects/{project_id}/report-packs", 
 NOTHING_TO_RUN = "nothing_to_run"
 
 
-def _summary(db: Session, pack: ReportPack, origin: Origin, *, hidden: bool = False, editable: bool = True) -> ReportPackOut:
+def _summary(
+    db: Session, pack: ReportPack, origin: Origin, *, hidden: bool = False, editable: bool = True,
+    project: Project | None = None,
+) -> ReportPackOut:
+    """A pack's summary; `project` is the project asking (`None` for the organisation tier), whose reachable layouts
+    decide the record types the pack's entries read."""
     version = report_packs.current_version(db, pack)
     return ReportPackOut(
         id=pack.id, organization_id=pack.organization_id, project_id=pack.project_id, name=pack.name,
         description=pack.description, folder=pack.folder, current_version=pack.current_version, origin=origin, hidden=hidden,
-        editable=editable, entries=len(version.definition.get("entries", [])), updated_at=pack.updated_at,
+        editable=editable, entries=len(version.definition.get("entries", [])),
+        record_types=report_pack_run.pack_record_types(db, pack.organization_id, project, version.definition),
+        updated_at=pack.updated_at,
     )
 
 
@@ -108,9 +115,12 @@ def _version_out(version: ReportPackVersion) -> ReportPackVersionOut:
     )
 
 
-def _detail(db: Session, pack: ReportPack, origin: Origin, *, hidden: bool = False, editable: bool = True) -> ReportPackDetailOut:
+def _detail(
+    db: Session, pack: ReportPack, origin: Origin, *, hidden: bool = False, editable: bool = True,
+    project: Project | None = None,
+) -> ReportPackDetailOut:
     return ReportPackDetailOut(
-        **_summary(db, pack, origin, hidden=hidden, editable=editable).model_dump(),
+        **_summary(db, pack, origin, hidden=hidden, editable=editable, project=project).model_dump(),
         current=_version_out(report_packs.current_version(db, pack)),
     )
 
@@ -554,8 +564,8 @@ def _project_or_404(db: Session, project_id: UUID) -> Project:
     return project
 
 
-def _scoped_out(db: Session, scoped: ScopedPack) -> ReportPackOut:
-    return _summary(db, scoped.pack, scoped.origin, hidden=scoped.hidden, editable=scoped.origin == "project")
+def _scoped_out(db: Session, scoped: ScopedPack, project: Project) -> ReportPackOut:
+    return _summary(db, scoped.pack, scoped.origin, hidden=scoped.hidden, editable=scoped.origin == "project", project=project)
 
 
 def _reachable(db: Session, project: Project, pack_id: UUID) -> ScopedPack:
@@ -610,7 +620,7 @@ def list_project_packs(
     held = get_effective_permissions(db, current_user.id, project_id=project_id)
     may_manage = permission_satisfied(held, MANAGE_PROJECT_REPORT_LAYOUTS)
     return [
-        _scoped_out(db, s) for s in report_pack_scope.resolve_project_packs(db, project) if may_manage or not s.hidden
+        _scoped_out(db, s, project) for s in report_pack_scope.resolve_project_packs(db, project) if may_manage or not s.hidden
     ]
 
 
@@ -626,7 +636,7 @@ def create_project_pack(
     """
     project = _project_or_404(db, project_id)
     pack = _create(db, current_user, body, organization_id=project.organization_id, project_id=project.id)
-    return _detail(db, pack, "project")
+    return _detail(db, pack, "project", project=project)
 
 
 @project_router.post("/restore", response_model=ReportPackRestoreOut)
@@ -647,8 +657,9 @@ def get_project_pack(
     project_id: UUID, pack_id: UUID, current_user: User = Depends(manage_project_layouts), db: Session = Depends(get_db),
 ) -> ReportPackDetailOut:
     """A pack the project can reach, with its current definition (an inherited one is read-only here)."""
-    scoped = _reachable(db, _project_or_404(db, project_id), pack_id)
-    return _detail(db, scoped.pack, scoped.origin, hidden=scoped.hidden, editable=scoped.origin == "project")
+    project = _project_or_404(db, project_id)
+    scoped = _reachable(db, project, pack_id)
+    return _detail(db, scoped.pack, scoped.origin, hidden=scoped.hidden, editable=scoped.origin == "project", project=project)
 
 
 @project_router.get("/{pack_id}/versions", response_model=list[ReportPackVersionSummaryOut])
@@ -678,8 +689,9 @@ def save_project_pack(
     Raises:
         HTTPException: 403 an inherited pack; 422 an invalid definition; 409 the pack moved on from `base_version`.
     """
-    pack = _own(db, _project_or_404(db, project_id), pack_id)
-    return _detail(db, _save(db, current_user, pack, body), "project")
+    project = _project_or_404(db, project_id)
+    pack = _own(db, project, pack_id)
+    return _detail(db, _save(db, current_user, pack, body), "project", project=project)
 
 
 @project_router.patch("/{pack_id}", response_model=ReportPackOut)
@@ -688,8 +700,9 @@ def update_project_pack(
     current_user: User = Depends(manage_project_layouts), db: Session = Depends(get_db),
 ) -> ReportPackOut:
     """Renames or re-describes the project's own pack."""
-    pack = _own(db, _project_or_404(db, project_id), pack_id)
-    return _summary(db, _update(db, current_user, pack, body), "project")
+    project = _project_or_404(db, project_id)
+    pack = _own(db, project, pack_id)
+    return _summary(db, _update(db, current_user, pack, body), "project", project=project)
 
 
 @project_router.delete("/{pack_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -723,7 +736,7 @@ def set_project_pack_visibility(
         db.rollback()
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Pack not found.") from exc
     db.commit()
-    return _scoped_out(db, _reachable(db, project, pack_id))
+    return _scoped_out(db, _reachable(db, project, pack_id), project)
 
 
 @project_router.get("/{pack_id}/form", response_model=ReportPackFormOut)

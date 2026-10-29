@@ -13279,3 +13279,75 @@ Backend (`test_report_templates.py`): one default per organisation, the preceden
 ### Known gap
 
 The docs website text now says "Reports dialog" and describes the template chain, but its screenshots of the old page (`reports-page.png`, `custom-reports-picker.png`, `report-pack-preview` and the module report pages') are unchanged: they are retaken in the website phase after the review, as the plan says.
+
+## Custom reports Phase 24: Download report as two steps (2026-10-29)
+
+The third review asked for the record-list **Download report** dialog to be a two-step flow, to name the project, to stop previewing the report, and to leave out reports meant only to be viewed.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Two steps with a shared `StepIndicator`** (1 Choose a report, 2 Configure and download) and a **Back** button; no other dialog had a step indicator, so there was no existing component to reuse. | User (steps), Agent (component) |
+| 2 | **Step 2 names the report and the project** (or the organisation, for an organisation-owned list), using the project term and organisation label. The name comes from `useScopeName` (one cached fetch per scope). | User |
+| 3 | **No preview.** `ReportRunner` takes `showResult` (default true); off, it neither runs the report for the screen nor shows a result, only the parameters, variables, template choice and format menu. The Reports dialog still previews. | User |
+| 4 | **`ReportDefinition.view_only`** (default false), carried on `ReportCatalogueEntry`. The record-list dialog drops flagged reports; widgets key off `parts`, so they are unaffected. Only the Context & Strategy summary is flagged. Custom layouts and packs are never view-only. A generic field, so no per-module code in core. | User (rule), Agent (field name) |
+| 5 | **Where a view-only report is found: the Reports dialog**, unchanged (its on-screen view is the Phase 23 dialog). The plan asked to confirm this with the User; Agent kept the existing behaviour because nothing else changes for those reports, so the User can redirect it at the review checkpoint. | Agent |
+| 6 | **Not applicable:** no new table (no nested-project fallback), no person-valued field, no time or date, no export/import or bundle change (a code-only flag), no MCP tool change. | Agent |
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* the flag hiding a report from the list must not be mistaken for access control; the scope name fetch exposing a name the caller cannot read.
+- *Verify:* `view_only` only filters what the dialog offers: the catalogue and run routes still apply module enablement, role and scope exactly as before, and the Reports dialog is unchanged. The name comes from the project and organisation endpoints the person already calls on every page, which enforce their own access; a failure shows an ellipsis.
+- *Remediate:* none needed.
+
+### Verification
+
+Backend (`test_custom_report_run.py`): the catalogue flags the summary and nothing else as view-only and still lists it. Storybook: `StepIndicator`, the dialog (view-only report left out, step 2 names the project, Back, organisation list) and `ReportRunner` without a result. Playwright (`list-download-report.spec.ts`): view-only report not listed even when searched, step 2 names the project and shows no table, PDF download, Back.
+
+## Custom reports Phase 25: report packs offered wherever reports are downloaded (2026-10-29)
+
+The third review found packs hard to find: they were only in the Reports picker. Phase 23 already put the project and organisation Reports dialog on the one picker that lists packs (`useReportPackEntries`), so this phase adds the third place, the record list's **Download report** dialog.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **A pack is offered on a record list when any report in it reads the list's record type**, the same rule as for reports. `ReportPackOut.record_types` is derived on the server from the pack's entries (`report_pack_run.pack_record_types`: a module report's `ReportDefinition.record_types`, a layout's `record_types_of(tree)`), so the client has no list of types. | User (rule), Agent (field) |
+| 2 | **The types are derived as the asking scope sees them.** A layout entry is resolved as at run time (`_find_layout`: the project's reachable layouts, or the organisation's only), so an entry the scope cannot reach adds no type and a pack naming only such entries is not offered. The type list is computed on every pack summary and detail response (list, read, save, rename) so they cannot disagree. | Agent |
+| 3 | **Packs are filed by the same placements as in the Reports dialog.** The shared `extraItem` (`utils/extraReportItem.ts`) turns a host entry (the requirement report, a pack) into a picker item with its placement applied; `ReportCatalogue` and `ReportDownloadDialog` both use it. | Agent |
+| 4 | **Step 2 for a pack is the pack's own run form** (`ReportPackRunner`: variables, saved choices, the per-report record counts and the zip). That table is the pack's what-is-included check, not a preview of a report, so it stays; the dialog still names the pack and the project. | Agent |
+| 5 | **Not applicable:** no new table (no nested-project fallback, no bundle change: `record_types` is derived), no person-valued field, no time or date, no MCP tool change (`list_report_packs` gains one additive field). The Reports dialogs of a project and an organisation were already offering packs; stories now pin both. | Agent |
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* the list of types leaking a layout the caller cannot read; offering a pack the caller cannot run.
+- *Verify:* the types are type keys only, derived from layouts the asking scope can already reach; pack listing keeps its membership gate and a hidden pack is still dropped. Running a pack is unchanged: every entry runs as the caller with its own gates.
+- *Remediate:* none needed.
+
+### Verification
+
+Backend (`test_report_packs.py`): types from layout and report entries on the organisation and project lists, a missing layout adds none, a project's own layout is not reached from the organisation tier, and the single read and save carry the types (a first draft left `project` undefined in the read route, caught by the Playwright pack specs and now pinned). Storybook: the download dialog (packs that read the type, a pack's step 2 and Back, a pack listed when no report is) and the Reports dialog for a project and for an organisation. Playwright (`list-download-report.spec.ts`): a pack that reads requirements is offered, one that does not is not, and the zip downloads.
+
+## Custom reports Phase 26: folder chooser (2026-10-29)
+
+The third review found the folder field a text box prone to misspelling that gave no sight of where other reports live. It becomes a chooser: a tree of the folders the scope can use, with New folder, Rename and Delete beside it, on layouts, packs and placements.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Empty folders live in a per-scope table** (`report_folders`: organisation or project, a tidied path, unique per owner case-insensitively). A folder is still a label on a layout, pack or placement; a row only keeps a folder nothing is filed in yet. The listing (`services/report_folder_store.list_folders`) is the union of rows and folders in use, with the levels above each, so a folder in use can never be missing. | User |
+| 2 | **Deleting a folder never deletes a report.** What this scope filed at or below it (layouts, packs, placements, sub-folder rows) moves up one level, to the top level from a first-level folder, and the counts come back and are shown in a Toast. The delete is a Tier-1 confirm that says so. | User |
+| 3 | **Placements share the chooser and the list; rename is included.** Rename changes the last level and keeps the parent; what is filed in it and below follows; a name a sibling already has is refused (a change of case alone is allowed). A placement's chooser also offers the default folders of module reports (read-only). | User |
+| 4 | **Nesting is additive** (the nested-project check for a new project-scoped table): a project sees its own folders, its ancestors' and the organisation's together, as it does layouts and packs. The Action Types rule (own rows, else the nearest ancestor's) would make a child's first folder hide every inherited one, which is wrong for a vocabulary of labels. No root-only seeding hook (nothing is seeded). | Agent |
+| 5 | **A scope changes only what it owns.** An inherited folder can be filed under but is not renamed or deleted from below (404); the response flags each folder `own` and the chooser disables Rename and Delete with the reason. | Agent |
+| 6 | **Permission is the manage-report-layouts one at each tier**, with no server-administrator bypass, for list as well as change (the lists only serve the forms of those who manage). | Agent |
+| 7 | **Bundles:** both bundles carry the scope's own folder rows (`report_folders`, `services/report_folder_bundle.py`); import tidies each path again, skips one already listed and warns about an invalid one. The folder on a layout or pack already travelled with it. No hidden-defaults tombstone applies: a folder is not a hideable organisation default. | Agent |
+| 8 | **Time, person fields, MCP, search, codes:** not applicable (no date, no person, no MCP tool, not an artefact type). | Agent |
+| 9 | **A folder path travels in the body or query string**, never the URL path (it contains `/`). The free-text field, its datalist and `useFolderSuggestions` are removed; the layout and pack forms take an optional `folderApi` (live for the scope by default) and `onFoldersChanged` so the list behind reloads. | Agent |
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a scope reading or changing another organisation's or project's folders; a rename or delete reaching rows the scope does not own; a mutation without an audit event; a path used as markup or a file name.
+- *Verify:* every route takes the manage-report-layouts permission for its tier and resolves the project or organisation from the path; the store selects rows by the scope's own organisation and project id only; each change is one `report_folder` audit event with paths and counts, never a report title (a test pins this); a path is shown as text and never put in a file name, query or markup.
+- *Remediate:* none needed.
+
+### Verification
+
+Backend (`test_report_folders.py`): add, nested levels listed, folders in use listed, duplicate (case-insensitive) and unusable paths refused, additive nesting with `own` flags, an inherited folder not changeable, rename moving layouts, packs, placements and sub-folders, sibling clash refused, delete moving up one level without deleting a report (first-level goes to the top level), a project moving only its own reports, permission, audit without titles, cascade on project delete, and both bundle round trips (a bad path warned about). Storybook: `ReportFolderChooser` (tree, choose, add, Enter not submitting the form, depth limit, rename, delete with confirm, inherited folder locked), the layout, pack and placement dialogs. Playwright (`report-picker-and-folders.spec.ts`): a folder is chosen, added, renamed and deleted from the layout form and the layout follows; the organisation move step builds its nested folder in the chooser.
+

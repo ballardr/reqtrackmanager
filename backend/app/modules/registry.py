@@ -2018,6 +2018,9 @@ class ReportDefinition:
             `ReportContext.code` / `ReportContext.org_code` and the row's tags
             through `ReportContext.tag_text`, never a hand-formatted code; the
             declaration lets a test prove each type is registered and coded.
+        view_only: True for a report meant to be read on screen and not downloaded as a file (a summary pack). A record
+            list's "Download report" does not offer it; the Reports dialog still shows it, and its `parts` stay
+            available as widgets.
         cell_tones: Badge colours for the PDF and Word output, by column heading: `{"Status": {"Approved": "accent"}}`
             tones every cell under a column headed "Status" whose text is a listed label, in every section of the
             report, as the screen's badge does. Build the inner maps with `report_framework.tones_by_label` from the
@@ -2041,6 +2044,7 @@ class ReportDefinition:
     org_scope: Literal["readable_projects", "all_org_projects"] = "readable_projects"
     params: tuple[ReportParamDefinition, ...] = field(default=())
     record_types: tuple[str, ...] = field(default=())
+    view_only: bool = False
     cell_tones: Mapping[str, Mapping[str, str]] = field(default_factory=dict, compare=False)
     parts: tuple[ReportPartDefinition, ...] = field(default=())
 

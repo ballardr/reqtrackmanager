@@ -3,6 +3,7 @@ import { expect, fn, screen, spyOn, userEvent, waitFor, within } from "storybook
 
 import { api as http } from "../api/client";
 
+import { buildFolderApi } from "../testing/reportFolderFixtures";
 import { buildLayoutApi, buildLayoutSummary } from "../testing/reportLayoutFixtures";
 import { requiredCaptions } from "../testing/requiredMarkers";
 import { ReportLayoutFormModal } from "./ReportLayoutFormModal";
@@ -11,7 +12,7 @@ import { ReportLayoutFormModal } from "./ReportLayoutFormModal";
 const meta: Meta<typeof ReportLayoutFormModal> = {
   title: "Components/ReportLayoutFormModal",
   component: ReportLayoutFormModal,
-  args: { api: buildLayoutApi([]), onClose: fn(), onSaved: fn() },
+  args: { api: buildLayoutApi([]), folderApi: buildFolderApi(), onClose: fn(), onSaved: fn() },
 };
 export default meta;
 
@@ -54,42 +55,69 @@ export const EditingOffersNoKind: Story = {
   },
 };
 
-/** The folder is optional (so unmarked), suggests the folders the scope already uses and is saved tidied. */
-export const FolderSuggestsExistingFoldersAndIsSavedTidied: Story = {
-  args: { api: buildLayoutApi([buildLayoutSummary({ folder: "Handover/Quarterly" })]) },
+/** The folder is optional (so unmarked), chosen from the scope's folders and saved with the layout. */
+export const FolderIsChosenFromTheTreeAndSaved: Story = {
   play: async ({ args }) => {
     const dialog = within(await screen.findByRole("dialog", { name: "New report layout" }));
     await expect(requiredCaptions(document.body)).toEqual(["Name", "Kind of report"]);
-    await waitFor(() => expect(document.querySelectorAll("datalist option").length).toBe(2)); // Handover and Handover/Quarterly
+    await expect(await dialog.findByRole("radio", { name: "No folder (the default)" })).toBeChecked();
     await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Filed");
-    await userEvent.type(dialog.getByRole("combobox", { name: "Folder" }), " Handover / Annual ");
+    await userEvent.click(await dialog.findByRole("radio", { name: "Quarterly" }));
     await userEvent.click(dialog.getByRole("button", { name: "Create" }));
-    await waitFor(() => expect(args.api.create).toHaveBeenCalledWith(expect.objectContaining({ name: "Filed", folder: "Handover/Annual" })));
+    await waitFor(() => expect(args.api.create).toHaveBeenCalledWith(expect.objectContaining({ name: "Filed", folder: "Handover/Quarterly" })));
   },
 };
 
-/** A path the server would refuse is flagged and cannot be saved. */
-export const AFolderThatIsTooDeepCannotBeSaved: Story = {
+/** A folder added in the dialog is chosen at once and saved with the layout; the page behind is told to reload. */
+export const AFolderAddedHereIsSavedWithTheLayout: Story = {
+  args: { onFoldersChanged: fn() },
+  play: async ({ args }) => {
+    const dialog = within(await screen.findByRole("dialog", { name: "New report layout" }));
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Fresh");
+    await userEvent.click(await dialog.findByRole("button", { name: "New folder" }));
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name of the new folder" }), "Annual");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(args.onFoldersChanged).toHaveBeenCalled());
+    await userEvent.click(dialog.getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(args.api.create).toHaveBeenCalledWith(expect.objectContaining({ name: "Fresh", folder: "Annual" })));
+  },
+};
+
+/** Save stays disabled while a folder change is in flight, so the layout cannot be saved before the chosen folder has followed it. */
+const slowFolders = (() => {
+  const folderApi = buildFolderApi();
+  const add = folderApi.add;
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  folderApi.add = fn(async (path: string) => { await gate; return add(path); });
+  return { folderApi, release: () => release() };
+})();
+
+export const SaveWaitsForAFolderChangeToFinish: Story = {
+  args: { folderApi: slowFolders.folderApi },
   play: async () => {
     const dialog = within(await screen.findByRole("dialog", { name: "New report layout" }));
-    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Deep");
-    await userEvent.type(dialog.getByRole("combobox", { name: "Folder" }), "a/b/c/d");
-    await expect(dialog.getByRole("alert")).toHaveTextContent("at most 3 levels");
-    await expect(dialog.getByRole("button", { name: "Create" })).toBeDisabled();
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Waiting");
+    await expect(dialog.getByRole("button", { name: "Create" })).toBeEnabled();
+    await userEvent.click(await dialog.findByRole("button", { name: "New folder" }));
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name of the new folder" }), "Slow");
+    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(dialog.getByRole("button", { name: "Create" })).toBeDisabled());
+    slowFolders.release();
+    await expect(await dialog.findByRole("radio", { name: "Slow" })).toBeChecked();
+    await waitFor(() => expect(dialog.getByRole("button", { name: "Create" })).toBeEnabled());
   },
 };
 
 /** Editing starts from the layout's folder and sends the change. */
 export const EditingChangesTheFolder: Story = {
-  args: { layout: buildLayoutSummary({ folder: "Old" }) },
+  args: { layout: buildLayoutSummary({ folder: "Shared" }) },
   play: async ({ args }) => {
     const dialog = within(await screen.findByRole("dialog", { name: "Layout details" }));
-    const folder = dialog.getByRole("combobox", { name: "Folder" });
-    await expect(folder).toHaveValue("Old");
-    await userEvent.clear(folder);
-    await userEvent.type(folder, "New/Sub");
+    await expect(await dialog.findByRole("radio", { name: "Shared" })).toBeChecked();
+    await userEvent.click(dialog.getByRole("radio", { name: "Handover" }));
     await userEvent.click(dialog.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(args.api.update).toHaveBeenCalledWith("layout-1", expect.objectContaining({ folder: "New/Sub" })));
+    await waitFor(() => expect(args.api.update).toHaveBeenCalledWith("layout-1", expect.objectContaining({ folder: "Handover" })));
   },
 };
 

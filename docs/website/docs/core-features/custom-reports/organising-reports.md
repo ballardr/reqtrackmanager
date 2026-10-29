@@ -24,7 +24,13 @@ The chosen report is in the page's link (`?report=…`), so a link to a report o
 
 ## Filing your own layouts and packs
 
-A layout or a pack has an optional **Folder** in its create and edit form. Type a path with `/` between the levels; the form suggests the folders already in use. An empty folder files it under **Custom reports** (layouts) or **Report packs**. The folder travels with the layout or pack in a project or organisation [export](../zip-export-import.md).
+A layout or a pack has an optional **Folder** in its create and edit form. You choose it from a tree of the folders already in use, so nothing is misspelt; choose **No folder** to file it under **Custom reports** (layouts) or **Report packs**. Beside the tree:
+
+- **New folder** adds one inside the folder you have chosen (or at the top level when none is), up to three levels deep, and chooses it.
+- **Rename** changes the last level of the folder you chose. Reports filed in it, and in the folders inside it, follow.
+- **Delete** asks first, then removes the folder. What was filed in it moves up one level; no report is deleted, and a message says how many moved.
+
+You can rename or delete only folders your organisation or project owns; a folder that comes from the organisation or a parent project can be filed under but not changed from below. Folders you add travel in a project or organisation [export](../zip-export-import.md) even when empty. The folder travels with the layout or pack in a project or organisation [export](../zip-export-import.md).
 
 ## Arranging the list for a team
 
@@ -39,7 +45,7 @@ flowchart TD
 ```
 
 - Each report shows the folder it is in now, with the default and who set the change beside it (*Default: Decision Management · the organisation*).
-- **Move to folder…** files a report under another folder (empty means the top level). **Reset folder to default** removes your change.
+- **Move to folder…** files a report under another folder, chosen in the same tree (choose **Top level** to file it outside any folder). **Reset folder to default** removes your change.
 - **Hide from the list** removes a *module* report from the picker (you are asked first). **Show in the list** brings back one a parent hid, and **Follow the default again** removes your own choice. A shared layout or pack is hidden from its own list in **Report layouts** or **Report packs**, so here it can only be moved.
 - A project's setting wins over its parents', and a parent's over the organisation's, one thing at a time: a project can move a report the organisation hid without touching where the organisation filed it.
 - **Hiding only tidies the list.** The report is not removed and anyone with access can still run it from its link; access is decided by roles, not by this list.

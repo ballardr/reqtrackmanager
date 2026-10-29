@@ -4,8 +4,9 @@
  * Folder paths of the Reports picker and the tree built from them.
  *
  * Responsibilities: split and join a path (`Handover/Quarterly`, up to three levels), build a nested tree of folders
- * holding items from a flat list (levels merged case-insensitively, the first spelling kept), and list every folder
- * path so a form can offer the existing ones. Pure functions over plain data: nothing here knows what a report is.
+ * holding items from a flat list (levels merged case-insensitively, the first spelling kept), list every folder
+ * path so a form can offer the existing ones, and follow a path through a rename or delete. Pure functions over plain
+ * data: nothing here knows what a report is.
  *
  * Design decisions: a folder is only a label on each item, so the tree is derived on every render and never stored;
  * folders sort by name and items by title so the picker reads the same for everyone.
@@ -123,4 +124,25 @@ export function distinctFolders(paths: string[]): string[] {
     }
   }
   return [...seen.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+}
+
+/** The path one level up (`""` for a first-level folder). */
+export function parentFolder(path: string): string {
+  return folderLevels(path).slice(0, -1).join(FOLDER_SEPARATOR);
+}
+
+/** Whether `path` is `folder` or inside it (case-insensitive). */
+export function isInsideFolder(path: string, folder: string): boolean {
+  const a = path.toLowerCase();
+  const b = folder.toLowerCase();
+  return a === b || a.startsWith(`${b}${FOLDER_SEPARATOR}`);
+}
+
+/**
+ * Where `path` ends up when `from` becomes `to` (a rename, or a delete where `to` is the deleted folder's parent): a path
+ * at or inside `from` is re-rooted under `to`; any other path is unchanged.
+ */
+export function followFolder(path: string, from: string, to: string): string {
+  if (!isInsideFolder(path, from)) return path;
+  return [to, ...folderLevels(path).slice(folderLevels(from).length)].filter((level) => level !== "").join(FOLDER_SEPARATOR);
 }

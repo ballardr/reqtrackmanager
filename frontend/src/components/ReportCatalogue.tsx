@@ -19,9 +19,9 @@ import { useSearchParams } from "react-router-dom";
 
 import { useMemo } from "react";
 
-import { PLACEMENT_KEY_REQUIREMENTS, type ResolvedPlacement } from "../api/reportPlacements";
 import type { ReportCatalogueEntry } from "../api/reports";
 import { useReportPlacements } from "../hooks/useReportPlacements";
+import { extraItem } from "../utils/extraReportItem";
 import { ReportPicker, type ReportPickerItem, type ReportPickerKind } from "./ReportPicker";
 import { ReportRunner } from "./ReportRunner";
 
@@ -37,23 +37,9 @@ export interface ExtraReportEntry {
   folder?: string;
   /** The key placements and favourites use (default `report:platform.<key>`). */
   placementKey?: string;
+  /** The record types it reads, for a record list that offers only reports using its type (absent: any). */
+  recordTypes?: string[];
 }
-
-/** Where a host's extra report files unless a placement moves it. */
-const DEFAULT_EXTRA_FOLDER = "Platform";
-
-/** The picker item of an extra entry, with the scope's placement (a folder, or hidden) applied. */
-function extraItem(entry: ReportCatalogueExtra, placements: Map<string, ResolvedPlacement>): ReportPickerItem | null {
-  const key = entry.placementKey ?? (entry.key === "requirements" ? PLACEMENT_KEY_REQUIREMENTS : `report:platform.${entry.key}`);
-  const placed = placements.get(key);
-  if (placed?.hidden && key.startsWith("report:")) return null;
-  return {
-    id: entry.key, title: entry.title, description: entry.description, kind: entry.kind ?? "report", favouriteKey: key,
-    folder: placed?.folder ?? entry.folder ?? DEFAULT_EXTRA_FOLDER,
-  };
-}
-
-type ReportCatalogueExtra = ExtraReportEntry;
 
 /**
  * @param entries Catalogue entries the caller can run.

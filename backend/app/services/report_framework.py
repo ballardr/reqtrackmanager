@@ -1105,6 +1105,7 @@ class ReportCatalogueEntryOut(BaseModel):
     "Custom reports").
     `record_types` are the registered record types the report names or reads (a record list offers the reports that
     list its type under "Download report").
+    `view_only` marks a report meant to be read on screen, which a record list's "Download report" does not offer.
     `report_template_id` is a custom layout's own branding template (`None` = the organisation's default applies).
     """
 
@@ -1128,6 +1129,7 @@ class ReportCatalogueEntryOut(BaseModel):
     folder: str = ""
     placement_key: str = ""
     record_types: list[str] = []
+    view_only: bool = False
     report_template_id: UUID | None = None
 
 
@@ -1153,7 +1155,7 @@ def _entry(
         breakdown_path=f"{path}/by-project" if scope == "organization" else None,
         projects=[ReportProjectOut(id=p.id, name=p.name) for p in projects],
         params=[param_out(p) for p in definition.params],
-        record_types=list(definition.record_types),
+        record_types=list(definition.record_types), view_only=definition.view_only,
     )
 
 

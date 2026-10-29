@@ -122,6 +122,7 @@ from app.services.link_type_scope import resolve_link_type_scope
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.rbac import get_effective_project_managers
 from app.services.relationships import create_link as create_artefact_link
+from app.services.report_folder_bundle import export_project_folders, import_project_folders
 from app.services.report_layout_bundle import export_project_layouts, import_project_layouts
 from app.services.report_pack_bundle import export_project_packs, import_project_packs
 from app.services.report_placement_bundle import export_project_placements, import_project_placements
@@ -490,6 +491,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
 
     module_bundle_json: dict[str, Any] = {
         **export_project_layouts(db, project), **export_project_packs(db, project), **export_project_placements(db, project),
+        **export_project_folders(db, project),
     }
     for _module_key, hooks in get_all_module_project_bundle_hooks():
         module_json, module_file_assets = hooks.export(db, project)
@@ -669,6 +671,7 @@ def apply_project_data(
     import_project_layouts(db, project, data, current_user, warnings)
     import_project_packs(db, project, data, current_user, warnings)
     import_project_placements(db, project, data, current_user, warnings)
+    import_project_folders(db, project, data, current_user, warnings)
     if any(data.get(key) for key in LEGACY_REPORT_CONTENT_KEYS):
         warnings.add("Report introductions, chapters and appendices in this bundle were not imported: report content has been removed.")
 

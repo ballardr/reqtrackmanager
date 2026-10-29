@@ -8,23 +8,25 @@
  * Responsibilities: validate the name locally, call the API, show the server's refusal (a taken name) in the dialog.
  * The caller owns the toast, the reload and any navigation, through `onSaved`.
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
+import { reportFolderApi, type ReportFolderApi } from "../api/reportFolders";
 import { emptyPackDefinition, type ReportPackApi, type ReportPackSummary } from "../api/reportPacks";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage } from "../context/ToastContext";
-import { useFolderSuggestions } from "../hooks/useFolderSuggestions";
-import { folderProblem, tidyFolder } from "../utils/reportFolders";
+import { tidyFolder } from "../utils/reportFolders";
 import { FormActions } from "./FormActions";
 import { TextAreaField, TextField } from "./FormFields";
 import { Modal } from "./Modal";
-import { ReportFolderField } from "./ReportFolderField";
+import { ReportFolderChooser } from "./ReportFolderChooser";
 
 /** The fields a pack's create and edit forms share, so a field added later reaches both. */
 export function ReportPackFields({
-  name, description, folder, folders, onName, onDescription, onFolder,
+  name, description, folder, folderApi, onName, onDescription, onFolder, onFoldersChanged, onFolderBusy,
 }: {
-  name: string; description: string; folder: string; folders: string[];
+  name: string; description: string; folder: string; folderApi: ReportFolderApi; onFoldersChanged?: () => void;
+  /** Told while a folder change is in flight (the form keeps Save disabled). */
+  onFolderBusy?: (busy: boolean) => void;
   onName: (value: string) => void; onDescription: (value: string) => void; onFolder: (value: string) => void;
 }) {
   const text = useStrings().reportPacks;
@@ -34,7 +36,7 @@ export function ReportPackFields({
         label={text.nameLabel} value={name} onChange={onName} inputProps={{ maxLength: 200, autoFocus: true }}
       />
       <TextAreaField helpNotNeeded label={text.descriptionLabel} value={description} onChange={onDescription} />
-      <ReportFolderField value={folder} onChange={onFolder} suggestions={folders} />
+      <ReportFolderChooser value={folder} onChange={onFolder} api={folderApi} onChanged={onFoldersChanged} onBusyChange={onFolderBusy} />
     </>
   );
 }
@@ -46,9 +48,13 @@ export function ReportPackFields({
  * @param onSaved Called with the saved pack after a create or edit (before `onClose`).
  */
 export function ReportPackFormModal({
-  api, pack, onClose, onSaved,
+  api, pack, onClose, onSaved, folderApi: folderApiProp, onFoldersChanged,
 }: {
   api: ReportPackApi;
+  /** The folder calls for the pack's scope; the live ones for `api.scope` when omitted. */
+  folderApi?: ReportFolderApi;
+  /** Called after a folder is added, renamed or deleted, so the page behind can reload. */
+  onFoldersChanged?: () => void;
   pack?: ReportPackSummary;
   onClose: () => void;
   onSaved: (saved: ReportPackSummary, created: boolean) => void;
@@ -58,9 +64,10 @@ export function ReportPackFormModal({
   const [name, setName] = useState(pack?.name ?? "");
   const [description, setDescription] = useState(pack?.description ?? "");
   const [folder, setFolder] = useState(pack?.folder ?? "");
-  const folders = useFolderSuggestions(api.list);
+  const folderApi = useMemo(() => folderApiProp ?? reportFolderApi(api.scope), [folderApiProp, api.scope]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [folderBusy, setFolderBusy] = useState(false);
 
   async function save() {
     setBusy(true);
@@ -82,7 +89,7 @@ export function ReportPackFormModal({
     <Modal title={pack ? text.editTitle : text.createTitle} onClose={onClose}>
       <div className="stack">
         <ReportPackFields
-          name={name} description={description} folder={folder} folders={folders}
+          name={name} description={description} folder={folder} folderApi={folderApi} onFoldersChanged={onFoldersChanged} onFolderBusy={setFolderBusy}
           onName={setName} onDescription={setDescription} onFolder={setFolder}
         />
         <FormActions
@@ -90,7 +97,7 @@ export function ReportPackFormModal({
           onCancel={onClose}
           onSave={() => void save()}
           saveLabel={pack ? strings.common.save : text.createButton}
-          saveDisabled={busy || name.trim() === "" || folderProblem(folder) !== null}
+          saveDisabled={busy || folderBusy || name.trim() === ""}
           cancelDisabled={busy}
         />
       </div>

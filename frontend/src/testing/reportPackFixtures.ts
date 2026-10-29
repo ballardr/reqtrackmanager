@@ -40,7 +40,7 @@ export function buildDefinition(overrides: Partial<ReportPackDefinition> = {}): 
 export function buildPackSummary(overrides: Partial<ReportPackSummary> = {}): ReportPackSummary {
   return {
     id: "pack-1", organization_id: "org-1", project_id: "project-1", name: "Handover pack", description: "For the external team.", folder: "",
-    current_version: 2, origin: "project", hidden: false, editable: true, entries: 3, updated_at: "2026-10-20T09:30:00Z", ...overrides,
+    current_version: 2, origin: "project", hidden: false, editable: true, entries: 3, record_types: [], updated_at: "2026-10-20T09:30:00Z", ...overrides,
   };
 }
 

@@ -187,6 +187,7 @@ export function ReportLayoutsPanel({ api }: { api: ReportLayoutApi }) {
       {dialog?.kind === "create" && (
         <ReportLayoutFormModal
           api={api}
+          onFoldersChanged={() => void reload()}
           onClose={() => setDialog(null)}
           onSaved={(saved) => {
             showToast(text.created);
@@ -197,6 +198,7 @@ export function ReportLayoutsPanel({ api }: { api: ReportLayoutApi }) {
       {dialog?.kind === "edit" && (
         <ReportLayoutFormModal
           api={api}
+          onFoldersChanged={() => void reload()}
           layout={dialog.layout}
           onClose={() => setDialog(null)}
           onSaved={() => {

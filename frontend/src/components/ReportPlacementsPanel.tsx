@@ -18,12 +18,13 @@
  */
 import { useCallback, useMemo, useState } from "react";
 
+import { reportFolderApi, type ReportFolderApi } from "../api/reportFolders";
 import type { PlacementSource, ReportPlacement, ReportPlacementApi } from "../api/reportPlacements";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useShowMore } from "../hooks/useShowMore";
-import { distinctFolders, folderProblem, tidyFolder } from "../utils/reportFolders";
+import { distinctFolders, tidyFolder } from "../utils/reportFolders";
 import { ActionMenu, type ActionMenuItem } from "./ActionMenu";
 import { Badge } from "./Badge";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -31,14 +32,17 @@ import { DirectoryTable, type DirectoryColumn } from "./DirectoryTable";
 import { FilterField, FilterPanel } from "./FilterPanel";
 import { FormActions } from "./FormActions";
 import { Modal } from "./Modal";
-import { ReportFolderField } from "./ReportFolderField";
+import { ReportFolderChooser } from "./ReportFolderChooser";
 import { Spinner } from "./Spinner";
 
 type Dialog = { kind: "move"; row: ReportPlacement } | { kind: "hide"; row: ReportPlacement };
 type StatusFilter = "" | "moved" | "hidden";
 
-/** @param api The calls, bound to an organisation or a project. */
-export function ReportPlacementsPanel({ api }: { api: ReportPlacementApi }) {
+/**
+ * @param api The calls, bound to an organisation or a project.
+ * @param folderApi The folder calls for the same scope; the live ones when omitted.
+ */
+export function ReportPlacementsPanel({ api, folderApi }: { api: ReportPlacementApi; folderApi?: ReportFolderApi }) {
   const strings = useStrings();
   const text = strings.reportPlacements;
   const { showToast } = useToast();
@@ -178,7 +182,7 @@ export function ReportPlacementsPanel({ api }: { api: ReportPlacementApi }) {
 
       {dialog?.kind === "move" && (
         <MoveDialog
-          row={dialog.row} folders={folders} onClose={() => setDialog(null)}
+          row={dialog.row} folders={folders} folderApi={folderApi ?? reportFolderApi(api.scope)} onChanged={() => void reload()} onClose={() => setDialog(null)}
           onSave={async (folder) => {
             await change({ report_key: dialog.row.report_key, folder }, text.moved);
             setDialog(null);
@@ -204,16 +208,23 @@ export function ReportPlacementsPanel({ api }: { api: ReportPlacementApi }) {
 
 /** The dialog that moves one report to a folder (the same field group as a layout's or pack's own folder). */
 function MoveDialog({
-  row, folders, onClose, onSave,
-}: { row: ReportPlacement; folders: string[]; onClose: () => void; onSave: (folder: string) => Promise<void> }) {
+  row, folders, folderApi, onChanged, onClose, onSave,
+}: {
+  row: ReportPlacement; folders: string[]; folderApi: ReportFolderApi; onChanged: () => void; onClose: () => void;
+  onSave: (folder: string) => Promise<void>;
+}) {
   const strings = useStrings();
   const text = strings.reportPlacements;
   const [folder, setFolder] = useState(row.folder);
   const [busy, setBusy] = useState(false);
+  const [folderBusy, setFolderBusy] = useState(false);
   return (
     <Modal title={text.moveTitle(row.title)} onClose={onClose}>
       <div className="stack">
-        <ReportFolderField value={folder} onChange={setFolder} suggestions={folders} label={text.moveField} helpKey="reportPlacementFolder" />
+        <ReportFolderChooser
+          value={folder} onChange={setFolder} api={folderApi} label={text.moveField} helpKey="reportPlacementFolder"
+          noneLabel={text.topLevel} extraPaths={folders} onChanged={onChanged} onBusyChange={setFolderBusy}
+        />
         <FormActions
           onCancel={onClose}
           onSave={() => {
@@ -221,7 +232,7 @@ function MoveDialog({
             void onSave(tidyFolder(folder)).finally(() => setBusy(false));
           }}
           saveLabel={text.moveSave}
-          saveDisabled={busy || folderProblem(folder) !== null}
+          saveDisabled={busy || folderBusy}
           cancelDisabled={busy}
         />
       </div>
