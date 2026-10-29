@@ -69,7 +69,7 @@ Three orthogonal axes, kept separate: **layout** (what is reported), **branding 
 
 ## Status / Resume Here
 
-**Where things stand (2026-10-28).** Phases 0 to 15 are done or deferred as the table says (11b deferred by the User; the former Phase 14, AI-assisted analysis, was removed from this plan by the User on 2026-10-28; 15 is incremental). The User's reviews added Phases 16 to 20 (two reviews), 21 to 27 (the third, 2026-10-29) 28 to 34 (the fourth, 2026-10-29; 28 and 29 done, 30 next) and 35 to 41 (the fifth, 2026-10-29, planned only, not started), worked in this order:
+**Where things stand (2026-10-28).** Phases 0 to 15 are done or deferred as the table says (11b deferred by the User; the former Phase 14, AI-assisted analysis, was removed from this plan by the User on 2026-10-28; 15 is incremental). The User's reviews added Phases 16 to 20 (two reviews), 21 to 27 (the third, 2026-10-29) 28 to 34 (the fourth, 2026-10-29; 28 to 33 done, 34 next) and 35 to 41 (the fifth, 2026-10-29, planned only, not started), worked in this order:
 
 | Phase | What | State |
 |---|---|---|
@@ -87,10 +87,10 @@ Three orthogonal axes, kept separate: **layout** (what is reported), **branding 
 | 27 | Designer layout review: blocks editor space, palette replaced by the Add block dropdown, preview collapses or opens in a dialog | **Done 2026-10-29** (built and tested; awaiting the checkpoint review). The Blocks view has the page's width, Add block states where it lands and is undoable, Preview is a dialog or an optional panel. Decisions log "Custom reports Phase 27". |
 | 28 | Background reports page removed; the Reports menu opens the report chooser directly; the ready notification carries the download | **Done 2026-10-29** (built and tested; awaiting the checkpoint review). The Reports button opens the chooser; a notification opens `ReportRunDialog` (Download, or Generate again for an expired or failed run); a clock in the top bar counts runs in progress. Decisions log "Custom reports Phase 28". |
 | 29 | Settings that do not belong in the download dialog: the requirement report's filters and the branding template choice | **Done 2026-10-29** (built and tested; awaiting the checkpoint review). Requirements list gained Component and a target version range; no branding choice in any download dialog. Decisions log "Custom reports Phase 29". |
-| 30 | Format buttons use acronyms (ODT, ODS) | Not started (fourth review) |
-| 31 | ODT and ODS offered everywhere CSV, PDF and Word are; the record-list menu gets Download report and a Download shown items submenu of formats | Not started (fourth review) |
-| 32 | Folder tree list (Finder-style list view), used by the report chooser | Not started (fourth review) |
-| 33 | Report setup: one list of reports, packs and tables; the Report folders and Packs sections go | Not started (fourth review) |
+| 30 | Format buttons use acronyms (ODT, ODS) | **Done 2026-10-29** (built and tested; awaiting the checkpoint review). One `REPORT_FORMAT` map; decisions log "Custom reports Phase 30". |
+| 31 | ODT and ODS offered everywhere CSV, PDF and Word are; the record-list menu gets Download report and a Download shown items submenu of formats | **Done 2026-10-29** (built and tested; awaiting the checkpoint review). Generic `ActionMenu` submenu; requirement report and both compliance reports offer every format (User: compliance "all types"); surfaces test. Decisions log "Custom reports Phase 31". |
+| 32 | Folder tree list (Finder-style list view), used by the report chooser | **Done 2026-10-29** (built and tested; awaiting the checkpoint review). Shared `FolderTreeList`; decisions log "Custom reports Phase 32". |
+| 33 | Report setup: one list of reports, packs and tables; the Report folders and Packs sections go | **Done 2026-10-29** (built and tested; awaiting the checkpoint review). `ReportSetupPanel` over a client-side merge; decisions log "Custom reports Phase 33". |
 | 34 | Report setup list: column chooser, narrow-width fix, type icons | Not started (fourth review) |
 | 35 | Page styles and sections: size, orientation and margins per style; a section that switches style (an A3 landscape table inside an A4 portrait report) | Not started (fifth review) |
 | 36 | Images in reports: an Image block (library or upload) with size, alignment, caption and alt text, in every document format | Not started (fifth review) |
@@ -150,10 +150,10 @@ The plan is not closed. The paragraph below is the history of Phases 0 to 15, ke
 | 27 | Designer layout review: the Blocks view uses the full width (no left selection column), the live preview collapses to the right or opens in a dialog, and the palette is replaced by the Add block dropdown (the Blocks tab does not show a text view: the right column is the block inspector) | 5 | [x] |
 | 28 | Background reports page removed (it is only the list of asynchronous runs, whose ready notification must now carry the download); the Reports menu on the overviews becomes one button that opens the chooser | 6 | [x] |
 | 29 | Download dialog trims: no requirement-report filters in the project dialog, no branding template choice (the layout's override or the organisation default applies); both need the User's confirmation first | 6 | [x] |
-| 30 | One format label map: ODT and ODS shown as acronyms like PDF, HTML and CSV, with the full name as a tooltip | 6 | [ ] |
-| 31 | ODT and ODS in every place CSV, PDF and Word are offered: record-list menu (Download report, and Download shown items with a submenu of formats; a generic `ActionMenu` submenu), report downloads, packs, the requirement report, MCP | 6 | [ ] |
-| 32 | Folder tree list (disclosure rows, indent, folder and type icons, columns, arrow-key navigation) replacing buttons-and-dropdowns folders; the report chooser adopts it | 6 | [ ] |
-| 33 | Report setup shows reports, packs and tables as one tree list (the chooser's shape); the Packs and Report folders sections go, their move, hide and folder actions move into the tree | 6 | [ ] |
+| 30 | One format label map: ODT and ODS shown as acronyms like PDF, HTML and CSV, with the full name as a tooltip | 6 | [x] |
+| 31 | ODT and ODS in every place CSV, PDF and Word are offered: record-list menu (Download report, and Download shown items with a submenu of formats; a generic `ActionMenu` submenu), report downloads, packs, the requirement report, MCP | 6 | [x] |
+| 32 | Folder tree list (disclosure rows, indent, folder and type icons, columns, arrow-key navigation) replacing buttons-and-dropdowns folders; the report chooser adopts it | 6 | [x] |
+| 33 | Report setup shows reports, packs and tables as one tree list (the chooser's shape); the Packs and Report folders sections go, their move, hide and folder actions move into the tree | 6 | [x] |
 | 34 | Report setup list: column chooser (Version, Kind and Folder hidden by default), narrow-width scrolling, a type icon in place of the Kind column | 6 | [ ] |
 | 35 | Page styles (size, orientation, margins) and a section container that switches style for the content inside it, in every document format | 7 | [ ] |
 | 36 | Image block: library or uploaded image, size, alignment, caption, alt text; images travel in bundles | 7 | [ ] |

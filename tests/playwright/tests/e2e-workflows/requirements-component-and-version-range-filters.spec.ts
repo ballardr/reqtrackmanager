@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { chooseListAction } from "../listActions";
+import { chooseExport } from "../listActions";
 import { createDisposableProject, installCleanupHook, loginAs, PERSONAS } from "./helpers";
 
 /**
@@ -74,7 +74,7 @@ test.describe("requirements list: component and target version range", () => {
       const exported = page.waitForResponse(
         (r) => r.url().includes("/records/requirement/export") && r.url().includes(`target_stage_from_id=${stages[1].id}`),
       );
-      await chooseListAction(page, "Export as CSV");
+      await chooseExport(page, "CSV");
       const response = await exported;
       expect(response.url()).toContain(`target_stage_to_id=${stages[1].id}`);
       // The rows the server keeps for these parameters are pinned by the backend tests.

@@ -18,7 +18,6 @@
  * renamed or hidden can be seen and corrected rather than silently changed.
  */
 import {
-  PACK_FORMAT_LABEL,
   REPORT_ENTRY_FORMATS,
   type FixedValue,
   type LayoutPackEntry,
@@ -26,6 +25,7 @@ import {
   type ReportPackEntry,
   type ReportPackReportEntry,
 } from "../api/reportPacks";
+import { reportFormatLabel } from "../api/reportFormats";
 import { useStrings } from "../context/TerminologyContext";
 import { FAMILY_FORMATS, layoutFormats, newUid, type LayoutChoice } from "../utils/reportPackDraft";
 import { JsonObjectField } from "./JsonObjectField";
@@ -152,7 +152,7 @@ export function ReportPackEntriesEditor({
                 placeholder={null}
                 onChange={(format) => patch(draft.uid, { format: format as PackFormat })}
                 options={(entry.kind === "layout" ? layoutFormats(layouts, entry.name) : REPORT_ENTRY_FORMATS).map((f) => ({
-                  value: f, label: PACK_FORMAT_LABEL[f],
+                  value: f, label: reportFormatLabel(f),
                 }))}
               />
               <TextField help={strings.help.reportPackFilename}

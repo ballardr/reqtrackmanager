@@ -123,14 +123,14 @@ test.describe("Custom report run", () => {
     });
 
     await test.step("the OpenDocument text file is a real document (its type is stored first, uncompressed)", async () => {
-      const file = await download(page, "Download OpenDocument text report");
+      const file = await download(page, "Download ODT report");
       expect(file.suggestedFilename()).toMatch(/\.odt$/);
       const bytes = fs.readFileSync((await file.path())!);
       expect(bytes.subarray(0, 2).toString()).toBe("PK");
       expect(bytes.subarray(30, 38).toString()).toBe("mimetype");
       expect(bytes.includes("application/vnd.oasis.opendocument.text")).toBeTruthy();
       expect(bytes.includes("content.xml")).toBeTruthy();
-      await expect(page.getByText(`Downloaded ${name} (OpenDocument text file).`)).toBeVisible();
+      await expect(page.getByText(`Downloaded ${name} (ODT).`)).toBeVisible();
     });
 
     await test.step("a project that has nothing to do with the layout does not offer it", async () => {
@@ -242,16 +242,16 @@ test.describe("Custom report run", () => {
       const bytes = fs.readFileSync((await file.path())!);
       expect(bytes.subarray(0, 2).toString()).toBe("PK");
       expect(bytes.includes("xl/workbook.xml")).toBeTruthy();
-      await expect(page.getByText(`Downloaded ${name} (Excel workbook).`)).toBeVisible();
+      await expect(page.getByText(`Downloaded ${name} (Excel).`)).toBeVisible();
     });
 
     await test.step("the OpenDocument spreadsheet is a real file", async () => {
-      const file = await download(page, "Download OpenDocument spreadsheet report");
+      const file = await download(page, "Download ODS report");
       expect(file.suggestedFilename()).toMatch(/\.ods$/);
       const bytes = fs.readFileSync((await file.path())!);
       expect(bytes.subarray(0, 2).toString()).toBe("PK");
       expect(bytes.includes("application/vnd.oasis.opendocument.spreadsheet")).toBeTruthy();
-      await expect(page.getByText(`Downloaded ${name} (OpenDocument spreadsheet).`)).toBeVisible();
+      await expect(page.getByText(`Downloaded ${name} (ODS).`)).toBeVisible();
     });
 
     await test.step("two sheets come as a zip of CSV files, named as a zip", async () => {

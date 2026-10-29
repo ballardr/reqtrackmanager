@@ -290,6 +290,23 @@ export async function selectProjectAdminGroup(page: Page, groupLabel: string): P
 }
 
 /**
+ * Narrows Report setup's folder list to a report by searching for it (a search opens every folder holding a match, so
+ * the report is visible whichever folder it is filed in) and returns the list.
+ */
+export async function searchReportSetup(page: Page, text: string) {
+  await page.getByRole("textbox", { name: "Search reports" }).fill(text);
+  const grid = page.getByRole("treegrid", { name: "Reports, packs and tables" });
+  await expect(grid).toBeVisible();
+  return grid;
+}
+
+/** Opens a layout or pack from Report setup by its name (the designer or the pack editor). */
+export async function openSetupReport(page: Page, name: string): Promise<void> {
+  const grid = await searchReportSetup(page, name);
+  await grid.getByRole("button", { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`) }).click();
+}
+
+/**
  * Matches a record code as the UI may show it: bare (`DEC-001`) or with the project code in
  * front (`ACME-DEC-001`). The display rule depends on the organisation's switch and the
  * person's preference, so a spec must not depend on which form it gets. Use with

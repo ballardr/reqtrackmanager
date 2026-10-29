@@ -57,6 +57,7 @@
  */
 import { api, ApiError } from "../../api/client";
 import type { ProjectScope } from "../../api/projectScope";
+import type { ReportFileKind } from "../../api/reports";
 import type { Organization, PrincipalRef } from "../../api/types";
 import type {
   ComplianceActionType,
@@ -229,7 +230,13 @@ export interface ComplianceReportFilters {
   requirementId?: string;
 }
 
-function reportQueryString(kind: "pdf" | "csv", filters: ComplianceReportFilters): string {
+/** A compliance report's file format. */
+export type ComplianceReportKind = ReportFileKind;
+
+/** Every format both compliance reports (project and organisation) are offered in. */
+export const COMPLIANCE_REPORT_KINDS: readonly ComplianceReportKind[] = ["pdf", "docx", "odt", "html", "csv", "xlsx", "ods"];
+
+function reportQueryString(kind: ComplianceReportKind, filters: ComplianceReportFilters): string {
   const params = new URLSearchParams();
   params.set("format", kind);
   if (filters.projectId) params.set("project_id", filters.projectId);
@@ -239,24 +246,24 @@ function reportQueryString(kind: "pdf" | "csv", filters: ComplianceReportFilters
   return `?${params.toString()}`;
 }
 
-/** `GET .../orgs/{id}/modules/compliance/reports?format={pdf,csv}`, scoped
+/** `GET .../orgs/{id}/modules/compliance/reports?format={pdf,docx,odt,html,csv,xlsx,ods}`, scoped
  * by `filters` — the org-wide report `OrgComplianceDashboard.tsx`'s own
  * unfiltered "Download PDF/CSV report" already calls unscoped; this is the
  * filtered counterpart `OrgComplianceStandardsPanel.tsx`/
  * `OrgComplianceOutstandingPanel.tsx`'s own Export triggers use. Merged
  * from two separate `/reports/pdf`/`/reports/csv` GETs into one endpoint
  * taking `format` as a query param (2026-09-22, see docs/decisions.md). */
-export function downloadOrgComplianceReport(orgId: string, kind: "pdf" | "csv", filters: ComplianceReportFilters = {}): Promise<Blob> {
+export function downloadOrgComplianceReport(orgId: string, kind: ComplianceReportKind, filters: ComplianceReportFilters = {}): Promise<Blob> {
   return api.getForBlob(`${base(orgId)}/reports${reportQueryString(kind, filters)}`);
 }
 
-/** `GET .../projects/{id}/modules/compliance/reports?format={pdf,csv}`,
+/** `GET .../projects/{id}/modules/compliance/reports?format={pdf,docx,odt,html,csv,xlsx,ods}`,
  * scoped by `filters` — the filtered counterpart to
  * `ProjectCompliancePage.tsx`'s own unfiltered whole-project report
  * download, used by `OutstandingPanel.tsx`'s Export trigger. Same
  * 2026-09-22 merge as `downloadOrgComplianceReport` above. */
 export function downloadProjectComplianceReport(
-  projectId: string, kind: "pdf" | "csv", filters: Omit<ComplianceReportFilters, "projectId"> = {}
+  projectId: string, kind: ComplianceReportKind, filters: Omit<ComplianceReportFilters, "projectId"> = {}
 ): Promise<Blob> {
   return api.getForBlob(`${projectBase(projectId)}/reports${reportQueryString(kind, filters)}`);
 }

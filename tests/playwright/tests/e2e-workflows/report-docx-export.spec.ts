@@ -71,6 +71,9 @@ test.describe("Word (DOCX) report export", () => {
     await page.getByRole("button", { name: "More formats" }).click();
     const menu = page.getByRole("dialog", { name: "Export" });
     await expect(menu.getByRole("button", { name: "Download PDF report" })).toHaveCount(0); // PDF has its own primary button
+    for (const name of ["ODT", "HTML", "CSV", "Excel", "ODS"]) {
+      await expect(menu.getByRole("button", { name: `Download ${name} report` })).toBeVisible();
+    }
     const downloadPromise = page.waitForEvent("download");
     await menu.getByRole("button", { name: "Download Word report" }).click();
     await expectWordFile(await downloadPromise, "-requirements.docx");
@@ -85,7 +88,7 @@ test.describe("Word (DOCX) report export", () => {
     const downloadPromise = page.waitForEvent("download");
     await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download Word report" }).click();
     await expectWordFile(await downloadPromise, "decision-register.docx");
-    await expect(page.getByText("Downloaded Decision register (Word file).")).toBeVisible();
+    await expect(page.getByText("Downloaded Decision register (Word).")).toBeVisible();
   });
 
   test("a module report is also offered as HTML, OpenDocument text, Excel and OpenDocument spreadsheet", async ({ page, request }) => {
@@ -95,9 +98,9 @@ test.describe("Word (DOCX) report export", () => {
 
     const files: [string, string, string][] = [
       ["Download HTML report", "decision-register.html", "<"],
-      ["Download OpenDocument text report", "decision-register.odt", "PK"],
+      ["Download ODT report", "decision-register.odt", "PK"],
       ["Download Excel report", "decision-register.xlsx", "PK"],
-      ["Download OpenDocument spreadsheet report", "decision-register.ods", "PK"],
+      ["Download ODS report", "decision-register.ods", "PK"],
     ];
     for (const [label, filename, magic] of files) {
       await page.getByRole("button", { name: "Export", exact: true }).click();

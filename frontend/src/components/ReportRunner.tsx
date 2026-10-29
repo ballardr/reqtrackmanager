@@ -46,6 +46,7 @@ import {
   variableDefaults,
   variablesRunValue,
 } from "../api/reports";
+import { REPORT_FORMAT } from "../api/reportFormats";
 import { REPORT_RUN_QUEUED_EVENT } from "../hooks/useActiveReportRuns";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { getReportView } from "../modules/registry";
@@ -74,12 +75,6 @@ function initialValues(entry: ReportCatalogueEntry): ReportRunValues {
  * @param focusSection A section key to scroll to once the report has loaded (a figure's "see the gap table" link).
  * @param showResult False to show the parameters and the download menu without running the report on screen.
  */
-/** How a download kind is named to the user (toasts). */
-const DOWNLOAD_NAME: Record<ReportFileKind, string> = {
-  pdf: "PDF", docx: "Word file", csv: "CSV", html: "HTML page", xlsx: "Excel workbook",
-  odt: "OpenDocument text file", ods: "OpenDocument spreadsheet",
-};
-
 export function ReportRunner({
   entry, scope, focusSection, showResult = true,
 }: {
@@ -149,7 +144,7 @@ export function ReportRunner({
   }
 
   async function download(kind: ReportFileKind) {
-    const name = DOWNLOAD_NAME[kind];
+    const name = REPORT_FORMAT[kind].label;
     try {
       const blob = await reportsApi.download(entry, kind, runValues);
       // A table layout of several sheets comes back as a zip of CSV files, whatever `csv` was asked for.

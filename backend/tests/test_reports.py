@@ -4,11 +4,18 @@ endpoint (merged from separate `/reports/pdf`/`/reports/csv` endpoints,
 2026-09-22 — see docs/decisions.md), selected via the required `format`
 field."""
 
+import io
+import zipfile
+
+import pytest
+
 from app.services.reports import (
     ReportRequirementRow,
     _group_rows_by_component_and_category,
     default_chapters_per_component,
     generate_csv_report,
+    generate_sheet_report,
+    requirement_table,
 )
 from tests.conftest import auth_headers, create_component_and_category, create_project
 
@@ -118,7 +125,7 @@ def test_pdf_report_generates_valid_pdf(client, admin_token, org_id):
 
 
 def test_report_rejects_missing_or_invalid_format(client, admin_token, org_id):
-    """`format` is required (no default) and restricted to `"pdf"`/`"csv"`
+    """`format` is required (no default) and restricted to the formats the renderers produce (`json` is not a file)
     — the merged endpoint's whole reason for taking a `format` parameter is
     to dispatch on it, so an unset or bogus value must 422, not silently
     fall back to one format."""
@@ -126,7 +133,7 @@ def test_report_rejects_missing_or_invalid_format(client, admin_token, org_id):
     missing = client.post(f"/api/v1/projects/{project['id']}/reports", json={}, headers=auth_headers(admin_token))
     assert missing.status_code == 422
     invalid = client.post(
-        f"/api/v1/projects/{project['id']}/reports", json={"format": "xlsx"}, headers=auth_headers(admin_token)
+        f"/api/v1/projects/{project['id']}/reports", json={"format": "json"}, headers=auth_headers(admin_token)
     )
     assert invalid.status_code == 422
 
@@ -168,6 +175,38 @@ def test_csv_report_contains_requirement_row(client, admin_token, org_id):
     text = resp.content.decode("utf-8")
     assert "SW-PERF-001" in text
     assert "Boot fast" in text
+
+
+@pytest.mark.parametrize("fmt", ["pdf", "docx", "odt", "html", "csv", "xlsx", "ods"])
+def test_requirement_report_is_offered_in_every_format(client, admin_token, org_id, fmt):
+    """Every renderer the platform registers produces the requirement report, with the requirement in it."""
+    project = _seed_requirement(client, admin_token, org_id)
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/reports", json={"format": fmt}, headers=auth_headers(admin_token)
+    )
+    assert resp.status_code == 200
+    assert resp.headers["content-disposition"].endswith(f'-requirements.{fmt}"')
+    if fmt == "pdf":
+        assert resp.content[:5] == b"%PDF-"
+        return
+    if fmt in ("csv", "html"):
+        text = resp.content.decode("utf-8")
+    else:
+        with zipfile.ZipFile(io.BytesIO(resp.content)) as archive:
+            text = "".join(archive.read(n).decode("utf-8", "ignore") for n in archive.namelist() if n.endswith(".xml"))
+    assert "Boot fast" in text
+
+
+def test_requirement_spreadsheet_has_the_csv_header_and_guards_formulas():
+    row = _row("SW-1", "Core", 0, "Perf", 0)
+    row.name = "=HYPERLINK(\"http://evil\")"
+    header, body = requirement_table([row])
+    assert header[:2] == ["ID", "Name"]
+    ods = generate_sheet_report("ods", [row], "Project")
+    with zipfile.ZipFile(io.BytesIO(ods)) as archive:
+        content = archive.read("content.xml").decode("utf-8")
+    assert "=HYPERLINK(" not in content.replace("'=HYPERLINK(", "").replace("&apos;=HYPERLINK(", "")
+    assert body[0][1] == row.name  # the shared table is unguarded; each writer guards
 
 
 def test_csv_report_header_uses_project_terminology_overrides_for_component_and_category():

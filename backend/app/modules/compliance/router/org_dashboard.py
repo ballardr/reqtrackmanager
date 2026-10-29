@@ -15,10 +15,9 @@ mutations manage.
 """
 
 from datetime import UTC, datetime
-from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -29,6 +28,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.modules.compliance.enums import ComplianceStandardVersionStatus
 from app.modules.compliance.models import ProjectCompliance
+from app.modules.compliance.report_files import ComplianceReportFormat, org_report_response
 from app.modules.compliance.reports import collect_org_compliance_report, generate_org_compliance_csv, generate_org_compliance_pdf
 from app.modules.compliance.router._shared import _get_version_or_404, _require_manage
 from app.modules.compliance.schemas import (
@@ -58,7 +58,6 @@ from app.modules.compliance.service import (
 )
 from app.services import notifications
 from app.services.audit import log_event
-from app.services.downloads import filename_safe
 
 router = APIRouter(tags=["compliance-org-dashboard"])
 
@@ -308,13 +307,13 @@ def list_org_recent_activity(
 
 @router.get("/reports")
 def get_org_compliance_report(
-    organization_id: UUID, format: Literal["pdf", "csv"] = Query(...), project_id: UUID | None = Query(None),
+    organization_id: UUID, format: ComplianceReportFormat = Query(...), project_id: UUID | None = Query(None),
     standard_id: UUID | None = Query(None), standard_version_id: UUID | None = Query(None),
     requirement_id: UUID | None = Query(None),
     current_user: User = Depends(_require_manage), db: Session = Depends(get_db),
 ):
     """Generates the organisation-wide compliance roll-up (§29's
-    "organisation-level reporting") in `format` — PDF or CSV — merged from
+    "organisation-level reporting") in `format` (PDF, Word, OpenDocument text, HTML, CSV, Excel or OpenDocument spreadsheet) — merged from
     two separate `/reports/pdf`/`/reports/csv` GETs on 2026-09-22 (see
     docs/decisions.md) since they only differed in output format, not the
     data collected. PDF: one row per project/assigned-standard-version
@@ -336,16 +335,10 @@ def get_org_compliance_report(
         db, organization_id, project_id=project_id, standard_id=standard_id,
         standard_version_id=standard_version_id, requirement_id=requirement_id,
     )
-    if format == "csv":
-        csv_bytes = generate_org_compliance_csv(data)
-        return Response(
-            content=csv_bytes, media_type="text/csv",
-            headers={"Content-Disposition": f'attachment; filename="{filename_safe(org.name, fallback="organisation")}-compliance-report.csv"'},
-        )
-    pdf_bytes = generate_org_compliance_pdf(org.name, data)
-    return Response(
-        content=pdf_bytes, media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename_safe(org.name, fallback="organisation")}-compliance-report.pdf"'},
+    return org_report_response(
+        format, org.name, data,
+        pdf=lambda: generate_org_compliance_pdf(org.name, data),
+        csv=lambda: generate_org_compliance_csv(data),
     )
 
 

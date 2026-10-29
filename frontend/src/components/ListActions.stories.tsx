@@ -6,7 +6,7 @@ import { buildReportCatalogueEntry } from "../testing/reportFixtures";
 import { buildUser, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
 
 import { buildImportResult, buildRecordColumns, failing, fakeRecordTables, inSequence } from "../testing/recordTablesFixtures";
-import { chooseListAction, openListMenu } from "../testing/listActionsMenu";
+import { chooseListAction, openListMenu, chooseExport } from "../testing/listActionsMenu";
 import { ListActions, ListActionsMenu } from "./ListActions";
 
 const meta: Meta<typeof ListActions> = {
@@ -27,7 +27,7 @@ type Story = StoryObj<typeof ListActions>;
 /** The List actions menu downloads the list with the page's own filters, not the full set. */
 export const ExportSendsThePagesFilters: Story = {
   play: async ({ canvasElement, args }) => {
-    await chooseListAction(within(canvasElement), "Export as CSV");
+    await chooseExport(within(canvasElement), "CSV");
     await waitFor(() =>
       expect(args.tables!.exportFile).toHaveBeenCalledWith({ projectId: "project-1" }, "requirement", "csv", "status=draft&tag=safety&tag_mode=any"),
     );
@@ -43,9 +43,78 @@ export const TheActionsShareOneBurgerMenu: Story = {
     await expect(canvas.queryByRole("button", { name: "Export" })).not.toBeInTheDocument();
     await expect(canvas.queryByText("Import")).not.toBeInTheDocument();
     const menu = await openListMenu(canvas);
-    for (const name of ["Export as CSV", "Export as PDF", "Export as Word file", "Download report", "Download import template", "Import from CSV"]) {
+    for (const name of ["Download report", "Download shown items", "Download import template", "Import from CSV"]) {
       await expect(menu.getByRole("menuitem", { name })).toBeInTheDocument();
     }
+    // The formats are one level down, not flat in the menu.
+    await expect(menu.queryByRole("menuitem", { name: /^CSV/ })).not.toBeInTheDocument();
+  },
+};
+
+/** Download shown items lists CSV (with its re-import hint), PDF, Word, ODT and ODS, each with its full name as a tooltip. */
+export const DownloadShownItemsListsEveryFormat: Story = {
+  play: async ({ canvasElement }) => {
+    const menu = await openListMenu(within(canvasElement));
+    const parent = menu.getByRole("menuitem", { name: "Download shown items" });
+    await expect(parent).toHaveAttribute("aria-haspopup", "menu");
+    await expect(parent).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(parent);
+    await expect(parent).toHaveAttribute("aria-expanded", "true");
+    const submenu = within(await within(document.body).findByRole("menu", { name: "Download shown items" }));
+    const names = submenu.getAllByRole("menuitem").map((item) => item.textContent?.trim());
+    await expect(names).toEqual(["CSVre-imports", "PDF", "Word", "ODT", "ODS"]);
+    await expect(submenu.getByRole("menuitem", { name: "ODT" })).toHaveAttribute("title", "OpenDocument text");
+    await expect(submenu.getByRole("menuitem", { name: "ODS" })).toHaveAttribute("title", "OpenDocument spreadsheet");
+  },
+};
+
+/** The pointer resting on the parent opens the submenu (after a short delay) without a click. */
+export const HoveringTheParentOpensTheSubmenu: Story = {
+  play: async ({ canvasElement }) => {
+    const menu = await openListMenu(within(canvasElement));
+    await userEvent.hover(menu.getByRole("menuitem", { name: "Download shown items" }));
+    await expect(await within(document.body).findByRole("menu", { name: "Download shown items" })).toBeInTheDocument();
+  },
+};
+
+/** The keyboard opens the submenu with Right, moves with Down, and Escape closes only the submenu (the menu stays). */
+export const TheKeyboardOpensAndLeavesTheSubmenu: Story = {
+  play: async ({ canvasElement }) => {
+    const menu = await openListMenu(within(canvasElement));
+    menu.getByRole("menuitem", { name: "Download report" }).focus();
+    await userEvent.keyboard("{ArrowDown}");
+    await expect(menu.getByRole("menuitem", { name: "Download shown items" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowRight}");
+    const submenu = within(await within(document.body).findByRole("menu", { name: "Download shown items" }));
+    await waitFor(() => expect(submenu.getByRole("menuitem", { name: /^CSV/ })).toHaveFocus());
+    await userEvent.keyboard("{ArrowDown}");
+    await expect(submenu.getByRole("menuitem", { name: "PDF" })).toHaveFocus();
+    await userEvent.keyboard("{Escape}");
+    await expect(within(document.body).queryByRole("menu", { name: "Download shown items" })).not.toBeInTheDocument();
+    await expect(menu.getByRole("menuitem", { name: "Download shown items" })).toHaveFocus();
+    await expect(within(document.body).getByRole("dialog", { name: "List actions" })).toBeInTheDocument();
+    await userEvent.keyboard("{ArrowRight}{ArrowLeft}");
+    await expect(menu.getByRole("menuitem", { name: "Download shown items" })).toHaveFocus();
+  },
+};
+
+/** On a narrow screen (touch) the submenu opens inline beneath its parent, and a tap on a format downloads. */
+export const OnANarrowScreenTheSubmenuOpensInline: Story = {
+  beforeEach: () => {
+    // The submenu places itself from the window width, so narrow the window it reads.
+    const original = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { value: 500, configurable: true });
+    return () => {
+      Object.defineProperty(window, "innerWidth", { value: original, configurable: true });
+    };
+  },
+  play: async ({ canvasElement, args }) => {
+    const menu = await openListMenu(within(canvasElement));
+    await userEvent.click(menu.getByRole("menuitem", { name: "Download shown items" }));
+    const list = await within(document.body).findByRole("menu", { name: "Download shown items" });
+    await expect(getComputedStyle(list).position).toBe("static");
+    await userEvent.click(within(list).getByRole("menuitem", { name: "ODS" }));
+    await waitFor(() => expect(args.tables!.exportFile).toHaveBeenCalled());
   },
 };
 
@@ -53,7 +122,7 @@ export const TheActionsShareOneBurgerMenu: Story = {
 export const AnOrganisationListExportsItsOwnRecords: Story = {
   args: { projectId: undefined, organizationId: "org-1", recordType: "strategy", filters: "status=draft" },
   play: async ({ canvasElement, args }) => {
-    await chooseListAction(within(canvasElement), "Export as CSV");
+    await chooseExport(within(canvasElement), "CSV");
     await waitFor(() =>
       expect(args.tables!.exportFile).toHaveBeenCalledWith({ organizationId: "org-1" }, "strategy", "csv", "status=draft"),
     );
@@ -61,20 +130,27 @@ export const AnOrganisationListExportsItsOwnRecords: Story = {
   },
 };
 
-/** PDF and Word come from the record-list report and carry the same filters as the CSV. */
-export const PdfAndWordCarryTheSameFilters: Story = {
+/** PDF, Word, ODT and ODS come from the record-list report and carry the same filters as the CSV. */
+export const EveryReportFormatCarriesTheSameFilters: Story = {
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    await chooseListAction(canvas, "Export as PDF");
+    await chooseExport(canvas, "PDF");
     await waitFor(() =>
       expect(args.tables!.exportFile).toHaveBeenCalledWith({ projectId: "project-1" }, "requirement", "pdf", "status=draft&tag=safety&tag_mode=any"),
     );
     await expect(await within(document.body).findByText("Requirements exported as PDF.")).toBeInTheDocument();
-    await chooseListAction(canvas, "Export as Word file");
+    await chooseExport(canvas, "Word");
     await waitFor(() =>
       expect(args.tables!.exportFile).toHaveBeenCalledWith({ projectId: "project-1" }, "requirement", "docx", "status=draft&tag=safety&tag_mode=any"),
     );
-    await expect(await within(document.body).findByText("Requirements exported as Word file.")).toBeInTheDocument();
+    await expect(await within(document.body).findByText("Requirements exported as Word.")).toBeInTheDocument();
+    for (const [format, kind] of [["ODT", "odt"], ["ODS", "ods"]] as const) {
+      await chooseExport(canvas, format);
+      await waitFor(() =>
+        expect(args.tables!.exportFile).toHaveBeenCalledWith({ projectId: "project-1" }, "requirement", kind, "status=draft&tag=safety&tag_mode=any"),
+      );
+      await expect(await within(document.body).findByText(`Requirements exported as ${format}.`)).toBeInTheDocument();
+    }
   },
 };
 
@@ -82,7 +158,7 @@ export const PdfAndWordCarryTheSameFilters: Story = {
 export const AFailedExportIsReported: Story = {
   args: { tables: fakeRecordTables({ exportFile: failing("Server unavailable.") }) },
   play: async ({ canvasElement }) => {
-    await chooseListAction(within(canvasElement), "Export as CSV");
+    await chooseExport(within(canvasElement), "CSV");
     await expect(await within(document.body).findByText("Server unavailable.")).toBeInTheDocument();
   },
 };
@@ -147,7 +223,7 @@ export const NoImportWithoutPermission: Story = {
   args: { tables: fakeRecordTables({}, buildRecordColumns({ can_import: false })) },
   play: async ({ canvasElement }) => {
     const menu = await openListMenu(within(canvasElement));
-    await expect(menu.getByRole("menuitem", { name: "Export as CSV" })).toBeInTheDocument();
+    await expect(menu.getByRole("menuitem", { name: "Download shown items" })).toBeInTheDocument();
     await expect(menu.queryByRole("menuitem", { name: "Import from CSV" })).not.toBeInTheDocument();
     await expect(menu.queryByRole("menuitem", { name: "Download import template" })).not.toBeInTheDocument();
   },
@@ -160,7 +236,7 @@ export const AnExportOnlyTypeHidesImport: Story = {
   },
   play: async ({ canvasElement }) => {
     const menu = await openListMenu(within(canvasElement));
-    await expect(menu.getByRole("menuitem", { name: "Export as CSV" })).toBeInTheDocument();
+    await expect(menu.getByRole("menuitem", { name: "Download shown items" })).toBeInTheDocument();
     await expect(menu.queryByRole("menuitem", { name: "Import from CSV" })).not.toBeInTheDocument();
   },
 };
@@ -193,7 +269,7 @@ export const SeveralKindsShareOneMenu: Story = {
     await expect(menu.getByText("Personas")).toBeInTheDocument();
     await expect(menu.getByText("Stakeholders")).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
-    await chooseListAction(canvas, "Export as CSV", "Stakeholders");
+    await chooseExport(canvas, "CSV", "Stakeholders");
     await waitFor(() =>
       expect(args.tables!.exportFile).toHaveBeenCalledWith({ projectId: "project-1" }, "stakeholder", "csv", "status=draft&tag=safety&tag_mode=any"),
     );

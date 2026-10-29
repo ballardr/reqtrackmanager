@@ -6,12 +6,12 @@ sidebar_position: 6
 
 ## Reports
 
-Both a project's compliance and an organisation's cross-project compliance can be exported as a PDF or CSV report, suitable for internal review and audit preparation — the PDF carries the fuller, multi-section report (main table plus evidence/review/mapping appendices); the CSV carries the flat, one-row-per-requirement (or, at organisation scope, one-row-per-assignment) table.
+Both a project's compliance and an organisation's cross-project compliance can be exported in every file format the platform produces, suitable for internal review and audit preparation. The document formats (PDF, Word, ODT and HTML) carry the fuller, multi-section report (main table plus evidence/review/mapping appendices); the table formats (CSV, Excel and ODS) carry the flat, one-row-per-requirement (or, at organisation scope, one-row-per-assignment) table. Choose the format from the **Export** control, which offers *Download PDF report*, *Word*, *ODT*, *HTML*, *CSV*, *Excel* and *ODS*.
 
 | Exporting a report |
 | --- |
-| A project's Compliance page offers a PDF or CSV export of its full assessment |
-| ![The Compliance page's Export control open, offering a Download PDF report or Download CSV report choice](../../../static/img/screenshots/compliance-report-export.png) |
+| A project's Compliance page offers an export of its full assessment in every format |
+| ![The Compliance page's Export control open, offering a choice of report formats](../../../static/img/screenshots/compliance-report-export.png) |
 
 A **project's** report covers every requirement's applicability, compliance status, approval state and history, required actions, linked evidence (with validity/expiry), review history, and any cross-standard mappings touching its assigned standards — available to anyone who can view the project's compliance.
 
@@ -21,10 +21,12 @@ Evidence is named by its code in both reports (`EVD-001 Test certificate`, with 
 
 | Report scope | Format | Contents |
 | --- | --- | --- |
-| Project | PDF | Main requirement table, plus evidence/review/mapping appendices |
-| Project | CSV | One row per requirement |
-| Organisation | PDF | One row per project/assigned-standard-version, plus non-compliant/pending-approval/expiring-evidence appendices across every project |
-| Organisation | CSV | One row per project/assigned-standard-version pair |
+| Project | PDF, Word, ODT, HTML | Main requirement table, plus evidence/review/mapping appendices |
+| Project | CSV, Excel, ODS | One row per requirement |
+| Organisation | PDF, Word, ODT, HTML | One row per project/assigned-standard-version, plus non-compliant/pending-approval/expiring-evidence appendices across every project |
+| Organisation | CSV, Excel, ODS | One row per project/assigned-standard-version pair |
+
+In the Word, ODT and HTML versions a requirement is one cell: its section path in italics, its title in bold, then each of reasoning, clarification, justification and notes behind a bold label, separated by dots. The PDF shows the same text on separate lines in the cell.
 
 ## Export/import bundles
 
@@ -41,4 +43,4 @@ A single standard can also be exported and re-imported on its own, distinct from
 
 ## Where this fits
 
-See [Assessing a project](./assessing-a-project.md) for what generates the data these reports summarise, and [AI assistant (MCP) integration](./mcp-integration.md) for pulling the same kind of information programmatically instead of via a PDF/CSV download.
+See [Assessing a project](./assessing-a-project.md) for what generates the data these reports summarise, and [AI assistant (MCP) integration](./mcp-integration.md) for pulling the same kind of information programmatically instead of via a report download.

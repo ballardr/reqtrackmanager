@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, selectProjectAdminGroup, saveNewVersion } from "./helpers";
+import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD, searchReportSetup, selectOrgAdminGroup, selectProjectAdminGroup, saveNewVersion } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -52,7 +52,8 @@ test.describe("Report layout designer", () => {
   async function createFromProjectAdmin(page: Page, projectId: string, name: string) {
     await page.goto(`/projects/${projectId}/admin`);
     await selectProjectAdminGroup(page, "Report Setup");
-    await page.getByRole("button", { name: "New layout" }).click();
+    await page.getByRole("button", { name: "New", exact: true }).click();
+    await page.getByRole("menuitem", { name: "New layout" }).click();
     const dialog = page.getByRole("dialog", { name: "New report layout" });
     await dialog.getByRole("textbox", { name: "Name" }).fill(name);
     await dialog.getByRole("button", { name: "Create" }).click();
@@ -340,11 +341,12 @@ test.describe("Report layout designer", () => {
 
     await page.goto(`/projects/${project.id}/admin`);
     await selectProjectAdminGroup(page, "Report Setup");
-    const table = page.getByRole("table", { name: "Report layouts" });
+    const item = (grid: Awaited<ReturnType<typeof searchReportSetup>>) => grid.getByRole("button", { name: new RegExp(`^${name}`) });
 
     await test.step("the shared layout is listed, with where it comes from, and opens read-only", async () => {
+      const table = await searchReportSetup(page, name);
       await expect(table.getByRole("row", { name: new RegExp(`${name}.*The organisation`) })).toBeVisible();
-      await table.getByRole("link", { name: new RegExp(name) }).click();
+      await item(table).click();
       await expect(page.getByRole("textbox", { name: "Layout text" })).toHaveAttribute("readonly", "");
       await expect(page.getByRole("note")).toContainText("read-only here");
       await expect(page.getByRole("button", { name: "Save new version" })).toHaveCount(0);
@@ -352,18 +354,21 @@ test.describe("Report layout designer", () => {
     });
 
     await test.step("hiding it removes it from this project's list and it can be added back", async () => {
-      await page.getByRole("button", { name: `Actions for ${name}` }).click();
+      const table = await searchReportSetup(page, name);
+      await table.getByRole("button", { name: `Actions for ${name}` }).click();
       await page.getByRole("menuitem", { name: "Hide in this project" }).click();
       await page.getByRole("dialog", { name: /Hide .* in this project\?/ }).getByRole("button", { name: "Hide" }).click();
       await expect(page.getByText("Layout hidden in this project.")).toBeVisible();
-      await expect(page.getByRole("link", { name: new RegExp(name) })).toHaveCount(0);
+      await expect(table.getByRole("row", { name: new RegExp(`${name}.*Hidden`) })).toBeVisible();
       await page.getByRole("button", { name: "Add organisation defaults (1)" }).click();
       await page.getByRole("dialog", { name: "Add organisation defaults" }).getByRole("button", { name: "Add 1 default" }).click();
-      await expect(page.getByRole("link", { name: new RegExp(name) })).toBeVisible();
+      await expect(table.getByRole("row", { name: new RegExp(`${name}.*Hidden`) })).toHaveCount(0);
+      await expect(item(table)).toBeVisible();
     });
 
     await test.step("a copy is the project's own layout and can be edited", async () => {
-      await page.getByRole("button", { name: `Actions for ${name}` }).click();
+      const table = await searchReportSetup(page, name);
+      await table.getByRole("button", { name: `Actions for ${name}` }).click();
       await page.getByRole("menuitem", { name: "Make a copy" }).click();
       await expect(page.getByRole("heading", { name: `${name} (copy)` })).toBeVisible();
       await expect(page.getByRole("textbox", { name: "Layout text" })).not.toHaveAttribute("readonly", "");
@@ -377,8 +382,9 @@ test.describe("Report layout designer", () => {
 
     await page.goto(`/orgs/${org.id}/admin`);
     await selectOrgAdminGroup(page, "Templates & reports");
-    await ensureExpanded(page, "Report layouts");
-    await page.getByRole("button", { name: "New layout" }).click();
+    await ensureExpanded(page, "Report Setup");
+    await page.getByRole("button", { name: "New", exact: true }).click();
+    await page.getByRole("menuitem", { name: "New layout" }).click();
     const dialog = page.getByRole("dialog", { name: "New report layout" });
     await dialog.getByRole("textbox", { name: "Name" }).fill(name);
     await dialog.getByRole("combobox", { name: "Kind of report" }).selectOption("table");
@@ -410,7 +416,8 @@ test.describe("Report layout designer", () => {
     await createFromProjectAdmin(page, project.id, name);
     await page.getByRole("button", { name: "Report layouts" }).click();
 
-    await page.getByRole("button", { name: `Actions for ${name}` }).click();
+    const table = await searchReportSetup(page, name);
+    await table.getByRole("button", { name: `Actions for ${name}` }).click();
     await page.getByRole("menuitem", { name: "Delete" }).click();
     const dialog = page.getByRole("dialog", { name: `Delete ${name}?` });
     await expect(dialog.getByRole("button", { name: "Delete" })).toBeDisabled();
@@ -418,6 +425,6 @@ test.describe("Report layout designer", () => {
     await dialog.getByRole("button", { name: "Delete" }).click();
 
     await expect(page.getByText("Layout deleted.")).toBeVisible();
-    await expect(page.getByRole("link", { name: new RegExp(name) })).toHaveCount(0);
+    await expect(table.getByRole("button", { name: new RegExp(`^${name}`) })).toHaveCount(0);
   });
 });

@@ -21,8 +21,8 @@ class ReportRequest(BaseModel):
     Attributes:
         format: Which output format to generate — `"pdf"` (R-F-01), `"docx"`
             (an editable Word file with the same content and branding as the
-            PDF) or `"csv"` (R-F-02). `routers.reports.generate_report` dispatches
-            on this instead of there being two separate endpoints (2026-09-22
+            PDF), `"odt"` and `"html"` (the same document), or the flat table as `"csv"`, `"xlsx"` or `"ods"` (R-F-02).
+            `routers.reports.generate_report` dispatches on this instead of there being two separate endpoints (2026-09-22
             merge, see docs/decisions.md — one endpoint per resource, with
             the specific format as a parameter, so a future report-type/
             template parameter has one place to land rather than two).
@@ -35,16 +35,16 @@ class ReportRequest(BaseModel):
             rendered as text; other content types are noted but skipped.
         report_template_id: An optional selected `ReportTemplate` (R-G-05)
             to brand the PDF with (accent colour, cover page, footer, logo).
-            Ignored for CSV exports, which have no branded layout.
+            Ignored for the table formats (CSV, Excel, OpenDocument spreadsheet), which have no branded layout.
         chapters_per_component: Per-generation override of whether the PDF
             chapters by component (`True`) or renders continuously
             (`False`) — `None` (the default) defers to the selected
             template's own setting, or — with no template — a heuristic
             (`services.reports.default_chapters_per_component`). Always
-            wins over both when explicitly set. Ignored for CSV exports.
+            wins over both when explicitly set. Ignored for the table formats.
     """
 
-    format: Literal["pdf", "csv", "docx"]
+    format: Literal["pdf", "docx", "odt", "html", "csv", "xlsx", "ods"]
     include_archived: bool = False
     component_id: UUID | None = None
     category_id: UUID | None = None

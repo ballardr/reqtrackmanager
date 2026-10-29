@@ -113,7 +113,7 @@ export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
   const statusRows = useOrgComplianceStatus(orgId);
   const [data, setData] = useState<DashboardData | null>(null);
 
-  async function downloadReport(kind: "pdf" | "csv") {
+  async function downloadReport(kind: complianceApi.ComplianceReportKind) {
     try {
       const blob = await api.getForBlob(`/api/v1/orgs/${orgId}/modules/compliance/reports?format=${kind}`);
       downloadBlob(blob, `organisation-compliance-report.${kind}`);
@@ -167,7 +167,7 @@ export function OrgComplianceDashboard({ orgId }: { orgId: string }) {
   return (
     <div className="stack">
       <div className="row" style={{ justifyContent: "flex-end" }}>
-        <ReportExportButton onDownload={downloadReport} />
+        <ReportExportButton onDownload={downloadReport} kinds={complianceApi.COMPLIANCE_REPORT_KINDS} />
       </div>
       <div className="grid grid-metrics">
         <StatCard label="Active compliance standards" value={activeStandardCount} />

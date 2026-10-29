@@ -8,7 +8,7 @@ import { withToast } from "../../testing/storybook-helpers";
 import { buildEngagement, buildFinding, buildPersona, buildStakeholder } from "./fixtures";
 import { ProjectEngagementsPage } from "./ProjectEngagementsPage";
 import type { Engagement } from "./types";
-import { chooseListAction, openListMenu } from "../../testing/listActionsMenu";
+import { openListMenu, chooseExport } from "../../testing/listActionsMenu";
 
 const PROJECT_ID = "project-1";
 const BASE = `/api/v1/projects/${PROJECT_ID}/modules/stakeholders`;
@@ -121,7 +121,7 @@ export const ExportCarriesTheFilters: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Email" }));
     await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
-    await chooseListAction(canvas, "Export as CSV");
+    await chooseExport(canvas, "CSV");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/engagement/export?retention_due=true&type=Email`));
   },
 };

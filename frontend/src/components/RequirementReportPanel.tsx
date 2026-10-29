@@ -1,8 +1,8 @@
 /**
  * Module: components/RequirementReportPanel
  *
- * The requirement report's configuration and generation surface (R-F-01 PDF,
- * Word, R-F-02 CSV), shown in the Reports dialog beside the catalogue reports in the same picker. It
+ * The requirement report's configuration and generation surface (R-F-01 PDF, Word,
+ * OpenDocument text and HTML, R-F-02 the flat table as CSV, Excel and OpenDocument spreadsheet), shown in the Reports dialog beside the catalogue reports in the same picker. It
  * carries a chapter-per-component/continuous layout choice and organisation shared resource sections
  * (R-G-04). Branding is never chosen here: a download uses the organisation's default template. Narrowing
  * the requirements (R-G-03) is done on the requirements list, whose Export and Download report carry the
@@ -23,6 +23,11 @@ import { ReportExportButton } from "./ReportExportButton";
 import { Spinner } from "./Spinner";
 import { FormGrid } from "./FormGrid";
 import { LabeledSelect } from "./LabeledSelect";
+
+/** The formats offered under "More formats" (PDF is the primary button): every other format the report is rendered in. */
+const REQUIREMENT_REPORT_FORMATS: readonly ReportDownloadKind[] = ["pdf", "docx", "odt", "html", "csv", "xlsx", "ods"];
+/** The formats that are one flat table: no chapter layout applies. */
+const TABLE_FORMATS: readonly ReportDownloadKind[] = ["csv", "xlsx", "ods"];
 
 /**
  * @param project The project the report is generated for.
@@ -56,7 +61,7 @@ export function RequirementReportPanel({ project }: { project: Project }) {
       const blob = await api.postForBlob(`/api/v1/projects/${projectId}/reports`, {
         format: kind,
         resource_file_ids: resourceFileIds,
-        chapters_per_component: kind !== "csv" ? chaptersPerComponent : null,
+        chapters_per_component: TABLE_FORMATS.includes(kind) ? null : chaptersPerComponent,
       });
       const projectName = project.name.replace(/[\\/"\r\n\t]/g, "") || "project";
       downloadBlob(blob, `${projectName}-requirements.${kind}`);
@@ -75,7 +80,7 @@ export function RequirementReportPanel({ project }: { project: Project }) {
         <button className="btn btn-primary" onClick={() => generate("pdf")} disabled={generating !== null}>
           {generating === "pdf" ? "…" : strings.reports.generatePdf}
         </button>
-        <ReportExportButton onDownload={generate} kinds={["docx", "csv"]} label={strings.reports.moreFormats} />
+        <ReportExportButton onDownload={generate} kinds={REQUIREMENT_REPORT_FORMATS.filter((kind) => kind !== "pdf")} label={strings.reports.moreFormats} />
       </div>
 
       <FormGrid minColumn="16rem">

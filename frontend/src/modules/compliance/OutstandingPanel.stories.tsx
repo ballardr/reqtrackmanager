@@ -13,7 +13,7 @@ import type {
   OutstandingRequiredAction,
   PendingApproval,
 } from "./types";
-import { chooseListAction } from "../../testing/listActionsMenu";
+import { chooseExport } from "../../testing/listActionsMenu";
 
 const PROJECT_ID = "proj-1";
 const ORG_ID = "org-1";
@@ -182,7 +182,7 @@ export const OutstandingActionsExportAsARecordList: Story = {
     await waitFor(() => expect(canvas.getByLabelText("Sub-section")).toBeInTheDocument());
     await userEvent.selectOptions(canvas.getByLabelText("Sub-section"), "sec-5");
 
-    await chooseListAction(canvas, "Export as CSV", "Outstanding required actions");
+    await chooseExport(canvas, "CSV", "Outstanding required actions");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/records/compliance_required_action_assessment/export?outstanding=true&standard=std-1&section=sec-5`
     ));

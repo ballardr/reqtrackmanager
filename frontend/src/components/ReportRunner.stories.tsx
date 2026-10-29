@@ -175,9 +175,9 @@ export const CustomTableReportOffersExcelAndCsv: Story = {
     await expect(within(document.body).queryByRole("button", { name: "Download PDF report" })).not.toBeInTheDocument();
     await userEvent.click(within(document.body).getByRole("button", { name: "Download Excel report" }));
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("format=xlsx")));
-    await waitFor(() => expect(within(document.body).getByText("Downloaded Fixture report (Excel workbook).")).toBeInTheDocument());
+    await waitFor(() => expect(within(document.body).getByText("Downloaded Fixture report (Excel).")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    await userEvent.click(within(document.body).getByRole("button", { name: "Download OpenDocument spreadsheet report" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Download ODS report" }));
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("format=ods")));
   },
 };
@@ -263,17 +263,17 @@ export const EveryDeclaredFormatIsInTheMenu: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Export" }));
     const menu = within(document.body);
     for (const label of [
-      "Download PDF report", "Download Word report", "Download HTML report", "Download OpenDocument text report",
-      "Download CSV report", "Download Excel report", "Download OpenDocument spreadsheet report",
+      "Download PDF report", "Download Word report", "Download HTML report", "Download ODT report",
+      "Download CSV report", "Download Excel report", "Download ODS report",
     ]) {
       await expect(menu.getByRole("button", { name: label })).toBeInTheDocument();
     }
-    await userEvent.click(menu.getByRole("button", { name: "Download OpenDocument text report" }));
+    await userEvent.click(menu.getByRole("button", { name: "Download ODT report" }));
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("format=odt")));
     await expect(api.getForBlob).toHaveBeenLastCalledWith(expect.not.stringContaining("report_template_id"));
-    await waitFor(() => expect(within(document.body).getByText("Downloaded Fixture report (OpenDocument text file).")).toBeInTheDocument());
+    await waitFor(() => expect(within(document.body).getByText("Downloaded Fixture report (ODT).")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    await userEvent.click(within(document.body).getByRole("button", { name: "Download OpenDocument spreadsheet report" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Download ODS report" }));
     await waitFor(() => expect(api.getForBlob).toHaveBeenLastCalledWith(expect.stringContaining("format=ods")));
     await expect(api.getForBlob).toHaveBeenLastCalledWith(expect.not.stringContaining("report_template_id"));
   },

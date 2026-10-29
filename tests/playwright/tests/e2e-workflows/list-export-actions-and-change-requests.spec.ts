@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 
 import { createDisposableProject, installCleanupHook, loginAs, PERSONAS } from "./helpers";
-import { chooseListAction, expectListAction } from "../listActions";
+import { expectListAction, chooseExport } from "../listActions";
 
 /**
  * Job to be done: take a list of actions out as a file, edit a cell in a spreadsheet and bring it back so the same
@@ -20,7 +20,7 @@ test.describe("Export and import on the Actions and Change requests lists", () =
   /** Downloads the open list's CSV through the shared Export menu and returns its text. */
   async function exportCsv(page: Page): Promise<string> {
     const downloadPromise = page.waitForEvent("download");
-    await chooseListAction(page, "Export as CSV");
+    await chooseExport(page, "CSV");
     return fs.readFileSync((await (await downloadPromise).path())!, "utf-8");
   }
 

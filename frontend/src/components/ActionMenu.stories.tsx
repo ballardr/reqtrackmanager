@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useEffect, useState } from "react";
 import { Download, Pencil } from "lucide-react";
-import { expect, fn, userEvent, within } from "storybook/test";
+import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import { ActionMenu } from "./ActionMenu";
 
@@ -116,3 +116,67 @@ export const ItemsChangeWhileOpen: Story = {
 
 export const LightTheme: Story = { globals: { theme: "light" } };
 export const DarkTheme: Story = { globals: { theme: "dark" } };
+
+const submenuItems = () => [
+  { label: "Rename", onSelect: fn() },
+  {
+    label: "Download items",
+    onSelect: fn(),
+    children: [
+      { label: "CSV", hint: "re-imports", onSelect: fn() },
+      { label: "ODT", title: "OpenDocument text", onSelect: fn() },
+    ],
+  },
+  { label: "Delete", danger: true, onSelect: fn() },
+];
+
+/** An item with `children` is a parent: `aria-haspopup`/`aria-expanded`, opened by a click, and its own `onSelect` is
+ * never called. Choosing a child closes the whole menu and calls the child's `onSelect`. */
+export const ASubmenuOpensOnClickAndItsItemRunsInsteadOfTheParent: Story = {
+  args: { items: submenuItems() },
+  play: async ({ canvasElement, args }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Acme Corp actions" }));
+    const parent = within(document.body).getByRole("menuitem", { name: "Download items" });
+    await expect(parent).toHaveAttribute("aria-haspopup", "menu");
+    await expect(parent).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(parent);
+    await expect(parent).toHaveAttribute("aria-expanded", "true");
+    const submenu = within(await within(document.body).findByRole("menu", { name: "Download items" }));
+    await userEvent.click(submenu.getByRole("menuitem", { name: "ODT" }));
+    const parentItem = args.items[1];
+    await expect(parentItem.children?.[1].onSelect).toHaveBeenCalledOnce();
+    await expect(parentItem.onSelect).not.toHaveBeenCalled();
+    await expect(within(document.body).queryByRole("menu")).not.toBeInTheDocument();
+  },
+};
+
+/** Resting the pointer on the parent opens the submenu after a short delay; moving to another row closes it again. */
+export const ASubmenuOpensOnHoverAndClosesWhenAnotherRowIsHovered: Story = {
+  args: { items: submenuItems() },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Acme Corp actions" }));
+    await userEvent.hover(within(document.body).getByRole("menuitem", { name: "Download items" }));
+    await expect(await within(document.body).findByRole("menu", { name: "Download items" })).toBeInTheDocument();
+    await userEvent.hover(within(document.body).getByRole("menuitem", { name: "Delete" }));
+    await waitFor(() => expect(within(document.body).queryByRole("menu", { name: "Download items" })).not.toBeInTheDocument());
+  },
+};
+
+/** Arrow keys move within a level and Home/End jump; Right opens the submenu on its first item, Left returns to the parent. */
+export const ASubmenuIsOperableFromTheKeyboard: Story = {
+  args: { items: submenuItems() },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Acme Corp actions" }));
+    const body = within(document.body);
+    body.getByRole("menuitem", { name: "Rename" }).focus();
+    await userEvent.keyboard("{End}");
+    await expect(body.getByRole("menuitem", { name: "Delete" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowUp}{ArrowRight}");
+    await waitFor(() => expect(body.getByRole("menuitem", { name: /^CSV/ })).toHaveFocus());
+    await userEvent.keyboard("{ArrowDown}");
+    await expect(body.getByRole("menuitem", { name: "ODT" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowLeft}");
+    await expect(body.getByRole("menuitem", { name: "Download items" })).toHaveFocus();
+    await expect(body.queryByRole("menu", { name: "Download items" })).not.toBeInTheDocument();
+  },
+};

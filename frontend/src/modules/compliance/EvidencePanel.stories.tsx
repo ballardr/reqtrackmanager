@@ -7,7 +7,7 @@ import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { buildFileAsset, withRouter, withToast } from "../../testing/storybook-helpers";
 import { EvidencePanel } from "./EvidencePanel";
 import type { ComplianceEvidence } from "./types";
-import { chooseListAction, openListMenu } from "../../testing/listActionsMenu";
+import { openListMenu, chooseExport } from "../../testing/listActionsMenu";
 
 const PROJECT_ID = "proj-1";
 
@@ -183,7 +183,7 @@ export const ExportCarriesTheListsFilters: Story = {
     await userEvent.click(canvas.getByRole("checkbox", { name: "Show archived" }));
     await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
-    await chooseListAction(canvas, "Export as CSV");
+    await chooseExport(canvas, "CSV");
     await waitFor(() =>
       expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/compliance_evidence/export?search=IPX&include_archived=true`),
     );

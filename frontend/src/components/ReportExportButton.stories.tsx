@@ -44,11 +44,23 @@ export const OffersHtmlExcelAndOpenDocumentForACustomReport: Story = {
     await userEvent.click(within(canvasElement).getByRole("button", { name: "Export" }));
     const menu = within(document.body).getByRole("dialog", { name: "Export" });
     await expect(within(menu).getAllByRole("button").map((b) => b.textContent?.trim())).toEqual([
-      "Download PDF report", "Download Word report", "Download OpenDocument text report", "Download HTML report",
-      "Download CSV report", "Download Excel report", "Download OpenDocument spreadsheet report",
+      "Download PDF report", "Download Word report", "Download ODT report", "Download HTML report",
+      "Download CSV report", "Download Excel report", "Download ODS report",
     ]);
     await userEvent.click(within(menu).getByRole("button", { name: "Download Excel report" }));
     await waitFor(() => expect(args.onDownload).toHaveBeenCalledWith("xlsx"));
+  },
+};
+
+/** ODT and ODS read as acronyms like PDF and CSV; the full name is one hover away and does not overflow the button. */
+export const OpenDocumentFormatsAreAcronymsWithAFullNameTooltip: Story = {
+  args: { kinds: ["odt", "ods"] },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Export" }));
+    const menu = within(within(document.body).getByRole("dialog", { name: "Export" }));
+    await expect(menu.getByRole("button", { name: "Download ODT report" })).toHaveAttribute("title", "OpenDocument text");
+    await expect(menu.getByRole("button", { name: "Download ODS report" })).toHaveAttribute("title", "OpenDocument spreadsheet");
+    await expect(menu.queryByText(/OpenDocument/)).not.toBeInTheDocument();
   },
 };
 

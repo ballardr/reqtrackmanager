@@ -7,7 +7,7 @@ import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { buildProject, buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
 import { ProjectDecisionsPage } from "./ProjectDecisionsPage";
 import type { Decision, DecisionTypeDefinition } from "./types";
-import { chooseListAction, openListMenu } from "../../testing/listActionsMenu";
+import { openListMenu, chooseExport } from "../../testing/listActionsMenu";
 
 const PROJECT_ID = "project-1";
 
@@ -164,7 +164,7 @@ export const ExportCarriesThePageFilters: Story = {
     await waitFor(() => expect(canvas.getByText("Use Terraform for infra")).toBeInTheDocument());
     await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
-    await chooseListAction(canvas, "Export as CSV");
+    await chooseExport(canvas, "CSV");
     await waitFor(() =>
       expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/decision/export?search=postgres&mine=true&open_only=true`),
     );
