@@ -125,7 +125,7 @@ sxf,1,Flight logs cannot be exported for audit,Falcon-3 Inspection Drone,Operato
 sxf,2,Pilots cannot tell which redundant flight controller is in command,Falcon-3 Inspection Drone,User,Accepted,High,21,Medium,Blocker: BVLOS Remote Pilot,
 ```
 
-**Branding template** applies an organisation [report template](../../core-features/reports-and-export.md)'s accent colour, cover page, logo, and footer to the PDF and Word file. CSV never carries a template.
+The organisation's default [report template](../../core-features/reports-and-export.md) (its accent colour, cover page, logo, and footer) brands the PDF and Word file; there is no per-download choice. CSV never carries a template.
 
 ## Using reports from the API or an AI assistant
 

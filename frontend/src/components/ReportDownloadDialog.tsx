@@ -39,7 +39,7 @@ import { StepIndicator } from "./StepIndicator";
 
 /**
  * @param projectId The project whose list this is (give this or `organizationId`).
- * @param organizationId The organisation whose own list this is, or the project's organisation (branding templates).
+ * @param organizationId The organisation whose own list this is, or the project's organisation (its packs are listed once it is known).
  * @param ownedByOrganization True when the list is an organisation's own, so the organisation catalogue is used.
  * @param recordType The registered record type of the list.
  * @param recordLabel The type's plural label ("Requirements"), for the title and messages.
@@ -121,7 +121,7 @@ export function ReportDownloadDialog({
                   <dd style={{ margin: 0, fontWeight: 600 }}>{scopeName ?? "…"}</dd>
                 </div>
               </dl>
-              {pack ? pack.render() : entry && <ReportRunner entry={entry} scope={scope} organizationId={organizationId} showResult={false} />}
+              {pack ? pack.render() : entry && <ReportRunner entry={entry} scope={scope} showResult={false} />}
             </>
           ) : (
             <>

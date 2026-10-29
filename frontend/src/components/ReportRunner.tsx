@@ -23,9 +23,8 @@
  * - For a custom report with run-time variables, show their form (`ReportVariablesForm`) and send the chosen values
  *   as the `variables` run value; a variable with no default and no value holds the run back until it has one, so
  *   the report is never produced for a choice the person has not made.
- * - Offer an optional branding template for downloads (it never
- *   changes the on-screen result) and download through the shared
- *   `ReportExportButton`, with a toast on success or failure. Downloads send
+ * - Download through the shared `ReportExportButton`, with a toast on success or failure. Branding is not
+ *   chosen here: the server applies the layout's own template, else the organisation's default. Downloads send
  *   the same values as the screen so a file never silently widens the view
  *   (style guide: "report export trigger").
  *
@@ -48,12 +47,10 @@ import {
   variablesRunValue,
 } from "../api/reports";
 import { REPORT_RUN_QUEUED_EVENT } from "../hooks/useActiveReportRuns";
-import { useReportTemplates } from "../hooks/useReportTemplates";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { getReportView } from "../modules/registry";
 import { downloadBlob } from "../utils/download";
 import { describeReportLink, reportLinkResolver } from "../utils/reportLinks";
-import { LabeledSelect } from "./LabeledSelect";
 import { ReportFigureProjectsDialog } from "./ReportFigureProjectsDialog";
 import { ReportExportButton } from "./ReportExportButton";
 import { ReportParamsForm } from "./ReportParamsForm";
@@ -63,9 +60,6 @@ import { Spinner } from "./Spinner";
 import { useStrings } from "../context/TerminologyContext";
 
 const RERUN_DELAY_MS = 300;
-
-/** The formats that lay the report out as a document, the only ones a branding template applies to. */
-const DOCUMENT_KINDS: readonly ReportFileKind[] = ["pdf", "docx", "html", "odt"];
 
 function initialValues(entry: ReportCatalogueEntry): ReportRunValues {
   const values: ReportRunValues = {};
@@ -77,7 +71,6 @@ function initialValues(entry: ReportCatalogueEntry): ReportRunValues {
 /**
  * @param entry The catalogue entry to run.
  * @param scope What it runs against: a project or an organisation, by id.
- * @param organizationId The owning organisation, for the branding template list.
  * @param focusSection A section key to scroll to once the report has loaded (a figure's "see the gap table" link).
  * @param showResult False to show the parameters and the download menu without running the report on screen.
  */
@@ -88,12 +81,10 @@ const DOWNLOAD_NAME: Record<ReportFileKind, string> = {
 };
 
 export function ReportRunner({
-  entry, scope, organizationId, focusSection, showResult = true,
+  entry, scope, focusSection, showResult = true,
 }: {
   entry: ReportCatalogueEntry;
   scope: { kind: "project" | "organization"; id: string };
-  /** The owning organisation (branding templates); `undefined` offers no template choice. */
-  organizationId: string | undefined;
   focusSection?: string;
   showResult?: boolean;
 }) {
@@ -104,10 +95,6 @@ export function ReportRunner({
   const [result, setResult] = useState<ReportResult | null>(null);
   // The run that last finished, by the values it ran with; the report is busy whenever the current values differ.
   const [settled, setSettled] = useState<{ signature: string; error: string | null } | null>(null);
-  const templates = useReportTemplates(organizationId);
-  const [templateId, setTemplateId] = useState("");
-  // What a download uses when none is chosen: the layout's own template, else the organisation's default.
-  const defaultTemplate = templates.find((t) => t.id === entry.report_template_id) ?? templates.find((t) => t.is_default);
   const [openedFigure, setOpenedFigure] = useState<{ metric: ReportMetric; values: ReportRunValues } | null>(null);
   const hasRun = useRef(false);
   // What a run sends: the report's values plus the chosen variables (as JSON); a report with none is unchanged.
@@ -163,9 +150,8 @@ export function ReportRunner({
 
   async function download(kind: ReportFileKind) {
     const name = DOWNLOAD_NAME[kind];
-    const fileValues = DOCUMENT_KINDS.includes(kind) ? { ...runValues, report_template_id: templateId } : runValues;
     try {
-      const blob = await reportsApi.download(entry, kind, fileValues);
+      const blob = await reportsApi.download(entry, kind, runValues);
       // A table layout of several sheets comes back as a zip of CSV files, whatever `csv` was asked for.
       downloadBlob(blob, `${entry.slug}.${blob.type === "application/zip" ? "zip" : kind}`);
       showToast(`Downloaded ${entry.title} (${name}).`, "success");
@@ -174,7 +160,7 @@ export function ReportRunner({
         // Too big to produce while the person waits: the same request goes to the background queue and a
         // notification says when the file is ready.
         try {
-          await reportsApi.queueRun(entry, kind, fileValues);
+          await reportsApi.queueRun(entry, kind, runValues);
           showToast(strings.reportRuns.queued(entry.title), "success");
           window.dispatchEvent(new Event(REPORT_RUN_QUEUED_EVENT));
         } catch (queueErr) {
@@ -219,15 +205,6 @@ export function ReportRunner({
         />
         <ReportVariablesForm variables={entry.variables} values={variableValues} onChange={setVariable} />
         <div className="row" style={{ alignItems: "flex-end", gap: "var(--space-4)" }}>
-          {templates.length > 0 && (
-            <LabeledSelect help={strings.help.reportBrandingTemplate}
-              label="Branding template"
-              value={templateId}
-              onChange={setTemplateId}
-              options={templates.map((t) => ({ value: t.id, label: t.name }))}
-              placeholder={defaultTemplate ? strings.reports.templateDefaultNamed(defaultTemplate.name) : strings.reports.noTemplate}
-            />
-          )}
           {!blocked && <ReportExportButton onDownload={download} kinds={entry.formats.filter((f): f is ReportFileKind => f !== "json")} />}
         </div>
       </div>

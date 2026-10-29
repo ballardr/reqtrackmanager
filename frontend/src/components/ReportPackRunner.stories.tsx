@@ -10,7 +10,7 @@ import { ReportPackRunner } from "./ReportPackRunner";
 const meta: Meta<typeof ReportPackRunner> = {
   title: "Components/Reports/ReportPackRunner",
   component: ReportPackRunner,
-  args: { organizationId: "org-1", name: "Handover pack" },
+  args: { name: "Handover pack" },
   decorators: [withToast()],
   beforeEach: () => {
     spyOn(api, "get").mockResolvedValue([]);

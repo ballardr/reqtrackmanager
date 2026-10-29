@@ -29,7 +29,7 @@ interface Loaded {
 
 /**
  * @param scope The project or organisation to list packs for; `undefined` skips loading.
- * @param organizationId The owning organisation (branding templates).
+ * @param organizationId The owning organisation; no packs are listed until it is known.
  * @returns `entries` for the picker (empty while loading or on a failed load) and whether the first load is under way.
  */
 export function useReportPackEntries(
@@ -64,7 +64,7 @@ export function useReportPackEntries(
         placementKey: packPlacementKey(pack.id),
         recordTypes: pack.record_types,
         description: pack.description || text.description,
-        render: () => <ReportPackRunner key={pack.id} api={api} organizationId={organizationId} name={pack.name} />,
+        render: () => <ReportPackRunner key={pack.id} api={api} name={pack.name} />,
       };
     });
   }, [scope, organizationId, packs, text]);

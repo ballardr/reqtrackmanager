@@ -8,13 +8,13 @@ sidebar_position: 9
 
 Click **Reports** at the top of the project overview, and pick the **Requirements report**:
 
-1. Filter by component, category, status, or keyword to scope what's included.
-2. Optionally pick one of the organisation's **report templates** for a PDF or Word export — an accent colour, cover page, logo and footer, for consistent on-brand output.
+1. To include only some requirements, filter the **Requirements** list first (component, category, status, tag, or a range of target versions) and use **List actions → Download report** or **Export**: they carry the list's filters.
+2. A PDF or Word export is branded with the organisation's default **report template** — an accent colour, cover page, logo and footer — so output is consistently on-brand.
 3. Generate the report with **Generate PDF**, or choose **More formats** for an editable Word file or CSV — a PDF or Word file can append the organisation's shared resource files. For an introduction, chapters and appendices, start from the **Requirements by Component** layout (see [Introductions, chapters and appendices](../core-features/reports-and-export.md#introductions-chapters-and-appendices)).
 
 | Reports dialog |
 | --- |
-| Filtered PDF/Word/CSV export with a selectable organisation branding template |
+| PDF/Word/CSV export branded with the organisation's default template |
 | ![Reports page with filters and a selected branding template](../../static/img/screenshots/reports-page.png) |
 
 ## Exporting requirements to CSV

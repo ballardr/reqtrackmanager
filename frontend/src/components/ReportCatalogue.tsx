@@ -44,15 +44,13 @@ export interface ExtraReportEntry {
 /**
  * @param entries Catalogue entries the caller can run.
  * @param scope What the catalogue is for: a project or an organisation, by id.
- * @param organizationId The owning organisation (branding templates).
  * @param extraEntries Host-provided entries listed before the catalogue's.
  */
 export function ReportCatalogue({
-  entries, scope, organizationId, extraEntries = [],
+  entries, scope, extraEntries = [],
 }: {
   entries: ReportCatalogueEntry[];
   scope: { kind: "project" | "organization"; id: string };
-  organizationId: string;
   extraEntries?: ExtraReportEntry[];
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -84,7 +82,7 @@ export function ReportCatalogue({
         />
       )}
       {extra ? extra.render() : entry && <ReportRunner
-          key={entry.path} entry={entry} scope={scope} organizationId={organizationId}
+          key={entry.path} entry={entry} scope={scope}
           focusSection={searchParams.get("section") ?? undefined}
         />}
     </div>

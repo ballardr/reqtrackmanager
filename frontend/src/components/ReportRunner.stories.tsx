@@ -55,7 +55,7 @@ installedModules.push({
 const meta: Meta<typeof ReportRunner> = {
   title: "Components/Reports/ReportRunner",
   component: ReportRunner,
-  args: { entry, scope, organizationId: "org-1" },
+  args: { entry, scope },
   decorators: [withToast()],
 };
 export default meta;
@@ -163,7 +163,6 @@ export const CustomTableReportOffersExcelAndCsv: Story = {
   },
   beforeEach: () => {
     spyOn(api, "get").mockImplementation(async (path: string) => {
-      if (path.includes("/report-templates")) return [];
       if (path.startsWith("/api/v1/projects/project-1/custom-reports/layout-2/run")) return buildReportResult();
       throw new Error(`Unmocked GET: ${path}`);
     });
@@ -197,7 +196,6 @@ export const OrganisationCustomReportChoosesProjects: Story = {
   },
   beforeEach: () => {
     spyOn(api, "get").mockImplementation(async (path: string) => {
-      if (path.includes("/report-templates")) return [];
       if (path.startsWith("/api/v1/orgs/org-1/custom-reports/layout-1/run")) return buildReportResult();
       throw new Error(`Unmocked GET: ${path}`);
     });
@@ -226,40 +224,23 @@ export const ProjectReportHasNoProjectPicker: Story = {
   },
 };
 
-/** A PDF download carries the on-screen values plus the chosen branding template, and confirms with a toast. */
-export const PdfDownloadSendsValuesAndTemplate: Story = {
+/** A document download has no branding choice, even when the organisation has templates: the server applies the
+ * layout's own template, else the organisation's default, so the request names none; it confirms with a toast. */
+export const DocumentDownloadHasNoBrandingChoice: Story = {
   beforeEach: () => mockRunApis({ templates: [template] }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
-    await waitFor(() => expect(canvas.getByLabelText("Branding template")).toBeInTheDocument());
-    await userEvent.selectOptions(canvas.getByLabelText("Branding template"), "tpl-1");
+    await expect(canvas.queryByLabelText("Branding template")).not.toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Export" }));
     await userEvent.click(within(document.body).getByRole("button", { name: "Download PDF report" }));
-    await waitFor(() =>
-      expect(api.getForBlob).toHaveBeenCalledWith(expect.stringMatching(/format=pdf.*report_template_id=tpl-1|report_template_id=tpl-1.*format=pdf/)),
-    );
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("format=pdf")));
+    await expect(api.getForBlob).not.toHaveBeenCalledWith(expect.stringContaining("report_template_id"));
     await waitFor(() => expect(within(document.body).getByText("Downloaded Fixture report (PDF).")).toBeInTheDocument());
   },
 };
 
-/** A Word download carries the on-screen values plus the branding template, like the PDF. */
-export const DocxDownloadSendsValuesAndTemplate: Story = {
-  beforeEach: () => mockRunApis({ templates: [template] }),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
-    await userEvent.selectOptions(await canvas.findByLabelText("Branding template"), "tpl-1");
-    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    await userEvent.click(within(document.body).getByRole("button", { name: "Download Word report" }));
-    await waitFor(() =>
-      expect(api.getForBlob).toHaveBeenCalledWith(expect.stringMatching(/format=docx.*report_template_id=tpl-1|report_template_id=tpl-1.*format=docx/)),
-    );
-    await waitFor(() => expect(within(document.body).getByText("Downloaded Fixture report (Word file).")).toBeInTheDocument());
-  },
-};
-
-/** CSV never carries the branding template (it is a flat export). */
+/** A CSV download is a flat export: no template in the request. */
 export const CsvDownloadOmitsTemplate: Story = {
   beforeEach: () => mockRunApis({ templates: [template] }),
   play: async ({ canvasElement }) => {
@@ -272,14 +253,13 @@ export const CsvDownloadOmitsTemplate: Story = {
   },
 };
 
-/** Every format a module report declares is in the menu; a document carries the template, a spreadsheet does not. */
-export const EveryDeclaredFormatIsInTheMenuAndOnlyDocumentsCarryTheTemplate: Story = {
+/** Every format a module report declares is in the menu, and none of them sends a branding template. */
+export const EveryDeclaredFormatIsInTheMenu: Story = {
   args: { entry: buildReportCatalogueEntry({ formats: ["json", "pdf", "docx", "html", "odt", "csv", "xlsx", "ods"] }) },
   beforeEach: () => mockRunApis({ templates: [template] }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
-    await userEvent.selectOptions(await canvas.findByLabelText("Branding template"), "tpl-1");
     await userEvent.click(canvas.getByRole("button", { name: "Export" }));
     const menu = within(document.body);
     for (const label of [
@@ -289,7 +269,8 @@ export const EveryDeclaredFormatIsInTheMenuAndOnlyDocumentsCarryTheTemplate: Sto
       await expect(menu.getByRole("button", { name: label })).toBeInTheDocument();
     }
     await userEvent.click(menu.getByRole("button", { name: "Download OpenDocument text report" }));
-    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringMatching(/format=odt.*report_template_id=tpl-1|report_template_id=tpl-1.*format=odt/)));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("format=odt")));
+    await expect(api.getForBlob).toHaveBeenLastCalledWith(expect.not.stringContaining("report_template_id"));
     await waitFor(() => expect(within(document.body).getByText("Downloaded Fixture report (OpenDocument text file).")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Export" }));
     await userEvent.click(within(document.body).getByRole("button", { name: "Download OpenDocument spreadsheet report" }));
@@ -316,7 +297,7 @@ export const DownloadFailureShowsToast: Story = {
 export const TooBigDownloadIsQueuedInTheBackground: Story = {
   args: { entry: buildReportCatalogueEntry({ path: "/api/v1/projects/project-1/custom-reports/layout-1/run" }) },
   beforeEach: () => {
-    spyOn(api, "get").mockImplementation(async (path: string) => (path.includes("/report-templates") ? [] : buildReportResult()));
+    spyOn(api, "get").mockImplementation(async () => buildReportResult());
     spyOn(api, "getForBlob").mockRejectedValue(
       new ApiError(409, "Too big.", { code: "async_required", message: "Too big." }),
     );
@@ -335,8 +316,7 @@ export const TooBigDownloadIsQueuedInTheBackground: Story = {
 /** A failed run shows an inline error, not a blank page. */
 export const RunFailureShowsError: Story = {
   beforeEach: () => {
-    spyOn(api, "get").mockImplementation(async (path: string) => {
-      if (path.includes("/report-templates")) return [];
+    spyOn(api, "get").mockImplementation(async () => {
       throw new ApiError(500, "Report failed to run.");
     });
   },
@@ -358,10 +338,7 @@ export const NothingToReportOn: Story = {
 export const RegisteredViewReplacesGenericViewer: Story = {
   args: { entry: buildReportCatalogueEntry({ key: "f2", slug: "fixture-view", path: `${entry.path}-view` }) },
   beforeEach: () => {
-    spyOn(api, "get").mockImplementation(async (path: string) => {
-      if (path.includes("/report-templates")) return [];
-      return buildReportResult({ key: "f2" });
-    });
+    spyOn(api, "get").mockImplementation(async () => buildReportResult({ key: "f2" }));
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -413,7 +390,6 @@ export const OrganisationFiguresOpenAProjectList: Story = {
   beforeEach: () => {
     const figure = linkedResult().metrics[0];
     spyOn(api, "get").mockImplementation(async (path: string) => {
-      if (path.includes("/report-templates")) return [];
       if (path.includes("/by-project")) {
         return {
           generated_at: "2026-10-06T09:30:00Z", truncated: false,

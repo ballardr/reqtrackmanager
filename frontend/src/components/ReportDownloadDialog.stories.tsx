@@ -40,7 +40,7 @@ function mockApis(entries: ReportCatalogueEntry[], packs: ReportPackSummary[] = 
       if (path.endsWith("/report-catalogue")) return entries;
       if (path.endsWith("/report-packs")) return packs;
       if (path.endsWith("/form")) return buildForm();
-      if (path.includes("/report-templates") || path.includes("/report-placements")) return [];
+      if (path.includes("/report-placements")) return [];
       if (path.startsWith("/api/v1/report-runs")) return [];
       if (path === "/api/v1/projects/project-1") return { name: "Apollo" };
       if (path === "/api/v1/orgs/org-1") return { name: "Acme" };

@@ -197,6 +197,30 @@ export const FilterByStatusBadge: Story = {
   },
 };
 
+/** The component filter and the target version range are what narrow the list (and so its Export and Download
+ * report): choosing them sends `component_id` and the two range ends, and clearing an end drops its parameter. */
+export const ComponentAndTargetVersionRangeFiltersAreSent: Story = {
+  beforeEach: () => mockRequirementsListApis("manager"),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
+    const lastPath = () => {
+      const calls = (api.getPage as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+      return String(calls[calls.length - 1][0]);
+    };
+    await userEvent.selectOptions(canvas.getByLabelText("Component"), "c2");
+    await waitFor(() => expect(lastPath()).toContain("component_id=c2"));
+    await userEvent.selectOptions(canvas.getByLabelText("Target version from"), "s2");
+    await waitFor(() => expect(lastPath()).toContain("target_stage_from_id=s2"));
+    await expect(lastPath()).not.toContain("target_stage_to_id");
+    await userEvent.selectOptions(canvas.getByLabelText("Target version to"), "s2");
+    await waitFor(() => expect(lastPath()).toContain("target_stage_to_id=s2"));
+    await userEvent.selectOptions(canvas.getByLabelText("Target version from"), "");
+    await waitFor(() => expect(lastPath()).not.toContain("target_stage_from_id"));
+    await expect(lastPath()).toContain("target_stage_to_id=s2");
+  },
+};
+
 /** A project with a parent offers the scope filter; widening it adds the parent's requirement, labelled with its
  * project, qualified by its code and read-only here (no bulk checkbox, no reorder buttons), and sends `project_scope`. */
 export const WideningTheScopeAddsTheParentsRequirements: Story = {

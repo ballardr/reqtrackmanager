@@ -30,7 +30,7 @@ from app.models.enums import (
     ReviewTargetType,
 )
 from app.models.organization import Organization
-from app.models.project import Project, ProjectCategory, ProjectComponent
+from app.models.project import Project, ProjectCategory, ProjectComponent, ProjectStage
 from app.models.requirement import Requirement, RequirementVersion
 from app.models.user import User
 from app.modules.registry import ArtefactChange
@@ -410,6 +410,9 @@ class RequirementFilters:
     """The requirement list's filters (the query parameters of `GET .../requirements`, minus paging and sort).
 
     Attributes mirror those parameters; `status` is the version status, `search` matches the name or code.
+    `target_stage_from_id`/`target_stage_to_id` bound the target stage by the stages' order (a stage's
+    position in the project, never its name); either end may be left open, and a stage that is not one of
+    the project's matches nothing.
     """
 
     include_archived: bool = False
@@ -422,6 +425,8 @@ class RequirementFilters:
     search: str | None = None
     status: RequirementStatus | None = None
     target_stage_id: UUID | None = None
+    target_stage_from_id: UUID | None = None
+    target_stage_to_id: UUID | None = None
     has_comments: bool | None = None
     only_watched: bool | None = None
 
@@ -439,6 +444,33 @@ class FilteredRequirements:
     requirements: list[Requirement]
     prefetch: ListPrefetch
     unfiltered: int
+
+
+def _stage_range(db: Session, project_id: UUID, filters: RequirementFilters) -> set[UUID] | None:
+    """The ids of the project's stages between the filter's two ends, or `None` when no range is asked for.
+
+    Args:
+        db: Active session (read only).
+        project_id: The project whose stages are ordered.
+        filters: The filters; only the two stage range ends are read.
+
+    Returns:
+        The stage ids from the first end to the last by `sort_order` (inclusive; an open end reaches the
+        first or last stage). An end that is not one of the project's stages gives the empty set, so a
+        related project's rows never match a stage of another project.
+    """
+    if filters.target_stage_from_id is None and filters.target_stage_to_id is None:
+        return None
+    stages = db.scalars(select(ProjectStage).where(ProjectStage.project_id == project_id)).all()
+    # Order by position with the id as a tie-break so the range never depends on row order.
+    ordered = sorted(stages, key=lambda s: (s.sort_order, str(s.id)))
+    index = {s.id: i for i, s in enumerate(ordered)}
+    ends = [e for e in (filters.target_stage_from_id, filters.target_stage_to_id) if e is not None]
+    if any(e not in index for e in ends):
+        return set()
+    low = index[filters.target_stage_from_id] if filters.target_stage_from_id is not None else 0
+    high = index[filters.target_stage_to_id] if filters.target_stage_to_id is not None else len(ordered) - 1
+    return {s.id for s in ordered[low:high + 1]}
 
 
 def filter_requirements(
@@ -478,6 +510,7 @@ def filter_requirements(
         ))
     candidates = list(db.scalars(query).all())
     prefetch = prefetch_for_list(db, [r.id for r in candidates], current_user_id)
+    stage_range = _stage_range(db, project_id, filters)
 
     kept: list[Requirement] = []
     for req in candidates:
@@ -491,6 +524,8 @@ def filter_requirements(
         if filters.status and version.status != filters.status:
             continue
         if filters.target_stage_id and version.target_stage_id != filters.target_stage_id:
+            continue
+        if stage_range is not None and version.target_stage_id not in stage_range:
             continue
         if filters.has_comments and prefetch.comment_counts.get(req.id, 0) == 0:
             continue

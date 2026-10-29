@@ -29,7 +29,7 @@ import { Spinner } from "./Spinner";
 
 /**
  * @param scope What the reports are for: a project or an organisation, by id.
- * @param organizationId The owning organisation (branding templates).
+ * @param organizationId The owning organisation (its packs are listed once it is known).
  * @param project The project, for the requirement report; omit for an organisation.
  * @param onClose Closes the dialog.
  */
@@ -66,7 +66,7 @@ export function ReportsDialog({
       {catalogue.loading || packs.loading ? (
         <Spinner />
       ) : (
-        <ReportCatalogue entries={catalogue.entries} scope={scope} organizationId={organizationId} extraEntries={extraEntries} />
+        <ReportCatalogue entries={catalogue.entries} scope={scope} extraEntries={extraEntries} />
       )}
     </Modal>
   );

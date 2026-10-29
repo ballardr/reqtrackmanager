@@ -3,33 +3,24 @@
  *
  * The requirement report's configuration and generation surface (R-F-01 PDF,
  * Word, R-F-02 CSV), shown in the Reports dialog beside the catalogue reports in the same picker. It
- * carries a report-template picker (R-G-05; unset uses the organisation's default template), a chapter-per-component/
- * continuous layout choice, requirement filters (R-G-03), and organisation
- * shared resource sections (R-G-04). An introduction, chapters or appendices
- * are written in a report layout (the "Requirements by Component" starter),
- * not here. It has its own request model
+ * carries a chapter-per-component/continuous layout choice and organisation shared resource sections
+ * (R-G-04). Branding is never chosen here: a download uses the organisation's default template. Narrowing
+ * the requirements (R-G-03) is done on the requirements list, whose Export and Download report carry the
+ * list's filters. An introduction, chapters or appendices are written in a report layout (the
+ * "Requirements by Component" starter), not here. It has its own request model
  * (`POST /projects/{id}/reports`), which is why it is not a catalogue entry.
  */
 import { useEffect, useState } from "react";
 
 import { api } from "../api/client";
 import type { ReportDownloadKind } from "../api/reports";
-import type {
-  Category,
-  Component,
-  FileAsset,
-  Project,
-  ReportTemplate,
-  RequirementStatus,
-} from "../api/types";
-import { REQUIREMENT_STATUS_LABEL } from "../api/types";
+import type { FileAsset, Project } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { downloadBlob } from "../utils/download";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { ReportExportButton } from "./ReportExportButton";
 import { Spinner } from "./Spinner";
-import { CheckboxField, TextField } from "./FormFields";
 import { FormGrid } from "./FormGrid";
 import { LabeledSelect } from "./LabeledSelect";
 
@@ -40,39 +31,17 @@ export function RequirementReportPanel({ project }: { project: Project }) {
   const strings = useStrings();
   const projectId = project.id;
   const { showToast } = useToast();
-  const [includeArchived, setIncludeArchived] = useState(false);
   const [generating, setGenerating] = useState<ReportDownloadKind | null>(null);
 
-  const [components, setComponents] = useState<Component[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [resources, setResources] = useState<FileAsset[]>([]);
-  const [componentId, setComponentId] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [statusFilter, setStatusFilter] = useState<RequirementStatus | "">("");
-  const [keyword, setKeyword] = useState("");
   const [resourceFileIds, setResourceFileIds] = useState<string[]>([]);
-  const [reportTemplates, setReportTemplates] = useState<ReportTemplate[]>([]);
-  const [reportTemplateId, setReportTemplateId] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [chaptersPerComponent, setChaptersPerComponent] = useState<boolean | null>(null);
-  // What a download uses when none is chosen: the organisation's default template.
-  const defaultTemplate = reportTemplates.find((tpl) => tpl.is_default);
 
   useEffect(() => {
     if (!projectId) return;
     (async () => {
-      const [comps, cats] = await Promise.all([
-        api.get<Component[]>(`/api/v1/projects/${projectId}/components`),
-        api.get<Category[]>(`/api/v1/projects/${projectId}/categories`),
-      ]);
-      setComponents(comps);
-      setCategories(cats);
-      const [orgResources, templates] = await Promise.all([
-        api.get<FileAsset[]>(`/api/v1/orgs/${project.organization_id}/resources`),
-        api.get<ReportTemplate[]>(`/api/v1/orgs/${project.organization_id}/report-templates`),
-      ]);
-      setResources(orgResources);
-      setReportTemplates(templates);
+      setResources(await api.get<FileAsset[]>(`/api/v1/orgs/${project.organization_id}/resources`));
       setLoaded(true);
     })();
   }, [projectId, project.organization_id]);
@@ -86,13 +55,7 @@ export function RequirementReportPanel({ project }: { project: Project }) {
     try {
       const blob = await api.postForBlob(`/api/v1/projects/${projectId}/reports`, {
         format: kind,
-        include_archived: includeArchived,
-        component_id: componentId || null,
-        category_id: categoryId || null,
-        status: statusFilter || null,
-        keyword: keyword || null,
         resource_file_ids: resourceFileIds,
-        report_template_id: kind !== "csv" ? reportTemplateId || null : null,
         chapters_per_component: kind !== "csv" ? chaptersPerComponent : null,
       });
       const projectName = project.name.replace(/[\\/"\r\n\t]/g, "") || "project";
@@ -116,15 +79,6 @@ export function RequirementReportPanel({ project }: { project: Project }) {
       </div>
 
       <FormGrid minColumn="16rem">
-        {reportTemplates.length > 0 && (
-          <LabeledSelect help={strings.help.reportBrandingTemplate}
-            label={strings.reports.reportTemplate}
-            value={reportTemplateId}
-            onChange={setReportTemplateId}
-            options={reportTemplates.map((tpl) => ({ value: tpl.id, label: tpl.name }))}
-            placeholder={defaultTemplate ? strings.reports.templateDefaultNamed(defaultTemplate.name) : strings.reports.noTemplate}
-          />
-        )}
         <LabeledSelect help={strings.help.reportChapterLayout}
           label={strings.reports.chapterLayout}
           value={chaptersPerComponent === null ? "" : String(chaptersPerComponent)}
@@ -136,47 +90,6 @@ export function RequirementReportPanel({ project }: { project: Project }) {
           placeholder={strings.reports.chapterLayoutAuto}
         />
       </FormGrid>
-
-      <CollapsibleSection sectionKey="reports.filters" title={strings.reports.filters} defaultCollapsed>
-        <FormGrid minColumn="14rem">
-          <LabeledSelect helpNotNeeded
-            label={strings.requirements.component}
-            value={componentId}
-            onChange={setComponentId}
-            options={components.map((c) => ({ value: c.id, label: c.name }))}
-            placeholder={strings.reports.allComponents}
-          />
-          <LabeledSelect helpNotNeeded
-            label={strings.requirements.category}
-            value={categoryId}
-            onChange={setCategoryId}
-            options={categories.map((c) => ({ value: c.id, label: c.name }))}
-            placeholder={strings.reports.allCategories}
-          />
-          <LabeledSelect helpNotNeeded
-            label={strings.requirements.status}
-            value={statusFilter}
-            onChange={(next) => setStatusFilter(next as RequirementStatus | "")}
-            // `completed` is not a `RequirementStatus` (it is the independent `Requirement.is_completed`
-            // overlay), which this report filter does not cover.
-            options={(["draft", "reviewed", "approved", "archived"] as RequirementStatus[]).map((st) => ({
-              value: st, label: REQUIREMENT_STATUS_LABEL[st],
-            }))}
-            placeholder={strings.reports.allStatuses}
-          />
-          <TextField helpNotNeeded
-            label={strings.reports.keywordFilter}
-            placeholder={strings.reports.keywordFilter}
-            value={keyword}
-            onChange={setKeyword}
-          />
-        </FormGrid>
-        <CheckboxField helpNotNeeded
-          label={strings.reports.includeArchived}
-          checked={includeArchived}
-          onChange={setIncludeArchived}
-        />
-      </CollapsibleSection>
 
       {resources.length > 0 && (
         <CollapsibleSection sectionKey="reports.resourceSections" title={strings.reports.resourceSections} defaultCollapsed>

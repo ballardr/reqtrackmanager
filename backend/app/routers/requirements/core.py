@@ -219,6 +219,8 @@ def list_requirements(
     status_filter: RequirementStatus | None = Query(None, alias="status"),
     is_completed: bool | None = None,
     target_stage_id: UUID | None = None,
+    target_stage_from_id: UUID | None = Query(None, description="Only requirements whose target stage is this stage or a later one."),
+    target_stage_to_id: UUID | None = Query(None, description="Only requirements whose target stage is this stage or an earlier one."),
     has_comments: bool | None = None,
     only_watched: bool | None = None,
     include_archived: bool = False,
@@ -231,6 +233,10 @@ def list_requirements(
 ):
     """Lists requirements, sorted by component/category (C-G-04) with search (U-E-01)
     and filter-panel query params (status/completed/target version/comments/watched).
+
+    `target_stage_from_id`/`target_stage_to_id` keep the requirements whose target stage lies between
+    two stages by the stages' order (either may be omitted); `target_stage_id` is the single-stage
+    form and may be combined with them.
 
     `is_completed` filters on the `Requirement.is_completed` overlay marker
     (C-G-11) independently of `status` — completion is no longer a
@@ -269,7 +275,8 @@ def list_requirements(
     filters = RequirementFilters(
         include_archived=include_archived, is_completed=is_completed, component_id=component_id, category_id=category_id,
         tag_names=tuple(tag), tag_match_all=tag_mode == "all", keyword=keyword, search=search, status=status_filter,
-        target_stage_id=target_stage_id, has_comments=has_comments, only_watched=only_watched,
+        target_stage_id=target_stage_id, target_stage_from_id=target_stage_from_id, target_stage_to_id=target_stage_to_id,
+        has_comments=has_comments, only_watched=only_watched,
     )
 
     def rows_for(pid: UUID) -> list[RequirementOut]:
