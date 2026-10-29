@@ -7,7 +7,7 @@ import {
   buildLayoutApi, buildLayoutDetail, buildLayoutSummary, buildOutlineTree, fakeValidate, LAYOUT_TEXT, TEXT_CHECKED_MS,
 } from "../testing/reportLayoutFixtures";
 import { saveVersion } from "../testing/saveVersionHelpers";
-import { withRouter } from "../testing/storybook-helpers";
+import { buildUser, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
 import { ReportLayoutDesigner } from "./ReportLayoutDesigner";
 
 /**
@@ -17,7 +17,7 @@ import { ReportLayoutDesigner } from "./ReportLayoutDesigner";
 const meta: Meta<typeof ReportLayoutDesigner> = {
   title: "Components/ReportLayoutDesigner",
   component: ReportLayoutDesigner,
-  decorators: [withRouter("/projects/project-1/report-layouts/layout-1")],
+  decorators: [withStatefulAuth(buildUser({ ui_preferences: {} })), withRouter("/projects/project-1/report-layouts/layout-1")],
   args: { api: buildLayoutApi([buildLayoutSummary()], { stateful: false }), layoutId: "layout-1", backTo: "/projects/project-1/admin/reportSetup" },
 };
 export default meta;
@@ -374,7 +374,29 @@ export const BlocksWithProblemsCannotBeSavedAndShowThemInTheInspector: Story = {
     Blockly.common.setSelected(heading);
     await expect(await canvas.findByText("Must not be empty.")).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Save new version" })).toBeDisabled();
-    await expect(canvas.getByRole("button", { name: "Run preview" })).toBeDisabled();
+    await userEvent.click(canvas.getByRole("button", { name: "Preview" }));
+    await expect(await body().findByRole("button", { name: "Run preview" })).toBeDisabled();
+  },
+};
+
+export const TheBlocksViewHasTheFullWidthAndTheDialogOrPanelShowsThePreview: Story = {
+  args: { api: blocksApi() },
+  play: async ({ canvasElement }) => {
+    const canvas = await toBlocks(canvasElement);
+    await firstHeading();
+    // Closed by default: no preview beside the blocks, and the design grid is one column.
+    await expect(canvas.queryByRole("button", { name: "Run preview" })).not.toBeInTheDocument();
+    await expect(canvasElement.querySelector(".layout-designer--blocks")).not.toBeNull();
+    // The Preview button opens it in a dialog.
+    await userEvent.click(canvas.getByRole("button", { name: "Preview" }));
+    const dialog = await body().findByRole("dialog", { name: "Report preview" });
+    await expect(within(dialog).getByRole("button", { name: "Run preview" })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(body().queryByRole("dialog", { name: "Report preview" })).not.toBeInTheDocument());
+    // The panel toggle shows it beside the blocks.
+    await userEvent.click(canvas.getByRole("button", { name: "Preview panel" }));
+    await expect(await canvas.findByRole("button", { name: "Run preview" })).toBeInTheDocument();
+    await expect(canvasElement.querySelector(".layout-designer--blocks-preview")).not.toBeNull();
   },
 };
 

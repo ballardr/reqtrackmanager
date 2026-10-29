@@ -2724,7 +2724,8 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
   display: block;
 }
 
-/* Report layout designer: the text editor and its tools side by side from 1100px, stacked below. */
+/* Report layout designer: the text editor and its tools side by side from 1100px, stacked below. The block editor takes
+   the full width; its preview is a panel beside it only when the person turns that on. */
 .layout-designer {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -2736,6 +2737,14 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
   .layout-designer {
     grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
   }
+
+  .layout-designer--blocks-preview {
+    grid-template-columns: minmax(0, 1fr) minmax(20rem, 28rem);
+  }
+}
+
+.layout-designer--blocks {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 /* The layout text: monospace, never wrapped so a line number in an error stays a line of the text. */
@@ -2770,6 +2779,12 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 }
 
 /* Report layout block editor: the Blockly workspace beside the inspector for the selected block. */
+/* The inspector sits beside the canvas when the editor is wide enough and under it when it is not, whatever else
+   shares the page (a preview panel narrows the editor, not the viewport, so this asks the editor's own width). */
+.blocks-host {
+  container-type: inline-size;
+}
+
 .blocks-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem);
@@ -2777,10 +2792,26 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
   align-items: start;
 }
 
-@media (max-width: 60rem) {
+@container (max-width: 44rem) {
   .blocks-layout {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+.blocks-toolbar {
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.blocks-toolbar-end {
+  margin-left: auto;
+  display: inline-flex;
+  gap: var(--space-2);
+}
+
+.blocks-target {
+  width: auto;
+  max-width: 28rem;
 }
 
 .blocks-stage {

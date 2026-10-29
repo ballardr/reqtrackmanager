@@ -105,15 +105,23 @@ test.describe("Report layout designer", () => {
     const { project, requirements, suffix } = await setup(page, request);
     await createFromProjectAdmin(page, project.id, `E2E blocks layout ${suffix}`);
     const inspector = page.getByLabel("Block details");
+    const where = page.getByRole("combobox", { name: "Where to add the block" });
 
-    await test.step("the block editor starts empty", async () => {
+    await test.step("the block editor starts empty and has the full width, with no palette column and no preview", async () => {
       await page.getByRole("tab", { name: "Blocks" }).click();
       await expect(page.getByRole("region", { name: "Block editor" })).toBeVisible();
       await expect(inspector.getByText("Select a block to edit its settings.")).toBeVisible();
+      await expect(page.getByText("Adding at the end of the layout")).toBeVisible();
+      await expect(page.locator(".blocklyToolboxFlyout, .blocklyFlyout").first()).toBeHidden();
+      await expect(page.getByRole("button", { name: "Run preview" })).toHaveCount(0);
+      // The canvas is wider than the old half-page column (about 150px once the palette was open).
+      const stage = await page.locator(".blocks-stage").boundingBox();
+      const viewport = page.viewportSize();
+      expect(stage?.width ?? 0).toBeGreaterThan(Math.min(600, (viewport?.width ?? 1280) * 0.4));
     });
 
     await test.step("a For each block takes its records from a type and names each record", async () => {
-      await inspector.getByRole("button", { name: "Add block" }).click();
+      await page.getByRole("button", { name: "Add block" }).click();
       await page.getByRole("menuitem", { name: "For each record" }).click();
       await inspector.getByRole("combobox", { name: "Record type" }).selectOption({ label: "Requirement" });
       await inspector.getByRole("textbox", { name: "Name", exact: true }).fill("req");
@@ -128,10 +136,39 @@ test.describe("Report layout designer", () => {
       await expect(page.locator(".blocklyEditableField .blocklyText", { hasText: "{{req.title}}" })).toBeVisible();
     });
 
-    await test.step("the preview lists this project's requirements", async () => {
-      await page.getByRole("button", { name: "Run preview" }).click();
-      const frame = page.frameLocator('iframe[title="Report preview"]');
+    await test.step("blocks land where the line beside Add block says", async () => {
+      // The Heading just added inside the For each is selected: a leaf, so the default is after it.
+      await expect(where.locator("option:checked")).toHaveText(/^Adding after: Heading/);
+      await page.getByRole("button", { name: "Add block" }).click();
+      await page.getByRole("menuitem", { name: "Page break" }).click();
+      await expect(inspector.getByTestId("block-inspector")).toContainText("Page break block");
+      // Nothing selected is not offered once a block has been chosen; the end of the layout is always an option.
+      await where.selectOption({ label: "Adding at the end of the layout" });
+      await page.getByRole("button", { name: "Add block" }).click();
+      await page.getByRole("menuitem", { name: "Page break" }).click();
+      const pageBreaks = page.locator(".blocklyText.rl-block-title", { hasText: "Page break" });
+      await expect(pageBreaks).toHaveCount(2);
+      // Undo takes the last addition back, like a drag.
+      await expect(inspector.getByTestId("block-inspector")).toContainText("Page break block");
+      await page.keyboard.press("ControlOrMeta+z");
+      await expect(pageBreaks).toHaveCount(1);
+      // Back on the heading, whose title is edited next.
+      await page.locator(".blocklyText.rl-block-title", { hasText: /^Heading$/ }).click();
+      await expect(inspector.getByTestId("block-inspector")).toContainText("Heading block");
+    });
+
+    await test.step("the preview opens in a dialog, or beside the blocks when switched on, and lists this project's requirements", async () => {
+      await page.getByRole("button", { name: "Preview", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Report preview" });
+      await dialog.getByRole("button", { name: "Run preview" }).click();
+      const frame = dialog.frameLocator('iframe[title="Report preview"]');
       for (const requirement of requirements) await expect(frame.getByText(requirement)).toBeVisible();
+      await dialog.getByRole("button", { name: "Close" }).click();
+      await expect(dialog).toBeHidden();
+      await page.getByRole("button", { name: "Preview panel" }).click();
+      await expect(page.getByRole("button", { name: "Run preview" })).toBeVisible();
+      await page.getByRole("button", { name: "Preview panel" }).click();
+      await expect(page.getByRole("button", { name: "Run preview" })).toHaveCount(0);
     });
 
     await test.step("a block with a problem says so and holds back saving", async () => {

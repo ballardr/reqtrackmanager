@@ -14,8 +14,9 @@
  * - Check the text a moment after typing stops (`parseText`) and list every problem by line, each jumping to its
  *   line; Save is available only for text that parsed cleanly, and sends the parsed tree with the version the
  *   author started from, so a concurrent save is reported (409) instead of overwritten.
- * - Offer, beside the editor, the live preview, the field picker and the widget picker, which insert at the caret;
- *   and, on a second tab, the version history and comparison.
+ * - Offer, beside the text editor, the live preview, the field picker and the widget picker, which insert at the
+ *   caret; and, on a second tab, the version history and comparison. The block editor takes the full width: its
+ *   preview opens in a dialog (Preview) or, when the person turns it on, as a panel beside the blocks (remembered).
  * - Warn before leaving with unsaved changes (the Back link and the browser's own unload prompt).
  *
  * Design decisions: the text view is the only editing surface here and the server the only parser, so the client
@@ -34,6 +35,7 @@ import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useRequestSequence } from "../hooks/useRequestSequence";
+import { useUiPreference } from "../hooks/useUiPreference";
 import {
   aliasesInScope, asBlock, insertAt, insertionRange, lineOfOffset, offsetOfLine,
 } from "../utils/reportLayoutText";
@@ -41,6 +43,7 @@ import { stableJson, type Tree } from "../utils/reportLayoutTree";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { Badge } from "./Badge";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { Modal } from "./Modal";
 import { ReportLayoutBlockToolbar } from "./ReportLayoutBlockToolbar";
 import { ReportLayoutFieldPicker } from "./ReportLayoutFieldPicker";
 import { ReportLayoutFormModal } from "./ReportLayoutFormModal";
@@ -66,7 +69,7 @@ type EditView = "text" | "blocks";
 /** The views that edit the tree itself (the text view edits text). */
 const isTreeView = (view: EditView) => view !== "text";
 type AsideTab = "preview" | "fields" | "widgets";
-type Dialog = "details" | "delete" | "reload" | "leave";
+type Dialog = "details" | "delete" | "reload" | "leave" | "preview";
 
 /** The outcome of checking one exact block-editor tree. */
 interface TreeChecked {
@@ -127,6 +130,8 @@ export function ReportLayoutDesigner({
   const [conflict, setConflict] = useState<number | null>(null);
   const [caretLine, setCaretLine] = useState(0);
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  /** Whether the block editor shows the preview as a panel beside the blocks (otherwise only in the Preview dialog). */
+  const [previewBeside, setPreviewBeside] = useUiPreference<boolean>("report_layout_preview_beside", false);
   const editor = useRef<HTMLTextAreaElement>(null);
   const pendingCaret = useRef<number | null>(null);
   /** Whether the author has put the caret in the text; until then insertions go to the end, not the untouched start. */
@@ -361,6 +366,21 @@ export function ReportLayoutDesigner({
     ...(editable && view === "text" ? [{ key: "fields" as const, label: text.fieldsTab }, { key: "widgets" as const, label: text.widgetsTab }] : []),
   ];
   const textTools = editable && view === "text";
+  const treeEditing = isTreeView(view);
+  const showAside = !treeEditing || previewBeside;
+  const preview = (
+    <ReportLayoutPreviewPanel
+      api={api} text={draft} name={detail.name} disabled={!valid || (treeEditing && textFor !== blockTree)} projectOptions={projectOptions}
+    />
+  );
+  const previewControls = (
+    <>
+      <button type="button" className="btn" onClick={() => setDialog("preview")}>{text.previewButton}</button>
+      <button type="button" className="btn" aria-pressed={previewBeside} onClick={() => setPreviewBeside(!previewBeside)}>
+        {text.previewPanelToggle}
+      </button>
+    </>
+  );
 
   return (
     <div className="stack">
@@ -408,7 +428,10 @@ export function ReportLayoutDesigner({
       )}
 
       {tab === "design" && (
-        <div {...tabPanelProps("layout-designer", "design")} className="layout-designer">
+        <div
+          {...tabPanelProps("layout-designer", "design")}
+          className={`layout-designer${treeEditing ? (previewBeside ? " layout-designer--blocks-preview" : " layout-designer--blocks") : ""}`}
+        >
           <div className="stack">
             {!editable && (
               <div className="card" role="note">
@@ -483,7 +506,7 @@ export function ReportLayoutDesigner({
                     <Suspense fallback={<Spinner />}>
                       <ReportLayoutBlocks
                         tree={blockTree} onChange={setBlockTree} family={detail.family} blocks={blockTypes} catalogue={catalogue}
-                        widgets={widgets} problems={blockProblems} readOnly={!editable}
+                        widgets={widgets} problems={blockProblems} readOnly={!editable} toolbarEnd={previewControls}
                       />
                     </Suspense>
                     <div aria-live="polite">
@@ -508,12 +531,11 @@ export function ReportLayoutDesigner({
             )}
           </div>
 
+          {showAside && (
           <div className="stack" aria-label={text.asideLabel} role="region">
             <Tabs<AsideTab> idPrefix="layout-designer-tools" tabs={asideTabs} active={textTools ? aside : "preview"} onChange={setAside} />
             <div {...tabPanelProps("layout-designer-tools", "preview")} hidden={textTools && aside !== "preview"}>
-              <ReportLayoutPreviewPanel
-                api={api} text={draft} name={detail.name} disabled={!valid || (isTreeView(view) && textFor !== blockTree)} projectOptions={projectOptions}
-              />
+              {preview}
             </div>
             {textTools && toolsFailed && aside !== "preview" && <p className="text-muted" role="alert">{text.loadToolsFailed}</p>}
             {textTools && (
@@ -531,9 +553,13 @@ export function ReportLayoutDesigner({
               </div>
             )}
           </div>
+          )}
         </div>
       )}
 
+      {dialog === "preview" && (
+        <Modal title={text.previewDialogTitle} size="lg" onClose={() => setDialog(null)}>{preview}</Modal>
+      )}
       {dialog === "details" && (
         <ReportLayoutFormModal
           api={api}
