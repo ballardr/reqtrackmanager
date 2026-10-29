@@ -15,7 +15,7 @@
 | 4 | PostgreSQL profiling | [x] built 2026-10-25 |
 | 4b | Scaling findings and fixes | [x] done 2026-10-27: F1-F10 fixed with guards and verified on the Linux server; open items O4, O6-O10 are recorded in `docs/performance.md` with their next step |
 | 4c | Other record types and the links between them | [x] done 2026-10-28: 7 of 7 steps; findings F14-F20 fixed with guards and verified on the Linux server (capacity 157 to 225 req/s); open items O12, O13, O19-O21 carried to Phase 5 |
-| 5 | Record baselines, set limits, document sizing | [~] 2026-10-29: baselines run on the Linux server, Dell workstation and Raspberry Pi; limits, capacity-by-worker table and sizing docs written from them; F21 (scenarios) and F22 (record export/import statements) fixed and verified on the Linux server; open before closing: O22 (worker memory high-water: partly fixed by F22 and the streaming exports F23; reports and the collected project data remain; re-run the full baseline to re-size), a clean full backend suite |
+| 5 | Record baselines, set limits, document sizing | [~] 2026-10-29: baselines run on the Linux server, Dell workstation and Raspberry Pi; limits, capacity-by-worker table and sizing docs written from them; F21 (scenarios) and F22 (record export/import statements) fixed and verified on the Linux server; open before closing: O22 (worker memory high-water: partly fixed by F22 and the streaming exports F23; reports and the collected project data remain; re-run the full baseline to re-size). Full backend suite run 2026-10-29: 3,837 passed, 15 failed: 14 the known mail-server DNS family, 1 mine (a test that called `build_org_bundle` for bytes; fixed, passes) |
 | 6 | Docs website: results, plots, test-method diagrams | [ ] |
 
 ```mermaid
