@@ -166,6 +166,7 @@ def _parse_text(body: ReportLayoutTextParse) -> ReportLayoutTextParseOut:
     result = report_layout_text.parse_text(body.text)
     return ReportLayoutTextParseOut(
         ok=result.ok, tree=result.tree, errors=[ReportLayoutTextError(line=e.line, column=e.column, message=e.message) for e in result.errors],
+        block_lines=result.block_lines,
     )
 
 
@@ -233,6 +234,7 @@ def _blocks_out(catalogue: report_layout_designer.BlockCatalogue) -> ReportBlock
             for b in catalogue.blocks
         ],
         layout_fields=[_block_field_out(f) for f in catalogue.layout_fields],
+        image_column_fields=[_block_field_out(f) for f in catalogue.image_column_fields],
         field_kinds=list(catalogue.field_kinds), operators={k: list(v) for k, v in catalogue.operators.items()},
         valueless_operators=list(catalogue.valueless_operators), list_operators=list(catalogue.list_operators),
         schema_version=catalogue.schema_version,
@@ -262,6 +264,7 @@ def _snippets_out(visible: list[report_snippets.VisibleSnippet]) -> list[ReportS
         ReportSnippetOut(
             key=v.snippet.key, name=v.snippet.name, description=v.snippet.description, category=v.snippet.category,
             family=v.snippet.family, formats=list(v.snippet.formats), module_key=v.module_key, blocks=list(v.snippet.blocks),
+            saved_id=v.saved.id if v.saved else None, origin=v.saved.origin if v.saved else None,
             parameters=[
                 ReportSnippetParameterOut(
                     key=p.parameter.key, label=p.parameter.label, kind=p.parameter.kind, help=p.parameter.help,

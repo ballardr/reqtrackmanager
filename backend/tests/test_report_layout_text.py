@@ -464,7 +464,7 @@ def test_text_cannot_sit_inside_a_table_and_a_directive_cannot_sit_inside_text()
 
     assert in_table == [(3, None, "Inside @table use @column or @end, not text.")]
     assert in_text[0][0] == 3 and "must be written @@" in in_text[0][2]
-    assert errors_of("@layout document\n@table requirement\n  @heading x\n@end\n")[0][2] == "Inside @table use @column, @end."
+    assert errors_of("@layout document\n@table requirement\n  @heading x\n@end\n")[0][2] == "Inside @table use @column, @images, @end."
 
 
 def test_a_join_is_only_for_sheets_and_none_cannot_be_mixed_with_joins():

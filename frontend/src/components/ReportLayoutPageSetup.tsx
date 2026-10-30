@@ -47,7 +47,7 @@ export function ReportLayoutPageSetup({
   const setup = readPageSetup(text);
   if (setup === null) return null;
   const set = (patch: Partial<PageSetup>) => onChange(writePageSetup(text, { ...setup, ...patch }));
-  const marked = setup.orientation !== "portrait" || setup.size !== "A4" || setup.mirror
+  const marked = setup.orientation !== "portrait" || setup.size !== "A4" || setup.mirror || setup.repeatHeader === false
     || Object.keys(setup.margins).length > 0 || setup.styles.length > 0 || setup.header !== undefined || setup.footer !== undefined;
   const label = strings.reportLayouts.pageSetupLabel(labels.orientationLabels[setup.orientation], setup.size);
   return (
@@ -78,6 +78,10 @@ export function ReportLayoutPageSetup({
               <CheckboxField
                 label={labels.mirrorLabel} help={strings.help.layoutMirrorMargins} checked={setup.mirror}
                 onChange={(mirror) => set({ mirror })}
+              />
+              <CheckboxField
+                label={labels.repeatHeaderLabel} help={strings.help.layoutRepeatTableHeader} checked={setup.repeatHeader !== false}
+                onChange={(on) => set({ repeatHeader: on ? undefined : false })}
               />
             </div>
             <h3 style={{ margin: 0 }}>{labels.marginsTitle}</h3>

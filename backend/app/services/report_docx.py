@@ -56,7 +56,7 @@ from docx.shared import Cm, Emu, Pt, RGBColor
 from docx.text.run import Run
 
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX, readable_on_white
-from app.services.report_image_layout import placed_size_cm
+from app.services.report_image_layout import place_cell_pictures, placed_size_cm
 from app.services.report_math import OMML_NS, omml, png_of, typeset
 from app.services.report_model import (
     SLOT_NAMES,
@@ -66,6 +66,7 @@ from app.services.report_model import (
     Gap,
     Heading,
     Image,
+    ImageCell,
     Note,
     NumberedList,
     PageBreak,
@@ -532,12 +533,41 @@ def _cover(doc: DocxDocument, document: ReportDocument, accent: str, usable_cm: 
         doc.add_paragraph(title, style="Title")
 
 
-def _table(doc: DocxDocument, block: Table, accent: str, usable_cm: float) -> None:
-    """A real Word table: shaded, repeating header row, optional zebra rows."""
+def _cell_pictures(cell, value: ImageCell, column_cm: float, usable_height_cm: float) -> None:
+    """Draws an image cell's pictures in a Word table cell: one paragraph per line (a line of side-by-side pictures is runs).
+
+    A picture that cannot be drawn is skipped; a cell with none stays empty.
+    """
+    placed = place_cell_pictures(value, column_cm, usable_height_cm * _CELL_HEIGHT_SHARE)
+    paragraph = None
+    line = -1
+    for item in placed:
+        data = _svg_png(item.image.svg) if item.image.svg is not None else item.image.data
+        if not data:
+            continue
+        if item.line != line or paragraph is None:
+            paragraph = cell.paragraphs[0] if line == -1 else cell.add_paragraph()
+            paragraph.paragraph_format.space_after = Pt(2)
+            line = item.line
+        elif value.arrange == "side_by_side":
+            paragraph.add_run(" ").font.size = Pt(1)  # a hair of space, so a line that is exactly full does not wrap
+        try:
+            shape = paragraph.add_run().add_picture(io.BytesIO(data), width=Cm(item.width_cm), height=Cm(item.height_cm))
+            shape._inline.docPr.set("descr", item.image.alt)
+        except Exception:  # noqa: BLE001 - a malformed or unsupported image must never break report generation
+            continue
+
+
+#: A cell may be at most this share of the page's text height, so a row always fits a page.
+_CELL_HEIGHT_SHARE = 0.9
+
+
+def _table(doc: DocxDocument, block: Table, accent: str, usable_cm: float, usable_height_cm: float) -> None:
+    """A real Word table: shaded, optionally repeating header row, optional zebra rows; image cells hold pictures."""
     if not block.columns:
         return
     count = len(block.columns)
-    widths = block.col_widths_cm or [1.0] * count
+    widths = block.col_widths_cm or block.weights or [1.0] * count
     scale = usable_cm / sum(widths)
     table = doc.add_table(rows=1, cols=count, style="Table Grid")
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
@@ -560,6 +590,9 @@ def _table(doc: DocxDocument, block: Table, accent: str, usable_cm: float) -> No
                     # A tone overrides the zebra stripe; the text colour is chosen by contrast with the tint.
                     run.font.color.rgb = RGBColor.from_string(text_on(TONE_FILL[tone]))
 
+            if isinstance(value, ImageCell):
+                _cell_pictures(cell, value, width * scale, usable_height_cm)
+                continue
             if not _add_text(cell.paragraphs[0], value, style):
                 style(cell.paragraphs[0].add_run(""))  # an all-equation cell still gets its size
             if header:
@@ -570,10 +603,11 @@ def _table(doc: DocxDocument, block: Table, accent: str, usable_cm: float) -> No
                 _shade(cell, shade)
 
     fill(table.rows[0].cells, block.columns, header=True)
-    _repeat_header(table.rows[0])
+    if block.repeat_header:
+        _repeat_header(table.rows[0])
     for index, row in enumerate(block.rows):
         cells = table.add_row().cells
-        fill(cells, (row + [""] * count)[:count], shade=_ZEBRA if block.compact and index % 2 else None, row_index=index)
+        fill(cells, [*row, *([""] * count)][:count], shade=_ZEBRA if block.compact and index % 2 else None, row_index=index)
     doc.add_paragraph()  # keeps two consecutive tables from merging in Word
 
 
@@ -589,6 +623,7 @@ def render_docx_document(document: ReportDocument) -> bytes:
     document = finalize_links(document)
     doc = Document()
     usable_cm = _apply_style(doc.sections[0], document.style)
+    usable_height_cm = document.style.usable_height_cm
     if document.mirror:
         _mirror_margins(doc)
     accent = _hex(document.branding.accent_color_hex if document.branding else None)
@@ -634,13 +669,14 @@ def render_docx_document(document: ReportDocument) -> bytes:
         elif isinstance(block, Image):
             _image_block(doc, block, usable_cm)
         elif isinstance(block, Table):
-            _table(doc, block, accent, usable_cm)
+            _table(doc, block, accent, usable_cm, usable_height_cm)
         elif isinstance(block, PageBreak):
             doc.add_page_break()
         elif isinstance(block, PageStyleChange):
             section = doc.add_section(WD_SECTION.NEW_PAGE)
             section.different_first_page_header_footer = False  # the cover page's footer rule is for the first section only
             usable_cm = _apply_style(section, block.style)
+            usable_height_cm = block.style.usable_height_cm
             if running:
                 _apply_bands(section, block.style, first_section=False, section_start=block.section_start, mirror=document.mirror)
         elif isinstance(block, Gap):

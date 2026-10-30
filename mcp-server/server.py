@@ -243,6 +243,15 @@ def _require_snippet_key(value: str) -> str:
     return value
 
 
+def _snippet_scope_path(project_id: str | None, organization_id: str | None) -> str:
+    """The saved-report-snippet collection path of the scope a tool names (the same project / organisation rule as layouts).
+
+    Raises:
+        ValueError: Both ids were given explicitly, or a needed id is missing or malformed.
+    """
+    return _layout_scope_path(project_id, organization_id).removesuffix("report-layouts") + "report-snippets"
+
+
 def _require_field_key(value: str) -> str:
     """Validates a search field key (lowercase, underscores)."""
     if not re.fullmatch(r"[a-z][a-z0-9_]{0,39}", value):
@@ -1634,6 +1643,69 @@ async def apply_report_snippet(
     return response.json()
 
 
+@mcp.tool
+async def list_saved_report_snippets(project_id: str | None = None, organization_id: str | None = None) -> list[dict]:
+    """Lists the report snippets authors have saved for a scope, to manage them: the project's own, its ancestors' and the
+    organisation's (hidden ones flagged), or the organisation's own. Needs the layout-management permission.
+    (`list_report_snippets` lists what a layout can insert, saved ones included, but not the hidden ones.)
+
+    Args:
+        project_id: The project's UUID. Give one of project_id / organization_id.
+        organization_id: The organisation's UUID.
+
+    Returns:
+        Each snippet's `id`, `key` (what `apply_report_snippet` takes), `name`, `description`, `category`, `family`,
+        `origin` (project, ancestor or organization), `hidden`, `editable`, `blocks` (count), `page_styles` and `variables`.
+    """
+    response = await _call_backend("GET", _snippet_scope_path(project_id, organization_id))
+    return response.json()
+
+
+@mcp.tool
+async def get_saved_report_snippet(snippet_id: str, project_id: str | None = None, organization_id: str | None = None) -> dict:
+    """Reads one saved report snippet with its blocks. Needs the layout-management permission.
+
+    Args:
+        snippet_id: The snippet's UUID (from `list_saved_report_snippets`).
+        project_id: The project's UUID. Give one of project_id / organization_id.
+        organization_id: The organisation's UUID.
+
+    Returns:
+        The snippet as `list_saved_report_snippets` gives it, plus `nodes` (the blocks it inserts) and `root` (the page
+        styles and variables it adds).
+    """
+    response = await _call_backend("GET", f"{_snippet_scope_path(project_id, organization_id)}/{_require_uuid(snippet_id, 'snippet_id')}")
+    return response.json()
+
+
+@mcp.tool
+async def check_report_snippet(
+    tree: dict, container: str = "nodes", start: int = 0, count: int = 1, to_organization: bool = False,
+    project_id: str | None = None, organization_id: str | None = None,
+) -> dict:
+    """Checks what saving a run of blocks of a layout tree you hold as a snippet would store, or why it cannot be saved.
+    Stores nothing. Needs the layout-management permission.
+
+    Args:
+        tree: The layout tree (from `get_report_layout`).
+        container: The list of blocks selected from: `nodes`, or `nodes[2].children` / `nodes[2].else_children`.
+        start: Index of the first selected block in that list.
+        count: How many blocks, from 1.
+        to_organization: With a project, check saving it for the organisation (a project picture blocks that).
+        project_id: The project's UUID. Give one of project_id / organization_id.
+        organization_id: The organisation's UUID.
+
+    Returns:
+        `ok`, `errors` (each with `path` and `message`), `blocks` (how many), `page_styles` and `variables` it would carry.
+    """
+    tail = "/check-organization" if to_organization and not organization_id else "/check"
+    response = await _call_backend(
+        "POST", _snippet_scope_path(project_id, organization_id) + tail,
+        json={"tree": tree, "selection": {"container": container, "start": start, "count": count}},
+    )
+    return response.json()
+
+
 # --- Write mode (MCP_WRITES_ENABLED) ----------------------------------------
 #
 # Registered only when the deployment operator has explicitly opted in.
@@ -2283,6 +2355,132 @@ if MCP_WRITES_ENABLED:
                 "kind": kind, "source_id": _require_uuid(source_id, "source_id") if source_id else None,
                 "starter_key": starter_key, "target": target, "name": name, "dry_run": dry_run,
             },
+        )
+        return response.json()
+
+    @mcp.tool
+    async def save_report_snippet(
+        name: str, tree: dict, container: str = "nodes", start: int = 0, count: int = 1, description: str = "",
+        category: str = "", to_organization: bool = False, project_id: str | None = None, organization_id: str | None = None,
+    ) -> dict:
+        """Saves a run of blocks of a layout tree you hold as a reusable snippet, for a project or the organisation. Needs
+        the layout-management permission for that scope (and the organisation's for `to_organization` from a project).
+
+        A container block is saved with everything inside it. The page styles its sections use and the variables its blocks
+        read are carried and added to a layout that has neither when the snippet is inserted. A selection that needs
+        something defined outside it (an alias of an enclosing `each`) is refused with the reason, and so is a project
+        picture saved at organisation level (the picture is named). A snippet has no parameters; to change its blocks, save
+        a new one. Use `check_report_snippet` first to see what would be carried.
+
+        Args:
+            name: The snippet's name, unique among that owner's saved snippets.
+            tree: The layout tree (from `get_report_layout`).
+            container: The list of blocks selected from: `nodes`, or `nodes[2].children` / `nodes[2].else_children`.
+            start: Index of the first selected block in that list.
+            count: How many blocks, from 1.
+            description: One sentence about what it adds.
+            category: The picker group (empty: "Saved").
+            to_organization: With a project, save it for the organisation instead of the project.
+            project_id: The project's UUID. Give one of project_id / organization_id.
+            organization_id: Save it for the organisation.
+
+        Returns:
+            The saved snippet (`id`, `key`, `name`, `blocks`, `page_styles`, `variables` ...). A refusal lists each reason.
+        """
+        path = _snippet_scope_path(project_id, organization_id) + ("/organization" if to_organization and not organization_id else "")
+        response = await _call_backend(
+            "POST", path,
+            json={
+                "name": name, "description": description, "category": category, "tree": tree,
+                "selection": {"container": container, "start": start, "count": count},
+            },
+        )
+        return response.json()
+
+    @mcp.tool
+    async def update_saved_report_snippet(
+        snippet_id: str, name: str | None = None, description: str | None = None, category: str | None = None,
+        project_id: str | None = None, organization_id: str | None = None,
+    ) -> dict:
+        """Renames or re-describes a saved snippet the scope owns (its blocks do not change). Needs the layout-management permission.
+
+        Args:
+            snippet_id: The snippet's UUID.
+            name: New name, unique among the owner's saved snippets.
+            description: New description.
+            category: New picker group.
+            project_id: The project that owns it. Give one of project_id / organization_id.
+            organization_id: The organisation that owns it.
+
+        Returns:
+            The snippet's summary.
+        """
+        path = f"{_snippet_scope_path(project_id, organization_id)}/{_require_uuid(snippet_id, 'snippet_id')}"
+        body = {k: v for k, v in (("name", name), ("description", description), ("category", category)) if v is not None}
+        response = await _call_backend("PATCH", path, json=body)
+        return response.json()
+
+    @mcp.tool
+    async def delete_saved_report_snippet(
+        snippet_id: str, project_id: str | None = None, organization_id: str | None = None,
+    ) -> dict:
+        """Deletes a saved snippet the scope owns. Layouts already built from it are unchanged. Irreversible: confirm with the
+        user first. (A snippet a project only inherits is hidden instead: `set_saved_report_snippet_visibility`.)
+
+        Args:
+            snippet_id: The snippet's UUID.
+            project_id: The project that owns the snippet. Give one of project_id / organization_id.
+            organization_id: The organisation that owns it.
+
+        Returns:
+            `{"deleted": true, "snippet_id": ...}`.
+        """
+        sid = _require_uuid(snippet_id, "snippet_id")
+        await _call_backend("DELETE", f"{_snippet_scope_path(project_id, organization_id)}/{sid}")
+        return {"deleted": True, "snippet_id": sid}
+
+    @mcp.tool
+    async def set_saved_report_snippet_visibility(
+        snippet_id: str, hidden: bool, project_id: str | None = None,
+    ) -> dict:
+        """Hides a saved snippet the project inherits (from the organisation or a parent project), or shows it again. It stops
+        being offered in that project only; the snippet itself is unchanged. Needs the project's layout-management permission.
+
+        Args:
+            snippet_id: The inherited snippet's UUID (from `list_saved_report_snippets`).
+            hidden: True to hide it, False to show it again.
+            project_id: The project's UUID.
+
+        Returns:
+            The snippet as the project sees it (`hidden` is the new state).
+        """
+        path = f"{_snippet_scope_path(project_id, None)}/{_require_uuid(snippet_id, 'snippet_id')}/visibility"
+        response = await _call_backend("PUT", path, json={"hidden": hidden})
+        return response.json()
+
+    @mcp.tool
+    async def copy_saved_report_snippet(
+        snippet_id: str, project_id: str | None = None, organization_id: str | None = None, to_organization: bool = False,
+        name: str | None = None,
+    ) -> dict:
+        """Copies a saved snippet to a snippet of its own: into the project (a copy of one it inherits, as an editable basis)
+        or up to the organisation, or within the organisation. Needs the layout-management permission where the copy lands
+        (and the organisation's for a copy up). A project picture cannot be copied up (the picture is named). The default
+        name is "<name> (copy)".
+
+        Args:
+            snippet_id: The snippet's UUID.
+            project_id: The project the snippet is reachable from; the copy lands here unless `to_organization`.
+            organization_id: Copy an organisation snippet within the organisation (no project).
+            to_organization: With a project, copy up to the organisation.
+            name: The copy's name.
+
+        Returns:
+            The new snippet's summary.
+        """
+        path = f"{_snippet_scope_path(project_id, organization_id)}/{_require_uuid(snippet_id, 'snippet_id')}/copy"
+        response = await _call_backend(
+            "POST", path, json={"target": "organization" if to_organization else "project", "name": name},
         )
         return response.json()
 

@@ -61,6 +61,7 @@ from app.models.report_folder import ReportFolder
 from app.models.report_layout import ReportLayout, ReportLayoutVersion
 from app.models.report_pack import ReportPack, ReportPackSetOverride, ReportPackVariableSet, ReportPackVersion
 from app.models.report_placement import ReportPlacement
+from app.models.report_snippet import SavedReportSnippet
 from app.models.requirement import (
     Baseline,
     BaselineItem,
@@ -115,6 +116,7 @@ __all__ = [
     "ReportLayout",
     "ReportLayoutVersion",
     "ReportPack",
+    "SavedReportSnippet",
     "ReportPackSetOverride",
     "ReportPackVariableSet",
     "ReportPackVersion",

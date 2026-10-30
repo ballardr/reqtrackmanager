@@ -7,6 +7,7 @@ import {
   buildLayoutApi, buildLayoutDetail, buildLayoutSummary, buildOutlineTree, fakeValidate, LAYOUT_TEXT, TEXT_CHECKED_MS,
 } from "../testing/reportLayoutFixtures";
 import { buildDuplicateApi } from "../testing/reportDuplicateFixtures";
+import { buildSnippetStoreApi } from "../testing/reportSnippetStoreFixtures";
 import { saveVersion } from "../testing/saveVersionHelpers";
 import { buildUser, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
 import { ReportLayoutDesigner } from "./ReportLayoutDesigner";
@@ -483,5 +484,199 @@ export const TheDesignerHasTextAndBlocksViewsOnly: Story = {
     await expect(canvas.getByRole("tab", { name: "Text" })).toBeInTheDocument();
     await expect(canvas.getByRole("tab", { name: "Blocks" })).toBeInTheDocument();
     await expect(canvas.queryByRole("tab", { name: "Document" })).not.toBeInTheDocument();
+  },
+};
+
+// ---- snippets -----------------------------------------------------------------------------------------------------
+
+/** Opens the snippet dialog from the Text view and chooses a snippet. */
+async function chooseSnippet(canvasElement: HTMLElement, name: string) {
+  await editorOf(canvasElement);
+  await userEvent.click(within(canvasElement).getByRole("button", { name: "Insert snippet" }));
+  const d = within(await screen.findByRole("dialog", { name: "Insert snippet" }));
+  await userEvent.click(await d.findByRole("button", { name: `Select ${name}` }));
+  return d;
+}
+
+export const InsertSnippetWritesItIntoTheTextAndReportsWhatChanged: Story = {
+  play: async ({ canvasElement, args }) => {
+    const d = await chooseSnippet(canvasElement, "Cover page");
+    await expect(d.getByRole("combobox", { name: "Where to insert the snippet" })).toHaveDisplayValue("Inserting at the end of the layout");
+    await userEvent.click(d.getByRole("button", { name: "Insert" }));
+    const editor = await editorOf(canvasElement);
+    await waitFor(() => expect(editor.value).toContain("@heading {{project_name}}"));
+    await expect(editor.value).toMatch(/^@layout document/);
+    await expect(editor.value.trimEnd()).toMatch(/@pagebreak$/);
+    const notice = within(canvasElement).getByRole("status", { name: "Snippet inserted" });
+    await expect(notice).toHaveTextContent("Inserted Cover page");
+    await expect(notice).toHaveTextContent("Inserted 3 blocks at nodes[");
+    // The server applied it to the tree read from the text, at the end.
+    await expect(args.api.applySnippet).toHaveBeenCalledWith(
+      "cover_page", expect.objectContaining({ tree: expect.objectContaining({ family: "document" }), target: { container: "nodes", index: null } }),
+    );
+    await expect(within(canvasElement).getByText("Unsaved changes")).toBeInTheDocument();
+  },
+};
+
+export const TheTextViewCanInsertAtTheStartInstead: Story = {
+  play: async ({ canvasElement }) => {
+    const d = await chooseSnippet(canvasElement, "Cover page");
+    await userEvent.selectOptions(d.getByRole("combobox", { name: "Where to insert the snippet" }), "Inserting at the start of the layout");
+    await userEvent.click(d.getByRole("button", { name: "Insert" }));
+    const editor = await editorOf(canvasElement);
+    await waitFor(() => expect(editor.value).toMatch(/^@layout document\n\n@heading \{\{project_name\}\}/));
+  },
+};
+
+export const UndoPutsTheTextBackWhileItStillStands: Story = {
+  play: async ({ canvasElement }) => {
+    const d = await chooseSnippet(canvasElement, "Cover page");
+    await userEvent.click(d.getByRole("button", { name: "Insert" }));
+    const editor = await editorOf(canvasElement);
+    await waitFor(() => expect(editor.value).toContain("@pagebreak"));
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Undo insertion" }));
+    await waitFor(() => expect(editor.value).toBe(LAYOUT_TEXT));
+    await expect(within(canvasElement).queryByRole("status", { name: "Snippet inserted" })).not.toBeInTheDocument();
+  },
+};
+
+export const OnceTheTextIsEditedUndoIsNoLongerOffered: Story = {
+  play: async ({ canvasElement }) => {
+    const d = await chooseSnippet(canvasElement, "Cover page");
+    await userEvent.click(d.getByRole("button", { name: "Insert" }));
+    const editor = await editorOf(canvasElement);
+    await waitFor(() => expect(editor.value).toContain("@pagebreak"));
+    await userEvent.type(editor, "x");
+    await expect(within(canvasElement).queryByRole("button", { name: "Undo insertion" })).not.toBeInTheDocument();
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Dismiss" }));
+    await expect(within(canvasElement).queryByRole("status", { name: "Snippet inserted" })).not.toBeInTheDocument();
+  },
+};
+
+export const TextThatDoesNotReadCleanlyIsNotAnInsertionTarget: Story = {
+  play: async ({ canvasElement }) => {
+    const editor = await editorOf(canvasElement);
+    await userEvent.type(editor, "BROKEN");
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Insert snippet" }));
+    await expect(await within(canvasElement).findByText(/Fix the problems in the text before inserting a snippet/)).toBeInTheDocument();
+    await expect(screen.queryByRole("dialog", { name: "Insert snippet" })).not.toBeInTheDocument();
+  },
+};
+
+export const InsertSnippetInTheBlocksViewShowsTheNoticeWithTheUndoHint: Story = {
+  args: { api: blocksApi() },
+  play: async ({ canvasElement }) => {
+    const canvas = await toBlocks(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Insert snippet" }));
+    const d = within(await screen.findByRole("dialog", { name: "Insert snippet" }));
+    await userEvent.click(await d.findByRole("button", { name: "Select Cover page" }));
+    await userEvent.click(d.getByRole("button", { name: "Insert" }));
+    const notice = await canvas.findByRole("status", { name: "Snippet inserted" });
+    await expect(notice).toHaveTextContent("Ctrl+Z");
+    await expect(within(notice).queryByRole("button", { name: "Undo insertion" })).not.toBeInTheDocument();
+    await waitFor(() => expect(Blockly.getMainWorkspace()?.getAllBlocks(false).filter((b) => b.type === "rl_page_break")).toHaveLength(1));
+    // Leaving the view clears the notice.
+    await userEvent.click(canvas.getByRole("tab", { name: "Text" }));
+    await expect(canvas.queryByRole("status", { name: "Snippet inserted" })).not.toBeInTheDocument();
+  },
+};
+
+export const ASharedReadOnlyLayoutOffersNoInsertSnippet: Story = {
+  args: { api: buildLayoutApi([buildLayoutSummary({ editable: false, origin: "organization" })], { stateful: false }) },
+  play: async ({ canvasElement }) => {
+    await editorOf(canvasElement);
+    await expect(within(canvasElement).queryByRole("button", { name: "Insert snippet" })).not.toBeInTheDocument();
+  },
+};
+
+// ---- save as snippet ----------------------------------------------------------------------------------------------
+
+/** Selects lines `first` to `last` (1-based, to the end of `last`) of the editor, as a drag would. */
+async function selectLines(editor: HTMLTextAreaElement, first: number, last: number) {
+  const lines = editor.value.split("\n");
+  const start = lines.slice(0, first - 1).join("\n").length + (first > 1 ? 1 : 0);
+  const end = lines.slice(0, last).join("\n").length;
+  editor.focus();
+  editor.setSelectionRange(start, end);
+}
+
+export const SaveAsSnippetFromTheTextSavesTheBlockTheCaretIsIn: Story = {
+  args: { snippetApi: buildSnippetStoreApi() },
+  play: async ({ canvasElement, args }) => {
+    const editor = await editorOf(canvasElement);
+    await caretAtLine(editor, 3);
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Save as snippet" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Save as snippet" }));
+    await expect(dialog.getByText("Saving 1 block (and everything inside it).")).toBeInTheDocument();
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Title block");
+    await waitFor(() => expect(dialog.getByRole("button", { name: "Save snippet" })).toBeEnabled());
+    await userEvent.click(dialog.getByRole("button", { name: "Save snippet" }));
+    await waitFor(() => expect(args.snippetApi?.save).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Title block", selection: { container: "nodes", start: 0, count: 1 } }), "project",
+    ));
+    await expect(await body().findByText("Saved the snippet Title block.")).toBeInTheDocument();
+    await waitFor(() => expect(body().queryByRole("dialog", { name: "Save as snippet" })).not.toBeInTheDocument());
+  },
+};
+
+export const SaveAsSnippetFromTheTextTakesEveryTopLevelBlockTheSelectionTouches: Story = {
+  args: { snippetApi: buildSnippetStoreApi() },
+  play: async ({ canvasElement, args }) => {
+    const editor = await editorOf(canvasElement);
+    await selectLines(editor, 3, 6);
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Save as snippet" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Save as snippet" }));
+    await expect(dialog.getByText("Saving 2 blocks (and everything inside them).")).toBeInTheDocument();
+    await waitFor(() => expect(args.snippetApi?.check).toHaveBeenCalledWith(expect.anything(), { container: "nodes", start: 0, count: 2 }, "project"));
+  },
+};
+
+export const SaveAsSnippetFromTheTextNeedsTheCaretInABlock: Story = {
+  args: { snippetApi: buildSnippetStoreApi() },
+  play: async ({ canvasElement }) => {
+    const editor = await editorOf(canvasElement);
+    await caretAtLine(editor, 1);
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Save as snippet" }));
+    await expect(await within(canvasElement).findByText("Put the caret in a block, or select blocks, to save them as a snippet.")).toBeInTheDocument();
+    await expect(screen.queryByRole("dialog", { name: "Save as snippet" })).not.toBeInTheDocument();
+  },
+};
+
+export const SaveAsSnippetFromTheTextNeedsTextThatReadsCleanly: Story = {
+  args: { snippetApi: buildSnippetStoreApi() },
+  play: async ({ canvasElement }) => {
+    const editor = await editorOf(canvasElement);
+    await userEvent.type(editor, " BROKEN");
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Save as snippet" }));
+    await expect(await within(canvasElement).findByText(/Fix the problems in the text before saving a snippet/)).toBeInTheDocument();
+    await expect(screen.queryByRole("dialog", { name: "Save as snippet" })).not.toBeInTheDocument();
+  },
+};
+
+export const SaveAsSnippetInTheBlocksViewNeedsASelectedBlockAndSavesIt: Story = {
+  args: { api: blocksApi(), snippetApi: buildSnippetStoreApi() },
+  play: async ({ canvasElement, args }) => {
+    const canvas = await toBlocks(canvasElement);
+    const button = await canvas.findByRole("button", { name: "Save as snippet" });
+    await expect(button).toBeDisabled();
+    Blockly.common.setSelected(await firstHeading());
+    await waitFor(() => expect(button).toBeEnabled());
+    await userEvent.click(button);
+    const dialog = within(await screen.findByRole("dialog", { name: "Save as snippet" }));
+    await expect(dialog.getByText(/Saving Heading/)).toBeInTheDocument();
+    await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Blocks heading");
+    await waitFor(() => expect(dialog.getByRole("button", { name: "Save snippet" })).toBeEnabled());
+    await userEvent.click(dialog.getByRole("button", { name: "Save snippet" }));
+    await waitFor(() => expect(args.snippetApi?.save).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Blocks heading", selection: { container: "nodes", start: 0, count: 1 } }), "project",
+    ));
+  },
+};
+
+export const ASharedReadOnlyLayoutOffersNoSaveAsSnippet: Story = {
+  args: { api: buildLayoutApi([buildLayoutSummary({ editable: false, origin: "organization" })], { stateful: false }) },
+  play: async ({ canvasElement }) => {
+    await editorOf(canvasElement);
+    await expect(within(canvasElement).queryByRole("button", { name: "Save as snippet" })).not.toBeInTheDocument();
   },
 };

@@ -60,9 +60,11 @@ type Obj = Record<string, unknown>;
  * @param env The catalogues and layout-wide facts.
  * @param problems The server's messages for this field.
  * @param onChange Called with the key and its new value (`undefined` removes the key).
+ * @param labelScope Looks a choice's label up under `<scope>.<key>` first, for a field whose choices mean something else here
+ *   (an image column's width unit is a share of the column, not of the text).
  */
 export function ReportLayoutBlockField({
-  field, node, names, env, problems, onChange,
+  field, node, names, env, problems, onChange, labelScope,
 }: {
   field: BlockField;
   node: TreeNode;
@@ -70,6 +72,7 @@ export function ReportLayoutBlockField({
   env: BlockEnv;
   problems: string[];
   onChange: (key: string, value: unknown) => void;
+  labelScope?: string;
 }) {
   const strings = useStrings();
   const text = strings.reportOutline;
@@ -151,7 +154,13 @@ export function ReportLayoutBlockField({
       );
       break;
     case "boolean":
-      control = <CheckboxField label={field.label} checked={value === true} disabled={disabled} help={help} onChange={(on) => set(on ? true : undefined)} />;
+      // A switch that is on unless set off (`default: true`) stores `false` when off and nothing when on; the others store `true` when on.
+      control = (
+        <CheckboxField
+          label={field.label} checked={value === undefined ? field.default === true : value === true} disabled={disabled} help={help}
+          onChange={(on) => set(field.default === true ? (on ? undefined : false) : on ? true : undefined)}
+        />
+      );
       break;
     case "choice":
       control = (
@@ -159,7 +168,8 @@ export function ReportLayoutBlockField({
           label={field.label} value={typeof value === "string" ? value : ""} disabled={disabled} help={help} required={field.required}
           placeholder={field.default !== null && field.default !== undefined ? text.useDefault(String(field.default)) : text.choose}
           options={field.choices.map((c) => ({
-            value: c, label: (field.key === "orientation" ? text.orientationLabels[c] : undefined) ?? text.choiceLabels[field.key]?.[c] ?? c,
+            value: c, label: (field.key === "orientation" ? text.orientationLabels[c] : undefined)
+              ?? (labelScope ? text.choiceLabels[`${labelScope}.${field.key}`]?.[c] : undefined) ?? text.choiceLabels[field.key]?.[c] ?? c,
           }))}
           onChange={(next) => set(next === "" ? undefined : next)}
         />
@@ -204,6 +214,13 @@ export function ReportLayoutBlockField({
           <ReportLayoutColumnsEditor
             value={(Array.isArray(value) ? value : []) as Obj[]} names={readable} catalogue={env.catalogue} disabled={disabled}
             onChange={(next) => set(next)}
+            imageFields={env.blocks.image_column_fields}
+            renderImageField={(imageField, rules, recordType, change) => (
+              <ReportLayoutBlockField
+                key={imageField.key} field={imageField} node={rules} env={env} problems={[]} onChange={change} labelScope="column"
+                names={[{ name: "row", kind: "record", recordType }]}
+              />
+            )}
           />
         </fieldset>
       );

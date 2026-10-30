@@ -6,6 +6,7 @@ How big a layout's `Image` block prints, the same in every document format.
 Responsibilities:
 - Read a picture's natural size (a raster's header, an SVG's declared size) in centimetres.
 - Turn the block's width, unit and height, and the width of the text, into the size drawn (`placed_size_cm`).
+- Do the same for the pictures of a table cell, against the cell's width, stacked or side by side (`place_cell_pictures`).
 
 Design decisions:
 - **One rule for four renderers**, so PDF, Word, ODT and HTML never disagree about a size. A width alone keeps the
@@ -20,11 +21,12 @@ Dependencies: Pillow, `svglib` (through `services.report_svg`), `services.report
 from __future__ import annotations
 
 import io
+from dataclasses import dataclass
 
 from PIL import Image as PilImage
 from svglib.svglib import svg2rlg
 
-from app.services.report_model import Image
+from app.services.report_model import Image, ImageCell
 from app.services.report_svg import UnsafeSvgError, sanitize_svg
 
 PIXELS_PER_CM = 96 / 2.54
@@ -85,4 +87,70 @@ def placed_size_cm(block: Image, usable_cm: float) -> tuple[float, float] | None
     return width, height
 
 
-__all__ = ["POINTS_PER_CM", "PIXELS_PER_CM", "intrinsic_cm", "placed_size_cm"]
+#: The gap between two pictures of one table cell, in cm.
+CELL_GAP_CM = 0.15
+#: The space a cell keeps free of pictures on each side (its padding), in cm.
+CELL_PADDING_CM = 0.2
+
+
+@dataclass(frozen=True)
+class PlacedPicture:
+    """One picture of a table cell at its drawn size.
+
+    Attributes:
+        image: The picture.
+        width_cm: Drawn width.
+        height_cm: Drawn height.
+        line: Which line of the cell it is on: its own for `stacked`, shared with its neighbours for `side_by_side`.
+    """
+
+    image: Image
+    width_cm: float
+    height_cm: float
+    line: int
+
+
+def place_cell_pictures(cell: ImageCell, column_cm: float, max_height_cm: float | None) -> list[PlacedPicture]:
+    """The pictures of a table cell at the sizes they are drawn, in the same way in every format.
+
+    Each picture is sized as an Image block is, against the width inside the cell (`column_cm` less its padding), so a
+    width in `percent` is a share of the column. Stacked pictures sit one per line; side-by-side pictures fill a line
+    and wrap. A picture whose size cannot be read is left out.
+
+    The only limit applied is the physical one: pictures are shrunk together, keeping their shapes, when the cell would
+    otherwise be taller than a page (`max_height_cm`, the page's text height), which no renderer can lay out. A size the
+    author chose is otherwise never reduced.
+
+    Args:
+        cell: The cell.
+        column_cm: The column's width.
+        max_height_cm: The tallest a cell can be on its page, or `None` for no limit (a browser lays out its own pages).
+
+    Returns:
+        The placed pictures in order.
+    """
+    inner = max(column_cm - 2 * CELL_PADDING_CM, 0.5)
+    sized = [(image, size) for image in cell.images if (size := placed_size_cm(image, inner)) is not None]
+    placed: list[PlacedPicture] = []
+    line, used = 0, 0.0
+    for image, (width, height) in sized:
+        if cell.arrange == "side_by_side":
+            if placed and used + CELL_GAP_CM + width > inner + 1e-6:
+                line, used = line + 1, 0.0
+            used += width + (CELL_GAP_CM if used else 0.0)
+        elif placed:
+            line += 1
+        placed.append(PlacedPicture(image, width, height, line))
+    if max_height_cm is not None and placed:
+        heights = [max(p.height_cm for p in placed if p.line == n) for n in range(line + 1)]
+        total = sum(heights) + CELL_GAP_CM * line
+        if total > max_height_cm > 0:
+            scale = max_height_cm / total
+            placed = [PlacedPicture(p.image, p.width_cm * scale, p.height_cm * scale, p.line) for p in placed]
+    return placed
+
+
+__all__ = [
+    "CELL_GAP_CM", "CELL_PADDING_CM", "POINTS_PER_CM", "PIXELS_PER_CM", "PlacedPicture", "intrinsic_cm", "place_cell_pictures",
+    "placed_size_cm",
+]

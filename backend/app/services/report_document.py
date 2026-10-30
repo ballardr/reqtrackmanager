@@ -312,8 +312,10 @@ def _unicode_cell(cell, header: bool, accent_color):
     return Paragraph(safe(cell), style)
 
 
-def styled_table(data: list[list], *, col_widths: list[float], accent_color, compact: bool = False) -> Table:
-    """An accent-headed table with a repeating header row.
+def styled_table(
+    data: list[list], *, col_widths: list[float], accent_color, compact: bool = False, repeat_header: bool = True,
+) -> Table:
+    """An accent-headed table, its header row repeated on each page it runs onto unless `repeat_header` is off.
 
     Args:
         data: Rows including the header row; cells are strings or flowables (a `toned_paragraph` cell is filled).
@@ -323,12 +325,13 @@ def styled_table(data: list[list], *, col_widths: list[float], accent_color, com
             use (header cells are expected to be Paragraphs coloured with
             `header_text_color`); `False` for the requirement report's heavier
             grid, whose header text takes that colour here.
+        repeat_header: Whether the header row is drawn again at the top of every page the table continues onto.
 
     Returns:
         The table flowable.
     """
     data = [[_unicode_cell(cell, r == 0, accent_color) for cell in row] for r, row in enumerate(data)]
-    table = Table(data, repeatRows=1, colWidths=col_widths)
+    table = Table(data, repeatRows=1 if repeat_header else 0, colWidths=col_widths)
     if compact:
         table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), accent_color),

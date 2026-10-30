@@ -179,7 +179,7 @@ def import_images(
     return mapping
 
 
-def _rewrite_images(tree: dict[str, Any], mapping: dict[str, str]) -> dict[str, Any]:
+def rewrite_images(tree: dict[str, Any], mapping: dict[str, str]) -> dict[str, Any]:
     """A copy of `tree` whose image blocks name the imported pictures (a block with no mapping keeps its id)."""
     copy: dict[str, Any] = json.loads(json.dumps(tree))
     for _, node in image_nodes(copy):
@@ -218,7 +218,7 @@ def import_layout_entry(
     dropped = 0
     for v in versions:
         comment = str(v.get("comment", ""))[: report_layouts.MAX_COMMENT_CHARS]
-        tree = _rewrite_images(v["tree"], images or {})
+        tree = rewrite_images(v["tree"], images or {})
         try:
             if layout_id is None:
                 saved = report_layouts.create_layout(
@@ -306,5 +306,5 @@ def import_project_layouts(
 
 __all__ = [
     "export_org_layouts", "export_project_layouts", "image_entries", "import_images", "import_layout_entry",
-    "import_org_layouts", "import_project_layouts", "layout_entry",
+    "import_org_layouts", "import_project_layouts", "layout_entry", "rewrite_images",
 ]

@@ -1303,6 +1303,14 @@ flowchart LR
   picture prints when the caller could open it from the record's page; pictures share the library pictures' caps and are
   recorded in the run's stats as a count and a digest. `PATCH /files/{id}/confidential` (uploader, project manager, or an
   organisation admin for an organisation resource; audited) sets the mark, which changes nothing but reports.
+- **Image columns (Phase 46).** A table or sheet column `{"images": {...rules}, "label"?, "from"?}` shows the pictures attached to each
+  row's record. It uses the record-images rules through the one `_validate_picture_rules` and the same `candidate_files` and one-batch
+  file query (a name pattern may read the row as `{{row.field}}`), plus a size (`width` with `width_unit` `percent` of the column by
+  default 90, or cm or mm; `height`) and `arrange` (`stacked` or `side_by_side`). A document table's cell is a
+  `report_model.ImageCell` and every renderer draws it through `report_image_layout.place_cell_pictures` (sized against the cell, shrunk
+  only to the physical page limit); a sheet's cell is the file names as text. The layout root's `repeat_table_header` (default true)
+  reaches `Table.repeat_header` (PDF `repeatRows`, Word `w:tblHeader`, ODT header rows, HTML `thead`). The designer draws the column's
+  settings from `BlockCatalogue.image_column_fields`.
 - **Sources.** A block reads records from `{record_type}` (all of a type in the report's projects),
   `{record_type, linked_from: alias, link_types?, direction?}` (records linked to an enclosing record; link types are
   named, forward or reverse, so a layout moves between projects) or `{group: alias}` (a group's members), plus
@@ -2000,8 +2008,8 @@ flowchart TD
 A **snippet** is a named fragment of a layout (a cover page, a logo at the top right, record images, document control, approvals,
 a landscape table section) that an author inserts into the layout they are editing. Inserting **copies** the blocks in: nothing
 links back, so changing a snippet never alters a layout. A snippet adds no block type, no data access (its blocks run with the
-runner's permissions) and no stored state in this version: the designer holds the draft and the server only builds and validates
-the result.
+runner's permissions) and the built-in and module snippets store nothing: the designer holds the draft and the server only builds
+and validates the result. Authors can also keep their own (see "Saved snippets" below).
 
 ```mermaid
 flowchart LR
@@ -2031,6 +2039,37 @@ flowchart LR
 - **Formats.** `formats` lists where the result is true; the logo is an image in front of the text anchored to the page, printed by
   PDF, Word and OpenDocument text but only approximated in the browser preview.
 - **MCP.** `list_report_snippets` and `apply_report_snippet` (read-and-compute, nothing stored) in the core server and skill.
+
+**Saved snippets (Phase 45).** An author keeps a selection of a layout (a block with everything inside it, or a run of top-level
+blocks) as a snippet of a project or the organisation (`report_snippets`, `SavedReportSnippet`; core configuration, not an artefact
+type, so no code, tags or search). It is stored as the blocks and the `root` they need (the page styles their sections use, the
+variables they read), has no parameters or versions, and is offered by `visible_snippets` under the key `saved-<id>` after the
+built-in and module snippets, so the insert dialog, the apply service and MCP treat it like any other.
+
+```mermaid
+flowchart LR
+    D["Draft tree + selection"] --> F["fragment_from_selection:<br/>blocks + page styles + variables"]
+    F --> K["validate_fragment:<br/>tree validator + picture rule at the tier"]
+    K --> T[("report_snippets<br/>org or project")]
+    T --> S["report_snippet_scope:<br/>own, ancestors, organisation,<br/>less those the project hides"]
+    S --> V["visible_snippets"]
+    T --> B["Bundles: report_snippets,<br/>report_snippets_hidden,<br/>report_snippet_images"]
+```
+
+- **One check on every way in.** `report_snippet_store.validate_fragment` runs on save, copy, bundle import and MCP create: the tree
+  validator over a minimal wrapping tree (no unknown block, no raw HTML, nothing that refers to something outside the selection) and
+  the picture rule at the snippet's tier (a project picture is refused at organisation level and on a copy up, and named). Apply
+  still re-checks the whole result.
+- **Visibility is additive** like layouts and packs (own, ancestors', organisation's, de-duplicated by name, nearest wins); a project
+  hides an inherited snippet through a `ProjectDefinitionSuppression` tombstone (kind `report_snippet`) and restores it.
+- **Routes** `/orgs/{id}/report-snippets` and `/projects/{id}/report-snippets` (list, read, `check`, save, rename, delete, copy; at
+  project level `visibility`, `restore`, `check-organization` and `organization`), gated by the layout-management permissions.
+- **Bundles.** `services/report_snippet_bundle.py` adds `report_snippets`, `report_snippets_hidden` (by name) and
+  `report_snippet_images` to `project.json`, and `report_snippets` and `report_snippet_images` to `org.json`; an import revalidates
+  every fragment, skips one that is not valid here with a warning, and never overwrites a name in a merge.
+- **MCP.** `list_saved_report_snippets`, `get_saved_report_snippet`, `check_report_snippet` (read) and `save_report_snippet`,
+  `update_saved_report_snippet`, `delete_saved_report_snippet`, `set_saved_report_snippet_visibility`,
+  `copy_saved_report_snippet` (write mode).
 
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 

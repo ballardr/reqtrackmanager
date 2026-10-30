@@ -138,3 +138,33 @@ export const ReadsHeadersAndFootersFromTheText: Story = {
     );
   },
 };
+
+/** The heading-row switch is written on the header line as a word, kept when the rest of the setup is rewritten, and dropped when switched back on. */
+export const TheRepeatHeaderSwitchIsWrittenAsAWordAndKept: Story = {
+  play: async ({ canvasElement }) => {
+    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait");
+    const box = dialog.getByRole("checkbox", { name: "Repeat table header rows" });
+    await expect(box).toBeChecked();
+    await userEvent.click(box);
+    await expect(text(canvasElement).textContent).toBe("@layout document norepeatheader\n\n@heading Hello\n");
+    await expect(within(canvasElement).getByRole("button", { name: "Page setup: A4, portrait" })).toHaveClass("btn-marked");
+    await userEvent.selectOptions(dialog.getByRole("combobox", { name: "Page size" }), "A3");
+    await userEvent.click(dialog.getByRole("checkbox", { name: "Mirror margins" }));
+    await expect(text(canvasElement).textContent).toBe("@layout document A3 mirror norepeatheader\n\n@heading Hello\n");
+    await userEvent.click(dialog.getByRole("checkbox", { name: "Mirror margins" }));
+    await userEvent.selectOptions(dialog.getByRole("combobox", { name: "Page size" }), "A4");
+    await userEvent.click(box);
+    await expect(text(canvasElement).textContent).toBe("@layout document\n\n@heading Hello\n");
+  },
+};
+
+/** A layout that already says `repeatheader` explicitly keeps the word until the switch is turned off. */
+export const AnExplicitRepeatHeaderWordIsPreserved: Story = {
+  render: () => <Host initial={"@layout document repeatheader\n\n@heading Hello\n"} />,
+  play: async ({ canvasElement }) => {
+    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait");
+    await expect(dialog.getByRole("checkbox", { name: "Repeat table header rows" })).toBeChecked();
+    await userEvent.selectOptions(dialog.getByRole("combobox", { name: "Page size" }), "A3");
+    await expect(text(canvasElement).textContent).toBe("@layout document A3 repeatheader\n\n@heading Hello\n");
+  },
+};

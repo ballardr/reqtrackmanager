@@ -94,6 +94,7 @@ from app.services.report_layout_tree import (
     DEFAULT_GROUP_ALIAS,
     DEFAULT_RECORD_ALIAS,
     PLACEHOLDER_RE,
+    ROW_ALIAS,
     assert_valid,
 )
 from app.services.report_math import MathSegment, source_of, split_math, tex_problem, typeset
@@ -101,10 +102,12 @@ from app.services.report_model import (
     SLOT_NAMES,
     Block,
     BulletList,
+    Cell,
     Equation,
     Gap,
     Heading,
     Image,
+    ImageCell,
     MathText,
     Note,
     NumberedList,
@@ -148,6 +151,14 @@ DEFAULT_TIMEOUT_SECONDS = 60.0
 ASYNC_LIMIT_SCALE = 5
 #: Pictures a record-images block prints per record when it sets no `max_count`.
 DEFAULT_RECORD_PICTURES = 5
+#: The most pictures an image column shows in one cell unless it says otherwise (the record-images block's default).
+DEFAULT_CELL_PICTURES = DEFAULT_RECORD_PICTURES
+#: A picture in an image column is this share of the column's width unless the column sets a width or a height.
+DEFAULT_CELL_IMAGE_PERCENT = 90
+#: An image column's share of the table's width against 1 for every other column, so an id beside it stays narrow.
+IMAGE_COLUMN_WEIGHT = 3.0
+#: The heading of an image column that sets no label.
+IMAGE_COLUMN_LABEL = "Images"
 _NARROW_OR_BACKGROUND = "Narrow it with a filter, or download it as a file, which can be prepared in the background."
 ASYNC_TIMEOUT_SECONDS = 600.0
 EMPTY_GROUP_LABEL = "(none)"
@@ -345,6 +356,7 @@ def evaluate_layout(
     run.layout_project_id = layout_project_id
     if tree["family"] == FAMILY_DOCUMENT:
         run.page_styles = run.with_running_bands(tree, *resolve_page_styles(tree))
+        run.repeat_table_header = tree.get("repeat_table_header", True)
     for warning in stale_value_warnings(db, declared, values, run.project_ids):
         run.warn(warning)
     for node in tree["nodes"]:
@@ -398,6 +410,8 @@ class _Run:
         self.blocks: list[Block] = []
         #: The document's own page style and the named ones (set by `evaluate_layout` for a document layout).
         self.page_styles = resolve_page_styles({})
+        #: Whether a document table's header row is printed again on each page (the layout's `repeat_table_header`).
+        self.repeat_table_header = True
         self.sheets: list[Sheet] = []
         self.warnings: list[str] = []
         self.stats = EvalStats()
@@ -527,12 +541,62 @@ class _Run:
 
     def prefetch_record_files(self, node: dict[str, Any], records: list[ReportRecord]) -> None:
         """Reads the attachments of every record of an `each` in one query, when its contents hold a record-images block."""
-        if not records or not _uses_record_images(node.get("children", [])):
-            return
-        wanted = [r.id for r in records if (r.artefact_type, r.id) not in self._record_files]
-        found = record_files(self.db, records[0].artefact_type, wanted)
-        for record_id in wanted:
-            self._record_files[(records[0].artefact_type, record_id)] = found.get(record_id, [])
+        if records and _uses_record_images(node.get("children", [])):
+            self.prefetch_files(records)
+
+    def prefetch_files(self, records: list[ReportRecord]) -> None:
+        """Reads the attachments of `records` in one query per record type (those not read already)."""
+        by_type: dict[str, list[uuid.UUID]] = {}
+        for record in records:
+            if (record.artefact_type, record.id) not in self._record_files:
+                by_type.setdefault(record.artefact_type, []).append(record.id)
+        for artefact_type, wanted in by_type.items():
+            found = record_files(self.db, artefact_type, wanted)
+            for record_id in wanted:
+                self._record_files[(artefact_type, record_id)] = found.get(record_id, [])
+
+    def image_cell(self, record: ReportRecord, rules: dict[str, Any], scope: Scope) -> ImageCell:
+        """The pictures attached to `record` that an image column's rules choose, as a table cell.
+
+        The record is one the traversal showed the caller, and its files come only through its own attachment table minus
+        those marked confidential. A file counts toward the most per cell only when it really decodes as a picture. A name
+        pattern may read the record as `{{row.field}}`.
+        """
+        row_scope = {**scope, ROW_ALIAS: Bound("record", record.artefact_type, record=record)}
+        max_bytes = int(rules["max_size_mb"] * 1024 * 1024) if "max_size_mb" in rules else None
+        patterns = [compile_pattern(p, lambda text: self.fill(text, row_scope)) for p in rules.get("names", [])]
+        candidates = candidate_files(
+            self.record_files_of(record), patterns=patterns, extensions=rules.get("types", []), order=rules.get("order", "name"),
+            max_bytes=max_bytes,
+        )
+        sized = rules if "width" in rules or "height" in rules else {**rules, "width": DEFAULT_CELL_IMAGE_PERCENT, "width_unit": "percent"}
+        images: list[Image] = []
+        names: list[str] = []
+        for asset in candidates:
+            if len(images) >= rules.get("max_count", DEFAULT_CELL_PICTURES):
+                break
+            self.tick()
+            resolved = self.record_picture(asset)
+            if resolved is None:
+                continue
+            images.append(_picture(resolved, sized, alt=asset.filename.rsplit(".", 1)[0], decorative=False, caption=""))
+            names.append(asset.filename)
+        return ImageCell(images, rules.get("arrange", "stacked"), ", ".join(names))
+
+    def image_cell_text(self, record: ReportRecord, rules: dict[str, Any], scope: Scope) -> str:
+        """The file names an image column's rules choose for `record`, comma separated (what a sheet shows: no pictures).
+
+        Nothing is read from storage: a file is listed by its name, extension and recorded size, so a mislabelled file can
+        appear here that a document would leave out.
+        """
+        row_scope = {**scope, ROW_ALIAS: Bound("record", record.artefact_type, record=record)}
+        max_bytes = int(rules["max_size_mb"] * 1024 * 1024) if "max_size_mb" in rules else None
+        patterns = [compile_pattern(p, lambda text: self.fill(text, row_scope)) for p in rules.get("names", [])]
+        candidates = candidate_files(
+            self.record_files_of(record), patterns=patterns, extensions=rules.get("types", []), order=rules.get("order", "name"),
+            max_bytes=max_bytes,
+        )
+        return ", ".join(a.filename for a in candidates[: rules.get("max_count", DEFAULT_CELL_PICTURES)])
 
     def record_files_of(self, record: ReportRecord) -> list[FileAsset]:
         """The non-confidential files attached to `record` (read on first use when no batch covered it)."""
@@ -1160,15 +1224,20 @@ def _source_type(node: dict[str, Any], scope: Scope) -> str:
     return scope[src["group"]].record_type if "group" in src else src["record_type"]
 
 
-def _table_cells(run: _Run, node: dict[str, Any], scope: Scope, records: list[ReportRecord]) -> tuple[list[str], list[list[str]]]:
-    """Header labels (a column's own, else the field's) and body cells for `columns` over `records`."""
+def _table_cells(run: _Run, node: dict[str, Any], scope: Scope, records: list[ReportRecord]) -> tuple[list[str], list[list[Cell]]]:
+    """Header labels (a column's own, else the field's) and body cells for `columns` over `records`.
+
+    An image column's cells hold the pictures attached to the row's record (its files are read in one batch).
+    """
     columns = node["columns"]
     info = run.catalogue(_source_type(node, scope))
-    labels = [c.get("label") or info[c["field"]].label for c in columns]
-    rows = []
+    labels = [c.get("label") or (IMAGE_COLUMN_LABEL if "images" in c else info[c["field"]].label) for c in columns]
+    if any("images" in c for c in columns):
+        run.prefetch_files(records)
+    rows: list[list[Cell]] = []
     for record in records:
         run.tick()
-        rows.append([run.cell_of(record, c["field"]) for c in columns])
+        rows.append([run.image_cell(record, c["images"], scope) if "images" in c else run.cell_of(record, c["field"]) for c in columns])
     return labels, rows
 
 
@@ -1176,7 +1245,11 @@ def _eval_table(run: _Run, node: dict[str, Any], scope: Scope) -> None:
     found = run.source(node, scope)
     if found.records:
         labels, rows = _table_cells(run, node, scope, found.records)
-        run.emit(Table(labels, rows, compact=True))
+        weights = [IMAGE_COLUMN_WEIGHT if "images" in c else 1.0 for c in node["columns"]]
+        run.emit(Table(
+            labels, rows, compact=True, repeat_header=run.repeat_table_header,
+            weights=weights if IMAGE_COLUMN_WEIGHT in weights else None,
+        ))
     elif node.get("empty_text"):
         run.emit(Note(run.fill(node["empty_text"], scope)))
     run.unseen_note(found, "record", filtered=bool(node["source"].get("where")))
@@ -1267,13 +1340,27 @@ def _eval_sheet(run: _Run, node: dict[str, Any], scope: Scope) -> None:
         rows_of = widened
 
     columns = node["columns"]
-    labels = [c.get("label") or run.catalogue(types[c.get("from", root_alias)])[c["field"]].label for c in columns]
+    labels = [
+        c.get("label") or (IMAGE_COLUMN_LABEL if "images" in c else run.catalogue(types[c.get("from", root_alias)])[c["field"]].label)
+        for c in columns
+    ]
+    if any("images" in c for c in columns):
+        run.prefetch_files([
+            rec for combo in rows_of for c in columns if "images" in c and (rec := combo[c.get("from", root_alias)]) is not None
+        ])
     rows = []
     for combo in rows_of:
         run.tick()
-        rows.append([
-            run.text_of(record, c["field"]) if (record := combo[c.get("from", root_alias)]) is not None else "" for c in columns
-        ])
+        row = []
+        for c in columns:
+            record = combo[c.get("from", root_alias)]
+            if record is None:
+                row.append("")
+            elif "images" in c:  # a sheet holds text, so the cell lists the file names
+                row.append(run.image_cell_text(record, c["images"], {}))
+            else:
+                row.append(run.text_of(record, c["field"]))
+        rows.append(row)
     run.stats.rows += len(rows)
     run._count_output(1 + len(rows))
     run.sheets.append(Sheet(node["name"], labels, rows))

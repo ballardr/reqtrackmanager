@@ -126,6 +126,7 @@ from app.services.report_folder_bundle import export_project_folders, import_pro
 from app.services.report_layout_bundle import export_project_layouts, import_project_layouts
 from app.services.report_pack_bundle import export_project_packs, import_project_packs
 from app.services.report_placement_bundle import export_project_placements, import_project_placements
+from app.services.report_snippet_bundle import export_project_snippets, import_project_snippets
 from app.services.sequences import generate_unique_code
 from app.services.tags import export_vocabulary, import_vocabulary, keywords_for_requirements, set_keywords
 
@@ -492,6 +493,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
 
     module_bundle_json: dict[str, Any] = {
         **export_project_layouts(db, project, file_assets_by_id), **export_project_packs(db, project), **export_project_placements(db, project),
+        **export_project_snippets(db, project, file_assets_by_id),
         **export_project_folders(db, project),
     }
     for _module_key, hooks in get_all_module_project_bundle_hooks():
@@ -671,6 +673,7 @@ def apply_project_data(
     seed_action_types(db, project.id)
     import_project_layouts(db, project, data, current_user, warnings, file_bytes_by_ref)
     import_project_packs(db, project, data, current_user, warnings)
+    import_project_snippets(db, project, data, current_user, warnings, file_bytes_by_ref)
     import_project_placements(db, project, data, current_user, warnings)
     import_project_folders(db, project, data, current_user, warnings)
     if any(data.get(key) for key in LEGACY_REPORT_CONTENT_KEYS):

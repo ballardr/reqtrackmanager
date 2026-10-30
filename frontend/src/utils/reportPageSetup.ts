@@ -72,6 +72,8 @@ export interface PageSetup {
   orientation: PageOrientation;
   size: PageSize;
   mirror: boolean;
+  /** Whether a table's heading row is printed again on each page: `false` for `norepeatheader`, `true` for an explicit `repeatheader`, `undefined` when the line says neither (on). */
+  repeatHeader?: boolean;
   margins: PageMargins;
   styles: PageStyleSetup[];
   header?: RunningBand;
@@ -210,6 +212,7 @@ export function readPageSetup(text: string): PageSetup | null {
     orientation: orientation ?? "portrait",
     size: size ?? "A4",
     mirror: before.includes("mirror"),
+    repeatHeader: before.includes("norepeatheader") ? false : before.includes("repeatheader") ? true : undefined,
     margins: readMargins(margins),
     styles: [],
   };
@@ -238,6 +241,7 @@ export function writePageSetup(text: string, setup: PageSetup): string {
     ...(setup.orientation === "landscape" ? ["landscape"] : []),
     ...(setup.size === "A4" ? [] : [setup.size]),
     ...(setup.mirror ? ["mirror"] : []),
+    ...(setup.repeatHeader === undefined ? [] : [setup.repeatHeader ? "repeatheader" : "norepeatheader"]),
   ].join(" ") + marginsText(setup.margins);
   const styles = setup.styles.map((style) => {
     const words = [style.orientation, style.size].filter((word) => word !== undefined).join(" ");

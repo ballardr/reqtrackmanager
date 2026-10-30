@@ -157,6 +157,11 @@ LAYOUT_FIELDS: tuple[BlockField, ...] = (
         "facing pages. Applies to every page style.", families=("document",),
     ),
     BlockField(
+        "repeat_table_header", "Repeat table header rows", "boolean", default=True,
+        help="Whether a table's column headings are printed again at the top of every page the table runs onto. On unless "
+        "switched off; applies to every table in the layout.", families=("document",),
+    ),
+    BlockField(
         "page_styles", "Page styles", "page_styles",
         help="Named page styles (paper, orientation, margins) that a section block lays its contents out in, for example "
         "an A3 landscape table inside an A4 portrait report. A style leaves out what it shares with the layout.",

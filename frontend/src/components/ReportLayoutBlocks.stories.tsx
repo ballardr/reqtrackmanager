@@ -4,7 +4,10 @@ import { useState } from "react";
 import { expect, screen, userEvent, waitFor, within } from "storybook/test";
 
 import type { TreeProblem } from "../api/reportLayouts";
-import { buildBlockCatalogue, buildFieldCatalogue, buildOutlineTree, buildWidgets } from "../testing/reportLayoutFixtures";
+import {
+  buildBlockCatalogue, buildFieldCatalogue, buildImageLibrary, buildLayoutApi, buildOutlineTree, buildWidgets,
+} from "../testing/reportLayoutFixtures";
+import { buildUser, withStatefulAuth } from "../testing/storybook-helpers";
 import { treeToWorkspaceState, workspaceStateToTree } from "../utils/reportLayoutBlockly";
 import type { Tree } from "../utils/reportLayoutTree";
 import { ReportLayoutBlocks } from "./ReportLayoutBlocks";
@@ -13,19 +16,28 @@ import { ReportLayoutBlocks } from "./ReportLayoutBlocks";
 const BLOCKS = buildBlockCatalogue();
 const CATALOGUE = buildFieldCatalogue();
 const WIDGETS = buildWidgets();
+const SNIPPET_API = buildLayoutApi();
+const IMAGES = { library: buildImageLibrary(), scope: "project" as const };
 
 /** Keeps the tree in state, as the designer does, and prints it so a story can read what an edit produced. */
-function Harness({ initial, problems = [], readOnly = false, family = "document" }: {
-  initial: Tree; problems?: TreeProblem[]; readOnly?: boolean; family?: "document" | "table";
+function Harness({ initial, problems = [], readOnly = false, family = "document", withSnippets = false }: {
+  initial: Tree; problems?: TreeProblem[]; readOnly?: boolean; family?: "document" | "table"; withSnippets?: boolean;
 }) {
   const [tree, setTree] = useState(initial);
+  const [notice, setNotice] = useState<string | null>(null);
   return (
     <>
       <ReportLayoutBlocks
         tree={tree} onChange={setTree} family={family} blocks={BLOCKS} catalogue={CATALOGUE}
         widgets={WIDGETS} problems={problems} readOnly={readOnly}
+        images={withSnippets ? IMAGES : undefined}
+        snippets={withSnippets ? {
+          api: SNIPPET_API, onInserted: (n) => setNotice(`${n.name}: ${n.changes.join(" ")}`),
+          onSave: (selection, label) => setNotice(`save ${JSON.stringify(selection)} ${label}`),
+        } : undefined}
       />
       <pre data-testid="tree" hidden>{JSON.stringify(tree)}</pre>
+      <pre data-testid="notice" hidden>{notice}</pre>
     </>
   );
 }
@@ -34,6 +46,7 @@ function Harness({ initial, problems = [], readOnly = false, family = "document"
 const meta: Meta<typeof Harness> = {
   title: "Components/ReportLayoutBlocks",
   component: Harness,
+  decorators: [withStatefulAuth(buildUser({ ui_preferences: {} }))],
   args: { initial: buildOutlineTree() },
 };
 export default meta;
@@ -308,5 +321,121 @@ export const ATableLayoutOffersOnlySheets: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Add block" }));
     await expect(await screen.findByRole("menuitem", { name: "Sheet" })).toBeInTheDocument();
     await expect(screen.queryByRole("menuitem", { name: "Heading 1" })).not.toBeInTheDocument();
+  },
+};
+
+/** Opens Insert snippet, chooses a snippet and inserts it. */
+async function insertSnippet(canvasElement: HTMLElement, name: string, choose?: (d: ReturnType<typeof within>) => Promise<void>) {
+  await userEvent.click(await within(canvasElement).findByRole("button", { name: "Insert snippet" }));
+  const d = within(await screen.findByRole("dialog", { name: "Insert snippet" }));
+  await userEvent.click(await d.findByRole("button", { name: `Select ${name}` }));
+  await choose?.(d);
+  await userEvent.click(d.getByRole("button", { name: "Insert" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Insert snippet" })).not.toBeInTheDocument());
+}
+
+/** The snippet's blocks land at the place the toolbar states, and the author is told what was done. */
+export const InsertSnippetPutsItsBlocksAtTheStatedPlace: Story = {
+  args: { withSnippets: true },
+  play: async ({ canvasElement }) => {
+    await workspaceOf();
+    await expect(await within(canvasElement).findByText("Adding at the end of the layout")).toBeInTheDocument();
+    await insertSnippet(canvasElement, "Cover page");
+    await waitFor(() => expect(treeOf(canvasElement).nodes).toHaveLength(5));
+    await expect(treeOf(canvasElement).nodes.slice(2).map((n) => n.type)).toEqual(["heading", "text", "page_break"]);
+    await expect(within(canvasElement).getByTestId("notice")).toHaveTextContent("Cover page: Inserted 3 blocks at nodes[2].");
+  },
+};
+
+/** A cover page or a logo belongs at the start, which Add block's places do not offer, so the snippet dialog does. */
+export const InsertSnippetCanGoAtTheStartOfTheLayout: Story = {
+  args: { withSnippets: true },
+  play: async ({ canvasElement }) => {
+    await workspaceOf();
+    await insertSnippet(canvasElement, "Cover page", async (d) => {
+      await userEvent.selectOptions(d.getByRole("combobox", { name: "Where to insert the snippet" }), "Inserting at the start of the layout");
+    });
+    await waitFor(() => expect(treeOf(canvasElement).nodes.map((n) => n.type)).toEqual(["heading", "text", "page_break", "heading", "each"]));
+  },
+};
+
+/** One Ctrl+Z removes every block the snippet added, not one at a time. */
+export const OneUndoRemovesTheWholeSnippet: Story = {
+  args: { withSnippets: true },
+  play: async ({ canvasElement }) => {
+    const ws = await workspaceOf();
+    await insertSnippet(canvasElement, "Cover page");
+    await waitFor(() => expect(treeOf(canvasElement).nodes).toHaveLength(5));
+    ws.undo(false);
+    await waitFor(() => expect(treeOf(canvasElement).nodes).toHaveLength(2));
+  },
+};
+
+/** A snippet's page style is part of the layout the moment it is inserted; undoing the blocks leaves it, and nothing else, behind. */
+export const ARootChangeTravelsWithTheBlocks: Story = {
+  args: { withSnippets: true },
+  play: async ({ canvasElement }) => {
+    const ws = await workspaceOf();
+    await insertSnippet(canvasElement, "Logo, top right of the first page", async (d) => {
+      await userEvent.click(d.getByRole("button", { name: "Choose image…" }));
+      const library = within(await screen.findByRole("dialog", { name: "Image library" }));
+      await userEvent.click(await library.findByRole("button", { name: "Select site-logo.png" }));
+      await userEvent.click(library.getByRole("button", { name: "Use image" }));
+    });
+    await waitFor(() => expect(treeOf(canvasElement).nodes).toHaveLength(3));
+    await expect(treeOf(canvasElement).page_styles).toEqual([{ name: "Cover" }]);
+    ws.undo(false);
+    await waitFor(() => expect(treeOf(canvasElement).nodes).toHaveLength(2));
+    await expect(treeOf(canvasElement).page_styles).toEqual([{ name: "Cover" }]);
+  },
+};
+
+/** With a block selected the snippet goes after it, in the place the toolbar names. */
+export const InsertSnippetFollowsTheSelectedBlock: Story = {
+  args: { withSnippets: true },
+  play: async ({ canvasElement }) => {
+    const ws = await workspaceOf();
+    const [first] = blocksOf(ws, "heading");
+    Blockly.common.setSelected(first);
+    await waitFor(() => expect(within(canvasElement).getByRole("combobox", { name: "Where to add the block" })).toBeInTheDocument());
+    const where = within(canvasElement).getByRole("combobox", { name: "Where to add the block" });
+    await userEvent.selectOptions(where, within(where).getByRole("option", { name: /Adding after: Heading/ }));
+    await insertSnippet(canvasElement, "Cover page");
+    await waitFor(() => expect(treeOf(canvasElement).nodes).toHaveLength(5));
+    await expect(treeOf(canvasElement).nodes.map((n) => n.type)).toEqual(["heading", "heading", "text", "page_break", "each"]);
+  },
+};
+
+/** A layout shown read-only offers no Insert snippet, and neither does a view with no snippet calls. */
+export const NoInsertSnippetWhenReadOnlyOrWithoutCalls: Story = {
+  args: { withSnippets: true, readOnly: true },
+  play: async ({ canvasElement }) => {
+    await workspaceOf();
+    await expect(within(canvasElement).queryByRole("button", { name: "Insert snippet" })).not.toBeInTheDocument();
+  },
+};
+
+/** Save as snippet saves the selected block, with everything inside it, as a run of one in its own list. */
+export const SaveAsSnippetNeedsASelectedBlockAndNamesIt: Story = {
+  args: { withSnippets: true },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const ws = await workspaceOf();
+    const button = await canvas.findByRole("button", { name: "Save as snippet" });
+    await expect(button).toBeDisabled();
+    await expect(button).toHaveAttribute("title", "Select a block first: it is saved with everything inside it.");
+    const [, nested] = blocksOf(ws, "heading");
+    Blockly.common.setSelected(nested);
+    await waitFor(() => expect(button).toBeEnabled());
+    await userEvent.click(button);
+    await waitFor(() => expect(canvas.getByTestId("notice")).toHaveTextContent('save {"container":"nodes[1].children","start":0,"count":1} Saving Heading'));
+  },
+};
+
+export const ASharedLayoutOffersNoSaveAsSnippet: Story = {
+  args: { withSnippets: true, readOnly: true },
+  play: async ({ canvasElement }) => {
+    await workspaceOf();
+    await expect(within(canvasElement).queryByRole("button", { name: "Save as snippet" })).not.toBeInTheDocument();
   },
 };

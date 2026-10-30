@@ -138,6 +138,7 @@ from app.services.report_folder_bundle import export_org_folders, import_org_fol
 from app.services.report_layout_bundle import export_org_layouts, import_org_layouts
 from app.services.report_pack_bundle import export_org_packs, import_org_packs
 from app.services.report_placement_bundle import export_org_placements, import_org_placements
+from app.services.report_snippet_bundle import export_org_snippets, import_org_snippets
 from app.services.scoring import seed_missing_scoring_levels
 
 ORG_BUNDLE_KIND = "org-export"
@@ -189,6 +190,7 @@ def build_org_bundle(db: Session, org: Organization, exported_by: User) -> bytes
 
     module_bundle_json: dict[str, Any] = {
         **export_org_layouts(db, org.id, file_assets_by_id), **export_org_packs(db, org.id), **export_org_placements(db, org.id),
+        **export_org_snippets(db, org.id, file_assets_by_id),
         **export_org_folders(db, org.id),
     }
     for _module_key, hooks in get_all_module_org_bundle_hooks():
@@ -668,6 +670,7 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
     _import_report_templates(db, org, data, current_user, resolutions=None, warnings=warnings)  # before layouts name them
     import_org_layouts(db, org.id, data, current_user, warnings, merge=False, file_bytes_by_ref=file_bytes_by_ref)
     import_org_packs(db, org.id, data, current_user, warnings, merge=False)
+    import_org_snippets(db, org.id, data, current_user, warnings, merge=False, file_bytes_by_ref=file_bytes_by_ref)
     import_org_placements(db, org.id, data, current_user, warnings)
     import_org_folders(db, org.id, data, current_user, warnings)
     _warn_legacy_report_content(data, warnings)
@@ -854,6 +857,7 @@ def merge_org_bundle(
     _import_report_templates(db, target_org, data, current_user, resolutions=resolutions, warnings=warnings)  # before layouts name them
     import_org_layouts(db, target_org.id, data, current_user, warnings, merge=True, file_bytes_by_ref=file_bytes_by_ref)
     import_org_packs(db, target_org.id, data, current_user, warnings, merge=True)
+    import_org_snippets(db, target_org.id, data, current_user, warnings, merge=True, file_bytes_by_ref=file_bytes_by_ref)
     import_org_placements(db, target_org.id, data, current_user, warnings)
     import_org_folders(db, target_org.id, data, current_user, warnings)
     _warn_legacy_report_content(data, warnings)

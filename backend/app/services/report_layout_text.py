@@ -30,9 +30,10 @@ Responsibilities:
 - Let other block types add their text form (`register_text_form`), as they add a validator and an evaluator.
 
 Grammar (one statement per line; indentation is cosmetic):
-- `@layout document [portrait|landscape] [A3|A4|A5|Letter|Legal] [mirror] [margins top=<cm> bottom=<cm> left=<cm>
-  right=<cm> gutter=<cm>]` or `@layout table` is the first line. The orientation, size and `mirror` (mirrored
-  margins for double-sided printing) come in any order, each once; `margins` comes last and each side is optional.
+- `@layout document [portrait|landscape] [A3|A4|A5|Letter|Legal] [mirror] [repeatheader|norepeatheader] [margins top=<cm>
+  bottom=<cm> left=<cm> right=<cm> gutter=<cm>]` or `@layout table` is the first line. The orientation, size, `mirror`
+  (mirrored margins for double-sided printing) and `norepeatheader` (do not print a table's heading row again on each page it
+  runs onto; on otherwise) come in any order, each once; `margins` comes last and each side is optional.
 - Page styles are declared before the first block, one per line, like variables: `@pagestyle "<name>"
   [portrait|landscape] [A3|…] [margins …]`. What a style leaves out is the layout's own. `@section "<name>"` … `@end`
   lays its contents out in that style, on pages of their own.
@@ -129,8 +130,12 @@ _NUMBER = re.compile(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?")
 _BARE = re.compile(r"[A-Za-z_][A-Za-z0-9_\-]*")
 _LEVEL_ATTR = re.compile(r"level=(\S*)(?:\s+|$)")
 _ATTR_LOOKALIKE = re.compile(r"[a-z_]+=")
+#: A tree path that names a block (`nodes[2]`, `nodes[2].children[0]`), as opposed to a column, join or page style.
+_BLOCK_PATH = re.compile(r"nodes(?:\[\d+\]\.(?:children|else_children))*\[\d+\]")
 #: The clauses of an `@var` line after its name and type.
 VARIABLE_CLAUSES = ("label", "default", "options", "from")
+#: Layout line words for whether a table's header row is printed again on each page it runs onto (on unless `norepeatheader`).
+HEADER_REPEAT_WORDS = ("repeatheader", "norepeatheader")
 
 
 @dataclass(frozen=True)
@@ -156,10 +161,13 @@ class ParseResult:
         tree: The layout tree, `None` when the text has syntax errors. Present (but possibly invalid) when
             only validator errors were found.
         errors: Every problem found, in line order.
+        block_lines: The 1-based line each block starts on, by tree path (`nodes[2]`, `nodes[2].children[0]`); empty after
+            a syntax error. The Text view uses it to tell which blocks a selection touches.
     """
 
     tree: dict[str, Any] | None = None
     errors: list[TextError] = field(default_factory=list)
+    block_lines: dict[str, int] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
@@ -747,7 +755,8 @@ class _Parser:
             line, block = self._line_for(e.path)
             where = e.path[len(block):].lstrip(".")
             problems.append(TextError(line, None, f"{where}: {e.message}" if where else e.message))
-        return ParseResult(tree, sorted(problems, key=lambda e: e.line))
+        blocks = {path: line for path, line in self.line_of.items() if _BLOCK_PATH.fullmatch(path)}
+        return ParseResult(tree, sorted(problems, key=lambda e: e.line), blocks)
 
     def _ordered(self) -> list[TextError]:
         return sorted(self.errors, key=lambda e: (e.line, e.column or 0))
@@ -808,11 +817,14 @@ class _Parser:
             raise _Syntax(f"The layout must be a {FAMILY_DOCUMENT} or a {FAMILY_TABLE}, not {family!r}.", offset + 2)
         self.tree["family"] = family
         # The orientation, the page size and `mirror` may come in any order, each at most once; `margins` ends the line.
-        while word := cur.accept(*ORIENTATION_WORDS, *PAGE_SIZE_WORDS, "mirror"):
-            key = "orientation" if word in ORIENTATION_WORDS else "mirror_margins" if word == "mirror" else "page_size"
+        while word := cur.accept(*ORIENTATION_WORDS, *PAGE_SIZE_WORDS, "mirror", *HEADER_REPEAT_WORDS):
+            key = (
+                "orientation" if word in ORIENTATION_WORDS else "mirror_margins" if word == "mirror"
+                else "repeat_table_header" if word in HEADER_REPEAT_WORDS else "page_size"
+            )
             if key in self.tree:
                 raise _Syntax(f"The {key.replace('_', ' ')} is written once.", offset)
-            self.tree[key] = True if word == "mirror" else word
+            self.tree[key] = word == "repeatheader" if key == "repeat_table_header" else True if word == "mirror" else word
         if cur.accept("margins"):
             self.tree["margins"] = _margins(cur)
         cur.expect_end()
@@ -1002,6 +1014,8 @@ class _Parser:
             cur.expect_end()
             self.line_of[f"{column_path}[{len(node['columns'])}]"] = directive.line_no
             node["columns"].append(column)
+        elif name == "images":
+            node["columns"].append(self._images_column(frame, directive, column_path))
         elif name in ("join", "joins") and frame.kind == "sheet":
             cur = directive.cursor()
             if name == "joins":
@@ -1023,8 +1037,45 @@ class _Parser:
             self.line_of[f"{frame.path}.joins[{len(joins)}]"] = directive.line_no
             joins.append(join)
         else:
-            allowed = "@column, @end" if frame.kind == "table" else "@column, @join, @joins none, @end"
+            allowed = "@column, @images, @end" if frame.kind == "table" else "@column, @images, @join, @joins none, @end"
             raise _Syntax(f"Inside @{node['type']} use {allowed}.", indent + 1)
+
+    def _images_column(self, frame: _Frame, directive: _Directive, column_path: str) -> dict[str, Any]:
+        """Reads an `@images` line (a column of the pictures attached to each row's record) into a column."""
+        cur = directive.cursor()
+        rules: dict[str, Any] = {}
+        column: dict[str, Any] = {"images": rules}
+        while (token := cur.peek()) is not None:
+            word = cur.accept(*_IMAGE_COLUMN_CLAUSES)
+            if word is None:
+                raise _Syntax(f"Unexpected {token.shown()}. Clauses: {', '.join(_IMAGE_COLUMN_CLAUSES)}.", token.column)
+            target = column if word in ("label", "from") else rules
+            if word in target:
+                raise _Syntax(f"{word} is written once.", token.column)
+            if word == "names":
+                rules[word] = cur.comma_list(lambda: cur.text("a file name pattern in quotes"))
+            elif word == "types":
+                rules[word] = cur.comma_list(lambda: cur.word("a file type such as png"))
+            elif word == "label":
+                column[word] = cur.text("the column heading in quotes")
+            elif word == "from":
+                if frame.kind != "sheet":
+                    raise _Syntax("Only a sheet reads pictures from a joined name.", token.column)
+                column[word] = cur.word("a joined name")
+            elif word in ("max_count", "max_size_mb"):
+                rules[word] = _number_word(cur, f"the {word.replace('_', ' ')}")
+            elif word == "width":
+                rules["width"] = _number_word(cur, "the width")
+                if unit := cur.accept("cm", "mm", "percent"):
+                    rules["width_unit"] = unit
+            elif word == "height":
+                rules["height"] = _number_word(cur, "the height")
+                if unit := cur.accept("cm", "mm"):
+                    rules["height_unit"] = unit
+            else:  # order, arrange
+                rules[word] = cur.word(f"the {word}")
+        self.line_of[f"{column_path}[{len(frame.node['columns'])}]"] = directive.line_no
+        return column
 
     # --- building blocks (used by the forms)
 
@@ -1215,6 +1266,8 @@ def format_tree(tree: dict[str, Any]) -> str:
     header = f"@layout {tree['family']}{_page_style_words(tree)}"
     if tree.get("mirror_margins"):
         header += " mirror"
+    if "repeat_table_header" in tree:
+        header += " repeatheader" if tree["repeat_table_header"] else " norepeatheader"
     if "margins" in tree:
         header += _margins_text(tree["margins"])
     writer.line(0, header)
@@ -1480,8 +1533,38 @@ def _parse_table(p: _Parser, d: _Directive) -> None:
     p.open(node, d.line_no, "table")
 
 
+_IMAGE_COLUMN_CLAUSES = ("names", "types", "max_count", "order", "max_size_mb", "width", "height", "arrange", "label", "from")
+
+
+def _images_line(column: dict[str, Any]) -> str:
+    """The `@images` line of an image column."""
+    rules = column["images"]
+    parts = ["@images"]
+    for word in _IMAGE_COLUMN_CLAUSES:
+        source = column if word in ("label", "from") else rules
+        if word not in source or source[word] == []:
+            continue
+        value = source[word]
+        if word == "names":
+            parts.append("names " + ", ".join(_quote(item) for item in value))
+        elif word == "types":
+            parts.append("types " + ", ".join(value))
+        elif word == "label":
+            parts.append(f"label {_quote(value)}")
+        elif word in ("width", "height"):
+            parts.append(f"{word} {json.dumps(value)}" + (f" {rules[word + '_unit']}" if word + "_unit" in rules else ""))
+        elif word in ("max_count", "max_size_mb"):
+            parts.append(f"{word} {json.dumps(value)}")
+        else:
+            parts.append(f"{word} {value}")
+    return " ".join(parts)
+
+
 def _write_columns(w: _Writer, columns: list[dict[str, Any]], depth: int) -> None:
     for column in columns:
+        if "images" in column:
+            w.line(depth, _images_line(column))
+            continue
         name = f"{column['from']}.{column['field']}" if "from" in column else column["field"]
         w.line(depth, f"@column {name}" + (f" {_quote(column['label'])}" if "label" in column else ""))
 

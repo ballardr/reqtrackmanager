@@ -407,7 +407,7 @@ def _sections_of_document(blocks: Sequence[Block]) -> tuple[list[ReportSection],
         elif isinstance(block, Table):
             sections.append(ReportSection(
                 key=f"section-{len(sections) + 1}", title=" / ".join(text for _, text in trail) or f"Table {len(sections) + 1}",
-                columns=block.columns, rows=block.rows, note=" ".join(lines), tones=block.tones,
+                columns=block.columns, rows=[[str(cell) for cell in row] for row in block.rows], note=" ".join(lines), tones=block.tones,
             ))
             unused, lines = [], []
         # Gap, PageBreak and Image carry no text.

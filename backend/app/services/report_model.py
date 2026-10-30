@@ -373,13 +373,43 @@ def _markdown_image(data: bytes) -> Image:
     return Image(data=data)
 
 
+#: How the pictures of one table cell are laid out.
+CELL_ARRANGEMENTS = ("stacked", "side_by_side")
+
+
+@dataclass(frozen=True)
+class ImageCell:
+    """A table cell that holds pictures (the files attached to a row's record).
+
+    A renderer draws each picture at the size its `Image` asks for, measured against the width of the cell (so `width` in
+    `percent` is a share of the column, which survives a change of page size or column widths). Where pictures cannot be
+    drawn, `text` (the file names) stands in; it is also what `str()` gives, so code that only reads text keeps working.
+
+    Attributes:
+        images: The pictures in order. Their `width` / `width_unit` / `height_cm` are the column's size rule.
+        arrange: `stacked` (one under another) or `side_by_side` (left to right, wrapping inside the cell).
+        text: The pictures' file names, comma separated; empty when there are none.
+    """
+
+    images: list[Image]
+    arrange: str = "stacked"
+    text: str = ""
+
+    def __str__(self) -> str:
+        return self.text
+
+
+#: What a table cell holds: text, or the pictures of an image column.
+Cell = str | ImageCell
+
+
 @dataclass(frozen=True)
 class Table:
     """A table with a repeating header row.
 
     Attributes:
         columns: Header cells.
-        rows: Body rows of plain-text cells.
+        rows: Body rows of cells: plain text, or an `ImageCell` in an image column.
         col_widths_cm: Column widths in centimetres, or `None` for equal
             widths across the page. The PDF uses them as given; the DOCX
             scales them to the page's usable width.
@@ -388,13 +418,18 @@ class Table:
             grid.
         tones: Optional tone per body cell, shaped like `rows` (`None` = no
             tone; a name outside `TONE_FILL` is ignored by the renderers).
+        weights: Relative column widths for a table that gave no `col_widths_cm`, one per column (a table with an image
+            column gives it a larger share than an id); `None` for the renderer's own sizing.
+        repeat_header: Whether the header row is printed again at the top of every page the table runs onto.
     """
 
     columns: list[str]
-    rows: list[list[str]]
+    rows: Sequence[Sequence[Cell]]
     col_widths_cm: list[float] | None = None
     compact: bool = False
     tones: list[list[str | None]] | None = None
+    weights: list[float] | None = None
+    repeat_header: bool = True
 
     def tone_at(self, row: int, column: int) -> str | None:
         """The known tone of a body cell, or `None` (no tones, out of range, or an unknown name)."""

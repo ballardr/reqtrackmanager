@@ -566,6 +566,20 @@ DESIGN_FORMULAE_LAYOUT = {
 """A custom report layout with an equation block and equations written inside text, as the designer's Equation shortcut and text view produce."""
 
 
+PAIN_POINTS_WITH_PICTURES_LAYOUT = {
+    "schema_version": 1, "family": "document", "orientation": "portrait",
+    "nodes": [
+        {"type": "heading", "text": "{{report_title}}"},
+        {
+            "type": "table", "source": {"record_type": "pain_point", "sort": [{"field": "title"}]},
+            "columns": [{"field": "code"}, {"field": "title"}, {"images": {"types": ["png", "jpg"], "max_count": 3}, "label": "Pictures"}],
+            "empty_text": "No pain points.",
+        },
+    ],
+}
+"""A custom report layout with an images column: each Pain Point's attached pictures beside its code and title (a share of the column wide)."""
+
+
 def create_report_layout(headers: dict, path: str, name: str, description: str, tree: dict, folder: str = "") -> dict:
     """Creates a custom report layout at one tier: `/orgs/{id}` or `/projects/{id}` (followed by `/report-layouts`), filed
     under `folder` in the Reports picker (up to three levels, `A/B`)."""
@@ -584,6 +598,23 @@ def hide_report_layout(headers: dict, project_id: str, layout_id: str) -> None:
         f"{BASE}/projects/{project_id}/report-layouts/{layout_id}/visibility", json={"hidden": True}, headers=headers, timeout=30,
     )
     r.raise_for_status()
+
+
+def create_report_snippet(
+    headers: dict, path: str, name: str, description: str, tree: dict, *, start: int, count: int = 1, category: str = "House style",
+) -> dict:
+    """Saves blocks `start` to `start + count` of a layout tree as a report snippet at one tier: `/orgs/{id}` or `/projects/{id}`
+    (followed by `/report-snippets`)."""
+    r = httpx.post(
+        f"{BASE}{path}/report-snippets",
+        json={
+            "name": name, "description": description, "category": category, "tree": tree,
+            "selection": {"container": "nodes", "start": start, "count": count},
+        },
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
 
 
 def create_report_pack(headers: dict, path: str, name: str, description: str, definition: dict, folder: str = "") -> dict:
@@ -2164,7 +2195,16 @@ def main() -> None:
         folder="Handover/Requirements",
     )
     create_report_layout(
+        h_pm, f"/orgs/{org['id']}", "Pain points with pictures", "A table of Pain Points with the pictures attached to each.",
+        PAIN_POINTS_WITH_PICTURES_LAYOUT,
+    )
+    create_report_layout(
         h_pm, f"/orgs/{org['id']}", "Design formulae", "Equations in a text block and as blocks of their own.", DESIGN_FORMULAE_LAYOUT,
+    )
+    print("Seeding a saved report snippet: the by-component grouping, kept for the organisation to insert into other layouts...")
+    create_report_snippet(
+        h_pm, f"/orgs/{org['id']}", "Requirements by component", "A group of the requirements by component, each with a table.",
+        REQUIREMENTS_BY_COMPONENT_LAYOUT, start=2,
     )
     print("Seeding a report pack: the requirements by category and by component handed over together, with a saved set...")
     handover = create_report_pack(

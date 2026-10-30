@@ -44,6 +44,10 @@ flowchart LR
 
 - **Blocks** shows the same layout as blocks, so you can build a layout without writing the `@` syntax, and it has the full width of the page. **Add block** lists the blocks (*Heading*, *Text* and *Table* first), and the line beside it says where the next one will go: after the selected block, inside it (a block that holds others, such as *for each record*, a group or an *if*, offers each of its lists) or at the end of the layout. The new block is selected at once, and **Ctrl+Z** (**Cmd+Z** on a Mac) takes it back. Drag blocks on the canvas to reorder them or drop them inside another block. Short settings (a heading's words and level, the name a *for each* gives each record) are on the block itself. **Select a block** to edit all its settings in the panel beside the canvas (under it on a narrow screen): *Linked from* lists the names of the enclosing blocks, and a filter offers the fields and operators that suit the field you chose. The arrow keys move around the blocks. A block with a problem shows a warning mark, and the message appears under the field in the panel; **Layout settings** at the top holds the page size and orientation, the margins, the [page styles](#page-setup) and the [variables](./blocks-widgets-and-variables.md#variables). The layout is checked as you pause, **Save new version** and **Run preview** wait until there are no problems, and switching to **Text** shows the same layout as text. You can switch from the text only while it reads without problems. A block dragged outside the layout is not part of it, and the panel says so. **Preview** opens the preview in a dialog; **Preview panel** keeps it open beside the blocks (your choice is remembered).
 
+- **Insert snippet** (beside **Add block** in Blocks, and beside the block shortcuts in Text) adds a ready-made piece to the layout: a cover page, a logo at the top right of the first page, record images, a document control list, an approvals block or a landscape table section. The window lists the snippets by category with a search box, shows the output formats each is true in (PDF, Word, OpenDocument, HTML) and an outline of the blocks it adds, and asks for what it needs: a picture from the library, a kind of record, a short text. A snippet for the other kind of layout (a table snippet in a document) is shown greyed out with the reason. In **Blocks** it goes where the line beside **Add block** says, or at the start of the layout, and one **Ctrl+Z** removes all its blocks (a page style it added stays until you delete it). In **Text** the text is read as a layout first, so it must be free of problems; the snippet goes at the end or the start, and **Undo insertion** puts the text back while you have not edited it. Either way a note lists what was added ("Added page style "Cover""), and a page style or variable the layout already has is reused rather than overwritten. A snippet is copied in: changing the layout later never changes the snippet, and the snippet never changes the layout again. A snippet cannot give anyone access to more than they could already read: its blocks run with the permissions of whoever runs the report.
+- **Save as snippet** keeps a piece you built so you can insert it into other layouts. In **Blocks**, select a block (a container is saved with everything inside it) and choose **Save as snippet**; in **Text**, put the caret in a block or select several, and the top-level blocks you touched are saved. Give it a **Name**, an optional description and a **Category**, and choose where to keep it: this project (also shared with the projects below it) or, from a project, the organisation, which shares it with every project. The window says how many blocks it saves and which page styles and variables it carries along, so it works in a layout that has neither. A selection that needs something defined outside it (an alias of an enclosing "for each") cannot be saved, and a picture from a project's library cannot be kept for the organisation: the window names the picture. Saved snippets appear in **Insert snippet** beside the built-in ones, marked "Saved" with where they come from, and are copied in like any other. They have no parameters: edit the result after inserting.
+- **Report snippets** in **Report Setup** (and an organisation's **Templates & reports**) lists the saved snippets with their source, block count and what they carry. **Edit details** renames or re-describes one, **Make a copy** makes a snippet of your own from it (or **Copy to the organisation**), and **Delete** removes one you own after you type its name; layouts already built from it keep their blocks. A snippet shared from the organisation or a parent project is read-only: **Hide in this project** stops it being offered here, and **Add organisation defaults** brings it back. Snippets travel with the project and organisation exports.
+
 - **Preview** runs the layout as you, on the real records, and shows a document as it will print or a table layout's first rows of each sheet (with the real row count). It stores nothing, and a project preview can include child projects while an organisation preview can be limited to chosen projects.
 - **Saving** adds a version: **Save new version** asks for an optional note in a small window, then saves. If somebody saved while you were editing, you are told and can reload their version; nothing is overwritten. Leaving with unsaved changes asks first.
 - **History** lists every version and compares any two line by line (added lines start with `+`, removed with `-`). **Use this version as the new text** puts an old version in the editor; saving it adds a new version, so history is never rewritten.
@@ -139,6 +143,31 @@ flowchart LR
   F -->|Yes| G[Figure in the report]
   F -->|No| H[Skipped, run warns]
 ```
+
+### A column of pictures in a table
+
+A table can show the pictures attached to each row's record in a column of its own, beside the code and title: **Add images column** in the table block's details. It is for any pictures, a photo or a diagram, so there is no thumbnail size: each picture is shown at **90% of the column's width** unless you choose otherwise, and a percentage follows the column, so it still fits when you change the page size or orientation.
+
+- The rules that choose the files are the same as for a Record images block (**File names**, **File types**, **Most per row**, **Order**, **Largest file**). A name can use the row's own values as `{{row.code}}`, for example `{{row.code}}-*`.
+- **Width** (a percentage of the column, or cm or mm) and **Height** are yours to set; nothing else limits the size. The one exception is physical: if a cell would be taller than a page of the report, its pictures are shrunk together (keeping their shapes) so the row can be printed.
+- **Arrangement** is **stacked** (one under another) or **side by side** (a line that wraps inside the cell), chosen for each column. A row with no matching picture has an empty cell.
+- The same pictures print in PDF, Word, OpenDocument and HTML, and the same record rules apply: a picture prints only if you could open it from its record's page, and a picture marked confidential never does. In a **sheet** (Excel, OpenDocument spreadsheet, CSV) the column lists the matching file names instead, because a cell there holds text.
+
+```mermaid
+flowchart LR
+  T[Table of records] --> C[Images column]
+  C --> R[Each row's attached files]
+  R --> F[Rules: name, type, size, order, most per row]
+  F --> S[Width as a share of the column,<br/>stacked or side by side]
+  S --> D[Pictures in the cell]
+  F --> X[Sheet: file names as text]
+```
+
+In the text view an images column is one line inside the table: `@images names "site-*" types png width 80 percent arrange side_by_side label "Photos"`.
+
+### Repeating table headings
+
+A table's column headings print again at the top of every page the table runs onto. If you would rather have them only at the start, turn off **Repeat table header rows** in the layout's settings (Blocks) or **Page setup** (Text). It applies to every table in the layout, and the text view writes `norepeatheader` on the first line (`@layout document norepeatheader`).
 
 ### Marking a picture confidential
 

@@ -44,6 +44,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.models.file import FileAsset
 from app.models.report_layout import ReportLayout, ReportLayoutVersion
+from app.models.report_snippet import SavedReportSnippet
 from app.services.files import delete_file, read_file, upload_file
 from app.services.report_layout_tree import TreeError
 from app.services.report_svg import UnsafeSvgError, sanitize_svg
@@ -330,7 +331,8 @@ def _in_any_version(db: Session, organization_id: uuid.UUID, file_id: uuid.UUID)
 
 
 def used_by(db: Session, organization_id: uuid.UUID, file_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[str]]:
-    """The names of the layouts whose current version embeds each file (a text search of the stored tree)."""
+    """The names of the layouts whose current version embeds each file, and of the saved snippets that do (named
+    "<name> (snippet)"): a text search of the stored trees and fragments."""
     if not file_ids:
         return {}
     rows = db.execute(
@@ -344,6 +346,14 @@ def used_by(db: Session, organization_id: uuid.UUID, file_ids: list[uuid.UUID]) 
         for file_id in file_ids:
             if str(file_id) in tree_text:
                 found.setdefault(file_id, []).append(name)
+    snippets = db.execute(
+        select(SavedReportSnippet.name, cast(SavedReportSnippet.blocks, Text), cast(SavedReportSnippet.root, Text))
+        .where(SavedReportSnippet.organization_id == organization_id)
+    ).all()
+    for name, blocks_text, root_text in snippets:
+        for file_id in file_ids:
+            if str(file_id) in blocks_text or str(file_id) in root_text:
+                found.setdefault(file_id, []).append(f"{name} (snippet)")
     return found
 
 

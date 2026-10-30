@@ -331,6 +331,20 @@ CONTEXT_OVERVIEW_LAYOUT = {
 Its wide matrix sits in a section with an A3 landscape page style inside an A4 portrait report."""
 
 
+PAIN_POINTS_WITH_PICTURES_LAYOUT = {
+    "schema_version": 1, "family": "document", "orientation": "portrait",
+    "nodes": [
+        {"type": "heading", "text": "{{report_title}}"},
+        {
+            "type": "table", "source": {"record_type": "pain_point", "sort": [{"field": "title"}]},
+            "columns": [{"field": "code"}, {"field": "title"}, {"images": {"types": ["png", "jpg"], "max_count": 3}, "label": "Pictures"}],
+            "empty_text": "No pain points.",
+        },
+    ],
+}
+"""A custom report layout with an images column: each Pain Point's attached pictures beside its code and title (a share of the column wide)."""
+
+
 def create_report_layout(headers: dict, path: str, name: str, description: str, tree: dict) -> dict:
     """Creates a custom report layout at one tier: `/orgs/{id}` or `/projects/{id}` (followed by `/report-layouts`)."""
     r = httpx.post(
@@ -347,6 +361,23 @@ def hide_report_layout(headers: dict, project_id: str, layout_id: str) -> None:
         f"{BASE}/projects/{project_id}/report-layouts/{layout_id}/visibility", json={"hidden": True}, headers=headers, timeout=30,
     )
     r.raise_for_status()
+
+
+def create_report_snippet(
+    headers: dict, path: str, name: str, description: str, tree: dict, *, start: int, count: int = 1, category: str = "House style",
+) -> dict:
+    """Saves blocks `start` to `start + count` of a layout tree as a report snippet at one tier: `/orgs/{id}` or `/projects/{id}`
+    (followed by `/report-snippets`)."""
+    r = httpx.post(
+        f"{BASE}{path}/report-snippets",
+        json={
+            "name": name, "description": description, "category": category, "tree": tree,
+            "selection": {"container": "nodes", "start": start, "count": count},
+        },
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
 
 
 def create_report_pack(headers: dict, path: str, name: str, description: str, definition: dict) -> dict:
@@ -1077,6 +1108,18 @@ def main() -> None:
     )
     create_report_layout(
         h_g, f"/orgs/{gamma['id']}", "E2E Widget layout", "Embeds Context & Strategy report tables as widgets.", CONTEXT_OVERVIEW_LAYOUT,
+    )
+    create_report_layout(
+        h_g, f"/orgs/{gamma['id']}", "E2E Pictures layout", "A table of Pain Points with an images column.", PAIN_POINTS_WITH_PICTURES_LAYOUT,
+    )
+    print("Seeding saved report snippets: an organisation one, and Gamma-5's own.")
+    create_report_snippet(
+        h_g, f"/orgs/{gamma['id']}", "E2E Org snippet", "Organisation snippet every Gamma project inherits.",
+        REQUIREMENTS_BY_COMPONENT_LAYOUT, start=2,
+    )
+    create_report_snippet(
+        h_g, f"/projects/{gamma5['id']}", "E2E Gamma-5 snippet", "Gamma-5's own snippet.", REQUIREMENTS_BY_COMPONENT_LAYOUT, start=0,
+        category="Gamma-5",
     )
     create_report_pack(
         h_g, f"/orgs/{gamma['id']}", "E2E Pack", "Two layouts handed over as one zip.",

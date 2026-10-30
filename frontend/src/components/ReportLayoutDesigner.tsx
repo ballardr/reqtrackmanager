@@ -17,6 +17,12 @@
  * - Offer, beside the text editor, the live preview, the field picker and the widget picker, which insert at the
  *   caret; and, on a second tab, the version history and comparison. The block editor takes the full width: its
  *   preview opens in a dialog (Preview) or, when the person turns it on, as a panel beside the blocks (remembered).
+ * - Insert a snippet (`ReportSnippetPicker`) from either view and report what the server did (`ReportSnippetNotice`). In
+ *   the Blocks view the editor places the blocks itself (Ctrl+Z undoes them); in the Text view the draft is read as a
+ *   layout, the server inserts the snippet at the start or end of it and the text is written again from the result,
+ *   with an Undo while that text stands.
+ * - Save a selection as a snippet (`ReportSaveSnippetDialog`): the selected block of the Blocks view, or the top-level blocks
+ *   the Text view's selection or caret touches (the server's parse says which line each block starts on).
  * - Warn before leaving with unsaved changes (the Back link and the browser's own unload prompt).
  *
  * Design decisions: the text view is the only editing surface here and the server the only parser, so the client
@@ -28,10 +34,11 @@ import { useNavigate } from "react-router-dom";
 
 import {
   conflictVersion, LAYOUT_FAMILY_LABEL, LAYOUT_ORIGIN_LABEL, reportLayoutPath, treeProblems,
-  type BlockCatalogue, type ReportFieldCatalogue, type ReportLayoutApi, type ReportLayoutDetail, type ReportWidget,
-  type TextParseResult, type TreeCheck,
+  type BlockCatalogue, type ReportFieldCatalogue, type ReportLayoutApi, type ReportLayoutDetail, type ReportSnippet, type ReportWidget,
+  type SnippetApplyResult, type TextParseResult, type TreeCheck,
 } from "../api/reportLayouts";
 import { reportDuplicateApi, type DuplicateResult, type ReportDuplicateApi } from "../api/reportDuplicate";
+import { reportSnippetStoreApi, type ReportSnippetStoreApi, type SnippetSelection } from "../api/reportSnippets";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
@@ -41,6 +48,7 @@ import {
   aliasesInScope, asBlock, insertAt, insertionRange, lineOfOffset, offsetOfLine,
 } from "../utils/reportLayoutText";
 import { stableJson, type Tree } from "../utils/reportLayoutTree";
+import { selectionFromLines } from "../utils/reportSnippetSelection";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { Badge } from "./Badge";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -53,6 +61,9 @@ import { ReportLayoutHistory } from "./ReportLayoutHistory";
 import { ReportLayoutPageSetup } from "./ReportLayoutPageSetup";
 import { ReportLayoutPreviewPanel } from "./ReportLayoutPreviewPanel";
 import { ReportLayoutWidgetPicker } from "./ReportLayoutWidgetPicker";
+import { ReportSaveSnippetDialog } from "./ReportSaveSnippetDialog";
+import { ReportSnippetNotice, type SnippetNoticeData } from "./ReportSnippetNotice";
+import { ReportSnippetPicker } from "./ReportSnippetPicker";
 import { RecordHeader } from "./RecordHeader";
 import { SaveVersionButton } from "./SaveVersionButton";
 import { Spinner } from "./Spinner";
@@ -71,7 +82,21 @@ type EditView = "text" | "blocks";
 /** The views that edit the tree itself (the text view edits text). */
 const isTreeView = (view: EditView) => view !== "text";
 type AsideTab = "preview" | "fields" | "widgets";
-type Dialog = "details" | "delete" | "reload" | "leave" | "preview" | "duplicate";
+type Dialog = "details" | "delete" | "reload" | "leave" | "preview" | "duplicate" | "snippet" | "save-snippet";
+
+/** The last snippet insertion, for the notice above the views; `afterText` is the text view's text it produced (Undo is offered while it still stands). */
+interface SnippetNotice extends SnippetNoticeData {
+  view: EditView;
+  beforeText?: string;
+  afterText?: string;
+}
+
+/** What Save as snippet was asked to save: the draft tree, the blocks chosen and the words naming them. */
+interface SnippetToSave {
+  tree: Tree;
+  selection: SnippetSelection;
+  label: string;
+}
 
 /** The outcome of checking one exact block-editor tree. */
 interface TreeChecked {
@@ -94,7 +119,7 @@ interface Checked {
  * @param projectOptions Organisation scope: the projects a preview can be narrowed to.
  */
 export function ReportLayoutDesigner({
-  api, layoutId, backTo, projectOptions, duplicateApi: duplicateApiProp,
+  api, layoutId, backTo, projectOptions, duplicateApi: duplicateApiProp, snippetApi: snippetApiProp,
 }: {
   api: ReportLayoutApi;
   layoutId: string;
@@ -102,6 +127,8 @@ export function ReportLayoutDesigner({
   projectOptions?: { value: string; label: string }[];
   /** The calls that duplicate this layout; the live ones for the layout's scope when omitted. */
   duplicateApi?: ReportDuplicateApi;
+  /** The calls that save a snippet; the live ones for the layout's scope when omitted. */
+  snippetApi?: ReportSnippetStoreApi;
 }) {
   const strings = useStrings();
   const text = strings.reportLayouts;
@@ -109,6 +136,7 @@ export function ReportLayoutDesigner({
   const { showToast } = useToast();
   const navigate = useNavigate();
   const duplicateApi = useMemo(() => duplicateApiProp ?? reportDuplicateApi(api.scope), [duplicateApiProp, api.scope]);
+  const snippetStore = useMemo(() => snippetApiProp ?? reportSnippetStoreApi(api.scope), [snippetApiProp, api.scope]);
   const beginCheck = useRequestSequence();
 
   const [detail, setDetail] = useState<ReportLayoutDetail | null>(null);
@@ -135,6 +163,11 @@ export function ReportLayoutDesigner({
   const [conflict, setConflict] = useState<number | null>(null);
   const [caretLine, setCaretLine] = useState(0);
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  /** The tree the Text view's snippet dialog applies to (the draft as read when the dialog opened), and the last insertion's notice. */
+  const [snippetTree, setSnippetTree] = useState<Tree | null>(null);
+  const [snippetNotice, setSnippetNotice] = useState<SnippetNotice | null>(null);
+  /** The selection the Save as snippet dialog saves. */
+  const [toSave, setToSave] = useState<SnippetToSave | null>(null);
   /** Whether the block editor shows the preview as a panel beside the blocks (otherwise only in the Preview dialog). */
   const [previewBeside, setPreviewBeside] = useUiPreference<boolean>("report_layout_preview_beside", false);
   const editor = useRef<HTMLTextAreaElement>(null);
@@ -266,6 +299,79 @@ export function ReportLayoutDesigner({
     setCaretLine(lineOfOffset(next.text, next.caret));
   }
 
+  /** Opens the snippet dialog from the Text view: the draft is read as a layout first, and must read cleanly. */
+  async function openTextSnippets() {
+    setViewNote(null);
+    let parsed: TextParseResult | null = current?.result ?? null;
+    if (parsed === null) {
+      try {
+        parsed = await api.parseText(draft);
+      } catch {
+        parsed = null;
+      }
+    }
+    const tree = parsed?.ok === true ? parsed.tree : null;
+    if (!tree || tree.family !== detail?.family) {
+      setViewNote(strings.reportSnippets.textNeedsFixes);
+      return;
+    }
+    setSnippetTree(tree);
+    setDialog("snippet");
+  }
+
+  /**
+   * Opens Save as snippet from the Text view for the top-level blocks the selection (or the caret's line) touches. The draft is
+   * read as a layout first, and must read cleanly; the server's parse says which line each block starts on.
+   */
+  async function openTextSave() {
+    const el = editor.current;
+    setViewNote(null);
+    let parsed: TextParseResult | null = current?.result ?? null;
+    if (parsed === null || parsed.block_lines === undefined) {
+      try {
+        parsed = await api.parseText(draft);
+      } catch {
+        parsed = null;
+      }
+    }
+    const tree = parsed?.ok === true ? parsed.tree : null;
+    if (!tree || tree.family !== detail?.family) {
+      setViewNote(strings.reportSnippets.textSaveNeedsFixes);
+      return;
+    }
+    const start = el ? el.selectionStart : 0;
+    const end = el ? el.selectionEnd : 0;
+    const first = lineOfOffset(draft, start) + 1;
+    // A selection that ends at the start of a line does not touch that line.
+    const last = Math.max(first, lineOfOffset(draft, end > start && draft[end - 1] === "\n" ? end - 1 : end) + 1);
+    const selection = selectionFromLines(parsed?.block_lines ?? {}, first, last);
+    if (selection === null) {
+      setViewNote(strings.reportSnippets.textSaveNoBlock);
+      return;
+    }
+    setToSave({
+      tree, selection,
+      label: strings.reportSnippets.saveSelectedMany(selection.count),
+    });
+    setDialog("save-snippet");
+  }
+
+  /** Writes the tree a snippet produced back as the Text view's text, remembering the text it replaced for Undo. */
+  async function insertedIntoText(result: SnippetApplyResult, snippet: ReportSnippet) {
+    setDialog(null);
+    if (result.tree === null) return;
+    try {
+      const written = await api.formatTree(result.tree);
+      setSnippetNotice({
+        name: snippet.name, changes: result.changes, problemsElsewhere: result.problems_elsewhere, view: "text", beforeText: draft, afterText: written,
+      });
+      setDraft(written);
+      setChecked(null);
+    } catch {
+      showToast(strings.reportOutline.outlineFormatFailed, "error");
+    }
+  }
+
   function jumpTo(line: number) {
     const el = editor.current;
     if (!el) return;
@@ -282,6 +388,7 @@ export function ReportLayoutDesigner({
   async function switchView(next: EditView) {
     if (next === view) return;
     setViewNote(null);
+    setSnippetNotice(null);
     if (next === "text") {
       if (blockTree !== null && enteredTree !== null && stableJson(blockTree) !== stableJson(enteredTree)) {
         try {
@@ -453,11 +560,30 @@ export function ReportLayoutDesigner({
               active={view} onChange={(next) => void switchView(next)}
             />
             {viewNote && <p role="alert" style={{ color: "var(--color-danger)", margin: 0 }}>{viewNote}</p>}
+            {snippetNotice && snippetNotice.view === view && (
+              <ReportSnippetNotice
+                notice={snippetNotice} onDismiss={() => setSnippetNotice(null)}
+                hint={view === "text" ? undefined : strings.reportSnippets.undoBlocksHint}
+                onUndo={view === "text" && snippetNotice.afterText === draft && snippetNotice.beforeText !== undefined
+                  ? () => { setDraft(snippetNotice.beforeText ?? ""); setChecked(null); setSnippetNotice(null); }
+                  : undefined}
+              />
+            )}
             {view === "text" && (
               <div {...tabPanelProps("layout-view", "text")} className="stack">
               {editable && (
                 <div className="row" style={{ alignItems: "center", gap: "var(--space-3)" }}>
                   <ReportLayoutBlockToolbar family={detail.family} onInsert={(snippet) => insert(snippet, true)} />
+                  {blockTypes && (
+                    <button type="button" className="btn" aria-haspopup="dialog" onClick={() => void openTextSnippets()}>
+                      {strings.reportSnippets.insertButton}
+                    </button>
+                  )}
+                  {blockTypes && (
+                    <button type="button" className="btn" aria-haspopup="dialog" onClick={() => void openTextSave()}>
+                      {strings.reportSnippets.saveFromText}
+                    </button>
+                  )}
                   <ReportLayoutPageSetup
                     text={draft} onChange={setDraft} images={{ library: api.images, scope: api.scope.kind }}
                     placeholders={catalogue?.placeholders}
@@ -514,6 +640,14 @@ export function ReportLayoutDesigner({
                         tree={blockTree} onChange={setBlockTree} family={detail.family} blocks={blockTypes} catalogue={catalogue}
                         widgets={widgets} problems={blockProblems} readOnly={!editable} toolbarEnd={previewControls}
                         images={{ library: api.images, scope: api.scope.kind }}
+                        snippets={{
+                          api,
+                          onInserted: (notice) => setSnippetNotice({ ...notice, view }),
+                          onSave: (selection, label) => {
+                            setToSave({ tree: blockTree, selection, label });
+                            setDialog("save-snippet");
+                          },
+                        }}
                       />
                     </Suspense>
                     <div aria-live="polite">
@@ -564,6 +698,23 @@ export function ReportLayoutDesigner({
         </div>
       )}
 
+      {dialog === "snippet" && snippetTree && blockTypes && (
+        <ReportSnippetPicker
+          api={api} family={detail.family} blockTypes={blockTypes.blocks} tree={snippetTree}
+          images={{ library: api.images, scope: api.scope.kind }}
+          places={[
+            { container: "nodes", index: null, label: strings.reportSnippets.atEnd },
+            { container: "nodes", index: 0, label: strings.reportSnippets.atStart },
+          ]}
+          onClose={() => setDialog(null)} onInserted={(result, snippet) => void insertedIntoText(result, snippet)}
+        />
+      )}
+      {dialog === "save-snippet" && toSave && (
+        <ReportSaveSnippetDialog
+          api={snippetStore} tree={toSave.tree} selection={toSave.selection} selectionLabel={toSave.label}
+          onClose={() => setDialog(null)} onSaved={() => setDialog(null)}
+        />
+      )}
       {dialog === "preview" && (
         <Modal title={text.previewDialogTitle} size="lg" onClose={() => setDialog(null)}>{preview}</Modal>
       )}

@@ -70,7 +70,7 @@ from app.services.report_fields import FieldInfo, UnknownReportFieldError, field
 from app.services.report_file_names import template_problems
 from app.services.report_layout_block_schema import BlockContainer, BlockField, BlockProvides, BlockSchema
 from app.services.report_math import MAX_TEX_CHARS, split_math, tex_problem
-from app.services.report_model import PLACEHOLDER_NAMES, PLACEHOLDER_RE
+from app.services.report_model import CELL_ARRANGEMENTS, PLACEHOLDER_NAMES, PLACEHOLDER_RE
 from app.services.report_page_styles import (
     ORIENTATIONS,
     PAGE_FIELD_NAMES,
@@ -138,6 +138,8 @@ MAX_ERRORS = 50
 
 DIRECTIONS = ("both", "outgoing", "incoming")
 DEFAULT_RECORD_ALIAS = "record"
+#: The name an image column's file name patterns use for the row's own record (`{{row.code}}`).
+ROW_ALIAS = "row"
 DEFAULT_GROUP_ALIAS = "group"
 DEFAULT_JOIN_ALIAS = "joined"
 MAX_JOINS = 5
@@ -369,7 +371,10 @@ class TreeValidator:
 
         self.check_keys(
             tree, "", required=("schema_version", "family", "nodes"),
-            optional=("orientation", "page_size", "margins", "mirror_margins", "page_styles", "header", "footer", "variables", "file_name"),
+            optional=(
+                "orientation", "page_size", "margins", "mirror_margins", "page_styles", "header", "footer", "variables", "file_name",
+                "repeat_table_header",
+            ),
         )
         if tree.get("schema_version") != TREE_SCHEMA_VERSION:
             self.error("schema_version", f"Must be {TREE_SCHEMA_VERSION}.")
@@ -391,6 +396,11 @@ class TreeValidator:
             elif tree["page_size"] not in PAGE_SIZES:
                 self.error("page_size", f"Must be one of: {', '.join(PAGE_SIZES)}.")
         self.page_styles(tree, declared)
+        if "repeat_table_header" in tree:
+            if declared != FAMILY_DOCUMENT:
+                self.error("repeat_table_header", "Only a document layout has pages for a header row to repeat on.")
+            elif not isinstance(tree["repeat_table_header"], bool):
+                self.error("repeat_table_header", "Must be true or false.")
         if "variables" in tree:
             self.variable_declarations(tree["variables"], "variables")
         if "file_name" in tree:
@@ -788,6 +798,9 @@ class TreeValidator:
             if not isinstance(col, dict):
                 self.error(here, "Must be an object.")
                 continue
+            if "images" in col:
+                self.image_column(col, here, record_type, aliases)
+                continue
             self.check_keys(col, here, required=("field",), optional=("label", "from") if aliases else ("label",))
             owner = record_type
             if aliases and "from" in col:
@@ -798,6 +811,41 @@ class TreeValidator:
             self.record_field(owner, col.get("field"), f"{here}.field")
             if "label" in col:
                 self.text(col["label"], f"{here}.label", limit=200)
+
+    def image_column(self, col: dict[str, Any], path: str, record_type: str, aliases: dict[str, str] | None) -> None:
+        """Validates a column that shows the pictures attached to each row's record: `{images: {...rules}, label?, from?}`.
+
+        The rules are the record-images block's (name patterns, types, most per record, order, largest file) plus a size
+        (a width, default 90 % of the column, and an optional height) and an arrangement. A name pattern may read the row's
+        own record as `{{row.field}}`.
+        """
+        self.check_keys(col, path, required=("images",), optional=("label", "from") if aliases else ("label",))
+        owner = record_type
+        if aliases and "from" in col:
+            if col["from"] not in aliases:
+                self.error(f"{path}.from", f'"{col["from"]}" is not a name in this sheet. Use one of: {", ".join(aliases)}.')
+                return
+            owner = aliases[col["from"]]
+        if "label" in col:
+            self.text(col["label"], f"{path}.label", limit=200)
+        if owner not in get_record_attachment_providers():
+            reason = get_no_record_attachment_reasons().get(owner, "Its attachments cannot be printed.")
+            self.error(f"{path}.images", f'The pictures of a "{owner}" record cannot be printed. {reason}')
+        spec = col["images"]
+        here = f"{path}.images"
+        if not isinstance(spec, dict):
+            self.error(here, "Must be an object (it may be empty).")
+            return
+        self.check_keys(
+            spec, here, required=(),
+            optional=("names", "types", "max_count", "order", "max_size_mb", "width", "width_unit", "height", "height_unit", "arrange"),
+        )
+        with self.binding(ROW_ALIAS, Binding("record", owner)):
+            _validate_picture_rules(self, spec, here)
+        _image_size(self, spec, "width", "width_unit", IMAGE_UNITS, here, "width")
+        _image_size(self, spec, "height", "height_unit", IMAGE_HEIGHT_UNITS, here, "height")
+        if "arrange" in spec and spec["arrange"] not in CELL_ARRANGEMENTS:
+            self.error(f"{here}.arrange", f"Must be one of: {', '.join(CELL_ARRANGEMENTS)}.")
 
     def placeholders(self, text: str | None, path: str) -> None:
         """Checks every `{{...}}` reference in `text` names a global placeholder or a field in scope."""
@@ -1126,20 +1174,9 @@ def _text_list(v: TreeValidator, node: dict[str, Any], key: str, path: str, *, l
     return kept
 
 
-def _validate_record_images(v: TreeValidator, node: dict[str, Any], path: str) -> None:
-    v.check_keys(
-        node, path, required=("type",),
-        optional=(
-            "names", "types", "max_count", "order", "max_size_mb", "caption_source", "caption", "caption_position", "numbering",
-            "width", "width_unit", "height", "height_unit", "align", "placement", "empty_text",
-        ),
-    )
-    record = _enclosing_record(v)
-    if record is None:
-        v.error(path, "Put this block inside a For each record block: it prints the pictures attached to that block's record.")
-    elif record.record_type not in get_record_attachment_providers():
-        reason = get_no_record_attachment_reasons().get(record.record_type, "Its attachments cannot be printed.")
-        v.error(path, f'The pictures of a "{record.record_type}" record cannot be printed. {reason}')
+def _validate_picture_rules(v: TreeValidator, node: dict[str, Any], path: str) -> None:
+    """Checks the rules that choose which of a record's attached files print: name patterns, file types, most per record, order and
+    largest file. One model for the record-images block and for an image column of a table, so a rule added later reaches both."""
     for i, pattern in _text_list(v, node, "names", path, limit=MAX_NAME_PATTERNS, chars=MAX_PATTERN_CHARS):
         v.placeholders(pattern, f"{path}.names[{i}]")
         if PLACEHOLDER_RE.sub("", pattern).count("*") > MAX_PATTERN_STARS:
@@ -1157,6 +1194,23 @@ def _validate_record_images(v: TreeValidator, node: dict[str, Any], path: str) -
         size = node["max_size_mb"]
         if not isinstance(size, int | float) or isinstance(size, bool) or not 0.1 <= size <= MAX_PICTURE_MEGABYTES:
             v.error(f"{path}.max_size_mb", f"Must be a number of megabytes from 0.1 to {MAX_PICTURE_MEGABYTES}.")
+
+
+def _validate_record_images(v: TreeValidator, node: dict[str, Any], path: str) -> None:
+    v.check_keys(
+        node, path, required=("type",),
+        optional=(
+            "names", "types", "max_count", "order", "max_size_mb", "caption_source", "caption", "caption_position", "numbering",
+            "width", "width_unit", "height", "height_unit", "align", "placement", "empty_text",
+        ),
+    )
+    record = _enclosing_record(v)
+    if record is None:
+        v.error(path, "Put this block inside a For each record block: it prints the pictures attached to that block's record.")
+    elif record.record_type not in get_record_attachment_providers():
+        reason = get_no_record_attachment_reasons().get(record.record_type, "Its attachments cannot be printed.")
+        v.error(path, f'The pictures of a "{record.record_type}" record cannot be printed. {reason}')
+    _validate_picture_rules(v, node, path)
     source = node.get("caption_source", "file_name")
     if source not in RECORD_IMAGE_CAPTIONS:
         v.error(f"{path}.caption_source", f"Must be one of: {', '.join(RECORD_IMAGE_CAPTIONS)}.")
@@ -1400,6 +1454,36 @@ _EMPTY_TEXT = BlockField("empty_text", "Text when there is nothing", "text", max
                          help="Shown instead of the block when it finds no records. Leave empty to show nothing.")
 _CHILDREN = BlockContainer("children", "Contents")
 
+#: The settings of an image column (a column of the pictures attached to each row's record), described once for the designer. The
+#: rules that choose the files are the record-images block's; the size is a share of the column.
+IMAGE_COLUMN_FIELDS: tuple[BlockField, ...] = (
+    BlockField("names", "File names", "text_list", max_length=MAX_PATTERN_CHARS, features=("placeholders",),
+               help="Show only files whose name matches one of these (case-insensitive). Use * for any run of characters and ? for "
+               "one, for example site-*. A value like {{row.code}} (the row's own record) is matched as plain text. Leave empty to "
+               "allow any name."),
+    BlockField("types", "File types", "text_list", max_length=10,
+               help=f"Allowed extensions: {', '.join(RECORD_IMAGE_EXTENSIONS)}. Leave empty to allow them all. Only real pictures "
+               "show, whatever the extension says."),
+    BlockField("max_count", "Most per row", "integer", minimum=1, maximum=MAX_PICTURES_PER_RECORD, default=5,
+               help="The most pictures shown in one row's cell."),
+    BlockField("order", "Order", "choice", choices=RECORD_IMAGE_ORDERS, default="name",
+               help="By file name, or by when the file was attached (oldest first)."),
+    BlockField("max_size_mb", "Largest file (MB)", "number", minimum=0.1, maximum=MAX_PICTURE_MEGABYTES,
+               help="Skip files bigger than this. Leave empty for the report limit."),
+    BlockField("width", "Width", "number", minimum=1, maximum=1000,
+               help="How wide to show each picture. Leave empty for 90% of the column, which follows the page size and the column "
+               "widths."),
+    BlockField("width_unit", "Width unit", "choice", choices=IMAGE_UNITS, default="percent", depends_on="width",
+               help="A percentage of the column's width, or centimetres or millimetres."),
+    BlockField("height", "Height", "number", minimum=0.5, maximum=1000,
+               help="Size by height instead. Leave empty to keep each picture's shape. Nothing else limits the size, except that a "
+               "picture is shrunk if it could never fit on a page."),
+    BlockField("height_unit", "Height unit", "choice", choices=IMAGE_HEIGHT_UNITS, default="cm", depends_on="height",
+               help="Centimetres or millimetres."),
+    BlockField("arrange", "Arrangement", "choice", choices=CELL_ARRANGEMENTS, default="stacked",
+               help="Stacked puts one picture under another; side by side puts them in a line that wraps inside the cell."),
+)
+
 _CORE_SCHEMAS: dict[str, BlockSchema] = {
     "heading": BlockSchema(
         "Heading", "A heading in the document.",
@@ -1608,7 +1692,7 @@ for _spec in (
     register_block_spec(replace(_spec, schema=_CORE_SCHEMAS[_spec.key]))
 
 __all__ = [
-    "BLOCK_SPECS", "BOOLEAN_KEYS", "DEFAULT_GROUP_ALIAS", "DEFAULT_JOIN_ALIAS", "DEFAULT_RECORD_ALIAS", "GROUP_FIELDS",
+    "BLOCK_SPECS", "BOOLEAN_KEYS", "IMAGE_COLUMN_FIELDS", "DEFAULT_GROUP_ALIAS", "DEFAULT_JOIN_ALIAS", "DEFAULT_RECORD_ALIAS", "GROUP_FIELDS",
     "LIST_OPERATORS", "MAX_COLUMNS", "MAX_CONDITION_DEPTH", "MAX_DEPTH", "MAX_JOINS", "MAX_NODES", "MAX_TREE_BYTES",
     "MAX_WIDGET_REPORTS", "OPERATORS_BY_KIND", "PLACEHOLDER_RE", "TREE_SCHEMA_VERSION", "Binding", "BlockSpec",
     "InvalidLayoutError", "Ref", "TreeAnalysis", "TreeError", "TreeValidator", "assert_valid", "empty_tree",

@@ -29,16 +29,20 @@ Dependencies: `services.report_odf` (package, escaping), `services.report_model`
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from app.services.branding import readable_on_white
-from app.services.report_image_layout import placed_size_cm
+from app.services.report_image_layout import place_cell_pictures, placed_size_cm
 from app.services.report_math import png_of, typeset
 from app.services.report_model import (
     TONE_FILL,
     BulletList,
+    Cell,
     Equation,
     Gap,
     Heading,
     Image,
+    ImageCell,
     Note,
     NumberedList,
     PageBreak,
@@ -119,6 +123,9 @@ def _paragraph_style(name: str, *, parent: str | None = "Standard", para: str = 
     run = f"<style:text-properties {text}/>" if text else ""
     return f'<style:style style:name="{name}" style:family="paragraph"{parent_attr}{extra}>{paragraph}{run}</style:style>'
 
+
+#: A cell may be at most this share of the page's text height, so a row always fits a page.
+_CELL_HEIGHT_SHARE = 0.9
 
 #: The character styles of bold / italic / code runs, by name, as `style:text-properties` attributes.
 _SPAN_STYLES: dict[str, str] = {
@@ -260,6 +267,7 @@ class _Body:
         self.package = package
         self.page_styles = styles
         self.usable_cm = styles[0].usable_width_cm
+        self.usable_height_cm = styles[0].usable_height_cm
         branding = document.branding
         self.accent = colour(branding.accent_color_hex if branding else None)
         self.chunks: list[str] = []
@@ -432,6 +440,27 @@ class _Body:
         else:
             self._paragraph("Title", xml_text(title))
 
+    def _cell_pictures(self, cell: ImageCell, column_cm: float, paragraph_style: str) -> str:
+        """The paragraphs of an image cell: one per line, the pictures of a line as frames anchored in it.
+
+        A picture that cannot be embedded is skipped; a cell with none is an empty paragraph.
+        """
+        placed = place_cell_pictures(cell, column_cm, self.usable_height_cm * _CELL_HEIGHT_SHARE)
+        lines: dict[int, list[str]] = {}
+        for item in placed:
+            data = item.image.data
+            if item.image.svg is not None:
+                try:
+                    data = svg_png(item.image.svg)  # a vector figure is shown as a picture, as in Word
+                except Exception:  # noqa: BLE001 - a figure that cannot be drawn must never break report generation
+                    data = b""
+            frame = self._frame(data, item.width_cm, item.height_cm, alt=item.image.alt) if data else ""
+            if frame:
+                lines.setdefault(item.line, []).append(frame)
+        if not lines:
+            return f'<text:p text:style-name="{paragraph_style}"/>'
+        return "".join(f'<text:p text:style-name="{paragraph_style}">{" ".join(frames)}</text:p>' for _, frames in sorted(lines.items()))
+
     def table(self, block: Table) -> None:
         """A real table: shaded, repeating header row, optional zebra rows and tones."""
         if not block.columns:
@@ -439,7 +468,7 @@ class _Body:
         self._tables += 1
         name = f"Tbl{self._tables}"
         count = len(block.columns)
-        widths = block.col_widths_cm or [1.0] * count
+        widths = block.col_widths_cm or block.weights or [1.0] * count
         scale = self.usable_cm / sum(widths)
         suffix = "_c" if block.compact else ""
         self.styles.append(
@@ -454,21 +483,21 @@ class _Body:
             )
             columns.append(f'<table:table-column table:style-name="{name}_{index}"/>')
 
-        def row(values: list[str], cell_style, paragraph_style) -> str:
+        def row(values: Sequence[Cell], cell_style, paragraph_style) -> str:
             cells = []
             for column, value in enumerate(values):
-                cells.append(
-                    f'<table:table-cell table:style-name="{cell_style(column)}"><text:p text:style-name="{paragraph_style(column)}">'
-                    f"{self._inline(value)}</text:p></table:table-cell>"
-                )
+                if isinstance(value, ImageCell):
+                    content = self._cell_pictures(value, widths[column] * scale, paragraph_style(column))
+                else:
+                    content = f'<text:p text:style-name="{paragraph_style(column)}">{self._inline(value)}</text:p>'
+                cells.append(f'<table:table-cell table:style-name="{cell_style(column)}">{content}</table:table-cell>')
             return f"<table:table-row>{''.join(cells)}</table:table-row>"
 
         self.chunks.append(f'<table:table table:name="{name}" table:style-name="{name}">{"".join(columns)}')
-        self.chunks.append(
-            "<table:table-header-rows>" + row(block.columns, lambda c: "C_hdr", lambda c: f"P_hdr{suffix}") + "</table:table-header-rows>"
-        )
+        header = row(block.columns, lambda c: "C_hdr", lambda c: f"P_hdr{suffix}")
+        self.chunks.append(f"<table:table-header-rows>{header}</table:table-header-rows>" if block.repeat_header else header)
         for index, values in enumerate(block.rows):
-            padded = (values + [""] * count)[:count]
+            padded = [*values, *([""] * count)][:count]
             zebra = "C_zebra" if block.compact and index % 2 else "C_body"
 
             def cell_style(column: int, index: int = index, zebra: str = zebra) -> str:
@@ -527,6 +556,7 @@ class _Body:
             style_name = ("P_AfterCover" if block.section_start else "P_Continue") if index == 0 else f"P_Style{index}"
             self.chunks.append(f'<text:p text:style-name="{style_name}"/>')
             self.usable_cm = block.style.usable_width_cm
+            self.usable_height_cm = block.style.usable_height_cm
         elif isinstance(block, Gap):
             return  # a PDF layout hint; paragraph styles carry the spacing
 

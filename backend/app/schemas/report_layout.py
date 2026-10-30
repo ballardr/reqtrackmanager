@@ -70,11 +70,15 @@ class ReportLayoutTextError(BaseModel):
 
 
 class ReportLayoutTextParseOut(BaseModel):
-    """The tree read from the text (`None` after a syntax error) and every problem found; `ok` means it may be saved."""
+    """The tree read from the text (`None` after a syntax error) and every problem found; `ok` means it may be saved.
+
+    `block_lines` gives the 1-based line each block starts on, by tree path (`nodes[2]`).
+    """
 
     ok: bool
     tree: dict[str, Any] | None
     errors: list[ReportLayoutTextError]
+    block_lines: dict[str, int] = Field(default_factory=dict)
 
 
 class ReportLayoutTextOut(BaseModel):
@@ -284,11 +288,12 @@ class ReportBlockOut(BaseModel):
 
 
 class ReportBlockCatalogueOut(BaseModel):
-    """Every block type, the layout-level fields, the field kinds the designer has a control for and the operators a
+    """Every block type, the layout-level fields, the settings of an image column, the field kinds the designer has a control for and the operators a
     condition accepts for each kind of field (so the designer never restates the validator's rule)."""
 
     blocks: list[ReportBlockOut]
     layout_fields: list[ReportBlockFieldOut]
+    image_column_fields: list[ReportBlockFieldOut]
     field_kinds: list[str]
     operators: dict[str, list[str]]
     valueless_operators: list[str]
