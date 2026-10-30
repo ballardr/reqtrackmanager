@@ -466,6 +466,24 @@ def test_a_project_bundle_carries_layouts_with_their_history_and_hides(world):
     assert current["current"]["tree"] == tree("second") and current["id"] != own["id"]
 
 
+def test_margins_page_styles_and_sections_survive_a_project_bundle_round_trip(world):
+    project = world.project("Source")
+    h = auth_headers(world.token)
+    styled = {
+        **empty_tree("document"), "margins": {"top": 2, "gutter": 1}, "mirror_margins": True,
+        "page_styles": [{"name": "Wide tables", "page_size": "A3", "orientation": "landscape", "margins": {"left": 1}}],
+        "nodes": [{"type": "section", "page_style": "Wide tables", "children": [{"type": "text", "text": "Inside"}]}],
+    }
+    new_layout(world, project_url(project), "Styled", body=styled)
+
+    result = import_project(world, export_project(world, project))
+
+    assert result["warnings"] == []
+    copy = names(world, result["project"])["Styled"]
+    current = world.client.get(project_url(result["project"], f"/{copy['id']}"), headers=h).json()
+    assert current["current"]["tree"] == styled
+
+
 def test_a_bundle_tree_is_validated_again_and_bad_versions_are_dropped(world):
     project = world.project("Source")
     h = auth_headers(world.token)

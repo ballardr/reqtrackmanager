@@ -9,8 +9,9 @@
  */
 import { fn } from "storybook/test";
 
+import type { FileDetails } from "../api/fileDetails";
 import type {
-  BlockCatalogue, BlockField, BlockType, PreviewResult, ReportFieldCatalogue, TreeCheck, TreeProblem, ReportLayoutApi, ReportLayoutDetail, ReportLayoutSummary, ReportLayoutTree,
+  BlockCatalogue, BlockField, BlockType, PreviewResult, ReportFieldCatalogue, ReportImage, TreeCheck, TreeProblem, ReportLayoutApi, ReportLayoutDetail, ReportLayoutSummary, ReportLayoutTree,
   ReportLayoutVersion, ReportWidget, TextParseResult,
 } from "../api/reportLayouts";
 
@@ -103,6 +104,24 @@ export function buildBlockCatalogue(): BlockCatalogue {
         fields: [field("text", "Text", "longtext", { required: true, features: ["placeholders", "markdown"] })],
       }),
       block("page_break", "Page break", { type: "page_break" }),
+      block("section", "Section", { type: "section", page_style: "", children: [] }, {
+        fields: [field("page_style", "Page style", "page_style", { required: true })],
+        containers: [{ key: "children", label: "Contents" }],
+      }),
+      block("image", "Image", { type: "image", file: "" }, {
+        fields: [
+          field("file", "Image", "image", { required: true }), field("alt", "Alternative text", "text", { max_length: 300 }),
+          field("decorative", "Decorative", "boolean", { default: false }),
+          field("width", "Width", "number", { minimum: 1, maximum: 1000 }),
+          field("width_unit", "Width unit", "choice", { choices: ["cm", "mm", "percent"], default: "cm", depends_on: "width" }),
+          field("height", "Height", "number", { minimum: 0.5, maximum: 1000 }),
+          field("height_unit", "Height unit", "choice", { choices: ["cm", "mm"], default: "cm", depends_on: "height" }),
+          field("align", "Alignment", "choice", { choices: ["left", "center", "right"], default: "center" }),
+          field("caption", "Caption", "text", { max_length: 500, features: ["placeholders"] }),
+          field("caption_position", "Caption position", "choice", { choices: ["above", "below"], default: "below", depends_on: "caption" }),
+          field("numbering", "Caption numbering", "choice", { choices: ["auto", "always", "never"], default: "auto", depends_on: "caption" }),
+        ],
+      }),
       block("equation", "Equation", { type: "equation", tex: "a = b" }, { fields: [field("tex", "TeX", "tex", { required: true })] }),
       block("table", "Table", { type: "table", source: {}, columns: [] }, {
         fields: [source, field("columns", "Columns", "columns", { required: true }), field("empty_text", "Text when there is nothing", "text")],
@@ -136,9 +155,16 @@ export function buildBlockCatalogue(): BlockCatalogue {
     ],
     layout_fields: [
       field("orientation", "Page orientation", "choice", { choices: ["portrait", "landscape"], default: "portrait", families: ["document"] }),
+      field("page_size", "Page size", "choice", { choices: ["A3", "A4", "A5", "Letter", "Legal"], default: "A4", families: ["document"] }),
+      field("margins", "Margins", "margins", { families: ["document"] }),
+      field("mirror_margins", "Mirror margins", "boolean", { families: ["document"] }),
+      field("page_styles", "Page styles", "page_styles", { families: ["document"] }),
       field("variables", "Variables", "variables"),
     ],
-    field_kinds: ["text", "longtext", "integer", "boolean", "choice", "tex", "alias", "record_field", "source", "columns", "joins", "condition", "widget_key", "widget_params", "widget_sort", "variables"],
+    field_kinds: [
+      "text", "longtext", "integer", "number", "boolean", "choice", "tex", "alias", "record_field", "source", "columns", "joins", "condition",
+      "widget_key", "widget_params", "widget_sort", "variables", "page_style", "margins", "page_styles", "image",
+    ],
     operators: {
       text: ["eq", "ne", "contains", "in", "not_in", "empty", "not_empty"],
       enum: ["eq", "ne", "in", "not_in", "empty", "not_empty"],
@@ -214,6 +240,46 @@ export function buildWidgets(): ReportWidget[] {
       report_title: "Decision log", module_key: "decisions", module_name: "Decision Management", params: [],
     },
   ];
+}
+
+/** Pictures in a project's library: the project's own logo and an organisation one used by two layouts. */
+export function buildReportImages(): ReportImage[] {
+  return [
+    { id: "image-1", filename: "site-logo.png", content_type: "image/png", size_bytes: 24_000, tier: "project", owned: true, used_by: [], created_at: "2026-10-20T09:00:00Z" },
+    {
+      id: "image-2", filename: "organisation-wordmark.svg", content_type: "image/svg+xml", size_bytes: 3_400, tier: "organisation", owned: false,
+      used_by: ["Quarterly review", "Decision log"], created_at: "2026-10-01T09:00:00Z",
+    },
+  ];
+}
+
+/** An in-memory picture library for stories; an upload adds a project picture named after the file. */
+export function buildImageLibrary(images: ReportImage[] = buildReportImages(), maxImageBytes = 50 * 1024 * 1024) {
+  const store = [...images];
+  const details: Record<string, FileDetails> = {
+    "image-1": {
+      width_px: 4032, height_px: 3024, taken: "2026-10-12 14:03:11", camera: "Canon EOS 5D", description: "North gate, pump house",
+      latitude: -33.866667, longitude: 151.21,
+    },
+  };
+  return {
+    list: fn(async () => ({ images: store.map((image) => ({ ...image })), max_image_bytes: maxImageBytes })),
+    details: fn(async (id: string): Promise<FileDetails> => details[id] ?? {
+      width_px: null, height_px: null, taken: null, camera: null, description: null, latitude: null, longitude: null,
+    }),
+    upload: fn(async (file: File) => {
+      const added: ReportImage = {
+        id: `image-${store.length + 1}`, filename: file.name, content_type: file.type || "image/png", size_bytes: file.size, tier: "project",
+        owned: true, used_by: [], created_at: "2026-10-30T09:00:00Z",
+      };
+      store.unshift(added);
+      return added;
+    }),
+    remove: fn(async (id: string) => {
+      const at = store.findIndex((image) => image.id === id);
+      if (at >= 0) store.splice(at, 1);
+    }),
+  };
 }
 
 /** A successful document preview. */
@@ -297,6 +363,7 @@ export function buildLayoutApi(
     validate: fn(async (tree: ReportLayoutTree) => fakeValidate(tree)),
     preview: fn(async () => buildDocumentPreview()),
     draftVariables: fn(async () => ({ ok: true, variables: [], errors: [] })),
+    images: buildImageLibrary(),
   };
   if (kind === "organization") {
     fake.addStarters = fn(async () => []);

@@ -170,7 +170,7 @@ def test_pdf_leaves_no_temporary_files_even_when_the_build_fails(monkeypatch):
     def broken(*args, **kwargs):
         raise RuntimeError("build failed")
 
-    monkeypatch.setattr("app.services.report_pdf.build_pdf", broken)
+    monkeypatch.setattr("app.services.report_pdf._build_pdf", broken)
     with pytest.raises(RuntimeError):
         render_pdf_document(document(para("a ", inline("x"))))
 
@@ -209,7 +209,8 @@ def everywhere() -> ReportDocument:
 def test_html_draws_equations_in_headings_list_items_and_cells():
     page = render_html_document(everywhere()).decode()
 
-    assert re.search(r"<h3>Load <span class=\"math\".*?</span></h3>", page)
+    # A heading carries an anchor so a link can point at it.
+    assert re.search(r"<h3(?: id=\"[^\"]*\")?>Load <span class=\"math\".*?</span></h3>", page)
     assert re.search(r"<li>item <span class=\"math\"", page) and "<li>plain item</li>" in page
     assert re.search(r"<td>v = <span class=\"math\"", page) and "<td>plain</td>" in page
 

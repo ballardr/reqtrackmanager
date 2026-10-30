@@ -40,8 +40,9 @@ from app.models.report_placement import ReportPlacement
 from app.services import definition_suppression
 from app.services.audit import log_event
 from app.services.report_folders import clean_folder
+from app.services.report_images import image_problems
 from app.services.report_layout_scope import LAYOUT_KIND
-from app.services.report_layout_tree import TREE_SCHEMA_VERSION, assert_valid, tree_hash
+from app.services.report_layout_tree import TREE_SCHEMA_VERSION, InvalidLayoutError, assert_valid, tree_hash
 
 MAX_NAME_CHARS = 200
 MAX_DESCRIPTION_CHARS = 2000
@@ -139,7 +140,7 @@ def create_layout(
 
     Raises:
         ValueError: A bad name, description, folder, family, a template of another organisation, or a project outside it.
-        InvalidLayoutError: The tree is not valid.
+        InvalidLayoutError: The tree is not valid, or an image block names a picture the layout may not use.
         LayoutNameTakenError: The owner already has a layout of that name.
     """
     name = _clean_name(name)
@@ -154,6 +155,8 @@ def create_layout(
         if project is None or project.organization_id != organization_id:
             raise ValueError("The project does not belong to the organisation.")
     analysis = assert_valid(tree, family=family)
+    if problems := image_problems(db, organization_id, project_id, tree):
+        raise InvalidLayoutError(problems)
     _assert_name_free(db, organization_id, project_id, name)
 
     layout = ReportLayout(
@@ -207,6 +210,8 @@ def save_version(
     if layout is None:
         raise LookupError("No such layout.")
     analysis = assert_valid(tree, family=layout.family)
+    if problems := image_problems(db, layout.organization_id, layout.project_id, tree):
+        raise InvalidLayoutError(problems)
     if layout.current_version != base_version:
         raise LayoutConflictError(layout.current_version)
     current = get_version(db, layout.id, layout.current_version)

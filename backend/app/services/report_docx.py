@@ -44,7 +44,7 @@ from datetime import UTC, datetime
 
 from docx import Document
 from docx.document import Document as DocxDocument
-from docx.enum.section import WD_ORIENT
+from docx.enum.section import WD_ORIENT, WD_SECTION
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.opc.constants import RELATIONSHIP_TYPE
@@ -54,6 +54,7 @@ from docx.shared import Cm, Emu, Pt, RGBColor
 from docx.text.run import Run
 
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX, readable_on_white
+from app.services.report_image_layout import placed_size_cm
 from app.services.report_math import OMML_NS, omml, png_of, typeset
 from app.services.report_model import (
     TONE_FILL,
@@ -65,19 +66,19 @@ from app.services.report_model import (
     Note,
     NumberedList,
     PageBreak,
+    PageStyle,
+    PageStyleChange,
     Paragraph,
     ReportDocument,
     Styled,
     Table,
     finalize_links,
-    page_dimensions_cm,
     text_on,
     text_runs,
 )
 from app.services.report_svg import svg_png
 
 DOCX_AUTHOR = "ReqTrackManager"
-_MARGIN_CM = 1.5
 _XML_INVALID = re.compile("[^\x09\x0a\x0d\x20-퟿-�\U00010000-\U0010ffff]")
 _HEX_COLOUR = re.compile(r"^#?([0-9A-Fa-f]{6})$")
 _ZEBRA = "F5F5F5"
@@ -132,14 +133,33 @@ def _page_number_field(paragraph) -> None:
     paragraph._p.append(field)
 
 
-def _configure_page(doc: DocxDocument, document: ReportDocument) -> float:
-    """Sets the page size, orientation and margins; returns the usable width in cm."""
-    section = doc.sections[0]
-    width, height = page_dimensions_cm(document)
-    section.orientation = WD_ORIENT.LANDSCAPE if document.landscape else WD_ORIENT.PORTRAIT
+def _apply_style(section, style: PageStyle) -> float:
+    """Sets a section's page size, orientation, margins and gutter; returns the usable width in cm."""
+    width, height = style.dimensions_cm
+    section.orientation = WD_ORIENT.LANDSCAPE if style.landscape else WD_ORIENT.PORTRAIT
     section.page_width, section.page_height = Cm(width), Cm(height)
-    section.left_margin = section.right_margin = section.top_margin = section.bottom_margin = Cm(_MARGIN_CM)
-    return width - 2 * _MARGIN_CM
+    section.top_margin, section.bottom_margin = Cm(style.margins.top), Cm(style.margins.bottom)
+    section.left_margin, section.right_margin = Cm(style.margins.left), Cm(style.margins.right)
+    section.gutter = Cm(style.margins.gutter)
+    return style.usable_width_cm
+
+
+def _mirror_margins(doc: DocxDocument) -> None:
+    """Turns on Word's "mirror margins" (left and right become inside and outside), a setting of the whole file."""
+    settings = doc.settings.element
+    mirror = OxmlElement("w:mirrorMargins")
+    # `w:mirrorMargins` comes before these elements of the settings schema; the rest of the file never has them before it.
+    later = ("alignBordersAndEdges", "bordersDoNotSurroundHeader", "bordersDoNotSurroundFooter", "gutterAtTop", "hideSpellingErrors",
+             "hideGrammaticalErrors", "activeWritingStyle", "proofState", "formsDesign", "attachedTemplate", "linkStyles",
+             "stylePaneFormatFilter", "stylePaneSortMethod", "documentType", "mailMerge", "revisionView", "trackRevisions",
+             "doNotTrackMoves", "doNotTrackFormatting", "documentProtection", "autoFormatOverride", "styleLockTheme", "styleLockQFSet",
+             "defaultTabStop", "characterSpacingControl", "compat", "rsids", "themeFontLang", "clrSchemeMapping", "decimalSymbol",
+             "listSeparator")
+    anchor = next((child for child in settings if child.tag in {qn(f"w:{name}") for name in later}), None)
+    if anchor is not None:
+        anchor.addprevious(mirror)
+    else:
+        settings.append(mirror)
 
 
 def _footer(doc: DocxDocument, document: ReportDocument) -> None:
@@ -185,6 +205,40 @@ def _picture(doc: DocxDocument, data: bytes, max_width_cm: float, *, fixed_width
 
 
 _POINTS_PER_CM = 28.3465
+_ALIGNMENTS = {"left": WD_ALIGN_PARAGRAPH.LEFT, "center": WD_ALIGN_PARAGRAPH.CENTER, "right": WD_ALIGN_PARAGRAPH.RIGHT}
+
+
+def _image_block(doc: DocxDocument, block: Image, usable_cm: float) -> None:
+    """An image block: the picture at its placed size and alignment, its alternative text and its caption (above or below).
+
+    Nothing is added when the picture cannot be drawn.
+    """
+    data = _svg_png(block.svg) if block.svg is not None else block.data
+    size = placed_size_cm(block, usable_cm)
+    if size is None or not data:
+        return
+
+    def caption() -> None:
+        paragraph = doc.add_paragraph(style="Caption")
+        paragraph.alignment = _ALIGNMENTS.get(block.align, WD_ALIGN_PARAGRAPH.CENTER)
+        paragraph.add_run(clean_text(block.caption))
+        paragraph.paragraph_format.keep_with_next = block.caption_above
+
+    if block.caption and block.caption_above:
+        caption()
+    paragraph = doc.add_paragraph()
+    paragraph.alignment = _ALIGNMENTS.get(block.align, WD_ALIGN_PARAGRAPH.CENTER)
+    try:
+        shape = paragraph.add_run().add_picture(io.BytesIO(data), width=Cm(size[0]), height=Cm(size[1]))
+        shape._inline.docPr.set("descr", "" if block.decorative else block.alt)
+        paragraph.paragraph_format.keep_with_next = bool(block.caption) and not block.caption_above
+    except Exception:  # noqa: BLE001 - a malformed or unsupported image must never break report generation
+        parent = paragraph._p.getparent()
+        if parent is not None:
+            parent.remove(paragraph._p)
+        return
+    if block.caption and not block.caption_above:
+        caption()
 
 
 def _inline_equation(paragraph, equation: Equation) -> None:
@@ -360,7 +414,9 @@ def render_docx_document(document: ReportDocument) -> bytes:
     """
     document = finalize_links(document)
     doc = Document()
-    usable_cm = _configure_page(doc, document)
+    usable_cm = _apply_style(doc.sections[0], document.style)
+    if document.mirror:
+        _mirror_margins(doc)
     accent = _hex(document.branding.accent_color_hex if document.branding else None)
 
     properties = doc.core_properties
@@ -396,11 +452,15 @@ def render_docx_document(document: ReportDocument) -> bytes:
             for item in block.items:
                 _add_text(doc.add_paragraph(style="List Number"), item)
         elif isinstance(block, Image):
-            _picture(doc, _svg_png(block.svg) if block.svg is not None else block.data, usable_cm)
+            _image_block(doc, block, usable_cm)
         elif isinstance(block, Table):
             _table(doc, block, accent, usable_cm)
         elif isinstance(block, PageBreak):
             doc.add_page_break()
+        elif isinstance(block, PageStyleChange):
+            section = doc.add_section(WD_SECTION.NEW_PAGE)
+            section.different_first_page_header_footer = False  # the cover page's footer rule is for the first section only
+            usable_cm = _apply_style(section, block.style)
         elif isinstance(block, Gap):
             continue  # a PDF layout hint; Word styles carry paragraph spacing
 

@@ -137,4 +137,62 @@ test.describe("Report setup list", () => {
       await expect(grid.getByRole("button", { name: new RegExp(`^${names.pack}`) })).toBeVisible();
     });
   });
+
+  test("the column chooser keeps Version, Type and Folder off until chosen and remembers the choice", async ({ page, request }) => {
+    const { project, names, suffix } = await setup(page, request);
+    await openSetup(page, project.id);
+    const grid = page.getByRole("treegrid", { name: "Reports, packs and tables" });
+
+    await test.step("by default only the in-list, shared-from and last-changed columns show", async () => {
+      await searchReportSetup(page, suffix);
+      await expect(grid.getByRole("columnheader", { name: "Last changed" })).toBeVisible();
+      for (const name of ["Version", "Type", "Folder"]) await expect(grid.getByRole("columnheader", { name })).toHaveCount(0);
+    });
+
+    await test.step("ticking Type and Folder shows them, and Name cannot be hidden", async () => {
+      await page.getByRole("button", { name: "Choose columns" }).click();
+      const chooser = page.getByRole("dialog", { name: "Columns" });
+      await expect(chooser.getByRole("checkbox", { name: "Name" })).toBeDisabled();
+      await chooser.getByRole("checkbox", { name: "Type" }).check();
+      await chooser.getByRole("checkbox", { name: "Folder" }).check();
+      await expect(grid.getByRole("columnheader", { name: /Type/ })).toBeVisible();
+      await expect(grid.getByRole("row", { name: new RegExp(names.table) })).toContainText("Sheet");
+      await page.keyboard.press("Escape");
+    });
+
+    await test.step("the choice survives a reload, and the reset brings the defaults back", async () => {
+      await page.reload();
+      await selectProjectAdminGroup(page, "Report Setup");
+      await expect(grid.getByRole("columnheader", { name: /Type/ })).toBeVisible();
+      await page.getByRole("button", { name: "Choose columns" }).click();
+      await page.getByRole("dialog", { name: "Columns" }).getByRole("button", { name: "Show the default columns" }).click();
+      await expect(grid.getByRole("columnheader", { name: "Type" })).toHaveCount(0);
+      await page.keyboard.press("Escape");
+    });
+  });
+
+  for (const width of [360, 768, 1280]) {
+    test(`at ${width}px nothing in the list is out of reach and the page does not scroll sideways`, async ({ page, request }) => {
+      const { project, names, suffix } = await setup(page, request);
+      await page.setViewportSize({ width, height: 900 });
+      await openSetup(page, project.id);
+      const grid = await searchReportSetup(page, suffix);
+      const row = grid.getByRole("row", { name: new RegExp(names.pack) });
+      await expect(row).toBeVisible();
+
+      await test.step("the page itself has no sideways scroll", async () => {
+        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        expect(overflow).toBeLessThanOrEqual(0);
+      });
+
+      await test.step("the row's actions can be reached and opened", async () => {
+        const actions = row.getByRole("button", { name: `Actions for ${names.pack}` });
+        await actions.scrollIntoViewIfNeeded();
+        await expect(actions).toBeInViewport();
+        await actions.click();
+        await expect(page.getByRole("menuitem", { name: "Move to folder…" })).toBeVisible();
+        await page.keyboard.press("Escape");
+      });
+    });
+  }
 });

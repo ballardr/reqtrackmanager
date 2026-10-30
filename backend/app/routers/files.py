@@ -1,7 +1,8 @@
 """
 Module: routers.files
 
-A single generic download endpoint for uploaded files (I-M-10). Upload and
+A single generic download endpoint for uploaded files (I-M-10), and `GET /{file_id}/details` (a picture's size and EXIF),
+which follows exactly the same read rule. Upload and
 delete are handled by context-specific endpoints elsewhere (org shared
 resources and org logo in routers/orgs.py, requirement attachments in
 routers/requirements.py, avatars in routers/auth.py) since each has a
@@ -28,6 +29,7 @@ file id, so it is unified here with context-sensitive authorization:
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -44,8 +46,10 @@ from app.models.requirement import Requirement
 from app.models.requirement_action import RequirementAction
 from app.models.user import User
 from app.modules.registry import resolve_module_file_project_id
+from app.schemas.file import FileDetailsOut
 from app.services.downloads import content_disposition
 from app.services.files import read_file
+from app.services.image_details import image_details
 from app.services.rbac import (
     _project_organization_id,
     _require_org_active,
@@ -74,17 +78,13 @@ _INLINE_SAFE_CONTENT_TYPES = {
 }
 
 
-@router.get("/{file_id}")
-def download_file(
-    file_id: UUID,
-    request: Request,
-    current_user: User | None = Depends(get_current_user_header_or_query_optional),
-    db: Session = Depends(get_db),
-):
-    file_asset = db.get(FileAsset, file_id)
-    if file_asset is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found.")
+def _authorise_read(request: Request, db: Session, file_asset: FileAsset, current_user: User | None) -> None:
+    """Raises unless the caller may read `file_asset`: the one access rule for downloading a file and for reading its details.
 
+    Raises:
+        HTTPException: 401 with no credential (anything but public branding), 403 without a role that reaches the file.
+    """
+    file_id = file_asset.id
     # No server-admin bypass (I-M-05): uploaded files are "data within
     # organisations". Logos and login-page background images are public,
     # served with no authentication at all, since they're rendered on the
@@ -127,12 +127,13 @@ def download_file(
                 if not get_effective_org_roles(db, current_user.id, file_asset.organization_id):
                     raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this organisation.")
             else:
-                project_id = None
-                link = db.scalar(select(RequirementFile).where(RequirementFile.file_id == file_id))
+                # A picture in a project's report-image library belongs to that project directly.
+                project_id = file_asset.project_id
+                link = db.scalar(select(RequirementFile).where(RequirementFile.file_id == file_id)) if project_id is None else None
                 if link is not None:
                     requirement = db.get(Requirement, link.requirement_id)
                     project_id = requirement.project_id if requirement is not None else None
-                else:
+                elif project_id is None:
                     # Not a requirement attachment — check whether it's a
                     # requirement action attachment instead
                     # (routers/actions.py::upload_action_attachment).
@@ -183,6 +184,19 @@ def download_file(
                 if not has_access:
                     raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have access to this file.")
 
+
+@router.get("/{file_id}")
+def download_file(
+    file_id: UUID,
+    request: Request,
+    current_user: User | None = Depends(get_current_user_header_or_query_optional),
+    db: Session = Depends(get_db),
+):
+    file_asset = db.get(FileAsset, file_id)
+    if file_asset is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found.")
+    _authorise_read(request, db, file_asset, current_user)
+
     data = read_file(file_asset)
     disposition = "inline" if file_asset.content_type in _INLINE_SAFE_CONTENT_TYPES else "attachment"
     return Response(
@@ -192,3 +206,25 @@ def download_file(
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+@router.get("/{file_id}/details", response_model=FileDetailsOut)
+def file_details(
+    file_id: UUID,
+    request: Request,
+    current_user: User | None = Depends(get_current_user_header_or_query_optional),
+    db: Session = Depends(get_db),
+) -> FileDetailsOut:
+    """What a picture file says about itself (pixel size and any EXIF: when taken, camera, description, position).
+
+    Open to exactly the people who may download the file (`_authorise_read`), and never to an anonymous caller even for a
+    public logo. A file that is not a raster picture answers with every field empty. The text is the file's own, shown as
+    text only; nothing is logged.
+    """
+    file_asset = db.get(FileAsset, file_id)
+    if file_asset is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found.")
+    if current_user is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated.")
+    _authorise_read(request, db, file_asset, current_user)
+    return FileDetailsOut(**asdict(image_details(read_file(file_asset))))

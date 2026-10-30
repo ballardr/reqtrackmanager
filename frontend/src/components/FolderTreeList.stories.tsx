@@ -184,14 +184,43 @@ export const KeyboardNavigation: Story = {
   },
 };
 
-/** At a narrow width a long name wraps inside its cell instead of widening the list. */
+/** At a narrow width a long name wraps inside its cell, and the columns that do not fit scroll inside the list. */
 export const NarrowWidthWrapsLongNames: Story = {
   args: { width: "320px", columns: COLUMNS },
   play: async ({ canvasElement }) => {
     const grid = within(canvasElement).getByRole("treegrid", { name: "Documents" });
-    await expect(grid.scrollWidth).toBeLessThanOrEqual(grid.clientWidth);
     const long = within(grid).getByRole("button", { name: /^A report whose title/ });
     await expect(long.getBoundingClientRect().height).toBeGreaterThan(30);
+    // The page itself never scrolls sideways: the overflow stays inside the list.
+    await expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(document.documentElement.clientWidth);
+  },
+};
+
+/** A phone-width list scrolls sideways inside its own region and the Name cell stays at the left edge, so every column can be reached. */
+export const NarrowWidthScrollsWithNameHeld: Story = {
+  args: { width: "260px", columns: [{ id: "wide", header: "Wide", render: () => "wide cell", width: "14rem" }], initiallyOpen: ["f:platform"] },
+  play: async ({ canvasElement }) => {
+    const grid = within(canvasElement).getByRole("treegrid", { name: "Documents" });
+    await expect(grid.scrollWidth).toBeGreaterThan(grid.clientWidth);
+    const name = () => within(grid).getByRole("button", { name: /^Requirements report/ }).closest<HTMLElement>(".folder-tree-name-cell")!;
+    const edge = grid.getBoundingClientRect().left;
+    grid.scrollLeft = 120;
+    await expect(Math.abs(name().getBoundingClientRect().left - edge)).toBeLessThan(2);
+    // The last cell is reachable by scrolling.
+    grid.scrollLeft = grid.scrollWidth;
+    await expect(within(grid).getAllByText("wide cell")[0].getBoundingClientRect().right).toBeLessThanOrEqual(grid.getBoundingClientRect().right + 1);
+  },
+};
+
+/** The rows share one column template: a column header sits over its cells whatever the cells hold. */
+export const ColumnsLineUpWithHeader: Story = {
+  args: { columns: COLUMNS, docs: DOCS.map((d) => ({ ...d, folder: "" })) },
+  play: async ({ canvasElement }) => {
+    const grid = within(canvasElement).getByRole("treegrid", { name: "Documents" });
+    const headerLeft = within(grid).getByRole("columnheader", { name: /Version/ }).getBoundingClientRect().left;
+    for (const cell of within(grid).getAllByText(/^v\d$/)) {
+      await expect(Math.abs(cell.getBoundingClientRect().left - headerLeft)).toBeLessThan(1);
+    }
   },
 };
 

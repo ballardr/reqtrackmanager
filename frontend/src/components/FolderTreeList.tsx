@@ -19,12 +19,16 @@
  * folder's chevron, icon and name are one button named "Expand X" / "Collapse X" so the whole label is the click
  * target and a folder has one control, and an item's type icon sits outside the item's button so the button's name
  * stays the item's title; a folder's row can carry trailing controls (`renderFolderActions`) as an item's does. Pure presentation: the data, the selection and every action stay with the caller. A column
- * with `hideBelow` is dropped under 640px (the Name column wraps instead of clipping).
+ * with `hideBelow` is dropped under 640px.
+ *
+ * Layout: the list is one CSS grid and each row a subgrid of it, so the columns line up whatever the cells hold. Name
+ * has a minimum width and wraps; when the columns still do not fit (a phone) the list scrolls sideways inside its own
+ * region with the Name column held at the left edge, and the page never scrolls or clips.
  *
  * Dependencies: `utils/reportFolders` (`FolderNode`), `lucide-react`, the `.folder-tree-*` rules in `theme.css`.
  */
 import { ChevronDown, ChevronRight, ChevronUp, Folder, FolderOpen } from "lucide-react";
-import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
 import type { FolderNode } from "../utils/reportFolders";
@@ -139,7 +143,13 @@ export function FolderTreeList<T>({
   const focusable = rows.filter((r) => !r.emptyOpen);
   const tabStop = focusable.find((r) => r.node.id === activeId)?.node.id ?? focusable[0]?.node.id;
   const hasActions = Boolean(renderItemActions || renderFolderActions);
-  const template = `minmax(0, 1fr) ${columns.map((c) => c.width ?? "minmax(6rem, 10rem)").join(" ")} ${hasActions ? "auto" : ""}`;
+  // One column template for the whole list (rows take it as a subgrid, so columns line up and the list scrolls as one).
+  // Name keeps a floor so it never collapses; the narrow template leaves out the `hideBelow` columns.
+  const track = (c: FolderTreeColumn<T>) => c.width ?? "minmax(6rem, 10rem)";
+  const tail = hasActions ? " auto" : "";
+  const template = `minmax(12rem, 1fr) ${columns.map(track).join(" ")}${tail}`;
+  const narrowTemplate = `minmax(12rem, 1fr) ${columns.filter((c) => !c.hideBelow).map(track).join(" ")}${tail}`;
+  const listStyle = { "--ftl-columns": template, "--ftl-columns-narrow": narrowTemplate } as CSSProperties;
 
   if (focusable.length === 0 && emptyText) return <p className="text-muted">{emptyText}</p>;
 
@@ -200,9 +210,9 @@ export function FolderTreeList<T>({
   const ariaSort = (column: string) => (sort.column === column ? (sort.descending ? "descending" : "ascending") : "none");
 
   return (
-    <div ref={grid} className="folder-tree-list" role="treegrid" aria-label={label} onKeyDown={onKeyDown}>
-      <div role="row" className="folder-tree-header" style={{ gridTemplateColumns: template }}>
-        <div role="columnheader" aria-sort={ariaSort("name")}>
+    <div ref={grid} className="folder-tree-list" role="treegrid" aria-label={label} style={listStyle} onKeyDown={onKeyDown}>
+      <div role="row" className="folder-tree-header">
+        <div role="columnheader" className="folder-tree-name-cell" aria-sort={ariaSort("name")}>
           <SortButton label={text.nameHeader} active={sort.column === "name"} descending={sort.descending} onClick={() => sortBy("name")} />
         </div>
         {columns.map((c) => (
@@ -218,7 +228,7 @@ export function FolderTreeList<T>({
         const indent = { paddingInlineStart: `calc(var(--space-3) + ${depth} * 1.25rem)` };
         if (row.emptyOpen) {
           return (
-            <div key={node.id} role="row" aria-level={depth + 1} className={`folder-tree-row${band}`} style={{ gridTemplateColumns: template }}>
+            <div key={node.id} role="row" aria-level={depth + 1} className={`folder-tree-row${band}`}>
               <div role="gridcell" className="text-muted folder-tree-empty" style={indent}>{text.emptyFolder}</div>
             </div>
           );
@@ -231,14 +241,13 @@ export function FolderTreeList<T>({
           "aria-setsize": row.setSize,
           tabIndex: node.id === tabStop ? 0 : -1,
           onFocus: () => setActiveId(node.id),
-          style: { gridTemplateColumns: template },
         };
         if (node.kind === "folder") {
           const open = expanded.has(node.id);
           const Icon = open ? FolderOpen : Folder;
           return (
             <div key={node.id} {...common} aria-expanded={open} className={`folder-tree-row folder-tree-folder${band}`}>
-              <div role="gridcell" className="folder-tree-name" style={indent}>
+              <div role="gridcell" className="folder-tree-name folder-tree-name-cell" style={indent}>
                 <button
                   type="button" className="folder-tree-toggle" tabIndex={-1} aria-expanded={open}
                   aria-label={text.toggle(node.name, open)} title={text.toggle(node.name, open)}
@@ -260,7 +269,7 @@ export function FolderTreeList<T>({
         const selected = isSelected?.(item) ?? false;
         return (
           <div key={node.id} {...common} aria-selected={selected} className={`folder-tree-row${band}${selected ? " folder-tree-selected" : ""}`}>
-            <div role="gridcell" className="folder-tree-name" style={indent}>
+            <div role="gridcell" className="folder-tree-name folder-tree-name-cell" style={indent}>
               <span className="folder-tree-chevron-gap" aria-hidden="true" />
               <span role="img" aria-label={view.iconLabel} title={view.iconLabel} className="folder-tree-type-icon">{view.icon}</span>
               <button

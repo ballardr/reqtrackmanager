@@ -30,7 +30,12 @@ Responsibilities:
 - Let other block types add their text form (`register_text_form`), as they add a validator and an evaluator.
 
 Grammar (one statement per line; indentation is cosmetic):
-- `@layout document [portrait|landscape] [A3|A4|A5|Letter|Legal]` or `@layout table` is the first line.
+- `@layout document [portrait|landscape] [A3|A4|A5|Letter|Legal] [mirror] [margins top=<cm> bottom=<cm> left=<cm>
+  right=<cm> gutter=<cm>]` or `@layout table` is the first line. The orientation, size and `mirror` (mirrored
+  margins for double-sided printing) come in any order, each once; `margins` comes last and each side is optional.
+- Page styles are declared before the first block, one per line, like variables: `@pagestyle "<name>"
+  [portrait|landscape] [A3|…] [margins …]`. What a style leaves out is the layout's own. `@section "<name>"` … `@end`
+  lays its contents out in that style, on pages of their own.
 - A block opens with `@name ...`; `each`, `group`, `if` (with `@else`), `table`, `sheet` and an explicit
   `@text` end with `@end`. `heading`, `page_break` and the quoted `@text "..."` are one line.
 - A source is a record type, or `in <group name>`, followed by clauses in any order: `from <name>`,
@@ -43,6 +48,9 @@ Grammar (one statement per line; indentation is cosmetic):
   (write it in quotes), and a bracket is never part of a bare word.
 - An `@if` also takes `module <key>` (for example `@if module risk_management`): true where that module is
   available in the project being run, so a layout that spans modules can leave out the parts of one that is off.
+- An image block is `@image "<file id>"` followed by clauses in any order: `alt "<text>"`, `decorative true|false`,
+  `width <n> [cm|mm|percent]`, `height <n> [cm|mm]`, `align left|center|right`, `caption "<text>"`,
+  `caption_position above|below` and `numbering auto|always|never`; each is written only when the block has the key.
 - An equation block is `@equation <TeX>` on one line (`@equation \\frac{a}{b} = c`). Equations inside a text line
   are written `\\( x \\)` (inline) or `$$ x $$` (display), which are ordinary text to this grammar.
 - A widget is one component of a report (a table, its headline figures or its notes) on a line of its own,
@@ -91,6 +99,7 @@ from app.services.report_layout_tree import (
     assert_valid,
     validate_tree,
 )
+from app.services.report_page_styles import MARGIN_KEYS
 from app.services.report_variables import NAME_RE, VARIABLE_TYPES, is_reference
 
 MAX_TEXT_VIEW_CHARS = 1_000_000
@@ -215,6 +224,11 @@ class _Cursor:
         self._tokens = tokens
         self._i = 0
         self._end = end_column
+
+    @property
+    def end_column(self) -> int:
+        """The column just past the end of the line."""
+        return self._end
 
     def peek(self) -> _Token | None:
         """The next token, or `None` at the end of the line."""
@@ -659,6 +673,39 @@ def _unescape(line: str) -> str:
     return line
 
 
+def _margins(cur: _Cursor) -> dict[str, Any]:
+    """Reads the `side=<cm>` words after `margins` (top, bottom, left, right, gutter; each once, at least one)."""
+    margins: dict[str, Any] = {}
+    while (token := cur.peek()) is not None and token.kind == "word" and "=" in token.value:
+        cur.take("a margin")
+        key, _, value = token.value.partition("=")
+        if key not in MARGIN_KEYS:
+            raise _Syntax(f"Unknown margin {key!r}. Use: {', '.join(MARGIN_KEYS)}.", token.column)
+        if key in margins:
+            raise _Syntax(f'"{key}" is given twice.', token.column)
+        if not _NUMBER.fullmatch(value):
+            raise _Syntax(f"Write the {key} margin as a number of cm, for example {key}=1.5.", token.column)
+        margins[key] = json.loads(value)
+    if not margins:
+        raise _Syntax(f"Write the margins as side=cm, for example margins top=2 left=1.5 (sides: {', '.join(MARGIN_KEYS)}).", cur.end_column)
+    return margins
+
+
+def _margins_text(margins: dict[str, Any]) -> str:
+    """` margins side=<cm> …` in the order the parser reads them."""
+    return " margins " + " ".join(f"{key}={json.dumps(margins[key])}" for key in MARGIN_KEYS if key in margins)
+
+
+def _page_style_words(style: dict[str, Any]) -> str:
+    """The orientation, size and margins of a root or named style, each preceded by a space."""
+    words = ""
+    if "orientation" in style:
+        words += f" {style['orientation']}"
+    if "page_size" in style:
+        words += f" {style['page_size']}"
+    return words
+
+
 class _Parser:
     """Turns text into a tree, one line at a time, with a stack of open blocks."""
 
@@ -750,15 +797,14 @@ class _Parser:
         if family not in (FAMILY_DOCUMENT, FAMILY_TABLE):
             raise _Syntax(f"The layout must be a {FAMILY_DOCUMENT} or a {FAMILY_TABLE}, not {family!r}.", offset + 2)
         self.tree["family"] = family
-        # The orientation and the page size may come in either order, each at most once.
-        for _ in range(2):
-            word = cur.accept(*ORIENTATION_WORDS, *PAGE_SIZE_WORDS)
-            if not word:
-                break
-            key = "orientation" if word in ORIENTATION_WORDS else "page_size"
+        # The orientation, the page size and `mirror` may come in any order, each at most once; `margins` ends the line.
+        while word := cur.accept(*ORIENTATION_WORDS, *PAGE_SIZE_WORDS, "mirror"):
+            key = "orientation" if word in ORIENTATION_WORDS else "mirror_margins" if word == "mirror" else "page_size"
             if key in self.tree:
                 raise _Syntax(f"The {key.replace('_', ' ')} is written once.", offset)
-            self.tree[key] = word
+            self.tree[key] = True if word == "mirror" else word
+        if cur.accept("margins"):
+            self.tree["margins"] = _margins(cur)
         cur.expect_end()
 
     def _directive(self, raw: str, stripped: str, line_no: int) -> None:
@@ -772,6 +818,9 @@ class _Parser:
             raise _Syntax("@layout can only be the first line.", indent + 1)
         if name == "var":
             self._variable(directive, indent, line_no)
+            return
+        if name == "pagestyle":
+            self._page_style(directive, indent, line_no)
             return
         if name in ("end", "else"):
             if rest.strip():
@@ -800,11 +849,29 @@ class _Parser:
         try:
             form.parse(self, directive)
         except _Syntax:
-            if name in ("each", "group", "if", "table", "sheet") and len(self.frames) == before:
+            if name in ("each", "group", "if", "section", "table", "sheet") and len(self.frames) == before:
                 # Keep the @end of a block whose first line was wrong matched to it.
                 scratch: dict[str, Any] = {"type": name, "children": [], "columns": []}
-                self._push(_Frame("container" if name in ("each", "group", "if") else name, scratch, "", line_no))
+                self._push(_Frame("container" if name in ("each", "group", "if", "section") else name, scratch, "", line_no))
             raise
+
+    def _page_style(self, directive: _Directive, indent: int, line_no: int) -> None:
+        """Reads an `@pagestyle` line into the root's `page_styles` (it belongs before the first block)."""
+        if len(self.frames) > 1 or self.root["nodes"]:
+            raise _Syntax("@pagestyle declares a page style for the whole layout: put it before the first block.", indent + 1)
+        cur = directive.cursor()
+        style: dict[str, Any] = {"name": cur.text("the page style's name in quotes")}
+        while word := cur.accept(*ORIENTATION_WORDS, *PAGE_SIZE_WORDS):
+            key = "orientation" if word in ORIENTATION_WORDS else "page_size"
+            if key in style:
+                raise _Syntax(f"The {key.replace('_', ' ')} is written once.", directive.offset + 1)
+            style[key] = word
+        if cur.accept("margins"):
+            style["margins"] = _margins(cur)
+        cur.expect_end()
+        styles = self.tree.setdefault("page_styles", [])
+        self.line_of[f"page_styles[{len(styles)}]"] = line_no
+        styles.append(style)
 
     def _variable(self, directive: _Directive, indent: int, line_no: int) -> None:
         """Reads an `@var` line into the root's `variables` (it belongs before the first block)."""
@@ -1065,12 +1132,15 @@ def format_tree(tree: dict[str, Any]) -> str:
     """
     assert_valid(tree)
     writer = _Writer()
-    header = f"@layout {tree['family']}"
-    if "orientation" in tree:
-        header += f" {tree['orientation']}"
-    if "page_size" in tree:
-        header += f" {tree['page_size']}"
+    header = f"@layout {tree['family']}{_page_style_words(tree)}"
+    if tree.get("mirror_margins"):
+        header += " mirror"
+    if "margins" in tree:
+        header += _margins_text(tree["margins"])
     writer.line(0, header)
+    for style in tree.get("page_styles", []):
+        margins = _margins_text(style["margins"]) if "margins" in style else ""
+        writer.line(0, f"@pagestyle {_quote(style['name'])}{_page_style_words(style)}{margins}")
     for declaration in tree.get("variables", []):
         writer.line(0, _variable_text(declaration))
     if tree["nodes"]:
@@ -1158,6 +1228,83 @@ def _parse_page_break(p: _Parser, d: _Directive) -> None:
 
 def _write_page_break(w: _Writer, node: dict[str, Any], depth: int) -> None:
     w.line(depth, "@page_break")
+
+
+def _parse_section(p: _Parser, d: _Directive) -> None:
+    cur = d.cursor()
+    node: dict[str, Any] = {"type": "section", "page_style": cur.text("the page style's name in quotes"), "children": []}
+    cur.expect_end()
+    p.open(node, d.line_no)
+
+
+def _write_section(w: _Writer, node: dict[str, Any], depth: int) -> None:
+    w.line(depth, f"@section {_quote(node['page_style'])}")
+    w.blocks(node["children"], depth + 1)
+    w.line(depth, "@end")
+
+
+_IMAGE_TEXT_CLAUSES = ("alt", "decorative", "width", "height", "align", "caption", "caption_position", "numbering")
+
+
+def _boolean_word(cur: _Cursor, what: str) -> bool:
+    """`true` or `false`."""
+    token = cur.take(what)
+    if token.kind != "word" or token.value not in ("true", "false"):
+        raise _Syntax(f"{what.capitalize()} is true or false.", token.column)
+    return token.value == "true"
+
+
+def _number_word(cur: _Cursor, what: str) -> int | float:
+    """A bare number."""
+    token = cur.take(what)
+    if token.kind != "word" or not _NUMBER.fullmatch(token.value):
+        raise _Syntax(f"Expected {what}, a number.", token.column)
+    return json.loads(token.value)
+
+
+def _parse_image(p: _Parser, d: _Directive) -> None:
+    cur = d.cursor()
+    node: dict[str, Any] = {"type": "image", "file": cur.text("the image's file id in quotes")}
+    while (token := cur.peek()) is not None:
+        word = cur.accept(*_IMAGE_TEXT_CLAUSES)
+        if word is None:
+            raise _Syntax(f"Unexpected {token.shown()}. Clauses: {', '.join(_IMAGE_TEXT_CLAUSES)}.", token.column)
+        if word in node:
+            raise _Syntax(f"{word} is written once.", token.column)
+        if word in ("alt", "caption"):
+            node[word] = cur.text(f"the {word} text in quotes")
+        elif word == "decorative":
+            node[word] = _boolean_word(cur, word)
+        elif word == "width":
+            node["width"] = _number_word(cur, "the width")
+            if unit := cur.accept("cm", "mm", "percent"):
+                node["width_unit"] = unit
+        elif word == "height":
+            node["height"] = _number_word(cur, "the height")
+            if unit := cur.accept("cm", "mm"):
+                node["height_unit"] = unit
+        else:  # align, caption_position, numbering
+            node[word] = cur.word(f"the {word.replace('_', ' ')}")
+    p.add(node, d.line_no)
+
+
+def _write_image(w: _Writer, node: dict[str, Any], depth: int) -> None:
+    parts = [f"@image {_quote(node['file'])}"]
+    for key in _IMAGE_TEXT_CLAUSES:
+        if key not in node:
+            continue
+        value = node[key]
+        if key in ("alt", "caption"):
+            parts.append(f"{key} {_quote(value)}")
+        elif key == "decorative":
+            parts.append(f"{key} {'true' if value else 'false'}")
+        elif key == "width":
+            parts.append(f"width {json.dumps(value)}" + (f" {node['width_unit']}" if "width_unit" in node else ""))
+        elif key == "height":
+            parts.append(f"height {json.dumps(value)}" + (f" {node['height_unit']}" if "height_unit" in node else ""))
+        else:
+            parts.append(f"{key} {value}")
+    w.line(depth, " ".join(parts))
 
 
 def _parse_equation(p: _Parser, d: _Directive) -> None:
@@ -1386,6 +1533,8 @@ for _form in (
     TextForm("heading", _parse_heading, _write_heading),
     TextForm("text", _parse_text, _write_text),
     TextForm("page_break", _parse_page_break, _write_page_break),
+    TextForm("section", _parse_section, _write_section),
+    TextForm("image", _parse_image, _write_image),
     TextForm("equation", _parse_equation, _write_equation),
     TextForm("table", _parse_table, _write_table),
     TextForm("each", _parse_each, _write_each),

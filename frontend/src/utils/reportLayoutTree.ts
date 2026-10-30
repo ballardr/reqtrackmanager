@@ -159,7 +159,7 @@ export function sourceRecordType(source: unknown, visible: NameInScope[]): strin
 
 /** A short line naming a block in the outline: its first text-like value, else its source's record type. */
 export function summarise(node: TreeNode, maxLength = 60): string {
-  const pick = ["text", "name", "tex", "key", "by"].map((k) => node[k]).find((v) => typeof v === "string" && v !== "");
+  const pick = ["text", "name", "tex", "key", "by", "page_style", "caption", "alt"].map((k) => node[k]).find((v) => typeof v === "string" && v !== "");
   const source = node.source as Record<string, unknown> | undefined;
   const line = typeof pick === "string" ? pick : typeof source?.record_type === "string" ? source.record_type : "";
   const flat = line.replace(/\s+/g, " ").trim();

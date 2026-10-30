@@ -203,7 +203,7 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
     ]
 
     module_bundle_json: dict[str, Any] = {
-        **export_org_layouts(db, org.id), **export_org_packs(db, org.id), **export_org_placements(db, org.id),
+        **export_org_layouts(db, org.id, file_assets_by_id), **export_org_packs(db, org.id), **export_org_placements(db, org.id),
         **export_org_folders(db, org.id),
     }
     for _module_key, hooks in get_all_module_org_bundle_hooks():
@@ -664,7 +664,7 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
     db.add(org)
     db.flush()
     _import_report_templates(db, org, data, current_user, resolutions=None, warnings=warnings)  # before layouts name them
-    import_org_layouts(db, org.id, data, current_user, warnings, merge=False)
+    import_org_layouts(db, org.id, data, current_user, warnings, merge=False, file_bytes_by_ref=file_bytes_by_ref)
     import_org_packs(db, org.id, data, current_user, warnings, merge=False)
     import_org_placements(db, org.id, data, current_user, warnings)
     import_org_folders(db, org.id, data, current_user, warnings)
@@ -850,7 +850,7 @@ def merge_org_bundle(
     users = UserResolver(db, acting_user, warnings)
     _import_org_groups(db, target_org, data, find_user, warnings, merge_by_name=True)
     _import_report_templates(db, target_org, data, current_user, resolutions=resolutions, warnings=warnings)  # before layouts name them
-    import_org_layouts(db, target_org.id, data, current_user, warnings, merge=True)
+    import_org_layouts(db, target_org.id, data, current_user, warnings, merge=True, file_bytes_by_ref=file_bytes_by_ref)
     import_org_packs(db, target_org.id, data, current_user, warnings, merge=True)
     import_org_placements(db, target_org.id, data, current_user, warnings)
     import_org_folders(db, target_org.id, data, current_user, warnings)

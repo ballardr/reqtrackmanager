@@ -12,7 +12,7 @@
  * the accessible name keep every button identifiable (style guide, "Pattern: icon buttons").
  */
 import {
-  FileSpreadsheet, GitBranch, Heading1, Heading2, Heading3, Layers, Repeat, Sigma, SeparatorHorizontal, Table, Type,
+  FileSpreadsheet, GitBranch, Heading1, Heading2, Heading3, Layers, RectangleHorizontal, Repeat, Sigma, SeparatorHorizontal, Table, Type,
   type LucideIcon,
 } from "lucide-react";
 
@@ -33,6 +33,7 @@ const BLOCK_ICONS: Record<string, LucideIcon> = {
   if: GitBranch,
   equation: Sigma,
   page_break: SeparatorHorizontal,
+  section: RectangleHorizontal,
   sheet: FileSpreadsheet,
 };
 

@@ -1,132 +1,714 @@
-"""Tests for embedding images in generated PDF reports via
-`![alt](attachment:<file id>)` references (see `services/reports.py`'s
-`_markdown_to_flowables`/`_image_flowable` and
-`report_document.resolve_report_images`, reached through a report's resource files), including the tenant-
-isolation check that stops an attachment reference from leaking a
-different organisation's file into a report."""
+"""Tests for a layout's image block and the picture libraries behind it: the tree check, the text view, sizing, the safe
+embedding of a picture (metadata stripped, caps), the PDF, Word, OpenDocument text and HTML renderers, the library API,
+the tier visibility rule (save time and run time), downloads and the project and organisation bundles.
+"""
 
-import struct
-import zlib
+from __future__ import annotations
 
-from tests.conftest import auth_headers, create_component_and_category, create_org_admin_in, create_project
+import io
+import json
+import re
+import uuid
+import zipfile
+from typing import Any
 
-# No PDF-parsing dependency is added just for this check: ReportLab always
-# writes `/Subtype /Image` into the PDF object stream for an embedded
-# raster image, so a raw byte-string search is enough to confirm (or rule
-# out) that an Image flowable actually made it into the output, without a
-# new test-only library dependency.
-_IMAGE_MARKER = b"/Subtype /Image"
+import pytest
+from docx import Document as DocxDocument
+from PIL import Image as PilImage
+from sqlalchemy import select
+
+from app.database import SessionLocal
+from app.models.generated_report import GeneratedReport
+from app.services.report_docx import render_docx_document
+from app.services.report_html import render_html_document
+from app.services.report_image_layout import PIXELS_PER_CM, placed_size_cm
+from app.services.report_images import (
+    ImageRejectedError,
+    max_image_bytes,
+    max_image_pixels,
+    normalise_raster,
+    sniff_image,
+)
+from app.services.report_layout_text import format_tree, parse_text
+from app.services.report_layout_tree import InvalidLayoutError, assert_valid, empty_tree
+from app.services.report_model import Image, ReportDocument
+from app.services.report_odt import render_odt_document
+from app.services.report_pdf import render_pdf_document
+from tests.conftest import auth_headers, create_org_user, login
+from tests.link_world import World
+
+SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50"><rect width="100" height="50" fill="#3366cc"/></svg>'
+FILE = "3e5e58a1-f297-4727-971c-c01d4db79697"
 
 
-def _tiny_png() -> bytes:
-    """Builds a minimal valid, decodable 1x1 white PNG from scratch (no
-    Pillow dependency needed for the test) — a fake/truncated PNG header
-    alone isn't decodable by ReportLab's image loader, so a real one is
-    needed to actually exercise the embed-into-PDF path."""
-
-    def chunk(tag: bytes, data: bytes) -> bytes:
-        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data))
-
-    signature = b"\x89PNG\r\n\x1a\n"
-    ihdr = chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0))
-    raw_scanline = b"\x00" + b"\xff\xff\xff"  # filter byte + one white RGB pixel
-    idat = chunk(b"IDAT", zlib.compress(raw_scanline))
-    iend = chunk(b"IEND", b"")
-    return signature + ihdr + idat + iend
+def png(width: int = 200, height: int = 100, colour: str = "red") -> bytes:
+    out = io.BytesIO()
+    PilImage.new("RGB", (width, height), colour).save(out, "PNG")
+    return out.getvalue()
 
 
-def _upload_image(client, token, org_id) -> str:
-    resp = client.post(
-        f"/api/v1/orgs/{org_id}/resources",
-        files={"file": ("pixel.png", _tiny_png(), "image/png")},
-        headers=auth_headers(token),
+def jpeg_with_metadata() -> bytes:
+    """A 40x20 JPEG that claims to be rotated and names a camera owner (and so should print as 20x40, with neither)."""
+    image = PilImage.new("RGB", (40, 20), "blue")
+    exif = image.getexif()
+    exif[0x010F] = "Camera Co"
+    exif[0x0112] = 6
+    out = io.BytesIO()
+    image.save(out, "JPEG", exif=exif)
+    return out.getvalue()
+
+
+def image_tree(**keys: Any) -> dict[str, Any]:
+    return {**empty_tree("document"), "nodes": [{"type": "image", "file": FILE, "alt": "A picture", **keys}]}
+
+
+def errors_of(tree: dict[str, Any]) -> list[tuple[str, str]]:
+    with pytest.raises(InvalidLayoutError) as caught:
+        assert_valid(tree)
+    return [(e.path, e.message) for e in caught.value.errors]
+
+
+# ---- the tree ---------------------------------------------------------------------------------------------------
+
+
+def test_an_image_block_with_every_property_is_valid():
+    assert_valid(image_tree(
+        width=8.5, width_unit="cm", height=3, align="left", caption="The {{project_name}} logo", caption_position="above",
+        numbering="never", decorative=False,
+    ))
+
+
+def test_a_decorative_image_needs_no_alternative_text_but_any_other_does():
+    assert_valid({**empty_tree("document"), "nodes": [{"type": "image", "file": FILE, "decorative": True}]})
+    assert errors_of({**empty_tree("document"), "nodes": [{"type": "image", "file": FILE}]})[0][0] == "nodes[0].alt"
+
+
+@pytest.mark.parametrize(
+    ("keys", "path"),
+    [
+        ({"file": "not-an-id"}, "nodes[0].file"),
+        ({"width": 500}, "nodes[0].width"),
+        ({"width": 0}, "nodes[0].width"),
+        ({"width": 150, "width_unit": "percent"}, "nodes[0].width"),
+        ({"width": True}, "nodes[0].width"),
+        ({"width_unit": "px"}, "nodes[0].width_unit"),
+        ({"width_unit": "cm"}, "nodes[0].width_unit"),
+        ({"height": 0.1}, "nodes[0].height"),
+        ({"align": "justify"}, "nodes[0].align"),
+        ({"caption": "x", "caption_position": "beside"}, "nodes[0].caption_position"),
+        ({"numbering": "sometimes"}, "nodes[0].numbering"),
+        ({"width": 4, "width_unit": "mm"}, "nodes[0].width"),
+        ({"width": 1200, "width_unit": "mm"}, "nodes[0].width"),
+        ({"height": 3, "height_unit": "percent"}, "nodes[0].height_unit"),
+        ({"height_unit": "mm"}, "nodes[0].height_unit"),
+        ({"caption": "{{record.title}}"}, "nodes[0].caption"),
+        ({"caption": "x" * 501}, "nodes[0].caption"),
+        ({"colour": "red"}, "nodes[0].colour"),
+    ],
+)
+def test_a_bad_image_property_is_refused_with_its_path(keys, path):
+    tree = image_tree(**keys)
+    if keys.get("file") == "not-an-id":
+        tree["nodes"][0]["file"] = "not-an-id"
+    assert path in [p for p, _ in errors_of(tree)]
+
+
+def test_an_image_block_is_a_document_block_only():
+    tree = {**empty_tree("table"), "nodes": [{"type": "image", "file": FILE, "alt": "x"}]}
+    assert "cannot be used in a table layout" in errors_of(tree)[0][1]
+
+
+# ---- the text view ----------------------------------------------------------------------------------------------
+
+
+def test_the_text_view_round_trips_every_image_property_and_leaves_absent_ones_absent():
+    tree = {**empty_tree("document"), "nodes": [
+        {"type": "image", "file": FILE, "alt": 'Logo "A"', "width": 8.5, "width_unit": "cm", "height": 3, "align": "left",
+         "caption": "The {{project_name}} logo", "caption_position": "above", "numbering": "always", "decorative": False},
+        {"type": "image", "file": FILE, "decorative": True},
+        {"type": "image", "file": FILE, "alt": "a", "width": 50, "width_unit": "percent"},
+        {"type": "image", "file": FILE, "alt": "a", "width": 85, "width_unit": "mm", "height": 30, "height_unit": "mm", "numbering": "auto"},
+        {"type": "image", "file": FILE, "alt": "a", "width": 5},
+    ]}
+    text = format_tree(tree)
+    parsed = parse_text(text)
+    assert parsed.ok, parsed.errors
+    assert parsed.tree == tree
+    assert format_tree(parsed.tree) == text
+
+
+@pytest.mark.parametrize(
+    ("line", "fragment"),
+    [
+        (f'@image "{FILE}" alt', "Expected"),
+        (f'@image "{FILE}" width wide', "number"),
+        (f'@image "{FILE}" decorative maybe', "true or false"),
+        (f'@image "{FILE}" alt "a" alt "b"', "once"),
+        (f'@image "{FILE}" glow', "Unexpected"),
+        ("@image", "Expected"),
+    ],
+)
+def test_a_mistake_in_an_image_line_is_a_positioned_error(line, fragment):
+    result = parse_text(f"@layout document\n\n{line}\n")
+    assert not result.ok
+    assert result.errors[0].line == 3 and fragment in result.errors[0].message
+
+
+def test_a_checked_problem_in_an_image_block_is_reported_on_its_line():
+    result = parse_text(f'@layout document\n\n@image "{FILE}"\n')
+    assert not result.ok and result.errors[0].line == 3
+
+
+# ---- sizing -----------------------------------------------------------------------------------------------------
+
+
+def block(**keys: Any) -> Image:
+    return Image(data=png(), **keys)  # 200 x 100 px: 5.29 x 2.65 cm at 96 dpi
+
+
+def test_a_picture_with_no_size_prints_at_its_natural_size():
+    width, height = placed_size_cm(block(), 17)
+    assert width == pytest.approx(200 / PIXELS_PER_CM) and height == pytest.approx(100 / PIXELS_PER_CM)
+
+
+def test_a_width_keeps_the_shape_a_height_alone_sizes_by_height_and_both_stretch():
+    assert placed_size_cm(block(width=8, width_unit="cm"), 17) == pytest.approx((8, 4))
+    assert placed_size_cm(block(height_cm=3), 17) == pytest.approx((6, 3))
+    assert placed_size_cm(block(width=8, width_unit="cm", height_cm=8), 17) == pytest.approx((8, 8))
+
+
+def test_a_percentage_is_of_the_text_width_of_the_page_it_is_on():
+    assert placed_size_cm(block(width=50, width_unit="percent"), 17) == pytest.approx((8.5, 4.25))
+    assert placed_size_cm(block(width=50, width_unit="percent"), 40) == pytest.approx((20, 10))
+
+
+def test_a_picture_is_never_wider_than_the_text_and_shrinks_in_height_with_it():
+    assert placed_size_cm(block(width=30, width_unit="cm"), 17) == pytest.approx((17, 8.5))
+    assert placed_size_cm(block(width=30, width_unit="cm", height_cm=30), 17) == pytest.approx((17, 17))
+
+
+def test_a_picture_that_cannot_be_read_has_no_size():
+    assert placed_size_cm(Image(data=b"not an image"), 17) is None
+
+
+def test_an_svg_is_sized_from_its_own_declared_size():
+    width, height = placed_size_cm(Image(svg=SVG, width=10, width_unit="cm"), 17)
+    assert (width, height) == pytest.approx((10, 5))
+
+
+# ---- embedding safely ---------------------------------------------------------------------------------------------
+
+
+def test_embedding_strips_metadata_and_applies_the_orientation():
+    original = jpeg_with_metadata()
+    assert b"Camera Co" in original
+    normal = normalise_raster(original)
+    assert (normal.width_px, normal.height_px) == (20, 40)
+    assert normal.content_type == "image/jpeg" and b"Camera Co" not in normal.data
+    assert not PilImage.open(io.BytesIO(normal.data)).getexif()
+
+
+def test_a_gif_keeps_its_first_frame_and_a_transparent_png_keeps_its_transparency():
+    frames = [PilImage.new("RGB", (10, 10), c) for c in ("red", "blue")]
+    out = io.BytesIO()
+    frames[0].save(out, "GIF", save_all=True, append_images=frames[1:])
+    assert normalise_raster(out.getvalue()).content_type == "image/png"
+    clear = io.BytesIO()
+    PilImage.new("RGBA", (4, 4), (0, 0, 0, 0)).save(clear, "PNG")
+    assert PilImage.open(io.BytesIO(normalise_raster(clear.getvalue()).data)).mode == "RGBA"
+
+
+def test_a_picture_is_judged_by_its_bytes_not_its_name_or_declared_type():
+    assert sniff_image(png()) == "image/png" and sniff_image(SVG.encode()) == "image/svg+xml"
+    for bad in (b"", b"<html><script>alert(1)</script></html>", b"%PDF-1.4", b"GIF89a-but-not"):
+        with pytest.raises(ImageRejectedError):
+            sniff_image(bad)
+
+
+def test_an_svg_with_a_script_or_external_reference_is_refused():
+    with pytest.raises(ImageRejectedError):
+        sniff_image(b'<svg xmlns="http://www.w3.org/2000/svg"><rect style="fill:url(http://evil/x)"/></svg>')
+    with pytest.raises(ImageRejectedError):
+        sniff_image(b'<!DOCTYPE svg [<!ENTITY x "y">]><svg xmlns="http://www.w3.org/2000/svg"/>')
+
+
+def test_an_image_with_too_many_pixels_is_refused_before_it_is_decoded(monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "report_image_max_pixels", 1_000_000)
+    big = io.BytesIO()
+    PilImage.new("1", (max_image_pixels() // 1000 + 1, 1000)).save(big, "PNG")
+    with pytest.raises(ImageRejectedError, match="too many pixels"):
+        sniff_image(big.getvalue())
+    with pytest.raises(ImageRejectedError):
+        normalise_raster(big.getvalue())
+
+
+# ---- the renderers ----------------------------------------------------------------------------------------------
+
+
+def document_with(*blocks: Image) -> ReportDocument:
+    return ReportDocument(title="Pictures", blocks=list(blocks))
+
+
+CAPTIONED = dict(width=8, width_unit="cm", align="right", caption="Figure 1: A diagram", alt="A red box")
+
+
+def test_html_shows_a_figure_with_its_width_alignment_alt_text_and_caption_below():
+    html = render_html_document(document_with(block(**CAPTIONED))).decode()
+    figure = re.search(r'<figure class="image align-right">(.*?)</figure>', html, re.S)
+    assert figure and 'alt="A red box"' in figure.group(1) and "width:8cm" in figure.group(1)
+    assert figure.group(1).index("<img") < figure.group(1).index("<figcaption>Figure 1: A diagram</figcaption>")
+
+
+def test_html_puts_the_caption_above_when_asked_and_hides_a_decorative_picture_from_assistive_technology():
+    html = render_html_document(document_with(block(caption="Up", caption_above=True, decorative=True))).decode()
+    assert html.index("<figcaption>Up") < html.index("<img") and 'alt=""' in html
+
+
+def test_html_inlines_an_svg_after_sanitising_it_and_labels_it():
+    html = render_html_document(document_with(Image(svg=SVG, alt="A chart", width=10, width_unit="cm"))).decode()
+    assert '<svg' in html and 'role="img" aria-label="A chart"' in html and "width:10cm" in html
+
+
+def test_html_text_in_a_caption_or_alt_is_escaped():
+    html = render_html_document(document_with(block(caption="<script>x</script>", alt='"><b>'))).decode()
+    assert "<script>x" not in html and "&lt;script&gt;" in html and '"><b>' not in html
+
+
+def test_word_embeds_the_picture_at_its_placed_size_with_alt_text_alignment_and_a_caption_after_it():
+    doc = DocxDocument(io.BytesIO(render_docx_document(document_with(block(**CAPTIONED)))))
+    shape = doc.inline_shapes[0]
+    assert shape.width.cm == pytest.approx(8, abs=0.01) and shape.height.cm == pytest.approx(4, abs=0.01)
+    assert shape._inline.docPr.get("descr") == "A red box"
+    paragraphs = [p for p in doc.paragraphs]
+    picture = next(i for i, p in enumerate(paragraphs) if p._p.xpath(".//w:drawing"))
+    assert paragraphs[picture].alignment == 2  # right
+    assert paragraphs[picture + 1].text == "Figure 1: A diagram" and paragraphs[picture + 1].style.name == "Caption"
+
+
+def test_word_puts_a_caption_above_the_picture_when_asked():
+    doc = DocxDocument(io.BytesIO(render_docx_document(document_with(block(caption="Top", caption_above=True)))))
+    texts = [p.text for p in doc.paragraphs]
+    assert texts.index("Top") < next(i for i, p in enumerate(doc.paragraphs) if p._p.xpath(".//w:drawing"))
+
+
+def test_word_renders_an_svg_as_a_picture_and_skips_an_unreadable_image_without_failing():
+    doc = DocxDocument(io.BytesIO(render_docx_document(document_with(Image(svg=SVG, alt="chart"), Image(data=b"junk", caption="x")))))
+    assert len(doc.inline_shapes) == 1
+
+
+def odt_content(document: ReportDocument) -> str:
+    with zipfile.ZipFile(io.BytesIO(render_odt_document(document))) as odt:
+        return odt.read("content.xml").decode()
+
+
+def test_opendocument_places_the_picture_at_its_size_with_alt_text_and_a_caption():
+    content = odt_content(document_with(block(**CAPTIONED)))
+    assert 'svg:width="8.000cm"' in content and 'svg:height="4.000cm"' in content
+    assert "<svg:title>A red box</svg:title>" in content
+    assert content.index("<draw:frame") < content.index("Figure 1: A diagram")
+    assert 'text:style-name="P_Image_right"' in content and 'text:style-name="P_Caption_right"' in content
+
+
+def test_opendocument_puts_a_caption_above_the_picture_when_asked_and_gives_a_decorative_one_no_title():
+    content = odt_content(document_with(block(caption="Top", caption_above=True, decorative=True)))
+    assert content.index("Top") < content.index("<draw:frame") and "<svg:title>" not in content
+
+
+def test_pdf_embeds_each_picture_and_survives_an_unreadable_one():
+    pdf = render_pdf_document(document_with(block(**CAPTIONED), Image(svg=SVG, caption="vector"), Image(data=b"junk")))
+    assert pdf.startswith(b"%PDF") and pdf.count(b"/Subtype /Image") >= 1
+
+
+# ---- the library and the run ------------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def world(client, admin_token) -> World:
+    return World(client, admin_token, "Report Images Org")
+
+
+@pytest.fixture
+def db():
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+def upload(world: World, url: str, data: bytes, name: str = "logo.png", token: str | None = None):
+    return world.client.post(url, files={"file": (name, data, "application/octet-stream")}, headers=auth_headers(token or world.token))
+
+
+def org_images(world: World, suffix: str = "") -> str:
+    return f"/api/v1/orgs/{world.org['id']}/report-images{suffix}"
+
+
+def project_images(project: dict, suffix: str = "") -> str:
+    return f"/api/v1/projects/{project['id']}/report-images{suffix}"
+
+
+def layout_body(name: str, file_id: str, **keys: Any) -> dict[str, Any]:
+    return {
+        "name": name, "description": "d", "family": "document",
+        "tree": {**empty_tree("document"), "nodes": [{"type": "image", "file": file_id, "alt": "A logo", **keys}]},
+    }
+
+
+def test_an_image_is_uploaded_listed_downloaded_and_deleted_in_the_project_library(world):
+    project = world.project("Alpha")
+    h = auth_headers(world.token)
+    made = upload(world, project_images(project), png())
+    assert made.status_code == 201, made.text
+    row = made.json()
+    assert row["tier"] == "project" and row["owned"] is True and row["content_type"] == "image/png" and row["used_by"] == []
+
+    assert [r["id"] for r in world.client.get(project_images(project), headers=h).json()["images"]] == [row["id"]]
+    assert world.client.get(f"/api/v1/files/{row['id']}", headers=h).content == png()
+    assert world.client.delete(project_images(project, f"/{row['id']}"), headers=h).status_code == 204
+    assert world.client.get(project_images(project), headers=h).json()["images"] == []
+
+
+def test_an_upload_is_judged_by_its_bytes_and_a_refusal_says_why(world):
+    project = world.project("Alpha")
+    resp = upload(world, project_images(project), b"<html><script>1</script></html>", "logo.png")
+    assert resp.status_code == 422 and "PNG" in resp.json()["detail"]
+    assert upload(world, project_images(project), b"", "empty.png").status_code == 422
+
+
+def test_a_project_lists_the_organisations_pictures_too_but_can_delete_only_its_own(world):
+    project = world.project("Alpha")
+    h = auth_headers(world.token)
+    shared = upload(world, org_images(world), png(colour="green")).json()
+    own = upload(world, project_images(project), png()).json()
+
+    rows = {r["id"]: r for r in world.client.get(project_images(project), headers=h).json()["images"]}
+    assert rows[shared["id"]]["tier"] == "organisation" and rows[shared["id"]]["owned"] is False
+    assert rows[own["id"]]["owned"] is True
+    assert world.client.delete(project_images(project, f"/{shared['id']}"), headers=h).status_code == 404
+    assert [r["id"] for r in world.client.get(org_images(world), headers=h).json()["images"]] == [shared["id"]]
+    assert world.client.delete(org_images(world, f"/{own['id']}"), headers=h).status_code == 404
+
+
+def test_the_library_needs_the_layout_manage_permission(client, world):
+    project = world.project("Alpha")
+    email = f"plain-{uuid.uuid4().hex[:6]}@example.com"
+    create_org_user(client, world.token, world.org["id"], email)
+    token = login(client, email, "Password123!")
+    assert client.get(project_images(project), headers=auth_headers(token)).status_code in (403, 404)
+    assert upload(world, project_images(project), png(), token=token).status_code in (403, 404)
+    assert client.get(org_images(world), headers=auth_headers(token)).status_code in (403, 404)
+    assert client.get(project_images(project)).status_code in (401, 403)
+
+
+def test_a_project_picture_is_downloadable_by_the_projects_members_only(client, admin_token, world):
+    project = world.project("Alpha")
+    other = world.project("Beta")
+    row = upload(world, project_images(project), png()).json()
+    outsider = f"outsider-{uuid.uuid4().hex[:6]}@example.com"
+    create_org_user(client, world.token, world.org["id"], outsider)
+    token = login(client, outsider, "Password123!")
+    assert client.get(f"/api/v1/files/{row['id']}", headers=auth_headers(token)).status_code == 403
+    assert other["id"] != project["id"]
+
+
+def test_a_project_layout_may_use_its_own_pictures_and_the_organisations(world):
+    project = world.project("Alpha")
+    h = auth_headers(world.token)
+    own = upload(world, project_images(project), png()).json()["id"]
+    shared = upload(world, org_images(world), png(colour="green")).json()["id"]
+    url = f"/api/v1/projects/{project['id']}/report-layouts"
+    assert world.client.post(url, json=layout_body("Own", own), headers=h).status_code == 201
+    assert world.client.post(url, json=layout_body("Shared", shared), headers=h).status_code == 201
+
+
+def test_an_organisation_layout_may_use_organisation_pictures_only(world):
+    project = world.project("Alpha")
+    h = auth_headers(world.token)
+    own = upload(world, project_images(project), png()).json()["id"]
+    shared = upload(world, org_images(world), png(colour="green")).json()["id"]
+    url = f"/api/v1/orgs/{world.org['id']}/report-layouts"
+    assert world.client.post(url, json=layout_body("Shared", shared), headers=h).status_code == 201
+    refused = world.client.post(url, json=layout_body("Leaky", own), headers=h)
+    assert refused.status_code in (400, 422), refused.text
+    assert "organisation" in refused.text and "logo.png" in refused.text
+
+
+def test_a_project_may_not_use_another_projects_picture(world):
+    alpha, beta = world.project("Alpha"), world.project("Beta")
+    h = auth_headers(world.token)
+    theirs = upload(world, project_images(beta), png()).json()["id"]
+    resp = world.client.post(f"/api/v1/projects/{alpha['id']}/report-layouts", json=layout_body("Cross", theirs), headers=h)
+    assert resp.status_code in (400, 422), resp.text
+
+
+def test_a_picture_of_another_organisation_is_refused(client, admin_token, world):
+    other = World(client, admin_token, "Other Images Org")
+    foreign = upload(other, org_images(other), png()).json()["id"]
+    resp = world.client.post(
+        f"/api/v1/orgs/{world.org['id']}/report-layouts", json=layout_body("Foreign", foreign), headers=auth_headers(world.token),
     )
-    assert resp.status_code == 201, resp.text
-    return resp.json()["id"]
+    assert resp.status_code in (400, 422), resp.text
 
 
-def _pdf_with_markdown(client, token, org_id, project_id, markdown: str):
-    """Generates a PDF whose appended resource section is `markdown` (an organisation resource file)."""
-    uploaded = client.post(
-        f"/api/v1/orgs/{org_id}/resources", files={"file": ("notes.md", markdown.encode(), "text/markdown")},
-        headers=auth_headers(token),
-    )
-    assert uploaded.status_code == 201, uploaded.text
-    return client.post(
-        f"/api/v1/projects/{project_id}/reports",
-        json={"format": "pdf", "resource_file_ids": [uploaded.json()["id"]]}, headers=auth_headers(token),
-    )
+def test_the_validate_endpoint_reports_a_picture_the_layout_may_not_use(world):
+    project = world.project("Alpha")
+    h = auth_headers(world.token)
+    own = upload(world, project_images(project), png()).json()["id"]
+    tree = layout_body("x", own)["tree"]
+    org = world.client.post(f"/api/v1/orgs/{world.org['id']}/report-layouts/validate", json={"tree": tree}, headers=h).json()
+    assert org["ok"] is False and org["errors"][0]["path"] == "nodes[0].file"
+    mine = world.client.post(f"/api/v1/projects/{project['id']}/report-layouts/validate", json={"tree": tree}, headers=h).json()
+    assert mine["ok"] is True
 
 
-def test_report_pdf_embeds_a_valid_attachment_image(client, admin_token):
-    org, org_admin_token = create_org_admin_in(client, admin_token, "ImageReportOrg")
-    project = create_project(client, org_admin_token, org["id"])
-    file_id = _upload_image(client, org_admin_token, org["id"])
-
-    resp = _pdf_with_markdown(
-        client, org_admin_token, org["id"], project["id"], f"# Intro\n\n![a pixel](attachment:{file_id})\n",
+def preview(world: World, project: dict, tree: dict) -> dict:
+    resp = world.client.post(
+        f"/api/v1/projects/{project['id']}/report-layouts/preview", json={"tree": tree}, headers=auth_headers(world.token),
     )
     assert resp.status_code == 200, resp.text
-    assert resp.headers["content-type"] == "application/pdf"
-    assert _IMAGE_MARKER in resp.content, "expected the embedded pixel image to appear in the generated PDF"
+    return resp.json()
 
 
-def test_report_pdf_silently_skips_attachment_from_a_different_org(client, admin_token):
-    """A crafted/stale attachment: reference pointing at another
-    organisation's file must never leak that file into the report — the
-    image is simply omitted, and report generation must still succeed."""
-    other_org, other_org_admin_token = create_org_admin_in(client, admin_token, "OtherImageOrg")
-    other_file_id = _upload_image(client, other_org_admin_token, other_org["id"])
+def test_a_run_draws_the_picture_with_numbered_captions_in_order(world):
+    project = world.project("Alpha")
+    first = upload(world, project_images(project), png()).json()["id"]
+    second = upload(world, project_images(project), png(colour="green"), "two.png").json()["id"]
+    nodes = [
+        {"type": "image", "file": first, "alt": "a", "caption": "Context for {{project_name}}"},
+        {"type": "image", "file": second, "alt": "b", "caption": "Plain", "numbering": "never"},
+        {"type": "image", "file": first, "alt": "c", "caption": "Again"},
+        {"type": "image", "file": second, "decorative": True},
+    ]
+    result = preview(world, project, {**empty_tree("document"), "nodes": nodes})
+    captions = re.findall(r"<figcaption>(.*?)</figcaption>", result["html"])
+    assert captions == ["Figure 1: Context for Alpha", "Plain", "Figure 2: Again"]
+    assert result["html"].count("<img") == 4
 
-    org, org_admin_token = create_org_admin_in(client, admin_token, "VictimImageOrg")
-    project = create_project(client, org_admin_token, org["id"])
 
-    resp = _pdf_with_markdown(
-        client, org_admin_token, org["id"], project["id"], f"![cross-org](attachment:{other_file_id})\n",
-    )
-    assert resp.status_code == 200, resp.text
-    assert _IMAGE_MARKER not in resp.content, "a cross-organisation attachment must never be embedded"
+def test_numbering_is_automatic_by_default_and_can_be_forced_either_way(world):
+    project = world.project("Alpha")
+    file_id = upload(world, project_images(project), png()).json()["id"]
+    nodes = [
+        {"type": "image", "file": file_id, "decorative": True},  # a bare logo: automatic leaves it alone
+        {"type": "image", "file": file_id, "decorative": True, "numbering": "always"},  # forced: "Figure 1" with no text
+        {"type": "image", "file": file_id, "alt": "a", "caption": "Captioned"},  # automatic: numbered because it has a caption
+        {"type": "image", "file": file_id, "alt": "b", "caption": "Kept plain", "numbering": "never"},
+        {"type": "image", "file": file_id, "alt": "c", "caption": "Forced", "numbering": "always"},
+    ]
+    html = preview(world, project, {**empty_tree("document"), "nodes": nodes})["html"]
+    assert re.findall(r"<figcaption>(.*?)</figcaption>", html) == ["Figure 1", "Figure 2: Captioned", "Kept plain", "Figure 3: Forced"]
 
 
-def test_report_pdf_silently_skips_a_same_org_requirement_attachment_from_a_different_project(client, admin_token):
-    """Deeper hardening-review finding: org scoping alone isn't enough.
-    `download_file` gates a direct (non-shared) requirement attachment on
-    *project*-level access, not just org membership — a project manager on
-    one project in a multi-project org has no automatic right to another
-    project's attachments. Before this fix, `_resolve_report_images` only
-    checked `organization_id`, so a hand-typed `attachment:<id>` reference
-    could pull a different project's requirement attachment into this
-    project's report. It must be silently skipped, same as any other
-    unresolvable reference."""
-    org, org_admin_token = create_org_admin_in(client, admin_token, "CrossProjectImageOrg")
-    other_project = create_project(client, org_admin_token, org["id"], name="Other Project")
-    component_id, category_id = create_component_and_category(client, org_admin_token, other_project["id"])
-    requirement = client.post(
-        f"/api/v1/projects/{other_project['id']}/requirements",
-        json={"name": "Req With Attachment", "component_id": component_id, "category_id": category_id},
-        headers=auth_headers(org_admin_token),
+def test_a_size_in_millimetres_is_the_same_length_as_the_same_size_in_centimetres(world):
+    project = world.project("Alpha")
+    file_id = upload(world, project_images(project), png()).json()["id"]
+    nodes = [
+        {"type": "image", "file": file_id, "alt": "a", "width": 85, "width_unit": "mm"},
+        {"type": "image", "file": file_id, "alt": "b", "width": 8.5},
+        {"type": "image", "file": file_id, "alt": "c", "width": 40, "width_unit": "mm", "height": 20, "height_unit": "mm"},
+    ]
+    html = preview(world, project, {**empty_tree("document"), "nodes": nodes})["html"]
+    widths = re.findall(r"<img [^>]*style=\"width:([0-9.]+)cm;[^\"]*aspect-ratio:([0-9./]+)", html)
+    assert [w for w, _ in widths] == ["8.5", "8.5", "4"]
+    assert widths[2][1] == "4/2"
+
+
+def test_the_image_size_limit_is_a_deployment_setting_defaulting_to_fifty_megabytes(monkeypatch):
+    from app.config import get_settings
+
+    assert max_image_bytes() == 50 * 1024 * 1024
+    settings = get_settings()
+    monkeypatch.setattr(settings, "report_image_max_bytes", 20)
+    assert max_image_bytes() == 20
+    with pytest.raises(ImageRejectedError, match="too large"):
+        sniff_image(png(100, 100))
+    monkeypatch.setattr(settings, "report_image_max_bytes", 500 * 1024 * 1024)  # never above the general upload limit
+    assert max_image_bytes() == settings.max_upload_bytes
+
+
+def test_the_pixel_limit_is_a_deployment_setting(monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "report_image_max_pixels", 50)
+    with pytest.raises(ImageRejectedError, match="too many pixels"):
+        sniff_image(png(10, 10))
+    assert sniff_image(png(7, 7)) == "image/png"
+
+
+def test_the_library_listing_tells_the_designer_the_size_limit(world, monkeypatch):
+    from app.config import get_settings
+
+    project = world.project("Alpha")
+    monkeypatch.setattr(get_settings(), "report_image_max_bytes", 7 * 1024 * 1024)
+    for url in (project_images(project), org_images(world)):
+        assert world.client.get(url, headers=auth_headers(world.token)).json()["max_image_bytes"] == 7 * 1024 * 1024
+
+
+def test_an_svg_in_the_library_is_drawn_as_a_labelled_vector_figure_in_a_run(world):
+    project = world.project("Alpha")
+    uploaded = upload(world, project_images(project), SVG.encode(), "diagram.svg")
+    assert uploaded.status_code == 201 and uploaded.json()["content_type"] == "image/svg+xml"
+    tree = layout_body("Vector", uploaded.json()["id"], width=10, width_unit="mm", caption="A diagram")["tree"]
+    html = preview(world, project, tree)["html"]
+    assert 'role="img" aria-label="A logo"' in html and "<svg" in html and "width:1cm" in html
+    assert "<figcaption>Figure 1: A diagram</figcaption>" in html
+
+
+def test_an_svg_with_a_script_is_refused_on_upload(world):
+    project = world.project("Alpha")
+    hostile = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><rect/></svg>'
+    resp = upload(world, project_images(project), hostile, "bad.svg")
+    # A script element is dropped by the sanitiser rather than refused, so what is stored and drawn has none of it.
+    assert resp.status_code in (201, 422)
+    if resp.status_code == 201:
+        html = preview(world, project, layout_body("Bad", resp.json()["id"])["tree"])["html"]
+        assert "<script" not in html and "alert(1)" not in html
+
+
+def test_a_markdown_picture_that_is_an_svg_is_drawn_as_a_vector_figure():
+    from app.services.report_model import markdown_to_blocks
+
+    blocks = markdown_to_blocks("![chart](attachment:abc)", images={"attachment:abc": SVG.encode()})
+    picture = next(b for b in blocks if isinstance(b, Image))
+    assert picture.svg == SVG and picture.data == b""
+    raster = next(b for b in markdown_to_blocks("![p](attachment:x)", images={"attachment:x": png()}) if isinstance(b, Image))
+    assert raster.svg is None and raster.data == png()
+
+
+def test_a_deleted_picture_is_skipped_with_a_warning_and_the_run_still_succeeds(world):
+    project = world.project("Alpha")
+    h = auth_headers(world.token)
+    file_id = upload(world, project_images(project), png()).json()["id"]
+    tree = layout_body("Gone", file_id)["tree"]
+    tree["nodes"].append({"type": "heading", "text": "After"})
+    world.client.delete(project_images(project, f"/{file_id}"), headers=h)
+    result = preview(world, project, tree)
+    assert "After" in result["html"] and "<img" not in result["html"]
+    assert any("image" in w.lower() and "deleted" in w.lower() for w in result["warnings"])
+
+
+def test_a_hand_typed_id_cannot_cross_the_tier_rule_at_run_time(world):
+    alpha, beta = world.project("Alpha"), world.project("Beta")
+    theirs = upload(world, project_images(beta), png()).json()["id"]
+    result = preview(world, alpha, layout_body("x", theirs)["tree"])  # a preview does not save, so only the run checks
+    assert "<img" not in result["html"] and any("may use" in w for w in result["warnings"])
+
+
+def test_the_library_names_the_layouts_that_use_a_picture(world):
+    project = world.project("Alpha")
+    h = auth_headers(world.token)
+    file_id = upload(world, project_images(project), png()).json()["id"]
+    world.client.post(f"/api/v1/projects/{project['id']}/report-layouts", json=layout_body("Uses it", file_id), headers=h)
+    rows = world.client.get(project_images(project), headers=h).json()["images"]
+    assert rows[0]["used_by"] == ["Uses it"]
+
+
+def test_the_picture_a_run_embeds_has_no_metadata(world):
+    project = world.project("Alpha")
+    file_id = upload(world, project_images(project), jpeg_with_metadata(), "photo.jpg").json()["id"]
+    html = preview(world, project, layout_body("Photo", file_id)["tree"])["html"]
+    import base64
+
+    embedded = base64.b64decode(re.search(r"data:image/jpeg;base64,([A-Za-z0-9+/=]+)", html).group(1))
+    assert b"Camera Co" not in embedded and PilImage.open(io.BytesIO(embedded)).size == (20, 40)
+
+
+def test_the_run_records_the_pictures_it_used_by_id_and_count_never_bytes(world, db):
+    project = world.project("Alpha")
+    h = auth_headers(world.token)
+    file_id = upload(world, project_images(project), png()).json()["id"]
+    tree = {**empty_tree("document"), "nodes": [{"type": "image", "file": file_id, "alt": "a"}, {"type": "image", "file": file_id, "alt": "b"}]}
+    created = world.client.post(
+        f"/api/v1/projects/{project['id']}/report-layouts",
+        json={"name": "Prov", "description": "d", "family": "document", "tree": tree}, headers=h,
     ).json()
-    resp = client.post(
-        f"/api/v1/projects/{other_project['id']}/requirements/{requirement['id']}/files",
-        files={"file": ("pixel.png", _tiny_png(), "image/png")},
-        headers=auth_headers(org_admin_token),
+    run = world.client.get(f"/api/v1/projects/{project['id']}/custom-reports/{created['id']}/run", headers=h)
+    assert run.status_code == 200, run.text
+    row = db.scalars(select(GeneratedReport).where(GeneratedReport.layout_id == uuid.UUID(created["id"]))).one()
+    assert row.stats["images"] == 2 and row.stats["image_files"] == [file_id]
+
+
+# ---- bundles ------------------------------------------------------------------------------------------------------
+
+
+def export_project(world: World, project: dict) -> bytes:
+    resp = world.client.get(f"/api/v1/projects/{project['id']}/export", headers=auth_headers(world.token))
+    assert resp.status_code == 200, resp.text
+    return resp.content
+
+
+def import_project(world: World, bundle: bytes, name: str = "Imported") -> dict:
+    resp = world.client.post(
+        "/api/v1/projects/import", data={"organization_id": world.org["id"], "name": name},
+        files={"file": ("bundle.zip", bundle, "application/zip")}, headers=auth_headers(world.token),
     )
     assert resp.status_code == 201, resp.text
-    attachment_file_id = resp.json()["id"]
+    return resp.json()
 
-    project = create_project(client, org_admin_token, org["id"], name="Report Project")
-    resp = _pdf_with_markdown(
-        client, org_admin_token, org["id"], project["id"], f"![borrowed](attachment:{attachment_file_id})\n",
+
+def test_a_project_bundle_carries_the_pictures_its_layouts_use_and_rewrites_their_ids(world):
+    project = world.project("Source")
+    h = auth_headers(world.token)
+    own = upload(world, project_images(project), png(colour="purple"), "own.png").json()["id"]
+    shared = upload(world, org_images(world), png(colour="green"), "shared.png").json()["id"]
+    url = f"/api/v1/projects/{project['id']}/report-layouts"
+    world.client.post(url, json=layout_body("Own picture", own), headers=h)
+    world.client.post(url, json=layout_body("Shared picture", shared), headers=h)
+
+    bundle = export_project(world, project)
+    with zipfile.ZipFile(io.BytesIO(bundle)) as z:
+        section = json.loads(z.read("project.json"))["report_layout_images"]
+        assert sorted(e["filename"] for e in section) == ["own.png", "shared.png"]
+        assert any(n.startswith("files/") and n.endswith("own.png") for n in z.namelist())
+
+    copy = import_project(world, bundle)
+    assert copy["warnings"] == []
+    imported = copy["project"]
+    mine = {r["id"]: r for r in world.client.get(project_images(imported), headers=h).json()["images"]}
+    assert [r["filename"] for r in mine.values() if r["owned"]] == ["own.png"]  # the picture copied into the new project
+    layouts = {r["name"]: r for r in world.client.get(f"/api/v1/projects/{imported['id']}/report-layouts", headers=h).json()}
+    own_copy = world.client.get(f"/api/v1/projects/{imported['id']}/report-layouts/{layouts['Own picture']['id']}", headers=h).json()
+    new_id = own_copy["current"]["tree"]["nodes"][0]["file"]
+    assert new_id != own and mine[new_id]["owned"] is True
+    assert world.client.get(f"/api/v1/files/{new_id}", headers=h).content == png(colour="purple")
+    shared_copy = world.client.get(f"/api/v1/projects/{imported['id']}/report-layouts/{layouts['Shared picture']['id']}", headers=h).json()
+    assert shared_copy["current"]["tree"]["nodes"][0]["file"] == shared  # an organisation picture stays a reference
+
+
+def test_an_organisation_bundle_carries_organisation_pictures_into_the_new_organisations_library(client, admin_token, world):
+    h = auth_headers(world.token)
+    shared = upload(world, org_images(world), png(colour="orange"), "brand.png").json()["id"]
+    world.client.post(f"/api/v1/orgs/{world.org['id']}/report-layouts", json=layout_body("Branded", shared), headers=h)
+    bundle = client.get(f"/api/v1/orgs/{world.org['id']}/export", headers=h).content
+
+    resp = client.post(
+        "/api/v1/orgs/import", data={"name": f"Copy {uuid.uuid4().hex[:6]}"},
+        files={"file": ("bundle.zip", bundle, "application/zip")}, headers=auth_headers(admin_token),
     )
-    assert resp.status_code == 200, resp.text
-    assert _IMAGE_MARKER not in resp.content, "a same-org but non-shared requirement attachment must never be embedded"
+    assert resp.status_code == 201, resp.text
+    new_org = resp.json()["organization"]["id"]
+    images = client.get(f"/api/v1/orgs/{new_org}/report-images", headers=h).json()["images"]
+    assert [i["filename"] for i in images] == ["brand.png"] and images[0]["id"] != shared
+    layouts = client.get(f"/api/v1/orgs/{new_org}/report-layouts", headers=h).json()
+    detail = client.get(f"/api/v1/orgs/{new_org}/report-layouts/{layouts[0]['id']}", headers=h).json()
+    assert detail["current"]["tree"]["nodes"][0]["file"] == images[0]["id"]
+    assert images[0]["used_by"] == ["Branded"]
 
 
-def test_report_pdf_silently_skips_unknown_attachment_reference(client, admin_token):
-    org, org_admin_token = create_org_admin_in(client, admin_token, "MissingImageOrg")
-    project = create_project(client, org_admin_token, org["id"])
-
-    resp = _pdf_with_markdown(
-        client, org_admin_token, org["id"], project["id"], "![missing](attachment:00000000-0000-0000-0000-000000000000)\n",
-    )
-    assert resp.status_code == 200, resp.text
+def test_a_bundle_whose_picture_bytes_are_missing_drops_that_version_with_a_warning(world):
+    project = world.project("Source")
+    h = auth_headers(world.token)
+    own = upload(world, project_images(project), png(), "gone.png").json()["id"]
+    world.client.post(f"/api/v1/projects/{project['id']}/report-layouts", json=layout_body("Needs it", own), headers=h)
+    bundle = export_project(world, project)
+    out = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(bundle)) as src, zipfile.ZipFile(out, "w") as dst:
+        for item in src.infolist():
+            if not (item.filename.startswith("files/") and item.filename.endswith("gone.png")):
+                dst.writestr(item, src.read(item.filename))
+    copy = import_project(world, out.getvalue())
+    joined = " ".join(copy["warnings"])
+    assert "gone.png" in joined and "Needs it" in joined

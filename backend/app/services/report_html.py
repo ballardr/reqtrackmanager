@@ -18,6 +18,10 @@ Design decisions:
   the footer text; the cover page is a PDF and Word device, so the HTML shows a plain title.
 - One stylesheet, inline and small, with a print rule so printing the page from a browser paginates at
   `PageBreak`.
+- Page styles: HTML has no pages, so a `PageStyleChange` opens a `<section>` that is as wide as that page would be and
+  carries a small label naming its paper and margins (hidden when printed). Printing uses CSS named pages
+  (`@page psN { size; margin }`, with `:left` / `:right` for mirrored margins) that the section selects with `page:`,
+  so a browser's print dialog gives each section its own paper. The CSS is built from numbers only, never from text.
 
 Dependencies: `services.report_model`, `services.report_svg`, `services.report_math`, `services.report_document` (branding type).
 """
@@ -32,6 +36,7 @@ import re
 from PIL import Image as PilImage
 
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX
+from app.services.report_image_layout import placed_size_cm
 from app.services.report_math import INLINE_SIZE_PT, scaled_svg, typeset
 from app.services.report_model import (
     TONE_FILL,
@@ -43,12 +48,13 @@ from app.services.report_model import (
     Note,
     NumberedList,
     PageBreak,
+    PageStyle,
+    PageStyleChange,
     Paragraph,
     ReportDocument,
     Styled,
     Table,
     finalize_links,
-    page_dimensions_cm,
     text_on,
     text_runs,
 )
@@ -71,12 +77,17 @@ th, td { border: 1px solid #ccc; padding: .3rem .5rem; vertical-align: top; over
 table.compact td { border-color: #ddd; }
 tbody tr:nth-child(even) td { background-color: #f5f5f5; }
 figure { margin: 1rem 0; } figure img, figure svg { max-width: 100%%; height: auto; }
+figure.image { overflow-x: auto; } figure.image.align-center { text-align: center; } figure.image.align-right { text-align: right; }
+figure.image figcaption { color: #444; font-size: .85rem; margin: .3rem 0; } span.picture { display: inline-block; }
 figure.equation { text-align: center; overflow-x: auto; } span.math svg { display: inline-block; }
 code.math-source { font-size: .9em; }
 .logo { max-height: 4rem; margin-bottom: .5rem; }
 footer { margin-top: 3rem; color: #666; font-size: .8rem; border-top: 1px solid #ddd; padding-top: .5rem; }
 hr.page-break { border: 0; border-top: 1px dashed #bbb; margin: 2rem 0; }
 @media print { hr.page-break { break-after: page; border: 0; } }
+section.page-style { position: relative; left: 50%%; transform: translateX(-50%%); box-sizing: border-box; max-width: calc(100vw - 2rem); }
+.page-frame { color: #666; font-size: .75rem; border: 1px dashed #bbb; border-radius: 4px; padding: .1rem .5rem; margin: 1.5rem 0 .5rem; }
+@media print { .page-frame { display: none; } section.page-style { position: static; transform: none; width: auto !important; max-width: none; } }
 """
 
 
@@ -97,11 +108,36 @@ def _data_uri(data: bytes) -> str | None:
     return f"data:{media_type};base64,{base64.b64encode(data).decode('ascii')}" if media_type else None
 
 
-def _page_width_rem(document: ReportDocument) -> float:
-    """The width of the page in the HTML view: 50rem for a portrait A4 and 70rem for a landscape one, scaled by the
+def _width_rem(style: PageStyle) -> float:
+    """The width of a page in the HTML view: 50rem for a portrait A4 and 70rem for a landscape one, scaled by the
     page's short side for any other size."""
-    short = min(page_dimensions_cm(document))
-    return round((70 if document.landscape else 50) * short / 21.0, 1)
+    short = min(style.dimensions_cm)
+    return round((70 if style.landscape else 50) * short / 21.0, 1)
+
+
+def _margin_css(style: PageStyle, *, verso: bool = False) -> str:
+    """The CSS `margin` of a page: top, right, bottom, left in cm (the gutter in the left or, mirrored, the inner one)."""
+    left, right = style.edges_cm(verso=verso)
+    return f"{style.margins.top:g}cm {right:g}cm {style.margins.bottom:g}cm {left:g}cm"
+
+
+def _page_rules(selector: str, style: PageStyle) -> str:
+    """`@page` rules for one page style: its paper and margins, and the left-hand page's margins when they mirror."""
+    width, height = style.dimensions_cm
+    rules = f"@page{selector} {{ size: {width:g}cm {height:g}cm; margin: {_margin_css(style)}; }}"
+    if style.mirror:
+        rules += f" @page{selector}:left {{ margin: {_margin_css(style, verso=True)}; }}"
+    return rules
+
+
+def _frame_label(style: PageStyle) -> str:
+    """The visible label of a page-style change: the paper, direction, margins and whether they mirror."""
+    margins = style.margins
+    sides = f"{margins.top:g} / {margins.bottom:g} / {margins.left:g} / {margins.right:g} cm"
+    gutter = f", gutter {margins.gutter:g} cm" if margins.gutter else ""
+    mirrored = ", mirrored" if style.mirror else ""
+    direction = "landscape" if style.landscape else "portrait"
+    return f"Page style: {style.page_size} {direction}; margins (top / bottom / left / right) {sides}{gutter}{mirrored}"
 
 
 def _esc(text: str) -> str:
@@ -149,15 +185,32 @@ def _table(block: Table) -> str:
     return f"<table{css}><thead><tr>{head}</tr></thead><tbody>{''.join(rows)}</tbody></table>"
 
 
-def _figure(block: Image) -> str | None:
-    label = f' role="img" aria-label="{_esc(block.alt)}"' if block.alt else ""
+def _figure(block: Image, usable_cm: float) -> str | None:
+    """An image block as a `<figure>`: the picture at its placed width, alignment and alternative text, with its caption.
+
+    A decorative picture has an empty `alt` and is hidden from assistive technology. `None` when it cannot be drawn.
+    """
+    size = placed_size_cm(block, usable_cm)
+    if size is None:
+        return None
+    width, height = size
+    label = "" if block.decorative or not block.alt else f' role="img" aria-label="{_esc(block.alt)}"'
+    hidden = ' aria-hidden="true"' if block.decorative else ""
+    style = f' style="width:{width:g}cm;max-width:100%;height:auto;aspect-ratio:{width:g}/{height:g}"'
     if block.svg is not None:
         try:
-            return f"<figure{label}>{sanitize_svg(block.svg)}</figure>"
+            picture = f'<span class="picture"{label}{hidden}{style}>{sanitize_svg(block.svg)}</span>'
         except UnsafeSvgError:
             return None
-    uri = _data_uri(block.data)
-    return f'<figure><img src="{uri}" alt="{_esc(block.alt)}"></figure>' if uri else None
+    else:
+        uri = _data_uri(block.data)
+        if uri is None:
+            return None
+        picture = f'<img src="{uri}" alt="{"" if block.decorative else _esc(block.alt)}"{style}>'
+    caption = f"<figcaption>{_esc(block.caption)}</figcaption>" if block.caption else ""
+    align = block.align if block.align in ("left", "center", "right") else "center"
+    inner = caption + picture if block.caption_above else picture + caption
+    return f'<figure class="image align-{align}">{inner}</figure>'
 
 
 def _equation(block: Equation) -> str:
@@ -191,6 +244,9 @@ def render_html_document(document: ReportDocument) -> bytes:
         uri = _data_uri(branding.logo_bytes)
         if uri:
             parts.insert(0, f'<img class="logo" src="{uri}" alt="">')
+    sections: dict[PageStyle, int] = {}
+    in_section = False
+    current = document.style
     for block in document.blocks:
         if isinstance(block, Heading):
             tag = f"h{min(max(block.level, 1), 4) + 1}"
@@ -207,20 +263,35 @@ def render_html_document(document: ReportDocument) -> bytes:
         elif isinstance(block, NumberedList):
             parts.append("<ol>" + "".join(f"<li>{_rich(item)}</li>" for item in block.items) + "</ol>")
         elif isinstance(block, Image):
-            figure = _figure(block)
+            figure = _figure(block, current.usable_width_cm)
             if figure:
                 parts.append(figure)
         elif isinstance(block, Table):
             parts.append(_table(block))
         elif isinstance(block, PageBreak):
             parts.append('<hr class="page-break">')
+        elif isinstance(block, PageStyleChange):
+            if in_section:
+                parts.append("</section>")
+            in_section = block.style != document.style
+            current = block.style
+            parts.append(f'<div class="page-frame">{_esc(_frame_label(block.style))}</div>')
+            if in_section:
+                index = sections.setdefault(block.style, len(sections) + 1)
+                parts.append(f'<section class="page-style ps{index}" style="width: {_width_rem(block.style):g}rem">')
         elif isinstance(block, Gap):
             continue  # a PDF layout hint
+    if in_section:
+        parts.append("</section>")
     if branding and branding.footer_text:
         parts.append(f"<footer>{_esc(branding.footer_text)}</footer>")
     css = _CSS % {
-        "accent": accent, "width": f"{_page_width_rem(document):g}rem", "head_text": "#" + text_on(accent.lstrip("#")),
+        "accent": accent, "width": f"{_width_rem(document.style):g}rem", "head_text": "#" + text_on(accent.lstrip("#")),
     }
+    # `@page` rules sit outside `@media`: browsers ignore them on screen and do not accept them inside a media query.
+    css += _page_rules("", document.style) + "\n"
+    for style, index in sections.items():
+        css += f"{_page_rules(f' ps{index}', style)}\n.ps{index} {{ page: ps{index}; break-before: page; break-after: page; }}\n"
     page = (
         '<!doctype html>\n<html lang="en"><head><meta charset="utf-8">'
         f'<meta http-equiv="Content-Security-Policy" content="{CSP}">'

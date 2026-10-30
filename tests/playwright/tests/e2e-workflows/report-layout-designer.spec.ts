@@ -236,11 +236,58 @@ test.describe("Report layout designer", () => {
     await popover.getByRole("combobox", { name: "Orientation" }).selectOption("landscape");
     await expect(editor).toHaveValue(/^@layout document landscape Letter\n/);
     await expect(page.getByRole("button", { name: "Page setup: Letter, landscape" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(popover).toBeHidden();
     await expect(page.getByText("The text is valid.")).toBeVisible();
     await saveNewVersion(page);
     await expect(page.getByText("Saved as version 2.")).toBeVisible();
     await page.reload();
     await expect(page.getByRole("button", { name: "Page setup: Letter, landscape" })).toBeVisible();
+  });
+
+  test("margins and a page style are set in the Page setup dialog, used by a section, saved and read back in the block editor", async ({ page, request }) => {
+    const { project, suffix } = await setup(page, request);
+    await createFromProjectAdmin(page, project.id, `E2E page styles ${suffix}`);
+    const editor = page.getByRole("textbox", { name: "Layout text" });
+
+    await test.step("margins, mirroring and a landscape A3 style are written as header lines", async () => {
+      await page.getByRole("button", { name: "Page setup: A4, portrait" }).click();
+      const dialog = page.getByRole("dialog", { name: "Page setup" });
+      await dialog.getByRole("spinbutton", { name: "Top" }).first().fill("2");
+      await dialog.getByRole("spinbutton", { name: "Gutter" }).first().fill("1");
+      await dialog.getByRole("checkbox", { name: "Mirror margins" }).check();
+      await dialog.getByRole("button", { name: "Add page style" }).click();
+      await dialog.getByRole("textbox", { name: "Name" }).fill("Wide tables");
+      const style = dialog.getByRole("group", { name: "Wide tables" });
+      await style.getByRole("combobox", { name: "Page size" }).selectOption("A3");
+      await style.getByRole("combobox", { name: "Orientation" }).selectOption("landscape");
+      await expect(editor).toHaveValue(/^@layout document mirror margins top=2 gutter=1\n@pagestyle "Wide tables" landscape A3\n/);
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeHidden();
+    });
+
+    await test.step("a section uses the style and the server accepts the text", async () => {
+      await editor.fill(`${await editor.inputValue()}\nBefore.\n\n@section "Wide tables"\n  Inside the wide section.\n@end\n\nAfter.\n`);
+      await expect(page.getByText("The text is valid.")).toBeVisible();
+    });
+
+    await test.step("the preview labels the section's page style and shows the text in it", async () => {
+      await page.getByRole("button", { name: "Run preview" }).click();
+      const frame = page.frameLocator('iframe[title="Report preview"]');
+      await expect(frame.getByText("Page style: A3 landscape")).toBeVisible();
+      await expect(frame.locator("section.page-style").getByText("Inside the wide section.")).toBeVisible();
+      await expect(frame.locator("section.page-style").getByText("After.")).toHaveCount(0);
+    });
+
+    await test.step("saved and reloaded, the block editor shows the section and its style", async () => {
+      await saveNewVersion(page);
+      await expect(page.getByText("Saved as version 2.")).toBeVisible();
+      await page.reload();
+      await page.getByRole("tab", { name: "Blocks" }).click();
+      await page.getByText("Layout settings").click();
+      await expect(page.getByRole("group", { name: "Wide tables" })).toBeVisible();
+      await expect(page.getByRole("checkbox", { name: "Mirror margins" })).toBeChecked();
+    });
   });
 
   test("fields and project values are one searchable list", async ({ page, request }) => {

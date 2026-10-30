@@ -1,14 +1,14 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { expect, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, userEvent, waitFor, within } from "storybook/test";
 
 import type { BlockField } from "../api/reportLayouts";
-import { buildBlockCatalogue, buildFieldCatalogue, buildWidgets } from "../testing/reportLayoutFixtures";
+import { buildBlockCatalogue, buildFieldCatalogue, buildImageLibrary, buildWidgets } from "../testing/reportLayoutFixtures";
 import { requiredCaptions } from "../testing/requiredMarkers";
 import type { NameInScope, TreeNode } from "../utils/reportLayoutTree";
 import { ReportLayoutBlockField, type BlockEnv } from "./ReportLayoutBlockField";
 
-const env: BlockEnv = { blocks: buildBlockCatalogue(), catalogue: buildFieldCatalogue(), widgets: buildWidgets(), variables: [], readOnly: false };
+const env: BlockEnv = { blocks: buildBlockCatalogue(), catalogue: buildFieldCatalogue(), widgets: buildWidgets(), variables: [], pageStyles: [], readOnly: false };
 const blockOf = (type: string) => buildBlockCatalogue().blocks.find((b) => b.type === type)!;
 const fieldOf = (type: string, key: string): BlockField => blockOf(type).fields.find((f) => f.key === key)!;
 
@@ -161,5 +161,86 @@ export const LayoutVariablesAreDeclaredWithTheSharedEditor: Story = {
     await userEvent.click(canvas.getByRole("button", { name: /Remove variable/ }));
     // The last variable removed takes the whole key with it.
     await waitFor(() => expect(nodeOf(canvasElement)).not.toHaveProperty("variables"));
+  },
+};
+
+const withStyles: BlockEnv = { ...env, pageStyles: ["Wide tables", "Narrow"] };
+
+/** A section chooses one of the layout's page styles, and a name that is no longer one is still shown. */
+export const ASectionChoosesOneOfTheLayoutsPageStyles: Story = {
+  args: { field: fieldOf("section", "page_style"), initial: { type: "section", page_style: "Wide tables", children: [] }, environment: withStyles },
+  play: async ({ canvasElement }) => {
+    const select = within(canvasElement).getByRole("combobox", { name: "Page style" });
+    await expect(select).toHaveValue("Wide tables");
+    await userEvent.selectOptions(select, "Narrow");
+    await waitFor(() => expect(nodeOf(canvasElement).page_style).toBe("Narrow"));
+  },
+};
+
+export const ASectionNamingAMissingStyleSaysSo: Story = {
+  args: { field: fieldOf("section", "page_style"), initial: { type: "section", page_style: "Gone", children: [] }, environment: withStyles },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByRole("option", { name: "Gone (not a page style of this layout)" })).toBeInTheDocument();
+  },
+};
+
+export const ASectionWithNoStylesPointsToThePageStyles: Story = {
+  args: { field: fieldOf("section", "page_style"), initial: { type: "section", page_style: "", children: [] } },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByRole("option", { name: "Add a page style under the layout's page styles first." })).toBeInTheDocument();
+  },
+};
+
+const withImages: BlockEnv = { ...env, images: { library: buildImageLibrary(), scope: "project" } };
+
+/** An image block's file field is the picture picker, and its sizes are decimal numbers that can be emptied again. */
+export const AnImageBlockChoosesAPictureAndTakesDecimalSizes: Story = {
+  args: { field: fieldOf("image", "file"), initial: { type: "image", file: "", alt: "" }, environment: withImages },
+  render: (args) => (
+    <div>
+      <Harness {...args} />
+      <Harness field={fieldOf("image", "width")} initial={{ type: "image", file: "image-1" }} environment={withImages} />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Choose image…" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    await userEvent.click(await dialog.findByRole("button", { name: "Select site-logo.png" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Use image" }));
+    await waitFor(() => expect(JSON.parse(canvas.getAllByTestId("node")[0].textContent ?? "{}").file).toBe("image-1"));
+    const width = canvas.getByRole("spinbutton", { name: "Width" });
+    await userEvent.type(width, "8.5");
+    await waitFor(() => expect(JSON.parse(canvas.getAllByTestId("node")[1].textContent ?? "{}").width).toBe(8.5));
+    await userEvent.clear(width);
+    await waitFor(() => expect(JSON.parse(canvas.getAllByTestId("node")[1].textContent ?? "{}")).not.toHaveProperty("width"));
+  },
+};
+
+const layoutField = (key: string): BlockField => buildBlockCatalogue().layout_fields.find((f) => f.key === key)!;
+
+/** The layout's margins use the shared margin fields; emptying the last one removes the key. */
+export const LayoutMarginsUseTheSharedMarginFields: Story = {
+  args: { field: layoutField("margins"), initial: { schema_version: 1, family: "document", nodes: [] } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.type(canvas.getByRole("spinbutton", { name: "Top" }), "2");
+    await waitFor(() => expect(nodeOf(canvasElement).margins).toEqual({ top: 2 }));
+    await userEvent.clear(canvas.getByRole("spinbutton", { name: "Top" }));
+    await waitFor(() => expect(nodeOf(canvasElement)).not.toHaveProperty("margins"));
+  },
+};
+
+/** The layout's page styles use the shared editor and are written with the tree's own key names. */
+export const LayoutPageStylesUseTheSharedEditor: Story = {
+  args: { field: layoutField("page_styles"), initial: { schema_version: 1, family: "document", page_size: "A5", nodes: [] } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Add page style" }));
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Page size" }), "A3");
+    await waitFor(() => expect(nodeOf(canvasElement).page_styles).toEqual([{ name: "Style 1", page_size: "A3" }]));
+    await expect(canvas.getByRole("option", { name: "Same as the layout (A5)" })).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Remove page style Style 1" }));
+    await waitFor(() => expect(nodeOf(canvasElement)).not.toHaveProperty("page_styles"));
   },
 };

@@ -33,6 +33,7 @@ FIELD_KINDS: tuple[str, ...] = (
     "text",  # one line
     "longtext",  # several lines
     "integer",
+    "number",  # a decimal, within `minimum` and `maximum`
     "boolean",
     "choice",  # one of `choices`
     "tex",  # one line of TeX
@@ -46,6 +47,10 @@ FIELD_KINDS: tuple[str, ...] = (
     "widget_params",  # that component's settings (depends on the widget key)
     "widget_sort",  # sort keys of a widget's table
     "variables",  # a layout's run-time variables
+    "page_style",  # the name of one of the layout's page styles
+    "margins",  # the margins of a page: top, bottom, left, right and a gutter, in cm
+    "page_styles",  # the layout's named page styles
+    "image",  # a picture from the layout tier's image library (a file id)
 )
 
 
@@ -60,7 +65,7 @@ class BlockField:
         required: Whether the node must carry it.
         help: One or two sentences: what it is and what it affects.
         max_length: Longest text accepted (text kinds).
-        minimum / maximum: Bounds of an integer.
+        minimum / maximum: Bounds of an integer or number.
         default: What the evaluator assumes when the key is absent (shown as a placeholder), if it differs from empty.
         choices: The values of a `choice`.
         features: What a text may contain: `placeholders` (`{{record.field}}`), `math` (`\\( \\)`), `markdown`.
@@ -75,8 +80,8 @@ class BlockField:
     required: bool = False
     help: str = ""
     max_length: int | None = None
-    minimum: int | None = None
-    maximum: int | None = None
+    minimum: float | None = None
+    maximum: float | None = None
     default: Any = None
     choices: tuple[str, ...] = ()
     features: tuple[str, ...] = ()
@@ -137,6 +142,22 @@ LAYOUT_FIELDS: tuple[BlockField, ...] = (
     BlockField(
         "page_size", "Page size", "choice", choices=("A3", "A4", "A5", "Letter", "Legal"), default="A4",
         help="The paper size of PDF, Word and OpenDocument output. A table layout has no pages.", families=("document",),
+    ),
+    BlockField(
+        "margins", "Margins", "margins",
+        help="The white space round the text of the layout's own pages, in cm (1 to 10; the gutter 0 to 5). "
+        "A page style can set its own.", families=("document",),
+    ),
+    BlockField(
+        "mirror_margins", "Mirror margins", "boolean",
+        help="For double-sided printing: left and the gutter become the inner edge and right the outer, so they swap on "
+        "facing pages. Applies to every page style.", families=("document",),
+    ),
+    BlockField(
+        "page_styles", "Page styles", "page_styles",
+        help="Named page styles (paper, orientation, margins) that a section block lays its contents out in, for example "
+        "an A3 landscape table inside an A4 portrait report. A style leaves out what it shares with the layout.",
+        families=("document",),
     ),
     BlockField(
         "variables", "Variables", "variables",

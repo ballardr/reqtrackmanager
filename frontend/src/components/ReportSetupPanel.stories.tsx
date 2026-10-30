@@ -89,6 +89,27 @@ export const ListsLayoutsPacksTablesAndModuleReportsInOneFolderList: Story = {
   },
 };
 
+/** Version, Type and Folder are off until chosen (the icon shows the type, the nesting the folder); Name cannot be hidden. */
+export const VersionTypeAndFolderColumnsAreOffUntilChosen: Story = {
+  args: fresh(),
+  play: async ({ canvasElement }) => {
+    const grid = await list(canvasElement);
+    for (const name of ["Version", "Type", "Folder"]) await expect(grid.queryByRole("columnheader", { name })).not.toBeInTheDocument();
+    await expect(grid.getByRole("columnheader", { name: "Last changed" })).toBeInTheDocument();
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Choose columns" }));
+    const chooser = within(await screen.findByRole("dialog", { name: "Columns" }));
+    await expect(chooser.getByRole("checkbox", { name: "Name" })).toBeDisabled();
+    await userEvent.click(chooser.getByRole("checkbox", { name: "Type" }));
+    await userEvent.click(chooser.getByRole("checkbox", { name: "Folder" }));
+    await userEvent.click(chooser.getByRole("checkbox", { name: "Version" }));
+    await expect(grid.getByRole("columnheader", { name: /Type/ })).toBeInTheDocument();
+    await expect(grid.getByRole("columnheader", { name: /Folder/ })).toBeInTheDocument();
+    await expect(grid.getByRole("columnheader", { name: /Version/ })).toBeInTheDocument();
+    await userEvent.click(chooser.getByRole("button", { name: "Show the default columns" }));
+    await expect(grid.queryByRole("columnheader", { name: "Type" })).not.toBeInTheDocument();
+  },
+};
+
 export const AnOrganisationListHasNoSharedFromColumnAndOffersStarterLayouts: Story = {
   args: {
     layoutApi: buildLayoutApi([OWN_LAYOUT], { kind: "organization" }),

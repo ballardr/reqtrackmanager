@@ -6,8 +6,10 @@ decides whether a tree may be saved or run.
 
 Responsibilities:
 - Define the tree vocabulary (`TREE_SCHEMA_VERSION`): document blocks `heading`, `text`, `table`,
-  `each`, `group`, `if`, `page_break`, `equation` (display TeX), `widget` (one component of a module report, by key), and the table-family
-  block `sheet` (a root source plus optional left `joins` along links, one row per combination).
+  `each`, `group`, `if`, `page_break`, `section` (its contents in another page style), `equation` (display TeX),
+  `image` (a picture from the layout tier's image library, with size, alignment, caption and alt text),
+  `widget` (one component of a module report, by key), and the table-family block `sheet` (a root source plus
+  optional left `joins` along links, one row per combination).
 - Validate a tree with positioned errors (`validate_tree`): shape, unknown keys, depth/node/size
   caps, record types and field names against the report field registry, operators and values per
   field kind, conditions combined with `all` / `any` / `not`, aliases in scope and `{{alias.field}}`
@@ -50,6 +52,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import uuid
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field, replace
@@ -62,6 +65,13 @@ from app.services.report_fields import FieldInfo, UnknownReportFieldError, field
 from app.services.report_layout_block_schema import BlockContainer, BlockField, BlockProvides, BlockSchema
 from app.services.report_math import MAX_TEX_CHARS, split_math, tex_problem
 from app.services.report_model import PLACEHOLDER_NAMES
+from app.services.report_page_styles import (
+    ORIENTATIONS,
+    PAGE_SIZES,
+    document_style_problems,
+    resolve_page_styles,
+    styles_problems,
+)
 from app.services.report_variables import (
     FIELD_KINDS,
     MAX_LIST_VALUES,
@@ -91,12 +101,19 @@ MAX_CONDITION_DEPTH = 4
 MAX_IN_VALUES = 20
 MAX_SORT = 3
 MAX_TEXT_CHARS = 20_000
+MAX_ALT_CHARS = 300
+MAX_CAPTION_CHARS = 500
+#: Bounds of an image block's size per unit: a width in cm, mm or as a percentage of the text width, and a height in cm or mm.
+IMAGE_SIZE_BOUNDS: dict[str, tuple[float, float]] = {"cm": (0.5, 100.0), "mm": (5.0, 1000.0), "percent": (1.0, 100.0)}
+IMAGE_UNITS = ("cm", "mm", "percent")
+IMAGE_HEIGHT_UNITS = ("cm", "mm")
+#: How a caption is numbered: `auto` (a captioned picture is, a bare one is not), `always` or `never`.
+IMAGE_NUMBERING = ("auto", "always", "never")
+IMAGE_ALIGNMENTS = ("left", "center", "right")
+IMAGE_CAPTION_POSITIONS = ("above", "below")
 MAX_TREE_BYTES = 512_000
 MAX_ERRORS = 50
 
-ORIENTATIONS = ("portrait", "landscape")
-#: The page sizes a document layout can choose (`services.report_model.PAGE_SIZES_CM`); A4 when none is written.
-PAGE_SIZES = ("A3", "A4", "A5", "Letter", "Legal")
 DIRECTIONS = ("both", "outgoing", "incoming")
 DEFAULT_RECORD_ALIAS = "record"
 DEFAULT_GROUP_ALIAS = "group"
@@ -310,6 +327,9 @@ class TreeValidator:
         self.widget_reports: set[str] = set()
         #: `{name: declaration}` of the layout's valid variables (a reference is checked against these).
         self.variables: dict[str, dict[str, Any]] = {}
+        #: Names of the layout's page styles, and whether the block being checked is inside a section.
+        self.page_style_names: set[str] = set()
+        self.in_section = False
 
     # --- driver ----------------------------------------------------------------------------
 
@@ -327,7 +347,10 @@ class TreeValidator:
             self.error("", f"The layout is too large ({size} bytes; the limit is {MAX_TREE_BYTES}).")
             return self.analysis
 
-        self.check_keys(tree, "", required=("schema_version", "family", "nodes"), optional=("orientation", "page_size", "variables"))
+        self.check_keys(
+            tree, "", required=("schema_version", "family", "nodes"),
+            optional=("orientation", "page_size", "margins", "mirror_margins", "page_styles", "variables"),
+        )
         if tree.get("schema_version") != TREE_SCHEMA_VERSION:
             self.error("schema_version", f"Must be {TREE_SCHEMA_VERSION}.")
         declared = tree.get("family")
@@ -347,6 +370,7 @@ class TreeValidator:
                 self.error("page_size", "Only a document layout has a page size.")
             elif tree["page_size"] not in PAGE_SIZES:
                 self.error("page_size", f"Must be one of: {', '.join(PAGE_SIZES)}.")
+        self.page_styles(tree, declared)
         if "variables" in tree:
             self.variable_declarations(tree["variables"], "variables")
         nodes = tree.get("nodes")
@@ -355,6 +379,30 @@ class TreeValidator:
         elif "nodes" in tree:
             self.error("nodes", "Must be a list of blocks.")
         return self.analysis
+
+    def page_styles(self, tree: dict[str, Any], family: str) -> None:
+        """Checks the root's margins and page styles and notes the names a `section` block may use."""
+        keys = [k for k in ("margins", "mirror_margins", "page_styles") if k in tree]
+        if family != FAMILY_DOCUMENT:
+            for key in keys:
+                self.error(key, "Only a document layout has pages.")
+            return
+        if "mirror_margins" in tree and not isinstance(tree["mirror_margins"], bool):
+            self.error("mirror_margins", "Must be true or false.")
+        for sub, message in document_style_problems(tree):
+            self.error(sub, message)
+        if "page_styles" not in tree:
+            return
+        own_valid = not any(p.path.startswith(("margins", "page_size", "orientation")) for p in self.analysis.errors)
+        document = resolve_page_styles({k: v for k, v in tree.items() if k != "page_styles"})[0] if own_valid else None
+        if document is None:
+            self.error("page_styles", "Fix the document's own page setup first.")
+            return
+        for sub, message in styles_problems(tree["page_styles"], document, mirror=tree.get("mirror_margins") is True):
+            self.error(f"page_styles{sub}", message)
+        self.page_style_names = {
+            style["name"] for style in tree["page_styles"] if isinstance(style, dict) and isinstance(style.get("name"), str)
+        }
 
     def error(self, path: str, message: str) -> None:
         """Records a problem (silently dropped past `MAX_ERRORS`)."""
@@ -909,8 +957,78 @@ def _validate_equation(v: TreeValidator, node: dict[str, Any], path: str) -> Non
         v.error(f"{path}.tex", problem)
 
 
+def _image_size(v: TreeValidator, node: dict[str, Any], key: str, unit_key: str, units: tuple[str, ...], path: str, what: str) -> None:
+    """Checks an optional image size and its unit: a real number (not a boolean) within the unit's bounds."""
+    unit = node.get(unit_key, "cm")
+    if unit_key in node and unit not in units:
+        v.error(f"{path}.{unit_key}", f"Must be one of: {', '.join(units)}.")
+        unit = "cm"
+    if unit_key in node and key not in node:
+        v.error(f"{path}.{unit_key}", f"A unit needs a {what}.")
+    if key not in node:
+        return
+    low, high = IMAGE_SIZE_BOUNDS[unit]
+    value = node[key]
+    if not isinstance(value, int | float) or isinstance(value, bool) or not low <= value <= high:
+        v.error(f"{path}.{key}", f"The {what} must be a number from {low:g} to {high:g} {'%' if unit == 'percent' else unit}.")
+
+
+def _validate_image(v: TreeValidator, node: dict[str, Any], path: str) -> None:
+    v.check_keys(
+        node, path, required=("type", "file"),
+        optional=(
+            "alt", "decorative", "width", "width_unit", "height", "height_unit", "align", "caption", "caption_position", "numbering",
+        ),
+    )
+    raw = node.get("file", MISSING)
+    if raw is not MISSING:
+        try:
+            ok = isinstance(raw, str) and str(uuid.UUID(raw)) == raw
+        except ValueError:
+            ok = False
+        if not ok:
+            v.error(f"{path}.file", "Must be the id of an image in the library (lower-case, with hyphens).")
+    decorative = node.get("decorative", False)
+    if not isinstance(decorative, bool):
+        v.error(f"{path}.decorative", "Must be true or false.")
+        decorative = False
+    alt = node.get("alt", "")
+    if not isinstance(alt, str):
+        v.error(f"{path}.alt", "Must be text.")
+    elif len(alt) > MAX_ALT_CHARS:
+        v.error(f"{path}.alt", f"Too long ({len(alt)} characters; the limit is {MAX_ALT_CHARS}).")
+    elif not alt.strip() and not decorative:
+        v.error(f"{path}.alt", "Describe the image for someone who cannot see it, or mark it decorative.")
+    _image_size(v, node, "width", "width_unit", IMAGE_UNITS, path, "width")
+    _image_size(v, node, "height", "height_unit", IMAGE_HEIGHT_UNITS, path, "height")
+    if "align" in node and node["align"] not in IMAGE_ALIGNMENTS:
+        v.error(f"{path}.align", f"Must be one of: {', '.join(IMAGE_ALIGNMENTS)}.")
+    if "caption_position" in node and node["caption_position"] not in IMAGE_CAPTION_POSITIONS:
+        v.error(f"{path}.caption_position", f"Must be one of: {', '.join(IMAGE_CAPTION_POSITIONS)}.")
+    if "numbering" in node and node["numbering"] not in IMAGE_NUMBERING:
+        v.error(f"{path}.numbering", f"Must be one of: {', '.join(IMAGE_NUMBERING)}.")
+    if "caption" in node:
+        caption = v.text(node["caption"], f"{path}.caption", limit=MAX_CAPTION_CHARS)
+        v.placeholders(caption, f"{path}.caption")
+
+
 def _validate_page_break(v: TreeValidator, node: dict[str, Any], path: str) -> None:
     v.check_keys(node, path, required=("type",))
+
+
+def _validate_section(v: TreeValidator, node: dict[str, Any], path: str) -> None:
+    v.check_keys(node, path, required=("type", "page_style", "children"))
+    style = v.text(node.get("page_style", MISSING), f"{path}.page_style", limit=100)
+    if style is not None and style not in v.page_style_names:
+        known = ", ".join(sorted(v.page_style_names)) or "none yet: add one under the layout's page styles"
+        v.error(f"{path}.page_style", f'"{style}" is not a page style of this layout. Page styles: {known}.')
+    if v.in_section:
+        v.error(path, "A section cannot be inside another section.")
+    previous, v.in_section = v.in_section, True
+    try:
+        v.children(node, path)
+    finally:
+        v.in_section = previous
 
 
 def _validate_table(v: TreeValidator, node: dict[str, Any], path: str) -> None:
@@ -1124,6 +1242,46 @@ _CORE_SCHEMAS: dict[str, BlockSchema] = {
         template={"type": "text", "text": "Some text."},
     ),
     "page_break": BlockSchema("Page break", "Starts a new page in PDF and Word output.", template={"type": "page_break"}),
+    "section": BlockSchema(
+        "Section", "Lays out its contents in another page style (paper, orientation, margins), on pages of their own.",
+        (BlockField("page_style", "Page style", "page_style", required=True,
+                    help="One of the layout's page styles. The section starts on a new page and the report returns to its own "
+                    "page style on a new page after it."),),
+        (_CHILDREN,),
+        template={"type": "section", "page_style": "", "children": []},
+    ),
+    "image": BlockSchema(
+        "Image", "A picture from the image library, in line with the text.",
+        (
+            BlockField("file", "Image", "image", required=True,
+                       help="A picture from the library: the project's own and the organisation's (an organisation layout "
+                       "can use organisation images only). PNG, JPEG, GIF, WebP and plain SVG."),
+            BlockField("alt", "Alternative text", "text", max_length=MAX_ALT_CHARS,
+                       help="What the picture shows, for readers who cannot see it. Required unless the image is decorative."),
+            BlockField("decorative", "Decorative", "boolean", default=False,
+                       help="Tick for a picture that adds no information (a rule, a flourish): it needs no alternative text."),
+            BlockField("width", "Width", "number", minimum=1, maximum=1000,
+                       help="How wide to print it. Leave empty for its own size, never wider than the text. With no height "
+                       "the shape is kept."),
+            BlockField("width_unit", "Width unit", "choice", choices=IMAGE_UNITS, default="cm", depends_on="width",
+                       help="Centimetres, millimetres, or a percentage of the width of the text."),
+            BlockField("height", "Height", "number", minimum=0.5, maximum=1000,
+                       help="Size by height instead, or set both to stretch the picture to an exact size. Leave empty to keep "
+                       "its shape."),
+            BlockField("height_unit", "Height unit", "choice", choices=IMAGE_HEIGHT_UNITS, default="cm", depends_on="height",
+                       help="Centimetres or millimetres."),
+            BlockField("align", "Alignment", "choice", choices=IMAGE_ALIGNMENTS, default="center",
+                       help="Where it sits across the text width."),
+            BlockField("caption", "Caption", "text", max_length=MAX_CAPTION_CHARS, features=("placeholders",),
+                       help=f"A line printed with the picture. {_PLACEHOLDER_HELP}"),
+            BlockField("caption_position", "Caption position", "choice", choices=IMAGE_CAPTION_POSITIONS, default="below",
+                       depends_on="caption", help="Above or below the picture."),
+            BlockField("numbering", "Caption numbering", "choice", choices=IMAGE_NUMBERING, default="auto", depends_on="caption",
+                       help="Prints \"Figure 1:\", \"Figure 2:\" ... in the order they appear. Automatic numbers a picture that has "
+                       "a caption and leaves a bare one (a logo) alone; Always numbers it even with no caption; Never does not."),
+        ),
+        template={"type": "image", "file": ""},
+    ),
     "equation": BlockSchema(
         "Equation", "A displayed equation written in TeX.",
         (BlockField("tex", "TeX", "tex", required=True, max_length=MAX_TEX_CHARS,
@@ -1205,6 +1363,8 @@ for _spec in (
     BlockSpec("heading", (FAMILY_DOCUMENT,), _validate_heading),
     BlockSpec("text", (FAMILY_DOCUMENT,), _validate_text),
     BlockSpec("page_break", (FAMILY_DOCUMENT,), _validate_page_break),
+    BlockSpec("section", (FAMILY_DOCUMENT,), _validate_section),
+    BlockSpec("image", (FAMILY_DOCUMENT,), _validate_image),
     BlockSpec("equation", (FAMILY_DOCUMENT,), _validate_equation),
     BlockSpec("table", (FAMILY_DOCUMENT,), _validate_table),
     BlockSpec("each", (FAMILY_DOCUMENT,), _validate_each),

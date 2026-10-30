@@ -5,7 +5,7 @@
  * shows the server's problems for that field beneath it.
  *
  * Responsibilities:
- * - Draw simple kinds (text, long text, whole number, yes/no, choice, TeX, name) with the shared field
+ * - Draw simple kinds (text, long text, whole and decimal numbers, yes/no, choice, TeX, name, image) with the shared field
  *   components, and composite kinds (source, columns, joins, condition, widget parts, variables) with their own
  *   editors.
  * - Fall back to a JSON box for a kind it does not know, so a module's block type is always editable.
@@ -14,11 +14,13 @@
  * Design decisions: the field only edits its own key; it never judges the value. An optional key that is
  * emptied is removed from the node, a required one keeps an empty value so the server says it is missing.
  */
-import type { BlockCatalogue, BlockField, ReportFieldCatalogue, ReportWidget } from "../api/reportLayouts";
+import type { BlockCatalogue, BlockField, ReportFieldCatalogue, ReportImageLibrary, ReportWidget } from "../api/reportLayouts";
 import type { PackVariableDeclaration } from "../api/reportPacks";
 import { useStrings } from "../context/TerminologyContext";
 import { newLeaf, sourceRecordType, type NameInScope, type TreeNode } from "../utils/reportLayoutTree";
+import { PAGE_ORIENTATIONS, PAGE_SIZES, styleFromTree, styleToTree, type PageMargins, type PageOrientation, type PageSize } from "../utils/reportPageSetup";
 import { CheckboxField, TextAreaField, TextField } from "./FormFields";
+import { ReportImageField } from "./ReportImageField";
 import { LabeledSelect } from "./LabeledSelect";
 import { ConditionNodeEditor, type Condition, type ConditionEnv } from "./ReportLayoutConditionEditor";
 import { ReportLayoutColumnsEditor, ReportLayoutJoinsEditor } from "./ReportLayoutColumnsEditor";
@@ -27,6 +29,8 @@ import { ReportLayoutJsonField } from "./ReportLayoutJsonField";
 import { ReportLayoutSourceEditor } from "./ReportLayoutSourceEditor";
 import { ReportLayoutVariablesField } from "./ReportLayoutVariablesField";
 import { WidgetKeyField, WidgetParamsField, WidgetSortField } from "./ReportLayoutWidgetEditor";
+import { PageMarginsFields } from "./PageMarginsFields";
+import { PageStylesEditor } from "./PageStylesEditor";
 
 /** What every field of every block shares. */
 export interface BlockEnv {
@@ -35,6 +39,10 @@ export interface BlockEnv {
   widgets: ReportWidget[];
   /** Names of the layout's declared variables. */
   variables: string[];
+  /** Names of the layout's page styles, which a section chooses from. */
+  pageStyles: string[];
+  /** The picture library an image block chooses from, and the scope an upload goes to; absent where there is none. */
+  images?: { library: ReportImageLibrary; scope: "organization" | "project" };
   readOnly: boolean;
 }
 
@@ -58,7 +66,8 @@ export function ReportLayoutBlockField({
   problems: string[];
   onChange: (key: string, value: unknown) => void;
 }) {
-  const text = useStrings().reportOutline;
+  const strings = useStrings();
+  const text = strings.reportOutline;
   const value = node[field.key];
   const help = field.help || undefined;
   const disabled = env.readOnly;
@@ -99,6 +108,26 @@ export function ReportLayoutBlockField({
         />
       );
       break;
+    case "number":
+      control = (
+        <TextField
+          label={field.label} value={value === undefined ? "" : String(value)} disabled={disabled} help={help} required={field.required}
+          placeholder={field.default !== null && field.default !== undefined ? text.useDefault(String(field.default)) : undefined}
+          inputProps={{ type: "number", step: "any" }}
+          onChange={(t) => set(t.trim() === "" ? undefined : Number.isNaN(Number(t)) ? t : Number(t))}
+        />
+      );
+      break;
+    case "image":
+      control = env.images ? (
+        <ReportImageField
+          label={field.label} value={asText} library={env.images.library} scope={env.images.scope} onChange={set}
+          disabled={disabled} help={help} required={field.required}
+        />
+      ) : (
+        <ReportLayoutJsonField label={field.label} value={value} onChange={set} help={help} disabled={disabled} required={field.required} />
+      );
+      break;
     case "boolean":
       control = <CheckboxField label={field.label} checked={value === true} disabled={disabled} help={help} onChange={(on) => set(on ? true : undefined)} />;
       break;
@@ -107,7 +136,9 @@ export function ReportLayoutBlockField({
         <LabeledSelect
           label={field.label} value={typeof value === "string" ? value : ""} disabled={disabled} help={help} required={field.required}
           placeholder={field.default !== null && field.default !== undefined ? text.useDefault(String(field.default)) : text.choose}
-          options={field.choices.map((c) => ({ value: c, label: (field.key === "orientation" ? text.orientationLabels[c] : undefined) ?? c }))}
+          options={field.choices.map((c) => ({
+            value: c, label: (field.key === "orientation" ? text.orientationLabels[c] : undefined) ?? text.choiceLabels[field.key]?.[c] ?? c,
+          }))}
           onChange={(next) => set(next === "" ? undefined : next)}
         />
       );
@@ -216,6 +247,48 @@ export function ReportLayoutBlockField({
         </fieldset>
       );
       break;
+    case "page_style": {
+      const unknown = asText !== "" && !env.pageStyles.includes(asText);
+      control = (
+        <LabeledSelect
+          label={field.label} value={asText} disabled={disabled} help={help} required={field.required}
+          placeholder={env.pageStyles.length === 0 ? strings.pageSetup.noStylesToChoose : strings.pageSetup.chooseStyle}
+          options={[
+            ...env.pageStyles.map((name) => ({ value: name, label: name })),
+            ...(unknown ? [{ value: asText, label: strings.pageSetup.unknownStyle(asText) }] : []),
+          ]}
+          onChange={setText}
+        />
+      );
+      break;
+    }
+    case "margins":
+      control = (
+        <fieldset className="stack" style={{ border: 0, padding: 0, margin: 0 }}>
+          <legend><strong>{field.label}</strong></legend>
+          <PageMarginsFields
+            value={(value ?? {}) as PageMargins} mirror={node.mirror_margins === true} disabled={disabled}
+            onChange={(next) => set(Object.keys(next).length === 0 ? undefined : next)}
+          />
+        </fieldset>
+      );
+      break;
+    case "page_styles": {
+      const entries = (Array.isArray(value) ? value : []) as Record<string, unknown>[];
+      const size = PAGE_SIZES.includes(node.page_size as PageSize) ? (node.page_size as PageSize) : "A4";
+      const orientation = PAGE_ORIENTATIONS.includes(node.orientation as PageOrientation) ? (node.orientation as PageOrientation) : "portrait";
+      control = (
+        <fieldset className="stack" style={{ border: 0, padding: 0, margin: 0 }}>
+          <legend><strong>{field.label}</strong></legend>
+          <PageStylesEditor
+            value={entries.map(styleFromTree)} disabled={disabled}
+            base={{ size, orientation, margins: (node.margins ?? {}) as PageMargins, mirror: node.mirror_margins === true }}
+            onChange={(next) => set(next.length === 0 ? undefined : next.map(styleToTree))}
+          />
+        </fieldset>
+      );
+      break;
+    }
     default:
       control = <ReportLayoutJsonField label={field.label} value={value} onChange={set} help={help} disabled={disabled} required={field.required} />;
   }

@@ -15,11 +15,14 @@
  * `emptyHint` is provided, the hint is shown in place of the upload control
  * so the reason attachments can't be added right now is explained rather
  * than the control silently disappearing.
+ *
+ * A picture's row also carries an info button that shows its details (`FileDetailsToggle`).
  */
 import { Paperclip, Trash2 } from "lucide-react";
 
 import { fileUrl } from "../api/client";
 import type { FileAsset } from "../api/types";
+import { FileDetailsToggle } from "./FileDetailsPanel";
 import { FileUploadTrigger } from "./FileUploadTrigger";
 
 export function FileAttachmentList({
@@ -42,16 +45,19 @@ export function FileAttachmentList({
           <a href={fileUrl(f.id)} target="_blank" rel="noreferrer">
             {f.filename}
           </a>
-          {onRemove && !disabled && (
-            <button
-              className="btn btn-danger"
-              title={`Remove ${f.filename}`}
-              aria-label={`Remove ${f.filename}`}
-              onClick={() => onRemove(f.id)}
-            >
-              <Trash2 />
-            </button>
-          )}
+          <div className="row" style={{ gap: "var(--space-1)" }}>
+            <FileDetailsToggle file={f} />
+            {onRemove && !disabled && (
+              <button
+                className="btn btn-danger"
+                title={`Remove ${f.filename}`}
+                aria-label={`Remove ${f.filename}`}
+                onClick={() => onRemove(f.id)}
+              >
+                <Trash2 />
+              </button>
+            )}
+          </div>
         </div>
       ))}
       {disabled ? (

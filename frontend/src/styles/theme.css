@@ -1937,24 +1937,41 @@ th:has(> .th-with-action > .th-sort) {
   color: var(--color-primary);
 }
 
-/* `FolderTreeList`: a file manager's list view. Grid rows (not a <table>) so a row can be a tree-grid row with its
-   own keyboard focus; the column template is set inline by the component. Banded rows have rounded ends, an open
-   report is outlined, and the wide-only columns drop under 640px. See docs/ux-style-guide.md's "Pattern: folder
-   tree list". */
+/* `FolderTreeList`: a file manager's list view. The list is one grid (the component sets the column template as
+   `--ftl-columns`, and `--ftl-columns-narrow` without the `hideBelow` columns) and each row a subgrid of it, so the
+   columns line up and, when they do not fit, the list scrolls sideways inside its own region with the Name cell held
+   at the left edge. Rows are grid rows (not a <table>) so a row can be a tree-grid row with its own keyboard focus.
+   Banded rows have rounded ends and an open report is outlined. See docs/ux-style-guide.md's "Pattern: folder tree
+   list". */
 .folder-tree-list {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
+  /* Positioned so an absolutely placed child (the screen-reader-only header text) scrolls with the list instead of
+     escaping its clipping and widening the page. */
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--ftl-columns);
+  column-gap: var(--space-3);
+  row-gap: 1px;
   overflow-x: auto;
+}
+@media (max-width: 639px) {
+  .folder-tree-list {
+    grid-template-columns: var(--ftl-columns-narrow);
+  }
+  .folder-tree-wide {
+    display: none;
+  }
 }
 .folder-tree-header,
 .folder-tree-row {
+  --ftl-row-bg: var(--color-surface);
   display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   align-items: center;
-  column-gap: var(--space-3);
   min-width: 0;
 }
 .folder-tree-header {
+  background: var(--ftl-row-bg);
   border-bottom: 1px solid var(--color-border);
   color: var(--color-text-muted);
   font-size: 0.85rem;
@@ -1964,6 +1981,7 @@ th:has(> .th-with-action > .th-sort) {
   padding-inline: 0;
 }
 .folder-tree-row {
+  background: var(--ftl-row-bg);
   border-radius: var(--radius-md);
   min-height: 2.25rem;
   padding: 0.15rem var(--space-3);
@@ -1973,11 +1991,18 @@ th:has(> .th-with-action > .th-sort) {
   min-width: 0;
   padding: 0;
 }
+/* The Name cell stays put while the other columns scroll under it, so it needs the row's own opaque background. */
+.folder-tree-name-cell {
+  background: var(--ftl-row-bg);
+  inset-inline-start: 0;
+  position: sticky;
+  z-index: 1;
+}
 .folder-tree-band {
-  background: var(--color-surface-alt);
+  --ftl-row-bg: var(--color-surface-alt);
 }
 .folder-tree-row:hover {
-  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface));
+  --ftl-row-bg: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface));
 }
 .folder-tree-row:focus-visible {
   outline: 2px solid var(--color-primary);
@@ -2042,11 +2067,7 @@ th:has(> .th-with-action > .th-sort) {
 .folder-tree-empty {
   font-size: 0.9rem;
   font-style: italic;
-}
-@media (max-width: 639px) {
-  .folder-tree-wide {
-    display: none;
-  }
+  grid-column: 1 / -1;
 }
 
 /* Borderless expand/collapse control that fills its own table cell — for a
@@ -2218,6 +2239,11 @@ td:has(> .disclosure-toggle) {
      above the content pane. */
   .resource-menu {
     flex-direction: column;
+  }
+  /* In the stacked layout the content pane takes the width it is given: fit-content let a wide child (the folder tree
+     list's columns) widen the pane and the page past the viewport; a wide child scrolls in its own region instead. */
+  .resource-menu > .resource-menu-content {
+    align-self: stretch;
   }
 }
 
@@ -3045,3 +3071,20 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
   background: color-mix(in srgb, var(--color-danger) 20%, transparent);
 }
 
+
+/* The report image picker: a thumbnail beside the field, and the library's grid of picture cards. */
+.report-image-thumb { height: 3rem; max-width: 6rem; object-fit: contain; border: 1px solid var(--color-border); border-radius: var(--radius-sm, 4px); background: var(--color-surface, transparent); }
+.report-image-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: var(--space-3); max-height: 50vh; overflow-y: auto; }
+.report-image-card { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-sm, 4px); min-width: 0; }
+.report-image-card[data-selected] { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }
+.report-image-pick { display: flex; flex-direction: column; gap: var(--space-1); padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; min-width: 0; }
+.report-image-pick img { width: 100%; height: 6rem; object-fit: contain; background: var(--color-surface, transparent); }
+.report-image-name { overflow-wrap: anywhere; font-size: 0.85rem; }
+.report-image-browser { display: grid; grid-template-columns: minmax(0, 1fr) minmax(12rem, 16rem); gap: var(--space-3); align-items: start; }
+.report-image-details { padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-sm, 4px); min-width: 0; }
+.report-image-preview { width: 100%; max-height: 10rem; object-fit: contain; }
+.report-image-facts { margin: 0; display: grid; gap: var(--space-1); }
+.report-image-facts div { display: grid; gap: 0; }
+.report-image-facts dt { font-size: 0.75rem; color: var(--color-text-muted, inherit); }
+.report-image-facts dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 700px) { .report-image-browser { grid-template-columns: minmax(0, 1fr); } }

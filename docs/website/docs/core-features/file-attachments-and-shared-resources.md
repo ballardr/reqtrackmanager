@@ -21,6 +21,10 @@ A project's **Files** page lists every file attached anywhere within it — requ
 | Every file attached within a project, in one list |
 | ![Project files page listing attachments across the project](../../static/img/screenshots/project-files.png) |
 
+## Picture details
+
+Beside the name of a picture (JPEG, PNG, GIF, WebP or SVG) in any file list, an **i** button opens its details: its size in pixels (an SVG's declared size) and, for a photograph, when it was taken (on the camera's own clock, as the camera wrote it), the camera, any description saved in the file and the position where it was taken. Use them to tell photographs apart when their file names say nothing. The button appears in a requirement's or action's attachments, on discussion attachments, on the project's **Files** page and in an organisation's shared resources, and anyone who can download a file can see its details. Other files have no button.
+
 ## Organisation-wide shared resources
 
 Beyond per-item attachments, an organisation admin can upload **shared resources** (**Organisation admin → Shared resources**) — files that aren't specific to one requirement or change request, such as a standards document or a reference spec. A shared resource can be linked to requirements in any project in the organisation, and is available to append as an extra section on a generated report — see [Reports and export](./reports-and-export.md).

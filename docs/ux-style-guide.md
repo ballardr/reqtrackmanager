@@ -1166,7 +1166,12 @@ flowchart LR
 - **Name header.** A sortable column header with a chevron; further columns sit to its right (`columns`, each sortable only if it declares a `sortValue`, and droppable under 640px with `hideBelow`). **Folders always come first**, then items by the chosen sort; a `pinned` folder (Favourites) stays on top whatever the sort. Trailing row controls (the favourite star) are the last cell (`renderItemActions`).
 - **Keyboard (ARIA `treegrid`).** The rows are one tab stop: Up/Down/Home/End move between visible rows, Right opens a folder and then steps into it, Left closes it or steps to the parent, Enter opens an item or toggles a folder. The row's inner name button is not a tab stop; the trailing controls are.
 - **Open state is the caller's.** `expanded`/`onToggle` are controlled so the chooser can open every folder while a search is active without overwriting the person's saved layout (see [Pattern: report picker](#pattern-report-picker-a-searchable-folder-tree)).
-- **Narrow widths.** The Name cell wraps long names rather than clipping; the list scrolls inside its own region if a fixed-width column still does not fit.
+- **Narrow widths.** The list is one grid and each row a subgrid of it, so columns line up. The Name cell has a 12rem floor, wraps long names and is held at the left edge; columns with `hideBelow` drop under 640px, and if the rest still does not fit the list scrolls sideways inside its own region (the page never does).
+- **Optional columns** are chosen with the shared `ColumnChooser` (see [Pattern: column chooser](#pattern-column-chooser)), not a per-list control.
+
+## Pattern: column chooser
+
+A list with optional columns lets the person pick them with `ColumnChooser` (`frontend/src/components/ColumnChooser.tsx`): an icon button ("Choose columns") that opens a popover of checkboxes, with the Name column ticked and locked, and a reset to the defaults. The button gets an accent border when the choice differs from the defaults. `useColumnChoice(key, allIds, defaultIds)` remembers the choice per person in `ui_preferences` (`column_choice_<key>`), so it follows them between browsers. Choose defaults for what a person needs on most visits: a value already shown by an icon or by the nesting (a type, a folder) is off by default. First use: the report setup list.
 
 ## Pattern: arranging what a scope is offered (placements)
 

@@ -31,12 +31,21 @@ export const WithFilesAndUpload: Story = {
   },
 };
 
+/** Only a picture's row has the details button. */
+export const OnlyAPictureHasDetails: Story = {
+  args: { files, onUpload: fn(), onRemove: fn() },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("button", { name: "Details of screenshot.png" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Details of requirements-source.pdf" })).toBeNull();
+  },
+};
+
 export const RemoveFile: Story = {
   args: { files, onUpload: fn(), onRemove: fn() },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    const row = canvas.getByText("requirements-source.pdf").closest<HTMLElement>(".row")!;
-    await userEvent.click(within(row).getByRole("button"));
+    await userEvent.click(canvas.getByRole("button", { name: "Remove requirements-source.pdf" }));
     await expect(args.onRemove).toHaveBeenCalledWith("f1");
   },
 };
@@ -61,7 +70,7 @@ export const DisabledShowsHintInsteadOfUpload: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByText(/new attachments must be added via a change request/)).toBeInTheDocument();
-    await expect(canvas.queryByRole("button")).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: /Remove|Attach/ })).not.toBeInTheDocument();
   },
 };
 
@@ -69,7 +78,7 @@ export const NoCallbacksReadOnly: Story = {
   args: { files },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.queryByRole("button")).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: /Remove|Attach/ })).not.toBeInTheDocument();
   },
 };
 

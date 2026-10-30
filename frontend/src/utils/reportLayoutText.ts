@@ -31,7 +31,7 @@ interface Frame {
   alias: AliasInScope | null;
 }
 
-const BLOCK_OPENERS = new Set(["each", "group", "table", "sheet", "if"]);
+const BLOCK_OPENERS = new Set(["each", "group", "table", "sheet", "if", "section"]);
 const ALIAS_NAME = /(?:^|\s)as\s+([a-z][a-z0-9_]*)(?=\s|$)/;
 const DEFAULT_RECORD_ALIAS = "record";
 const DEFAULT_GROUP_ALIAS = "group";
@@ -143,38 +143,6 @@ export function placeholder(alias: string | null, field: string): string {
   return alias ? `{{${alias}.${field}}}` : `{{${field}}}`;
 }
 
-/** The orientations and page sizes a document layout's first line can name. */
-export const PAGE_ORIENTATIONS = ["portrait", "landscape"] as const;
-export const PAGE_SIZES = ["A3", "A4", "A5", "Letter", "Legal"] as const;
-
-/** A document layout's page setup as its first line states it (portrait and A4 when it says nothing). */
-export interface PageSetup {
-  orientation: (typeof PAGE_ORIENTATIONS)[number];
-  size: (typeof PAGE_SIZES)[number];
-}
-
-const HEADER = /^@layout\s+document\b(.*)$/;
-
-/** The page setup the first line of `text` states, or `null` when the text is not a document layout's. */
-export function readPageSetup(text: string): PageSetup | null {
-  const match = HEADER.exec(text.split("\n", 1)[0].trimEnd());
-  if (!match) return null;
-  const words = match[1].split(/\s+/);
-  return {
-    orientation: words.includes("landscape") ? "landscape" : "portrait",
-    size: PAGE_SIZES.find((size) => words.includes(size)) ?? "A4",
-  };
-}
-
-/** `text` with its first line rewritten to state `setup`; a default (portrait, A4) is left unwritten. */
-export function writePageSetup(text: string, setup: PageSetup): string {
-  const newline = text.indexOf("\n");
-  const first = newline === -1 ? text : text.slice(0, newline);
-  if (!HEADER.test(first.trimEnd())) return text;
-  const header = ["@layout document", ...(setup.orientation === "landscape" ? ["landscape"] : []), ...(setup.size === "A4" ? [] : [setup.size])].join(" ");
-  return header + (newline === -1 ? "" : text.slice(newline));
-}
-
 /** One starter block the designer can insert. */
 export interface BlockSnippet {
   /** The block's name; its label is `strings.reportLayouts.blockLabels[key]`. */
@@ -195,6 +163,7 @@ export const BLOCK_SNIPPETS: BlockSnippet[] = [
   { key: "if", families: ["document"], text: "@if req.status eq Approved\n  Approved.\n@else\n  Not approved yet.\n@end" },
   { key: "equation", families: ["document"], text: "@equation \\frac{a}{b} = c" },
   { key: "page_break", families: ["document"], text: "@page_break" },
+  { key: "section", families: ["document"], text: "@section \"Page style name\"\n  Some text.\n@end" },
   { key: "sheet", families: ["table"], text: "@sheet \"Requirements\" requirement sort title\n  @column code\n  @column title\n@end" },
 ];
 

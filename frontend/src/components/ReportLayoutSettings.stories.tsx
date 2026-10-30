@@ -13,7 +13,7 @@ function Harness({ problems = [], family = "document" }: { problems?: TreeProble
     <>
       <ReportLayoutSettings
         tree={tree} onChange={setTree} family={family} blocks={buildBlockCatalogue()} problems={problems}
-        env={{ blocks: buildBlockCatalogue(), catalogue: buildFieldCatalogue(), widgets: buildWidgets(), variables: [], readOnly: false }}
+        env={{ blocks: buildBlockCatalogue(), catalogue: buildFieldCatalogue(), widgets: buildWidgets(), variables: [], pageStyles: [], readOnly: false }}
       />
       <pre data-testid="tree" hidden>{JSON.stringify(tree)}</pre>
     </>
