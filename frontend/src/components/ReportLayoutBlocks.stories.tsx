@@ -134,6 +134,26 @@ export const InspectorEditsReachTheBlockWithoutRedrawing: Story = {
   },
 };
 
+/** A section is a block with a container; its page style shows on the block and is chosen from the layout's page styles. */
+export const ASectionShowsItsPageStyleAndChoosesFromTheLayoutsStyles: Story = {
+  args: {
+    initial: {
+      schema_version: 1, family: "document", page_styles: [{ name: "Wide tables", page_size: "A3" }, { name: "Narrow" }],
+      nodes: [{ type: "section", page_style: "Wide tables", children: [{ type: "text", text: "Inside" }] }],
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const ws = await workspaceOf();
+    const section = blocksOf(ws, "section")[0];
+    await expect(section.getFieldValue("_summary")).toBe("Wide tables");
+    Blockly.common.setSelected(section);
+    const inspector = await canvas.findByTestId("block-inspector");
+    await userEvent.selectOptions(within(inspector).getByRole("combobox", { name: "Page style" }), "Narrow");
+    await waitFor(() => expect(treeOf(canvasElement).nodes[0].page_style).toBe("Narrow"));
+  },
+};
+
 /** Adds a block of `name` from the Add block menu. */
 async function addFromMenu(canvas: ReturnType<typeof within>, name: string) {
   await userEvent.click(canvas.getByRole("button", { name: "Add block" }));

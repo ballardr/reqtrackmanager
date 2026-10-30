@@ -60,3 +60,18 @@ class ProjectFileOut(ProjectScopedRow):
     action_unique_code: str | None = None
     action_title: str | None = None
     comment_id: UUID | None = None
+
+
+class FileDetailsOut(BaseModel):
+    """What a picture file says about itself (`services.image_details.ImageDetails`): all fields empty for any other file.
+
+    `taken` is the camera's own clock as written (EXIF holds no time zone), never converted.
+    """
+
+    width_px: int | None = None
+    height_px: int | None = None
+    taken: str | None = None
+    camera: str | None = None
+    description: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None

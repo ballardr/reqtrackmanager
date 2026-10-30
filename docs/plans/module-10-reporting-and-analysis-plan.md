@@ -91,9 +91,9 @@ Three orthogonal axes, kept separate: **layout** (what is reported), **branding 
 | 31 | ODT and ODS offered everywhere CSV, PDF and Word are; the record-list menu gets Download report and a Download shown items submenu of formats | **Done 2026-10-29** (built and tested; awaiting the checkpoint review). Generic `ActionMenu` submenu; requirement report and both compliance reports offer every format (User: compliance "all types"); surfaces test. Decisions log "Custom reports Phase 31". |
 | 32 | Folder tree list (Finder-style list view), used by the report chooser | **Done 2026-10-29** (built and tested; awaiting the checkpoint review). Shared `FolderTreeList`; decisions log "Custom reports Phase 32". |
 | 33 | Report setup: one list of reports, packs and tables; the Report folders and Packs sections go | **Done 2026-10-29** (built and tested; awaiting the checkpoint review). `ReportSetupPanel` over a client-side merge; decisions log "Custom reports Phase 33". |
-| 34 | Report setup list: column chooser, narrow-width fix, type icons | Not started (fourth review) |
-| 35 | Page styles and sections: size, orientation and margins per style; a section that switches style (an A3 landscape table inside an A4 portrait report) | Not started (fifth review) |
-| 36 | Images in reports: an Image block (library or upload) with size, alignment, caption and alt text, in every document format | Not started (fifth review) |
+| 34 | Report setup list: column chooser, narrow-width fix, type icons | **Done 2026-10-30** (built and tested; awaiting the checkpoint review). New shared `ColumnChooser` + `useColumnChoice`; `FolderTreeList` is one subgrid; Version, Type and Folder off by default. Decisions log "Custom reports Phase 34". |
+| 35 | Page styles and sections: size, orientation and margins per style; a section that switches style (an A3 landscape table inside an A4 portrait report) | **Done 2026-10-30** (built and tested; awaiting the checkpoint review). User: mirrored margins with a gutter wanted. Mirror is one switch per layout; the default margin is 1.5 cm everywhere. Decisions log "Custom reports Phase 35". |
+| 36 | Images in reports: an Image block (library or upload) with size, alignment, caption and alt text, in every document format | **Done 2026-10-30** (built and tested; awaiting the checkpoint review). User: project pictures live in a nullable `file_assets.project_id`; captions are numbered "Figure n:" by default (per-image switch). Pictures travel in the bundles. Decisions log "Custom reports Phase 36". |
 | 37 | Headers and footers per page style, with page numbers, placeholders and a logo; reconciled with the branding template | Not started (fifth review) |
 | 38 | Image wrapping and layering: text wrap, in front of and behind text, per renderer, after a feasibility spike | Not started (fifth review) |
 | 39 | Record images: print the images attached to a record in a report, chosen by rules (file name, type, count, order) | Not started (fifth review) |
@@ -154,9 +154,9 @@ The plan is not closed. The paragraph below is the history of Phases 0 to 15, ke
 | 31 | ODT and ODS in every place CSV, PDF and Word are offered: record-list menu (Download report, and Download shown items with a submenu of formats; a generic `ActionMenu` submenu), report downloads, packs, the requirement report, MCP | 6 | [x] |
 | 32 | Folder tree list (disclosure rows, indent, folder and type icons, columns, arrow-key navigation) replacing buttons-and-dropdowns folders; the report chooser adopts it | 6 | [x] |
 | 33 | Report setup shows reports, packs and tables as one tree list (the chooser's shape); the Packs and Report folders sections go, their move, hide and folder actions move into the tree | 6 | [x] |
-| 34 | Report setup list: column chooser (Version, Kind and Folder hidden by default), narrow-width scrolling, a type icon in place of the Kind column | 6 | [ ] |
-| 35 | Page styles (size, orientation, margins) and a section container that switches style for the content inside it, in every document format | 7 | [ ] |
-| 36 | Image block: library or uploaded image, size, alignment, caption, alt text; images travel in bundles | 7 | [ ] |
+| 34 | Report setup list: column chooser (Version, Kind and Folder hidden by default), narrow-width scrolling, a type icon in place of the Kind column | 6 | [x] |
+| 35 | Page styles (size, orientation, margins) and a section container that switches style for the content inside it, in every document format | 7 | [x] |
+| 36 | Image block: library or uploaded image, size, alignment, caption, alt text; images travel in bundles | 7 | [x] |
 | 37 | Headers and footers per page style (slots, page numbers, placeholders, logo); precedence with the branding template | 7 | [ ] |
 | 38 | Image wrapping and layering (square wrap, top and bottom, in front, behind) after a per-format feasibility spike | 7 | [ ] |
 | 39 | Record images: the images attached to a record print in a report, chosen by rules (name, type, count, order) | 7 | [ ] |
@@ -275,7 +275,7 @@ Same rules as the third review: each phase starts by reading the code it changes
 
 ### Fifth review (2026-10-29): Phases 35 to 41
 
-Same rules as the third and fourth reviews: each phase starts by reading the code it changes; the first line is the User's words, the rest is what the next session must settle. Open questions go to the User interactively (AskUserQuestion, with a recommendation) before building. A decision the session makes alone is tagged `Decided by: Agent`. **Nothing here has been started; this review was only recorded.**
+Same rules as the third and fourth reviews: each phase starts by reading the code it changes; the first line is the User's words, the rest is what the next session must settle. Open questions go to the User interactively (AskUserQuestion, with a recommendation) before building. A decision the session makes alone is tagged `Decided by: Agent`. **Phases 35 and 36 are built (2026-10-30); 37 to 42 have not been started.**
 
 Facts found while writing it (2026-10-29), to be re-checked when each phase starts:
 

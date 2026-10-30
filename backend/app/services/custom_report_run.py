@@ -47,7 +47,7 @@ import time
 import uuid
 from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -73,6 +73,7 @@ from app.services.report_framework import (
     ReportVariableOut,
     readable_projects,
 )
+from app.services.report_images import MAX_REPORT_IMAGES
 from app.services.report_layout_eval import (
     ASYNC_LIMIT_SCALE,
     ASYNC_TIMEOUT_SECONDS,
@@ -87,7 +88,6 @@ from app.services.report_layout_eval import (
 )
 from app.services.report_layout_tree import record_types_of
 from app.services.report_model import (
-    DEFAULT_PAGE_SIZE,
     Block,
     BulletList,
     Equation,
@@ -181,7 +181,7 @@ def available_formats(family: str, tree: dict[str, Any] | None = None) -> list[s
 
 def _evaluate_project(
     db: Session, user: User, organization: Organization, root: Project, projects: Sequence[Project],
-    version: ReportLayoutVersion, title: str, timeout: float, limit_scale: int = 1,
+    version: ReportLayoutVersion, layout: ReportLayout, title: str, timeout: float, limit_scale: int = 1,
     variables: Mapping[str, Any] | None = None,
 ) -> EvaluatedLayout:
     """Evaluates the tree for one root project with that project's resolver (the authorisation point).
@@ -194,7 +194,7 @@ def _evaluate_project(
     )
     return evaluate_layout(
         db, resolver, ctx, version.tree, title=title, project_ids=[p.id for p in projects], timeout_seconds=timeout,
-        limit_scale=limit_scale, variables=variables,
+        limit_scale=limit_scale, variables=variables, layout_project_id=layout.project_id,
     )
 
 
@@ -227,7 +227,7 @@ def run_project_layout(
     clock = time.monotonic()
     projects = readable_projects(db, user, organization=organization, root_project=project, include_children=include_children)
     scale, timeout = (ASYNC_LIMIT_SCALE, ASYNC_TIMEOUT_SECONDS) if background else (1, DEFAULT_TIMEOUT_SECONDS)
-    evaluated = _evaluate_project(db, user, organization, project, projects, version, layout.name, timeout, scale, variables)
+    evaluated = _evaluate_project(db, user, organization, project, projects, version, layout, layout.name, timeout, scale, variables)
     return LayoutRun(
         layout, version, organization, projects, project, evaluated, started, round((time.monotonic() - clock) * 1000),
     )
@@ -290,7 +290,7 @@ def run_organization_layout(
         if remaining <= 0:
             raise LayoutTimeoutError("The report took too long to run. Select fewer projects or narrow the layout.")
         part = _evaluate_project(
-            db, user, organization, project, [project], version, layout.name, remaining, scale,
+            db, user, organization, project, [project], version, layout, layout.name, remaining, scale,
             variables_for(project) if variables_for is not None else variables,
         )
         produced += part.stats.blocks + part.stats.rows
@@ -328,6 +328,8 @@ def merge_evaluations(parts: Sequence[tuple[Project, EvaluatedLayout]], title: s
         stats.rows += part.stats.rows
         stats.hidden += part.stats.hidden
         stats.unavailable += part.stats.unavailable
+        stats.images += part.stats.images
+        stats.image_files += [f for f in part.stats.image_files if f not in stats.image_files]
         warnings += [f"{project.name}: {w}" for w in part.warnings]
     digest = hashlib.sha256("\n".join(f"{p.id}:{e.source_digest}" for p, e in parts).encode()).hexdigest()
     versions: dict[str, dict[str, int]] = {}
@@ -355,9 +357,8 @@ def merge_evaluations(parts: Sequence[tuple[Project, EvaluatedLayout]], title: s
                 blocks.append(PageBreak())
             blocks.append(Heading(project.name, 1))
             blocks += [Heading(b.text, min(b.level + 1, 4)) if isinstance(b, Heading) else b for b in part.document.blocks]
-        document = ReportDocument(title=title, blocks=blocks, landscape=parts[0][1].document.landscape if parts[0][1].document else False,
-            page_size=parts[0][1].document.page_size if parts[0][1].document else DEFAULT_PAGE_SIZE,
-        )
+        first = parts[0][1].document
+        document = replace(first, title=title, blocks=blocks) if first else ReportDocument(title=title, blocks=blocks)
     else:
         merged: dict[str, Sheet] = {}
         for project, part in parts:
@@ -450,7 +451,7 @@ def document_for(run: LayoutRun, *, branding: ReportBranding | None) -> ReportDo
     document = run.evaluated.document
     assert document is not None
     blocks: list[Block] = [Note(_scope_line(run)), Gap(0.2), *[Note(n) for n in run.notes], *document.blocks]
-    return ReportDocument(title=run.layout.name, blocks=blocks, branding=branding, landscape=document.landscape, page_size=document.page_size)
+    return replace(document, title=run.layout.name, blocks=blocks, branding=branding)
 
 
 def render_input_for(run: LayoutRun, *, branding: ReportBranding | None = None) -> RenderInput:
@@ -505,6 +506,7 @@ def provenance_fields(
         "record_counts": dict(counts),
         "stats": {
             "blocks": stats.blocks, "rows": stats.rows, "hidden": stats.hidden, "unavailable": stats.unavailable,
+            "images": stats.images, "image_files": stats.image_files[:MAX_REPORT_IMAGES],
             "warnings": len(run.evaluated.warnings), "duration_ms": run.duration_ms,
         },
         "source_digest": run.evaluated.source_digest, "record_versions": run.evaluated.record_versions,

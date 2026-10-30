@@ -27,7 +27,7 @@
 import * as Blockly from "blockly/core";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import type { BlockCatalogue, BlockType, LayoutFamily, ReportFieldCatalogue, ReportWidget, TreeProblem } from "../api/reportLayouts";
+import type { BlockCatalogue, BlockType, LayoutFamily, ReportFieldCatalogue, ReportImageLibrary, ReportWidget, TreeProblem } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";
 import {
   ROOT_INPUT, ROOT_TYPE, SUMMARY_FIELD, blockSummary, chainToNodes, controlValue, inlineFields, layoutType, looseBlockCount,
@@ -122,9 +122,10 @@ function describeBlock(node: TreeNode, type: BlockType | undefined): string {
  * @param problems The server's problems for the tree.
  * @param readOnly A layout shared from elsewhere: shown, not editable.
  * @param toolbarEnd Controls the designer puts at the end of the toolbar above the canvas (the preview buttons).
+ * @param images The picture library an image block chooses from (absent where the layout has none).
  */
 export function ReportLayoutBlocks({
-  tree, onChange, family, blocks, catalogue, widgets, problems, readOnly = false, toolbarEnd,
+  tree, onChange, family, blocks, catalogue, widgets, problems, readOnly = false, toolbarEnd, images,
 }: {
   tree: Tree;
   onChange: (next: Tree) => void;
@@ -135,6 +136,7 @@ export function ReportLayoutBlocks({
   problems: TreeProblem[];
   readOnly?: boolean;
   toolbarEnd?: ReactNode;
+  images?: { library: ReportImageLibrary; scope: "organization" | "project" };
 }) {
   const text = useStrings().reportOutline;
   const host = useRef<HTMLDivElement>(null);
@@ -155,7 +157,8 @@ export function ReportLayoutBlocks({
   const layoutLabel = text.layoutBlock;
   const unknownLabel = text.unknownBlockOnCanvas;
   const declared = Array.isArray(tree.variables) ? (tree.variables as { name?: string }[]).map((v) => String(v.name ?? "")).filter(Boolean) : [];
-  const env: BlockEnv = { blocks, catalogue, widgets, variables: declared, readOnly };
+  const pageStyles = Array.isArray(tree.page_styles) ? (tree.page_styles as { name?: string }[]).map((s) => String(s.name ?? "")).filter(Boolean) : [];
+  const env: BlockEnv = { blocks, catalogue, widgets, variables: declared, pageStyles, images, readOnly };
 
   // The workspace lives as long as the catalogue, family and mode it was built for.
   useEffect(() => {

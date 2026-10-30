@@ -94,12 +94,16 @@ def test_everything_else_stays_as_the_author_wrote_it(markdown):
     assert block == Paragraph(markdown) and not isinstance(block.text, MathText)
 
 
+def test_a_backslash_escapes_a_bracket_so_it_is_not_taken_for_a_link():
+    assert read(r"Regex \d+\. and \[x\]")[0] == Paragraph(r"Regex \d+\. and [x]")
+
+
 def test_a_backslash_escape_makes_a_marker_literal():
     assert read(r"a \*not italic\* b")[0] == Paragraph("a *not italic* b")
     assert read(r"snake \_case\_ and back\\slash and tick \` here")[0] == Paragraph("snake _case_ and back\\slash and tick ` here")
 
 
-@pytest.mark.parametrize("markdown", [r"An unclosed \( opener", r"A stray \) closer", r"Path C:\temp\new\(x)", r"Regex \d+\. and \[x\]"])
+@pytest.mark.parametrize("markdown", [r"An unclosed \( opener", r"A stray \) closer", r"Path C:\temp\new\(x)", r"Regex \d+\. and \d"])
 def test_a_backslash_anywhere_else_prints_as_written(markdown):
     assert read(markdown)[0] == Paragraph(markdown)
 

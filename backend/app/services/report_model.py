@@ -8,8 +8,8 @@ place rather than once per output format.
 
 Responsibilities:
 - Block types: `Heading`, `Paragraph`, `Equation` (a display equation), `Note`, `BulletList`, `Image` (raster bytes or SVG markup), `Table`,
-  `Gap`, `PageBreak`, and the `ReportDocument` that holds them with the
-  title, branding and page orientation.
+  `Gap`, `PageBreak`, `PageStyleChange` (a new page in another `PageStyle`: paper, orientation, `Margins`), and the
+  `ReportDocument` that holds them with the title, branding and the page style of its own pages.
 - `Sheet`: one named table of a table-family report (CSV, XLSX, ODS); not a
   document block, so it is never inside a `ReportDocument`.
 - Cell tones: `Table.tones` marks cells the screen colours (a rating band, a
@@ -315,16 +315,42 @@ class Image:
     A renderer that cannot decode it skips it: a bad image never breaks report generation.
 
     Attributes:
-        data: Raster image bytes (tenant-checked by `report_document.resolve_report_images`); empty for an SVG.
+        data: Raster image bytes (tenant-checked by `report_document.resolve_report_images` or, for a layout's image
+            block, `report_images.load_image`, which also strips their metadata); empty for an SVG.
         svg: SVG markup for a vector figure (a diagram, an equation). It is untrusted until
             `report_svg.sanitize_svg` has allow-listed it, which every renderer does itself, so a module
             can hand over its markup without importing an engine. PDF and HTML keep it vector, Word gets a PNG.
-        alt: Text alternative (HTML `aria-label`); not printed.
+        alt: Text alternative (HTML `alt`); not printed. Empty for a decorative image.
+        decorative: A picture that adds no information: HTML marks it `alt=""` and hidden from assistive technology.
+        width: The width to print it at, in `width_unit`; `None` for its own size, never wider than the text.
+        width_unit: `cm`, or `percent` of the usable text width.
+        height_cm: An exact height; `None` keeps the picture's shape.
+        align: `left`, `center` or `right` across the text width.
+        caption: The line printed with it (`"Figure 2: ..."` once numbered); empty for none.
+        caption_above: Whether the caption is printed above the picture instead of below.
     """
 
     data: bytes = b""
     svg: str | None = None
     alt: str = ""
+    decorative: bool = False
+    width: float | None = None
+    width_unit: str = "cm"
+    height_cm: float | None = None
+    align: str = "center"
+    caption: str = ""
+    caption_above: bool = False
+
+
+def _markdown_image(data: bytes) -> Image:
+    """An `Image` for resolved bytes of a Markdown picture: vector markup for an SVG (each renderer sanitises it), else raster."""
+    head = data.lstrip()[:200]
+    if head.startswith((b"<svg", b"<?xml")) and b"<svg" in head + data[:2000]:
+        try:
+            return Image(svg=data.decode("utf-8"))
+        except UnicodeDecodeError:
+            return Image(data=data)
+    return Image(data=data)
 
 
 @dataclass(frozen=True)
@@ -370,7 +396,18 @@ class PageBreak:
     """Starts a new page."""
 
 
-Block = Heading | Paragraph | Equation | Note | BulletList | NumberedList | Image | Table | Gap | PageBreak
+@dataclass(frozen=True)
+class PageStyleChange:
+    """Starts a new page in `style`; the pages that follow use it until the next change.
+
+    The layout's section block makes two: one into the section's style and one back to the document's own style
+    after the section's content.
+    """
+
+    style: PageStyle
+
+
+Block = Heading | Paragraph | Equation | Note | BulletList | NumberedList | Image | Table | Gap | PageBreak | PageStyleChange
 
 
 @dataclass(frozen=True)
@@ -393,6 +430,74 @@ PAGE_SIZES_CM: dict[str, tuple[float, float]] = {
     "A3": (29.7, 42.0), "A4": (21.0, 29.7), "A5": (14.8, 21.0), "Letter": (21.59, 27.94), "Legal": (21.59, 35.56),
 }
 DEFAULT_PAGE_SIZE = "A4"
+#: The margin on every side of a page that names none, in cm.
+DEFAULT_MARGIN_CM = 1.5
+
+
+@dataclass(frozen=True)
+class Margins:
+    """The white space round a page's text, in cm.
+
+    Attributes:
+        top: Above the text.
+        bottom: Below the text.
+        left: Left of the text; the inner edge (the binding side) when the document mirrors its margins.
+        right: Right of the text; the outer edge when the document mirrors its margins.
+        gutter: Extra space on the binding edge (the left, or the inner edge when mirrored) for a punched or bound copy.
+    """
+
+    top: float = DEFAULT_MARGIN_CM
+    bottom: float = DEFAULT_MARGIN_CM
+    left: float = DEFAULT_MARGIN_CM
+    right: float = DEFAULT_MARGIN_CM
+    gutter: float = 0.0
+
+
+@dataclass(frozen=True)
+class PageStyle:
+    """How a page looks: its paper, direction and margins.
+
+    Attributes:
+        page_size: One of `PAGE_SIZES_CM`.
+        landscape: Whether the page is turned on its side.
+        margins: The margins.
+        mirror: Whether left and right swap on every second page (double-sided printing): `left` and the gutter are
+            then the inner edge of every page and `right` the outer.
+    """
+
+    page_size: str = DEFAULT_PAGE_SIZE
+    landscape: bool = False
+    margins: Margins = field(default_factory=Margins)
+    mirror: bool = False
+
+    @property
+    def dimensions_cm(self) -> tuple[float, float]:
+        """The page's (width, height) in cm, turned on its side for landscape; A4 for an unknown size."""
+        short, long = PAGE_SIZES_CM.get(self.page_size, PAGE_SIZES_CM[DEFAULT_PAGE_SIZE])
+        return (long, short) if self.landscape else (short, long)
+
+    @property
+    def usable_width_cm(self) -> float:
+        """The width between the margins (less the gutter), in cm."""
+        return self.dimensions_cm[0] - self.margins.left - self.margins.right - self.margins.gutter
+
+    @property
+    def usable_height_cm(self) -> float:
+        """The height between the margins, in cm."""
+        return self.dimensions_cm[1] - self.margins.top - self.margins.bottom
+
+    def edges_cm(self, *, verso: bool = False) -> tuple[float, float]:
+        """The (left, right) white space of a page in cm, the gutter included.
+
+        Args:
+            verso: Whether this is a left-hand page of a double-sided document (every second page when mirrored).
+
+        Returns:
+            Left then right. Not mirrored, the gutter is on the left of every page; mirrored it is on the inner edge,
+            which is the right of a verso page.
+        """
+        inner, outer = self.margins.left + self.margins.gutter, self.margins.right
+        return (outer, inner) if self.mirror and verso else (inner, outer)
 
 
 @dataclass
@@ -407,6 +512,8 @@ class ReportDocument:
         landscape: Whether pages are landscape (wide module tables) rather
             than portrait (the requirement report).
         page_size: One of `PAGE_SIZES_CM` (A4 unless a layout chooses another).
+        margins: The margins of the document's own pages (a section's `PageStyleChange` brings its own).
+        mirror: Whether margins mirror on facing pages, for every page style of the document.
     """
 
     title: str
@@ -414,12 +521,18 @@ class ReportDocument:
     branding: ReportBranding | None = None
     landscape: bool = False
     page_size: str = DEFAULT_PAGE_SIZE
+    margins: Margins = field(default_factory=Margins)
+    mirror: bool = False
+
+    @property
+    def style(self) -> PageStyle:
+        """The page style of the document's own pages."""
+        return PageStyle(self.page_size, self.landscape, self.margins, self.mirror)
 
 
 def page_dimensions_cm(document: ReportDocument) -> tuple[float, float]:
     """The page's (width, height) in cm, turned on its side for a landscape document; A4 for an unknown size."""
-    short, long = PAGE_SIZES_CM.get(document.page_size, PAGE_SIZES_CM[DEFAULT_PAGE_SIZE])
-    return (long, short) if document.landscape else (short, long)
+    return document.style.dimensions_cm
 
 
 _ESCAPED = re.compile(r"\\([*_`\\\[\]])")
@@ -577,7 +690,7 @@ def markdown_to_blocks(
             if picture:
                 image_bytes = images.get(picture.group(1))
                 if image_bytes:
-                    blocks.append(Image(image_bytes))
+                    blocks.append(_markdown_image(image_bytes))
                     blocks.append(Gap(0.2))
             else:
                 blocks.append(Paragraph(_rich_text(_inline_parts(inline, written, placeholders))))

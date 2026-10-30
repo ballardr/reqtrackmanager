@@ -123,7 +123,20 @@ def test_the_block_catalogue_lists_every_type_with_its_form(world, tier):
     sheet = next(b for b in body["blocks"] if b["type"] == "sheet")
     assert sheet["families"] == ["table"]
     assert body["field_kinds"] == list(FIELD_KINDS)
-    assert {f["key"] for f in body["layout_fields"]} == {"orientation", "variables"}
+    assert {f["key"] for f in body["layout_fields"]} == {"orientation", "page_size", "margins", "mirror_margins", "page_styles", "variables"}
+    section = next(b for b in body["blocks"] if b["type"] == "section")
+    assert [f["key"] for f in section["fields"]] == ["page_style"] and [c["key"] for c in section["containers"]] == ["children"]
+    image = next(b for b in body["blocks"] if b["type"] == "image")
+    assert [f["key"] for f in image["fields"]] == [
+        "file", "alt", "decorative", "width", "width_unit", "height", "height_unit", "align", "caption", "caption_position",
+        "numbering",
+    ]
+    assert next(f for f in image["fields"] if f["key"] == "file")["kind"] == "image" and image["containers"] == []
+    width = next(f for f in image["fields"] if f["key"] == "width")
+    assert (width["kind"], width["minimum"], width["maximum"]) == ("number", 1.0, 1000.0)
+    units = next(f for f in image["fields"] if f["key"] == "width_unit")
+    assert units["choices"] == ["cm", "mm", "percent"]
+    assert next(f for f in image["fields"] if f["key"] == "numbering")["choices"] == ["auto", "always", "never"]
     assert body["operators"]["enum"] == ["eq", "ne", "in", "not_in", "empty", "not_empty"]
     assert body["valueless_operators"] == ["empty", "not_empty"] and body["list_operators"] == ["in", "not_in"]
     assert body["schema_version"] == 1

@@ -507,6 +507,7 @@ export function ReportLayoutDesigner({
                       <ReportLayoutBlocks
                         tree={blockTree} onChange={setBlockTree} family={detail.family} blocks={blockTypes} catalogue={catalogue}
                         widgets={widgets} problems={blockProblems} readOnly={!editable} toolbarEnd={previewControls}
+                        images={{ library: api.images, scope: api.scope.kind }}
                       />
                     </Suspense>
                     <div aria-live="polite">

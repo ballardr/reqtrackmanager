@@ -49,6 +49,7 @@ from app.routers import (
     record_tables,
     report_catalogue,
     report_folders,
+    report_images,
     report_layouts,
     report_packs,
     report_placements,
@@ -311,6 +312,8 @@ app.include_router(requirements.router)
 app.include_router(change_requests.router)
 app.include_router(reports.router)
 app.include_router(report_catalogue.router)
+app.include_router(report_images.org_router)
+app.include_router(report_images.project_router)
 app.include_router(report_layouts.org_router)
 app.include_router(report_layouts.project_router)
 app.include_router(report_packs.org_router)

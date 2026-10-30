@@ -33,6 +33,7 @@ import type { ReportPlacement, ReportPlacementApi } from "../api/reportPlacement
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { useColumnChoice } from "../hooks/useColumnChoice";
 import { useOpenFolders } from "../hooks/useOpenFolders";
 import {
   allFolderIds, buildFolderTree, folderLevels, folderProblem, FOLDER_SEPARATOR, MAX_FOLDER_DEPTH, parentFolder, tidyFolder,
@@ -44,6 +45,7 @@ import {
 } from "../utils/reportSetupRows";
 import { ActionMenu, type ActionMenuItem } from "./ActionMenu";
 import { Badge } from "./Badge";
+import { ColumnChooser } from "./ColumnChooser";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { FilterField, FilterPanel } from "./FilterPanel";
 import { FolderTreeList, type FolderTreeColumn } from "./FolderTreeList";
@@ -75,6 +77,9 @@ interface Loaded {
 }
 
 const FOLDER_TREE_PREFIX = "f";
+
+/** The columns shown until a person chooses: the type and folder are read from the icon and the nesting, the version from the designer. */
+const DEFAULT_COLUMNS = ["status", "shared", "updated"];
 
 /**
  * @param layoutApi The layout calls, bound to an organisation or a project.
@@ -125,7 +130,7 @@ export function ReportSetupPanel({
   const expanded = useMemo(() => (filtering ? new Set(allFolderIds(tree)) : openIds), [filtering, tree, openIds]);
   const hiddenObjects = useMemo(() => rows.filter((r) => r.hidden && (r.layout || r.pack)), [rows]);
 
-  const columns = useMemo<FolderTreeColumn<ReportSetupRow>[]>(() => [
+  const allColumns = useMemo<FolderTreeColumn<ReportSetupRow>[]>(() => [
     {
       id: "status", header: text.statusHeading, width: "minmax(5rem, 9rem)",
       render: (row) => {
@@ -149,10 +154,21 @@ export function ReportSetupPanel({
       sortValue: (row) => row.version ?? 0, render: (row) => row.version ?? "",
     },
     {
+      id: "kind", header: text.kindHeading, width: "6rem", hideBelow: true,
+      sortValue: (row) => strings.reportPicker.kind[row.shape], render: (row) => strings.reportPicker.kind[row.shape],
+    },
+    {
+      id: "folder", header: text.folderHeading, hideBelow: true,
+      sortValue: (row) => row.folder, render: (row) => row.folder,
+    },
+    {
       id: "updated", header: text.updatedHeading, width: "7rem", hideBelow: true,
       sortValue: (row) => row.updatedAt ?? "", render: (row) => (row.updatedAt ? new Date(row.updatedAt).toLocaleDateString() : ""),
     },
-  ], [text, strings.reportPlacements, inProject, scope.kind]);
+  ], [text, strings.reportPlacements, strings.reportPicker.kind, inProject, scope.kind]);
+  const columnIds = useMemo(() => allColumns.map((c) => c.id), [allColumns]);
+  const choice = useColumnChoice(`report_setup_${scope.kind}`, columnIds, DEFAULT_COLUMNS);
+  const columns = useMemo(() => allColumns.filter((c) => choice.visible.includes(c.id)), [allColumns, choice.visible]);
 
   /** Runs a change, toasts its outcome and reloads; an error is toasted and leaves the list as it was. */
   async function run(action: () => Promise<string>) {
@@ -331,6 +347,12 @@ export function ReportSetupPanel({
             }}
           />
         )}
+        <span style={{ marginInlineStart: "auto" }}>
+          <ColumnChooser
+            columns={allColumns.map((c) => ({ id: c.id, label: c.header }))} visible={choice.visible}
+            onToggle={choice.toggle} onReset={choice.reset} isDefault={choice.isDefault} alwaysOn={strings.folderTreeList.nameHeader}
+          />
+        </span>
       </div>
       <FilterPanel
         sectionKey={`reportSetup.${scope.kind}`} layout="top" matching={shown.length} total={rows.length}

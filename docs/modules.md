@@ -1278,9 +1278,18 @@ flowchart LR
   `table`; `current_version`) and `report_layout_versions` (immutable tree, SHA-256 `tree_hash`, comment). Saving appends a
   version through `services.report_layouts.save_version`, which refuses a save based on a stale version
   (`LayoutConflictError`) and stores nothing for an identical tree. An ORM guard refuses to update a saved version.
-- **Tree.** `{schema_version, family, orientation?, nodes}`. Blocks: `heading`, `text` (restricted Markdown: paragraphs, `#` headings, bullet and numbered lists, `**bold**`, `*italic*`, `` `code` ``; see §4w),
-  `table`, `each`, `group`, `if`, `page_break`, `equation` (document); `sheet` (table). Unknown keys are errors. There is no
+- **Tree.** `{schema_version, family, orientation?, page_size?, margins?, mirror_margins?, page_styles?, variables?, nodes}`. Blocks: `heading`, `text` (restricted Markdown: paragraphs, `#` headings, bullet and numbered lists, `**bold**`, `*italic*`, `` `code` ``; see §4w),
+  `table`, `each`, `group`, `if`, `page_break`, `section`, `image`, `equation` (document); `sheet` (table). Unknown keys are errors. There is no
   expression language and no raw HTML block.
+- **Images.** An `image` block names a library file by id (`services/report_images.py`): a project layout may use its
+  own project's pictures (`file_assets.project_id`) and the organisation's shared resources, an organisation layout the
+  organisation's only (`usable_by_layout`, checked at save, validate and run). Pictures are judged by their bytes, embedded
+  without metadata and within byte and pixel caps; size is one rule for every renderer (`services/report_image_layout.py`);
+  they travel with their layouts in the project and organisation bundles (`report_layout_images`). Size limits are
+  settings (`REPORT_IMAGE_MAX_BYTES`, `REPORT_IMAGE_MAX_PIXELS`, `REPORT_IMAGE_MAX_TOTAL_BYTES`); widths and heights may be
+  cm, mm or (widths) a percentage; caption numbering is `auto`, `always` or `never`. API: `/orgs/{id}/report-images`,
+  `/projects/{id}/report-images` (list with the size limit, upload, delete). A picture's size and EXIF come from the general
+  `GET /files/{id}/details` (same read rule as the download), shown by `FileDetailsToggle` wherever files are listed.
 - **Sources.** A block reads records from `{record_type}` (all of a type in the report's projects),
   `{record_type, linked_from: alias, link_types?, direction?}` (records linked to an enclosing record; link types are
   named, forward or reverse, so a layout moves between projects) or `{group: alias}` (a group's members), plus
@@ -1568,11 +1577,23 @@ flowchart LR
   preview and the validate check read the tree in either view. (A rich-text document view existed briefly and was removed; so was
   the card outline the block editor replaced.)
 - **Text view tools.** `ReportLayoutBlockToolbar` is an icon button per block (headings by level) with tooltips;
-  `ReportLayoutPageSetup` writes the page size (`page_size`: A3, A4, A5, Letter or Legal, A4 when absent) and orientation into
-  the `@layout document [landscape] [size]` line; `ReportLayoutFieldPicker` is one searchable list of the report and project
+  `ReportLayoutPageSetup` opens the Page setup dialog (paper, orientation, margins, mirrored margins, page styles) and writes
+  them into the `@layout document [landscape] [size] [mirror] [margins …]` line and one `@pagestyle` line per style (§4g, "Page styles"); `ReportLayoutFieldPicker` is one searchable list of the report and project
   placeholders (`PLACEHOLDER_NAMES`: `project_name`, `project_code`, `project_description`, `report_title`, `generated_on`,
   `organisation`) and the fields of every name in scope; `SaveVersionButton` asks for the note in a popover. The page size
   reaches `ReportDocument.page_size` and every renderer through `report_model.page_dimensions_cm`.
+- **Page styles.** A document layout's own pages are `page_size` (A4 when absent), `orientation` and `margins`
+  (`{top, bottom, left, right, gutter}` in cm; 1.5 cm on every side and no gutter when absent; 1 to 10, gutter 0 to 5). `page_styles` is
+  a list of named styles (`{name, page_size?, orientation?, margins?}`, at most 10, unique names) that leave out what they share with the
+  layout. The `section` block (`page_style`, `children`) lays its contents out in one style: a new page in that style, the contents, then a
+  new page back in the layout's own style; a section with no output leaves no page, and a section cannot contain another. `mirror_margins`
+  is one switch for the whole layout (Word keeps it per document): `left` and the gutter are the inner edge and `right` the outer. Every
+  style must leave 5 cm of text width and height. The evaluator emits `PageStyleChange` blocks (`services/report_model.py`; flat, so a
+  renderer only switches style where one falls) and `services/report_page_styles.py` owns the vocabulary, the checks and the resolution.
+  Per format: PDF has one ReportLab page template per style (two when mirrored, picked by the parity of the page the style starts on),
+  Word a section per change with its own size, margins and gutter and `w:mirrorMargins`, ODT a page layout and master page per style
+  (`style:page-usage="mirrored"`; the gutter joins the inner margin), HTML a labelled `<section>` as wide as the page and CSS named pages
+  (`@page psN`) for printing. A table-family layout has no pages and refuses the keys.
 - **Kind is fixed.** The server parses text without knowing the layout, so the designer compares the text's `@layout`
   kind with the layout's and reports a mismatch as a problem before saving.
 - **Block schemas for the visual designer.** A `BlockSpec` carries a `schema` (`services/report_layout_block_schema.py`):

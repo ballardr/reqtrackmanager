@@ -490,7 +490,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         })
 
     module_bundle_json: dict[str, Any] = {
-        **export_project_layouts(db, project), **export_project_packs(db, project), **export_project_placements(db, project),
+        **export_project_layouts(db, project, file_assets_by_id), **export_project_packs(db, project), **export_project_placements(db, project),
         **export_project_folders(db, project),
     }
     for _module_key, hooks in get_all_module_project_bundle_hooks():
@@ -668,7 +668,7 @@ def apply_project_data(
     # `routers/projects.py::create_project`'s own default-seeding call for
     # a manually-created (non-template) project.
     seed_action_types(db, project.id)
-    import_project_layouts(db, project, data, current_user, warnings)
+    import_project_layouts(db, project, data, current_user, warnings, file_bytes_by_ref)
     import_project_packs(db, project, data, current_user, warnings)
     import_project_placements(db, project, data, current_user, warnings)
     import_project_folders(db, project, data, current_user, warnings)

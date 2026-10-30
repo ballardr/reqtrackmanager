@@ -20,6 +20,40 @@ type Story = StoryObj<typeof ProjectFilesPage>;
  * rendered in one list, each with an "Origin" link back to whichever
  * requirement/action the file came from — a flat file list with no way to
  * tell where each file came from is exactly the gap this page closes. */
+const PHOTO_DETAILS = {
+  width_px: 4032, height_px: 3024, taken: "2026-10-12 14:03:11", camera: "Canon EOS 5D", description: "North gate, pump house",
+  latitude: -33.866667, longitude: 151.21,
+};
+
+/** A picture's row has an info button that shows when it was taken, the camera, its description and where; other files have none. */
+export const APictureShowsItsExifDetails: Story = {
+  beforeEach: () => {
+    spyOn(api, "getPage").mockResolvedValue({
+      items: [
+        buildProjectFile({
+          file: { id: "file-3", organization_id: "org-1", filename: "gate.jpg", content_type: "image/jpeg", size_bytes: 2048000, uploaded_by: "user-1", is_org_resource: false, created_at: "2026-08-22T09:00:00Z" },
+          source: "requirement_attachment", requirement_id: "requirement-2", requirement_unique_code: "SW-PERF-002", requirement_name: "Log all transitions",
+        }),
+        buildProjectFile({
+          file: { id: "file-1", organization_id: "org-1", filename: "spec.pdf", content_type: "application/pdf", size_bytes: 204800, uploaded_by: "user-1", is_org_resource: false, created_at: "2026-08-20T09:00:00Z" },
+          source: "requirement_attachment", requirement_id: "requirement-1", requirement_unique_code: "SW-PERF-001", requirement_name: "Ship the widget",
+        }),
+      ],
+      total: 2,
+    });
+    spyOn(api, "get").mockResolvedValue(PHOTO_DETAILS);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("gate.jpg")).toBeInTheDocument());
+    await expect(canvas.queryByRole("button", { name: "Details of spec.pdf" })).toBeNull();
+    await userEvent.click(canvas.getByRole("button", { name: "Details of gate.jpg" }));
+    const popover = within(await within(document.body).findByRole("dialog"));
+    await expect(await popover.findByText("Canon EOS 5D")).toBeInTheDocument();
+    await expect(popover.getByText("-33.86667, 151.21000")).toBeInTheDocument();
+  },
+};
+
 export const MixedSources: Story = {
   beforeEach: () => {
     spyOn(api, "getPage").mockResolvedValue({

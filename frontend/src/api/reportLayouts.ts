@@ -13,6 +13,7 @@
  * beyond placing it in the tree.
  */
 import { api, ApiError } from "./client";
+import { fetchFileDetails, type FileDetails } from "./fileDetails";
 import type { ReportParam, ReportVariable } from "./reports";
 
 export type LayoutFamily = "document" | "table";
@@ -33,6 +34,36 @@ export const LAYOUT_ORIGIN_LABEL: Record<LayoutOrigin, string> = {
 export interface LayoutScope {
   kind: "organization" | "project";
   id: string;
+}
+
+/** A picture in a layout tier's library (`ReportImageOut`): what an image block can show. */
+export interface ReportImage {
+  id: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  /** `organisation` (every project's layouts can use it) or `project`. */
+  tier: "organisation" | "project";
+  /** The library asking owns it, so its manager can delete it. */
+  owned: boolean;
+  /** Names of the layouts whose current version uses it. */
+  used_by: string[];
+  created_at: string;
+}
+
+/** A library listing: the pictures and the largest file an upload may be (a deployment setting). */
+export interface ReportImageList {
+  images: ReportImage[];
+  max_image_bytes: number;
+}
+
+/** The calls the image picker makes (the layout API's, narrowed so a story can supply a few pictures). */
+export interface ReportImageLibrary {
+  list(): Promise<ReportImageList>;
+  /** What a picture says about itself (EXIF and size), to choose between photographs. */
+  details(id: string): Promise<FileDetails>;
+  upload(file: File): Promise<ReportImage>;
+  remove(id: string): Promise<void>;
 }
 
 /** The saved JSON tree (see the module note: edited through block schemas, validated by the server). */
@@ -289,6 +320,8 @@ export interface ReportLayoutApi {
   blocks(): Promise<BlockCatalogue>;
   /** Checks a draft tree and lists every problem with its path (nothing is stored). */
   validate(tree: ReportLayoutTree): Promise<TreeCheck>;
+  /** The picture library an image block draws from: this scope's own pictures and, for a project, the organisation's. */
+  images: ReportImageLibrary;
   preview(body: PreviewRequest): Promise<PreviewResult>;
   /** The draft's run-time variables with their defaults and current options (nothing is stored). */
   draftVariables(text: string): Promise<DraftVariables>;
@@ -303,6 +336,11 @@ export interface ReportLayoutApi {
 /** The URL prefix of a scope's layouts. */
 export function reportLayoutsBase(scope: LayoutScope): string {
   return `/api/v1/${scope.kind === "project" ? "projects" : "orgs"}/${scope.id}/report-layouts`;
+}
+
+/** The URL prefix of a scope's picture library. */
+export function reportImagesBase(scope: LayoutScope): string {
+  return `/api/v1/${scope.kind === "project" ? "projects" : "orgs"}/${scope.id}/report-images`;
 }
 
 /** Where the designer for one layout lives. */
@@ -331,6 +369,12 @@ export function reportLayoutApi(scope: LayoutScope): ReportLayoutApi {
     validate: (tree) => api.post<TreeCheck>(`${base}/validate`, { tree }),
     preview: (body) => api.post<PreviewResult>(`${base}/preview`, body),
     draftVariables: (text) => api.post<DraftVariables>(`${base}/variables`, { text }),
+    images: {
+      list: () => api.get<ReportImageList>(reportImagesBase(scope)),
+      details: fetchFileDetails,
+      upload: (file) => api.postFile<ReportImage>(reportImagesBase(scope), file),
+      remove: (id) => api.delete<void>(`${reportImagesBase(scope)}/${id}`),
+    },
   };
   if (scope.kind === "organization") {
     layouts.addStarters = async () => (await api.post<{ added: string[] }>(`${base}/starters`, {})).added;

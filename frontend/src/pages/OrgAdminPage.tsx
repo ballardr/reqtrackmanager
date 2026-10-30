@@ -67,6 +67,7 @@ import { DefinitionList } from "../components/DefinitionList";
 import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
 import { EntitySwitcher } from "../components/EntitySwitcher";
+import { FileDetailsToggle } from "../components/FileDetailsPanel";
 import { FileUploadTrigger } from "../components/FileUploadTrigger";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { ImportConflictPanel } from "../components/ImportConflictPanel";
@@ -2616,14 +2617,17 @@ export function OrgAdminPage() {
                   <a href={fileUrl(r.id)} target="_blank" rel="noreferrer">
                     {r.filename}
                   </a>
-                  <button
-                    className="btn btn-danger"
-                    title={strings.orgAdmin.deleteResource(r.filename)}
-                    aria-label={strings.orgAdmin.deleteResource(r.filename)}
-                    onClick={() => deleteResource(r.id)}
-                  >
-                    <Trash2 />
-                  </button>
+                  <span className="row" style={{ gap: "var(--space-1)" }}>
+                    <FileDetailsToggle file={r} />
+                    <button
+                      className="btn btn-danger"
+                      title={strings.orgAdmin.deleteResource(r.filename)}
+                      aria-label={strings.orgAdmin.deleteResource(r.filename)}
+                      onClick={() => deleteResource(r.id)}
+                    >
+                      <Trash2 />
+                    </button>
+                  </span>
                 </div>
               ))}
               <FileUploadTrigger onSelect={uploadResource}>

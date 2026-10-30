@@ -80,6 +80,7 @@ def upload_file(
     content_type: str,
     data: bytes,
     is_org_resource: bool = False,
+    project_id: UUID | None = None,
 ) -> FileAsset:
     """Stores file bytes in the configured backend and records its metadata.
 
@@ -93,6 +94,7 @@ def upload_file(
         content_type: The file's MIME type.
         data: The raw file bytes.
         is_org_resource: True for an organisation shared resource (C-M-03).
+        project_id: The project whose report-image library the file joins (`None` for any other file).
 
     Returns:
         The created FileAsset (not yet committed).
@@ -118,6 +120,7 @@ def upload_file(
         size_bytes=len(data),
         uploaded_by=uploaded_by,
         is_org_resource=is_org_resource,
+        project_id=project_id,
     )
     db.add(file_asset)
     return file_asset

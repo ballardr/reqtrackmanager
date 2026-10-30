@@ -309,18 +309,26 @@ REQUIREMENTS_BY_CATEGORY_LAYOUT = {
 
 
 CONTEXT_OVERVIEW_LAYOUT = {
-    "schema_version": 1, "family": "document", "orientation": "landscape",
+    "schema_version": 1, "family": "document", "orientation": "portrait", "margins": {"left": 2, "right": 2},
+    "page_styles": [{"name": "Wide tables", "page_size": "A3", "orientation": "landscape", "margins": {"left": 1.5, "right": 1.5}}],
     "nodes": [
         {"type": "heading", "text": "{{report_title}}"},
         {"type": "text", "text": "Context & Strategy for **{{project_name}}**, built from report widgets."},
         {"type": "heading", "level": 2, "text": "Headline figures"},
         {"type": "widget", "key": "context_strategy.summary.figures", "params": {"stale_months": 12}},
-        {"type": "heading", "level": 2, "text": "Pain Points by type and status"},
-        {"type": "text", "text": "Open and closed Pain Points, as counted by the Pain Point coverage report."},
-        {"type": "widget", "key": "context_strategy.pain-point-coverage.matrix", "empty_text": "No Pain Points yet."},
+        {
+            "type": "section", "page_style": "Wide tables",
+            "children": [
+                {"type": "heading", "level": 2, "text": "Pain Points by type and status"},
+                {"type": "text", "text": "Open and closed Pain Points, as counted by the Pain Point coverage report."},
+                {"type": "widget", "key": "context_strategy.pain-point-coverage.matrix", "empty_text": "No Pain Points yet."},
+            ],
+        },
     ],
 }
-"""A custom report layout that embeds Context & Strategy report tables as widgets; its headings and prose are its own."""
+"""A custom report layout that embeds Context & Strategy report tables as widgets; its headings and prose are its own.
+
+Its wide matrix sits in a section with an A3 landscape page style inside an A4 portrait report."""
 
 
 def create_report_layout(headers: dict, path: str, name: str, description: str, tree: dict) -> dict:

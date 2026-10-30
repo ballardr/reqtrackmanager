@@ -234,8 +234,8 @@ class ReportBlockFieldOut(BaseModel):
     required: bool
     help: str
     max_length: int | None
-    minimum: int | None
-    maximum: int | None
+    minimum: float | None
+    maximum: float | None
     default: Any
     choices: list[str]
     features: list[str]

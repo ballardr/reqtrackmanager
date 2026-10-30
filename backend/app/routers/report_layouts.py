@@ -79,6 +79,7 @@ from app.schemas.report_layout import (
 )
 from app.services import (
     custom_report_run,
+    report_images,
     report_layout_designer,
     report_layout_scope,
     report_layout_text,
@@ -225,11 +226,19 @@ def _blocks_out(catalogue: report_layout_designer.BlockCatalogue) -> ReportBlock
     )
 
 
-def _validate_tree(body: ReportLayoutValidateRequest) -> ReportLayoutValidateOut:
-    """Checks a draft tree; every problem comes back with its path."""
+def _validate_tree(
+    body: ReportLayoutValidateRequest, db: Session, organization_id: UUID, project_id: UUID | None,
+) -> ReportLayoutValidateOut:
+    """Checks a draft tree; every problem comes back with its path.
+
+    Besides the tree's own rules, an image block must name a picture in a library the layout's owner may use.
+    """
     analysis = report_layout_designer.check_tree(body.tree)
+    errors = list(analysis.errors)
+    if analysis.ok:
+        errors += report_images.image_problems(db, organization_id, project_id, body.tree)
     return ReportLayoutValidateOut(
-        ok=analysis.ok, errors=[ReportLayoutTreeErrorOut(path=e.path, message=e.message) for e in analysis.errors],
+        ok=not errors, errors=[ReportLayoutTreeErrorOut(path=e.path, message=e.message) for e in errors],
         node_count=analysis.node_count,
     )
 
@@ -404,9 +413,12 @@ def list_org_blocks(current_user: User = Depends(manage_org_layouts)) -> ReportB
 
 
 @org_router.post("/validate", response_model=ReportLayoutValidateOut)
-def validate_org_layout_tree(body: ReportLayoutValidateRequest, current_user: User = Depends(manage_org_layouts)) -> ReportLayoutValidateOut:
+def validate_org_layout_tree(
+    organization_id: UUID, body: ReportLayoutValidateRequest, current_user: User = Depends(manage_org_layouts),
+    db: Session = Depends(get_db),
+) -> ReportLayoutValidateOut:
     """Checks a draft tree and answers every problem with its path (200 either way); stores and logs nothing."""
-    return _validate_tree(body)
+    return _validate_tree(body, db, organization_id, None)
 
 
 @org_router.get("/fields", response_model=ReportFieldCatalogueOut)
@@ -633,9 +645,13 @@ def list_project_blocks(project_id: UUID, current_user: User = Depends(manage_pr
 @project_router.post("/validate", response_model=ReportLayoutValidateOut)
 def validate_project_layout_tree(
     project_id: UUID, body: ReportLayoutValidateRequest, current_user: User = Depends(manage_project_layouts),
+    db: Session = Depends(get_db),
 ) -> ReportLayoutValidateOut:
     """Checks a draft tree and answers every problem with its path (200 either way); stores and logs nothing."""
-    return _validate_tree(body)
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    return _validate_tree(body, db, project.organization_id, project_id)
 
 
 @project_router.get("/fields", response_model=ReportFieldCatalogueOut)

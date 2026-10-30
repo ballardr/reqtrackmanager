@@ -24,6 +24,7 @@
 import { Paperclip, Pencil } from "lucide-react";
 import { useState } from "react";
 
+import { FileDetailsToggle } from "./FileDetailsPanel";
 import { fileUrl } from "../api/client";
 import type { FileAsset } from "../api/types";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
@@ -134,9 +135,12 @@ export function ArtefactCommentsSection<T extends ArtefactComment>({
                 {c.attachments.length > 0 && (
                   <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
                     {c.attachments.map((a) => (
-                      <a key={a.id} href={fileUrl(a.id)} target="_blank" rel="noreferrer" className="row" style={{ gap: "var(--space-1)" }}>
-                        <Paperclip size={12} /> {a.filename}
-                      </a>
+                      <span key={a.id} className="row" style={{ gap: "var(--space-1)" }}>
+                        <a href={fileUrl(a.id)} target="_blank" rel="noreferrer" className="row" style={{ gap: "var(--space-1)" }}>
+                          <Paperclip size={12} /> {a.filename}
+                        </a>
+                        <FileDetailsToggle file={a} />
+                      </span>
                     ))}
                   </div>
                 )}

@@ -88,6 +88,7 @@ from app.services.link_graph import ArtefactResolver
 from app.services.link_type_scope import resolve_link_type_scope
 from app.services.report_fields import RESERVED_FIELD_KEYS, FieldInfo, ReportRecord, field_catalogue, format_value, load_records
 from app.services.report_framework import ReportContext, ReportResult
+from app.services.report_images import MAX_REPORT_IMAGES, ResolvedImage, load_image, max_total_image_bytes
 from app.services.report_layout_tree import (
     DEFAULT_GROUP_ALIAS,
     DEFAULT_RECORD_ALIAS,
@@ -96,15 +97,17 @@ from app.services.report_layout_tree import (
 )
 from app.services.report_math import MathSegment, source_of, split_math, tex_problem, typeset
 from app.services.report_model import (
-    DEFAULT_PAGE_SIZE,
     Block,
     BulletList,
     Equation,
+    Gap,
     Heading,
+    Image,
     MathText,
     Note,
     NumberedList,
     PageBreak,
+    PageStyleChange,
     Paragraph,
     ReportDocument,
     Sheet,
@@ -114,6 +117,7 @@ from app.services.report_model import (
     markdown_to_blocks,
     text_runs,
 )
+from app.services.report_page_styles import resolve_page_styles
 from app.services.report_traversal import MAX_LINKED, MAX_ROOTS, LinkDirection, linked_records, root_records
 from app.services.report_variables import (
     PLACEHOLDER_FAMILY,
@@ -171,6 +175,8 @@ class EvalStats:
         rows: Table and sheet rows emitted.
         hidden: Records the caller could not see (counted, never named).
         unavailable: Records of a type no installed module can display, or over a dormant link.
+        images: Image blocks that drew a picture.
+        image_files: The distinct library files those pictures came from (ids, never bytes), in the order first used.
     """
 
     records_read: dict[str, int] = field(default_factory=lambda: defaultdict(int))
@@ -179,6 +185,8 @@ class EvalStats:
     rows: int = 0
     hidden: int = 0
     unavailable: int = 0
+    images: int = 0
+    image_files: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -275,6 +283,7 @@ def evaluate_layout(
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
     limit_scale: int = 1,
     variables: Mapping[str, Any] | None = None,
+    layout_project_id: uuid.UUID | None = None,
 ) -> EvaluatedLayout:
     """Runs a layout for the caller behind `resolver`.
 
@@ -292,6 +301,8 @@ def evaluate_layout(
         limit_scale: Multiplier on the work and output limits; 1 for a synchronous run, `ASYNC_LIMIT_SCALE` for a
             background run.
         variables: Values for the layout's run-time variables, `{name: value}`; a variable not given takes its default.
+        layout_project_id: The project that owns the layout (`None` for an organisation layout): its image blocks may use
+            that project's images and the organisation's, or the organisation's only.
 
     Returns:
         The evaluated layout.
@@ -312,15 +323,19 @@ def evaluate_layout(
     analysis = assert_valid(tree)
     run = _Run(db, resolver, ctx, ctx.root_project, analysis.refs, title, placeholders, project_ids, timeout_seconds, limit_scale)
     run.variable_text = variable_text(declared, values)
+    run.layout_project_id = layout_project_id
+    if tree["family"] == FAMILY_DOCUMENT:
+        run.page_styles = resolve_page_styles(tree)
     for warning in stale_value_warnings(db, declared, values, run.project_ids):
         run.warn(warning)
     for node in tree["nodes"]:
         run.evaluate(node, {})
     document = None
     if tree["family"] == FAMILY_DOCUMENT:
+        style = run.page_styles[0]
         document = ReportDocument(
-            title=title, blocks=run.blocks, landscape=tree.get("orientation") == "landscape",
-            page_size=tree.get("page_size", DEFAULT_PAGE_SIZE),
+            title=title, blocks=run.blocks, landscape=style.landscape, page_size=style.page_size, margins=style.margins,
+            mirror=style.mirror,
         )
     versions, truncated = run.record_versions()
     for artefact_type, pooled in run._pool.items():
@@ -358,13 +373,21 @@ class _Run:
             **(placeholders or {}),
         }
         self.deadline = time.monotonic() + timeout_seconds
+        self.max_scale = limit_scale
         self.max_work = MAX_WORK * limit_scale
         self.max_output = MAX_OUTPUT * limit_scale
         self.blocks: list[Block] = []
+        #: The document's own page style and the named ones (set by `evaluate_layout` for a document layout).
+        self.page_styles = resolve_page_styles({})
         self.sheets: list[Sheet] = []
         self.warnings: list[str] = []
         self.stats = EvalStats()
         self._equations = 0
+        #: The owner of the layout being run, and the picture cache, byte total and caption counter of its image blocks.
+        self.layout_project_id: uuid.UUID | None = None
+        self._images: dict[uuid.UUID, ResolvedImage | None] = {}
+        self._image_bytes = 0
+        self._figures = 0
         self._work = 0
         self._output = 0
         self._catalogues: dict[str, dict[str, FieldInfo]] = {}
@@ -448,6 +471,28 @@ class _Run:
         self._output += amount
         if self._output > self.max_output:
             raise LayoutLimitError(f"The report is too large. {_NARROW_OR_BACKGROUND}")
+
+    def library_image(self, file_id: uuid.UUID) -> ResolvedImage | None:
+        """The picture for an image block, or `None` (with one warning) when it cannot be used.
+
+        Raises:
+            LayoutLimitError: The run embeds more pictures, or more picture bytes, than one report may.
+        """
+        if file_id not in self._images:
+            image, reason = load_image(self.db, self.ctx.organization.id, self.layout_project_id, file_id)
+            self._images[file_id] = image
+            if image is None:
+                self.warn(f"An image in the layout {reason}, so it was left out.")
+        image = self._images[file_id]
+        if image is None:
+            return None
+        self._image_bytes += image.size
+        if self.stats.images >= MAX_REPORT_IMAGES * self.max_scale or self._image_bytes > max_total_image_bytes() * self.max_scale:
+            raise LayoutLimitError(f"The report embeds too many images. {_NARROW_OR_BACKGROUND}")
+        if str(file_id) not in self.stats.image_files:
+            self.stats.image_files.append(str(file_id))
+        self.stats.images += 1
+        return image
 
     def warn(self, message: str) -> None:
         """Records a warning once."""
@@ -878,8 +923,52 @@ def _eval_equation(run: _Run, node: dict[str, Any], scope: Scope) -> None:
     run.emit(shown if isinstance(shown, Equation) else Paragraph(shown))
 
 
+def _cm(value: float | None, unit: str | None) -> float | None:
+    """A size written in `unit` (`cm` when absent) in centimetres."""
+    return None if value is None else value / 10 if unit == "mm" else value
+
+
+def _eval_image(run: _Run, node: dict[str, Any], scope: Scope) -> None:
+    """A picture from the layout tier's library, with its caption (numbered "Figure n: " by the block's numbering) and size."""
+    image = run.library_image(uuid.UUID(node["file"]))
+    if image is None:
+        return
+    caption = run.fill(node["caption"], scope).strip() if "caption" in node else ""
+    numbering = node.get("numbering", "auto")
+    if numbering == "always" or (numbering == "auto" and caption):
+        run._figures += 1
+        caption = f"Figure {run._figures}: {caption}" if caption else f"Figure {run._figures}"
+    decorative = bool(node.get("decorative", False))
+    run.emit(
+        Image(
+            data=image.data, svg=image.svg, alt="" if decorative else node.get("alt", ""), decorative=decorative,
+            width=_cm(node.get("width"), node.get("width_unit")) if node.get("width_unit") != "percent" else node.get("width"),
+            width_unit="percent" if node.get("width_unit") == "percent" else "cm",
+            height_cm=_cm(node.get("height"), node.get("height_unit")),
+            align=node.get("align", "center"), caption=caption, caption_above=node.get("caption_position") == "above",
+        ),
+        Gap(0.2),
+    )
+
+
 def _eval_page_break(run: _Run, node: dict[str, Any], scope: Scope) -> None:
     run.emit(PageBreak())
+
+
+def _eval_section(run: _Run, node: dict[str, Any], scope: Scope) -> None:
+    """A section: a new page in its page style, its contents, then a new page back in the document's own style.
+
+    A section whose contents produce nothing leaves no page behind.
+    """
+    document, styles = run.page_styles
+    before = len(run.blocks)
+    run.children(node["children"], scope)
+    if len(run.blocks) == before:
+        return
+    run.blocks.insert(before, PageStyleChange(styles[node["page_style"]]))
+    run.stats.blocks += 1
+    run._count_output(1)
+    run.emit(PageStyleChange(document))
 
 
 def _source_type(node: dict[str, Any], scope: Scope) -> str:
@@ -1058,8 +1147,10 @@ def _eval_widget(run: _Run, node: dict[str, Any], scope: Scope) -> None:
 
 
 for _key, _fn in (
-    ("heading", _eval_heading), ("text", _eval_text), ("page_break", _eval_page_break), ("equation", _eval_equation), ("table", _eval_table),
-    ("each", _eval_each), ("group", _eval_group), ("if", _eval_if), ("sheet", _eval_sheet), ("widget", _eval_widget),
+    ("heading", _eval_heading), ("text", _eval_text), ("page_break", _eval_page_break), ("section", _eval_section),
+    ("image", _eval_image),
+    ("equation", _eval_equation), ("table", _eval_table), ("each", _eval_each), ("group", _eval_group), ("if", _eval_if),
+    ("sheet", _eval_sheet), ("widget", _eval_widget),
 ):
     register_evaluator(_key, _fn)
 

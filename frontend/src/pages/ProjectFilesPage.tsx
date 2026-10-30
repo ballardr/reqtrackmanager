@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { api, fileUrl } from "../api/client";
 import type { ProjectFile } from "../api/types";
+import { FileDetailsToggle } from "../components/FileDetailsPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { useStrings } from "../context/TerminologyContext";
@@ -102,9 +103,12 @@ export function ProjectFilesPage() {
                 return (
                   <tr key={`${f.source}-${f.file.id}-${f.requirement_id ?? ""}-${f.action_id ?? ""}-${f.comment_id ?? ""}`}>
                     <td>
-                      <a href={fileUrl(f.file.id)} target="_blank" rel="noreferrer">
-                        {f.file.filename}
-                      </a>
+                      <span className="row" style={{ gap: "var(--space-1)" }}>
+                        <a href={fileUrl(f.file.id)} target="_blank" rel="noreferrer">
+                          {f.file.filename}
+                        </a>
+                        <FileDetailsToggle file={f.file} />
+                      </span>
                     </td>
                     <td>
                       <div className="stack" style={{ gap: "0.1rem" }}>
