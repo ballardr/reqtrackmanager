@@ -351,8 +351,20 @@ def library_asset(
 # --- the save-time check ----------------------------------------------------------------------------------
 
 
+def _logo_nodes(holder: Any, path: str) -> Iterator[tuple[str, dict[str, Any]]]:
+    """The logos of a root or page style's `header` and `footer` (each has a `file` like an image block)."""
+    if not isinstance(holder, dict):
+        return
+    for band in ("header", "footer"):
+        logo = holder[band].get("logo") if isinstance(holder.get(band), dict) else None
+        if isinstance(logo, dict):
+            yield (f"{path}.{band}.logo" if path else f"{band}.logo"), logo
+
+
 def image_nodes(tree: dict[str, Any]) -> Iterator[tuple[str, dict[str, Any]]]:
-    """Every `image` block of a tree with its path (`nodes[0].children[1]`)."""
+    """Every picture a tree names, with its path: each `image` block (`nodes[0].children[1]`) and each header or
+    footer logo (`header.logo`, `page_styles[1].footer.logo`). All have a `file` key, so every rule that applies to
+    a picture (the library tier, the bundle, "used by") applies to a logo too."""
 
     def walk(nodes: Any, path: str) -> Iterator[tuple[str, dict[str, Any]]]:
         if not isinstance(nodes, list):
@@ -366,6 +378,10 @@ def image_nodes(tree: dict[str, Any]) -> Iterator[tuple[str, dict[str, Any]]]:
             for key in ("children", "else_children"):
                 yield from walk(node.get(key), f"{here}.{key}")
 
+    yield from _logo_nodes(tree, "")
+    styles = tree.get("page_styles")
+    for i, style in enumerate(styles if isinstance(styles, list) else []):
+        yield from _logo_nodes(style, f"page_styles[{i}]")
     yield from walk(tree.get("nodes"), "nodes")
 
 

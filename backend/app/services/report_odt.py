@@ -65,17 +65,44 @@ from app.services.report_odf import (
     xml_attr,
     xml_text,
 )
+from app.services.report_odt_running import RunningWriter, first_differs, page_layout, running_styles
 from app.services.report_svg import svg_png
 
 _POINTS_PER_CM = 28.3465
 _PIXELS_PER_CM = 96 / 2.54
 _ZEBRA = "#F5F5F5"
 _NOTE_GREY = "#555555"
+_SLOT_ALIGN = {"left": "start", "centre": "center", "right": "end"}
 _ALL_NS = ("office", "style", "text", "table", "draw", "fo", "xlink", "svg", "dc", "meta")
 
 
+# What a layered picture's position is measured from, in ODF terms (`style:horizontal-rel` and `style:vertical-rel`).
+_ANCHOR_REL = {"paragraph": "paragraph", "margin": "page-content", "page": "page"}
+
+
+def _floating_frame_styles() -> str:
+    """Graphic styles for a picture beside the text (`fr_wrap_left`, `fr_wrap_right`) and for each layer and anchor
+    (`fr_behind_paragraph` ... `fr_front_page`)."""
+    common = 'fo:margin-top="0cm" fo:margin-bottom="0cm" fo:padding="0cm" fo:border="none"'
+    styles = [
+        f'<style:style style:name="fr_wrap_{side}" style:family="graphic"><style:graphic-properties style:wrap="parallel" '
+        f'style:run-through="foreground" style:horizontal-pos="{side}" style:horizontal-rel="paragraph" style:vertical-pos="top" '
+        f'style:vertical-rel="paragraph-content" fo:margin-left="{"0cm" if side == "left" else "0.3cm"}" '
+        f'fo:margin-right="{"0.3cm" if side == "left" else "0cm"}" {common}/></style:style>'
+        for side in ("left", "right")
+    ]
+    for layer, run_through in (("behind", "background"), ("front", "foreground")):
+        for anchor, rel in _ANCHOR_REL.items():
+            styles.append(
+                f'<style:style style:name="fr_{layer}_{anchor}" style:family="graphic"><style:graphic-properties style:wrap="run-through" '
+                f'style:run-through="{run_through}" style:horizontal-pos="from-left" style:horizontal-rel="{rel}" '
+                f'style:vertical-pos="from-top" style:vertical-rel="{rel}" fo:margin-left="0cm" fo:margin-right="0cm" {common}/></style:style>'
+            )
+    return "".join(styles)
+
+
 def _frame_style_xml() -> str:
-    return (
+    return _floating_frame_styles() + (
         '<style:style style:name="fr_block" style:family="graphic"><style:graphic-properties text:anchor-type="as-char" '
         'style:vertical-pos="top" style:vertical-rel="baseline" style:wrap="none" fo:margin-left="0cm" fo:margin-right="0cm" '
         'fo:margin-top="0cm" fo:margin-bottom="0cm" fo:padding="0cm" fo:border="none"/></style:style>'
@@ -143,6 +170,10 @@ def _named_styles() -> str:
         + headings
         + _paragraph_style("Note", text=f'fo:font-size="8.5pt" fo:font-style="italic" fo:color="{_NOTE_GREY}"')
         + _paragraph_style("Footer", para='fo:text-align="center" fo:margin-bottom="0cm"', text='fo:font-size="8pt"')
+        + "".join(
+            _paragraph_style(f"Band_{slot}", para=f'fo:text-align="{align}" fo:margin-top="0cm" fo:margin-bottom="0cm"', text='fo:font-size="8pt"')
+            for slot, align in _SLOT_ALIGN.items()
+        )
         + _paragraph_style("List_20_Bullet", extra=' style:display-name="List Bullet"', para='fo:margin-bottom="0.05cm"')
         + _paragraph_style("List_20_Number", extra=' style:display-name="List Number"', para='fo:margin-bottom="0.05cm"')
         + _paragraph_style("Display_20_Equation", para='fo:text-align="center"')
@@ -169,22 +200,8 @@ def _named_styles() -> str:
 
 
 def _page_layout_xml(index: int, style: PageStyle) -> str:
-    """One `style:page-layout` (`PL<index>`): the style's paper, orientation and margins.
-
-    OpenDocument has no gutter, so it is added to the left margin, which is the inner edge when `style.mirror`.
-    """
-    width, height = style.dimensions_cm
-    margins = style.margins
-    return (
-        f'<style:page-layout style:name="PL{index}">'
-        f'<style:page-layout-properties fo:page-width="{length_cm(width)}" fo:page-height="{length_cm(height)}" '
-        f'style:print-orientation="{"landscape" if style.landscape else "portrait"}" '
-        f'style:page-usage="{"mirrored" if style.mirror else "all"}" '
-        f'fo:margin-top="{length_cm(margins.top)}" fo:margin-bottom="{length_cm(margins.bottom)}" '
-        f'fo:margin-left="{length_cm(margins.left + margins.gutter)}" fo:margin-right="{length_cm(margins.right)}"/>'
-        '<style:footer-style><style:header-footer-properties fo:min-height="0.5cm" fo:margin-top="0.3cm"/></style:footer-style>'
-        "</style:page-layout>"
-    )
+    """One `style:page-layout` (`PL<index>`) of a plain report: the style's paper, orientation and margins, and a small footer."""
+    return page_layout(f"PL{index}", style, bands=False)
 
 
 def _master_name(index: int) -> str:
@@ -192,24 +209,45 @@ def _master_name(index: int) -> str:
     return "Standard" if index == 0 else f"Style{index}"
 
 
-def _styles_xml(document: ReportDocument, styles: list[PageStyle]) -> str:
-    """`styles.xml`: fonts, named styles, a page layout and master page per page style, and the cover's master page."""
-    branding = document.branding
-    footer = f"{xml_text(branding.footer_text)}  ·  Page " if branding and branding.footer_text else "Page "
-    footer_xml = (
-        f'<style:footer><text:p text:style-name="Footer">{footer}'
-        '<text:page-number text:select-page="current">1</text:page-number></text:p></style:footer>'
-    )
-    masters = "".join(
-        f'<style:master-page style:name="{_master_name(i)}" style:page-layout-name="PL{i}">{footer_xml}</style:master-page>'
-        for i in range(len(styles))
-    )
+def _styles_xml(document: ReportDocument, styles: list[PageStyle], package: OdfPackage) -> str:
+    """`styles.xml`: fonts, named styles, a page layout and master page per page style, and the cover's master page.
+
+    A plain report's master pages carry the branding's footer text and the page number. A report with running headers and
+    footers (a layout's) gets each style's own, a continuation master page for the return to the document's style, and
+    the cover page's layout without any.
+    """
+    running = any(style.header is not None or style.footer is not None for style in styles)
+    if not running:
+        branding = document.branding
+        footer = f"{xml_text(branding.footer_text)}  ·  Page " if branding and branding.footer_text else "Page "
+        footer_xml = (
+            f'<style:footer><text:p text:style-name="Footer">{footer}'
+            '<text:page-number text:select-page="current">1</text:page-number></text:p></style:footer>'
+        )
+        layouts = "".join(_page_layout_xml(i, style) for i, style in enumerate(styles))
+        masters = "".join(
+            f'<style:master-page style:name="{_master_name(i)}" style:page-layout-name="PL{i}">{footer_xml}</style:master-page>'
+            for i in range(len(styles))
+        )
+        cover, automatic = '<style:master-page style:name="Cover" style:page-layout-name="PL0"/>', ""
+    else:
+        writer = RunningWriter(package)
+        has_cover = bool(document.branding and document.branding.include_cover_page)
+        layouts = "".join(page_layout(f"PL{i}", style, bands=True) for i, style in enumerate(styles))
+        layouts += page_layout("PLC", styles[0], bands=False)
+        # The cover page is the first page of the document, so the body's first page is an ordinary one after a cover.
+        masters = "".join(
+            writer.master_page(_master_name(i), f"PL{i}", i, style, first_differs=first_differs(style) and not (i == 0 and has_cover))
+            for i, style in enumerate(styles)
+        ) + writer.master_page("Continue", "PL0", 0, styles[0], first_differs=False)
+        cover = '<style:master-page style:name="Cover" style:page-layout-name="PLC"/>'
+        automatic = _frame_style_xml() + "".join(running_styles(i, style) for i, style in enumerate(styles))
     return (
         f'{XML_DECLARATION}<office:document-styles {namespace_attrs(*_ALL_NS)} office:version="{ODF_VERSION}">'
         f"{FONT_FACES}"
         f"<office:styles>{_named_styles()}</office:styles>"
-        f'<office:automatic-styles>{"".join(_page_layout_xml(i, style) for i, style in enumerate(styles))}</office:automatic-styles>'
-        f'<office:master-styles>{masters}<style:master-page style:name="Cover" style:page-layout-name="PL0"/></office:master-styles>'
+        f"<office:automatic-styles>{layouts}{automatic}</office:automatic-styles>"
+        f"<office:master-styles>{masters}{cover}</office:master-styles>"
         "</office:document-styles>"
     )
 
@@ -235,8 +273,13 @@ class _Body:
     def _static_styles(self) -> None:
         """The automatic styles every document carries: frames, the page break, and the table cell and text styles."""
         self.styles.append(_frame_style_xml())
+        self.styles.append(_paragraph_style(
+            "P_Float", para='fo:margin-top="0cm" fo:margin-bottom="0cm" fo:keep-with-next="always" fo:line-height="0.04cm"',
+            text='fo:font-size="1pt"',
+        ))
         self.styles.append(_paragraph_style("P_Break", para='fo:break-after="page" fo:margin-bottom="0cm"'))
         self.styles.append(_paragraph_style("P_AfterCover", extra=' style:master-page-name="Standard"', para='fo:margin-bottom="0cm"'))
+        self.styles.append(_paragraph_style("P_Continue", extra=' style:master-page-name="Continue"', para='fo:margin-bottom="0cm"'))
         for index in range(1, len(self.page_styles)):
             self.styles.append(
                 _paragraph_style(f"P_Style{index}", extra=f' style:master-page-name="{_master_name(index)}"', para='fo:margin-bottom="0cm"'),
@@ -292,11 +335,40 @@ class _Body:
             width, height = self.usable_cm, self.usable_cm * height_px / width_px
         return self._frame(data, width, height, alt=alt)
 
+    def _floating_block(self, block: Image, data: bytes, size: tuple[float, float]) -> None:
+        """A picture beside the text, or behind or in front of it: a frame anchored to a paragraph of its own.
+
+        The paragraph is one point tall and kept with the next; the text that follows wraps around, over or under the frame.
+        """
+        info = raster_info(data)
+        if info is None:
+            return
+        path = self.package.add_picture(data, info[0], info[1])
+        self._frames += 1
+        if block.placement == "wrap":
+            style, position = f"fr_wrap_{'left' if block.align == 'left' else 'right'}", ""
+        else:
+            style = f"fr_{block.placement}_{block.anchor if block.anchor in _ANCHOR_REL else 'paragraph'}"
+            position = f' svg:x="{length_cm(block.offset_x_cm)}" svg:y="{length_cm(block.offset_y_cm)}"'
+        title = f"<svg:title>{xml_text(block.alt)}</svg:title>" if block.alt and not block.decorative else ""
+        self.chunks.append(
+            f'<text:p text:style-name="P_Float"><draw:frame draw:style-name="{style}" draw:name="Picture{self._frames}" '
+            f'text:anchor-type="paragraph"{position} svg:width="{length_cm(size[0])}" svg:height="{length_cm(size[1])}" '
+            f'draw:z-index="{self._frames}"><draw:image xlink:href="{path}" xlink:type="simple" xlink:show="embed" '
+            f'xlink:actuate="onLoad"/>{title}</draw:frame></text:p>'
+        )
+
     def _image_block(self, block: Image, data: bytes) -> None:
-        """An image block: the picture at its placed size and alignment, its alternative text and its caption."""
+        """An image block: the picture at its placed size and alignment, its alternative text and its caption.
+
+        A picture with a wrap or layer placement is a floating frame instead.
+        """
         info = raster_info(data)
         size = placed_size_cm(block, self.usable_cm)
         if info is None or size is None:
+            return
+        if block.floats:
+            self._floating_block(block, data, size)
             return
         frame = self._frame(data, size[0], size[1], alt="" if block.decorative else block.alt)
         if not frame:
@@ -452,7 +524,8 @@ class _Body:
         elif isinstance(block, PageStyleChange):
             # An empty paragraph that names a master page starts a new page in that page's layout.
             index = self.page_styles.index(block.style)
-            self.chunks.append(f'<text:p text:style-name="{"P_AfterCover" if index == 0 else f"P_Style{index}"}"/>')
+            style_name = ("P_AfterCover" if block.section_start else "P_Continue") if index == 0 else f"P_Style{index}"
+            self.chunks.append(f'<text:p text:style-name="{style_name}"/>')
             self.usable_cm = block.style.usable_width_cm
         elif isinstance(block, Gap):
             return  # a PDF layout hint; paragraph styles carry the spacing
@@ -488,7 +561,7 @@ def render_odt_document(document: ReportDocument) -> bytes:
     for block in document.blocks:
         body.block(block)
     package.add("content.xml", "text/xml", body.content())
-    package.add("styles.xml", "text/xml", _styles_xml(document, styles))
+    package.add("styles.xml", "text/xml", _styles_xml(document, styles, package))
     return package.finish()
 
 

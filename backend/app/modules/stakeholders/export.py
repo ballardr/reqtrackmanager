@@ -207,7 +207,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             assets[asset.id] = asset
             attachments.append({
                 "file_ref": f"{asset.id}_{asset.filename}", "filename": asset.filename,
-                "content_type": asset.content_type, "linked_by_email": linked_by.email,
+                "content_type": asset.content_type, "confidential": asset.confidential,
+                "linked_by_email": linked_by.email,
             })
         entry["attachments"] = attachments
         personas_json.append(entry)
@@ -298,6 +299,7 @@ def import_project_data(
             asset = import_bundled_file(
                 db, organization_id=organization_id, uploaded_by=uploader_id, filename=att["filename"],
                 content_type=att.get("content_type") or "application/octet-stream", data=att_bytes,
+                confidential=bool(att.get("confidential")),
             )
             db.add(PersonaFile(persona_id=persona.id, file_id=asset.id, linked_by=uploader_id, created_at=datetime.now(UTC)))
     db.flush()

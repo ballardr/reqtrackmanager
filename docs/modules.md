@@ -1278,8 +1278,8 @@ flowchart LR
   `table`; `current_version`) and `report_layout_versions` (immutable tree, SHA-256 `tree_hash`, comment). Saving appends a
   version through `services.report_layouts.save_version`, which refuses a save based on a stale version
   (`LayoutConflictError`) and stores nothing for an identical tree. An ORM guard refuses to update a saved version.
-- **Tree.** `{schema_version, family, orientation?, page_size?, margins?, mirror_margins?, page_styles?, variables?, nodes}`. Blocks: `heading`, `text` (restricted Markdown: paragraphs, `#` headings, bullet and numbered lists, `**bold**`, `*italic*`, `` `code` ``; see §4w),
-  `table`, `each`, `group`, `if`, `page_break`, `section`, `image`, `equation` (document); `sheet` (table). Unknown keys are errors. There is no
+- **Tree.** `{schema_version, family, orientation?, page_size?, margins?, mirror_margins?, page_styles?, header?, footer?, variables?, nodes}`. Blocks: `heading`, `text` (restricted Markdown: paragraphs, `#` headings, bullet and numbered lists, `**bold**`, `*italic*`, `` `code` ``; see §4w),
+  `table`, `each`, `group`, `if`, `page_break`, `section`, `image`, `record_images`, `equation` (document); `sheet` (table). Unknown keys are errors. There is no
   expression language and no raw HTML block.
 - **Images.** An `image` block names a library file by id (`services/report_images.py`): a project layout may use its
   own project's pictures (`file_assets.project_id`) and the organisation's shared resources, an organisation layout the
@@ -1290,6 +1290,18 @@ flowchart LR
   cm, mm or (widths) a percentage; caption numbering is `auto`, `always` or `never`. API: `/orgs/{id}/report-images`,
   `/projects/{id}/report-images` (list with the size limit, upload, delete). A picture's size and EXIF come from the general
   `GET /files/{id}/details` (same read rule as the download), shown by `FileDetailsToggle` wherever files are listed.
+- **Record images.** A `record_images` block (inside an `each`) prints the pictures attached to that block's record. A module
+  lets its types take part with `ModuleDefinition.record_attachments[type] = RecordAttachmentProvider(link table, record
+  column)` (core types: `services/record_attachments_core.py`), or gives a reason in `no_record_attachments`
+  (`backend/tests/test_report_record_images.py` fails for a reportable type with neither); a type whose attachments may
+  concern identifiable people gives that reason and is not offered. `services/report_record_images.py` lists a batch of
+  records' files in one query, never one a person marked `FileAsset.confidential`, narrows them by the block's rules
+  (`names` with `*` and `?` and no regular expressions, `types`, `max_size_mb`, `order`, `max_count`), then reads only the
+  survivors and decides what is a picture from the bytes. A `{{placeholder}}` in a pattern is filled into the literal
+  stretches only, so a value never becomes a wildcard. The files are reached through the record's own link table, so a
+  picture prints when the caller could open it from the record's page; pictures share the library pictures' caps and are
+  recorded in the run's stats as a count and a digest. `PATCH /files/{id}/confidential` (uploader, project manager, or an
+  organisation admin for an organisation resource; audited) sets the mark, which changes nothing but reports.
 - **Sources.** A block reads records from `{record_type}` (all of a type in the report's projects),
   `{record_type, linked_from: alias, link_types?, direction?}` (records linked to an enclosing record; link types are
   named, forward or reverse, so a layout moves between projects) or `{group: alias}` (a group's members), plus
@@ -1594,6 +1606,19 @@ flowchart LR
   Word a section per change with its own size, margins and gutter and `w:mirrorMargins`, ODT a page layout and master page per style
   (`style:page-usage="mirrored"`; the gutter joins the inner margin), HTML a labelled `<section>` as wide as the page and CSS named pages
   (`@page psN`) for printing. A table-family layout has no pages and refuses the keys.
+- **Headers and footers.** The root and each page style may carry `header` and `footer`: `{left?, centre?, right?, logo?: {file, height, slot?},
+  first_page?: "same"|"none"}` (a cell is text of up to 300 characters on three lines; `{}` prints nothing; a style that writes none prints the
+  document's, and the document's, where it writes none, the branding template's: its footer text and page number, and its logo as a header).
+  Cells take the report-wide placeholders, `{{layout_version}}`, `{{page}}`, `{{pages}}` and `{{var.name}}`, never a record field; the
+  evaluator fills them (`generated_on` is the caller's own day) and leaves the two page fields to the renderer (`RunningBand`,
+  `report_model`). A band must fit inside its margin (0.5 cm to the page edge + its tallest cell, `report_page_styles.band_height_cm`), checked
+  at save for each style with the margin it will print in. A logo is a library picture and goes through `report_images.image_nodes`, so the
+  tier rule, "used by" and the bundles treat it like an image block. Per format (three-column table in each): PDF draws the bands after
+  the body on a canvas that keeps pages open until the end so `{{pages}}` is known (`report_pdf_running`); Word writes a borderless table in
+  each section's header, first-page and (mirrored) even-page parts with `PAGE` and `NUMPAGES` fields; ODT writes header, left-hand and first-page
+  headers on each master page, a continuation master page for the return to the document's style, and trims the layout's margins so the body
+  starts where the margin says (`report_odt_running`); HTML shows bands on screen and prints through `@page` margin boxes (no logo).
+  `report_running.apply_template_defaults` is the one place the template's defaults are applied.
 - **Kind is fixed.** The server parses text without knowing the layout, so the designer compares the text's `@layout`
   kind with the layout's and reports a mismatch as a problem before saving.
 - **Block schemas for the visual designer.** A `BlockSpec` carries a `schema` (`services/report_layout_block_schema.py`):

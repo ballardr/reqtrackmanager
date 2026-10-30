@@ -143,7 +143,7 @@ class UserResolver:
 
 def import_bundled_file(
     db: Session, *, organization_id: UUID, uploaded_by: UUID,
-    filename: str, content_type: str, data: bytes,
+    filename: str, content_type: str, data: bytes, confidential: bool = False,
 ) -> FileAsset:
     """Re-uploads a file embedded in a bundle as a new `FileAsset` owned by
     the target organisation — storage keys aren't portable across
@@ -159,6 +159,7 @@ def import_bundled_file(
         db, organization_id=organization_id, uploaded_by=uploaded_by,
         filename=filename, content_type=content_type, data=data,
     )
+    asset.confidential = confidential
     db.flush()
     return asset
 
@@ -176,7 +177,7 @@ def export_file_links(
         assets: Filled with each attached `FileAsset`, by id, so the bundle embeds its bytes.
 
     Returns:
-        One `{"file_ref", "filename", "content_type", "linked_by_email"}` entry per attachment.
+        One `{"file_ref", "filename", "content_type", "confidential", "linked_by_email"}` entry per attachment.
     """
     out = []
     for asset, linked_by in db.execute(
@@ -186,7 +187,8 @@ def export_file_links(
         assets[asset.id] = asset
         out.append({
             "file_ref": f"{asset.id}_{asset.filename}", "filename": asset.filename,
-            "content_type": asset.content_type, "linked_by_email": linked_by.email,
+            "content_type": asset.content_type, "confidential": asset.confidential,
+            "linked_by_email": linked_by.email,
         })
     return out
 
@@ -216,5 +218,6 @@ def import_file_links(
         asset = import_bundled_file(
             db, organization_id=organization_id, uploaded_by=uploader or current_user.id, filename=att["filename"],
             content_type=att.get("content_type") or "application/octet-stream", data=att_bytes,
+            confidential=bool(att.get("confidential")),
         )
         db.add(file_model(**{fk: record_id}, file_id=asset.id, linked_by=uploader or current_user.id, created_at=now))

@@ -104,3 +104,37 @@ export const ATableLayoutHasNoPageSetup: Story = {
 
 export const LightTheme: Story = { ...ReadsTheSetupFromTheHeaderLines, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...ReadsTheSetupFromTheHeaderLines, globals: { theme: "dark" } };
+
+/** A layout's header and footer are written as `@header` / `@footer` lines under the header line, and a page style's under its own. */
+export const HeaderAndFooterAreWrittenUnderTheirOwnLines: Story = {
+  render: () => <Host initial={'@layout document\n@pagestyle "Wide" A3\n\n@heading Hello\n'} />,
+  play: async ({ canvasElement }) => {
+    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait");
+    const header = within(dialog.getAllByRole("group", { name: "Header" })[0]); // the layout's own, above the page styles'
+    await userEvent.selectOptions(header.getByRole("combobox", { name: "Header: print" }), "custom");
+    await userEvent.type(header.getByRole("textbox", { name: "Header, centre cell" }), "{{{{report_title}}");
+    const style = within(dialog.getByRole("group", { name: "Wide" }));
+    await userEvent.selectOptions(style.getByRole("combobox", { name: "Footer: print" }), "none");
+    await expect(text(canvasElement).textContent).toBe(
+      '@layout document\n@header left "" centre "{{report_title}}"\n@pagestyle "Wide" A3\n@footer\n\n@heading Hello\n',
+    );
+  },
+};
+
+/** A layout that already has bands shows them, including a logo and a skipped first page, and a rewrite keeps them. */
+export const ReadsHeadersAndFootersFromTheText: Story = {
+  render: () => (
+    <Host initial={'@layout document margins top=2\n@header left "A" logo "image-1" height 0.8 slot right first none\n@footer\n\n@heading Hello\n'} />
+  ),
+  play: async ({ canvasElement }) => {
+    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait");
+    const header = within(dialog.getByRole("group", { name: "Header" }));
+    await expect(header.getByRole("textbox", { name: "Header, left cell" })).toHaveValue("A");
+    await expect(header.getByRole("combobox", { name: "Header: first page" })).toHaveValue("none");
+    await expect(within(dialog.getByRole("group", { name: "Footer" })).getByRole("combobox", { name: "Footer: print" })).toHaveValue("none");
+    await userEvent.type(header.getByRole("textbox", { name: "Header, left cell" }), "B");
+    await expect(text(canvasElement).textContent).toBe(
+      '@layout document margins top=2\n@header left "AB" logo "image-1" height 0.8 slot right first none\n@footer\n\n@heading Hello\n',
+    );
+  },
+};

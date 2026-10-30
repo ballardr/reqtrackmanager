@@ -77,6 +77,7 @@ from app.modules.risk_management._shared import RISK_ACCEPT_PERMISSION, RISK_MAN
 from app.modules.risk_management.alerts import NOTIFICATION_TYPES
 from app.modules.risk_management.mcp_tools import build_mcp_tools
 from app.modules.risk_management.models import RiskVersion
+from app.modules.risk_management.record_attachments import NO_RECORD_ATTACHMENTS, RECORD_ATTACHMENTS
 from app.modules.risk_management.record_tables import RECORD_TABLES
 from app.modules.risk_management.report_fields import REPORT_FIELDS
 from app.modules.risk_management.report_starters import REPORT_STARTER_SECTIONS
@@ -210,6 +211,8 @@ MODULE_DEFINITION = ModuleDefinition(
     artefact_summary_providers={RISK_ARTEFACT_TYPE: RISK_SUMMARY_PROVIDER},
     search_providers=SEARCH_PROVIDERS,
     report_fields=REPORT_FIELDS,
+    record_attachments=RECORD_ATTACHMENTS,
+    no_record_attachments=NO_RECORD_ATTACHMENTS,
     report_starter_sections=REPORT_STARTER_SECTIONS,
     record_tables=RECORD_TABLES,
     link_type_seeds=LINK_TYPE_SEEDS,

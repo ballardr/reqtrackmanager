@@ -118,6 +118,7 @@ from app.modules.context_strategy._shared import OPEN_QUESTION_RESOLVE_PERMISSIO
 from app.modules.context_strategy._shared import PAIN_POINT_DECIDE_PERMISSION as _PAIN_POINT_DECIDE_PERMISSION
 from app.modules.context_strategy._shared import STRATEGY_APPROVE_PERMISSION as _STRATEGY_APPROVE_PERMISSION
 from app.modules.context_strategy.models import GuidingPrincipleVersion, OpenQuestion, PainPoint
+from app.modules.context_strategy.record_attachments import NO_RECORD_ATTACHMENTS, RECORD_ATTACHMENTS
 from app.modules.context_strategy.record_tables import RECORD_TABLES
 from app.modules.context_strategy.report_fields import REPORT_FIELDS
 from app.modules.context_strategy.report_starters import REPORT_STARTER_SECTIONS
@@ -848,6 +849,8 @@ MODULE_DEFINITION = ModuleDefinition(
     artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
     search_providers=SEARCH_PROVIDERS,
     report_fields=REPORT_FIELDS,
+    record_attachments=RECORD_ATTACHMENTS,
+    no_record_attachments=NO_RECORD_ATTACHMENTS,
     report_starter_sections=REPORT_STARTER_SECTIONS,
     record_tables=RECORD_TABLES,
     artefact_type_labels=ARTEFACT_TYPE_LABELS,

@@ -300,7 +300,7 @@ export function buildRequirementAction(overrides: Partial<RequirementAction> = {
 export function buildFileAsset(overrides: Partial<FileAsset> = {}): FileAsset {
   return {
     id: nextId("file"), organization_id: "org-1", filename: "spec.pdf", content_type: "application/pdf",
-    size_bytes: 10240, uploaded_by: "user-1", is_org_resource: false, created_at: "2026-01-10T09:00:00Z",
+    size_bytes: 10240, uploaded_by: "user-1", is_org_resource: false, confidential: false, created_at: "2026-01-10T09:00:00Z",
     ...overrides,
   };
 }

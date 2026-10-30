@@ -5,7 +5,7 @@
  * shows the server's problems for that field beneath it.
  *
  * Responsibilities:
- * - Draw simple kinds (text, long text, whole and decimal numbers, yes/no, choice, TeX, name, image) with the shared field
+ * - Draw simple kinds (text, long text, whole and decimal numbers, yes/no, choice, TeX, name, image, a list of lines) with the shared field
  *   components, and composite kinds (source, columns, joins, condition, widget parts, variables) with their own
  *   editors.
  * - Fall back to a JSON box for a kind it does not know, so a module's block type is always editable.
@@ -18,9 +18,12 @@ import type { BlockCatalogue, BlockField, ReportFieldCatalogue, ReportImageLibra
 import type { PackVariableDeclaration } from "../api/reportPacks";
 import { useStrings } from "../context/TerminologyContext";
 import { newLeaf, sourceRecordType, type NameInScope, type TreeNode } from "../utils/reportLayoutTree";
-import { PAGE_ORIENTATIONS, PAGE_SIZES, styleFromTree, styleToTree, type PageMargins, type PageOrientation, type PageSize } from "../utils/reportPageSetup";
+import {
+  DEFAULT_MARGIN_CM, PAGE_ORIENTATIONS, PAGE_SIZES, styleFromTree, styleToTree, type PageMargins, type PageOrientation, type PageSize, type RunningBand,
+} from "../utils/reportPageSetup";
 import { CheckboxField, TextAreaField, TextField } from "./FormFields";
 import { ReportImageField } from "./ReportImageField";
+import { TextListField } from "./TextListField";
 import { LabeledSelect } from "./LabeledSelect";
 import { ConditionNodeEditor, type Condition, type ConditionEnv } from "./ReportLayoutConditionEditor";
 import { ReportLayoutColumnsEditor, ReportLayoutJoinsEditor } from "./ReportLayoutColumnsEditor";
@@ -31,6 +34,7 @@ import { ReportLayoutVariablesField } from "./ReportLayoutVariablesField";
 import { WidgetKeyField, WidgetParamsField, WidgetSortField } from "./ReportLayoutWidgetEditor";
 import { PageMarginsFields } from "./PageMarginsFields";
 import { PageStylesEditor } from "./PageStylesEditor";
+import { RunningBandEditor } from "./RunningBandEditor";
 
 /** What every field of every block shares. */
 export interface BlockEnv {
@@ -126,6 +130,15 @@ export function ReportLayoutBlockField({
         />
       ) : (
         <ReportLayoutJsonField label={field.label} value={value} onChange={set} help={help} disabled={disabled} required={field.required} />
+      );
+      break;
+    case "text_list":
+      control = (
+        <TextListField
+          label={field.label} value={Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : []}
+          onChange={(list) => set(list.length === 0 ? undefined : list)} disabled={disabled} help={help} required={field.required}
+          hint={text.onePerLine}
+        />
       );
       break;
     case "boolean":
@@ -281,11 +294,22 @@ export function ReportLayoutBlockField({
         <fieldset className="stack" style={{ border: 0, padding: 0, margin: 0 }}>
           <legend><strong>{field.label}</strong></legend>
           <PageStylesEditor
-            value={entries.map(styleFromTree)} disabled={disabled}
+            value={entries.map(styleFromTree)} disabled={disabled} images={env.images} placeholders={env.catalogue.placeholders}
             base={{ size, orientation, margins: (node.margins ?? {}) as PageMargins, mirror: node.mirror_margins === true }}
             onChange={(next) => set(next.length === 0 ? undefined : next.map(styleToTree))}
           />
         </fieldset>
+      );
+      break;
+    }
+    case "running_band": {
+      const margins = (node.margins ?? {}) as PageMargins;
+      control = (
+        <RunningBandEditor
+          kind={field.key === "footer" ? "footer" : "header"} value={value as RunningBand | undefined} onChange={set} inheritFrom="template"
+          margin={(field.key === "footer" ? margins.bottom : margins.top) ?? DEFAULT_MARGIN_CM} images={env.images}
+          placeholders={env.catalogue.placeholders} disabled={disabled}
+        />
       );
       break;
     }

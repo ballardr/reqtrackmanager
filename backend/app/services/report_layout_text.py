@@ -50,7 +50,14 @@ Grammar (one statement per line; indentation is cosmetic):
   available in the project being run, so a layout that spans modules can leave out the parts of one that is off.
 - An image block is `@image "<file id>"` followed by clauses in any order: `alt "<text>"`, `decorative true|false`,
   `width <n> [cm|mm|percent]`, `height <n> [cm|mm]`, `align left|center|right`, `caption "<text>"`,
-  `caption_position above|below` and `numbering auto|always|never`; each is written only when the block has the key.
+  `caption_position above|below`, `numbering auto|always|never`, `placement inline|wrap|behind|front`,
+  `anchor paragraph|margin|page`, and `x <cm>` and `y <cm>` (the offsets of a picture behind or in front of the text);
+  each is written only when the block has the key.
+- A record-images block is `@record_images` (inside an `@each`) followed by clauses in any order: `names "<pattern>", ...`,
+  `types <ext>, ...`, `max_count <n>`, `order name|uploaded`, `max_size_mb <n>`, `caption_source file_name|text|none`,
+  `caption "<text>"`, `caption_position above|below`, `numbering auto|always|never`, `width <n> [cm|mm|percent]`,
+  `height <n> [cm|mm]`, `align left|center|right`, `placement inline|wrap` and `empty "<text>"`; each is written only when
+  the block has the key.
 - An equation block is `@equation <TeX>` on one line (`@equation \\frac{a}{b} = c`). Equations inside a text line
   are written `\\( x \\)` (inline) or `$$ x $$` (display), which are ordinary text to this grammar.
 - A widget is one component of a report (a table, its headline figures or its notes) on a line of its own,
@@ -822,6 +829,9 @@ class _Parser:
         if name == "pagestyle":
             self._page_style(directive, indent, line_no)
             return
+        if name in ("header", "footer"):
+            self._running_band(name, directive, indent, line_no)
+            return
         if name in ("end", "else"):
             if rest.strip():
                 raise _Syntax(f"@{name} takes nothing after it.", directive.offset + 1)
@@ -872,6 +882,39 @@ class _Parser:
         styles = self.tree.setdefault("page_styles", [])
         self.line_of[f"page_styles[{len(styles)}]"] = line_no
         styles.append(style)
+
+    def _running_band(self, kind: str, directive: _Directive, indent: int, line_no: int) -> None:
+        """Reads an `@header` or `@footer` line into the page style written just above it (the document's own before any).
+
+        `@header` with nothing after it is an empty header: the page style prints none.
+        """
+        if len(self.frames) > 1 or self.root["nodes"]:
+            raise _Syntax(f"@{kind} belongs to a page style: put it before the first block.", indent + 1)
+        styles = self.tree.get("page_styles", [])
+        holder = styles[-1] if styles else self.tree
+        if kind in holder:
+            raise _Syntax(f"@{kind} is written once for the {'page style' if styles else 'document'}.", indent + 1)
+        cur = directive.cursor()
+        band: dict[str, Any] = {}
+        while (token := cur.peek()) is not None:
+            word = cur.accept(*_BAND_CLAUSES)
+            if word is None:
+                raise _Syntax(f"Unexpected {token.shown()}. Clauses: {', '.join(_BAND_CLAUSES)}.", token.column)
+            if (word == "first" and "first_page" in band) or word in band or (word in ("height", "slot") and word in band.get("logo", {})):
+                raise _Syntax(f"{word} is written once.", token.column)
+            if word in ("left", "centre", "right"):
+                band[word] = cur.text(f"the {word} text in quotes")
+            elif word == "first":
+                band["first_page"] = cur.word("same or none")
+            elif word == "logo":
+                band["logo"] = {"file": cur.text("the logo's file id in quotes")}
+            else:  # height, slot: belong to the logo written before them
+                if "logo" not in band:
+                    raise _Syntax(f"Write {word} after the logo it belongs to.", token.column)
+                band["logo"][word] = _number_word(cur, "the logo height in cm") if word == "height" else cur.word("left, centre or right")
+        cur.expect_end()
+        holder[kind] = band
+        self.line_of[f"page_styles[{len(styles) - 1}].{kind}" if styles else kind] = line_no
 
     def _variable(self, directive: _Directive, indent: int, line_no: int) -> None:
         """Reads an `@var` line into the root's `variables` (it belongs before the first block)."""
@@ -1118,6 +1161,26 @@ def _variable_text(declaration: dict[str, Any]) -> str:
     return " ".join(parts)
 
 
+_BAND_CLAUSES = ("left", "centre", "right", "logo", "height", "slot", "first")
+
+
+def _write_bands(writer: _Writer, holder: dict[str, Any]) -> None:
+    """The `@header` and `@footer` lines of a root or page style, as the parser reads them."""
+    for kind in ("header", "footer"):
+        if kind not in holder:
+            continue
+        band = holder[kind]
+        parts = [f"@{kind}"]
+        parts += [f"{slot} {_quote(band[slot])}" for slot in ("left", "centre", "right") if slot in band]
+        if "logo" in band:
+            logo = band["logo"]
+            parts.append(f"logo {_quote(logo['file'])}")
+            parts += [f"{key} {json.dumps(logo[key])}" if key == "height" else f"{key} {logo[key]}" for key in ("height", "slot") if key in logo]
+        if "first_page" in band:
+            parts.append(f"first {band['first_page']}")
+        writer.line(0, " ".join(parts))
+
+
 def format_tree(tree: dict[str, Any]) -> str:
     """Writes a layout tree as its text view.
 
@@ -1138,9 +1201,11 @@ def format_tree(tree: dict[str, Any]) -> str:
     if "margins" in tree:
         header += _margins_text(tree["margins"])
     writer.line(0, header)
+    _write_bands(writer, tree)
     for style in tree.get("page_styles", []):
         margins = _margins_text(style["margins"]) if "margins" in style else ""
         writer.line(0, f"@pagestyle {_quote(style['name'])}{_page_style_words(style)}{margins}")
+        _write_bands(writer, style)
     for declaration in tree.get("variables", []):
         writer.line(0, _variable_text(declaration))
     if tree["nodes"]:
@@ -1243,7 +1308,11 @@ def _write_section(w: _Writer, node: dict[str, Any], depth: int) -> None:
     w.line(depth, "@end")
 
 
-_IMAGE_TEXT_CLAUSES = ("alt", "decorative", "width", "height", "align", "caption", "caption_position", "numbering")
+_IMAGE_TEXT_CLAUSES = (
+    "alt", "decorative", "width", "height", "align", "caption", "caption_position", "numbering", "placement", "anchor", "x", "y",
+)
+# The written clause for a key that is spelled differently in the tree.
+_IMAGE_CLAUSE_KEYS = {"x": "offset_x", "y": "offset_y"}
 
 
 def _boolean_word(cur: _Cursor, what: str) -> bool:
@@ -1269,7 +1338,7 @@ def _parse_image(p: _Parser, d: _Directive) -> None:
         word = cur.accept(*_IMAGE_TEXT_CLAUSES)
         if word is None:
             raise _Syntax(f"Unexpected {token.shown()}. Clauses: {', '.join(_IMAGE_TEXT_CLAUSES)}.", token.column)
-        if word in node:
+        if _IMAGE_CLAUSE_KEYS.get(word, word) in node:
             raise _Syntax(f"{word} is written once.", token.column)
         if word in ("alt", "caption"):
             node[word] = cur.text(f"the {word} text in quotes")
@@ -1283,7 +1352,9 @@ def _parse_image(p: _Parser, d: _Directive) -> None:
             node["height"] = _number_word(cur, "the height")
             if unit := cur.accept("cm", "mm"):
                 node["height_unit"] = unit
-        else:  # align, caption_position, numbering
+        elif word in _IMAGE_CLAUSE_KEYS:
+            node[_IMAGE_CLAUSE_KEYS[word]] = _number_word(cur, f"the {'across' if word == 'x' else 'down'} distance in cm")
+        else:  # align, caption_position, numbering, placement, anchor
             node[word] = cur.word(f"the {word.replace('_', ' ')}")
     p.add(node, d.line_no)
 
@@ -1291,9 +1362,9 @@ def _parse_image(p: _Parser, d: _Directive) -> None:
 def _write_image(w: _Writer, node: dict[str, Any], depth: int) -> None:
     parts = [f"@image {_quote(node['file'])}"]
     for key in _IMAGE_TEXT_CLAUSES:
-        if key not in node:
+        if _IMAGE_CLAUSE_KEYS.get(key, key) not in node:
             continue
-        value = node[key]
+        value = node[_IMAGE_CLAUSE_KEYS.get(key, key)]
         if key in ("alt", "caption"):
             parts.append(f"{key} {_quote(value)}")
         elif key == "decorative":
@@ -1302,8 +1373,72 @@ def _write_image(w: _Writer, node: dict[str, Any], depth: int) -> None:
             parts.append(f"width {json.dumps(value)}" + (f" {node['width_unit']}" if "width_unit" in node else ""))
         elif key == "height":
             parts.append(f"height {json.dumps(value)}" + (f" {node['height_unit']}" if "height_unit" in node else ""))
+        elif key in _IMAGE_CLAUSE_KEYS:
+            parts.append(f"{key} {json.dumps(value)}")
         else:
             parts.append(f"{key} {value}")
+    w.line(depth, " ".join(parts))
+
+
+_RECORD_IMAGE_CLAUSES = (
+    "names", "types", "max_count", "order", "max_size_mb", "caption_source", "caption", "caption_position", "numbering", "width",
+    "height", "align", "placement", "empty",
+)
+_RECORD_IMAGE_KEYS = {"empty": "empty_text"}
+
+
+def _parse_record_images(p: _Parser, d: _Directive) -> None:
+    cur = d.cursor()
+    node: dict[str, Any] = {"type": "record_images"}
+    while (token := cur.peek()) is not None:
+        word = cur.accept(*_RECORD_IMAGE_CLAUSES)
+        if word is None:
+            raise _Syntax(f"Unexpected {token.shown()}. Clauses: {', '.join(_RECORD_IMAGE_CLAUSES)}.", token.column)
+        key = _RECORD_IMAGE_KEYS.get(word, word)
+        if key in node:
+            raise _Syntax(f"{word} is written once.", token.column)
+        if word == "names":
+            node[key] = cur.comma_list(lambda: cur.text("a file name pattern in quotes"))
+        elif word == "types":
+            node[key] = cur.comma_list(lambda: cur.word("a file type such as png"))
+        elif word in ("caption", "empty"):
+            node[key] = cur.text(f"the {word} text in quotes")
+        elif word in ("max_count", "max_size_mb"):
+            node[key] = _number_word(cur, f"the {word.replace('_', ' ')}")
+        elif word == "width":
+            node["width"] = _number_word(cur, "the width")
+            if unit := cur.accept("cm", "mm", "percent"):
+                node["width_unit"] = unit
+        elif word == "height":
+            node["height"] = _number_word(cur, "the height")
+            if unit := cur.accept("cm", "mm"):
+                node["height_unit"] = unit
+        else:  # order, caption_source, caption_position, numbering, align, placement
+            node[key] = cur.word(f"the {word.replace('_', ' ')}")
+    p.add(node, d.line_no)
+
+
+def _write_record_images(w: _Writer, node: dict[str, Any], depth: int) -> None:
+    parts = ["@record_images"]
+    for word in _RECORD_IMAGE_CLAUSES:
+        key = _RECORD_IMAGE_KEYS.get(word, word)
+        if key not in node or node[key] == []:
+            continue
+        value = node[key]
+        if word == "names":
+            parts.append("names " + ", ".join(_quote(item) for item in value))
+        elif word == "types":
+            parts.append("types " + ", ".join(value))
+        elif word in ("caption", "empty"):
+            parts.append(f"{word} {_quote(value)}")
+        elif word == "width":
+            parts.append(f"width {json.dumps(value)}" + (f" {node['width_unit']}" if "width_unit" in node else ""))
+        elif word == "height":
+            parts.append(f"height {json.dumps(value)}" + (f" {node['height_unit']}" if "height_unit" in node else ""))
+        elif word in ("max_count", "max_size_mb"):
+            parts.append(f"{word} {json.dumps(value)}")
+        else:
+            parts.append(f"{word} {value}")
     w.line(depth, " ".join(parts))
 
 
@@ -1535,6 +1670,7 @@ for _form in (
     TextForm("page_break", _parse_page_break, _write_page_break),
     TextForm("section", _parse_section, _write_section),
     TextForm("image", _parse_image, _write_image),
+    TextForm("record_images", _parse_record_images, _write_record_images),
     TextForm("equation", _parse_equation, _write_equation),
     TextForm("table", _parse_table, _write_table),
     TextForm("each", _parse_each, _write_each),

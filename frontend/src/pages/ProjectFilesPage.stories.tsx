@@ -31,11 +31,11 @@ export const APictureShowsItsExifDetails: Story = {
     spyOn(api, "getPage").mockResolvedValue({
       items: [
         buildProjectFile({
-          file: { id: "file-3", organization_id: "org-1", filename: "gate.jpg", content_type: "image/jpeg", size_bytes: 2048000, uploaded_by: "user-1", is_org_resource: false, created_at: "2026-08-22T09:00:00Z" },
+          file: { id: "file-3", organization_id: "org-1", filename: "gate.jpg", content_type: "image/jpeg", size_bytes: 2048000, uploaded_by: "user-1", is_org_resource: false, confidential: false, created_at: "2026-08-22T09:00:00Z" },
           source: "requirement_attachment", requirement_id: "requirement-2", requirement_unique_code: "SW-PERF-002", requirement_name: "Log all transitions",
         }),
         buildProjectFile({
-          file: { id: "file-1", organization_id: "org-1", filename: "spec.pdf", content_type: "application/pdf", size_bytes: 204800, uploaded_by: "user-1", is_org_resource: false, created_at: "2026-08-20T09:00:00Z" },
+          file: { id: "file-1", organization_id: "org-1", filename: "spec.pdf", content_type: "application/pdf", size_bytes: 204800, uploaded_by: "user-1", is_org_resource: false, confidential: false, created_at: "2026-08-20T09:00:00Z" },
           source: "requirement_attachment", requirement_id: "requirement-1", requirement_unique_code: "SW-PERF-001", requirement_name: "Ship the widget",
         }),
       ],
@@ -59,19 +59,19 @@ export const MixedSources: Story = {
     spyOn(api, "getPage").mockResolvedValue({
       items: [
         buildProjectFile({
-          file: { id: "file-1", organization_id: "org-1", filename: "spec.pdf", content_type: "application/pdf", size_bytes: 204800, uploaded_by: "user-1", is_org_resource: false, created_at: "2026-08-20T09:00:00Z" },
+          file: { id: "file-1", organization_id: "org-1", filename: "spec.pdf", content_type: "application/pdf", size_bytes: 204800, uploaded_by: "user-1", is_org_resource: false, confidential: false, created_at: "2026-08-20T09:00:00Z" },
           source: "requirement_attachment",
           requirement_id: "requirement-1", requirement_unique_code: "SW-PERF-001", requirement_name: "Ship the widget",
         }),
         buildProjectFile({
-          file: { id: "file-2", organization_id: "org-1", filename: "review-notes.docx", content_type: "application/msword", size_bytes: 51200, uploaded_by: "user-2", is_org_resource: false, created_at: "2026-08-21T09:00:00Z" },
+          file: { id: "file-2", organization_id: "org-1", filename: "review-notes.docx", content_type: "application/msword", size_bytes: 51200, uploaded_by: "user-2", is_org_resource: false, confidential: false, created_at: "2026-08-21T09:00:00Z" },
           uploaded_by_display_name: "Jamie Lee",
           source: "action_attachment",
           requirement_id: null, requirement_unique_code: null, requirement_name: null,
           action_id: "action-1", action_unique_code: "ACT-001", action_title: "Review password reset flow",
         }),
         buildProjectFile({
-          file: { id: "file-3", organization_id: "org-1", filename: "screenshot.png", content_type: "image/png", size_bytes: 1024, uploaded_by: "user-1", is_org_resource: false, created_at: "2026-08-22T09:00:00Z" },
+          file: { id: "file-3", organization_id: "org-1", filename: "screenshot.png", content_type: "image/png", size_bytes: 1024, uploaded_by: "user-1", is_org_resource: false, confidential: false, created_at: "2026-08-22T09:00:00Z" },
           source: "comment_attachment",
           requirement_id: "requirement-2", requirement_unique_code: "SW-PERF-002", requirement_name: "Log all transitions",
           comment_id: "comment-1",
@@ -114,9 +114,9 @@ export const LoadMoreAppendsTheNextPage: Story = {
     spyOn(api, "getPage").mockImplementation(async (path: string) => {
       const offset = Number(new URL(path, "http://x").searchParams.get("offset"));
       if (offset === 0) {
-        return { items: [buildProjectFile({ file: { id: "file-1", organization_id: "org-1", filename: "first.txt", content_type: "text/plain", size_bytes: 10, uploaded_by: "user-1", is_org_resource: false, created_at: "2026-08-20T09:00:00Z" } })], total: 2 };
+        return { items: [buildProjectFile({ file: { id: "file-1", organization_id: "org-1", filename: "first.txt", content_type: "text/plain", size_bytes: 10, uploaded_by: "user-1", is_org_resource: false, confidential: false, created_at: "2026-08-20T09:00:00Z" } })], total: 2 };
       }
-      return { items: [buildProjectFile({ file: { id: "file-2", organization_id: "org-1", filename: "second.txt", content_type: "text/plain", size_bytes: 20, uploaded_by: "user-1", is_org_resource: false, created_at: "2026-08-21T09:00:00Z" } })], total: 2 };
+      return { items: [buildProjectFile({ file: { id: "file-2", organization_id: "org-1", filename: "second.txt", content_type: "text/plain", size_bytes: 20, uploaded_by: "user-1", is_org_resource: false, confidential: false, created_at: "2026-08-21T09:00:00Z" } })], total: 2 };
     });
   },
   play: async ({ canvasElement }) => {
@@ -153,11 +153,11 @@ export const WidenedToTheParent: Story = {
     });
     spyOn(api, "getPage").mockImplementation(async (path: string) => {
       const own = buildProjectFile({
-        file: { id: "file-1", organization_id: "org-1", filename: "own.pdf", content_type: "application/pdf", size_bytes: 10, uploaded_by: "user-1", is_org_resource: false, created_at: "2026-08-20T09:00:00Z" },
+        file: { id: "file-1", organization_id: "org-1", filename: "own.pdf", content_type: "application/pdf", size_bytes: 10, uploaded_by: "user-1", is_org_resource: false, confidential: false, created_at: "2026-08-20T09:00:00Z" },
         requirement_id: "requirement-1", requirement_unique_code: "SW-001", requirement_name: "Own requirement",
       });
       const parent = buildProjectFile({
-        file: { id: "file-2", organization_id: "org-1", filename: "parent.pdf", content_type: "application/pdf", size_bytes: 10, uploaded_by: "user-1", is_org_resource: false, created_at: "2026-08-21T09:00:00Z" },
+        file: { id: "file-2", organization_id: "org-1", filename: "parent.pdf", content_type: "application/pdf", size_bytes: 10, uploaded_by: "user-1", is_org_resource: false, confidential: false, created_at: "2026-08-21T09:00:00Z" },
         requirement_id: "requirement-9", requirement_unique_code: "SW-009", requirement_name: "Parent requirement",
         from_project_id: "project-parent", from_project_name: "Platform", from_project_code: "PLAT",
       });

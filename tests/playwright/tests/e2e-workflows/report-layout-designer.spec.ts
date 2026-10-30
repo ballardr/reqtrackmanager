@@ -290,6 +290,49 @@ test.describe("Report layout designer", () => {
     });
   });
 
+  test("a header and footer are set in the Page setup dialog, shown with page numbers in the preview, saved and read back in the block editor", async ({ page, request }) => {
+    const { project, suffix } = await setup(page, request);
+    await createFromProjectAdmin(page, project.id, `E2E header layout ${suffix}`);
+    const editor = page.getByRole("textbox", { name: "Layout text" });
+
+    await test.step("own text in the header's centre cell and the footer's right cell is written as @header and @footer lines", async () => {
+      await page.getByRole("button", { name: "Page setup: A4, portrait" }).click();
+      const dialog = page.getByRole("dialog", { name: "Page setup" });
+      await dialog.getByRole("combobox", { name: "Header: print" }).selectOption("custom");
+      await dialog.getByRole("textbox", { name: "Header, centre cell" }).fill("{{report_title}}");
+      await dialog.getByRole("combobox", { name: "Footer: print" }).selectOption("custom");
+      await dialog.getByRole("textbox", { name: "Footer, right cell" }).fill("Page {{page}} of {{pages}}");
+      await expect(editor).toHaveValue(/^@layout document\n@header left "" centre "\{\{report_title\}\}"\n@footer left "" right "Page \{\{page\}\} of \{\{pages\}\}"\n/);
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeHidden();
+      await expect(page.getByText("The text is valid.")).toBeVisible();
+    });
+
+    await test.step("the preview shows the header and footer bands, with the page numbers left for printing", async () => {
+      await page.getByRole("button", { name: "Run preview" }).click();
+      const frame = page.frameLocator('iframe[title="Report preview"]');
+      await expect(frame.locator(".band.header")).toContainText(`E2E header layout ${suffix}`);
+      await expect(frame.locator(".band.footer")).toContainText("Page n of N");
+    });
+
+    await test.step("a header taller than the margin is refused with the margin it needs", async () => {
+      await editor.fill(`${await editor.inputValue()}`.replace('centre "{{report_title}}"', 'centre "a\\nb\\nc"'));
+      await expect(page.getByText(/header needs a top margin of at least 1\.7 cm/)).toBeVisible();
+      await editor.fill((await editor.inputValue()).replace('centre "a\\nb\\nc"', 'centre "{{report_title}}"'));
+      await expect(page.getByText("The text is valid.")).toBeVisible();
+    });
+
+    await test.step("saved and reloaded, the block editor shows both as their own text", async () => {
+      await saveNewVersion(page);
+      await expect(page.getByText("Saved as version 2.")).toBeVisible();
+      await page.reload();
+      await page.getByRole("tab", { name: "Blocks" }).click();
+      await page.getByText("Layout settings").click();
+      await expect(page.getByRole("combobox", { name: "Header: print" })).toHaveValue("custom");
+      await expect(page.getByRole("textbox", { name: "Footer, right cell" })).toHaveValue("Page {{page}} of {{pages}}");
+    });
+  });
+
   test("fields and project values are one searchable list", async ({ page, request }) => {
     const { project, suffix } = await setup(page, request);
     await createFromProjectAdmin(page, project.id, `E2E fields layout ${suffix}`);

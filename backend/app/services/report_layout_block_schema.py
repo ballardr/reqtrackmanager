@@ -50,7 +50,9 @@ FIELD_KINDS: tuple[str, ...] = (
     "page_style",  # the name of one of the layout's page styles
     "margins",  # the margins of a page: top, bottom, left, right and a gutter, in cm
     "page_styles",  # the layout's named page styles
+    "running_band",  # a header or footer: left, centre and right text, a logo and whether the first page shows it
     "image",  # a picture from the layout tier's image library (a file id)
+    "text_list",  # a list of short texts, one per line
 )
 
 
@@ -157,6 +159,17 @@ LAYOUT_FIELDS: tuple[BlockField, ...] = (
         "page_styles", "Page styles", "page_styles",
         help="Named page styles (paper, orientation, margins) that a section block lays its contents out in, for example "
         "an A3 landscape table inside an A4 portrait report. A style leaves out what it shares with the layout.",
+        families=("document",),
+    ),
+    BlockField(
+        "header", "Header", "running_band",
+        help="Text printed at the top of every page, in a left, centre and right cell: {{report_title}}, {{project_code}}, "
+        "{{page}} and so on. A page style that sets none uses this one.", families=("document",),
+    ),
+    BlockField(
+        "footer", "Footer", "running_band",
+        help="Text printed at the bottom of every page, in a left, centre and right cell, for example \"Page {{page}} of {{pages}}\". "
+        "A page style that sets none uses this one. With none here, the report template's footer text and a page number print.",
         families=("document",),
     ),
     BlockField(

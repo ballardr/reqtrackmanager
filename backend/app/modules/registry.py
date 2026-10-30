@@ -1511,6 +1511,23 @@ class ReportField:
 
 
 @dataclass(frozen=True)
+class RecordAttachmentProvider:
+    """How a record type's directly attached files are found, so a report's record-images block can print them.
+
+    The files are those a person attaches to the record itself (the type's own file-link table), never those on a comment
+    thread. The report engine reads only for records the layout's traversal already showed the caller, so a file prints
+    only when the caller could open it from the record's page.
+
+    Attributes:
+        link: The file-link table's model: it has a `file_id` column (a `FileAsset`) and the column below.
+        record_column: The link table's column holding the record's id (`PainPointFile.pain_point_id`).
+    """
+
+    link: Any
+    record_column: Any
+
+
+@dataclass(frozen=True)
 class ReportFieldProvider:
     """How a module makes one of its `artefact_types` reportable by a custom report layout.
 
@@ -2527,6 +2544,11 @@ class ModuleDefinition:
             every artefact type: one that cannot be reported says why in `not_reportable`.
         not_reportable: `{artefact type: reason}` for a type deliberately left out of custom reports. A
             backend test fails for a type that has neither.
+        record_attachments: Maps one of this module's own `artefact_types` to a `RecordAttachmentProvider`, making the
+            files attached to its records printable by a custom report's record-images block. Read via
+            `get_record_attachment_providers`. A reportable type that cannot be given one (no attachments, or attachments
+            that may hold personal data) says why in `no_record_attachments`; a backend test fails for a type with neither.
+        no_record_attachments: `{artefact type: reason}` for a reportable type whose attachments a report never prints.
         report_starter_sections: The parts of the platform's starter report layouts this module supplies for its
             own records (`ReportStarterSection`), so a starter names no module in a core file. Read via
             `get_report_starter_sections`; each is validated as part of its starter by a backend test.
@@ -2629,6 +2651,8 @@ class ModuleDefinition:
     search_scopes: dict[str, SearchScope] = field(default_factory=dict)
     report_fields: dict[str, ReportFieldProvider] = field(default_factory=dict)
     not_reportable: dict[str, str] = field(default_factory=dict)
+    record_attachments: dict[str, RecordAttachmentProvider] = field(default_factory=dict)
+    no_record_attachments: dict[str, str] = field(default_factory=dict)
     report_starter_sections: tuple[ReportStarterSection, ...] = field(default=())
     record_tables: dict[str, RecordTableProvider] = field(default_factory=dict)
     not_importable: dict[str, str] = field(default_factory=dict)
@@ -4320,6 +4344,29 @@ def get_report_field_providers() -> dict[str, ReportFieldProvider]:
         for artefact_type, provider in definition.report_fields.items():
             merged.setdefault(artefact_type, provider)
     return merged
+
+
+def get_record_attachment_providers() -> dict[str, RecordAttachmentProvider]:
+    """Every registered artefact type's `RecordAttachmentProvider`: the core types'
+    (`services.record_attachments_core`) plus each module's `record_attachments`. A type claimed twice keeps the
+    first registration."""
+    from app.services.record_attachments_core import CORE_RECORD_ATTACHMENTS
+
+    merged: dict[str, RecordAttachmentProvider] = dict(CORE_RECORD_ATTACHMENTS)
+    for definition in get_module_registry().values():
+        for artefact_type, provider in definition.record_attachments.items():
+            merged.setdefault(artefact_type, provider)
+    return merged
+
+
+def get_no_record_attachment_reasons() -> dict[str, str]:
+    """`{artefact type: reason}` for every reportable type whose attachments a report never prints."""
+    from app.services.record_attachments_core import CORE_NO_RECORD_ATTACHMENTS
+
+    reasons: dict[str, str] = dict(CORE_NO_RECORD_ATTACHMENTS)
+    for definition in get_module_registry().values():
+        reasons.update(definition.no_record_attachments)
+    return reasons
 
 
 def get_not_reportable_types() -> dict[str, str]:

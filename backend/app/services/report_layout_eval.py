@@ -81,6 +81,7 @@ from typing import Any
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.models.file import FileAsset
 from app.models.project import Project
 from app.models.report_layout import FAMILY_DOCUMENT
 from app.modules.registry import is_module_enabled_for_project
@@ -97,6 +98,7 @@ from app.services.report_layout_tree import (
 )
 from app.services.report_math import MathSegment, source_of, split_math, tex_problem, typeset
 from app.services.report_model import (
+    SLOT_NAMES,
     Block,
     BulletList,
     Equation,
@@ -107,17 +109,22 @@ from app.services.report_model import (
     Note,
     NumberedList,
     PageBreak,
+    PageField,
+    PageStyle,
     PageStyleChange,
     Paragraph,
     ReportDocument,
+    RunningBand,
     Sheet,
+    SlotPart,
     Styled,
     Table,
     link_problem,
     markdown_to_blocks,
     text_runs,
 )
-from app.services.report_page_styles import resolve_page_styles
+from app.services.report_page_styles import effective_bands, resolve_page_styles
+from app.services.report_record_images import candidate_files, compile_pattern, load_attachment_image, record_files
 from app.services.report_traversal import MAX_LINKED, MAX_ROOTS, LinkDirection, linked_records, root_records
 from app.services.report_variables import (
     PLACEHOLDER_FAMILY,
@@ -129,6 +136,9 @@ from app.services.report_variables import (
 from app.services.report_widget_run import collect_widget, output_digest, part_blocks, widget_context
 from app.services.report_widgets import WidgetInfo, find_widget, typed_params, widget_available
 
+#: `{{page}}` and `{{pages}}` in a header or footer cell: the renderer's page fields, not text to fill.
+PAGE_FIELD_RE = re.compile(r"\{\{\s*(pages?)\s*\}\}")
+
 #: Most record visits (loop iterations over records, in all nested blocks) one run may make.
 MAX_WORK = 200_000
 #: Most output blocks plus table rows one run may produce.
@@ -136,6 +146,8 @@ MAX_OUTPUT = 100_000
 DEFAULT_TIMEOUT_SECONDS = 60.0
 #: A background run's limits are the synchronous ones times this, with `ASYNC_TIMEOUT_SECONDS` of wall-clock time.
 ASYNC_LIMIT_SCALE = 5
+#: Pictures a record-images block prints per record when it sets no `max_count`.
+DEFAULT_RECORD_PICTURES = 5
 _NARROW_OR_BACKGROUND = "Narrow it with a filter, or download it as a file, which can be prepared in the background."
 ASYNC_TIMEOUT_SECONDS = 600.0
 EMPTY_GROUP_LABEL = "(none)"
@@ -177,6 +189,8 @@ class EvalStats:
         unavailable: Records of a type no installed module can display, or over a dormant link.
         images: Image blocks that drew a picture.
         image_files: The distinct library files those pictures came from (ids, never bytes), in the order first used.
+        record_images: Pictures attached to records that a record-images block drew.
+        record_image_files: The distinct attached files those came from (ids, never bytes), in the order first used.
     """
 
     records_read: dict[str, int] = field(default_factory=lambda: defaultdict(int))
@@ -187,6 +201,8 @@ class EvalStats:
     unavailable: int = 0
     images: int = 0
     image_files: list[str] = field(default_factory=list)
+    record_images: int = 0
+    record_image_files: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -284,6 +300,7 @@ def evaluate_layout(
     limit_scale: int = 1,
     variables: Mapping[str, Any] | None = None,
     layout_project_id: uuid.UUID | None = None,
+    layout_version: int | None = None,
 ) -> EvaluatedLayout:
     """Runs a layout for the caller behind `resolver`.
 
@@ -303,6 +320,7 @@ def evaluate_layout(
         variables: Values for the layout's run-time variables, `{name: value}`; a variable not given takes its default.
         layout_project_id: The project that owns the layout (`None` for an organisation layout): its image blocks may use
             that project's images and the organisation's, or the organisation's only.
+        layout_version: The layout's version number (the `{{layout_version}}` placeholder).
 
     Returns:
         The evaluated layout.
@@ -322,10 +340,11 @@ def evaluate_layout(
         tree = bind_variables(tree, values)  # the evaluator sees only literals
     analysis = assert_valid(tree)
     run = _Run(db, resolver, ctx, ctx.root_project, analysis.refs, title, placeholders, project_ids, timeout_seconds, limit_scale)
+    run.placeholders.setdefault("layout_version", "" if layout_version is None else str(layout_version))
     run.variable_text = variable_text(declared, values)
     run.layout_project_id = layout_project_id
     if tree["family"] == FAMILY_DOCUMENT:
-        run.page_styles = resolve_page_styles(tree)
+        run.page_styles = run.with_running_bands(tree, *resolve_page_styles(tree))
     for warning in stale_value_warnings(db, declared, values, run.project_ids):
         run.warn(warning)
     for node in tree["nodes"]:
@@ -335,7 +354,7 @@ def evaluate_layout(
         style = run.page_styles[0]
         document = ReportDocument(
             title=title, blocks=run.blocks, landscape=style.landscape, page_size=style.page_size, margins=style.margins,
-            mirror=style.mirror,
+            mirror=style.mirror, header=style.header, footer=style.footer,
         )
     versions, truncated = run.record_versions()
     for artefact_type, pooled in run._pool.items():
@@ -388,6 +407,9 @@ class _Run:
         self._images: dict[uuid.UUID, ResolvedImage | None] = {}
         self._image_bytes = 0
         self._figures = 0
+        #: Attachments by record (filled one batch per `each`), and the decoded attachment pictures by file id.
+        self._record_files: dict[tuple[str, uuid.UUID], list[FileAsset]] = {}
+        self._record_pictures: dict[uuid.UUID, ResolvedImage | None] = {}
         self._work = 0
         self._output = 0
         self._catalogues: dict[str, dict[str, FieldInfo]] = {}
@@ -486,13 +508,115 @@ class _Run:
         image = self._images[file_id]
         if image is None:
             return None
-        self._image_bytes += image.size
-        if self.stats.images >= MAX_REPORT_IMAGES * self.max_scale or self._image_bytes > max_total_image_bytes() * self.max_scale:
-            raise LayoutLimitError(f"The report embeds too many images. {_NARROW_OR_BACKGROUND}")
+        self._admit_picture(image)
         if str(file_id) not in self.stats.image_files:
             self.stats.image_files.append(str(file_id))
         self.stats.images += 1
         return image
+
+    def _admit_picture(self, image: ResolvedImage) -> None:
+        """Counts a picture against the run's caps (shared by library and record pictures).
+
+        Raises:
+            LayoutLimitError: The run embeds more pictures, or more picture bytes, than one report may.
+        """
+        self._image_bytes += image.size
+        embedded = self.stats.images + self.stats.record_images
+        if embedded >= MAX_REPORT_IMAGES * self.max_scale or self._image_bytes > max_total_image_bytes() * self.max_scale:
+            raise LayoutLimitError(f"The report embeds too many images. {_NARROW_OR_BACKGROUND}")
+
+    def prefetch_record_files(self, node: dict[str, Any], records: list[ReportRecord]) -> None:
+        """Reads the attachments of every record of an `each` in one query, when its contents hold a record-images block."""
+        if not records or not _uses_record_images(node.get("children", [])):
+            return
+        wanted = [r.id for r in records if (r.artefact_type, r.id) not in self._record_files]
+        found = record_files(self.db, records[0].artefact_type, wanted)
+        for record_id in wanted:
+            self._record_files[(records[0].artefact_type, record_id)] = found.get(record_id, [])
+
+    def record_files_of(self, record: ReportRecord) -> list[FileAsset]:
+        """The non-confidential files attached to `record` (read on first use when no batch covered it)."""
+        key = (record.artefact_type, record.id)
+        if key not in self._record_files:
+            self._record_files[key] = record_files(self.db, record.artefact_type, [record.id]).get(record.id, [])
+        return self._record_files[key]
+
+    def record_picture(self, asset: FileAsset) -> ResolvedImage | None:
+        """The picture for an attached file, or `None` (with one warning) when it is not one a report can print.
+
+        Raises:
+            LayoutLimitError: As `_admit_picture`.
+        """
+        if asset.id not in self._record_pictures:
+            image, reason = load_attachment_image(asset)
+            self._record_pictures[asset.id] = image
+            if image is None:
+                self.warn(f"A picture attached to a record {reason}, so it was left out.")
+        image = self._record_pictures[asset.id]
+        if image is None:
+            return None
+        self._admit_picture(image)
+        if str(asset.id) not in self.stats.record_image_files:
+            self.stats.record_image_files.append(str(asset.id))
+        self.stats.record_images += 1
+        return image
+
+    def with_running_bands(self, tree: dict[str, Any], document: PageStyle, named: dict[str, PageStyle]) -> tuple[PageStyle, dict[str, PageStyle]]:
+        """The page styles with the header and footer each prints: its own, else the document's, else none.
+
+        Args:
+            tree: The valid layout tree.
+            document: The document's own style.
+            named: The named styles by name.
+
+        Returns:
+            The same styles carrying `RunningBand`s with their placeholders filled and their logo loaded.
+        """
+        own, by_name = effective_bands(tree)
+        cache: dict[str, RunningBand | None] = {}
+
+        def band(source: dict[str, Any] | None) -> RunningBand | None:
+            if source is None:
+                return None
+            key = json.dumps(source, sort_keys=True)
+            if key not in cache:
+                cache[key] = self.running_band(source)
+            return cache[key]
+
+        return (
+            replace(document, header=band(own.get("header")), footer=band(own.get("footer"))),
+            {name: replace(style, header=band(by_name[name].get("header")), footer=band(by_name[name].get("footer")))
+             for name, style in named.items()},
+        )
+
+    def running_band(self, source: dict[str, Any]) -> RunningBand:
+        """A header or footer from its tree object: each cell's placeholders filled (a page field stays a field) and the logo loaded.
+
+        A value is plain text in the cell and never markup, as for every placeholder. A logo that cannot be used is left
+        out with the run's one warning.
+        """
+        cells = {slot: self._running_cell(source.get(slot, "")) for slot in SLOT_NAMES}
+        logo, slot, height = None, "left", 1.0
+        spec = source.get("logo")
+        if isinstance(spec, dict):
+            picture = self.library_image(uuid.UUID(spec["file"]))
+            if picture is not None:
+                logo = Image(data=picture.data, svg=picture.svg, decorative=True)
+                slot, height = spec.get("slot", "left"), float(spec["height"])
+        return RunningBand(
+            **cells, logo=logo, logo_slot=slot, logo_height_cm=height, first_page=source.get("first_page", "same") != "none",
+        )
+
+    def _running_cell(self, text: str) -> tuple[SlotPart, ...]:
+        """A cell's text as parts: the page fields apart, each stretch of text with its placeholders filled."""
+        parts: list[SlotPart] = []
+        last = 0
+        for match in PAGE_FIELD_RE.finditer(text):
+            parts.append(self.fill(text[last:match.start()], {}))
+            parts.append(PageField(match.group(1)))
+            last = match.end()
+        parts.append(self.fill(text[last:], {}))
+        return tuple(part for part in parts if part != "")
 
     def warn(self, message: str) -> None:
         """Records a warning once."""
@@ -928,27 +1052,86 @@ def _cm(value: float | None, unit: str | None) -> float | None:
     return None if value is None else value / 10 if unit == "mm" else value
 
 
+def _figure_caption(run: _Run, caption: str, numbering: str) -> str:
+    """The caption of a picture, prefixed "Figure n: " by the block's numbering (a captioned picture, unless set otherwise)."""
+    if numbering == "always" or (numbering == "auto" and caption):
+        run._figures += 1
+        return f"Figure {run._figures}: {caption}" if caption else f"Figure {run._figures}"
+    return caption
+
+
+def _picture(image: ResolvedImage, node: dict[str, Any], *, alt: str, decorative: bool, caption: str) -> Image:
+    """The report-model picture for `image` with the size, alignment and placement settings of an image-like block."""
+    return Image(
+        data=image.data, svg=image.svg, alt="" if decorative else alt, decorative=decorative,
+        width=_cm(node.get("width"), node.get("width_unit")) if node.get("width_unit") != "percent" else node.get("width"),
+        width_unit="percent" if node.get("width_unit") == "percent" else "cm",
+        height_cm=_cm(node.get("height"), node.get("height_unit")),
+        align=node.get("align", "center"), caption=caption, caption_above=node.get("caption_position") == "above",
+        placement=node.get("placement", "inline"), anchor=node.get("anchor", "paragraph"),
+        offset_x_cm=float(node.get("offset_x", 0)), offset_y_cm=float(node.get("offset_y", 0)),
+    )
+
+
 def _eval_image(run: _Run, node: dict[str, Any], scope: Scope) -> None:
     """A picture from the layout tier's library, with its caption (numbered "Figure n: " by the block's numbering) and size."""
     image = run.library_image(uuid.UUID(node["file"]))
     if image is None:
         return
     caption = run.fill(node["caption"], scope).strip() if "caption" in node else ""
-    numbering = node.get("numbering", "auto")
-    if numbering == "always" or (numbering == "auto" and caption):
-        run._figures += 1
-        caption = f"Figure {run._figures}: {caption}" if caption else f"Figure {run._figures}"
+    caption = _figure_caption(run, caption, node.get("numbering", "auto"))
     decorative = bool(node.get("decorative", False))
-    run.emit(
-        Image(
-            data=image.data, svg=image.svg, alt="" if decorative else node.get("alt", ""), decorative=decorative,
-            width=_cm(node.get("width"), node.get("width_unit")) if node.get("width_unit") != "percent" else node.get("width"),
-            width_unit="percent" if node.get("width_unit") == "percent" else "cm",
-            height_cm=_cm(node.get("height"), node.get("height_unit")),
-            align=node.get("align", "center"), caption=caption, caption_above=node.get("caption_position") == "above",
-        ),
-        Gap(0.2),
+    picture = _picture(image, node, alt=node.get("alt", ""), decorative=decorative, caption=caption)
+    # A picture beside or over the text leaves no gap: the space belongs to the text it sits with.
+    run.emit(picture, *(() if picture.floats else (Gap(0.2),)))
+
+
+def _uses_record_images(nodes: list[dict[str, Any]]) -> bool:
+    """Whether any block under `nodes` is a record-images block for the record of the `each` that holds them.
+
+    A nested `each` binds its own record, so its blocks are left to fetch for themselves.
+    """
+    for child in nodes:
+        if child.get("type") == "record_images":
+            return True
+        if child.get("type") == "each":
+            continue
+        for key in ("children", "else_children"):
+            if _uses_record_images(child.get(key, [])):
+                return True
+    return False
+
+
+def _eval_record_images(run: _Run, node: dict[str, Any], scope: Scope) -> None:
+    """The pictures attached to the nearest enclosing record that match the block's rules, each with its caption.
+
+    The record is one the traversal showed the caller, and its files come only through its own attachment table minus
+    those marked confidential. A file counts toward "most per record" only when it really decodes as a picture.
+    """
+    bound = next(b for b in reversed(list(scope.values())) if b.kind == "record")
+    assert bound.record is not None  # the tree was validated at the start of the run
+    max_bytes = int(node["max_size_mb"] * 1024 * 1024) if "max_size_mb" in node else None
+    patterns = [compile_pattern(p, lambda text: run.fill(text, scope)) for p in node.get("names", [])]
+    candidates = candidate_files(
+        run.record_files_of(bound.record), patterns=patterns, extensions=node.get("types", []), order=node.get("order", "name"),
+        max_bytes=max_bytes,
     )
+    source = node.get("caption_source", "file_name")
+    shown = 0
+    for asset in candidates:
+        if shown >= node.get("max_count", DEFAULT_RECORD_PICTURES):
+            break
+        run.tick()
+        image = run.record_picture(asset)
+        if image is None:
+            continue
+        shown += 1
+        text = asset.filename if source == "file_name" else run.fill(node["caption"], scope).strip() if source == "text" else ""
+        caption = _figure_caption(run, text, node.get("numbering", "auto")) if source != "none" else ""
+        picture = _picture(image, node, alt=asset.filename.rsplit(".", 1)[0], decorative=False, caption=caption)
+        run.emit(picture, *(() if picture.floats else (Gap(0.2),)))
+    if not shown and node.get("empty_text"):
+        run.emit(Note(run.fill(node["empty_text"], scope)))
 
 
 def _eval_page_break(run: _Run, node: dict[str, Any], scope: Scope) -> None:
@@ -968,7 +1151,7 @@ def _eval_section(run: _Run, node: dict[str, Any], scope: Scope) -> None:
     run.blocks.insert(before, PageStyleChange(styles[node["page_style"]]))
     run.stats.blocks += 1
     run._count_output(1)
-    run.emit(PageStyleChange(document))
+    run.emit(PageStyleChange(document, section_start=False))
 
 
 def _source_type(node: dict[str, Any], scope: Scope) -> str:
@@ -1004,6 +1187,7 @@ def _eval_each(run: _Run, node: dict[str, Any], scope: Scope) -> None:
     found = run.source(node, scope)
     if not found.records and node.get("empty_text"):
         run.emit(Note(run.fill(node["empty_text"], scope)))
+    run.prefetch_record_files(node, found.records)
     for record in found.records:
         run.tick()
         run.children(node["children"], {**scope, alias: Bound("record", record.artefact_type, record=record)})
@@ -1148,7 +1332,7 @@ def _eval_widget(run: _Run, node: dict[str, Any], scope: Scope) -> None:
 
 for _key, _fn in (
     ("heading", _eval_heading), ("text", _eval_text), ("page_break", _eval_page_break), ("section", _eval_section),
-    ("image", _eval_image),
+    ("image", _eval_image), ("record_images", _eval_record_images),
     ("equation", _eval_equation), ("table", _eval_table), ("each", _eval_each), ("group", _eval_group), ("if", _eval_if),
     ("sheet", _eval_sheet), ("widget", _eval_widget),
 ):

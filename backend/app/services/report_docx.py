@@ -40,16 +40,18 @@ import hashlib
 import io
 import re
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime
+from typing import Any
 
 from docx import Document
 from docx.document import Document as DocxDocument
 from docx.enum.section import WD_ORIENT, WD_SECTION
-from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.opc.constants import RELATIONSHIP_TYPE
 from docx.oxml import OxmlElement, parse_xml
-from docx.oxml.ns import qn
+from docx.oxml.ns import nsdecls, qn
 from docx.shared import Cm, Emu, Pt, RGBColor
 from docx.text.run import Run
 
@@ -57,6 +59,7 @@ from app.services.branding import DEFAULT_ACCENT_COLOR_HEX, readable_on_white
 from app.services.report_image_layout import placed_size_cm
 from app.services.report_math import OMML_NS, omml, png_of, typeset
 from app.services.report_model import (
+    SLOT_NAMES,
     TONE_FILL,
     BulletList,
     Equation,
@@ -66,16 +69,20 @@ from app.services.report_model import (
     Note,
     NumberedList,
     PageBreak,
+    PageField,
     PageStyle,
     PageStyleChange,
     Paragraph,
     ReportDocument,
+    RunningBand,
     Styled,
     Table,
     finalize_links,
     text_on,
     text_runs,
 )
+from app.services.report_page_styles import BAND_EDGE_CM
+from app.services.report_running import band_for_page, band_visible, cell_lines
 from app.services.report_svg import svg_png
 
 DOCX_AUTHOR = "ReqTrackManager"
@@ -121,11 +128,17 @@ def _repeat_header(row) -> None:
     row._tr.get_or_add_trPr().append(OxmlElement("w:tblHeader"))
 
 
-def _page_number_field(paragraph) -> None:
-    """Appends a live `PAGE` field (the fixed field code, no user text)."""
+def _page_number_field(paragraph, instruction: str = "PAGE", *, half_points: int | None = None) -> None:
+    """Appends a live `PAGE` or `NUMPAGES` field (a fixed field code, no user text), optionally at a size in half-points."""
     field = OxmlElement("w:fldSimple")
-    field.set(qn("w:instr"), "PAGE")
+    field.set(qn("w:instr"), instruction)
     run = OxmlElement("w:r")
+    if half_points is not None:
+        properties = OxmlElement("w:rPr")
+        size = OxmlElement("w:sz")
+        size.set(qn("w:val"), str(half_points))
+        properties.append(size)
+        run.append(properties)
     text = OxmlElement("w:t")
     text.text = "1"
     run.append(text)
@@ -177,6 +190,96 @@ def _footer(doc: DocxDocument, document: ReportDocument) -> None:
     _page_number_field(paragraph)
 
 
+_BAND_FONT = Pt(8)
+_FIELD_CODES = {PageField.PAGE: "PAGE", PageField.PAGES: "NUMPAGES"}
+_CELL_ALIGNMENT = {"left": WD_ALIGN_PARAGRAPH.LEFT, "centre": WD_ALIGN_PARAGRAPH.CENTER, "right": WD_ALIGN_PARAGRAPH.RIGHT}
+
+
+def _logo_run(paragraph, band: RunningBand, cell_cm: float) -> None:
+    """Adds the band's logo to `paragraph` at its set height (its width keeps its shape, never over `cell_cm`), or nothing."""
+    logo = band.logo
+    if logo is None:
+        return
+    data = _svg_png(logo.svg) if logo.svg is not None else logo.data
+    if not data:
+        return
+    sized = replace(logo, data=data, svg=None, height_cm=band.logo_height_cm, width=None)
+    size = placed_size_cm(sized, cell_cm)
+    if size is None:
+        return
+    try:
+        paragraph.add_run().add_picture(io.BytesIO(data), width=Cm(size[0]), height=Cm(size[1]))
+    except Exception:  # noqa: BLE001 - a malformed logo must never break report generation
+        return
+
+
+def _band_table(container, band: RunningBand, width_cm: float) -> None:
+    """Fills a header or footer with the band as a borderless three-column table (left, centre, right).
+
+    The container's own first paragraph is kept after the table (Word requires one) and made one point high.
+    """
+    cell_cm = width_cm / 3
+    table = container.add_table(rows=1, cols=3, width=Cm(width_cm))
+    table.autofit = False
+    anchor = container.paragraphs[0]
+    anchor._p.addprevious(table._tbl)
+    for run in list(anchor.runs):
+        run._r.getparent().remove(run._r)
+    anchor.paragraph_format.space_after = anchor.paragraph_format.space_before = Pt(0)
+    anchor.paragraph_format.line_spacing = Pt(1)
+    anchor.add_run().font.size = Pt(1)
+    for index, slot in enumerate(SLOT_NAMES):
+        cell = table.rows[0].cells[index]
+        cell.width = Cm(cell_cm)
+        lines = cell_lines(band.slot(slot)) or [[]]
+        for number, line in enumerate(lines):
+            paragraph = cell.paragraphs[0] if number == 0 else cell.add_paragraph()
+            paragraph.alignment = _CELL_ALIGNMENT[slot]
+            paragraph.paragraph_format.space_after = paragraph.paragraph_format.space_before = Pt(0)
+            if number == 0 and band.logo is not None and band.logo_slot == slot:
+                _logo_run(paragraph, band, cell_cm)
+                if line:
+                    paragraph.add_run("  ")
+            for part in line:
+                if isinstance(part, PageField):
+                    _page_number_field(paragraph, _FIELD_CODES[part], half_points=16)
+                else:
+                    paragraph.add_run(clean_text(part)).font.size = _BAND_FONT
+        cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+
+
+def _fill_part(container, band: RunningBand | None, width_cm: float, *, first_page: bool, mirror: bool = False, verso: bool = False) -> None:
+    """Writes `band` (or nothing) into one header or footer part of a section."""
+    if not band_visible(band, first_page=first_page):
+        return
+    assert band is not None
+    _band_table(container, band_for_page(band, mirrored=mirror, verso=verso), width_cm)
+
+
+def _apply_bands(section, style: PageStyle, *, first_section: bool, section_start: bool, mirror: bool) -> None:
+    """Gives a section its own header and footer: the default, the first page's and (when margins mirror) the left-hand pages'.
+
+    The first page differs only where a band asks to skip it, on the document's first page or a section's first page; the
+    return to the document's style continues the document.
+    """
+    width = style.usable_width_cm
+    section.header_distance = section.footer_distance = Cm(BAND_EDGE_CM)
+    differs = (first_section or section_start) and any(
+        band is not None and not band.empty and not band.first_page for band in (style.header, style.footer)
+    )
+    section.different_first_page_header_footer = differs
+    for part, band in ((section.header, style.header), (section.footer, style.footer)):
+        part.is_linked_to_previous = False
+        _fill_part(part, band, width, first_page=False)
+    for part, band in ((section.even_page_header, style.header), (section.even_page_footer, style.footer)) if mirror else ():
+        part.is_linked_to_previous = False
+        _fill_part(part, band, width, first_page=False, mirror=True, verso=True)
+    if differs:
+        for part, band in ((section.first_page_header, style.header), (section.first_page_footer, style.footer)):
+            part.is_linked_to_previous = False
+            _fill_part(part, band, width, first_page=True)
+
+
 def _svg_png(svg: str) -> bytes:
     """A PNG of an SVG figure (Word cannot embed SVG), or empty bytes when it cannot be drawn, which `_picture` skips."""
     try:
@@ -208,14 +311,85 @@ _POINTS_PER_CM = 28.3465
 _ALIGNMENTS = {"left": WD_ALIGN_PARAGRAPH.LEFT, "center": WD_ALIGN_PARAGRAPH.CENTER, "right": WD_ALIGN_PARAGRAPH.RIGHT}
 
 
+_EMU_PER_CM = 360000
+_ANCHOR_FRAME = {"paragraph": "paragraph", "margin": "margin", "page": "page"}
+_WRAP_DISTANCE_EMU = {"distT": 36000, "distB": 36000, "distL": 108000, "distR": 108000}
+
+
+def _anchor_of(inline: Any, block: Image, order: int) -> Any:
+    """A `wp:anchor` element made from a picture's `wp:inline`: floating, with the wrap, position and layer of `block`.
+
+    Args:
+        inline: The `wp:inline` python-docx wrote for the picture.
+        block: The image block (placement `wrap`, `behind` or `front`).
+        order: A unique, increasing z-order number, so later pictures sit over earlier ones.
+
+    Returns:
+        The anchor element (carrying the inline's extent, properties and graphic).
+    """
+    extent = inline.find(qn("wp:extent"))
+    wrap = "wrapSquare" if block.placement == "wrap" else "wrapNone"
+    behind = "1" if block.placement == "behind" else "0"
+    if block.placement == "wrap":
+        position_h = f'<wp:positionH relativeFrom="column"><wp:align>{"left" if block.align == "left" else "right"}</wp:align></wp:positionH>'
+        position_v = '<wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV>'
+        wrap_xml = f'<wp:{wrap} wrapText="bothSides"/>'
+    else:
+        frame = _ANCHOR_FRAME.get(block.anchor, "paragraph")
+        position_h = f'<wp:positionH relativeFrom="{frame}"><wp:posOffset>{round(block.offset_x_cm * _EMU_PER_CM)}</wp:posOffset></wp:positionH>'
+        position_v = f'<wp:positionV relativeFrom="{frame}"><wp:posOffset>{round(block.offset_y_cm * _EMU_PER_CM)}</wp:posOffset></wp:positionV>'
+        wrap_xml = f"<wp:{wrap}/>"
+    distances = " ".join(f'{key}="{value}"' for key, value in _WRAP_DISTANCE_EMU.items())
+    anchor = parse_xml(
+        f'<wp:anchor {nsdecls("wp", "a", "pic", "r")} {distances} simplePos="0" relativeHeight="{order}" behindDoc="{behind}" '
+        f'locked="0" layoutInCell="1" allowOverlap="1"><wp:simplePos x="0" y="0"/>{position_h}{position_v}'
+        f'<wp:extent cx="{extent.get("cx")}" cy="{extent.get("cy")}"/><wp:effectExtent l="0" t="0" r="0" b="0"/>{wrap_xml}</wp:anchor>'
+    )
+    for tag in ("wp:docPr", "wp:cNvGraphicFramePr", "a:graphic"):
+        anchor.append(inline.find(qn(tag)))
+    return anchor
+
+
+def _floating_picture(doc: DocxDocument, block: Image, data: bytes, size: tuple[float, float]) -> None:
+    """A picture beside the text, or behind or in front of it: a floating drawing in a paragraph of its own.
+
+    The paragraph is one point tall and kept with the next, so it never stands alone at the foot of a page; the text that
+    follows wraps around (or over, or under) the picture hanging from it.
+    """
+    paragraph = doc.add_paragraph()
+    paragraph.paragraph_format.space_before = Pt(0)
+    paragraph.paragraph_format.space_after = Pt(0)
+    paragraph.paragraph_format.line_spacing = Pt(1)
+    paragraph.paragraph_format.keep_with_next = True
+    try:
+        run = paragraph.add_run()
+        run.font.size = Pt(1)
+        shape = run.add_picture(io.BytesIO(data), width=Cm(size[0]), height=Cm(size[1]))
+        shape._inline.docPr.set("descr", "" if block.decorative else block.alt)
+        drawing = shape._inline.getparent()
+        if drawing is None:
+            raise ValueError("the picture has no drawing element")
+        order = 251658240 + len(doc.element.body.findall(".//" + qn("wp:anchor")))
+        anchor = _anchor_of(shape._inline, block, order)
+        drawing.remove(shape._inline)
+        drawing.append(anchor)
+    except Exception:  # noqa: BLE001 - a malformed or unsupported image must never break report generation
+        parent = paragraph._p.getparent()
+        if parent is not None:
+            parent.remove(paragraph._p)
+
+
 def _image_block(doc: DocxDocument, block: Image, usable_cm: float) -> None:
     """An image block: the picture at its placed size and alignment, its alternative text and its caption (above or below).
 
-    Nothing is added when the picture cannot be drawn.
+    A picture with a wrap or layer placement is a floating drawing instead. Nothing is added when the picture cannot be drawn.
     """
     data = _svg_png(block.svg) if block.svg is not None else block.data
     size = placed_size_cm(block, usable_cm)
     if size is None or not data:
+        return
+    if block.floats:
+        _floating_picture(doc, block, data, size)
         return
 
     def caption() -> None:
@@ -425,7 +599,13 @@ def render_docx_document(document: ReportDocument) -> bytes:
     properties.comments = properties.subject = properties.keywords = properties.category = ""
     properties.created = properties.modified = datetime.now(UTC).replace(tzinfo=None)
 
-    _footer(doc, document)
+    styles = [document.style, *(b.style for b in document.blocks if isinstance(b, PageStyleChange))]
+    running = any(style.header is not None or style.footer is not None for style in styles)
+    if running:
+        doc.settings.odd_and_even_pages_header_footer = document.mirror
+        _apply_bands(doc.sections[0], document.style, first_section=True, section_start=True, mirror=document.mirror)
+    else:
+        _footer(doc, document)
     _cover(doc, document, accent, usable_cm)
 
     bookmarks = 0
@@ -461,6 +641,8 @@ def render_docx_document(document: ReportDocument) -> bytes:
             section = doc.add_section(WD_SECTION.NEW_PAGE)
             section.different_first_page_header_footer = False  # the cover page's footer rule is for the first section only
             usable_cm = _apply_style(section, block.style)
+            if running:
+                _apply_bands(section, block.style, first_section=False, section_start=block.section_start, mirror=document.mirror)
         elif isinstance(block, Gap):
             continue  # a PDF layout hint; Word styles carry paragraph spacing
 

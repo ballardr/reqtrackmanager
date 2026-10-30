@@ -8,7 +8,7 @@ Responsibilities:
 - Register the bundled DejaVu Sans (regular and bold) with ReportLab once.
 - `mark_fallback`: wrap each run of characters Helvetica cannot encode in a `<font>` tag for the
   Paragraph markup `report_document.safe` produces.
-- `text_width` and `draw_centred`: measure and draw mixed text where markup is not available
+- `text_width`, `draw_aligned` and `draw_centred`: measure and draw mixed text where markup is not available
   (column sizing, the page footer).
 - `needs_fallback`: tell a plain table cell that must become a Paragraph from one that can stay a string.
 
@@ -156,23 +156,30 @@ def _run_width(run: str, unicode_font: bool, size: float, bold: bool) -> float:
     return stringWidth(run, "Helvetica-Bold" if bold else "Helvetica", size)
 
 
-def draw_centred(canvas, x: float, y: float, text: str, size: float) -> None:
-    """Draws `text` centred on `x`, switching font per run, on a ReportLab canvas.
+def draw_aligned(canvas, x: float, y: float, text: str, size: float, align: str = "center") -> None:
+    """Draws `text` on a ReportLab canvas, switching font per run.
 
     Args:
         canvas: The ReportLab canvas.
-        x: Horizontal centre in points.
+        x: The anchor in points: the left edge, the centre or the right edge of the text, by `align`.
         y: Baseline in points.
         text: Plain text (a footer line).
         size: Font size in points.
+        align: `left`, `center` or `right`.
     """
+    start = x - text_width(text, size) * {"left": 0.0, "center": 0.5, "right": 1.0}[align]
     if not needs_fallback(text):
         canvas.setFont("Helvetica", size)
-        canvas.drawCentredString(x, y, text)
+        canvas.drawString(start, y, text)
         return
     _register()
-    cursor = x - text_width(text, size) / 2
+    cursor = start
     for run, unicode_font in _runs(text):
         canvas.setFont(UNICODE_FONT if unicode_font else "Helvetica", size)
         canvas.drawString(cursor, y, run)
         cursor += _run_width(run, unicode_font, size, False)
+
+
+def draw_centred(canvas, x: float, y: float, text: str, size: float) -> None:
+    """Draws `text` centred on `x` (see `draw_aligned`)."""
+    draw_aligned(canvas, x, y, text, size, "center")

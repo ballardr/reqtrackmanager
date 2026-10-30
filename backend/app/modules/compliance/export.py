@@ -1235,7 +1235,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             file_assets_by_id[asset.id] = asset
             attachments.append({
                 "file_ref": f"{asset.id}_{asset.filename}", "filename": asset.filename,
-                "content_type": asset.content_type, "linked_by_email": uploader.email,
+                "content_type": asset.content_type, "confidential": asset.confidential,
+                "linked_by_email": uploader.email,
             })
         evidence_json.append({
             "ref": evidence_ref_by_id[e.id], "unique_code": e.unique_code,  # informational: an import numbers it afresh
@@ -1501,6 +1502,7 @@ def import_project_data(
             asset = import_bundled_file(
                 db, organization_id=organization_id, uploaded_by=uploader_id, filename=att["filename"],
                 content_type=att.get("content_type") or "application/octet-stream", data=att_bytes,
+                confidential=bool(att.get("confidential")),
             )
             db.add(ComplianceEvidenceFile(evidence_id=evidence.id, file_id=asset.id, linked_by=uploader_id, created_at=datetime.now(UTC)))
 

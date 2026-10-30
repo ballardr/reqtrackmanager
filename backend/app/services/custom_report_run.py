@@ -102,6 +102,7 @@ from app.services.report_model import (
     Table,
 )
 from app.services.report_render import RenderedFile, RenderInput, formats_for, render
+from app.services.report_running import apply_template_defaults
 from app.services.report_variables import describe_variables
 
 ENGINE_VERSION = "1"
@@ -194,7 +195,7 @@ def _evaluate_project(
     )
     return evaluate_layout(
         db, resolver, ctx, version.tree, title=title, project_ids=[p.id for p in projects], timeout_seconds=timeout,
-        limit_scale=limit_scale, variables=variables, layout_project_id=layout.project_id,
+        limit_scale=limit_scale, variables=variables, layout_project_id=layout.project_id, layout_version=version.version,
     )
 
 
@@ -330,6 +331,8 @@ def merge_evaluations(parts: Sequence[tuple[Project, EvaluatedLayout]], title: s
         stats.unavailable += part.stats.unavailable
         stats.images += part.stats.images
         stats.image_files += [f for f in part.stats.image_files if f not in stats.image_files]
+        stats.record_images += part.stats.record_images
+        stats.record_image_files += [f for f in part.stats.record_image_files if f not in stats.record_image_files]
         warnings += [f"{project.name}: {w}" for w in part.warnings]
     digest = hashlib.sha256("\n".join(f"{p.id}:{e.source_digest}" for p, e in parts).encode()).hexdigest()
     versions: dict[str, dict[str, int]] = {}
@@ -451,7 +454,7 @@ def document_for(run: LayoutRun, *, branding: ReportBranding | None) -> ReportDo
     document = run.evaluated.document
     assert document is not None
     blocks: list[Block] = [Note(_scope_line(run)), Gap(0.2), *[Note(n) for n in run.notes], *document.blocks]
-    return replace(document, title=run.layout.name, blocks=blocks, branding=branding)
+    return apply_template_defaults(replace(document, title=run.layout.name, blocks=blocks, branding=branding), branding)
 
 
 def render_input_for(run: LayoutRun, *, branding: ReportBranding | None = None) -> RenderInput:
@@ -507,6 +510,9 @@ def provenance_fields(
         "stats": {
             "blocks": stats.blocks, "rows": stats.rows, "hidden": stats.hidden, "unavailable": stats.unavailable,
             "images": stats.images, "image_files": stats.image_files[:MAX_REPORT_IMAGES],
+            "record_images": stats.record_images,
+            "record_images_digest": hashlib.sha256("\n".join(sorted(stats.record_image_files)).encode()).hexdigest()
+            if stats.record_image_files else "",
             "warnings": len(run.evaluated.warnings), "duration_ms": run.duration_ms,
         },
         "source_digest": run.evaluated.source_digest, "record_versions": run.evaluated.record_versions,

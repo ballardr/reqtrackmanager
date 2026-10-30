@@ -256,7 +256,8 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
             file_assets_by_id[asset.id] = asset
             attachments_by_req.setdefault(req_file.requirement_id, []).append({
                 "file_ref": f"{asset.id}_{asset.filename}", "filename": asset.filename,
-                "content_type": asset.content_type, "linked_by_email": uploader.email,
+                "content_type": asset.content_type, "confidential": asset.confidential,
+                "linked_by_email": uploader.email,
             })
 
     requirement_comments_raw = list(
@@ -763,6 +764,7 @@ def apply_project_data(
         return import_bundled_file(
             db, organization_id=organization_id, uploaded_by=uploader_id,
             filename=att["filename"], content_type=att.get("content_type") or "application/octet-stream", data=data_bytes,
+            confidential=bool(att.get("confidential")),
         )
 
     requirement_id_by_code: dict[str, UUID] = {}

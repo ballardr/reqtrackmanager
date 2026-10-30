@@ -229,6 +229,9 @@ def test_the_run_form_offers_the_current_values_of_the_source_field(world, scene
 
 
 def test_the_run_form_resolves_a_date_default_to_the_callers_day_and_enum_labels(world, scene):
+    from datetime import UTC, datetime, timedelta
+
+    client_day = (datetime.now(UTC) + timedelta(hours=10)).date()  # a caller at UTC+10: the day may be ahead of UTC's
     tree = layout_tree(
         CATEGORIES, {"name": "since", "type": "date", "default": "today"},
         {"name": "level", "type": "enum", "source": {"record_type": REQ, "field": "level"}},
@@ -238,11 +241,12 @@ def test_the_run_form_resolves_a_date_default_to_the_callers_day_and_enum_labels
 
     resp = world.client.get(
         f"/api/v1/projects/{scene['id']}/custom-reports/{layout['id']}/variables",
-        headers={**auth_headers(world.token), "X-Client-Date": "2026-10-27"},
+        headers={**auth_headers(world.token), "X-Client-Date": client_day.isoformat()},
     )
     forms = {v["name"]: v for v in resp.json()["variables"]}
 
-    assert forms["since"]["default"] in {"2026-10-26", "2026-10-27", "2026-10-28"} and forms["since"]["options"] is None
+    # The server trusts the header only within a day of its own UTC date, so the day is taken from now, not hard-coded.
+    assert forms["since"]["default"] == client_day.isoformat() and forms["since"]["options"] is None
     assert forms["level"]["options"] == ["Requirement", "Recommended", "Optional"]
     assert forms["free"]["options"] is None and forms["free"]["default"] is None and forms["free"]["label"] == "free"
 

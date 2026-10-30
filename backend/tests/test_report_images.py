@@ -31,7 +31,7 @@ from app.services.report_images import (
 )
 from app.services.report_layout_text import format_tree, parse_text
 from app.services.report_layout_tree import InvalidLayoutError, assert_valid, empty_tree
-from app.services.report_model import Image, ReportDocument
+from app.services.report_model import Image, Paragraph, ReportDocument
 from app.services.report_odt import render_odt_document
 from app.services.report_pdf import render_pdf_document
 from tests.conftest import auth_headers, create_org_user, login
@@ -712,3 +712,272 @@ def test_a_bundle_whose_picture_bytes_are_missing_drops_that_version_with_a_warn
     copy = import_project(world, out.getvalue())
     joined = " ".join(copy["warnings"])
     assert "gone.png" in joined and "Needs it" in joined
+
+
+# ---- placement: wrap, behind and in front ----------------------------------------------------------------------
+
+
+def pdf_content(pdf: bytes) -> str:
+    """The page content streams of a ReportLab PDF (ASCII85 + Flate), joined, with image draws shown as `<IMG>`."""
+    import base64
+    import zlib
+
+    out = []
+    for stream in re.findall(rb"stream\r?\n(.*?)endstream", pdf, re.S):
+        body = stream.strip()
+        try:
+            out.append(zlib.decompress(base64.a85decode(body[:-2] if body.endswith(b"~>") else body)).decode("latin1"))
+        except Exception:  # noqa: BLE001 - an image or font stream: not content
+            continue
+    return re.sub(r"/FormXob\.\w+ Do", "<IMG>", "\n".join(s for s in out if "BT" in s or "Do" in s))
+
+
+def layered(**keys: Any) -> Image:
+    return Image(**{"data": png(), "alt": "A picture", "width": 4, **keys})
+
+
+@pytest.mark.parametrize(
+    "keys",
+    [
+        {"placement": "wrap", "align": "left"},
+        {"placement": "wrap", "align": "right", "width": 4},
+        {"placement": "behind"},
+        {"placement": "front", "anchor": "margin", "offset_x": -1.5, "offset_y": 0},
+        {"placement": "behind", "anchor": "page", "offset_x": 2, "offset_y": 3},
+        {"placement": "inline", "align": "center", "caption": "Still captioned"},
+    ],
+)
+def test_every_placement_mode_with_its_own_settings_is_valid(keys):
+    assert_valid(image_tree(**keys))
+
+
+@pytest.mark.parametrize(
+    ("keys", "path"),
+    [
+        ({"placement": "floating"}, "nodes[0].placement"),
+        ({"placement": "wrap"}, "nodes[0].align"),  # no side chosen: the default is centred
+        ({"placement": "wrap", "align": "center"}, "nodes[0].align"),
+        ({"placement": "wrap", "align": "left", "caption": "x"}, "nodes[0].caption"),
+        ({"placement": "wrap", "align": "left", "numbering": "always"}, "nodes[0].numbering"),
+        ({"placement": "wrap", "align": "left", "offset_x": 1}, "nodes[0].offset_x"),
+        ({"placement": "wrap", "align": "left", "anchor": "page"}, "nodes[0].anchor"),
+        ({"placement": "behind", "align": "left"}, "nodes[0].align"),
+        ({"placement": "front", "caption": "x"}, "nodes[0].caption"),
+        ({"placement": "behind", "anchor": "sheet"}, "nodes[0].anchor"),
+        ({"placement": "behind", "offset_x": 101}, "nodes[0].offset_x"),
+        ({"placement": "behind", "offset_y": "far"}, "nodes[0].offset_y"),
+        ({"placement": "behind", "offset_y": True}, "nodes[0].offset_y"),
+        ({"offset_x": 1}, "nodes[0].offset_x"),
+        ({"anchor": "page"}, "nodes[0].anchor"),
+    ],
+)
+def test_a_placement_setting_its_mode_does_not_use_is_refused_with_its_path(keys, path):
+    assert path in [p for p, _ in errors_of(image_tree(**keys))]
+
+
+def test_the_text_view_round_trips_placement_anchor_and_offsets():
+    tree = {**empty_tree("document"), "nodes": [
+        {"type": "image", "file": FILE, "alt": "a", "placement": "wrap", "align": "right", "width": 4},
+        {"type": "image", "file": FILE, "alt": "a", "placement": "behind", "anchor": "page", "offset_x": 2.5, "offset_y": -3},
+        {"type": "image", "file": FILE, "alt": "a", "placement": "front", "offset_x": 0, "offset_y": 1},
+    ]}
+    text = format_tree(tree)
+    assert "placement behind anchor page x 2.5 y -3" in text
+    parsed = parse_text(text)
+    assert parsed.ok, parsed.errors
+    assert parsed.tree == tree and format_tree(parsed.tree) == text
+
+
+@pytest.mark.parametrize(
+    ("clause", "fragment"),
+    [("x 1 x 2", "x is written once"), ("y far", "down distance"), ("x", "across distance")],
+)
+def test_a_bad_position_clause_is_a_positioned_error(clause, fragment):
+    parsed = parse_text(f'@layout document\n@image "{FILE}" alt "a" placement behind {clause}')
+    assert not parsed.ok and fragment in parsed.errors[0].message
+
+
+# PDF: a wrapped picture shares lines with its text; a layered one is drawn first (behind) or last (in front).
+
+
+def test_pdf_runs_the_text_beside_a_wrapped_picture_then_across_the_page():
+    text = "word " * 400
+    wrapped = render_pdf_document(document_with(Image(data=png(), alt="p", width=5, placement="wrap", align="right"), Paragraph(text)))
+    plain = render_pdf_document(document_with(Image(data=png(), alt="p", width=5), Paragraph(text)))
+
+    def first_lines(pdf: bytes) -> list[int]:
+        return [len(m) for m in re.findall(r"\((word[ word]*?)\) Tj", pdf_content(pdf))]
+
+    beside = first_lines(wrapped)
+    assert beside[0] < max(beside)  # narrower lines beside the picture, then full-width ones
+    assert len(set(first_lines(plain))) == 1  # in line: every line is full width
+    assert wrapped.count(b"/Subtype /Image") == 1
+
+
+def test_pdf_wrap_carries_on_over_a_page_break_and_ends_at_a_table():
+    from app.services.report_model import Table
+
+    blocks = [Image(data=png(300, 1200), alt="p", width=5, placement="wrap", align="left"), Paragraph("word " * 3000),
+              Table(columns=["A"], rows=[["cell"]]), Paragraph("after")]
+    pdf = render_pdf_document(document_with(*blocks))
+    assert pdf.count(b"/Type /Page\n") >= 2 and b"(after)" in pdf_content(pdf).encode("latin1")
+
+
+def test_pdf_draws_a_picture_behind_the_text_before_it_and_one_in_front_after_it():
+    pdf = render_pdf_document(document_with(
+        Paragraph("first words"), layered(placement="front", anchor="page", offset_x_cm=1, offset_y_cm=1),
+        layered(placement="behind", anchor="page", offset_x_cm=5, offset_y_cm=5), Paragraph("last words"),
+    ))
+    content = pdf_content(pdf)
+    behind, front = content.index("<IMG>"), content.rindex("<IMG>")
+    assert content.count("<IMG>") == 2 and behind < content.index("first words") and front > content.index("last words")
+
+
+@pytest.mark.parametrize(
+    ("anchor", "x_pt", "y_pt"),
+    # A4 is 595.28 x 841.89 pt; the default margin is 1.5 cm (42.52 pt); the picture is 4 cm x 2 cm (113.39 x 56.69 pt).
+    [("page", 56.69, 841.89 - 85.04 - 56.69), ("margin", 42.52 + 56.69, 841.89 - 42.52 - 85.04 - 56.69)],
+)
+def test_pdf_measures_a_layered_picture_from_the_page_or_margin_corner(anchor, x_pt, y_pt):
+    pdf = render_pdf_document(document_with(layered(placement="behind", anchor=anchor, offset_x_cm=2, offset_y_cm=3), Paragraph("text")))
+    match = re.search(r"([\d.]+) 0 0 ([\d.]+) ([\d.]+) ([\d.]+) cm\n<IMG>", pdf_content(pdf))
+    assert match, pdf_content(pdf)[:400]
+    assert (float(match.group(3)), float(match.group(4))) == pytest.approx((x_pt, y_pt), abs=0.1)
+
+
+def test_pdf_measures_a_paragraph_anchored_picture_from_where_the_block_sits():
+    pdf = render_pdf_document(document_with(
+        Paragraph("above"), layered(placement="front", anchor="paragraph", offset_x_cm=1, offset_y_cm=0), Paragraph("below"),
+    ))
+    content = pdf_content(pdf)
+    match = re.search(r"([\d.]+) 0 0 [\d.]+ ([\d.]+) ([\d.]+) cm\n<IMG>", content)
+    assert match and float(match.group(2)) == pytest.approx(48.52 + 28.35, abs=0.1)  # frame left + 1 cm
+    top = float(match.group(3)) + 56.69  # the picture's top edge: where the block sits, just under "above", not the page corner
+    assert 700 < top < 760
+
+
+def test_pdf_leaves_out_a_layered_or_wrapped_picture_it_cannot_draw():
+    pdf = render_pdf_document(document_with(
+        Image(data=b"junk", placement="behind"), Image(data=b"junk", placement="wrap", align="left"), Paragraph("kept"),
+    ))
+    assert pdf.startswith(b"%PDF") and b"(kept)" in pdf_content(pdf).encode("latin1")
+
+
+# Word: floating drawings with the wrap, layer and anchor each mode names.
+
+
+def word_anchors(document: ReportDocument) -> list[Any]:
+    doc = DocxDocument(io.BytesIO(render_docx_document(document)))
+    return doc.element.body.xpath(".//wp:anchor")
+
+
+def test_word_wraps_text_around_a_picture_anchored_to_the_column_on_its_side():
+    (anchor,) = word_anchors(document_with(Image(data=png(), alt="A box", width=5, placement="wrap", align="left"), Paragraph("text")))
+    assert anchor.xpath("./wp:wrapSquare") and anchor.get("behindDoc") == "0"
+    assert anchor.xpath("string(./wp:positionH/@relativeFrom)") == "column" and anchor.xpath("string(./wp:positionH/wp:align)") == "left"
+    assert anchor.xpath("string(./wp:docPr/@descr)") == "A box"
+
+
+@pytest.mark.parametrize(("placement", "behind"), [("behind", "1"), ("front", "0")])
+@pytest.mark.parametrize("anchor_name", ["paragraph", "margin", "page"])
+def test_word_layers_a_picture_with_its_anchor_and_offsets_in_emu(placement, behind, anchor_name):
+    (anchor,) = word_anchors(document_with(layered(placement=placement, anchor=anchor_name, offset_x_cm=2, offset_y_cm=-1.5)))
+    assert anchor.get("behindDoc") == behind and anchor.xpath("./wp:wrapNone")
+    assert anchor.xpath("string(./wp:positionH/@relativeFrom)") == anchor_name == anchor.xpath("string(./wp:positionV/@relativeFrom)")
+    assert anchor.xpath("string(./wp:positionH/wp:posOffset)") == "720000" and anchor.xpath("string(./wp:positionV/wp:posOffset)") == "-540000"
+
+
+def test_word_keeps_the_anchor_paragraph_tiny_and_with_the_text_and_orders_the_layers():
+    doc = DocxDocument(io.BytesIO(render_docx_document(document_with(
+        layered(placement="behind"), layered(placement="front"), Paragraph("text"),
+    ))))
+    anchors = doc.element.body.xpath(".//wp:anchor")
+    heights = [int(a.get("relativeHeight")) for a in anchors]
+    assert heights == sorted(set(heights)) and len(heights) == 2
+    holder = anchors[0].getparent().getparent().getparent()
+    assert holder.xpath("string(./w:pPr/w:keepNext/@w:val)") in ("", "1", "true") and holder.xpath("./w:pPr/w:keepNext")
+
+
+def test_word_floating_pictures_are_not_inline_shapes_and_a_bad_one_is_skipped():
+    doc = DocxDocument(io.BytesIO(render_docx_document(document_with(
+        layered(placement="behind"), Image(data=b"junk", placement="wrap", align="right"), Paragraph("text"),
+    ))))
+    assert len(doc.inline_shapes) == 0 and len(doc.element.body.xpath(".//wp:anchor")) == 1
+
+
+# OpenDocument text: frames whose graphic style carries the wrap, layer and anchor.
+
+
+def odt_styles(document: ReportDocument) -> tuple[str, str]:
+    with zipfile.ZipFile(io.BytesIO(render_odt_document(document))) as odt:
+        content = odt.read("content.xml").decode()
+    return content, content[: content.index("</office:automatic-styles>")]
+
+
+def test_opendocument_wraps_text_in_parallel_around_a_frame_on_the_picture_side():
+    content, styles = odt_styles(document_with(Image(data=png(), alt="A box", width=5, placement="wrap", align="right"), Paragraph("t")))
+    assert 'draw:style-name="fr_wrap_right"' in content and 'text:anchor-type="paragraph"' in content
+    style = re.search(r'name="fr_wrap_right".*?</style:style>', styles, re.S).group(0)
+    assert 'style:wrap="parallel"' in style and 'style:horizontal-pos="right"' in style
+    assert "<svg:title>A box</svg:title>" in content
+
+
+@pytest.mark.parametrize(("placement", "run_through"), [("behind", "background"), ("front", "foreground")])
+@pytest.mark.parametrize(("anchor", "rel"), [("paragraph", "paragraph"), ("margin", "page-content"), ("page", "page")])
+def test_opendocument_layers_a_frame_with_its_anchor_and_offsets(placement, run_through, anchor, rel):
+    content, styles = odt_styles(document_with(layered(placement=placement, anchor=anchor, offset_x_cm=2, offset_y_cm=3)))
+    name = f"fr_{placement}_{anchor}"
+    assert f'draw:style-name="{name}"' in content and 'svg:x="2.000cm" svg:y="3.000cm"' in content
+    style = re.search(rf'name="{name}".*?</style:style>', styles, re.S).group(0)
+    assert f'style:run-through="{run_through}"' in style and 'style:wrap="run-through"' in style
+    assert f'style:horizontal-rel="{rel}"' in style and f'style:vertical-rel="{rel}"' in style
+
+
+def test_opendocument_floating_frames_are_in_a_tiny_paragraph_kept_with_the_next_and_a_bad_one_is_skipped():
+    content, styles = odt_styles(document_with(layered(placement="behind"), Image(data=b"junk", placement="wrap", align="left")))
+    assert content.count("<draw:frame") == 1 and 'text:style-name="P_Float"' in content
+    assert 'fo:keep-with-next="always"' in re.search(r'name="P_Float".*?</style:style>', styles, re.S).group(0)
+
+
+# HTML: a float for a wrapped picture, a positioned layer for the others.
+
+
+def test_html_floats_a_wrapped_picture_to_the_side_it_is_aligned_to():
+    html = render_html_document(document_with(Image(data=png(), alt="A box", width=5, placement="wrap", align="left"), Paragraph("t"))).decode()
+    assert '<figure class="image wrap-left" style="width:5cm;max-width:60%"><img' in html and "figure.image.wrap-left { float: left" in html
+    assert "<figcaption>" not in html
+
+
+@pytest.mark.parametrize("placement", ["behind", "front"])
+def test_html_lays_a_layered_picture_over_the_text_at_its_offsets(placement):
+    html = render_html_document(document_with(layered(placement=placement, anchor="page", offset_x_cm=2, offset_y_cm=-1.5))).decode()
+    assert f'<div class="layer-anchor {placement}"><figure class="image" style="left:2cm;top:-1.5cm"><img' in html
+    assert "div.layer-anchor.behind > figure.image { z-index: -1; }" in html and "body { isolation: isolate;" in html
+
+
+def test_html_text_in_a_layered_pictures_alt_is_escaped():
+    html = render_html_document(document_with(layered(placement="front", alt='"><script>x</script>'))).decode()
+    assert "<script>x" not in html and "&lt;script&gt;" in html
+
+
+# A run: the evaluator carries the settings into the document and gives a floating picture no gap.
+
+
+def test_a_run_carries_placement_anchor_and_offsets_into_every_format(world):
+    project = world.project("Alpha")
+    file_id = upload(world, project_images(project), png()).json()["id"]
+    nodes = [
+        {"type": "image", "file": file_id, "alt": "a", "placement": "wrap", "align": "right", "width": 4},
+        {"type": "text", "text": "Beside the picture."},
+        {"type": "image", "file": file_id, "alt": "b", "placement": "behind", "anchor": "page", "offset_x": 2, "offset_y": 3, "width": 6},
+    ]
+    html = preview(world, project, {**empty_tree("document"), "nodes": nodes})["html"]
+    assert 'class="image wrap-right"' in html and '<div class="layer-anchor behind"><figure class="image" style="left:2cm;top:3cm"' in html
+
+
+def test_saving_a_layout_with_a_caption_on_a_floating_picture_is_refused_with_the_path(world):
+    project = world.project("Alpha")
+    file_id = upload(world, project_images(project), png()).json()["id"]
+    body = layout_body("Bad", file_id, placement="behind", caption="no")
+    resp = world.client.post(f"/api/v1/projects/{project['id']}/report-layouts", json=body, headers=auth_headers(world.token))
+    assert resp.status_code == 422 and "nodes[0].caption" in resp.text
