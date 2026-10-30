@@ -49,6 +49,7 @@ from app.services.report_model import (
     Gap,
     Heading,
     Image,
+    ImageCell,
     Note,
     NumberedList,
     PageBreak,
@@ -91,6 +92,8 @@ table, .page-break { clear: both; }
 div.layer-anchor { display: block; position: relative; height: 0; } div.layer-anchor > figure.image { position: absolute; margin: 0; }
 div.layer-anchor.behind > figure.image { z-index: -1; } div.layer-anchor.front > figure.image { z-index: 1; }
 figure.image figcaption { color: #444; font-size: .85rem; margin: .3rem 0; } span.picture { display: inline-block; }
+table td .cell-images { display: flex; gap: .15cm; align-items: flex-start; } table td .cell-images.stacked { flex-direction: column; }
+table td .cell-images.side { flex-wrap: wrap; } table td .cell-images img, table td .cell-images svg { display: block; }
 figure.equation { text-align: center; overflow-x: auto; } span.math svg { display: inline-block; }
 code.math-source { font-size: .9em; }
 .logo { max-height: 4rem; margin-bottom: .5rem; }
@@ -274,6 +277,33 @@ def _rich(value: str) -> str:
     )
 
 
+def _cell_images(cell: ImageCell) -> str:
+    """The pictures of an image cell: stacked, or side by side and wrapping, each at the width its column asks for.
+
+    A width in percent is a share of the cell; a width in cm is capped at the cell's width. A picture that cannot be drawn is
+    skipped.
+    """
+    pictures = []
+    for image in cell.images:
+        if image.width is not None:
+            width = f"{image.width:g}%" if image.width_unit == "percent" else f"{image.width:g}cm"
+            style = f"width:{width};max-width:100%;height:auto"
+        elif image.height_cm is not None:
+            style = f"height:{image.height_cm:g}cm;max-width:100%;width:auto"
+        else:
+            style = "max-width:100%;height:auto"
+        if image.svg is not None:
+            try:
+                pictures.append(f'<span class="picture" role="img" aria-label="{_esc(image.alt)}" style="{style}">{sanitize_svg(image.svg)}</span>')
+            except UnsafeSvgError:
+                continue
+        elif (uri := _data_uri(image.data)) is not None:
+            pictures.append(f'<img src="{uri}" alt="{_esc(image.alt)}" style="{style}">')
+    if not pictures:
+        return ""
+    return f'<div class="cell-images {"side" if cell.arrange == "side_by_side" else "stacked"}">{"".join(pictures)}</div>'
+
+
 def _table(block: Table) -> str:
     head = "".join(f"<th>{_esc(c)}</th>" for c in block.columns)
     rows = []
@@ -282,10 +312,15 @@ def _table(block: Table) -> str:
         for c, cell in enumerate(row):
             tone = block.tone_at(r, c)
             style = f' style="background-color:#{TONE_FILL[tone]};color:#{text_on(TONE_FILL[tone])}"' if tone else ""
-            cells.append(f"<td{style}>{_rich(cell)}</td>")
+            cells.append(f"<td{style}>{_cell_images(cell) if isinstance(cell, ImageCell) else _rich(cell)}</td>")
         rows.append(f"<tr>{''.join(cells)}</tr>")
     css = ' class="compact"' if block.compact else ""
-    return f"<table{css}><thead><tr>{head}</tr></thead><tbody>{''.join(rows)}</tbody></table>"
+    columns = ""
+    if block.weights:
+        columns = "<colgroup>" + "".join(f'<col style="width:{w / sum(block.weights) * 100:.1f}%">' for w in block.weights) + "</colgroup>"
+    # A browser repeats a `thead` on every printed page, so without one the heading is an ordinary first row.
+    first = f"<thead><tr>{head}</tr></thead><tbody>" if block.repeat_header else f"<tbody><tr>{head}</tr>"
+    return f"<table{css}>{columns}{first}{''.join(rows)}</tbody></table>"
 
 
 def _figure(block: Image, usable_cm: float) -> str | None:

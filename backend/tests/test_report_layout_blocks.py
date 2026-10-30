@@ -124,8 +124,15 @@ def test_the_block_catalogue_lists_every_type_with_its_form(world, tier):
     assert sheet["families"] == ["table"]
     assert body["field_kinds"] == list(FIELD_KINDS)
     assert {f["key"] for f in body["layout_fields"]} == {
-        "orientation", "page_size", "margins", "mirror_margins", "page_styles", "header", "footer", "variables",
+        "orientation", "page_size", "margins", "mirror_margins", "repeat_table_header", "page_styles", "header", "footer", "variables",
+        "file_name",
     }
+    repeat = next(f for f in body["layout_fields"] if f["key"] == "repeat_table_header")
+    assert (repeat["kind"], repeat["default"]) == ("boolean", True)
+    assert [f["key"] for f in body["image_column_fields"]] == [
+        "names", "types", "max_count", "order", "max_size_mb", "width", "width_unit", "height", "height_unit", "arrange",
+    ]
+    assert next(f for f in body["image_column_fields"] if f["key"] == "width_unit")["default"] == "percent"
     section = next(b for b in body["blocks"] if b["type"] == "section")
     assert [f["key"] for f in section["fields"]] == ["page_style"] and [c["key"] for c in section["containers"]] == ["children"]
     image = next(b for b in body["blocks"] if b["type"] == "image")

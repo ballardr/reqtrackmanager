@@ -8,6 +8,7 @@ designer offers and the result of inserting one into a draft tree. Nothing here 
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -33,7 +34,11 @@ class ReportSnippetParameterOut(BaseModel):
 
 
 class ReportSnippetOut(BaseModel):
-    """A snippet a scope can use. `module_key` is `None` for a platform snippet; `formats` are where the result is true."""
+    """A snippet a scope can use. `module_key` is `None` for a platform snippet; `formats` are where the result is true.
+
+    An author-saved snippet has `saved_id` (the row to manage it by) and `origin` (`project`, `ancestor` or `organization`);
+    both are `None` for a built-in or module snippet.
+    """
 
     key: str
     name: str
@@ -42,6 +47,8 @@ class ReportSnippetOut(BaseModel):
     family: str
     formats: list[str]
     module_key: str | None = None
+    saved_id: UUID | None = None
+    origin: str | None = None
     parameters: list[ReportSnippetParameterOut]
     blocks: list[dict[str, Any]]
 

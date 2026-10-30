@@ -4,7 +4,8 @@ Module: services.report_snippets
 Report snippets: list the ones a scope can use and apply one to a draft layout tree.
 
 Responsibilities:
-- `visible_snippets`: the snippets whose module is on for the scope, each with the choices its parameters offer there.
+- `visible_snippets`: the snippets whose module is on for the scope, each with the choices its parameters offer there, then the
+  author-saved ones the scope reaches (`services.report_snippet_store`; they have no parameters and insert like any other).
 - `apply_snippet`: build the tree a snippet produces when inserted into a draft, and say what changed. Nothing is stored.
 
 Design decisions:
@@ -41,6 +42,7 @@ from sqlalchemy.orm import Session
 
 from app.models.file import FileAsset
 from app.models.project import Project
+from app.models.report_snippet import SavedReportSnippet
 from app.modules.registry import (
     ReportSnippet,
     ReportSnippetParameter,
@@ -49,7 +51,7 @@ from app.modules.registry import (
     is_module_enabled,
     is_module_enabled_for_project,
 )
-from app.services import report_images, report_layout_designer
+from app.services import report_images, report_layout_designer, report_snippet_scope
 from app.services.report_layout_tree import MAX_NODES, TreeError, validate_tree
 from app.services.report_page_styles import MAX_STYLE_NAME_CHARS
 
@@ -57,6 +59,7 @@ from app.services.report_page_styles import MAX_STYLE_NAME_CHARS
 ROOT_KEYS = ("page_styles", "variables")
 #: The keys that hold a list of blocks, which a target list path is made of.
 BLOCK_LIST_KEYS = ("nodes", "children", "else_children")
+SAVED_KEY_PREFIX = "saved-"
 _TOKEN = re.compile(r"([a-z_]+)|\[(\d+)\]")
 
 
@@ -77,12 +80,24 @@ class VisibleParameter:
 
 
 @dataclass(frozen=True)
+class SavedOrigin:
+    """Where an author-saved snippet comes from: its row id and `project`, `ancestor` or `organization`."""
+
+    id: uuid.UUID
+    origin: str
+
+
+@dataclass(frozen=True)
 class VisibleSnippet:
-    """A snippet a scope can use: the declaration, the module that contributed it (`None`: the platform) and its parameters."""
+    """A snippet a scope can use: the declaration, the module that contributed it (`None`: the platform) and its parameters.
+
+    `saved` is set for an author-saved snippet (and then `module_key` is `None` and there are no parameters).
+    """
 
     snippet: ReportSnippet
     module_key: str | None
     parameters: tuple[VisibleParameter, ...]
+    saved: SavedOrigin | None = None
 
 
 @dataclass
@@ -104,6 +119,19 @@ class SnippetOutcome:
     inserted_at: str | None = None
     count: int = 0
     problems_elsewhere: int = 0
+
+
+def snippet_key(snippet_id: uuid.UUID) -> str:
+    """The key an author-saved snippet is offered and applied under; it cannot clash with a built-in or module key."""
+    return f"{SAVED_KEY_PREFIX}{snippet_id}"
+
+
+def saved_report_snippet(row: SavedReportSnippet) -> ReportSnippet:
+    """A stored row as the snippet the apply service inserts (no parameters; true in every format)."""
+    return ReportSnippet(
+        key=snippet_key(row.id), name=row.name, description=row.description, category=row.category,
+        blocks=tuple(copy.deepcopy(row.blocks)), family=row.family, root=copy.deepcopy(row.root),
+    )
 
 
 # --- listing -------------------------------------------------------------------------------------------------------
@@ -139,7 +167,8 @@ def visible_snippets(db: Session, organization_id: uuid.UUID, project: Project |
         project: The project for a project layout, `None` for an organisation layout.
 
     Returns:
-        Platform snippets first, then each module's, in registration order.
+        Platform snippets first, then each module's, in registration order, then the author-saved ones the scope can reach
+        (an organisation's own; for a project its own, its ancestors' and the organisation's, less those it hides).
     """
     types = scope_record_types(db, organization_id, project)
     attachable = set(get_record_attachment_providers())
@@ -161,6 +190,11 @@ def visible_snippets(db: Session, organization_id: uuid.UUID, project: Project |
             for parameter in snippet.parameters
         )
         found.append(VisibleSnippet(snippet, module_key, parameters))
+    if project is None:
+        saved = [(row, "organization") for row in report_snippet_scope.list_org_snippets(db, organization_id)]
+    else:
+        saved = [(s.snippet, s.origin) for s in report_snippet_scope.resolve_project_snippets(db, project) if not s.hidden]
+    found += [VisibleSnippet(saved_report_snippet(row), None, (), SavedOrigin(row.id, origin)) for row, origin in saved]
     return found
 
 
@@ -205,7 +239,7 @@ def _set_path(root: dict[str, Any], path: str, value: Any) -> None:
     holder[last] = value
 
 
-def _block_list(tree: dict[str, Any], path: str) -> list[Any]:
+def block_list(tree: dict[str, Any], path: str) -> list[Any]:
     """The list of blocks at a target list path (`nodes`, `nodes[2].children`, `nodes[2].else_children`).
 
     Raises:
@@ -420,7 +454,7 @@ def apply_snippet(
     resolved, outcome.errors = _resolve_values(db, visible, values, organization_id, project_id)
     result = copy.deepcopy(tree)
     try:
-        target = _block_list(result, list_path)
+        target = block_list(result, list_path)
     except ValueError:
         outcome.errors.append(TreeError("target", "That is not a list of blocks in this layout."))
         return outcome
@@ -466,6 +500,6 @@ def apply_snippet(
 
 
 __all__ = [
-    "ParameterChoice", "SnippetOutcome", "VisibleParameter", "VisibleSnippet", "apply_snippet", "scope_record_types",
-    "visible_snippets",
+    "ParameterChoice", "SavedOrigin", "SnippetOutcome", "VisibleParameter", "VisibleSnippet", "apply_snippet", "block_list",
+    "saved_report_snippet", "scope_record_types", "snippet_key", "visible_snippets",
 ]

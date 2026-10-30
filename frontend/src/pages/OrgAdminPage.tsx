@@ -102,6 +102,7 @@ import { reportPackApi } from "../api/reportPacks";
 import { reportPlacementApi } from "../api/reportPlacements";
 import { Badge } from "../components/Badge";
 import { ReportSetupPanel } from "../components/ReportSetupPanel";
+import { ReportSnippetsPanel } from "../components/ReportSnippetsPanel";
 import { CheckboxField, ColorField, FileField, TextAreaField, TextField, ToggleField, UploadField } from "../components/FormFields";
 import { FormActions } from "../components/FormActions";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
@@ -206,6 +207,7 @@ export function OrgAdminPage() {
   const strings = useStrings();
   const { orgId, group: groupParam } = useParams<{ orgId: string; group?: string }>();
   const layoutApi = useMemo(() => (orgId ? reportLayoutApi({ kind: "organization", id: orgId }) : null), [orgId]);
+  const snippetScope = useMemo(() => ({ kind: "organization" as const, id: orgId ?? "" }), [orgId]);
   const packApi = useMemo(() => (orgId ? reportPackApi({ kind: "organization", id: orgId }) : null), [orgId]);
   const placementApi = useMemo(() => (orgId ? reportPlacementApi({ kind: "organization", id: orgId }) : null), [orgId]);
   const { user } = useAuth();
@@ -3328,6 +3330,11 @@ export function OrgAdminPage() {
             {layoutApi && packApi && placementApi && (
               <CollapsibleSection sectionKey="orgAdmin.reportSetup" title={strings.admin.reportSetup} defaultCollapsed={false}>
                 <ReportSetupPanel layoutApi={layoutApi} packApi={packApi} placementApi={placementApi} />
+              </CollapsibleSection>
+            )}
+            {orgId && (
+              <CollapsibleSection sectionKey="orgAdmin.reportSnippets" title={strings.reportSnippetsPanel.sectionTitle}>
+                <ReportSnippetsPanel scope={snippetScope} />
               </CollapsibleSection>
             )}
 

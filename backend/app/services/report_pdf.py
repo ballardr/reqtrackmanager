@@ -35,9 +35,10 @@ from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
-from reportlab.platypus import ActionFlowable, BaseDocTemplate, Frame, KeepTogether, ListFlowable, ListItem, PageTemplate, Spacer
+from reportlab.platypus import ActionFlowable, BaseDocTemplate, Frame, KeepTogether, ListFlowable, ListItem, PageTemplate, Spacer, TableStyle
 from reportlab.platypus import PageBreak as RlPageBreak
 from reportlab.platypus import Paragraph as RlParagraph
+from reportlab.platypus import Table as RlTable
 from reportlab.platypus.flowables import ImageAndFlowables
 
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX
@@ -52,7 +53,7 @@ from app.services.report_document import (
     toned_paragraph,
 )
 from app.services.report_fonts import draw_centred, text_width
-from app.services.report_image_layout import placed_size_cm
+from app.services.report_image_layout import CELL_GAP_CM, PlacedPicture, place_cell_pictures, placed_size_cm
 from app.services.report_math import png_of, typeset
 from app.services.report_model import (
     BulletList,
@@ -60,6 +61,7 @@ from app.services.report_model import (
     Gap,
     Heading,
     Image,
+    ImageCell,
     Note,
     NumberedList,
     PageBreak,
@@ -256,22 +258,73 @@ def _wrapped(block: Image, following: list, usable_width: float) -> list:
     )]
 
 
-def _table(block: Table, accent, usable_width: float, images: _InlineImages):
+def _placed_flowable(placed: PlacedPicture) -> Any:
+    """A table-cell picture as a flowable at its placed size, or `None` when it cannot be drawn."""
+    width, height = placed.width_cm * cm, placed.height_cm * cm
+    image = placed.image
+    flowable: Any = svg_flowable(image.svg, width) if image.svg is not None else image_flowable(image.data)
+    if flowable is None:
+        return None
+    if image.svg is not None and hasattr(flowable, "scale"):
+        flowable.scale(width / flowable.width, height / flowable.height)
+        flowable.width, flowable.height = width, height
+    else:
+        flowable.drawWidth, flowable.drawHeight = width, height
+    flowable.hAlign = "LEFT"
+    return flowable
+
+
+#: A cell may be at most this share of the page's text height, so a row always fits a page.
+_CELL_HEIGHT_SHARE = 0.9
+
+
+def _image_cell(cell: ImageCell, column_width: float, usable_height: float) -> list | str:
+    """The flowables of an image cell: the pictures stacked, or in lines of side-by-side pictures (an inner table per line).
+
+    Returns `""` when the cell has no picture that can be drawn.
+    """
+    placed = place_cell_pictures(cell, column_width / cm, usable_height / cm * _CELL_HEIGHT_SHARE)
+    flowables: list = []
+    for line in range(max((p.line for p in placed), default=-1) + 1):
+        drawn = [(p, f) for p in placed if p.line == line and (f := _placed_flowable(p)) is not None]
+        if not drawn:
+            continue
+        if flowables:
+            flowables.append(Spacer(1, CELL_GAP_CM * cm))
+        if len(drawn) == 1:
+            flowables.append(drawn[0][1])
+            continue
+        gap = CELL_GAP_CM * cm
+        widths = [p.width_cm * cm + (gap if i < len(drawn) - 1 else 0) for i, (p, _) in enumerate(drawn)]
+        row = RlTable([[f for _, f in drawn]], colWidths=widths, hAlign="LEFT")
+        row.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 0),
+                                 ("BOTTOMPADDING", (0, 0), (-1, -1), 0), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+        flowables.append(row)
+    return flowables or ""
+
+
+def _table(block: Table, accent, usable_width: float, usable_height: float, images: _InlineImages):
     """A block table as a styled ReportLab table (compact or plain grid)."""
     if block.col_widths_cm:
         widths = [w * cm for w in block.col_widths_cm]
+    elif block.weights:
+        widths = [usable_width * w / sum(block.weights) for w in block.weights]
     elif block.compact:
         widths = _content_widths(block, usable_width)
     else:
         widths = [usable_width / len(block.columns)] * len(block.columns)
     body_style = _CELL if block.compact else _PLAIN_CELL
     head_style = ParagraphStyle("report_head_text", parent=_HEAD, textColor=header_text_color(accent))
-    data = [[RlParagraph(safe(c, bold=True), head_style) for c in block.columns]] if block.compact else [list(block.columns)]
+    data: list[list[Any]] = [[RlParagraph(safe(c, bold=True), head_style) for c in block.columns]] if block.compact else [list(block.columns)]
     data += [
-        [toned_paragraph(cell, body_style, block.tone_at(r, c), _markup(cell, images)) for c, cell in enumerate(row)]
+        [
+            _image_cell(cell, widths[c], usable_height) if isinstance(cell, ImageCell)
+            else toned_paragraph(cell, body_style, block.tone_at(r, c), _markup(cell, images))
+            for c, cell in enumerate(row)
+        ]
         for r, row in enumerate(block.rows)
     ]
-    return styled_table(data, col_widths=widths, accent_color=accent, compact=block.compact)
+    return styled_table(data, col_widths=widths, accent_color=accent, compact=block.compact, repeat_header=block.repeat_header)
 
 
 class _Doc(BaseDocTemplate):
@@ -370,6 +423,7 @@ def render_pdf_document(document: ReportDocument) -> bytes:
     accent = colors.HexColor((branding or ReportBranding(accent_color_hex=DEFAULT_ACCENT_COLOR_HEX)).accent_color_hex)
     styles = [document.style]
     usable_width = document.style.usable_width_cm * cm
+    usable_height = document.style.usable_height_cm * cm
 
     story: list = [_UseStyle(*_template_ids(0, document.style)), *title_flowables(document.title, branding)]
     images = _InlineImages()
@@ -406,7 +460,7 @@ def render_pdf_document(document: ReportDocument) -> bytes:
             else:
                 story.extend(_image_flowables(block, usable_width))
         elif isinstance(block, Table):
-            story.append(_table(block, accent, usable_width, images))
+            story.append(_table(block, accent, usable_width, usable_height, images))
         elif isinstance(block, Gap):
             out.append(Spacer(1, block.cm * cm))
         elif isinstance(block, PageBreak):
@@ -416,6 +470,7 @@ def render_pdf_document(document: ReportDocument) -> bytes:
                 styles.append(block.style)
             story += [_UseStyle(*_template_ids(styles.index(block.style), block.style), block.section_start), RlPageBreak()]
             usable_width = block.style.usable_width_cm * cm
+            usable_height = block.style.usable_height_cm * cm
     flush_wrap()
     try:
         return _build_pdf(story, styles, branding.footer_text if branding else None, document.title)

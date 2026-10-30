@@ -60,6 +60,8 @@ READ_ONLY_TOOLS = {
     "parse_report_layout_text", "format_report_layout_text", "list_report_widgets",
     # Report snippets: listing and applying one to a tree you hold (nothing is stored).
     "list_report_snippets", "apply_report_snippet",
+    # Saved report snippets: listing and reading them, and checking a selection (nothing is stored).
+    "list_saved_report_snippets", "get_saved_report_snippet", "check_report_snippet",
     # Report packs: listing, the run form, the counts preview (stores nothing) and a background run's status.
     "list_report_packs", "get_report_pack_form", "preview_report_pack", "get_report_run",
 }
@@ -68,6 +70,8 @@ WRITE_TOOLS = {
     "set_artefact_tags", "add_artefact_tag", "remove_artefact_tag",
     "create_report_layout", "save_report_layout_version", "update_report_layout", "delete_report_layout",
     "run_report_pack", "copy_reports", "duplicate_report",
+    "save_report_snippet", "update_saved_report_snippet", "delete_saved_report_snippet",
+    "set_saved_report_snippet_visibility", "copy_saved_report_snippet",
 }
 # AI approval via MCP (docs/decisions.md): approval-type tools, always
 # present when write mode is on (each additionally gated at call time on a
@@ -956,6 +960,10 @@ async def test_custom_report_tools_validate_arguments_and_run_a_layout(admin_tok
             await client.call_tool(
                 "apply_report_snippet", {"key": "../x", "tree": {}, "project_id": str(uuid.uuid4())},
             )
+        with pytest.raises(ToolError, match="either project_id or organization_id"):
+            await client.call_tool("list_saved_report_snippets", both)
+        with pytest.raises(ToolError, match="'snippet_id' must be a valid UUID"):
+            await client.call_tool("get_saved_report_snippet", {"snippet_id": "../x", "project_id": str(uuid.uuid4())})
 
         projects = (await client.call_tool("list_projects", {})).data
         if not projects:

@@ -332,3 +332,83 @@ export const TheLayoutFileNameIsATemplateField: Story = {
     await waitFor(() => expect(nodeOf(canvasElement)).not.toHaveProperty("file_name"));
   },
 };
+
+const columnsField = (): BlockField => fieldOf("table", "columns");
+const tableNames: NameInScope[] = [{ name: "record", kind: "record", recordType: "pain_point" }];
+
+/** A table's columns offer Add images column, whose settings are the server's image-column fields, drawn with the shared forms. */
+export const AnImagesColumnIsAddedAndItsSettingsAreStoredUnderImages: Story = {
+  render: () => <Harness field={columnsField()} names={tableNames} initial={{ type: "table", columns: [{ field: "code" }] }} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("group", { name: /images attached/ })).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Add images column" }));
+    await waitFor(() => expect(nodeOf(canvasElement).columns).toEqual([{ field: "code" }, { images: {} }]));
+    const group = within(await canvas.findByRole("group", { name: "Column 2: images attached to the record" }));
+    await userEvent.type(group.getByRole("textbox", { name: "Column 2 heading" }), "Photos");
+    await userEvent.type(group.getByRole("textbox", { name: "File names" }), "site-*{enter}");
+    await userEvent.type(group.getByRole("spinbutton", { name: "Width" }), "60");
+    await userEvent.selectOptions(group.getByRole("combobox", { name: "Arrangement" }), "Side by side, wrapping");
+    await waitFor(() => expect(nodeOf(canvasElement).columns[1]).toEqual({
+      label: "Photos", images: { names: ["site-*"], width: 60, arrange: "side_by_side" },
+    }));
+    // The width's unit says it is a share of the column, not of the text.
+    const unit = group.getByRole("combobox", { name: "Width unit" });
+    await expect(unit).toHaveDisplayValue("Default (percent)");
+    await expect(within(unit).getByRole("option", { name: "% of the column's width" })).toBeInTheDocument();
+  },
+};
+
+/** Emptying a setting removes its key, so the column keeps only what was set; the column can be moved and removed like any other. */
+export const AnImagesColumnKeepsOnlyWhatWasSetAndCanBeRemoved: Story = {
+  render: () => (
+    <Harness field={columnsField()} names={tableNames} initial={{ type: "table", columns: [{ images: { names: ["a"], max_count: 2 } }, { field: "title" }] }} />
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const group = within(await canvas.findByRole("group", { name: "Column 1: images attached to the record" }));
+    await userEvent.clear(group.getByRole("textbox", { name: "File names" }));
+    await waitFor(() => expect(nodeOf(canvasElement).columns[0]).toEqual({ images: { max_count: 2 } }));
+    await userEvent.click(group.getByRole("button", { name: "Move column 1 down" }));
+    await waitFor(() => expect(nodeOf(canvasElement).columns).toEqual([{ field: "title" }, { images: { max_count: 2 } }]));
+    await userEvent.click(canvas.getByRole("button", { name: /Remove column 2/ }));
+    await waitFor(() => expect(nodeOf(canvasElement).columns).toEqual([{ field: "title" }]));
+  },
+};
+
+export const ReadOnlyHasNoAddImagesColumn: Story = {
+  render: () => (
+    <Harness field={columnsField()} names={tableNames} initial={{ type: "table", columns: [{ images: {} }] }} environment={{ ...env, readOnly: true }} />
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("group", { name: "Column 1: images attached to the record" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Add images column" })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("textbox", { name: "File names" })).toBeDisabled();
+  },
+};
+
+const repeatField = (): BlockField => buildBlockCatalogue().layout_fields.find((f) => f.key === "repeat_table_header")!;
+
+/** A switch that is on unless set off: absent means on, switching off stores false, switching on again removes the key. */
+export const TheRepeatHeaderSwitchIsOnUnlessSetOff: Story = {
+  render: () => <Harness field={repeatField()} initial={{ family: "document" }} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const box = canvas.getByRole("checkbox", { name: "Repeat table header rows" });
+    await expect(box).toBeChecked();
+    await userEvent.click(box);
+    await waitFor(() => expect(nodeOf(canvasElement).repeat_table_header).toBe(false));
+    await expect(box).not.toBeChecked();
+    await userEvent.click(box);
+    await waitFor(() => expect(nodeOf(canvasElement)).not.toHaveProperty("repeat_table_header"));
+    await expect(box).toBeChecked();
+  },
+};
+
+export const AnExplicitTrueIsShownOn: Story = {
+  render: () => <Harness field={repeatField()} initial={{ family: "document", repeat_table_header: true }} />,
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByRole("checkbox", { name: "Repeat table header rows" })).toBeChecked();
+  },
+};

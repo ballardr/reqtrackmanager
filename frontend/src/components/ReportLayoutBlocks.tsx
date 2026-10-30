@@ -15,6 +15,10 @@
  *   blocks in place (selection and scroll stay), a change in shape rebuilds the workspace.
  * - Add blocks from one dropdown ("Add block") at a place it names: after the selected block, inside it, or at the
  *   end of the layout. The block is created in the workspace itself, so Ctrl+Z undoes the addition like a drag.
+ * - Save the selected block, with everything inside it, as a snippet ("Save as snippet"; the designer owns the dialog).
+ * - Insert a snippet at the same place, or at the start of the layout ("Insert snippet", `ReportSnippetPicker`): the server returns the new tree; its
+ *   root-level changes (page styles, variables) are taken as they are and its blocks are created in the workspace in one
+ *   undo group, so Ctrl+Z removes them together.
  * - Follow the app's light and dark themes.
  *
  * Design decisions: there is no Blockly toolbox (flyout palette): it took a column of the canvas and listed the least
@@ -27,7 +31,10 @@
 import * as Blockly from "blockly/core";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import type { BlockCatalogue, BlockType, LayoutFamily, ReportFieldCatalogue, ReportImageLibrary, ReportWidget, TreeProblem } from "../api/reportLayouts";
+import type {
+  BlockCatalogue, BlockType, LayoutFamily, ReportFieldCatalogue, ReportImageLibrary, ReportLayoutApi, ReportSnippet, ReportWidget, SnippetApplyResult,
+  TreeProblem,
+} from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";
 import {
   ROOT_INPUT, ROOT_TYPE, SUMMARY_FIELD, blockSummary, chainToNodes, controlValue, inlineFields, layoutType, looseBlockCount,
@@ -37,10 +44,15 @@ import { buildTheme, registerBlocks } from "../utils/reportLayoutBlocklyBlocks";
 import {
   cloneNode, formatPath, listAt, namesInScope, nodeAt, parsePath, problemsForNode, setAt, stableJson, summarise, type Seg, type Tree, type TreeNode,
 } from "../utils/reportLayoutTree";
+import type { SnippetSelection } from "../api/reportSnippets";
+import { insertedBlocks, withBlocksOf } from "../utils/reportSnippets";
+import { selectionOfBlock } from "../utils/reportSnippetSelection";
 import { MenuButton } from "./MenuButton";
 import { ReportLayoutJsonField } from "./ReportLayoutJsonField";
 import { ReportLayoutBlockField, type BlockEnv } from "./ReportLayoutBlockField";
 import { ReportLayoutSettings } from "./ReportLayoutSettings";
+import { ReportSnippetPicker, type SnippetPlace } from "./ReportSnippetPicker";
+import type { SnippetNoticeData } from "./ReportSnippetNotice";
 
 /** Maps each block of the workspace to its tree path (`nodes[1].children[0]`). */
 function indexPaths(ws: Blockly.WorkspaceSvg): Map<string, string> {
@@ -123,9 +135,11 @@ function describeBlock(node: TreeNode, type: BlockType | undefined): string {
  * @param readOnly A layout shared from elsewhere: shown, not editable.
  * @param toolbarEnd Controls the designer puts at the end of the toolbar above the canvas (the preview buttons).
  * @param images The picture library an image block chooses from (absent where the layout has none).
+ * @param snippets The snippet calls, and what to tell the designer after an insertion; with `images` (a snippet may need a
+ *   picture), else no Insert snippet button. `onSave`, when given, adds Save as snippet for the selected block.
  */
 export function ReportLayoutBlocks({
-  tree, onChange, family, blocks, catalogue, widgets, problems, readOnly = false, toolbarEnd, images,
+  tree, onChange, family, blocks, catalogue, widgets, problems, readOnly = false, toolbarEnd, images, snippets,
 }: {
   tree: Tree;
   onChange: (next: Tree) => void;
@@ -137,8 +151,16 @@ export function ReportLayoutBlocks({
   readOnly?: boolean;
   toolbarEnd?: ReactNode;
   images?: { library: ReportImageLibrary; scope: "organization" | "project" };
+  snippets?: {
+    api: Pick<ReportLayoutApi, "snippets" | "applySnippet">;
+    onInserted: (notice: SnippetNoticeData) => void;
+    /** Saves the selected block (with everything inside it) as a snippet: the run of blocks and words that name it. */
+    onSave?: (selection: SnippetSelection, label: string) => void;
+  };
 }) {
   const text = useStrings().reportOutline;
+  const snippetText = useStrings().reportSnippets;
+  const [pickerOpen, setPickerOpen] = useState(false);
   const host = useRef<HTMLDivElement>(null);
   const workspace = useRef<Blockly.WorkspaceSvg | null>(null);
   /** The tree the workspace shows; an incoming tree equal to it needs no redraw. */
@@ -276,13 +298,13 @@ export function ReportLayoutBlocks({
   const target = targets[chosenTarget.selected === selected ? Math.min(chosenTarget.index, targets.length - 1) : 0];
 
   /**
-   * Adds a block made from `template` to the child list `list` at `index`, as one undoable step, and selects it so its
-   * settings open in the inspector. The block is made in the workspace and reaches the tree through its change events,
-   * like a block dragged in.
+   * Adds blocks made from `templates` to the child list `list` from `index`, as one undoable step, and selects the first
+   * so its settings open in the inspector. The blocks are made in the workspace and reach the tree through its change
+   * events, like blocks dragged in.
    */
-  function addAt(list: Seg[], index: number, template: TreeNode) {
+  function addAll(list: Seg[], index: number, templates: TreeNode[]) {
     const ws = workspace.current;
-    if (!ws) return;
+    if (!ws || templates.length === 0) return;
     const paths = indexPaths(ws);
     const containerKey = String(list[list.length - 1]);
     const owner = list.length === 1 ? ws.getTopBlocks(false).find((b) => b.type === ROOT_TYPE) : ws.getBlockById([...paths].find(([, p]) => p === formatPath(list.slice(0, -1)))?.[0] ?? "");
@@ -290,18 +312,54 @@ export function ReportLayoutBlocks({
     if (!owner || !connection) return;
     Blockly.Events.setGroup(true);
     try {
-      const block = Blockly.serialization.blocks.append(nodeToBlockState(cloneNode(template), types), ws, { recordUndo: true }) as Blockly.BlockSvg;
-      let before: Blockly.Block | null = null;
-      for (let at = connection.targetBlock(), i = 0; at && i < index; at = at.getNextBlock(), i += 1) before = at;
-      if (before?.nextConnection && block.previousConnection) before.nextConnection.connect(block.previousConnection);
-      else if (block.previousConnection) connection.connect(block.previousConnection);
+      let first: Blockly.BlockSvg | null = null;
+      templates.forEach((template, offset) => {
+        const block = Blockly.serialization.blocks.append(nodeToBlockState(cloneNode(template), types), ws, { recordUndo: true }) as Blockly.BlockSvg;
+        let before: Blockly.Block | null = null;
+        for (let at = connection.targetBlock(), i = 0; at && i < index + offset; at = at.getNextBlock(), i += 1) before = at;
+        if (before?.nextConnection && block.previousConnection) before.nextConnection.connect(block.previousConnection);
+        else if (block.previousConnection) connection.connect(block.previousConnection);
+        first ??= block;
+      });
+      const toSelect = first as Blockly.BlockSvg | null;
       // The menu that was clicked gives focus back to its button as it closes, which would deselect the block, so wait for that.
       setTimeout(() => {
-        if (!block.isDeadOrDying()) Blockly.common.setSelected(block);
+        if (toSelect && !toSelect.isDeadOrDying()) Blockly.common.setSelected(toSelect);
       }, 0);
     } finally {
       Blockly.Events.setGroup(false);
     }
+  }
+
+  /** The selected block as the run Save as snippet saves, or `null` with nothing selected. */
+  const savable = addr && node ? selectionOfBlock(addr) : null;
+
+  /** Where a snippet can go: the place Add block states, and the start of the layout (a cover page or a logo belongs there). */
+  const snippetPlaces: SnippetPlace[] = [
+    { container: formatPath(target.list), index: target.index, label: target.label },
+    ...(target.list.length === 1 && target.index === 0 ? [] : [{ container: ROOT_INPUT, index: 0, label: snippetText.atStart }]),
+  ];
+
+  /** Adds one block made from `template`. */
+  const addAt = (list: Seg[], index: number, template: TreeNode) => addAll(list, index, [template]);
+
+  /**
+   * Puts an applied snippet in the layout: the server's root-level changes (page styles, variables) are taken as they are,
+   * then its blocks are created in the workspace in one undo group.
+   */
+  function insertSnippet(result: SnippetApplyResult, snippet: ReportSnippet) {
+    const placed = insertedBlocks(result);
+    if (!placed || result.tree === null) return;
+    const merged = withBlocksOf(result.tree, shown.current.tree);
+    const json = stableJson(merged);
+    // The workspace's own events build the next tree from `shown`, so it must hold the root changes before the blocks arrive.
+    if (json !== shown.current.json) {
+      shown.current = { tree: merged, json };
+      onChange(merged);
+    }
+    addAll(placed.list, placed.index, placed.nodes);
+    setPickerOpen(false);
+    snippets?.onInserted({ name: snippet.name, changes: result.changes, problemsElsewhere: result.problems_elsewhere });
   }
 
   /** A dropdown listing every block that can be added, which adds the chosen one at `place`. */
@@ -328,6 +386,18 @@ export function ReportLayoutBlocks({
         {!readOnly && (
           <>
             {addMenu(text.addBlock, () => target)}
+            {snippets && images && (
+              <button type="button" className="btn" aria-haspopup="dialog" onClick={() => setPickerOpen(true)}>{snippetText.insertButton}</button>
+            )}
+            {snippets?.onSave && (
+              <button
+                type="button" className="btn" aria-haspopup="dialog" disabled={savable === null}
+                title={savable === null ? snippetText.saveButtonHint : undefined}
+                onClick={() => { if (savable) snippets.onSave?.(savable, snippetText.saveSelected(describeBlock(node ?? {}, type))); }}
+              >
+                {snippetText.saveButton}
+              </button>
+            )}
             {targets.length > 1 ? (
               <select
                 className="input blocks-target" aria-label={text.addWhere} value={targets.indexOf(target)}
@@ -342,6 +412,13 @@ export function ReportLayoutBlocks({
         )}
         {toolbarEnd && <span className="blocks-toolbar-end">{toolbarEnd}</span>}
       </div>
+      {pickerOpen && snippets && images && (
+        <ReportSnippetPicker
+          api={snippets.api} family={family} blockTypes={types} tree={tree} images={images}
+          places={snippetPlaces}
+          onClose={() => setPickerOpen(false)} onInserted={insertSnippet}
+        />
+      )}
       <div className="blocks-host">
         <div className="blocks-layout">
           <div className="blocks-stage">

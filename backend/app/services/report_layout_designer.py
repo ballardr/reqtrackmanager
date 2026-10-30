@@ -54,6 +54,7 @@ from app.services.report_layout_block_schema import FIELD_KINDS, LAYOUT_FIELDS, 
 from app.services.report_layout_tree import (
     BLOCK_SPECS,
     GROUP_FIELDS,
+    IMAGE_COLUMN_FIELDS,
     LIST_OPERATORS,
     OPERATORS_BY_KIND,
     TREE_SCHEMA_VERSION,
@@ -211,6 +212,7 @@ class BlockCatalogue:
 
     blocks: list[BlockDescription]
     layout_fields: tuple[BlockField, ...]
+    image_column_fields: tuple[BlockField, ...]
     field_kinds: tuple[str, ...]
     operators: dict[str, tuple[str, ...]]
     valueless_operators: tuple[str, ...]
@@ -228,7 +230,7 @@ def block_catalogue() -> BlockCatalogue:
         for spec in BLOCK_SPECS.values()
     ]
     return BlockCatalogue(
-        blocks, LAYOUT_FIELDS, FIELD_KINDS, dict(OPERATORS_BY_KIND), VALUELESS_OPERATORS, LIST_OPERATORS, TREE_SCHEMA_VERSION,
+        blocks, LAYOUT_FIELDS, IMAGE_COLUMN_FIELDS, FIELD_KINDS, dict(OPERATORS_BY_KIND), VALUELESS_OPERATORS, LIST_OPERATORS, TREE_SCHEMA_VERSION,
     )
 
 

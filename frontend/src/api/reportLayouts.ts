@@ -138,6 +138,8 @@ export interface TextParseResult {
   ok: boolean;
   tree: ReportLayoutTree | null;
   errors: TextError[];
+  /** The 1-based line each block starts on, by tree path (`nodes[2]`, `nodes[2].children[0]`); empty after a syntax error. */
+  block_lines?: Record<string, number>;
 }
 
 /** A field of a record type (`ReportFieldOut`). */
@@ -236,6 +238,8 @@ export interface BlockType {
 export interface BlockCatalogue {
   blocks: BlockType[];
   layout_fields: BlockField[];
+  /** The settings of an image column (the pictures attached to each row's record), drawn with the shared field forms. */
+  image_column_fields: BlockField[];
   field_kinds: string[];
   /** The operators a condition accepts on a field of each kind (`text`, `enum`, `number`, `date`, …). */
   operators: Record<string, string[]>;
@@ -301,6 +305,64 @@ export interface PreviewResult {
   projects: number;
 }
 
+/** The output formats a snippet's result is true in. */
+export type SnippetFormat = "html" | "pdf" | "docx" | "odt";
+
+/** What a person calls each output format. */
+export const SNIPPET_FORMAT_LABEL: Record<SnippetFormat, string> = { html: "HTML", pdf: "PDF", docx: "Word", odt: "OpenDocument" };
+
+/** What a snippet parameter asks for: a library picture, a record type the scope can report, or a short text. */
+export type SnippetParameterKind = "image" | "record_type" | "text";
+
+/** One choice the person makes when inserting a snippet (`ReportSnippetParameterOut`). */
+export interface SnippetParameter {
+  key: string;
+  label: string;
+  kind: SnippetParameterKind;
+  help: string;
+  required: boolean;
+  default: string | null;
+  max_length: number | null;
+  /** The record types to choose from (`record_type` only). */
+  choices: { value: string; label: string }[];
+}
+
+/** A snippet a scope can insert (`ReportSnippetOut`). `module_key` is `null` for a platform snippet; `saved_id` is set for one an author saved. */
+export interface ReportSnippet {
+  key: string;
+  name: string;
+  description: string;
+  category: string;
+  family: LayoutFamily;
+  formats: SnippetFormat[];
+  module_key: string | null;
+  /** The saved snippet's id and where this scope sees it from; `null` for a built-in or module snippet. */
+  saved_id?: string | null;
+  origin?: LayoutOrigin | null;
+  parameters: SnippetParameter[];
+  /** The fragment, for the picker's outline. */
+  blocks: Record<string, unknown>[];
+}
+
+/** Where a snippet goes: a list of blocks (`nodes`, `nodes[2].children`) and an index in it (`null`: the end). */
+export interface SnippetTarget {
+  container: string;
+  index: number | null;
+}
+
+/** The result of inserting a snippet into a draft (`ReportSnippetApplyOut`); nothing is stored. */
+export interface SnippetApplyResult {
+  ok: boolean;
+  tree: ReportLayoutTree | null;
+  changes: string[];
+  errors: { path: string; message: string }[];
+  /** The path of the first inserted block (`nodes[3]`). */
+  inserted_at: string | null;
+  count: number;
+  /** How many problems the layout already had, which the insertion left alone. */
+  problems_elsewhere: number;
+}
+
 /** The calls the designer and the layout list make, bound to one scope (injectable so stories stay off the network). */
 export interface ReportLayoutApi {
   scope: LayoutScope;
@@ -322,6 +384,10 @@ export interface ReportLayoutApi {
   blocks(): Promise<BlockCatalogue>;
   /** Checks a draft tree and lists every problem with its path (nothing is stored). */
   validate(tree: ReportLayoutTree): Promise<TreeCheck>;
+  /** The snippets the scope can insert, with each parameter's choices. */
+  snippets(): Promise<ReportSnippet[]>;
+  /** Builds the draft tree with a snippet inserted (200 either way: a refusal lists why; nothing is stored). */
+  applySnippet(key: string, body: { tree: ReportLayoutTree; parameters: Record<string, string>; target: SnippetTarget }): Promise<SnippetApplyResult>;
   /** The picture library an image block draws from: this scope's own pictures and, for a project, the organisation's. */
   images: ReportImageLibrary;
   preview(body: PreviewRequest): Promise<PreviewResult>;
@@ -369,6 +435,8 @@ export function reportLayoutApi(scope: LayoutScope): ReportLayoutApi {
     widgets: () => api.get<ReportWidget[]>(`${base}/widgets`),
     blocks: () => api.get<BlockCatalogue>(`${base}/blocks`),
     validate: (tree) => api.post<TreeCheck>(`${base}/validate`, { tree }),
+    snippets: () => api.get<ReportSnippet[]>(`${base}/snippets`),
+    applySnippet: (key, body) => api.post<SnippetApplyResult>(`${base}/snippets/${encodeURIComponent(key)}/apply`, body),
     preview: (body) => api.post<PreviewResult>(`${base}/preview`, body),
     draftVariables: (text) => api.post<DraftVariables>(`${base}/variables`, { text }),
     images: {

@@ -26,6 +26,12 @@ Approves a draft or reviewed requirement (the same transition the UI's "Approve"
 
 Parameters: `project_id` (string), `requirement_id*` (string), `comment` (string)
 
+## `check_report_snippet` (read)
+
+Checks what saving a run of blocks of a layout tree you hold as a snippet would store, or why it cannot be saved. Stores nothing. Needs the layout-management permission.
+
+Parameters: `tree*` (object), `container` (string), `start` (integer), `count` (integer), `to_organization` (boolean), `project_id` (string), `organization_id` (string)
+
 ## `complete_requirement` (approval)
 
 Marks an approved requirement completed (the same transition the UI's "Mark completed" action performs).
@@ -37,6 +43,12 @@ Parameters: `project_id` (string), `requirement_id*` (string)
 Copies report layouts, packs, folders and module-report placements from one project to another project of the same organisation. Needs the layout-management permission in BOTH projects. Preview first (the default), then apply.
 
 Parameters: `source_project_id*` (string), `target_project_id*` (string), `layout_ids` (list[string]), `pack_ids` (list[string]), `folders` (list[string]), `placement_keys` (list[string]), `on_conflict` (string), `favourites` (boolean), `dry_run` (boolean)
+
+## `copy_saved_report_snippet` (write)
+
+Copies a saved snippet to a snippet of its own: into the project (a copy of one it inherits, as an editable basis) or up to the organisation, or within the organisation. Needs the layout-management permission where the copy lands (and the organisation's for a copy up). A project picture cannot be copied up (the picture is named). The default name is "<name> (copy)".
+
+Parameters: `snippet_id*` (string), `project_id` (string), `organization_id` (string), `to_organization` (boolean), `name` (string)
 
 ## `create_artefact_link` (write)
 
@@ -73,6 +85,12 @@ Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (st
 Deletes a layout the scope owns, with every version and the introduction/chapters/appendices written for it. Irreversible: confirm with the user first. (A layout a project only inherits is not deleted here.)
 
 Parameters: `layout_id*` (string), `project_id` (string), `organization_id` (string)
+
+## `delete_saved_report_snippet` (write)
+
+Deletes a saved snippet the scope owns. Layouts already built from it are unchanged. Irreversible: confirm with the user first. (A snippet a project only inherits is hidden instead: `set_saved_report_snippet_visibility`.)
+
+Parameters: `snippet_id*` (string), `project_id` (string), `organization_id` (string)
 
 ## `duplicate_report` (write)
 
@@ -169,6 +187,12 @@ Parameters: `project_id` (string), `requirement_id*` (string)
 Gets a requirement's full version history — every prior state it has been in.
 
 Parameters: `project_id` (string), `requirement_id*` (string)
+
+## `get_saved_report_snippet` (read)
+
+Reads one saved report snippet with its blocks. Needs the layout-management permission.
+
+Parameters: `snippet_id*` (string), `project_id` (string), `organization_id` (string)
 
 ## `list_artefact_link_browse` (read)
 
@@ -286,6 +310,12 @@ Lists requirements in a project, with the same filters the Requirements page's f
 
 Parameters: `project_id` (string), `status` (string), `search` (string), `keyword` (string), `component_id` (string), `category_id` (string), `include_archived` (boolean), `tags` (list[string]), `tag_mode` (string)
 
+## `list_saved_report_snippets` (read)
+
+Lists the report snippets authors have saved for a scope, to manage them: the project's own, its ancestors' and the organisation's (hidden ones flagged), or the organisation's own. Needs the layout-management permission. (`list_report_snippets` lists what a layout can insert, saved ones included, but not the hidden ones.)
+
+Parameters: `project_id` (string), `organization_id` (string)
+
 ## `list_tags` (read)
 
 Lists the tags a project offers and how new tags are treated.
@@ -334,6 +364,12 @@ Saves a new version of a layout the scope owns. Earlier versions stay, and past 
 
 Parameters: `layout_id*` (string), `tree*` (object), `base_version*` (integer), `comment` (string), `project_id` (string), `organization_id` (string)
 
+## `save_report_snippet` (write)
+
+Saves a run of blocks of a layout tree you hold as a reusable snippet, for a project or the organisation. Needs the layout-management permission for that scope (and the organisation's for `to_organization` from a project).
+
+Parameters: `name*` (string), `tree*` (object), `container` (string), `start` (integer), `count` (integer), `description` (string), `category` (string), `to_organization` (boolean), `project_id` (string), `organization_id` (string)
+
 ## `search_artefact_link_candidates` (read)
 
 Finds the record to link an artefact to: use it to get the `other_id` that `create_artefact_link` needs.
@@ -352,6 +388,12 @@ Makes a record carry exactly these tags, adding and removing as needed.
 
 Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `tags*` (list[string])
 
+## `set_saved_report_snippet_visibility` (write)
+
+Hides a saved snippet the project inherits (from the organisation or a parent project), or shows it again. It stops being offered in that project only; the snippet itself is unchanged. Needs the project's layout-management permission.
+
+Parameters: `snippet_id*` (string), `hidden*` (boolean), `project_id` (string)
+
 ## `update_report_layout` (write)
 
 Renames, re-describes or re-files a layout the scope owns (its tree is changed with `save_report_layout_version`).
@@ -363,3 +405,9 @@ Parameters: `layout_id*` (string), `name` (string), `description` (string), `fol
 Edits an unlocked requirement's content in place.
 
 Parameters: `project_id` (string), `requirement_id*` (string), `name` (string), `reasoning` (string), `clarification` (string), `description` (string), `component_id` (string), `category_id` (string), `owner` (object), `target_stage_id` (string), `level` (string), `keywords` (list[string]), `custom_fields` (object), `review_date` (string), `review_lead_days` (integer), `reviewer` (object), `change_note` (string)
+
+## `update_saved_report_snippet` (write)
+
+Renames or re-describes a saved snippet the scope owns (its blocks do not change). Needs the layout-management permission.
+
+Parameters: `snippet_id*` (string), `name` (string), `description` (string), `category` (string), `project_id` (string), `organization_id` (string)

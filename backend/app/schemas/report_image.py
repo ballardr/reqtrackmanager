@@ -23,7 +23,7 @@ class ReportImageOut(BaseModel):
         size_bytes: Stored size.
         tier: `organisation` (every project's layouts may use it) or `project`.
         owned: Whether the library being listed owns it, that is, whether its manager may delete it.
-        used_by: Names of the layouts whose current version uses it.
+        used_by: Names of the layouts whose current version uses it, and of the saved snippets that do ("<name> (snippet)").
         in_older_versions: True when no layout's current version uses it but an older saved version does.
         created_at: Upload time (UTC).
     """

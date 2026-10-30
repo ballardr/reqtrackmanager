@@ -11,8 +11,8 @@ import { fn } from "storybook/test";
 
 import type { FileDetails } from "../api/fileDetails";
 import type {
-  BlockCatalogue, BlockField, BlockType, PreviewResult, ReportFieldCatalogue, ReportImage, TreeCheck, TreeProblem, ReportLayoutApi, ReportLayoutDetail, ReportLayoutSummary, ReportLayoutTree,
-  ReportLayoutVersion, ReportWidget, TextParseResult,
+  BlockCatalogue, BlockField, BlockType, PreviewResult, ReportFieldCatalogue, ReportImage, ReportSnippet, SnippetApplyResult, TreeCheck, TreeProblem,
+  ReportLayoutApi, ReportLayoutDetail, ReportLayoutSummary, ReportLayoutTree, ReportLayoutVersion, ReportWidget, TextParseResult,
 } from "../api/reportLayouts";
 
 /** Longest the designer takes to finish checking text after typing stops, for a story to wait on. */
@@ -175,10 +175,23 @@ export function buildBlockCatalogue(): BlockCatalogue {
       field("page_size", "Page size", "choice", { choices: ["A3", "A4", "A5", "Letter", "Legal"], default: "A4", families: ["document"] }),
       field("margins", "Margins", "margins", { families: ["document"] }),
       field("mirror_margins", "Mirror margins", "boolean", { families: ["document"] }),
+      field("repeat_table_header", "Repeat table header rows", "boolean", { default: true, families: ["document"] }),
       field("page_styles", "Page styles", "page_styles", { families: ["document"] }),
       field("header", "Header", "running_band", { families: ["document"] }),
       field("footer", "Footer", "running_band", { families: ["document"] }),
       field("variables", "Variables", "variables"),
+    ],
+    image_column_fields: [
+      field("names", "File names", "text_list", { max_length: 200, features: ["placeholders"] }),
+      field("types", "File types", "text_list", { max_length: 10 }),
+      field("max_count", "Most per row", "integer", { minimum: 1, maximum: 20, default: 5 }),
+      field("order", "Order", "choice", { choices: ["name", "uploaded"], default: "name" }),
+      field("max_size_mb", "Largest file (MB)", "number", { minimum: 0.1, maximum: 50 }),
+      field("width", "Width", "number", { minimum: 1, maximum: 1000 }),
+      field("width_unit", "Width unit", "choice", { choices: ["cm", "mm", "percent"], default: "percent", depends_on: "width" }),
+      field("height", "Height", "number", { minimum: 0.5, maximum: 1000 }),
+      field("height_unit", "Height unit", "choice", { choices: ["cm", "mm"], default: "cm", depends_on: "height" }),
+      field("arrange", "Arrangement", "choice", { choices: ["stacked", "side_by_side"], default: "stacked" }),
     ],
     field_kinds: [
       "text", "longtext", "integer", "number", "boolean", "choice", "tex", "alias", "record_field", "source", "columns", "joins", "condition",
@@ -317,12 +330,81 @@ export function buildSheetPreview(): PreviewResult {
   };
 }
 
+/** The snippets a stand-in scope offers: a cover page (no parameters), a logo (a picture), record images (a record type) and a table one. */
+export function buildSnippets(): ReportSnippet[] {
+  return [
+    {
+      key: "cover_page", name: "Cover page", description: "Title, project and run date, then a page break.", category: "Cover and front matter", family: "document",
+      formats: ["html", "pdf", "docx", "odt"], module_key: null, parameters: [],
+      blocks: [{ type: "heading", text: "{{project_name}}", level: 1 }, { type: "text", text: "Run on {{run_date}}" }, { type: "page_break" }],
+    },
+    {
+      key: "cover_logo", name: "Logo, top right of the first page", description: "A picture from the library, in front of the text at the top right of the first page.",
+      category: "Cover and front matter", family: "document", formats: ["pdf", "docx", "odt"], module_key: null,
+      parameters: [{ key: "logo", label: "Logo", kind: "image", help: "The picture to place. It must be in this layout's library.", required: true, default: null, max_length: null, choices: [] }],
+      blocks: [{ type: "image", file: "", placement: "front", anchor: "page" }],
+    },
+    {
+      key: "record_images", name: "Record images", description: "Each record of a type, with the pictures attached to it.", category: "Records", family: "document",
+      formats: ["html", "pdf", "docx", "odt"], module_key: null,
+      parameters: [
+        {
+          key: "record_type", label: "Record type", kind: "record_type", help: "The records to show pictures for.", required: true, default: null, max_length: null,
+          choices: [{ value: "requirement", label: "Requirement" }, { value: "pain_point", label: "Pain point" }],
+        },
+        { key: "caption", label: "Caption", kind: "text", help: "Printed under each picture.", required: false, default: "{{file_name}}", max_length: 200, choices: [] },
+      ],
+      blocks: [{ type: "each", source: { record_type: "" }, as: "record", children: [{ type: "record_images" }] }],
+    },
+    {
+      key: "landscape_table", name: "Landscape table section", description: "A section on a landscape page holding a table.", category: "Tables", family: "table",
+      formats: ["html", "pdf"], module_key: null, parameters: [], blocks: [{ type: "heading", text: "Table", level: 1 }],
+    },
+  ];
+}
+
+/**
+ * A stand-in for the server's apply: inserts the snippet's blocks (headings stand in for the rest) into the tree at the target, and
+ * mirrors the insertion into `source_text` so the Text view shows it. A missing picture or record type is refused with the server's wording;
+ * a snippet for the other family is refused.
+ */
+export function fakeApplySnippet(
+  snippets: ReportSnippet[], key: string, body: { tree: ReportLayoutTree; parameters: Record<string, string>; target: { container: string; index: number | null } },
+): SnippetApplyResult {
+  const snippet = snippets.find((s) => s.key === key);
+  const refused = (path: string, message: string): SnippetApplyResult => ({ ok: false, tree: null, changes: [], errors: [{ path, message }], inserted_at: null, count: 0, problems_elsewhere: 0 });
+  if (!snippet) return refused("", "Snippet not found.");
+  if (snippet.family !== body.tree.family) return refused("", `"${snippet.name}" is for a ${snippet.family} layout; this one is a ${String(body.tree.family)} layout.`);
+  for (const p of snippet.parameters) {
+    if (p.required && !body.parameters[p.key]) return refused(`parameters.${p.key}`, `${p.label} is required.`);
+  }
+  const root = body.target.container === "nodes";
+  const list = root ? (body.tree.nodes as unknown[]) : [];
+  const at = body.target.index ?? list.length;
+  const blocks = snippet.blocks.map((b) => ({ ...b }));
+  const nodes = [...list.slice(0, at), ...blocks, ...list.slice(at)];
+  const lines = snippet.blocks.map((b) => (b.type === "page_break" ? "@pagebreak" : `@heading ${String(b.text ?? snippet.name)}`));
+  const text = String(body.tree.source_text ?? `@layout ${String(body.tree.family)}\n`);
+  const written = body.target.index === 0 ? text.replace(/(@layout [^\n]*\n)/, `$1\n${lines.join("\n")}\n`) : `${text.replace(/\n*$/, "\n")}\n${lines.join("\n")}\n`;
+  return {
+    ok: true, tree: { ...body.tree, nodes, source_text: written, ...(snippet.key === "cover_logo" ? { page_styles: [{ name: "Cover" }] } : {}) },
+    changes: [`Inserted ${blocks.length} block${blocks.length === 1 ? "" : "s"} at ${body.target.container}[${at}].`, ...(snippet.key === "cover_logo" ? ["Added page style Cover."] : [])],
+    errors: [], inserted_at: `${body.target.container}[${at}]`, count: blocks.length, problems_elsewhere: 0,
+  };
+}
+
 /** The stand-in parser: `BROKEN` anywhere is one syntax error on its line, else the text is the tree. */
 export function fakeParse(text: string): TextParseResult {
   const lines = text.split("\n");
   const index = lines.findIndex((line) => line.includes("BROKEN"));
   if (index >= 0) return { ok: false, tree: null, errors: [{ line: index + 1, column: lines[index].indexOf("BROKEN") + 1, message: "Unknown word BROKEN." }] };
-  return { ok: true, tree: treeOf(text, text.startsWith("@layout table") ? "table" : "document"), errors: [] };
+  // A top-level block is a line that starts with an `@` word other than the layout line, a closing `@end`, a page style or a variable.
+  const blockLines: Record<string, number> = {};
+  let top = 0;
+  lines.forEach((line, i) => {
+    if (/^@(?!layout\b|end\b|pagestyle\b|var\b)/.test(line)) blockLines[`nodes[${top++}]`] = i + 1;
+  });
+  return { ok: true, tree: treeOf(text, text.startsWith("@layout table") ? "table" : "document"), errors: [], block_lines: blockLines };
 }
 
 /**
@@ -380,6 +462,8 @@ export function buildLayoutApi(
     widgets: fn(async () => buildWidgets()),
     blocks: fn(async () => buildBlockCatalogue()),
     validate: fn(async (tree: ReportLayoutTree) => fakeValidate(tree)),
+    snippets: fn(async () => buildSnippets()),
+    applySnippet: fn(async (key, body) => fakeApplySnippet(buildSnippets(), key, body)),
     preview: fn(async () => buildDocumentPreview()),
     draftVariables: fn(async () => ({ ok: true, variables: [], errors: [] })),
     images: buildImageLibrary(),

@@ -73,6 +73,7 @@ import { reportPackApi } from "../api/reportPacks";
 import { reportPlacementApi } from "../api/reportPlacements";
 import { Badge } from "../components/Badge";
 import { ReportSetupPanel } from "../components/ReportSetupPanel";
+import { ReportSnippetsPanel } from "../components/ReportSnippetsPanel";
 import { CheckboxField, InlineTextInput, TextAreaField, TextField, ToggleField } from "../components/FormFields";
 import { InlineSelect, LabeledSelect } from "../components/LabeledSelect";
 import { FormActions } from "../components/FormActions";
@@ -161,6 +162,7 @@ export function ProjectAdminPage() {
   const strings = useStrings();
   const { projectId, group: groupParam } = useParams<{ projectId: string; group?: string }>();
   const layoutApi = useMemo(() => (projectId ? reportLayoutApi({ kind: "project", id: projectId }) : null), [projectId]);
+  const snippetScope = useMemo(() => ({ kind: "project" as const, id: projectId ?? "" }), [projectId]);
   const packApi = useMemo(() => (projectId ? reportPackApi({ kind: "project", id: projectId }) : null), [projectId]);
   const placementApi = useMemo(() => (projectId ? reportPlacementApi({ kind: "project", id: projectId }) : null), [projectId]);
   const navigate = useNavigate();
@@ -2674,6 +2676,11 @@ export function ProjectAdminPage() {
         <p className="text-muted" style={{ margin: 0 }}>{strings.admin.reportSetupHint}</p>
         {layoutApi && packApi && placementApi && (
           <ReportSetupPanel layoutApi={layoutApi} packApi={packApi} placementApi={placementApi} />
+        )}
+        {projectId && (
+          <CollapsibleSection sectionKey="projectAdmin.reportSnippets" title={strings.reportSnippetsPanel.sectionTitle}>
+            <ReportSnippetsPanel scope={snippetScope} />
+          </CollapsibleSection>
         )}
       </div>
       )}
