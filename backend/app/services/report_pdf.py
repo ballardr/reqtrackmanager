@@ -14,6 +14,7 @@ Design decisions:
   image only from a file path, so the PNGs live in a temporary directory that exists for one render. The `<img>`
   tags are built here from numbers and a path this module made, never from text; one that cannot be drawn is
   printed as its source.
+- A page style's header and footer are drawn by `report_pdf_running` after the body, in the margin, with the page total known.
 - Page setup follows the document's page style (paper, orientation, margins, gutter): one ReportLab page template per
   style, switched where a `PageStyleChange` falls. Mirrored margins give each style a right-hand and a left-hand
   template that alternate, and a style change picks the one that matches the parity of the page it starts on.
@@ -37,6 +38,7 @@ from reportlab.lib.units import cm
 from reportlab.platypus import ActionFlowable, BaseDocTemplate, Frame, KeepTogether, ListFlowable, ListItem, PageTemplate, Spacer
 from reportlab.platypus import PageBreak as RlPageBreak
 from reportlab.platypus import Paragraph as RlParagraph
+from reportlab.platypus.flowables import ImageAndFlowables
 
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX
 from app.services.report_document import (
@@ -70,6 +72,8 @@ from app.services.report_model import (
     finalize_links,
     text_runs,
 )
+from app.services.report_pdf_floating import FloatingPicture
+from app.services.report_pdf_running import PageNote, RunningCanvas
 from app.services.report_svg import svg_flowable
 
 _CAPTION_ALIGN: dict[str, Any] = {"left": TA_LEFT, "center": TA_CENTER, "right": TA_RIGHT}
@@ -197,28 +201,59 @@ def _content_widths(block: Table, usable_width: float) -> list[float]:
     return [need + spare * need / sum(needs) for need in needs]
 
 
-def _image_flowables(block: Image, usable_width: float) -> list:
-    """An image block as flowables: the picture at its placed size and alignment, with its caption kept beside it.
-
-    Returns `[]` when the picture cannot be drawn, so a bad image never breaks the report.
-    """
+def _sized_picture(block: Image, usable_width: float) -> Any:
+    """The picture as a flowable at its placed size, or `None` when it cannot be drawn."""
     size = placed_size_cm(block, usable_width / cm)
     if size is None:
-        return []
+        return None
     width, height = size[0] * cm, size[1] * cm
     flowable: Any = svg_flowable(block.svg, width) if block.svg is not None else image_flowable(block.data)
     if flowable is None:
-        return []
+        return None
     if block.svg is not None and hasattr(flowable, "scale"):  # a vector drawing is scaled to the placed size
         flowable.scale(width / flowable.width, height / flowable.height)
         flowable.width, flowable.height = width, height
     else:
         flowable.drawWidth, flowable.drawHeight = width, height
     flowable.hAlign = block.align.upper()
+    return flowable
+
+
+def _image_flowables(block: Image, usable_width: float) -> list:
+    """An image block as flowables: the picture at its placed size and alignment, with its caption kept beside it.
+
+    Returns `[]` when the picture cannot be drawn, so a bad image never breaks the report.
+    """
+    flowable = _sized_picture(block, usable_width)
+    if flowable is None:
+        return []
     if not block.caption:
         return [flowable]
     caption = RlParagraph(safe(block.caption), _CAPTIONS.get(block.align, _CAPTIONS["center"]))
     return [KeepTogether([caption, flowable] if block.caption_above else [flowable, caption])]
+
+
+# Blocks the text of a wrapped picture can run through: anything that is a run of text. A table, an equation, another
+# picture or a page or style change ends the wrap, as the text cannot flow around it.
+_WRAPPABLE = (Heading, Paragraph, Note, BulletList, NumberedList, Gap)
+
+
+def _wrapped(block: Image, following: list, usable_width: float) -> list:
+    """A picture with the text flowables that follow it laid out beside it, on the side its alignment names.
+
+    The text runs beside the picture for the picture's height and then across the full width, and may continue onto the
+    next page; with no text after it the picture stands alone.
+    """
+    flowable = _sized_picture(block, usable_width)
+    if flowable is None:
+        return list(following)
+    if not following:
+        return [flowable]
+    side = "left" if block.align == "left" else "right"
+    return [ImageAndFlowables(
+        flowable, following, imageSide=side, imageLeftPadding=0 if side == "left" else 8, imageRightPadding=8 if side == "left" else 0,
+        imageBottomPadding=6,
+    )]
 
 
 def _table(block: Table, accent, usable_width: float, images: _InlineImages):
@@ -239,16 +274,26 @@ def _table(block: Table, accent, usable_width: float, images: _InlineImages):
     return styled_table(data, col_widths=widths, accent_color=accent, compact=block.compact)
 
 
+class _Doc(BaseDocTemplate):
+    """A document that remembers which pages start a section (their header and footer may differ on the first page)."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.section_starts: set[int] = {1}
+
+
 class _UseStyle(ActionFlowable):
     """Selects the page templates for the pages that follow: one template, or the right- and left-hand pair of a mirrored
     style in turn, starting with the side that matches the parity of the next page (odd pages are right-hand)."""
 
-    def __init__(self, recto: str, verso: str) -> None:
+    def __init__(self, recto: str, verso: str, section_start: bool = False) -> None:
         super().__init__(("nextPageTemplate", recto))
-        self.recto, self.verso = recto, verso
+        self.recto, self.verso, self.section_start = recto, verso, section_start
 
     def apply(self, doc) -> None:
         """Queues the template (or the alternating pair) for the page after the current one."""
+        if self.section_start:
+            doc.section_starts.add(doc.page + 1)
         if self.recto == self.verso:
             doc.handle_nextPageTemplate(self.recto)
         else:
@@ -261,13 +306,21 @@ def _template_ids(index: int, style: PageStyle) -> tuple[str, str]:
 
 
 def _page_templates(styles: list[PageStyle], footer_text: str | None) -> list[PageTemplate]:
-    """One page template per style (two when margins mirror), each with a frame inside its margins and the footer."""
+    """One page template per style (two when margins mirror), each with a frame inside its margins.
 
-    def draw_footer(canvas, doc_) -> None:
-        if footer_text:
-            canvas.saveState()
-            draw_centred(canvas, canvas._pagesize[0] / 2, _FOOTER_BASELINE, footer_text, _FOOTER_SIZE)
-            canvas.restoreState()
+    A page notes its style, side and position for the canvas to draw the style's header and footer; a style with no footer
+    (a plain report) gets the branding's footer text centred.
+    """
+
+    def page_callback(style: PageStyle, verso: bool):
+        def on_page(canvas, doc_) -> None:
+            canvas._note = PageNote(style, verso, doc_.page in doc_.section_starts, doc_.page)
+            if style.footer is None and footer_text:
+                canvas.saveState()
+                draw_centred(canvas, canvas._pagesize[0] / 2, _FOOTER_BASELINE, footer_text, _FOOTER_SIZE)
+                canvas.restoreState()
+
+        return on_page
 
     templates: list[PageTemplate] = []
     for index, style in enumerate(styles):
@@ -279,7 +332,7 @@ def _page_templates(styles: list[PageStyle], footer_text: str | None) -> list[Pa
             left, right = (edge * cm for edge in style.edges_cm(verso=is_verso))
             bottom = style.margins.bottom * cm
             frame = Frame(left, bottom, width - left - right, height - bottom - style.margins.top * cm, id=f"frame-{template_id}")
-            templates.append(PageTemplate(id=template_id, frames=[frame], onPage=draw_footer, pagesize=(width, height)))
+            templates.append(PageTemplate(id=template_id, frames=[frame], onPage=page_callback(style, is_verso), pagesize=(width, height)))
     return templates
 
 
@@ -297,9 +350,9 @@ def _build_pdf(story: list, styles: list[PageStyle], footer_text: str | None, ti
     """
     buffer = io.BytesIO()
     first = tuple(side * cm for side in styles[0].dimensions_cm)
-    doc = BaseDocTemplate(buffer, pagesize=first, title=title)
+    doc = _Doc(buffer, pagesize=first, title=title)
     doc.addPageTemplates(_page_templates(styles, footer_text))
-    doc.build(story)
+    doc.build(story, canvasmaker=RunningCanvas)
     return buffer.getvalue()
 
 
@@ -320,33 +373,50 @@ def render_pdf_document(document: ReportDocument) -> bytes:
 
     story: list = [_UseStyle(*_template_ids(0, document.style)), *title_flowables(document.title, branding)]
     images = _InlineImages()
+    wrap: tuple[Image, list] | None = None  # a wrapped picture and the flowables that run beside it so far
+
+    def flush_wrap() -> None:
+        nonlocal wrap
+        if wrap is not None:
+            story.extend(_wrapped(wrap[0], wrap[1], usable_width))
+            wrap = None
+
     for block in document.blocks:
+        if not isinstance(block, _WRAPPABLE):
+            flush_wrap()
+        out = wrap[1] if wrap is not None else story
         if isinstance(block, Heading):
             target = f'<a name="{html.escape(block.anchor, quote=True)}"/>' if block.anchor else ""
-            story.append(RlParagraph(target + _markup(block.text, images, bold=True), STYLES[f"Heading{min(max(block.level, 1), 4)}"]))
+            out.append(RlParagraph(target + _markup(block.text, images, bold=True), STYLES[f"Heading{min(max(block.level, 1), 4)}"]))
         elif isinstance(block, Paragraph):
-            story.append(RlParagraph(_markup(block.text, images), STYLES["BodyText"]))
+            out.append(RlParagraph(_markup(block.text, images), STYLES["BodyText"]))
         elif isinstance(block, Equation):
             story.extend(_display_equation(block, usable_width))
         elif isinstance(block, Note):
-            story.append(RlParagraph(safe(block.text), _NOTE))
+            out.append(RlParagraph(safe(block.text), _NOTE))
         elif isinstance(block, NumberedList):
-            story.append(_list(block.items, images, "1"))
+            out.append(_list(block.items, images, "1"))
         elif isinstance(block, BulletList):
-            story.append(_list(block.items, images, "bullet"))
+            out.append(_list(block.items, images, "bullet"))
         elif isinstance(block, Image):
-            story.extend(_image_flowables(block, usable_width))
+            if block.placement == "wrap":
+                wrap = (block, [])
+            elif block.floats:
+                story.append(FloatingPicture(block, usable_width / cm))
+            else:
+                story.extend(_image_flowables(block, usable_width))
         elif isinstance(block, Table):
             story.append(_table(block, accent, usable_width, images))
         elif isinstance(block, Gap):
-            story.append(Spacer(1, block.cm * cm))
+            out.append(Spacer(1, block.cm * cm))
         elif isinstance(block, PageBreak):
             story.append(RlPageBreak())
         elif isinstance(block, PageStyleChange):
             if block.style not in styles:
                 styles.append(block.style)
-            story += [_UseStyle(*_template_ids(styles.index(block.style), block.style)), RlPageBreak()]
+            story += [_UseStyle(*_template_ids(styles.index(block.style), block.style), block.section_start), RlPageBreak()]
             usable_width = block.style.usable_width_cm * cm
+    flush_wrap()
     try:
         return _build_pdf(story, styles, branding.footer_text if branding else None, document.title)
     finally:

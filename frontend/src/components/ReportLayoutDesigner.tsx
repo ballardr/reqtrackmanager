@@ -455,7 +455,10 @@ export function ReportLayoutDesigner({
               {editable && (
                 <div className="row" style={{ alignItems: "center", gap: "var(--space-3)" }}>
                   <ReportLayoutBlockToolbar family={detail.family} onInsert={(snippet) => insert(snippet, true)} />
-                  <ReportLayoutPageSetup text={draft} onChange={setDraft} />
+                  <ReportLayoutPageSetup
+                    text={draft} onChange={setDraft} images={{ library: api.images, scope: api.scope.kind }}
+                    placeholders={catalogue?.placeholders}
+                  />
                 </div>
               )}
               <AutoGrowTextarea

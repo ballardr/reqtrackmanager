@@ -94,6 +94,7 @@ from app.modules.stakeholders.perf_dataset import (
     generate_personas,
     generate_stakeholders,
 )
+from app.modules.stakeholders.record_attachments import NO_RECORD_ATTACHMENTS, RECORD_ATTACHMENTS
 from app.modules.stakeholders.record_tables import RECORD_TABLES
 from app.modules.stakeholders.relationships import LINK_TYPE_SEEDS
 from app.modules.stakeholders.report_fields import REPORT_FIELDS
@@ -920,6 +921,8 @@ MODULE_DEFINITION = ModuleDefinition(
     artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
     search_providers=SEARCH_PROVIDERS,
     report_fields=REPORT_FIELDS,
+    record_attachments=RECORD_ATTACHMENTS,
+    no_record_attachments=NO_RECORD_ATTACHMENTS,
     report_starter_sections=REPORT_STARTER_SECTIONS,
     record_tables=RECORD_TABLES,
     scaling_probes=SCALING_PROBES,

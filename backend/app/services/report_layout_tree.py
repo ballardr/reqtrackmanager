@@ -60,13 +60,19 @@ from datetime import date, datetime
 from typing import Any
 
 from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE, LAYOUT_FAMILIES
-from app.modules.registry import get_module_registry, get_report_field_providers
+from app.modules.registry import (
+    get_module_registry,
+    get_no_record_attachment_reasons,
+    get_record_attachment_providers,
+    get_report_field_providers,
+)
 from app.services.report_fields import FieldInfo, UnknownReportFieldError, field_catalogue
 from app.services.report_layout_block_schema import BlockContainer, BlockField, BlockProvides, BlockSchema
 from app.services.report_math import MAX_TEX_CHARS, split_math, tex_problem
 from app.services.report_model import PLACEHOLDER_NAMES
 from app.services.report_page_styles import (
     ORIENTATIONS,
+    PAGE_FIELD_NAMES,
     PAGE_SIZES,
     document_style_problems,
     resolve_page_styles,
@@ -111,6 +117,21 @@ IMAGE_HEIGHT_UNITS = ("cm", "mm")
 IMAGE_NUMBERING = ("auto", "always", "never")
 IMAGE_ALIGNMENTS = ("left", "center", "right")
 IMAGE_CAPTION_POSITIONS = ("above", "below")
+IMAGE_PLACEMENTS = ("inline", "wrap", "behind", "front")
+IMAGE_ANCHORS = ("paragraph", "margin", "page")
+IMAGE_OFFSET_LIMIT_CM = 100.0
+#: A record-images block (the pictures attached to a record): allowed file extensions, the limits on its name patterns and
+#: count, the orderings, the caption sources and the placements it offers (a picture layered over the text has no meaning
+#: for a picture per record).
+RECORD_IMAGE_EXTENSIONS = ("png", "jpg", "jpeg", "gif", "webp", "svg")
+MAX_NAME_PATTERNS = 10
+MAX_PATTERN_CHARS = 200
+MAX_PATTERN_STARS = 4
+MAX_PICTURES_PER_RECORD = 20
+MAX_PICTURE_MEGABYTES = 50
+RECORD_IMAGE_ORDERS = ("name", "uploaded")
+RECORD_IMAGE_CAPTIONS = ("file_name", "text", "none")
+RECORD_IMAGE_PLACEMENTS = ("inline", "wrap")
 MAX_TREE_BYTES = 512_000
 MAX_ERRORS = 50
 
@@ -349,7 +370,7 @@ class TreeValidator:
 
         self.check_keys(
             tree, "", required=("schema_version", "family", "nodes"),
-            optional=("orientation", "page_size", "margins", "mirror_margins", "page_styles", "variables"),
+            optional=("orientation", "page_size", "margins", "mirror_margins", "page_styles", "header", "footer", "variables"),
         )
         if tree.get("schema_version") != TREE_SCHEMA_VERSION:
             self.error("schema_version", f"Must be {TREE_SCHEMA_VERSION}.")
@@ -373,6 +394,11 @@ class TreeValidator:
         self.page_styles(tree, declared)
         if "variables" in tree:
             self.variable_declarations(tree["variables"], "variables")
+        if declared == FAMILY_DOCUMENT:
+            self.running_text(tree, "")
+            for i, style in enumerate(tree["page_styles"] if isinstance(tree.get("page_styles"), list) else []):
+                if isinstance(style, dict):
+                    self.running_text(style, f"page_styles[{i}].")
         nodes = tree.get("nodes")
         if isinstance(nodes, list):
             self.nodes(nodes, "nodes", 1)
@@ -382,7 +408,7 @@ class TreeValidator:
 
     def page_styles(self, tree: dict[str, Any], family: str) -> None:
         """Checks the root's margins and page styles and notes the names a `section` block may use."""
-        keys = [k for k in ("margins", "mirror_margins", "page_styles") if k in tree]
+        keys = [k for k in ("margins", "mirror_margins", "page_styles", "header", "footer") if k in tree]
         if family != FAMILY_DOCUMENT:
             for key in keys:
                 self.error(key, "Only a document layout has pages.")
@@ -391,18 +417,42 @@ class TreeValidator:
             self.error("mirror_margins", "Must be true or false.")
         for sub, message in document_style_problems(tree):
             self.error(sub, message)
+        own_valid = not any(p.path.startswith(("margins", "page_size", "orientation", "header", "footer")) for p in self.analysis.errors)
         if "page_styles" not in tree:
             return
-        own_valid = not any(p.path.startswith(("margins", "page_size", "orientation")) for p in self.analysis.errors)
         document = resolve_page_styles({k: v for k, v in tree.items() if k != "page_styles"})[0] if own_valid else None
         if document is None:
             self.error("page_styles", "Fix the document's own page setup first.")
             return
-        for sub, message in styles_problems(tree["page_styles"], document, mirror=tree.get("mirror_margins") is True):
+        inherited = {band: tree[band] for band in ("header", "footer") if isinstance(tree.get(band), dict)}
+        for sub, message in styles_problems(tree["page_styles"], document, mirror=tree.get("mirror_margins") is True, inherited=inherited):
             self.error(f"page_styles{sub}", message)
+
         self.page_style_names = {
             style["name"] for style in tree["page_styles"] if isinstance(style, dict) and isinstance(style.get("name"), str)
         }
+
+    def running_text(self, holder: dict[str, Any], prefix: str) -> None:
+        """Checks the `{{...}}` names in the cells of a root's or page style's header and footer.
+
+        A header or footer reads the report-wide placeholders, `{{page}}`, `{{pages}}` and run-time variables, but no
+        record field (it is printed on every page, outside any record).
+        """
+        for band in ("header", "footer"):
+            cells = holder.get(band)
+            if not isinstance(cells, dict):
+                continue
+            for slot in ("left", "centre", "right"):
+                text = cells.get(slot)
+                for match in PLACEHOLDER_RE.finditer(text) if isinstance(text, str) else ():
+                    name, member = match.group(1), match.group(2)
+                    here = f"{prefix}{band}.{slot}"
+                    if member is None and name not in (*PLACEHOLDER_NAMES, *PAGE_FIELD_NAMES):
+                        self.error(here, f'Unknown placeholder "{{{{{name}}}}}". Use: {", ".join((*PLACEHOLDER_NAMES, *PAGE_FIELD_NAMES))}.')
+                    elif member is not None and name != PLACEHOLDER_FAMILY:
+                        self.error(here, f'"{{{{{name}.{member}}}}}" names a record field, which a header or footer cannot read.')
+                    elif member is not None and member not in self.variables:
+                        self.error(here, f'"{member}" is not a variable of this layout.')
 
     def error(self, path: str, message: str) -> None:
         """Records a problem (silently dropped past `MAX_ERRORS`)."""
@@ -978,6 +1028,7 @@ def _validate_image(v: TreeValidator, node: dict[str, Any], path: str) -> None:
         node, path, required=("type", "file"),
         optional=(
             "alt", "decorative", "width", "width_unit", "height", "height_unit", "align", "caption", "caption_position", "numbering",
+            "placement", "anchor", "offset_x", "offset_y",
         ),
     )
     raw = node.get("file", MISSING)
@@ -1010,6 +1061,129 @@ def _validate_image(v: TreeValidator, node: dict[str, Any], path: str) -> None:
     if "caption" in node:
         caption = v.text(node["caption"], f"{path}.caption", limit=MAX_CAPTION_CHARS)
         v.placeholders(caption, f"{path}.caption")
+    _validate_image_placement(v, node, path)
+
+
+def _validate_image_placement(v: TreeValidator, node: dict[str, Any], path: str) -> None:
+    """How the picture sits on the page: a mode, and only the settings that mode uses.
+
+    A setting the mode ignores is refused rather than silently dropped, so what the designer shows is what every format
+    prints: text wraps only beside a picture aligned left or right, and a layered picture has no caption (a caption is a
+    line of text that belongs to a picture on a line of its own).
+    """
+    placement = node.get("placement", "inline")
+    if placement not in IMAGE_PLACEMENTS:
+        v.error(f"{path}.placement", f"Must be one of: {', '.join(IMAGE_PLACEMENTS)}.")
+        return
+    if "anchor" in node and node["anchor"] not in IMAGE_ANCHORS:
+        v.error(f"{path}.anchor", f"Must be one of: {', '.join(IMAGE_ANCHORS)}.")
+    for key in ("offset_x", "offset_y"):
+        if key not in node:
+            continue
+        value = node[key]
+        if not isinstance(value, int | float) or isinstance(value, bool) or abs(value) > IMAGE_OFFSET_LIMIT_CM:
+            v.error(f"{path}.{key}", f"Must be a number of centimetres from -{IMAGE_OFFSET_LIMIT_CM:g} to {IMAGE_OFFSET_LIMIT_CM:g}.")
+    layered = placement in ("behind", "front")
+    if not layered:
+        for key in ("anchor", "offset_x", "offset_y"):
+            if key in node:
+                v.error(f"{path}.{key}", f"Only a picture placed behind or in front of the text has a position; this one is {placement}.")
+    if placement == "wrap" and node.get("align", "center") not in ("left", "right"):
+        v.error(f"{path}.align", "Text wraps beside a picture aligned left or right: choose which side the picture is on.")
+    if layered and "align" in node:
+        v.error(f"{path}.align", f"A picture {placement} the text is placed by its anchor and offsets, not an alignment.")
+    if placement != "inline":
+        for key in ("caption", "caption_position", "numbering"):
+            if key in node:
+                v.error(f"{path}.{key}", "A caption goes with a picture on a line of its own; use placement inline for it.")
+
+
+def _enclosing_record(v: TreeValidator) -> Binding | None:
+    """The record of the nearest enclosing block that brings one into scope, or `None`."""
+    for binding in reversed(list(v.scope.values())):
+        if binding.kind == "record":
+            return binding
+    return None
+
+
+def _text_list(v: TreeValidator, node: dict[str, Any], key: str, path: str, *, limit: int, chars: int) -> list[tuple[int, str]]:
+    """The `(index, text)` of each entry of a list of at most `limit` non-empty texts of at most `chars` characters.
+
+    Errors are recorded and a bad entry dropped."""
+    if key not in node:
+        return []
+    value = node[key]
+    if not isinstance(value, list) or len(value) > limit:
+        v.error(f"{path}.{key}", f"Must be a list of at most {limit} entries.")
+        return []
+    kept: list[tuple[int, str]] = []
+    for i, item in enumerate(value):
+        text = v.text(item, f"{path}.{key}[{i}]", limit=chars)
+        if text is not None:
+            kept.append((i, text))
+    return kept
+
+
+def _validate_record_images(v: TreeValidator, node: dict[str, Any], path: str) -> None:
+    v.check_keys(
+        node, path, required=("type",),
+        optional=(
+            "names", "types", "max_count", "order", "max_size_mb", "caption_source", "caption", "caption_position", "numbering",
+            "width", "width_unit", "height", "height_unit", "align", "placement", "empty_text",
+        ),
+    )
+    record = _enclosing_record(v)
+    if record is None:
+        v.error(path, "Put this block inside a For each record block: it prints the pictures attached to that block's record.")
+    elif record.record_type not in get_record_attachment_providers():
+        reason = get_no_record_attachment_reasons().get(record.record_type, "Its attachments cannot be printed.")
+        v.error(path, f'The pictures of a "{record.record_type}" record cannot be printed. {reason}')
+    for i, pattern in _text_list(v, node, "names", path, limit=MAX_NAME_PATTERNS, chars=MAX_PATTERN_CHARS):
+        v.placeholders(pattern, f"{path}.names[{i}]")
+        if PLACEHOLDER_RE.sub("", pattern).count("*") > MAX_PATTERN_STARS:
+            v.error(f"{path}.names[{i}]", f"At most {MAX_PATTERN_STARS} * wildcards in one name pattern.")
+    for i, ext in _text_list(v, node, "types", path, limit=len(RECORD_IMAGE_EXTENSIONS), chars=10):
+        if ext.casefold() not in RECORD_IMAGE_EXTENSIONS:
+            v.error(f"{path}.types[{i}]", f'"{ext}" is not a picture type a report can print. Use: {", ".join(RECORD_IMAGE_EXTENSIONS)}.')
+    if "max_count" in node:
+        count = node["max_count"]
+        if not isinstance(count, int) or isinstance(count, bool) or not 1 <= count <= MAX_PICTURES_PER_RECORD:
+            v.error(f"{path}.max_count", f"Must be a whole number from 1 to {MAX_PICTURES_PER_RECORD}.")
+    if "order" in node and node["order"] not in RECORD_IMAGE_ORDERS:
+        v.error(f"{path}.order", f"Must be one of: {', '.join(RECORD_IMAGE_ORDERS)}.")
+    if "max_size_mb" in node:
+        size = node["max_size_mb"]
+        if not isinstance(size, int | float) or isinstance(size, bool) or not 0.1 <= size <= MAX_PICTURE_MEGABYTES:
+            v.error(f"{path}.max_size_mb", f"Must be a number of megabytes from 0.1 to {MAX_PICTURE_MEGABYTES}.")
+    source = node.get("caption_source", "file_name")
+    if source not in RECORD_IMAGE_CAPTIONS:
+        v.error(f"{path}.caption_source", f"Must be one of: {', '.join(RECORD_IMAGE_CAPTIONS)}.")
+    if source == "text" and not str(node.get("caption", "")).strip():
+        v.error(f"{path}.caption", "Write the caption text, or choose another caption source.")
+    if source != "text" and "caption" in node:
+        v.error(f"{path}.caption", 'Only used when the caption source is "text".')
+    if "caption" in node:
+        v.placeholders(v.text(node["caption"], f"{path}.caption", limit=MAX_CAPTION_CHARS), f"{path}.caption")
+    if source == "none":
+        for key in ("caption_position", "numbering"):
+            if key in node:
+                v.error(f"{path}.{key}", "There is no caption to place or number.")
+    if "caption_position" in node and node["caption_position"] not in IMAGE_CAPTION_POSITIONS:
+        v.error(f"{path}.caption_position", f"Must be one of: {', '.join(IMAGE_CAPTION_POSITIONS)}.")
+    if "numbering" in node and node["numbering"] not in IMAGE_NUMBERING:
+        v.error(f"{path}.numbering", f"Must be one of: {', '.join(IMAGE_NUMBERING)}.")
+    _image_size(v, node, "width", "width_unit", IMAGE_UNITS, path, "width")
+    _image_size(v, node, "height", "height_unit", IMAGE_HEIGHT_UNITS, path, "height")
+    if "align" in node and node["align"] not in IMAGE_ALIGNMENTS:
+        v.error(f"{path}.align", f"Must be one of: {', '.join(IMAGE_ALIGNMENTS)}.")
+    if node.get("placement", "inline") not in RECORD_IMAGE_PLACEMENTS:
+        v.error(f"{path}.placement", f"Must be one of: {', '.join(RECORD_IMAGE_PLACEMENTS)}.")
+    else:
+        _validate_image_placement(v, node, path)
+        if node.get("placement") == "wrap" and source != "none":
+            v.error(f"{path}.caption_source", "Text wraps beside a picture with no caption: set the caption to none, or place it in line.")
+    if "empty_text" in node:
+        v.placeholders(v.text(node["empty_text"], f"{path}.empty_text", limit=500), f"{path}.empty_text")
 
 
 def _validate_page_break(v: TreeValidator, node: dict[str, Any], path: str) -> None:
@@ -1251,7 +1425,7 @@ _CORE_SCHEMAS: dict[str, BlockSchema] = {
         template={"type": "section", "page_style": "", "children": []},
     ),
     "image": BlockSchema(
-        "Image", "A picture from the image library, in line with the text.",
+        "Image", "A picture from the image library: in line with the text, with text wrapped beside it, or behind or in front of it.",
         (
             BlockField("file", "Image", "image", required=True,
                        help="A picture from the library: the project's own and the organisation's (an organisation layout "
@@ -1272,8 +1446,22 @@ _CORE_SCHEMAS: dict[str, BlockSchema] = {
                        help="Centimetres or millimetres."),
             BlockField("align", "Alignment", "choice", choices=IMAGE_ALIGNMENTS, default="center",
                        help="Where it sits across the text width."),
+            BlockField("placement", "Placement", "choice", choices=IMAGE_PLACEMENTS, default="inline",
+                       help="In line: the picture has a line of its own. Wrap: the text that follows runs beside it (set Alignment "
+                       "to the side the picture is on). Behind or In front: laid over the page under or over the text, at the "
+                       "position set below; no caption."),
+            BlockField("anchor", "Position from", "choice", choices=IMAGE_ANCHORS, default="paragraph", depends_on="placement",
+                       help="Behind and In front only. Paragraph: measured from where this block sits in the text. Margin: from the "
+                       "corner of the text area of the page. Page: from the corner of the sheet (a watermark). The browser preview "
+                       "has no pages and measures Margin and Page from where the block sits."),
+            BlockField("offset_x", "Across (cm)", "number", minimum=-IMAGE_OFFSET_LIMIT_CM, maximum=IMAGE_OFFSET_LIMIT_CM,
+                       depends_on="placement",
+                       help="Behind and In front only. Centimetres to the right of the corner it is measured from; negative goes left."),
+            BlockField("offset_y", "Down (cm)", "number", minimum=-IMAGE_OFFSET_LIMIT_CM, maximum=IMAGE_OFFSET_LIMIT_CM,
+                       depends_on="placement",
+                       help="Behind and In front only. Centimetres below the corner it is measured from; negative goes up."),
             BlockField("caption", "Caption", "text", max_length=MAX_CAPTION_CHARS, features=("placeholders",),
-                       help=f"A line printed with the picture. {_PLACEHOLDER_HELP}"),
+                       help=f"A line printed with an in-line picture. {_PLACEHOLDER_HELP}"),
             BlockField("caption_position", "Caption position", "choice", choices=IMAGE_CAPTION_POSITIONS, default="below",
                        depends_on="caption", help="Above or below the picture."),
             BlockField("numbering", "Caption numbering", "choice", choices=IMAGE_NUMBERING, default="auto", depends_on="caption",
@@ -1281,6 +1469,47 @@ _CORE_SCHEMAS: dict[str, BlockSchema] = {
                        "a caption and leaves a bare one (a logo) alone; Always numbers it even with no caption; Never does not."),
         ),
         template={"type": "image", "file": ""},
+    ),
+    "record_images": BlockSchema(
+        "Record images", "The pictures attached to the record of the enclosing For each block, chosen by rules.",
+        (
+            BlockField("names", "File names", "text_list", max_length=MAX_PATTERN_CHARS, features=("placeholders",),
+                       help="Print only files whose name matches one of these (case-insensitive). Use * for any run of "
+                       "characters and ? for one, for example site-photo-*. A value like {{rec.code}} is matched as plain "
+                       "text. Leave empty to allow any name."),
+            BlockField("types", "File types", "text_list", max_length=10,
+                       help=f"Allowed extensions: {', '.join(RECORD_IMAGE_EXTENSIONS)}. Leave empty to allow them all. Only "
+                       "real pictures print, whatever the extension says."),
+            BlockField("max_count", "Most per record", "integer", minimum=1, maximum=MAX_PICTURES_PER_RECORD, default=5,
+                       help="The most pictures printed for one record."),
+            BlockField("order", "Order", "choice", choices=RECORD_IMAGE_ORDERS, default="name",
+                       help="By file name, or by when the file was attached (oldest first)."),
+            BlockField("max_size_mb", "Largest file (MB)", "number", minimum=0.1, maximum=MAX_PICTURE_MEGABYTES,
+                       help="Skip files bigger than this. Leave empty for the report limit."),
+            BlockField("caption_source", "Caption", "choice", choices=RECORD_IMAGE_CAPTIONS, default="file_name",
+                       help="The file name, a fixed text you write below, or no caption."),
+            BlockField("caption", "Caption text", "text", max_length=MAX_CAPTION_CHARS, features=("placeholders",),
+                       depends_on="caption_source", help=f"Used when the caption is Text. {_PLACEHOLDER_HELP}"),
+            BlockField("caption_position", "Caption position", "choice", choices=IMAGE_CAPTION_POSITIONS, default="below",
+                       depends_on="caption_source", help="Above or below the picture."),
+            BlockField("numbering", "Caption numbering", "choice", choices=IMAGE_NUMBERING, default="auto",
+                       depends_on="caption_source", help="Prints \"Figure 1:\", \"Figure 2:\" ... in the order the pictures appear."),
+            BlockField("width", "Width", "number", minimum=1, maximum=1000,
+                       help="How wide to print each picture. Leave empty for its own size, never wider than the text."),
+            BlockField("width_unit", "Width unit", "choice", choices=IMAGE_UNITS, default="cm", depends_on="width",
+                       help="Centimetres, millimetres, or a percentage of the width of the text."),
+            BlockField("height", "Height", "number", minimum=0.5, maximum=1000,
+                       help="Size by height instead. Leave empty to keep each picture's shape."),
+            BlockField("height_unit", "Height unit", "choice", choices=IMAGE_HEIGHT_UNITS, default="cm", depends_on="height",
+                       help="Centimetres or millimetres."),
+            BlockField("align", "Alignment", "choice", choices=IMAGE_ALIGNMENTS, default="center",
+                       help="Where each picture sits across the text width."),
+            BlockField("placement", "Placement", "choice", choices=RECORD_IMAGE_PLACEMENTS, default="inline",
+                       help="In line: each picture has a line of its own. Wrap: the text that follows runs beside it (set "
+                       "Alignment to left or right)."),
+            _EMPTY_TEXT,
+        ),
+        template={"type": "record_images"},
     ),
     "equation": BlockSchema(
         "Equation", "A displayed equation written in TeX.",
@@ -1365,6 +1594,7 @@ for _spec in (
     BlockSpec("page_break", (FAMILY_DOCUMENT,), _validate_page_break),
     BlockSpec("section", (FAMILY_DOCUMENT,), _validate_section),
     BlockSpec("image", (FAMILY_DOCUMENT,), _validate_image),
+    BlockSpec("record_images", (FAMILY_DOCUMENT,), _validate_record_images),
     BlockSpec("equation", (FAMILY_DOCUMENT,), _validate_equation),
     BlockSpec("table", (FAMILY_DOCUMENT,), _validate_table),
     BlockSpec("each", (FAMILY_DOCUMENT,), _validate_each),

@@ -217,6 +217,32 @@ export const AnImageBlockChoosesAPictureAndTakesDecimalSizes: Story = {
   },
 };
 
+/** A picture's placement is a choice in plain words, and a position is a signed decimal that can be emptied again. */
+export const AnImageBlockChoosesWhereItSitsAndPositionsALayer: Story = {
+  args: { field: fieldOf("image", "placement"), initial: { type: "image", file: "image-1", alt: "a" }, environment: withImages },
+  render: (args) => (
+    <div>
+      <Harness {...args} />
+      <Harness field={fieldOf("image", "anchor")} initial={{ type: "image", file: "image-1", placement: "behind" }} environment={withImages} />
+      <Harness field={fieldOf("image", "offset_x")} initial={{ type: "image", file: "image-1", placement: "behind" }} environment={withImages} />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const node = (index: number) => JSON.parse(canvas.getAllByTestId("node")[index].textContent ?? "{}");
+    expect(canvas.getAllByRole("option").map((option) => option.textContent)).toEqual(expect.arrayContaining(["Text wraps beside it", "Behind the text", "In front of the text"]));
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Placement" }), "In front of the text");
+    await waitFor(() => expect(node(0).placement).toBe("front"));
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Position from" }), "The corner of the page");
+    await waitFor(() => expect(node(1).anchor).toBe("page"));
+    const across = canvas.getByRole("spinbutton", { name: "Across (cm)" });
+    await userEvent.type(across, "-2.5");
+    await waitFor(() => expect(node(2).offset_x).toBe(-2.5));
+    await userEvent.clear(across);
+    await waitFor(() => expect(node(2)).not.toHaveProperty("offset_x"));
+  },
+};
+
 const layoutField = (key: string): BlockField => buildBlockCatalogue().layout_fields.find((f) => f.key === key)!;
 
 /** The layout's margins use the shared margin fields; emptying the last one removes the key. */
@@ -242,5 +268,49 @@ export const LayoutPageStylesUseTheSharedEditor: Story = {
     await expect(canvas.getByRole("option", { name: "Same as the layout (A5)" })).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Remove page style Style 1" }));
     await waitFor(() => expect(nodeOf(canvasElement)).not.toHaveProperty("page_styles"));
+  },
+};
+
+/** The layout's header uses the shared band editor: its own text is written to the tree, and "inherit" removes the key. */
+export const LayoutHeaderUsesTheSharedBandEditor: Story = {
+  args: { field: layoutField("header"), initial: { schema_version: 1, family: "document", nodes: [] } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Header: print" }), "custom");
+    await userEvent.type(canvas.getByRole("textbox", { name: "Header, left cell" }), "Acme");
+    await waitFor(() => expect(nodeOf(canvasElement).header).toEqual({ left: "Acme" }));
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Header: print" }), "none");
+    await waitFor(() => expect(nodeOf(canvasElement).header).toEqual({}));
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Header: print" }), "inherit");
+    await waitFor(() => expect(nodeOf(canvasElement)).not.toHaveProperty("header"));
+  },
+};
+
+/** The footer is checked against the bottom margin of the layout. */
+export const LayoutFooterIsCheckedAgainstTheBottomMargin: Story = {
+  args: { field: layoutField("footer"), initial: { schema_version: 1, family: "document", margins: { bottom: 1 }, footer: { left: "a\nb\nc" }, nodes: [] } },
+  play: async ({ canvasElement }) => {
+    await expect(await within(canvasElement).findByRole("alert")).toHaveTextContent("The footer needs a bottom margin of at least 1.7 cm; it is 1 cm.");
+  },
+};
+
+/** A record-images block's file-name rule is a list of lines; emptying it removes the key; its order is a choice. */
+export const ARecordImagesBlockEditsItsRulesAsLists: Story = {
+  render: () => (
+    <div>
+      <Harness field={fieldOf("record_images", "names")} initial={{ type: "record_images" }} />
+      <Harness field={fieldOf("record_images", "order")} initial={{ type: "record_images" }} />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const node = (index: number) => JSON.parse(canvas.getAllByTestId("node")[index].textContent ?? "{}");
+    const box = canvas.getByRole("textbox", { name: "File names" });
+    await userEvent.type(box, "site-*{enter}{{{{rec.code}}-*");
+    await waitFor(() => expect(node(0).names).toEqual(["site-*", "{{rec.code}}-*"]));
+    await userEvent.clear(box);
+    await waitFor(() => expect(node(0)).not.toHaveProperty("names"));
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Order" }), "When attached (oldest first)");
+    await waitFor(() => expect(node(1).order).toBe("uploaded"));
   },
 };

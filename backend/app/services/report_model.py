@@ -9,7 +9,8 @@ place rather than once per output format.
 Responsibilities:
 - Block types: `Heading`, `Paragraph`, `Equation` (a display equation), `Note`, `BulletList`, `Image` (raster bytes or SVG markup), `Table`,
   `Gap`, `PageBreak`, `PageStyleChange` (a new page in another `PageStyle`: paper, orientation, `Margins`), and the
-  `ReportDocument` that holds them with the title, branding and the page style of its own pages.
+  `ReportDocument` that holds them with the title, branding and the page style of its own pages; `RunningBand` (a
+  header or footer: an invisible left, centre and right table, with page fields and an optional logo).
 - `Sheet`: one named table of a table-family report (CSV, XLSX, ODS); not a
   document block, so it is never inside a `ReportDocument`.
 - Cell tones: `Table.tones` marks cells the screen colours (a rating band, a
@@ -61,6 +62,7 @@ import re
 import unicodedata
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from enum import Enum
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
@@ -177,7 +179,7 @@ def heading_anchor(text: str) -> str:
 # template engine: a name is replaced by plain string substitution and anything
 # else (unknown names, other braces) stays literal text.
 PLACEHOLDER_NAMES: tuple[str, ...] = (
-    "project_name", "project_code", "project_description", "report_title", "generated_on", "organisation",
+    "project_name", "project_code", "project_description", "report_title", "generated_on", "organisation", "layout_version",
 )
 _PLACEHOLDER = re.compile(r"\{\{\s*([a-z_]+)\s*\}\}")
 
@@ -328,6 +330,12 @@ class Image:
         align: `left`, `center` or `right` across the text width.
         caption: The line printed with it (`"Figure 2: ..."` once numbered); empty for none.
         caption_above: Whether the caption is printed above the picture instead of below.
+        placement: `inline` (on a line of its own), `wrap` (text of the blocks that follow runs beside it, on the side
+            `align` names), `behind` or `front` (laid over the page, under or over the text, at an offset).
+        anchor: What a `behind` or `front` picture is measured from: `paragraph` (where the block sits in the flow), `margin`
+            (the corner of the text area of its page) or `page` (the corner of the sheet).
+        offset_x_cm: Distance right of the anchor's corner (a layered picture), negative for left.
+        offset_y_cm: Distance below the anchor's corner (a layered picture), negative for above.
     """
 
     data: bytes = b""
@@ -340,6 +348,15 @@ class Image:
     align: str = "center"
     caption: str = ""
     caption_above: bool = False
+    placement: str = "inline"
+    anchor: str = "paragraph"
+    offset_x_cm: float = 0.0
+    offset_y_cm: float = 0.0
+
+    @property
+    def floats(self) -> bool:
+        """Whether the picture takes no line of its own: it sits beside the text or over the page."""
+        return self.placement in ("wrap", "behind", "front")
 
 
 def _markdown_image(data: bytes) -> Image:
@@ -402,9 +419,15 @@ class PageStyleChange:
 
     The layout's section block makes two: one into the section's style and one back to the document's own style
     after the section's content.
+
+    Attributes:
+        style: The style the pages that follow use.
+        section_start: Whether this opens a section (its first page may show a different header and footer), as
+            opposed to the return to the document's own style, which continues the document.
     """
 
     style: PageStyle
+    section_start: bool = True
 
 
 Block = Heading | Paragraph | Equation | Note | BulletList | NumberedList | Image | Table | Gap | PageBreak | PageStyleChange
@@ -453,6 +476,57 @@ class Margins:
     gutter: float = 0.0
 
 
+class PageField(Enum):
+    """A number the page fills in itself: the current page, or the number of pages in the whole document."""
+
+    PAGE = "page"
+    PAGES = "pages"
+
+
+#: A running slot is text and page fields in order; the text may hold line breaks (`\n`).
+SlotPart = str | PageField
+SLOT_NAMES = ("left", "centre", "right")
+
+
+@dataclass(frozen=True)
+class RunningBand:
+    """A header or a footer: an invisible three-column table (left, centre and right) in the page margin.
+
+    Attributes:
+        left: The left cell's text and page fields (left-aligned).
+        centre: The middle cell's (centred).
+        right: The right cell's (right-aligned).
+        logo: An image shown at the start of one cell, `None` for none.
+        logo_slot: The cell the logo is in: `left`, `centre` or `right`.
+        logo_height_cm: The logo's height; its width keeps its shape.
+        first_page: Whether the first page of the document (or of a section) shows the band; `False` for a cover
+            page with no header.
+    """
+
+    left: tuple[SlotPart, ...] = ()
+    centre: tuple[SlotPart, ...] = ()
+    right: tuple[SlotPart, ...] = ()
+    logo: Image | None = None
+    logo_slot: str = "left"
+    logo_height_cm: float = 1.0
+    first_page: bool = True
+
+    def slot(self, name: str) -> tuple[SlotPart, ...]:
+        """The parts of cell `name` (`left`, `centre` or `right`)."""
+        return getattr(self, name)
+
+    @property
+    def empty(self) -> bool:
+        """Whether the band prints nothing."""
+        return not (self.left or self.centre or self.right or self.logo)
+
+    def mirrored(self) -> RunningBand:
+        """The band for a left-hand page of a double-sided document: the left and right cells (and a logo in one of
+        them) swap, so what sits at the outer edge of a right-hand page sits at the outer edge of the left-hand one."""
+        swap = {"left": "right", "right": "left", "centre": "centre"}
+        return replace(self, left=self.right, right=self.left, logo_slot=swap[self.logo_slot])
+
+
 @dataclass(frozen=True)
 class PageStyle:
     """How a page looks: its paper, direction and margins.
@@ -463,12 +537,16 @@ class PageStyle:
         margins: The margins.
         mirror: Whether left and right swap on every second page (double-sided printing): `left` and the gutter are
             then the inner edge of every page and `right` the outer.
+        header: The running header printed in the top margin, or `None` for none.
+        footer: The running footer printed in the bottom margin, or `None` for the renderer's plain footer.
     """
 
     page_size: str = DEFAULT_PAGE_SIZE
     landscape: bool = False
     margins: Margins = field(default_factory=Margins)
     mirror: bool = False
+    header: RunningBand | None = None
+    footer: RunningBand | None = None
 
     @property
     def dimensions_cm(self) -> tuple[float, float]:
@@ -514,6 +592,9 @@ class ReportDocument:
         page_size: One of `PAGE_SIZES_CM` (A4 unless a layout chooses another).
         margins: The margins of the document's own pages (a section's `PageStyleChange` brings its own).
         mirror: Whether margins mirror on facing pages, for every page style of the document.
+        header: The running header of the document's own pages (`None`: a plain report, which prints none).
+        footer: The running footer of the document's own pages (`None`: the branding's footer text and page number
+            as before; a layout's document always has one).
     """
 
     title: str
@@ -523,11 +604,13 @@ class ReportDocument:
     page_size: str = DEFAULT_PAGE_SIZE
     margins: Margins = field(default_factory=Margins)
     mirror: bool = False
+    header: RunningBand | None = None
+    footer: RunningBand | None = None
 
     @property
     def style(self) -> PageStyle:
         """The page style of the document's own pages."""
-        return PageStyle(self.page_size, self.landscape, self.margins, self.mirror)
+        return PageStyle(self.page_size, self.landscape, self.margins, self.mirror, self.header, self.footer)
 
 
 def page_dimensions_cm(document: ReportDocument) -> tuple[float, float]:

@@ -535,6 +535,8 @@ export interface FileAsset {
   size_bytes: number;
   uploaded_by: string;
   is_org_resource: boolean;
+  /** Marked confidential by its owner: a report never prints it (it changes nothing else). */
+  confidential: boolean;
   created_at: string;
 }
 

@@ -18,6 +18,9 @@ Design decisions:
   the footer text; the cover page is a PDF and Word device, so the HTML shows a plain title.
 - One stylesheet, inline and small, with a print rule so printing the page from a browser paginates at
   `PageBreak`.
+- A header or footer shows as a band at the start and end of each page style's stretch, with `n` and `N` standing for the page
+  numbers; printing hides the bands and uses CSS margin boxes (`@top-left` …), which the browser fills with the real page
+  numbers where it supports them (the logo is not printed this way).
 - Page styles: HTML has no pages, so a `PageStyleChange` opens a `<section>` that is as wide as that page would be and
   carries a small label naming its paper and margins (hidden when printed). Printing uses CSS named pages
   (`@page psN { size; margin }`, with `:left` / `:right` for mirrored margins) that the section selects with `page:`,
@@ -39,6 +42,7 @@ from app.services.branding import DEFAULT_ACCENT_COLOR_HEX
 from app.services.report_image_layout import placed_size_cm
 from app.services.report_math import INLINE_SIZE_PT, scaled_svg, typeset
 from app.services.report_model import (
+    SLOT_NAMES,
     TONE_FILL,
     BulletList,
     Equation,
@@ -48,16 +52,19 @@ from app.services.report_model import (
     Note,
     NumberedList,
     PageBreak,
+    PageField,
     PageStyle,
     PageStyleChange,
     Paragraph,
     ReportDocument,
+    RunningBand,
     Styled,
     Table,
     finalize_links,
     text_on,
     text_runs,
 )
+from app.services.report_running import cell_lines
 from app.services.report_svg import UnsafeSvgError, sanitize_svg
 
 _HEX = re.compile(r"^#?([0-9A-Fa-f]{6})$")
@@ -66,7 +73,8 @@ CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'"
 
 _CSS = """
 :root { --accent: %(accent)s; }
-body { font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: #1a1a1a; margin: 2rem auto; max-width: %(width)s; padding: 0 1rem; }
+body { isolation: isolate;
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: #1a1a1a; margin: 2rem auto; max-width: %(width)s; padding: 0 1rem; }
 h1 { color: var(--accent); border-bottom: 3px solid var(--accent); padding-bottom: .3rem; }
 h2, h3, h4, h5 { color: #222; margin: 1.6rem 0 .5rem; }
 p { margin: .5rem 0; white-space: pre-line; }
@@ -78,6 +86,10 @@ table.compact td { border-color: #ddd; }
 tbody tr:nth-child(even) td { background-color: #f5f5f5; }
 figure { margin: 1rem 0; } figure img, figure svg { max-width: 100%%; height: auto; }
 figure.image { overflow-x: auto; } figure.image.align-center { text-align: center; } figure.image.align-right { text-align: right; }
+figure.image.wrap-left { float: left; margin: .2rem 1rem .5rem 0; } figure.image.wrap-right { float: right; margin: .2rem 0 .5rem 1rem; }
+table, .page-break { clear: both; }
+div.layer-anchor { display: block; position: relative; height: 0; } div.layer-anchor > figure.image { position: absolute; margin: 0; }
+div.layer-anchor.behind > figure.image { z-index: -1; } div.layer-anchor.front > figure.image { z-index: 1; }
 figure.image figcaption { color: #444; font-size: .85rem; margin: .3rem 0; } span.picture { display: inline-block; }
 figure.equation { text-align: center; overflow-x: auto; } span.math svg { display: inline-block; }
 code.math-source { font-size: .9em; }
@@ -87,7 +99,13 @@ hr.page-break { border: 0; border-top: 1px dashed #bbb; margin: 2rem 0; }
 @media print { hr.page-break { break-after: page; border: 0; } }
 section.page-style { position: relative; left: 50%%; transform: translateX(-50%%); box-sizing: border-box; max-width: calc(100vw - 2rem); }
 .page-frame { color: #666; font-size: .75rem; border: 1px dashed #bbb; border-radius: 4px; padding: .1rem .5rem; margin: 1.5rem 0 .5rem; }
-@media print { .page-frame { display: none; } section.page-style { position: static; transform: none; width: auto !important; max-width: none; } }
+.band { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; align-items: center; color: #555; font-size: .75rem; margin: .5rem 0; }
+.band .cell { display: flex; align-items: center; gap: .4rem; white-space: pre-line; } .band .centre { justify-content: center; text-align: center; }
+.band .right { justify-content: flex-end; text-align: right; } .band img { width: auto; } .band .pf { font-style: italic; }
+.band.header { border-bottom: 1px solid #ddd; padding-bottom: .3rem; }
+.band.footer { border-top: 1px solid #ddd; padding-top: .3rem; margin-top: 2rem; }
+@media print { .band { display: none; } .page-frame { display: none; }
+  section.page-style { position: static; transform: none; width: auto !important; max-width: none; } }
 """
 
 
@@ -128,6 +146,91 @@ def _page_rules(selector: str, style: PageStyle) -> str:
     if style.mirror:
         rules += f" @page{selector}:left {{ margin: {_margin_css(style, verso=True)}; }}"
     return rules
+
+
+_BOXES = {("header", "left"): "top-left", ("header", "centre"): "top-center", ("header", "right"): "top-right",
+          ("footer", "left"): "bottom-left", ("footer", "centre"): "bottom-center", ("footer", "right"): "bottom-right"}
+
+
+def _band_html(band: RunningBand | None, kind: str) -> str:
+    """A header or footer as it shows on screen: three cells in a row, with the page numbers as placeholders.
+
+    The page numbers are filled in only when the page is printed (HTML has no pages), so the screen shows `n` and `N`.
+    """
+    if band is None or band.empty:
+        return ""
+    cells = []
+    for slot in SLOT_NAMES:
+        text = "<br>".join(
+            "".join(
+                '<span class="pf" title="Filled in when printed">' + ("n" if part is PageField.PAGE else "N") + "</span>"
+                if isinstance(part, PageField) else _esc(part)
+                for part in line
+            )
+            for line in cell_lines(band.slot(slot))
+        )
+        logo = ""
+        if band.logo is not None and band.logo_slot == slot:
+            uri = _data_uri(band.logo.data) if band.logo.data else None
+            if uri is None and band.logo.svg is not None:
+                try:
+                    uri = "data:image/svg+xml;base64," + base64.b64encode(sanitize_svg(band.logo.svg).encode()).decode("ascii")
+                except UnsafeSvgError:
+                    uri = None
+            logo = f'<img src="{uri}" alt="" style="height:{band.logo_height_cm:g}cm">' if uri else ""
+        cells.append(f'<div class="cell {slot}">{logo}<span>{text}</span></div>')
+    return f'<div class="band {kind}">{"".join(cells)}</div>'
+
+
+def _css_string(text: str) -> str:
+    """`text` as the inside of a CSS string: backslash, quote, angle brackets, ampersand and line breaks escaped, controls dropped."""
+    out = []
+    for char in text:
+        if char == "\n":
+            out.append("\\A ")
+        elif ord(char) < 32 or ord(char) == 127:
+            continue
+        elif char in '\\"<>&\'':
+            out.append(f"\\{ord(char):x} ")
+        else:
+            out.append(char)
+    return "".join(out)
+
+
+def _box_content(parts: tuple) -> str:
+    """The CSS `content` value of a margin box: strings and page counters."""
+    tokens = []
+    for part in parts:
+        if isinstance(part, PageField):
+            tokens.append("counter(page)" if part is PageField.PAGE else "counter(pages)")
+        else:
+            tokens.append(f'"{_css_string(part)}"')
+    return " ".join(tokens) or '""'
+
+
+def _box_rules(selector: str, style: PageStyle) -> str:
+    """Margin-box rules for one page style: its header and footer cells, with the cells swapped on left-hand pages.
+
+    Browsers that support CSS margin boxes print them (with the page numbers); the first page shows the band unless the
+    band skips it (for the document's first page only: a browser has no first-page rule per section).
+    """
+    rules = []
+    for kind, band in (("header", style.header), ("footer", style.footer)):
+        if band is None or band.empty:
+            continue
+        for slot in SLOT_NAMES:
+            box = _BOXES[(kind, slot)]
+            swapped = _BOXES[(kind, {"left": "right", "centre": "centre", "right": "left"}[slot])]
+            rules.append(
+                f"@page{selector} {{ @{box} {{ content: {_box_content(band.slot(slot))}; font-size: 8pt; white-space: pre-line; }} }}"
+            )
+            if style.mirror:
+                rules.append(
+                    f"@page{selector}:left {{ @{swapped} {{ content: {_box_content(band.slot(slot))}; font-size: 8pt; white-space: pre-line; }} }}"
+                )
+            if not band.first_page:
+                rules.append(f"@page{selector}:first {{ @{box} {{ content: none; }} }}")
+    return "\n".join(rules)
 
 
 def _frame_label(style: PageStyle) -> str:
@@ -196,7 +299,13 @@ def _figure(block: Image, usable_cm: float) -> str | None:
     width, height = size
     label = "" if block.decorative or not block.alt else f' role="img" aria-label="{_esc(block.alt)}"'
     hidden = ' aria-hidden="true"' if block.decorative else ""
-    style = f' style="width:{width:g}cm;max-width:100%;height:auto;aspect-ratio:{width:g}/{height:g}"'
+    # A floated figure shrinks to fit its content, so a percentage cap on the picture inside it would resolve against
+    # nothing: the wrapped figure carries the width and the cap, and its picture fills it.
+    wrapped = block.placement == "wrap"
+    style = (
+        f' style="width:100%;height:auto;aspect-ratio:{width:g}/{height:g}"' if wrapped
+        else f' style="width:{width:g}cm;max-width:100%;height:auto;aspect-ratio:{width:g}/{height:g}"'
+    )
     if block.svg is not None:
         try:
             picture = f'<span class="picture"{label}{hidden}{style}>{sanitize_svg(block.svg)}</span>'
@@ -208,6 +317,13 @@ def _figure(block: Image, usable_cm: float) -> str | None:
             return None
         picture = f'<img src="{uri}" alt="{"" if block.decorative else _esc(block.alt)}"{style}>'
     caption = f"<figcaption>{_esc(block.caption)}</figcaption>" if block.caption else ""
+    if block.placement == "wrap":
+        side = "left" if block.align == "left" else "right"
+        return f'<figure class="image wrap-{side}" style="width:{width:g}cm;max-width:60%">{picture}</figure>'
+    if block.floats:
+        # The browser has no pages: a margin or page anchor is measured from where the block sits, as a paragraph anchor is.
+        place = f' style="left:{block.offset_x_cm:g}cm;top:{block.offset_y_cm:g}cm"'
+        return f'<div class="layer-anchor {block.placement}"><figure class="image"{place}>{picture}</figure></div>'
     align = block.align if block.align in ("left", "center", "right") else "center"
     inner = caption + picture if block.caption_above else picture + caption
     return f'<figure class="image align-{align}">{inner}</figure>'
@@ -247,6 +363,7 @@ def render_html_document(document: ReportDocument) -> bytes:
     sections: dict[PageStyle, int] = {}
     in_section = False
     current = document.style
+    parts.append(_band_html(current.header, "header"))
     for block in document.blocks:
         if isinstance(block, Heading):
             tag = f"h{min(max(block.level, 1), 4) + 1}"
@@ -271,6 +388,7 @@ def render_html_document(document: ReportDocument) -> bytes:
         elif isinstance(block, PageBreak):
             parts.append('<hr class="page-break">')
         elif isinstance(block, PageStyleChange):
+            parts.append(_band_html(current.footer, "footer"))
             if in_section:
                 parts.append("</section>")
             in_section = block.style != document.style
@@ -279,19 +397,23 @@ def render_html_document(document: ReportDocument) -> bytes:
             if in_section:
                 index = sections.setdefault(block.style, len(sections) + 1)
                 parts.append(f'<section class="page-style ps{index}" style="width: {_width_rem(block.style):g}rem">')
+            parts.append(_band_html(block.style.header, "header"))
         elif isinstance(block, Gap):
             continue  # a PDF layout hint
+    parts.append(_band_html(current.footer, "footer"))
     if in_section:
         parts.append("</section>")
-    if branding and branding.footer_text:
+    if branding and branding.footer_text and document.footer is None:
         parts.append(f"<footer>{_esc(branding.footer_text)}</footer>")
     css = _CSS % {
         "accent": accent, "width": f"{_width_rem(document.style):g}rem", "head_text": "#" + text_on(accent.lstrip("#")),
     }
     # `@page` rules sit outside `@media`: browsers ignore them on screen and do not accept them inside a media query.
-    css += _page_rules("", document.style) + "\n"
+    css += _page_rules("", document.style) + "\n" + _box_rules("", document.style) + "\n"
     for style, index in sections.items():
-        css += f"{_page_rules(f' ps{index}', style)}\n.ps{index} {{ page: ps{index}; break-before: page; break-after: page; }}\n"
+        selector = f" ps{index}"
+        css += f"{_page_rules(selector, style)}\n{_box_rules(selector, style)}\n"
+        css += f".ps{index} {{ page: ps{index}; break-before: page; break-after: page; }}\n"
     page = (
         '<!doctype html>\n<html lang="en"><head><meta charset="utf-8">'
         f'<meta http-equiv="Content-Security-Policy" content="{CSP}">'

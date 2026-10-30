@@ -9,6 +9,8 @@
  *   offer them; the server stays the judge of what is valid.
  * - `readPageSetup` / `writePageSetup`: read the setup from a layout's text (its `@layout document …` line and its
  *   `@pagestyle` lines) and rewrite exactly those lines, leaving every block alone.
+ * - `RunningBand`: a header or footer (left, centre and right text, a logo, whether the first page shows it) and the
+ *   `@header` / `@footer` lines that state it under the layout or a `@pagestyle` line.
  * - `effectiveMargins`, `pageDimensionsCm`: the numbers a page sketch and a form's placeholders need, with the same
  *   defaults the server's renderers use.
  *
@@ -35,12 +37,34 @@ export const MAX_MARGIN_CM = 10;
 export const MAX_GUTTER_CM = 5;
 export const MAX_PAGE_STYLES = 10;
 
+export const BAND_SLOTS = ["left", "centre", "right"] as const;
+export type BandSlot = (typeof BAND_SLOTS)[number];
+export const BAND_FIRST_PAGE = ["same", "none"] as const;
+export type BandFirstPage = (typeof BAND_FIRST_PAGE)[number];
+/** Space between the page edge and a header or footer, and the height of one line of its text, in cm (as the server checks). */
+export const BAND_EDGE_CM = 0.5;
+export const BAND_LINE_CM = 0.4;
+export const MIN_LOGO_CM = 0.3;
+export const MAX_LOGO_CM = 5;
+export const DEFAULT_LOGO_CM = 0.9;
+
+/** A header or footer; `{}` prints nothing, and no band at all means "use the one this inherits". */
+export interface RunningBand {
+  left?: string;
+  centre?: string;
+  right?: string;
+  logo?: { file: string; height: number; slot?: BandSlot };
+  first_page?: BandFirstPage;
+}
+
 /** A named page style a section can use; what it leaves out is the layout's own. */
 export interface PageStyleSetup {
   name: string;
   orientation?: PageOrientation;
   size?: PageSize;
   margins?: PageMargins;
+  header?: RunningBand;
+  footer?: RunningBand;
 }
 
 /** A layout's page setup; the layout's own pages first, then its named styles. */
@@ -50,6 +74,8 @@ export interface PageSetup {
   mirror: boolean;
   margins: PageMargins;
   styles: PageStyleSetup[];
+  header?: RunningBand;
+  footer?: RunningBand;
 }
 
 /** The short sides then long sides of each page size in cm, as the server's renderers use them. */
@@ -71,6 +97,7 @@ export function effectiveMargins(margins: PageMargins | undefined, inherited: Pa
 
 const HEADER = /^@layout\s+document\b(.*)$/;
 const STYLE_LINE = /^\s*@pagestyle\b(.*)$/;
+const BAND_LINE = /^\s*@(header|footer)\b(.*)$/;
 const TOKEN = /"(?:[^"\\]|\\.)*"|\S+/g;
 
 /** The `side=cm` words after `margins`, as numbers; words it cannot read are skipped. */
@@ -127,6 +154,51 @@ function readStyle(rest: string): PageStyleSetup {
   return style;
 }
 
+/** A quoted string token as text (the server writes JSON strings); a token that is not valid JSON is read without its quotes. */
+function unquote(token: string | undefined): string {
+  if (token === undefined) return "";
+  if (!token.startsWith('"')) return token;
+  try {
+    return JSON.parse(token) as string;
+  } catch {
+    return token.slice(1, -1);
+  }
+}
+
+/** The band an `@header` / `@footer` line states (`@header` alone is the empty band); words it cannot read are skipped. */
+function readBand(rest: string): RunningBand {
+  const tokens = rest.match(TOKEN) ?? [];
+  const band: RunningBand = {};
+  for (let i = 0; i < tokens.length; i += 1) {
+    const word = tokens[i];
+    const value = tokens[i + 1];
+    if (word === "left" || word === "centre" || word === "right") band[word] = unquote(value);
+    else if (word === "first" && (BAND_FIRST_PAGE as readonly string[]).includes(value ?? "")) band.first_page = value as BandFirstPage;
+    else if (word === "logo") band.logo = { file: unquote(value), height: DEFAULT_LOGO_CM };
+    else if (word === "height" && band.logo && Number.isFinite(Number(value))) band.logo.height = Number(value);
+    else if (word === "slot" && band.logo && (BAND_SLOTS as readonly string[]).includes(value ?? "")) band.logo.slot = value as BandSlot;
+    else continue;
+    i += 1;
+  }
+  return band;
+}
+
+/** The `@header` / `@footer` lines that state `band`, in the order the server reads them. */
+function bandLine(kind: "header" | "footer", band: RunningBand): string {
+  const parts = [`@${kind}`];
+  for (const slot of BAND_SLOTS) if (band[slot] !== undefined) parts.push(`${slot} ${JSON.stringify(band[slot])}`);
+  if (band.logo) {
+    parts.push(`logo ${JSON.stringify(band.logo.file)}`, `height ${band.logo.height}`);
+    if (band.logo.slot) parts.push(`slot ${band.logo.slot}`);
+  }
+  if (band.first_page) parts.push(`first ${band.first_page}`);
+  return parts.join(" ");
+}
+
+function bandLines(holder: { header?: RunningBand; footer?: RunningBand }): string[] {
+  return (["header", "footer"] as const).flatMap((kind) => (holder[kind] ? [bandLine(kind, holder[kind])] : []));
+}
+
 /** The page setup a layout's text states, or `null` when the text is not a document layout's (a table has no pages). */
 export function readPageSetup(text: string): PageSetup | null {
   const lines = text.split("\n");
@@ -134,16 +206,30 @@ export function readPageSetup(text: string): PageSetup | null {
   if (!match) return null;
   const { before, margins } = split(match[1].trim().split(/\s+/).filter(Boolean));
   const { orientation, size } = readWords(before);
-  return {
+  const setup: PageSetup = {
     orientation: orientation ?? "portrait",
     size: size ?? "A4",
     mirror: before.includes("mirror"),
     margins: readMargins(margins),
-    styles: lines.slice(1).map((line) => STYLE_LINE.exec(line)).filter((m) => m !== null).map((m) => readStyle(m[1])),
+    styles: [],
   };
+  // A band line belongs to the page style written just above it, or to the layout before any.
+  let holder: { header?: RunningBand; footer?: RunningBand } = setup;
+  for (const line of lines.slice(1)) {
+    const style = STYLE_LINE.exec(line);
+    const band = BAND_LINE.exec(line);
+    if (style) {
+      const read = readStyle(style[1]);
+      setup.styles.push(read);
+      holder = read;
+    } else if (band) {
+      holder[band[1] as "header" | "footer"] = readBand(band[2]);
+    }
+  }
+  return setup;
 }
 
-/** `text` with its `@layout document` line and its `@pagestyle` lines rewritten to state `setup`; defaults are left unwritten. */
+/** `text` with its `@layout document` line, its `@header` and `@footer` lines and its `@pagestyle` lines rewritten to state `setup`; defaults are left unwritten. */
 export function writePageSetup(text: string, setup: PageSetup): string {
   const lines = text.split("\n");
   if (!HEADER.test(lines[0].trimEnd())) return text;
@@ -155,9 +241,10 @@ export function writePageSetup(text: string, setup: PageSetup): string {
   ].join(" ") + marginsText(setup.margins);
   const styles = setup.styles.map((style) => {
     const words = [style.orientation, style.size].filter((word) => word !== undefined).join(" ");
-    return `@pagestyle ${JSON.stringify(style.name)}${words ? ` ${words}` : ""}${marginsText(style.margins)}`;
+    return [`@pagestyle ${JSON.stringify(style.name)}${words ? ` ${words}` : ""}${marginsText(style.margins)}`, ...bandLines(style)];
   });
-  return [header, ...styles, ...lines.slice(1).filter((line) => !STYLE_LINE.test(line))].join("\n");
+  const rest = lines.slice(1).filter((line) => !STYLE_LINE.test(line) && !BAND_LINE.test(line));
+  return [header, ...bandLines(setup), ...styles.flat(), ...rest].join("\n");
 }
 
 /** The layout family's pages exist only for a document layout. */
@@ -171,6 +258,7 @@ export function styleFromTree(entry: Record<string, unknown>): PageStyleSetup {
   if (PAGE_ORIENTATIONS.includes(entry.orientation as PageOrientation)) style.orientation = entry.orientation as PageOrientation;
   if (PAGE_SIZES.includes(entry.page_size as PageSize)) style.size = entry.page_size as PageSize;
   if (entry.margins !== null && typeof entry.margins === "object") style.margins = entry.margins as PageMargins;
+  for (const kind of ["header", "footer"] as const) if (entry[kind] !== null && typeof entry[kind] === "object") style[kind] = entry[kind] as RunningBand;
   return style;
 }
 
@@ -180,5 +268,23 @@ export function styleToTree(style: PageStyleSetup): Record<string, unknown> {
   if (style.orientation) entry.orientation = style.orientation;
   if (style.size) entry.page_size = style.size;
   if (style.margins) entry.margins = style.margins;
+  if (style.header) entry.header = style.header;
+  if (style.footer) entry.footer = style.footer;
   return entry;
+}
+
+/** The lines a band's text takes (a cell may hold up to three). */
+function lineCount(text: string | undefined): number {
+  return text ? text.split("\n").length : 0;
+}
+
+/**
+ * The margin in cm a band needs (the gap to the page edge and its tallest cell), or 0 for a band that prints nothing; the
+ * same arithmetic the server checks at save, so the editor can say what to raise before the save is refused.
+ */
+export function bandNeedsCm(band: RunningBand | undefined): number {
+  if (!band) return 0;
+  const lines = Math.max(...BAND_SLOTS.map((slot) => lineCount(band[slot])));
+  const logo = band.logo?.height ?? 0;
+  return lines > 0 || logo > 0 ? BAND_EDGE_CM + Math.max(lines * BAND_LINE_CM, logo) : 0;
 }

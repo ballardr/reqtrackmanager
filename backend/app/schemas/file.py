@@ -21,7 +21,14 @@ class FileAssetOut(BaseModel):
     size_bytes: int
     uploaded_by: UUID
     is_org_resource: bool
+    confidential: bool = False
     created_at: datetime
+
+
+class FileConfidentialIn(BaseModel):
+    """Body of `PATCH /files/{id}/confidential`."""
+
+    confidential: bool
 
 
 class LinkResourceRequest(BaseModel):

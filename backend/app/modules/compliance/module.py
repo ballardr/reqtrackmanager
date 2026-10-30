@@ -147,6 +147,7 @@ from app.modules.compliance.perf_dataset import (
     generate_project_compliance,
     generate_required_action_assessments,
 )
+from app.modules.compliance.record_attachments import NO_RECORD_ATTACHMENTS, RECORD_ATTACHMENTS
 from app.modules.compliance.record_tables import NOT_IMPORTABLE, RECORD_TABLES
 from app.modules.compliance.scaling_probes import SCALING_PROBES
 from app.modules.compliance.report_fields import REPORT_FIELDS
@@ -510,6 +511,8 @@ MODULE_DEFINITION = ModuleDefinition(
     artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
     search_providers=SEARCH_PROVIDERS,
     report_fields=REPORT_FIELDS,
+    record_attachments=RECORD_ATTACHMENTS,
+    no_record_attachments=NO_RECORD_ATTACHMENTS,
     report_starter_sections=REPORT_STARTER_SECTIONS,
     search_scopes=SEARCH_SCOPES,
     artefact_type_labels=ARTEFACT_TYPE_LABELS,

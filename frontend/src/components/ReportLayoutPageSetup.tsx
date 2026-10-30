@@ -15,21 +15,32 @@
 import { Settings } from "lucide-react";
 import { useState } from "react";
 
+import type { ReportImageLibrary } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";
-import { PAGE_ORIENTATIONS, PAGE_SIZES, readPageSetup, writePageSetup, type PageSetup } from "../utils/reportPageSetup";
+import { DEFAULT_MARGIN_CM, PAGE_ORIENTATIONS, PAGE_SIZES, readPageSetup, writePageSetup, type PageSetup } from "../utils/reportPageSetup";
 import { CheckboxField } from "./FormFields";
 import { LabeledSelect } from "./LabeledSelect";
 import { Modal } from "./Modal";
 import { PageMarginsFields } from "./PageMarginsFields";
 import { PageOutline } from "./PageOutline";
 import { PageStylesEditor } from "./PageStylesEditor";
+import { RunningBandEditor } from "./RunningBandEditor";
 import { Tooltip } from "./Tooltip";
 
 /**
- * @param text The layout text; its header and `@pagestyle` lines are rewritten on a change.
+ * @param text The layout text; its header, `@header`, `@footer` and `@pagestyle` lines are rewritten on a change.
  * @param onChange Called with the new text.
+ * @param images The picture library a header or footer logo is chosen from (absent: logos cannot be changed here).
+ * @param placeholders The placeholder names a header or footer offers.
  */
-export function ReportLayoutPageSetup({ text, onChange }: { text: string; onChange: (text: string) => void }) {
+export function ReportLayoutPageSetup({
+  text, onChange, images, placeholders,
+}: {
+  text: string;
+  onChange: (text: string) => void;
+  images?: { library: ReportImageLibrary; scope: "organization" | "project" };
+  placeholders?: readonly string[];
+}) {
   const strings = useStrings();
   const labels = strings.pageSetup;
   const [open, setOpen] = useState(false);
@@ -37,7 +48,7 @@ export function ReportLayoutPageSetup({ text, onChange }: { text: string; onChan
   if (setup === null) return null;
   const set = (patch: Partial<PageSetup>) => onChange(writePageSetup(text, { ...setup, ...patch }));
   const marked = setup.orientation !== "portrait" || setup.size !== "A4" || setup.mirror
-    || Object.keys(setup.margins).length > 0 || setup.styles.length > 0;
+    || Object.keys(setup.margins).length > 0 || setup.styles.length > 0 || setup.header !== undefined || setup.footer !== undefined;
   const label = strings.reportLayouts.pageSetupLabel(labels.orientationLabels[setup.orientation], setup.size);
   return (
     <>
@@ -71,8 +82,18 @@ export function ReportLayoutPageSetup({ text, onChange }: { text: string; onChan
             </div>
             <h3 style={{ margin: 0 }}>{labels.marginsTitle}</h3>
             <PageMarginsFields value={setup.margins} mirror={setup.mirror} onChange={(margins) => set({ margins })} />
+            <h3 style={{ margin: 0 }}>{labels.band.sectionTitle}</h3>
+            <p style={{ margin: 0, color: "var(--color-text-muted)" }}>{labels.band.intro}</p>
+            {(["header", "footer"] as const).map((kind) => (
+              <RunningBandEditor
+                key={kind} kind={kind} value={setup[kind]} inheritFrom="template" images={images} placeholders={placeholders}
+                margin={(kind === "header" ? setup.margins.top : setup.margins.bottom) ?? DEFAULT_MARGIN_CM}
+                onChange={(next) => set({ [kind]: next })}
+              />
+            ))}
             <h3 style={{ margin: 0 }}>{labels.stylesTitle}</h3>
             <PageStylesEditor
+              images={images} placeholders={placeholders}
               value={setup.styles} onChange={(styles) => set({ styles })}
               base={{ size: setup.size, orientation: setup.orientation, margins: setup.margins, mirror: setup.mirror }}
             />

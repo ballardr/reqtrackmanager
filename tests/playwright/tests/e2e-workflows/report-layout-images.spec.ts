@@ -140,6 +140,77 @@ test.describe("Report layout images", () => {
     });
   });
 
+  test("text wraps beside a picture only when it says which side it is on, and a layered picture has no alignment", async ({ page, request }) => {
+    const { project, suffix } = await setup(page, request);
+    await page.goto(`/projects/${project.id}/admin`);
+    await selectProjectAdminGroup(page, "Report Setup");
+    await newLayout(page, `E2E placement ${suffix}`);
+    const inspector = await addPicture(page, `placed-${suffix}.png`);
+    await inspector.getByRole("textbox", { name: "Alternative text" }).fill("A mark");
+    await inspector.getByRole("spinbutton", { name: "Width", exact: true }).fill("4");
+
+    async function previewFrame() {
+      await page.getByRole("button", { name: "Preview", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Report preview" });
+      await dialog.getByRole("button", { name: "Run preview" }).click();
+      return { dialog, frame: dialog.frameLocator('iframe[title="Report preview"]') };
+    }
+
+    await test.step("text wraps only beside a picture that says which side it is on", async () => {
+      await inspector.getByRole("combobox", { name: "Placement" }).selectOption({ label: "Text wraps beside it" });
+      await expect(inspector.getByText("Text wraps beside a picture aligned left or right: choose which side the picture is on.")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Save new version" })).toBeDisabled();
+      await inspector.getByRole("combobox", { name: "Alignment" }).selectOption("right");
+      await expect(page.getByText("No problems.")).toBeVisible();
+      const { dialog, frame } = await previewFrame();
+      await expect(frame.locator("figure.image.wrap-right img[alt='A mark']")).toBeVisible();
+      await dialog.getByRole("button", { name: "Close" }).click();
+    });
+
+    await test.step("a picture over the page has a position from a corner, in the text view and the preview", async () => {
+      await inspector.getByRole("combobox", { name: "Alignment" }).selectOption("center");
+      await inspector.getByRole("combobox", { name: "Placement" }).selectOption({ label: "Behind the text" });
+      await expect(inspector.getByText(/A picture behind the text is placed by its anchor and offsets/)).toBeVisible();
+    });
+  });
+
+  test("a picture behind the text takes its position from the page corner", async ({ page, request }) => {
+    const { project, suffix } = await setup(page, request);
+    await page.goto(`/projects/${project.id}/admin`);
+    await selectProjectAdminGroup(page, "Report Setup");
+    await newLayout(page, `E2E layered ${suffix}`);
+    const inspector = await addPicture(page, `layered-${suffix}.png`);
+    await inspector.getByRole("textbox", { name: "Alternative text" }).fill("A watermark");
+    await inspector.getByRole("combobox", { name: "Placement" }).selectOption({ label: "Behind the text" });
+    await inspector.getByRole("combobox", { name: "Position from" }).selectOption({ label: "The corner of the page" });
+    await inspector.getByRole("spinbutton", { name: "Across (cm)" }).fill("2");
+    await inspector.getByRole("spinbutton", { name: "Down (cm)" }).fill("3");
+    await expect(page.getByText("No problems.")).toBeVisible();
+
+    await test.step("the preview lays it under the text at its offsets", async () => {
+      await page.getByRole("button", { name: "Preview", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Report preview" });
+      await dialog.getByRole("button", { name: "Run preview" }).click();
+      const frame = dialog.frameLocator('iframe[title="Report preview"]');
+      await expect(frame.locator("div.layer-anchor.behind figure.image[style*='left:2cm'][style*='top:3cm'] img[alt='A watermark']")).toBeVisible();
+      await dialog.getByRole("button", { name: "Close" }).click();
+    });
+
+    await test.step("saving and reading the text view show the placement clauses", async () => {
+      await saveNewVersion(page);
+      await expect(page.getByText("Saved as version 2.")).toBeVisible();
+      await page.getByRole("tab", { name: "Text" }).click();
+      await expect(page.getByRole("textbox", { name: "Layout text" })).toHaveValue(/placement behind anchor page x 2 y 3/);
+    });
+
+    await test.step("a picture in line has no position, and the problem says so", async () => {
+      await page.getByRole("tab", { name: "Blocks" }).click();
+      await page.locator(".blocklyText.rl-block-title", { hasText: /Image/ }).first().click();
+      await page.getByLabel("Block details").getByRole("combobox", { name: "Placement" }).selectOption({ label: "In line" });
+      await expect(page.getByLabel("Block details").getByText(/Only a picture placed behind or in front of the text has a position/).first()).toBeVisible();
+    });
+  });
+
   test("an organisation layout draws an organisation picture for every project", async ({ page, request }) => {
     const { org, project, suffix } = await setup(page, request);
     const name = `E2E org picture ${suffix}`;

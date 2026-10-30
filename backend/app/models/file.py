@@ -43,6 +43,8 @@ class FileAsset(UUIDPKMixin, TimestampMixin, Base):
         project_id: Set only for a file in a project's own report-image library (a picture a project's report
             layouts may embed); `None` for every other file. Such a file is readable by the project's members and
             is never an organisation resource.
+        confidential: True when the file's owner marked it confidential: a report never prints it, whatever its record-image
+            rules match. Affects nothing else (the file stays as visible to the record's readers as any other).
     """
 
     __tablename__ = "file_assets"
@@ -58,6 +60,7 @@ class FileAsset(UUIDPKMixin, TimestampMixin, Base):
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True,
     )
+    confidential: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
 
 class RequirementFile(UUIDPKMixin, Base):

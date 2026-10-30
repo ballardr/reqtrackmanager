@@ -14,10 +14,13 @@ import { useStrings } from "../context/TerminologyContext";
 import {
   MAX_PAGE_STYLES, PAGE_ORIENTATIONS, PAGE_SIZES, type PageMargins, type PageOrientation, type PageSize, type PageStyleSetup,
 } from "../utils/reportPageSetup";
+import type { ReportImageLibrary } from "../api/reportLayouts";
+import { DEFAULT_MARGIN_CM } from "../utils/reportPageSetup";
 import { TextField } from "./FormFields";
 import { LabeledSelect } from "./LabeledSelect";
 import { PageMarginsFields } from "./PageMarginsFields";
 import { PageOutline } from "./PageOutline";
+import { RunningBandEditor } from "./RunningBandEditor";
 import { Tooltip } from "./Tooltip";
 
 /** What a style shares when it leaves a value out: the layout's own page. */
@@ -33,10 +36,19 @@ export interface PageStyleBase {
  * @param onChange Called with the styles after any edit.
  * @param base The layout's own page, which a style inherits what it leaves out from.
  * @param disabled Whether the editor is read-only.
+ * @param images The picture library a header or footer logo is chosen from.
+ * @param placeholders The placeholder names a header or footer offers.
  */
 export function PageStylesEditor({
-  value, onChange, base, disabled = false,
-}: { value: PageStyleSetup[]; onChange: (next: PageStyleSetup[]) => void; base: PageStyleBase; disabled?: boolean }) {
+  value, onChange, base, disabled = false, images, placeholders,
+}: {
+  value: PageStyleSetup[];
+  onChange: (next: PageStyleSetup[]) => void;
+  base: PageStyleBase;
+  disabled?: boolean;
+  images?: { library: ReportImageLibrary; scope: "organization" | "project" };
+  placeholders?: readonly string[];
+}) {
   const strings = useStrings();
   const text = strings.pageSetup;
   const change = (index: number, patch: Partial<PageStyleSetup>) => {
@@ -44,7 +56,7 @@ export function PageStylesEditor({
     // A value set back to "same as the layout" is removed from the style, not kept as undefined.
     onChange(next.map((style) => {
       const clean = { ...style };
-      for (const key of ["size", "orientation", "margins"] as const) if (clean[key] === undefined) delete clean[key];
+      for (const key of ["size", "orientation", "margins", "header", "footer"] as const) if (clean[key] === undefined) delete clean[key];
       return clean;
     }));
   };
@@ -98,6 +110,13 @@ export function PageStylesEditor({
               value={style.margins ?? {}} inherited={base.margins} mirror={base.mirror} disabled={disabled} styleField
               onChange={(margins) => change(index, { margins: Object.keys(margins).length === 0 ? undefined : margins })}
             />
+            {(["header", "footer"] as const).map((kind) => (
+              <RunningBandEditor
+                key={kind} kind={kind} value={style[kind]} inheritFrom="layout" disabled={disabled} images={images} placeholders={placeholders}
+                margin={(kind === "header" ? style.margins?.top ?? base.margins.top : style.margins?.bottom ?? base.margins.bottom) ?? DEFAULT_MARGIN_CM}
+                onChange={(next) => change(index, { [kind]: next })}
+              />
+            ))}
           </div>
         );
       })}
