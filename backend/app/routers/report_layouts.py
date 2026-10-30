@@ -22,6 +22,10 @@ log the text.
 (`services.report_layout_block_schema`), and `POST .../validate` checks a draft tree and answers every problem with its path;
 neither stores anything and the tree is never logged.
 
+`GET .../snippets` lists the report snippets the scope can insert and `POST .../snippets/{key}/apply` returns the draft tree with one
+inserted (`services.report_snippets`); neither stores anything, both need the manage permission, and the tree and parameter
+values are never logged.
+
 `GET .../widgets` lists the report components a `widget` block can embed (`services.report_widgets`), narrowed to the
 modules the organisation (or project) can use, for the designer's widget picker.
 """
@@ -77,6 +81,14 @@ from app.schemas.report_layout import (
     ReportVariableOut,
     ReportWidgetOut,
 )
+from app.schemas.report_snippet import (
+    ReportSnippetApply,
+    ReportSnippetApplyOut,
+    ReportSnippetChoiceOut,
+    ReportSnippetErrorOut,
+    ReportSnippetOut,
+    ReportSnippetParameterOut,
+)
 from app.services import (
     custom_report_run,
     report_images,
@@ -84,6 +96,7 @@ from app.services import (
     report_layout_scope,
     report_layout_text,
     report_layouts,
+    report_snippets,
     report_starters,
 )
 from app.services.client_date import effective_today
@@ -240,6 +253,48 @@ def _validate_tree(
     return ReportLayoutValidateOut(
         ok=not errors, errors=[ReportLayoutTreeErrorOut(path=e.path, message=e.message) for e in errors],
         node_count=analysis.node_count,
+    )
+
+
+def _snippets_out(visible: list[report_snippets.VisibleSnippet]) -> list[ReportSnippetOut]:
+    """The snippets a scope can use, with each parameter's choices."""
+    return [
+        ReportSnippetOut(
+            key=v.snippet.key, name=v.snippet.name, description=v.snippet.description, category=v.snippet.category,
+            family=v.snippet.family, formats=list(v.snippet.formats), module_key=v.module_key, blocks=list(v.snippet.blocks),
+            parameters=[
+                ReportSnippetParameterOut(
+                    key=p.parameter.key, label=p.parameter.label, kind=p.parameter.kind, help=p.parameter.help,
+                    required=p.parameter.default is None, default=p.parameter.default,
+                    max_length=p.parameter.max_length if p.parameter.kind == "text" else None,
+                    choices=[ReportSnippetChoiceOut(value=c.value, label=c.label) for c in p.choices],
+                )
+                for p in v.parameters
+            ],
+        )
+        for v in visible
+    ]
+
+
+def _apply_snippet(
+    db: Session, key: str, body: ReportSnippetApply, organization_id: UUID, project: Project | None,
+) -> ReportSnippetApplyOut:
+    """Builds the tree a snippet gives in a draft (200 either way; a refusal lists why); stores and logs nothing.
+
+    Raises:
+        HTTPException: 404 when no snippet of that key is available to the scope.
+    """
+    visible = next((v for v in report_snippets.visible_snippets(db, organization_id, project) if v.snippet.key == key), None)
+    if visible is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Snippet not found.")
+    outcome = report_snippets.apply_snippet(
+        db, visible, body.tree, body.parameters, organization_id=organization_id,
+        project_id=project.id if project is not None else None, list_path=body.target.container, index=body.target.index,
+    )
+    return ReportSnippetApplyOut(
+        ok=outcome.tree is not None, tree=outcome.tree, changes=outcome.changes,
+        errors=[ReportSnippetErrorOut(path=e.path, message=e.message) for e in outcome.errors],
+        inserted_at=outcome.inserted_at, count=outcome.count, problems_elsewhere=outcome.problems_elsewhere,
     )
 
 
@@ -485,6 +540,23 @@ def list_org_widgets(
     return _widgets_out(widgets_for_organization(db, organization_id))
 
 
+@org_router.get("/snippets", response_model=list[ReportSnippetOut])
+def list_org_snippets(
+    organization_id: UUID, current_user: User = Depends(manage_org_layouts), db: Session = Depends(get_db),
+) -> list[ReportSnippetOut]:
+    """The report snippets an organisation layout can insert: the platform's, and those of modules the organisation has on."""
+    return _snippets_out(report_snippets.visible_snippets(db, organization_id, None))
+
+
+@org_router.post("/snippets/{key}/apply", response_model=ReportSnippetApplyOut)
+def apply_org_snippet(
+    organization_id: UUID, key: str, body: ReportSnippetApply, current_user: User = Depends(manage_org_layouts),
+    db: Session = Depends(get_db),
+) -> ReportSnippetApplyOut:
+    """Inserts a snippet into a draft tree and returns the new tree (200 either way); stores and logs nothing."""
+    return _apply_snippet(db, key, body, organization_id, None)
+
+
 @org_router.get("/{layout_id}", response_model=ReportLayoutDetailOut)
 def get_org_layout(
     organization_id: UUID, layout_id: UUID,
@@ -705,6 +777,25 @@ def list_project_widgets(
 ) -> list[ReportWidgetOut]:
     """The report components a project layout can embed: those of modules enabled for the project."""
     return _widgets_out(widgets_for_project(db, _project_or_404(db, project_id)))
+
+
+@project_router.get("/snippets", response_model=list[ReportSnippetOut])
+def list_project_snippets(
+    project_id: UUID, current_user: User = Depends(manage_project_layouts), db: Session = Depends(get_db),
+) -> list[ReportSnippetOut]:
+    """The report snippets a project layout can insert: the platform's, and those of modules enabled for the project."""
+    project = _project_or_404(db, project_id)
+    return _snippets_out(report_snippets.visible_snippets(db, project.organization_id, project))
+
+
+@project_router.post("/snippets/{key}/apply", response_model=ReportSnippetApplyOut)
+def apply_project_snippet(
+    project_id: UUID, key: str, body: ReportSnippetApply, current_user: User = Depends(manage_project_layouts),
+    db: Session = Depends(get_db),
+) -> ReportSnippetApplyOut:
+    """Inserts a snippet into a draft tree and returns the new tree (200 either way); stores and logs nothing."""
+    project = _project_or_404(db, project_id)
+    return _apply_snippet(db, key, body, project.organization_id, project)
 
 
 @project_router.get("/{layout_id}", response_model=ReportLayoutDetailOut)

@@ -27,6 +27,8 @@ from typing import Literal
 
 from fastapi import Response
 
+from app.models.organization import Organization
+from app.models.project import Project
 from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE
 from app.modules.compliance.labels import COMPLIANCE_EVIDENCE_VALIDITY_STATE_TONE
 from app.modules.compliance.reports import (
@@ -39,6 +41,7 @@ from app.modules.compliance.reports import (
     project_compliance_table,
 )
 from app.services.downloads import file_response, filename_safe
+from app.services.report_file_names import org_default_stem
 from app.services.report_model import Block, Heading, MathText, PageBreak, ReportDocument, Sheet, Styled, Table
 from app.services.report_model import Paragraph as ModelParagraph
 from app.services.report_render import RenderInput, render
@@ -180,6 +183,8 @@ def compliance_report_response(
     fmt: ComplianceReportFormat,
     owner_name: str,
     fallback: str,
+    organization: Organization,
+    project: Project | None,
     *,
     pdf: Callable[[], bytes],
     csv: Callable[[], bytes],
@@ -194,6 +199,8 @@ def compliance_report_response(
         fmt: One of `ComplianceReportFormat`.
         owner_name: The project's or organisation's name (the file name's start).
         fallback: The file-name stem used when the name has no safe characters.
+        organization: The organisation, whose default file name template names the file when it sets one.
+        project: The project reported on, or `None` for the organisation-wide report.
         pdf: Builds the PDF.
         csv: Builds the CSV.
         document: Builds the neutral document (Word, OpenDocument text, HTML).
@@ -202,11 +209,16 @@ def compliance_report_response(
     Returns:
         The file response.
     """
-    stem = f"{filename_safe(owner_name, fallback=fallback)}-compliance-report"
+    def stem_for(extension: str) -> str:
+        return org_default_stem(
+            organization, project, title="Compliance report", extension=extension,
+            fallback=f"{filename_safe(owner_name, fallback=fallback)}-compliance-report",
+        )
+
     if fmt == "pdf":
-        return file_response(pdf(), stem, "pdf")
+        return file_response(pdf(), stem_for("pdf"), "pdf")
     if fmt == "csv":
-        return file_response(csv(), stem, "csv")
+        return file_response(csv(), stem_for("csv"), "csv")
     if fmt in _DOCUMENT_FORMATS:
         built = document()
         rendered = render(fmt, FAMILY_DOCUMENT, RenderInput(title=built.title, document=built))
@@ -214,28 +226,28 @@ def compliance_report_response(
         columns, rows = table()
         sheet = Sheet(name="Compliance", columns=columns, rows=rows)
         rendered = render(fmt, FAMILY_TABLE, RenderInput(title=sheet.name, sheets=[sheet]))
-    return file_response(rendered.content, stem, rendered.extension)
+    return file_response(rendered.content, stem_for(rendered.extension), rendered.extension)
 
 
 def project_report_response(
-    fmt: ComplianceReportFormat, project_name: str, data: ProjectComplianceReportData, *,
+    fmt: ComplianceReportFormat, project: Project, organization: Organization, data: ProjectComplianceReportData, *,
     pdf: Callable[[], bytes], csv: Callable[[], bytes],
 ) -> Response:
     """The project compliance report in `fmt` (see `compliance_report_response`)."""
     return compliance_report_response(
-        fmt, project_name, "project", pdf=pdf, csv=csv,
-        document=lambda: project_compliance_document(project_name, data), table=lambda: project_compliance_table(data),
+        fmt, project.name, "project", organization, project, pdf=pdf, csv=csv,
+        document=lambda: project_compliance_document(project.name, data), table=lambda: project_compliance_table(data),
     )
 
 
 def org_report_response(
-    fmt: ComplianceReportFormat, org_name: str, data: OrgComplianceReportData, *,
+    fmt: ComplianceReportFormat, organization: Organization, data: OrgComplianceReportData, *,
     pdf: Callable[[], bytes], csv: Callable[[], bytes],
 ) -> Response:
     """The organisation compliance report in `fmt` (see `compliance_report_response`)."""
     return compliance_report_response(
-        fmt, org_name, "organisation", pdf=pdf, csv=csv,
-        document=lambda: org_compliance_document(org_name, data), table=lambda: org_compliance_table(data),
+        fmt, organization.name, "organisation", organization, None, pdf=pdf, csv=csv,
+        document=lambda: org_compliance_document(organization.name, data), table=lambda: org_compliance_table(data),
     )
 
 

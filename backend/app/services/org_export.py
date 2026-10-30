@@ -133,6 +133,7 @@ from app.services.project_export import (
     new_project_from_bundle_data,
 )
 from app.services.rbac import would_create_org_group_cycle
+from app.services.report_file_names import ORG_FILE_NAME_PLACEHOLDERS, template_problems
 from app.services.report_folder_bundle import export_org_folders, import_org_folders
 from app.services.report_layout_bundle import export_org_layouts, import_org_layouts
 from app.services.report_pack_bundle import export_org_packs, import_org_packs
@@ -246,6 +247,7 @@ def build_org_bundle(db: Session, org: Organization, exported_by: User) -> bytes
         "oidc_issuer_url": org.oidc_issuer_url, "oidc_client_id": org.oidc_client_id,
         "oidc_required_group": org.oidc_required_group, "pat_max_lifetime_days": org.pat_max_lifetime_days,
         "report_output_retention_days": org.report_output_retention_days,
+        "report_file_name": org.report_file_name,
         "logo_file_ref": f"{logo_asset.id}_{logo_asset.filename}" if logo_asset else None,
         "logo_content_type": logo_asset.content_type if logo_asset else None,
         "login_background_file_ref": f"{background_asset.id}_{background_asset.filename}" if background_asset else None,
@@ -532,6 +534,16 @@ def _warn_legacy_report_content(data: dict[str, Any], warnings: BundleImportWarn
         warnings.add("Report introductions, chapters and appendices in this bundle were not imported: report content has been removed.")
 
 
+def _bundled_file_name(value: Any, warnings: BundleImportWarnings) -> str | None:
+    """The organisation's default report file name from a bundle, or `None` (with a warning) when it is not acceptable here."""
+    if not value:
+        return None
+    if template_problems(value, allowed=ORG_FILE_NAME_PLACEHOLDERS, variables=None):
+        warnings.add("The bundle's default report file name was not imported: it is not a valid file name template.")
+        return None
+    return str(value)
+
+
 def _import_report_templates(
     db: Session, org: Organization, data: dict[str, Any], current_user: User, *, resolutions: dict[str, str] | None,
     warnings: BundleImportWarnings,
@@ -649,6 +661,7 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
         oidc_issuer_url=data.get("oidc_issuer_url"), oidc_client_id=data.get("oidc_client_id"),
         oidc_required_group=data.get("oidc_required_group"), pat_max_lifetime_days=data.get("pat_max_lifetime_days"),
         report_output_retention_days=data.get("report_output_retention_days"),
+        report_file_name=_bundled_file_name(data.get("report_file_name"), warnings),
     )
     db.add(org)
     db.flush()

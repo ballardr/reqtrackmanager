@@ -213,3 +213,82 @@ export const ShowsTheChosenPicture: Story = {
 
 export const LightTheme: Story = { ...ShowsTheChosenPicture, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...ShowsTheChosenPicture, globals: { theme: "dark" } };
+
+const owned = (id: string, filename: string, used_by: string[] = [], in_older_versions = false) => ({
+  id, filename, content_type: "image/png", size_bytes: 2_000, tier: "project" as const, owned: true, used_by, in_older_versions,
+  created_at: "2026-10-20T09:00:00Z",
+});
+const MIXED = () => [
+  owned("u1", "unused-a.png"), owned("u2", "unused-b.png"), owned("old", "old-version.png", [], true), owned("live", "in-use.png", ["Quarterly review"]),
+];
+
+/** "Unused only" hides a picture a layout uses now and one only an older version uses; the latter is labelled. */
+export const TheUnusedFilterKeepsOnlyPicturesNoVersionUses: Story = {
+  args: { library: buildImageLibrary(MIXED()) },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Choose image…" }));
+    const modal = within(await dialog());
+    await expect(await modal.findByText("Only in older versions")).toBeInTheDocument();
+    await userEvent.click(modal.getByRole("checkbox", { name: /Unused only/ }));
+    await expect(modal.getByText("unused-a.png")).toBeInTheDocument();
+    await expect(modal.getByText("unused-b.png")).toBeInTheDocument();
+    await expect(modal.queryByText("in-use.png")).toBeNull();
+    await expect(modal.queryByText("old-version.png")).toBeNull();
+  },
+};
+
+export const WhenEverythingIsUsedTheUnusedFilterSaysSo: Story = {
+  args: { library: buildImageLibrary([owned("live", "in-use.png", ["Quarterly review"])]) },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Choose image…" }));
+    const modal = within(await dialog());
+    await userEvent.click(await modal.findByRole("checkbox", { name: /Unused only/ }));
+    await expect(modal.getByText("No unused pictures.")).toBeInTheDocument();
+  },
+};
+
+/** Delete several: mark pictures (all shown at once if wished), confirm once, and the library reloads without them. */
+export const SeveralPicturesAreMarkedAndDeletedTogether: Story = {
+  args: { library: buildImageLibrary(MIXED()) },
+  play: async ({ canvasElement, args }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Choose image…" }));
+    const modal = within(await dialog());
+    await userEvent.click(await modal.findByRole("checkbox", { name: /Unused only/ }));
+    await userEvent.click(modal.getByRole("button", { name: "Delete several…" }));
+    await expect(modal.getByRole("button", { name: "Delete 0 pictures…" })).toBeDisabled();
+    await userEvent.click(modal.getByRole("button", { name: "Mark all shown" }));
+    await expect(modal.getByText("2 marked")).toBeInTheDocument();
+    await userEvent.click(modal.getByRole("button", { name: "Delete 2 pictures…" }));
+    const confirm = within(await screen.findByRole("dialog", { name: "Delete 2 pictures?" }));
+    await expect(confirm.queryByText(/used by a layout/)).toBeNull();
+    await userEvent.click(confirm.getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(args.library.remove).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(modal.queryByText("unused-a.png")).toBeNull());
+    await expect(modal.queryByRole("checkbox", { name: /Mark/ })).toBeNull();
+  },
+};
+
+/** Marking a picture a layout still uses is allowed, but the one confirmation says how many are in use. */
+export const TheConfirmationSaysHowManyMarkedPicturesAreStillInUse: Story = {
+  args: { library: buildImageLibrary(MIXED()) },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Choose image…" }));
+    const modal = within(await dialog());
+    await userEvent.click(await modal.findByRole("button", { name: "Delete several…" }));
+    await userEvent.click(modal.getByRole("checkbox", { name: "Mark in-use.png for deletion" }));
+    await userEvent.click(modal.getByRole("checkbox", { name: "Mark unused-a.png for deletion" }));
+    await userEvent.click(modal.getByRole("button", { name: "Delete 2 pictures…" }));
+    await expect(await screen.findByText(/1 is used by a layout/)).toBeInTheDocument();
+  },
+};
+
+/** A picture the library does not own (an organisation picture seen from a project) cannot be marked. */
+export const PicturesTheLibraryDoesNotOwnCannotBeMarked: Story = {
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Choose image…" }));
+    const modal = within(await dialog());
+    await userEvent.click(await modal.findByRole("button", { name: "Delete several…" }));
+    await expect(modal.getByRole("checkbox", { name: "Mark site-logo.png for deletion" })).toBeInTheDocument();
+    await expect(modal.queryByRole("checkbox", { name: /organisation-wordmark/ })).toBeNull();
+  },
+};

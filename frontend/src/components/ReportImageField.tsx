@@ -10,6 +10,8 @@
  *   delete an owned picture behind a confirmation that names the layouts using it.
  * - Show what a selected picture says about itself (pixel size, and for a photograph when it was taken, the camera,
  *   its description and where), because photographs are rarely named usefully.
+ * - Narrow the list to unused pictures (not in any layout's current or older version) and delete several at once: a
+ *   "Delete several…" mode marks owned pictures, with one confirmation that says how many are still in use.
  * - Say where an upload goes: an organisation image is visible to every member's layouts, a project image only to
  *   this project's.
  *
@@ -26,6 +28,7 @@ import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useStrings } from "../context/TerminologyContext";
 import { Badge } from "./Badge";
 import { FormActions } from "./FormActions";
+import { CheckboxField } from "./FormFields";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { FieldShell } from "./FieldHelp";
 import { FileDetailsFacts } from "./FileDetailsPanel";
@@ -133,13 +136,22 @@ function ImageLibraryDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [removing, setRemoving] = useState<ReportImage | null>(null);
+  const [unusedOnly, setUnusedOnly] = useState(false);
+  const [marking, setMarking] = useState(false);
+  const [marked, setMarked] = useState<ReadonlySet<string>>(new Set());
+  const [confirmingMarked, setConfirmingMarked] = useState(false);
   const [selected, setSelected] = useState(value);
   const found = useFileDetails(selected === "" ? null : selected, library.details);
 
   const shown = useMemo(
-    () => (images ?? []).filter((image) => image.filename.toLowerCase().includes(search.trim().toLowerCase())),
-    [images, search],
+    () => (images ?? []).filter(
+      (image) => image.filename.toLowerCase().includes(search.trim().toLowerCase())
+        && (!unusedOnly || (image.used_by.length === 0 && !image.in_older_versions)),
+    ),
+    [images, search, unusedOnly],
   );
+  const ownedShown = shown.filter((image) => image.owned);
+  const markedImages = (images ?? []).filter((image) => marked.has(image.id));
   const current = images?.find((image) => image.id === selected) ?? null;
 
   async function upload(file: File) {
@@ -173,6 +185,39 @@ function ImageLibraryDialog({
     }
   }
 
+  function toggleMark(id: string, on: boolean) {
+    setMarked((current) => {
+      const next = new Set(current);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function stopMarking() {
+    setMarking(false);
+    setMarked(new Set());
+  }
+
+  /** Deletes the marked pictures one after another; a failure does not stop the rest, and the toast says how many went. */
+  async function removeMarked() {
+    setConfirmingMarked(false);
+    let done = 0;
+    for (const image of markedImages) {
+      try {
+        await library.remove(image.id);
+        done += 1;
+      } catch {
+        // counted below
+      }
+    }
+    onReload();
+    if (marked.has(selected)) setSelected("");
+    stopMarking();
+    const failed = markedImages.length - done;
+    showToast(failed === 0 ? text.bulkDone(done) : text.bulkPartial(done, failed), failed === 0 ? undefined : "error");
+  }
+
   return (
     <Modal title={text.dialogTitle} onClose={onClose} size="lg">
       <div className="stack">
@@ -188,10 +233,33 @@ function ImageLibraryDialog({
           {text.uploadsTo(scope === "project" ? text.whereProject : text.whereOrganization)}
           {maxBytes !== null && ` ${text.limit(text.sizeKb(maxBytes))}`}
         </span>
+        {images !== null && images.length > 0 && (
+          <div className="row" style={{ alignItems: "center", gap: "var(--space-3)" }}>
+            <CheckboxField label={text.unusedOnly} hint={text.unusedOnlyHint} helpNotNeeded checked={unusedOnly} onChange={setUnusedOnly} />
+            <span style={{ marginInlineStart: "auto" }} className="row">
+              {!marking && ownedShown.length > 0 && (
+                <button type="button" className="btn btn-sm" onClick={() => setMarking(true)}>{text.deleteSeveral}</button>
+              )}
+              {marking && (
+                <>
+                  <strong aria-live="polite">{text.marked(markedImages.length)}</strong>
+                  <button type="button" className="btn btn-sm" onClick={() => setMarked(new Set(ownedShown.map((i) => i.id)))}>{text.selectAllShown}</button>
+                  <button type="button" className="btn btn-sm" disabled={marked.size === 0} onClick={() => setMarked(new Set())}>{text.clearMarks}</button>
+                  <button type="button" className="btn btn-sm btn-danger" disabled={markedImages.length === 0} onClick={() => setConfirmingMarked(true)}>
+                    {text.deleteMarked(markedImages.length)}
+                  </button>
+                  <button type="button" className="btn btn-sm" onClick={stopMarking}>{text.cancelDeleteSeveral}</button>
+                </>
+              )}
+            </span>
+          </div>
+        )}
         {error && <div role="alert" style={{ color: "var(--color-danger)" }}>{error}</div>}
         {images === null && <Spinner />}
         {images !== null && images.length === 0 && <p className="text-muted" style={{ margin: 0 }}>{text.empty}</p>}
-        {images !== null && images.length > 0 && shown.length === 0 && <p className="text-muted" style={{ margin: 0 }}>{text.noMatches}</p>}
+        {images !== null && images.length > 0 && shown.length === 0 && (
+          <p className="text-muted" style={{ margin: 0 }}>{unusedOnly && search.trim() === "" ? text.noUnused : text.noMatches}</p>
+        )}
         {images !== null && images.length > 0 && (
           <div className="report-image-browser">
             <ul className="report-image-grid" aria-label={text.dialogTitle}>
@@ -209,8 +277,16 @@ function ImageLibraryDialog({
                     <span className="text-muted" style={{ fontSize: "0.8rem" }}>{text.sizeKb(image.size_bytes)}</span>
                   </div>
                   <div className="row" style={{ justifyContent: "space-between", gap: "var(--space-1)" }}>
-                    <span className="text-muted" style={{ fontSize: "0.8rem" }}>{text.usedBy(image.used_by.length)}</span>
-                    {image.owned && (
+                    <span className="text-muted" style={{ fontSize: "0.8rem" }}>
+                      {image.used_by.length === 0 && image.in_older_versions ? text.onlyOlderVersions : text.usedBy(image.used_by.length)}
+                    </span>
+                    {marking && image.owned && (
+                      <input
+                        type="checkbox" aria-label={text.selectToDelete(image.filename)} checked={marked.has(image.id)}
+                        onChange={(e) => toggleMark(image.id, e.target.checked)}
+                      />
+                    )}
+                    {!marking && image.owned && (
                       <button type="button" className="btn btn-sm btn-icon" aria-label={text.remove(image.filename)} onClick={() => setRemoving(image)}>
                         <Trash2 aria-hidden="true" />
                       </button>
@@ -226,6 +302,13 @@ function ImageLibraryDialog({
           onCancel={onClose} onSave={() => onPick(selected)} saveLabel={text.use} saveDisabled={current === null}
         />
       </div>
+      {confirmingMarked && (
+        <ConfirmDialog
+          title={text.bulkTitle(markedImages.length)}
+          message={text.bulkMessage(markedImages.length, markedImages.filter((i) => i.used_by.length > 0).length)}
+          confirmLabel={strings.common.delete} onConfirm={() => void removeMarked()} onCancel={() => setConfirmingMarked(false)}
+        />
+      )}
       {removing && (
         <ConfirmDialog
           title={text.removeTitle} message={text.removeMessage(removing.filename, removing.used_by)}

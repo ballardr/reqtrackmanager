@@ -48,7 +48,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -63,6 +63,7 @@ from app.services.client_date import effective_today
 from app.services.downloads import filename_safe
 from app.services.link_graph import ArtefactResolver
 from app.services.report_document import ReportBranding, resolve_branding
+from app.services.report_file_names import render_stem
 from app.services.report_framework import (
     ReportCatalogueEntryOut,
     ReportContext,
@@ -103,7 +104,7 @@ from app.services.report_model import (
 )
 from app.services.report_render import RenderedFile, RenderInput, formats_for, render
 from app.services.report_running import apply_template_defaults
-from app.services.report_variables import describe_variables
+from app.services.report_variables import describe_variables, variable_text
 
 ENGINE_VERSION = "1"
 """Bumped when evaluation semantics change, so a provenance row says which engine produced a report."""
@@ -140,6 +141,7 @@ class LayoutRun:
         generated_at: When the run started (UTC).
         duration_ms: How long evaluation took.
         notes: Run-level remarks (projects skipped because they hid the layout).
+        today: The caller's calendar day when the run started (`X-Client-Date`), which a file name's `{{generated_on}}` uses.
     """
 
     layout: ReportLayout
@@ -151,6 +153,7 @@ class LayoutRun:
     generated_at: datetime
     duration_ms: int
     notes: list[str] = field(default_factory=list)
+    today: date = field(default_factory=effective_today)
 
     @property
     def scope_label(self) -> str:
@@ -480,8 +483,43 @@ def render_file(db: Session, run: LayoutRun, fmt: str, template: ReportTemplate 
     return render(fmt, run.family, render_input_for(run, branding=branding))
 
 
-def file_stem(run: LayoutRun) -> str:
-    """The download name (without extension) of a run: scope then layout name, made filename-safe."""
+def file_values(run: LayoutRun, extension: str) -> tuple[dict[str, str], dict[str, str]]:
+    """The values a file name template may use for a run: `(plain placeholders, {{var.name}} texts)`.
+
+    Args:
+        run: A finished run.
+        extension: The produced file's extension (`format`).
+
+    Returns:
+        The same facts the document's own placeholders carry, so a name cannot disagree with the report. A project
+        code is empty in an organisation-wide run (it has no single project).
+    """
+    plain = {
+        "report_title": run.layout.name, "project_name": run.scope_label, "organisation": run.organization.name,
+        "project_code": (run.root_project.code if run.root_project is not None else "") or "",
+        "generated_on": run.today.isoformat(), "layout_version": str(run.version.version), "format": extension,
+    }
+    return plain, variable_text(run.version.tree.get("variables"), run.evaluated.variables)
+
+
+def file_stem(run: LayoutRun, extension: str) -> str:
+    """The download name (without extension) of a run.
+
+    The layout's own `file_name` template, else the organisation's default, else the name this has always had
+    (scope then layout name); a template that fills in to nothing usable falls through to the next.
+
+    Args:
+        run: A finished run.
+        extension: The produced file's extension, for `{{format}}`.
+
+    Returns:
+        A flat, safe stem.
+    """
+    plain, texts = file_values(run, extension)
+    for template in (run.version.tree.get("file_name"), run.organization.report_file_name):
+        stem = render_stem(template, plain, texts)
+        if stem is not None:
+            return stem
     return f"{filename_safe(run.scope_label, fallback='report')}-{filename_safe(run.layout.name, fallback='report')}"
 
 

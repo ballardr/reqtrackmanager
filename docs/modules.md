@@ -374,6 +374,7 @@ class ModuleDefinition:
     report_fields: dict[str, ReportFieldProvider] = {}  # fields a custom report layout may use for a type (§4m)
     not_reportable: dict[str, str] = {}  # artefact types deliberately outside custom reports, with the reason (§4m)
     report_starter_sections: tuple[ReportStarterSection, ...] = ()  # your parts of the platform's starter report layouts (§4v)
+    report_snippets: tuple[ReportSnippet, ...] = ()  # fragments of a report layout the designer can insert, about your records (§4aa)
     link_type_seeds: tuple[LinkTypeSeed, ...] = ()  # link types you ship; any artefact links to any by default (§4f-bis)
     reports: tuple[ReportDefinition, ...] = ()  # reports core serves for you (§4g)
     notification_types: tuple[NotificationTypeDefinition, ...] = ()  # notification kinds you send (§4h)
@@ -1929,6 +1930,107 @@ flowchart LR
 - Favourites are not a table: they are a list of report keys in the person's `ui_preferences` (`report_favourites`). The folders left open are kept the same way (`report_picker_folders`: folder ids by picker; each host names its picker with `pickerId`), and a picker opens fully collapsed the first time.
 - Frontend: `ReportPicker` (dialog over the shared `FolderTreeList`), `ReportSetupPanel` (Org Admin and
   Project Admin: layouts, packs and module reports as one folder list, merged client-side in `utils/reportSetupRows` from the layout, pack, placement and folder lists) and `ReportFolderChooser`.
+
+### 4y. Custom reports: default file names (Module 10 Phase 40)
+
+A downloaded or stored report is named by a `{{placeholder}}` template (`services/report_file_names.py`). The same
+placeholder syntax, run facts and resolver the document's text uses fill it, so a name cannot disagree with the report.
+
+```mermaid
+flowchart TD
+    E["Pack entry filename"] --> S
+    L["Layout tree file_name"] --> S
+    O["organizations.report_file_name"] --> S
+    S["render_stem: fill, clean each value,<br/>clean the whole, cap"] --> R{usable?}
+    R -->|yes| N["stem + extension chosen by the renderer"]
+    R -->|no| B["next source, else the built-in scope-report name"]
+    N --> D["file_response -> content_disposition<br/>(RFC 5987 for anything not printable ASCII)"]
+```
+
+- **Where a template lives.** `file_name` on the layout tree root (`@filename "..."` in the text view, a `file_name` field
+  kind in `LAYOUT_FIELDS`), `file_name` on a pack definition (the zip) and `filename` on a pack entry (all part of the
+  versioned JSON, so they travel in bundles unchanged), and `organizations.report_file_name` (the default for a report
+  that sets none, including the built-in reports: framework module reports, the requirements report, the compliance
+  reports and the record-list report; in the organisation bundle).
+- **Order.** Layout: its `file_name`, else the organisation's, else `<scope>-<layout>`. Pack zip: its `file_name`, else the
+  organisation's, else `<scope>-<pack>`. Pack entry: its `filename`, else the layout's `file_name`, else the layout name.
+- **Placeholders.** `report_title`, `project_name`, `project_code`, `organisation`, `generated_on` (the caller's own day: the
+  run records `LayoutRun.today` from `effective_today()`), `layout_version`, `format` and `var.<name>`. The organisation
+  default has no `layout_version` and no variables. A record field is refused at save: a file has no current record (the
+  record-image name rule, which has one, shares the syntax).
+- **Safety.** `clean_filename` folds accents, replaces anything outside `A-Za-z0-9 ._-`, collapses `..` and repeated dashes,
+  strips leading and trailing dots, spaces and dashes, prefixes a Windows device name and caps the length; each value is
+  cleaned and cut to 40 characters before it is joined. `file_response` builds the header through `content_disposition`.
+  An empty or unusable result falls back; a run never fails because of a name.
+- **Live example.** `POST /api/v1/report-file-names/example` (any signed-in person; stateless, data-free) answers the
+  example, the problems and the placeholders valid for the place; the shared `FileNameField` shows them.
+
+### 4z. Custom reports: copying between projects (Module 10 Phase 41)
+
+`services/report_copy.py` copies layouts, packs, folders and module-report settings from one project to another of the
+same organisation (`POST /projects/{target}/report-copy`, `dry_run` to preview; `GET /projects/{source}/report-copy/targets`).
+It adds no table and needs nothing from a module: a layout or pack is serialised by the project bundle's own entry builders
+(`report_layout_bundle.layout_entry`, `report_pack_bundle.pack_entry`, both with `latest_only`) and created by the bundle's
+importers (`import_layout_entry`, `import_pack_entry`), so a field a module's blocks or a later change adds to the bundle
+reaches a copy with no edit here.
+
+```mermaid
+flowchart TD
+    Q[Request: source, ticked items, name rule] --> G{Gates}
+    G -->|no access / other organisation| N404[404]
+    G -->|no manage right| N403[403]
+    G -->|archived| N409[409]
+    G -->|ok| PL[plan_copy: reads only]
+    PL -->|dry_run| OUT[Plan returned]
+    PL -->|apply| AP[apply_copy: folders, layouts + pictures, packs, settings, favourites]
+    AP --> AU[One audit event: counts and ids]
+```
+
+- **Gates.** `manage_project_report_layouts` in the target (dependency) and in the source (checked in the route; a source the
+  caller cannot see at all is 404), no server-administrator bypass; both projects unarchived and in one organisation.
+- **Names.** A taken name is renamed `Name (copy)`, `(copy 2)`, ... or skipped; nothing is replaced. A pack entry naming a
+  copied layout is re-pointed at the copy's name.
+- **Pictures.** An organisation picture stays a reference; a project (or ancestor) picture is copied once into the target
+  project's library, read through `files.read_file` and re-uploaded by the bundle's picture importer.
+- **Selection UI.** `FolderTreeList` takes optional `checks` (tick boxes, a folder covering its items, a mixed state);
+  `ReportSetupPanel` uses them for its copy mode and `ReportCopyDialog` previews and applies.
+
+### 4aa. Custom reports: snippets (Module 10 Phase 43)
+
+A **snippet** is a named fragment of a layout (a cover page, a logo at the top right, record images, document control, approvals,
+a landscape table section) that an author inserts into the layout they are editing. Inserting **copies** the blocks in: nothing
+links back, so changing a snippet never alters a layout. A snippet adds no block type, no data access (its blocks run with the
+runner's permissions) and no stored state in this version: the designer holds the draft and the server only builds and validates
+the result.
+
+```mermaid
+flowchart LR
+    C["Core set<br/>services/report_snippets_core.py"] --> R["get_report_snippets()"]
+    M["Module set<br/>ModuleDefinition.report_snippets"] --> R
+    R --> V["visible_snippets:<br/>module on for the scope,<br/>record-type choices"]
+    V --> L["GET .../report-layouts/snippets"]
+    V --> A["apply_snippet<br/>draft tree + values + container/index"]
+    A --> P["POST .../snippets/{key}/apply:<br/>new tree, changes, or the reasons"]
+```
+
+- **A module contributes its own.** `ModuleDefinition.report_snippets` holds `ReportSnippet(key, name, description, category, blocks,
+  family, root, parameters, formats)`; a snippet about a module's own records is offered only where that module is on (the
+  organisation, or the project). Core names no module. `backend/tests/test_report_snippets.py` applies every built-in to an empty
+  layout and to one that already has what it adds.
+- **Parameters fill declared paths.** A `ReportSnippetParameter` (`image`, `record_type` or `text`) names the paths in the fragment that
+  receive its value (`nodes[0].children[1].source.record_type`), never a token parsed out of text, so the fragment is a valid tree
+  from the start. A picture is checked against the layout owner's library (an organisation layout cannot take a project's picture), a
+  record type against what the scope can report; a picture and a record type are never defaulted.
+- **Root additions** (`root`: `page_styles`, `variables`) are reused when identical, a page style with a clashing name is renamed
+  (`Cover 2`) and the inserted sections follow, a clashing variable is refused; nothing is overwritten.
+- **Only the snippet's own problems refuse it.** A draft is often mid-edit, so a problem elsewhere in the layout is counted
+  (`problems_elsewhere`), not a reason to refuse; a problem inside what was inserted, or caused by it (the block or page-style limit,
+  a section inside a section), refuses it with the reason and path.
+- **`layout_aware`** (built-in snippets only) adjusts a fragment to the layout: the logo is sized to the page's top margin and placed
+  from the page corner so its right edge meets the right margin. The position is fixed at insert time.
+- **Formats.** `formats` lists where the result is true; the logo is an image in front of the text anchored to the page, printed by
+  PDF, Word and OpenDocument text but only approximated in the browser preview.
+- **MCP.** `list_report_snippets` and `apply_report_snippet` (read-and-compute, nothing stored) in the core server and skill.
 
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 

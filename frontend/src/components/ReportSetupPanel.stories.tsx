@@ -2,6 +2,8 @@ import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { expect, screen, userEvent, waitFor, within } from "storybook/test";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
+import { buildCopyApi } from "../testing/reportCopyFixtures";
+import { buildDuplicateApi } from "../testing/reportDuplicateFixtures";
 import { buildFolderApi } from "../testing/reportFolderFixtures";
 import { buildLayoutApi, buildLayoutSummary } from "../testing/reportLayoutFixtures";
 import { buildPackApi, buildPackSummary } from "../testing/reportPackFixtures";
@@ -218,7 +220,7 @@ export const AnOwnLayoutOffersTheOwnerActions: Story = {
     const grid = await list(canvasElement);
     await expand(grid, "Custom reports");
     await userEvent.click(grid.getByRole("button", { name: "Actions for Handover document" }));
-    for (const name of ["Open designer", "Edit details", "Move to folder…", "Make a copy", "Delete"]) {
+    for (const name of ["Open designer", "Edit details", "Move to folder…", "Duplicate…", "Delete"]) {
       await expect(await screen.findByRole("menuitem", { name })).toBeInTheDocument();
     }
     await expect(screen.queryByRole("menuitem", { name: "Hide in this project" })).not.toBeInTheDocument();
@@ -231,11 +233,38 @@ export const ASharedLayoutCanBeViewedCopiedMovedOrHiddenButNotEditedOrDeleted: S
     const grid = await list(canvasElement);
     await expand(grid, "Custom reports");
     await userEvent.click(grid.getByRole("button", { name: "Actions for Organisation requirements" }));
-    for (const name of ["View layout", "Move to folder…", "Make a copy", "Hide in this project"]) {
+    for (const name of ["View layout", "Move to folder…", "Duplicate…", "Hide in this project"]) {
       await expect(await screen.findByRole("menuitem", { name })).toBeInTheDocument();
     }
     await expect(screen.queryByRole("menuitem", { name: "Edit details" })).not.toBeInTheDocument();
     await expect(screen.queryByRole("menuitem", { name: "Delete" })).not.toBeInTheDocument();
+  },
+};
+
+export const DuplicateOpensTheDialogAndTheCopyIsOpened: Story = {
+  args: { ...fresh(), duplicateApi: buildDuplicateApi({ sourceName: "Organisation requirements" }) },
+  play: async ({ canvasElement, args }) => {
+    const grid = await list(canvasElement);
+    await expand(grid, "Custom reports");
+    await userEvent.click(grid.getByRole("button", { name: "Actions for Organisation requirements" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Duplicate…" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Duplicate layout" }));
+    await waitFor(() => expect(dialog.getByRole("textbox", { name: "Name" })).toHaveValue("Organisation requirements (copy)"));
+    await userEvent.click(dialog.getByRole("button", { name: "Create copy" }));
+    await expect(await screen.findByText("Designer opened")).toBeInTheDocument();
+    await expect(args.duplicateApi!.duplicate).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "layout", source_id: "3", dry_run: false }));
+  },
+};
+
+export const NewFromAStarterOpensTheStarterDialog: Story = {
+  args: { ...fresh(), duplicateApi: buildDuplicateApi() },
+  play: async ({ canvasElement }) => {
+    await list(canvasElement);
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "New" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "New from a starter…" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "New layout from a starter" }));
+    await expect(dialog.getByRole("button", { name: "Create copy" })).toBeDisabled();
+    await userEvent.click(dialog.getByRole("button", { name: "Cancel" }));
   },
 };
 
@@ -360,5 +389,73 @@ export const ALoadFailureIsReportedNotHidden: Story = {
   args: { ...fresh(), placementApi: { ...buildPlacementApi(placements()), list: async () => { throw new Error("denied"); } } },
   play: async ({ canvasElement }) => {
     await expect(await within(canvasElement).findByRole("alert")).toHaveTextContent("The report setup could not be loaded.");
+  },
+};
+
+const copyNames = { "1": "Handover document", "3": "Organisation requirements" };
+
+/** Copy to another project: tick boxes appear, a folder's box covers what is in it, and Copy opens the dialog. */
+export const CopyModeTicksReportsAndAFolderCoversWhatIsInsideIt: Story = {
+  args: { ...fresh(), copyApi: buildCopyApi({ names: copyNames }) },
+  play: async ({ canvasElement, args }) => {
+    const grid = await list(canvasElement);
+    await expect(grid.queryByRole("checkbox")).not.toBeInTheDocument();
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Copy to another project…" }));
+    await expect(within(canvasElement).getByRole("button", { name: "Copy…" })).toBeDisabled();
+    await expand(grid, "Custom reports");
+    await userEvent.click(grid.getByRole("checkbox", { name: "Select Custom reports" }));
+    await expect(grid.getByRole("checkbox", { name: "Select Handover document" })).toBeChecked();
+    await expect(grid.getByRole("checkbox", { name: "Select Organisation requirements" })).toBeChecked();
+    await expect(within(canvasElement).getByText("2 selected")).toBeInTheDocument();
+    await userEvent.click(grid.getByRole("checkbox", { name: "Select Organisation requirements" }));
+    await expect(grid.getByRole("checkbox", { name: "Select Custom reports" })).toHaveAttribute("aria-checked", "mixed");
+    await expect(within(canvasElement).getByText("1 selected")).toBeInTheDocument();
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Copy…" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Copy 1 item to another project" }));
+    await waitFor(() => expect(args.copyApi!.targets).toHaveBeenCalledWith("project-1"));
+    await userEvent.click(dialog.getByRole("button", { name: "Cancel" }));
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Cancel" }));
+    await expect(grid.queryByRole("checkbox")).not.toBeInTheDocument();
+  },
+};
+
+/** A module report the project has not set up itself has nothing to copy, so it cannot be ticked. */
+export const AModuleReportWithNoSettingOfItsOwnCannotBeTicked: Story = {
+  args: { ...fresh(), copyApi: buildCopyApi() },
+  play: async ({ canvasElement }) => {
+    const grid = await list(canvasElement);
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Copy to another project…" }));
+    await expand(grid, "Decision Management");
+    await expect(grid.getByRole("checkbox", { name: "Select Approval ageing" })).toBeDisabled();
+  },
+};
+
+/** A report's own menu copies just that report. */
+export const ARowMenuCopiesThatOneReportToAnotherProject: Story = {
+  args: { ...fresh(), copyApi: buildCopyApi({ names: copyNames }) },
+  play: async ({ canvasElement, args }) => {
+    const grid = await list(canvasElement);
+    await expand(grid, "Custom reports");
+    await userEvent.click(grid.getByRole("button", { name: "Actions for Handover document" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Copy to another project…" }));
+    await expect(await screen.findByRole("dialog", { name: "Copy 1 item to another project" })).toBeInTheDocument();
+    await waitFor(() => expect(args.copyApi!.targets).toHaveBeenCalled());
+  },
+};
+
+/** An organisation lists reports for every project, so it has no cross-project copy. */
+export const AnOrganisationListOffersNoCopyToAnotherProject: Story = {
+  args: {
+    layoutApi: buildLayoutApi([OWN_LAYOUT], { kind: "organization" }),
+    packApi: buildPackApi([], { kind: "organization" }),
+    placementApi: buildPlacementApi([layoutPlacement("1", "Handover document", "report", "Custom reports")], "organization"),
+    folderApi: buildFolderApi([], "organization"),
+  },
+  play: async ({ canvasElement }) => {
+    const grid = await list(canvasElement);
+    await expect(within(canvasElement).queryByRole("button", { name: "Copy to another project…" })).not.toBeInTheDocument();
+    await expand(grid, "Custom reports");
+    await userEvent.click(grid.getByRole("button", { name: "Actions for Handover document" }));
+    await expect(screen.queryByRole("menuitem", { name: "Copy to another project…" })).not.toBeInTheDocument();
   },
 };

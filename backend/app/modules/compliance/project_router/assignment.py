@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.notification import NotificationType
+from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
 from app.modules.compliance.enums import ComplianceStandardVersionStatus
@@ -403,12 +404,15 @@ def get_project_compliance_report(
     whatever that panel's own Standard/Standard version/Sub-section filters
     currently show."""
     project = db.get(Project, project_id)
+    assert project is not None  # the route's view gate has loaded it
     data = collect_project_compliance_report(
         db, project, include_archived=include_archived,
         standard_id=standard_id, standard_version_id=standard_version_id, requirement_id=requirement_id,
     )
+    organization = db.get(Organization, project.organization_id)
+    assert organization is not None  # the project's own organisation
     return project_report_response(
-        format, project.name, data,
+        format, project, organization, data,
         pdf=lambda: generate_project_compliance_pdf(project.name, data),
         csv=lambda: generate_project_compliance_csv(data),
     )

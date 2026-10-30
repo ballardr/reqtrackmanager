@@ -60,9 +60,15 @@ ORG_KEY = "report_layouts"
 IMAGES_KEY = "report_layout_images"
 
 
-def _layout_json(db: Session, layout: ReportLayout) -> dict[str, Any]:
-    """One layout with every version, oldest first. Author email and time are information only."""
+def layout_entry(db: Session, layout: ReportLayout, *, latest_only: bool = False) -> dict[str, Any]:
+    """One layout with every version, oldest first. Author email and time are information only.
+
+    `latest_only` keeps just the current version, noted "Copied from <name>, version n" (what a copy between
+    projects carries; the source keeps its history).
+    """
     versions = report_layouts.list_versions(db, layout.id)
+    if latest_only:
+        versions = [v for v in versions if v.version == layout.current_version]
     emails = {
         u.id: u.email for u in db.scalars(select(User).where(User.id.in_({v.created_by for v in versions if v.created_by})))
     } if any(v.created_by for v in versions) else {}
@@ -72,7 +78,8 @@ def _layout_json(db: Session, layout: ReportLayout) -> dict[str, Any]:
         "report_template": template.name if template else None,
         "versions": [
             {
-                "version": v.version, "schema_version": v.schema_version, "tree": v.tree, "comment": v.comment,
+                "version": v.version, "schema_version": v.schema_version, "tree": v.tree,
+                "comment": f"Copied from {layout.name}, version {v.version}"[: report_layouts.MAX_COMMENT_CHARS] if latest_only else v.comment,
                 "created_by_email": emails.get(v.created_by) if v.created_by else None, "created_at": v.created_at.isoformat(),
             }
             for v in reversed(versions)
@@ -80,7 +87,7 @@ def _layout_json(db: Session, layout: ReportLayout) -> dict[str, Any]:
     }
 
 
-def _images_json(
+def image_entries(
     db: Session, layouts: list[dict[str, Any]], organization_id: uuid.UUID, project_id: uuid.UUID | None,
     assets: dict[uuid.UUID, FileAsset],
 ) -> list[dict[str, Any]]:
@@ -122,20 +129,20 @@ def export_project_layouts(db: Session, project: Project, assets: dict[uuid.UUID
         {"name": s.layout.name, "origin": s.origin}
         for s in report_layout_scope.resolve_project_layouts(db, project) if s.hidden
     ]
-    layouts = [_layout_json(db, layout) for layout in own]
+    layouts = [layout_entry(db, layout) for layout in own]
     return {
         PROJECT_KEY: layouts, HIDDEN_KEY: hidden,
-        IMAGES_KEY: _images_json(db, layouts, project.organization_id, project.id, assets),
+        IMAGES_KEY: image_entries(db, layouts, project.organization_id, project.id, assets),
     }
 
 
 def export_org_layouts(db: Session, organization_id: uuid.UUID, assets: dict[uuid.UUID, FileAsset]) -> dict[str, Any]:
     """The organisation's own layouts and the pictures they use, as `org.json` sections (`assets` as for a project)."""
-    layouts = [_layout_json(db, layout) for layout in report_layout_scope.list_org_layouts(db, organization_id)]
-    return {ORG_KEY: layouts, IMAGES_KEY: _images_json(db, layouts, organization_id, None, assets)}
+    layouts = [layout_entry(db, layout) for layout in report_layout_scope.list_org_layouts(db, organization_id)]
+    return {ORG_KEY: layouts, IMAGES_KEY: image_entries(db, layouts, organization_id, None, assets)}
 
 
-def _import_images(
+def import_images(
     db: Session, entries: Any, file_bytes_by_ref: dict[str, bytes], *, organization_id: uuid.UUID,
     project_id: uuid.UUID | None, actor: User, warnings: BundleImportWarnings,
 ) -> dict[str, str]:
@@ -181,11 +188,11 @@ def _rewrite_images(tree: dict[str, Any], mapping: dict[str, str]) -> dict[str, 
     return copy
 
 
-def _import_layout(
+def import_layout_entry(
     db: Session, entry: dict[str, Any], *, organization_id: uuid.UUID, project_id: uuid.UUID | None, actor: User,
     warnings: BundleImportWarnings, existing_names: set[str] | None = None, images: dict[str, str] | None = None,
-) -> bool:
-    """Creates one layout from its bundle entry. Returns whether a layout was stored.
+) -> uuid.UUID | None:
+    """Creates one layout from its bundle entry. Returns the new layout's id, or `None` when none was stored.
 
     `existing_names` (lower-cased names the owner already has) switches on the merge rule: a taken name is
     imported as "<name> (imported)" instead. `images` maps the bundle's picture ids to the imported ones.
@@ -227,17 +234,17 @@ def _import_layout(
                 )
         except report_layouts.LayoutNameTakenError:
             warnings.add(f'Report layout "{name}" was skipped: a layout with that name already exists.')
-            return False
+            return None
         except (InvalidLayoutError, ValueError):
             dropped += 1
             continue
         stored = saved.layout.current_version
     if layout_id is None:
         warnings.add(f'Report layout "{name}" was skipped: none of its versions is valid in this installation.')
-        return False
+        return None
     if dropped:
         warnings.add(f'Report layout "{name}": {dropped} version(s) that are not valid in this installation were left out.')
-    return True
+    return layout_id
 
 
 def import_org_layouts(
@@ -254,15 +261,15 @@ def import_org_layouts(
             ReportLayout.organization_id == organization_id, ReportLayout.project_id.is_(None)))}
         if merge else None
     )
-    images = _import_images(
+    images = import_images(
         db, data.get(IMAGES_KEY), file_bytes_by_ref, organization_id=organization_id, project_id=None, actor=actor,
         warnings=warnings,
     )
     return sum(
-        _import_layout(
+        import_layout_entry(
             db, entry, organization_id=organization_id, project_id=None, actor=actor, warnings=warnings,
             existing_names=existing, images=images,
-        )
+        ) is not None
         for entry in data.get(ORG_KEY, []) if isinstance(entry, dict)
     )
 
@@ -272,13 +279,13 @@ def import_project_layouts(
     file_bytes_by_ref: dict[str, bytes],
 ) -> None:
     """Imports a `project.json`'s own layouts and their pictures, then re-applies the hides to this project's inherited layouts."""
-    images = _import_images(
+    images = import_images(
         db, data.get(IMAGES_KEY), file_bytes_by_ref, organization_id=project.organization_id, project_id=project.id,
         actor=actor, warnings=warnings,
     )
     for entry in data.get(PROJECT_KEY, []):
         if isinstance(entry, dict):
-            _import_layout(
+            import_layout_entry(
                 db, entry, organization_id=project.organization_id, project_id=project.id, actor=actor, warnings=warnings,
                 images=images,
             )
@@ -297,4 +304,7 @@ def import_project_layouts(
         report_layout_scope.hide_layout(db, project, layout_id, actor_id=actor.id)
 
 
-__all__ = ["export_org_layouts", "export_project_layouts", "import_org_layouts", "import_project_layouts"]
+__all__ = [
+    "export_org_layouts", "export_project_layouts", "image_entries", "import_images", "import_layout_entry",
+    "import_org_layouts", "import_project_layouts", "layout_entry",
+]

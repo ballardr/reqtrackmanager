@@ -331,12 +331,13 @@ def get_org_compliance_report(
     and `OrgComplianceOutstandingPanel.tsx`'s own Export triggers to match
     whichever of their filters is currently applied."""
     org = db.get(Organization, organization_id)
+    assert org is not None  # the route's manage gate has loaded it
     data = collect_org_compliance_report(
         db, organization_id, project_id=project_id, standard_id=standard_id,
         standard_version_id=standard_version_id, requirement_id=requirement_id,
     )
     return org_report_response(
-        format, org.name, data,
+        format, org, data,
         pdf=lambda: generate_org_compliance_pdf(org.name, data),
         csv=lambda: generate_org_compliance_csv(data),
     )

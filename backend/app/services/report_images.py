@@ -121,11 +121,15 @@ class LibraryImage:
         asset: The stored file.
         tier: `organisation` or `project`.
         used_by: Names of the layouts whose current version embeds it.
+        in_older_versions: Whether no current version embeds it but an older saved version of some layout does (deleting
+            it would make restoring or re-running that version lose the picture). Only looked up for a picture nobody
+            currently uses.
     """
 
     asset: FileAsset
     tier: str
     used_by: list[str]
+    in_older_versions: bool = False
 
 
 def sniff_image(data: bytes) -> str:
@@ -306,7 +310,23 @@ def list_library(db: Session, organization_id: uuid.UUID, project_id: uuid.UUID 
         ) if _is_image(a)
     ]
     users = used_by(db, organization_id, [a.id for a in assets])
-    return [LibraryImage(a, "organisation" if a.is_org_resource else "project", users.get(a.id, [])) for a in assets]
+    return [
+        LibraryImage(
+            a, "organisation" if a.is_org_resource else "project", users.get(a.id, []),
+            in_older_versions=a.id not in users and _in_any_version(db, organization_id, a.id),
+        )
+        for a in assets
+    ]
+
+
+def _in_any_version(db: Session, organization_id: uuid.UUID, file_id: uuid.UUID) -> bool:
+    """Whether any saved version of any of the organisation's layouts embeds the file (a text search of the stored trees)."""
+    return db.scalar(
+        select(ReportLayoutVersion.id)
+        .join(ReportLayout, ReportLayout.id == ReportLayoutVersion.layout_id)
+        .where(ReportLayout.organization_id == organization_id, cast(ReportLayoutVersion.tree, Text).contains(str(file_id)))
+        .limit(1)
+    ) is not None
 
 
 def used_by(db: Session, organization_id: uuid.UUID, file_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[str]]:

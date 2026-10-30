@@ -1997,6 +1997,70 @@ class ReportStarterSection:
 
 
 @dataclass(frozen=True)
+class ReportSnippetParameter:
+    """One choice a person makes when inserting a report snippet (`ReportSnippet.parameters`).
+
+    A parameter names where its value goes as **paths into the fragment** (`nodes[0].file`), never as a token parsed
+    out of text, so the fragment is always a valid tree, a value cannot land in the wrong field, and a snippet is
+    checked whole when it is defined.
+
+    Attributes:
+        key: Stable key, unique within the snippet.
+        label: What the form calls it.
+        kind: `image` (a picture from the layout's library; required), `record_type` (a reportable record type the scope
+            can use; required) or `text` (a short text; `default` is used when the person leaves it empty).
+        targets: Paths in the fragment that receive the value, `nodes[...]` or `page_styles[...]` style
+            (`nodes[0].children[1].source.record_type`).
+        help: One or two sentences: what it is and what it affects.
+        default: The value used when none is given (`text` only; an image and a record type are never defaulted).
+        record_types: For `record_type`: `reportable` (any type the scope can report) or `attachments` (only types whose
+            attached files a report can print).
+        max_length: Longest text accepted (`text`).
+    """
+
+    key: str
+    label: str
+    kind: str
+    targets: tuple[str, ...]
+    help: str
+    default: str | None = None
+    record_types: Literal["reportable", "attachments"] = "reportable"
+    max_length: int = 200
+
+
+@dataclass(frozen=True)
+class ReportSnippet:
+    """A named fragment of a report layout that the designer inserts by copying its blocks (nothing links back).
+
+    Attributes:
+        key: Stable key, unique across core and modules.
+        name: Display name.
+        description: One sentence about what it adds.
+        category: Group the picker lists it under.
+        blocks: The blocks inserted (a tree fragment, valid against the block schemas when applied).
+        family: `document` or `table`, the layout family it belongs to.
+        root: Root-level things the blocks depend on, added to the layout: `page_styles` (a list of page styles) and
+            `variables` (a list of variable definitions). A name the layout already uses is reused when identical, and
+            otherwise a page style is renamed (the blocks' references follow) and a variable refused.
+        parameters: What the person chooses on insert.
+        formats: The output formats the result is true in (`html`, `pdf`, `docx`, `odt`), shown in the picker.
+        layout_aware: Optional hook `(fragment, values, tree, image_aspect) -> None` that adjusts the fragment to the layout
+            it goes into (the page's width, a picture's shape) before the value targets are filled. Built-in snippets only.
+    """
+
+    key: str
+    name: str
+    description: str
+    category: str
+    blocks: tuple[dict[str, Any], ...]
+    family: str = "document"
+    root: Mapping[str, Any] = field(default_factory=dict)
+    parameters: tuple[ReportSnippetParameter, ...] = ()
+    formats: tuple[str, ...] = ("html", "pdf", "docx", "odt")
+    layout_aware: Callable[..., None] | None = None
+
+
+@dataclass(frozen=True)
 class ReportDefinition:
     """Declares one report a module contributes (see docs/modules.md,
     "Reports"). Core generates the routes (`?format=json|pdf|csv`), access
@@ -2552,6 +2616,9 @@ class ModuleDefinition:
         report_starter_sections: The parts of the platform's starter report layouts this module supplies for its
             own records (`ReportStarterSection`), so a starter names no module in a core file. Read via
             `get_report_starter_sections`; each is validated as part of its starter by a backend test.
+        report_snippets: Fragments of a report layout the designer can insert (`ReportSnippet`) about this module's
+            own records, so a snippet names no module in a core file. Offered only where this module is on. Read via
+            `get_report_snippets`; a backend test applies each to an empty layout.
         record_tables: Maps one of this module's own `artefact_types` to a `RecordTableProvider`, making its
             list exportable (CSV, PDF, Word) and, where the provider has `create`/`update`, importable from the
             list itself. Read via `get_record_table_providers`. Registration is required of every artefact
@@ -2654,6 +2721,7 @@ class ModuleDefinition:
     record_attachments: dict[str, RecordAttachmentProvider] = field(default_factory=dict)
     no_record_attachments: dict[str, str] = field(default_factory=dict)
     report_starter_sections: tuple[ReportStarterSection, ...] = field(default=())
+    report_snippets: tuple[ReportSnippet, ...] = field(default=())
     record_tables: dict[str, RecordTableProvider] = field(default_factory=dict)
     not_importable: dict[str, str] = field(default_factory=dict)
 
@@ -4331,6 +4399,21 @@ def get_report_starter_sections(starter: str) -> list[tuple[str, ReportStarterSe
         if section.starter == starter
     ]
     return sorted(found, key=lambda pair: pair[1].order)
+
+
+def get_report_snippets() -> list[tuple[str | None, ReportSnippet]]:
+    """Every report snippet as `(module_key, snippet)`: the core set first (`module_key` is `None`;
+    `services.report_snippets_core`), then each module's `report_snippets`. A key claimed twice keeps the first."""
+    from app.services.report_snippets_core import CORE_REPORT_SNIPPETS
+
+    found: list[tuple[str | None, ReportSnippet]] = [(None, snippet) for snippet in CORE_REPORT_SNIPPETS]
+    seen = {snippet.key for _module, snippet in found}
+    for key, definition in get_module_registry().items():
+        for snippet in definition.report_snippets:
+            if snippet.key not in seen:
+                seen.add(snippet.key)
+                found.append((key, snippet))
+    return found
 
 
 def get_report_field_providers() -> dict[str, ReportFieldProvider]:

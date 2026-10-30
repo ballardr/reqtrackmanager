@@ -140,6 +140,57 @@ test.describe("Report layout images", () => {
     });
   });
 
+  test("unused pictures are filtered and several are deleted together, leaving a picture a layout uses", async ({ page, request }) => {
+    const { headers, project, suffix } = await setup(page, request);
+    const base = `${API}/projects/${project.id}`;
+    const png = (name: string) => ({ multipart: { file: { name, mimeType: "image/png", buffer: PIXEL } } });
+    const upload = async (name: string) => (await (await request.post(`${base}/report-images`, { headers, ...png(name) })).json()) as { id: string };
+    const names = { used: `used-${suffix}.png`, a: `spare-a-${suffix}.png`, b: `spare-b-${suffix}.png` };
+    const used = await upload(names.used);
+    await upload(names.a);
+    await upload(names.b);
+    const made = await request.post(`${base}/report-layouts`, {
+      headers, data: {
+        name: `Uses a picture ${suffix}`, description: "", family: "document",
+        tree: { schema_version: 1, family: "document", nodes: [{ type: "image", file: used.id, alt: "A picture" }] },
+      },
+    });
+    expect(made.ok(), await made.text()).toBeTruthy();
+
+    await page.goto(`/projects/${project.id}/admin`);
+    await selectProjectAdminGroup(page, "Report Setup");
+    await page.getByRole("button", { name: "New", exact: true }).click();
+    await page.getByRole("menuitem", { name: "New layout" }).click();
+    const dialog = page.getByRole("dialog", { name: "New report layout" });
+    await dialog.getByRole("textbox", { name: "Name" }).fill(`Designer ${suffix}`);
+    await dialog.getByRole("button", { name: "Create" }).click();
+    await page.getByRole("tab", { name: "Blocks" }).click();
+    await page.getByRole("button", { name: "Add block" }).click();
+    await page.getByRole("menuitem", { name: "Image", exact: true }).click();
+    await page.getByLabel("Block details").getByRole("button", { name: "Choose image…" }).click();
+    const library = page.getByRole("dialog", { name: "Image library" });
+
+    await test.step("the unused filter lists only pictures no layout uses", async () => {
+      await library.getByRole("checkbox", { name: /Unused only/ }).check();
+      await expect(library.getByRole("button", { name: `Select ${names.a}` })).toBeVisible();
+      await expect(library.getByRole("button", { name: `Select ${names.b}` })).toBeVisible();
+      await expect(library.getByRole("button", { name: `Select ${names.used}` })).toHaveCount(0);
+    });
+
+    await test.step("mark all shown, confirm once, and only the spare pictures go", async () => {
+      await library.getByRole("button", { name: "Delete several…" }).click();
+      await library.getByRole("button", { name: "Mark all shown" }).click();
+      await library.getByRole("button", { name: "Delete 2 pictures…" }).click();
+      await page.getByRole("dialog", { name: "Delete 2 pictures?" }).getByRole("button", { name: "Delete" }).click();
+      await expect(page.getByText("Deleted 2 pictures.")).toBeVisible();
+      await library.getByRole("checkbox", { name: /Unused only/ }).uncheck();
+      await expect(library.getByRole("button", { name: `Select ${names.used}` })).toBeVisible();
+      await expect(library.getByRole("button", { name: `Select ${names.a}` })).toHaveCount(0);
+      const left = (await (await request.get(`${base}/report-images`, { headers })).json()).images as { filename: string }[];
+      expect(left.map((i) => i.filename)).toEqual([names.used]);
+    });
+  });
+
   test("text wraps beside a picture only when it says which side it is on, and a layered picture has no alignment", async ({ page, request }) => {
     const { project, suffix } = await setup(page, request);
     await page.goto(`/projects/${project.id}/admin`);

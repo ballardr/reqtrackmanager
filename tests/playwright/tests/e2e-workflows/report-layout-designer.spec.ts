@@ -459,7 +459,10 @@ test.describe("Report layout designer", () => {
     await test.step("a copy is the project's own layout and can be edited", async () => {
       const table = await searchReportSetup(page, name);
       await table.getByRole("button", { name: `Actions for ${name}` }).click();
-      await page.getByRole("menuitem", { name: "Make a copy" }).click();
+      await page.getByRole("menuitem", { name: "Duplicate…" }).click();
+      const duplicate = page.getByRole("dialog", { name: "Duplicate layout" });
+      await expect(duplicate.getByRole("textbox", { name: "Name" })).toHaveValue(`${name} (copy)`);
+      await duplicate.getByRole("button", { name: "Create copy" }).click();
       await expect(page.getByRole("heading", { name: `${name} (copy)` })).toBeVisible();
       await expect(page.getByRole("textbox", { name: "Layout text" })).not.toHaveAttribute("readonly", "");
       await expect(page.getByRole("textbox", { name: "Layout text" })).toHaveValue(/Shared heading/);

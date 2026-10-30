@@ -28,6 +28,7 @@ import {
   type ReportPackDetail,
   type ReportPackVersionSummary,
 } from "../api/reportPacks";
+import { reportDuplicateApi, type DuplicateResult, type ReportDuplicateApi } from "../api/reportDuplicate";
 import { reportsApi } from "../api/reports";
 import { conflictVersion } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";
@@ -37,8 +38,10 @@ import { useReportTemplates } from "../hooks/useReportTemplates";
 import { canonicalJson, newUid, type LayoutChoice } from "../utils/reportPackDraft";
 import { Badge } from "./Badge";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { FileNameField } from "./FileNameField";
 import { LabeledSelect } from "./LabeledSelect";
 import { RecordHeader } from "./RecordHeader";
+import { ReportDuplicateDialog } from "./ReportDuplicateDialog";
 import { ReportPackEntriesEditor, type DraftEntry, type ReportChoice } from "./ReportPackEntriesEditor";
 import { ReportPackFormModal } from "./ReportPackFormModal";
 import { ReportPackSetsPanel } from "./ReportPackSetsPanel";
@@ -48,19 +51,20 @@ import { Spinner } from "./Spinner";
 import { Tabs, tabPanelProps, type TabDef } from "./Tabs";
 
 type Tab = "reports" | "variables" | "sets" | "history";
-type Dialog = "details" | "delete" | "reload" | "leave";
+type Dialog = "details" | "delete" | "reload" | "leave" | "duplicate";
 
 /** The definition a draft stands for (client ids dropped, empty parts left out). */
-function definitionOf(entries: DraftEntry[], variables: DraftVariable[], template: string): ReportPackDefinition {
+function definitionOf(entries: DraftEntry[], variables: DraftVariable[], template: string, fileName: string): ReportPackDefinition {
   const out: ReportPackDefinition = { schema_version: 1, entries: entries.map((d) => d.entry) };
   if (variables.length > 0) out.variables = variables.map((d) => d.variable);
   if (template) out.template = template;
+  if (fileName) out.file_name = fileName;
   return out;
 }
 
 /** The comparable form of a definition (so key order never makes a pack look changed). */
 function signature(definition: ReportPackDefinition): string {
-  return canonicalJson({ ...definition, variables: definition.variables ?? [], template: definition.template ?? "" });
+  return canonicalJson({ ...definition, variables: definition.variables ?? [], template: definition.template ?? "", file_name: definition.file_name ?? "" });
 }
 
 /**
@@ -68,16 +72,20 @@ function signature(definition: ReportPackDefinition): string {
  * @param packId The pack.
  * @param backTo Where Back leads (Report setup of Project Admin, Templates & reports of Org Admin).
  */
-export function ReportPackEditor({ api, packId, backTo }: { api: ReportPackApi; packId: string; backTo: string }) {
+export function ReportPackEditor({
+  api, packId, backTo, duplicateApi: duplicateApiProp,
+}: { api: ReportPackApi; packId: string; backTo: string; duplicateApi?: ReportDuplicateApi }) {
   const strings = useStrings();
   const text = strings.reportPacks;
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const duplicateApi = useMemo(() => duplicateApiProp ?? reportDuplicateApi(api.scope), [duplicateApiProp, api.scope]);
   const [detail, setDetail] = useState<ReportPackDetail | null>(null);
   const [loadFailed, setLoadFailed] = useState<string | null>(null);
   const [entries, setEntries] = useState<DraftEntry[]>([]);
   const [variables, setVariables] = useState<DraftVariable[]>([]);
   const [template, setTemplate] = useState("");
+  const [fileName, setFileName] = useState("");
   const [tab, setTab] = useState<Tab>("reports");
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [saving, setSaving] = useState(false);
@@ -99,6 +107,7 @@ export function ReportPackEditor({ api, packId, backTo }: { api: ReportPackApi; 
       setEntries(definition.entries.map((entry) => ({ uid: newUid(), entry })));
       setVariables((definition.variables ?? []).map((variable) => ({ uid: newUid(), variable })));
       setTemplate(definition.template ?? "");
+      setFileName(definition.file_name ?? "");
       setConflict(false);
       setProblems([]);
       setInvalid(new Set());
@@ -127,7 +136,7 @@ export function ReportPackEditor({ api, packId, backTo }: { api: ReportPackApi; 
   useLoadOnChange(load, [api.scope.kind, api.scope.id, packId]);
   useLoadOnChange(loadTools, [api.scope.kind, api.scope.id]);
 
-  const definition = useMemo(() => definitionOf(entries, variables, template), [entries, variables, template]);
+  const definition = useMemo(() => definitionOf(entries, variables, template, fileName), [entries, variables, template, fileName]);
   const dirty = detail !== null && signature(definition) !== signature(detail.current.definition);
 
   useEffect(() => {
@@ -176,17 +185,12 @@ export function ReportPackEditor({ api, packId, backTo }: { api: ReportPackApi; 
     else navigate(backTo);
   }
 
-  async function makeCopy() {
-    if (!detail) return;
-    try {
-      const created = await api.create({
-        name: text.copyName(detail.name), description: detail.description, definition: detail.current.definition,
-      });
-      showToast(text.copied);
-      navigate(reportPackPath(api.scope, created.id));
-    } catch (err) {
-      showToast(toErrorMessage(err, strings.common.error), "error");
-    }
+  /** Opens the copy the server made, in its editor at the tier it landed in. */
+  function openDuplicate(done: DuplicateResult) {
+    setDialog(null);
+    if (!done.new_id) return;
+    const landed = done.target === "organization" && api.scope.kind === "project" ? { kind: "organization" as const, id: done.organization_id } : api.scope;
+    navigate(reportPackPath(landed, done.new_id));
   }
 
   function setValidity(key: string, valid: boolean) {
@@ -221,7 +225,7 @@ export function ReportPackEditor({ api, packId, backTo }: { api: ReportPackApi; 
         back={{ onClick: leave, label: text.backToList }}
         onEdit={editable ? () => setDialog("details") : undefined}
         actions={[
-          { key: "copy", label: text.makeCopy, onSelect: () => void makeCopy() },
+          { key: "copy", label: text.makeCopy, onSelect: () => setDialog("duplicate") },
           editable && { key: "delete", label: text.delete, danger: true, onSelect: () => setDialog("delete") },
         ]}
       />
@@ -255,6 +259,10 @@ export function ReportPackEditor({ api, packId, backTo }: { api: ReportPackApi; 
               placeholder={text.templatePlaceholder}
             />
           )}
+          <FileNameField
+            label={strings.reportFileName.packLabel} value={fileName} onChange={setFileName} disabled={!editable} kind="pack" extension="zip"
+            variables={variables.map((d) => d.variable.name)} help={strings.help.reportFileNamePack}
+          />
           <ReportPackEntriesEditor
             entries={entries} onChange={setEntries} layouts={layouts} reports={reports} inProject={inProject}
             disabled={!editable} onValidity={setValidity}
@@ -324,6 +332,12 @@ export function ReportPackEditor({ api, packId, backTo }: { api: ReportPackApi; 
               (err) => showToast(toErrorMessage(err, strings.common.error), "error"),
             );
           }}
+        />
+      )}
+      {dialog === "duplicate" && detail && (
+        <ReportDuplicateDialog
+          api={duplicateApi} source={{ kind: "pack", id: detail.id, name: detail.name }}
+          note={dirty ? strings.reportDuplicate.unsavedNote : undefined} onClose={() => setDialog(null)} onDuplicated={openDuplicate}
         />
       )}
       {dialog === "reload" && (

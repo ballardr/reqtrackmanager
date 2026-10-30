@@ -60,6 +60,7 @@ import type { StagedMember } from "../components/AddMembersModal";
 import { AddMembersModal } from "../components/AddMembersModal";
 import { AddToGroupControl } from "../components/AddToGroupControl";
 import { CollapsibleSection } from "../components/CollapsibleSection";
+import { FileNameField } from "../components/FileNameField";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { SendPasswordResetDialog } from "../components/SendPasswordResetDialog";
 import { GroupInUseDialog } from "../components/GroupInUseDialog";
@@ -422,6 +423,7 @@ export function OrgAdminPage() {
   const [userSort, setUserSort] = useState<SortState<OrgUserSortKey> | null>(null);
   const [patMaxLifetimeDays, setPatMaxLifetimeDays] = useState("");
   const [reportOutputRetentionDays, setReportOutputRetentionDays] = useState("");
+  const [reportFileName, setReportFileName] = useState("");
   const [require2fa, setRequire2fa] = useState(false);
   const [allowSelfSignup, setAllowSelfSignup] = useState(false);
   const [autoAcceptEmailDomain, setAutoAcceptEmailDomain] = useState("");
@@ -702,6 +704,7 @@ export function OrgAdminPage() {
         setSmtpUseTls(a.smtp_use_tls);
         setPatMaxLifetimeDays(a.pat_max_lifetime_days ? String(a.pat_max_lifetime_days) : "");
         setReportOutputRetentionDays(a.report_output_retention_days ? String(a.report_output_retention_days) : "");
+        setReportFileName(a.report_file_name ?? "");
         setRequire2fa(a.require_2fa);
         setAllowSelfSignup(a.allow_self_signup);
         setAutoAcceptEmailDomain(a.auto_accept_email_domain ?? "");
@@ -871,6 +874,7 @@ export function OrgAdminPage() {
         smtp_use_tls: smtpUseTls,
         pat_max_lifetime_days: patMaxLifetimeDays ? Number(patMaxLifetimeDays) : null,
         report_output_retention_days: reportOutputRetentionDays ? Number(reportOutputRetentionDays) : null,
+        report_file_name: reportFileName.trim() || null,
         require_2fa: require2fa,
         allow_self_signup: allowSelfSignup,
         auto_accept_email_domain: autoAcceptEmailDomain || null,
@@ -3324,6 +3328,25 @@ export function OrgAdminPage() {
             {layoutApi && packApi && placementApi && (
               <CollapsibleSection sectionKey="orgAdmin.reportSetup" title={strings.admin.reportSetup} defaultCollapsed={false}>
                 <ReportSetupPanel layoutApi={layoutApi} packApi={packApi} placementApi={placementApi} />
+              </CollapsibleSection>
+            )}
+
+            {advanced && (
+              <CollapsibleSection sectionKey="orgAdmin.reportFileName" title={strings.orgAdmin.reportFileNameTitle}>
+                <FileNameField
+                  label={strings.reportFileName.organizationLabel}
+                  help={strings.help.reportFileNameOrganization}
+                  value={reportFileName}
+                  kind="organization"
+                  onChange={(next) => {
+                    advancedDirtyRef.current = true;
+                    setReportFileName(next);
+                  }}
+                />
+                {advancedError && <div style={{ color: "var(--color-danger)" }}>{advancedError}</div>}
+                <button className="btn btn-primary" onClick={saveAdvanced} style={{ alignSelf: "flex-start" }}>
+                  {strings.reportFileName.save}
+                </button>
               </CollapsibleSection>
             )}
 

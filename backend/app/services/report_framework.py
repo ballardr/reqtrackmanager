@@ -108,6 +108,7 @@ from app.services.report_document import (
     resolve_branding,
 )
 from app.services.report_docx import render_docx_document
+from app.services.report_file_names import org_default_stem
 from app.services.report_model import TONE_FILL, Block, Gap, Heading, Note, ReportDocument, Sheet, Table
 from app.services.report_pdf import render_pdf_document
 from app.services.report_render import RenderedFile, RenderInput, sheet_title, unique_names
@@ -768,12 +769,19 @@ def _live_definition(module_key: str, definition: ReportDefinition) -> ReportDef
 
 def _respond(
     result: ReportResult, definition: ReportDefinition, fmt: str, scope_name: str, branding: ReportBranding | None,
+    organization: Organization, project: Project | None,
 ) -> Response | ReportOut:
-    """Serialises `result` as `fmt`; branding only reaches the document formats."""
+    """Serialises `result` as `fmt`; branding only reaches the document formats.
+
+    The file is named by the organisation's default file name template when it sets one, else `<scope>-<slug>`.
+    """
     if fmt == "json":
         return to_out(result)
-    stem = f"{filename_safe(scope_name, fallback='report')}-{definition.slug}"
     rendered = render_result(result, fmt, branding=branding)
+    stem = org_default_stem(
+        organization, project, title=definition.title, extension=rendered.extension,
+        fallback=f"{filename_safe(scope_name, fallback='report')}-{definition.slug}",
+    )
     return file_response(rendered.content, stem, rendered.extension)
 
 
@@ -841,7 +849,7 @@ def _build_project_route(module_key: str, definition: ReportDefinition) -> Calla
         )
         result = apply_cell_tones(live.collector(db, ctx), live.cell_tones)
         return _respond(
-            result, live, kw["format"], project.name, resolve_branding(db, organization, template),
+            result, live, kw["format"], project.name, resolve_branding(db, organization, template), organization, project,
         )
 
     endpoint.__signature__ = _route_signature("project_id", definition, project_level=True, dependency=dependency)  # type: ignore[attr-defined]
@@ -884,7 +892,7 @@ def _build_org_route(module_key: str, definition: ReportDefinition) -> Callable[
         )
         result = apply_cell_tones(live.collector(db, ctx), live.cell_tones)
         return _respond(
-            result, live, kw["format"], organization.name, resolve_branding(db, organization, template),
+            result, live, kw["format"], organization.name, resolve_branding(db, organization, template), organization, None,
         )
 
     endpoint.__signature__ = _route_signature("organization_id", definition, project_level=False, dependency=dependency)  # type: ignore[attr-defined]

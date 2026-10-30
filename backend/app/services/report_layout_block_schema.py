@@ -53,6 +53,7 @@ FIELD_KINDS: tuple[str, ...] = (
     "running_band",  # a header or footer: left, centre and right text, a logo and whether the first page shows it
     "image",  # a picture from the layout tier's image library (a file id)
     "text_list",  # a list of short texts, one per line
+    "file_name",  # a file name template: one line of text with the placeholders a file name allows and a live example
 )
 
 
@@ -171,6 +172,13 @@ LAYOUT_FIELDS: tuple[BlockField, ...] = (
         help="Text printed at the bottom of every page, in a left, centre and right cell, for example \"Page {{page}} of {{pages}}\". "
         "A page style that sets none uses this one. With none here, the report template's footer text and a page number print.",
         families=("document",),
+    ),
+    BlockField(
+        "file_name", "File name", "file_name", max_length=200,
+        help="What a downloaded or stored copy of this report is called, without the extension, for example "
+        "{{project_code}}-{{report_title}}-{{generated_on}}. It may use {{report_title}}, {{project_name}}, {{project_code}}, "
+        "{{organisation}}, {{generated_on}}, {{layout_version}}, {{format}} and {{var.name}} for a variable. "
+        "Left empty, the organisation's default name applies.",
     ),
     BlockField(
         "variables", "Variables", "variables",

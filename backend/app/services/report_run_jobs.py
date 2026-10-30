@@ -371,7 +371,7 @@ def run_job(db: Session, row: GeneratedReport) -> None:
     row.finished_at = now
     row.expires_at = now + timedelta(days=effective_retention_days(organization))
     row.output_key = key
-    row.output_filename = f"{custom_report_run.file_stem(run)}.{rendered.extension}"
+    row.output_filename = f"{custom_report_run.file_stem(run, rendered.extension)}.{rendered.extension}"
     row.output_size = len(rendered.content)
     db.commit()
     _announce(db, row)

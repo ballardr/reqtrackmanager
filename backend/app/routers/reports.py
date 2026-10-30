@@ -39,6 +39,7 @@ from app.services.report_document import (
     resolve_branding,
     resolve_report_images,
 )
+from app.services.report_file_names import org_default_stem
 from app.services.reports import (
     ReportRequirementRow,
     default_chapters_per_component,
@@ -134,7 +135,11 @@ def generate_report(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
     rows = _collect_rows(db, project_id, payload)
 
-    stem = f"{filename_safe(project.name, fallback='project')}-requirements"
+    org = db.get(Organization, project.organization_id)
+    stem = org_default_stem(
+        org, project, title="Requirements report", extension=payload.format,
+        fallback=f"{filename_safe(project.name, fallback='project')}-requirements",
+    )
     if payload.format == "csv":
         return file_response(generate_csv_report(rows, terminology=project.terminology), stem, "csv")
     if payload.format in ("xlsx", "ods"):
@@ -142,7 +147,6 @@ def generate_report(
             generate_sheet_report(payload.format, rows, project.name, terminology=project.terminology), stem, payload.format,
         )
 
-    org = db.get(Organization, project.organization_id)
     resource_markdown = _resource_sections_markdown(db, project, payload.resource_file_ids)
 
     try:

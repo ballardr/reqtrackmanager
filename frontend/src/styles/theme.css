@@ -2047,6 +2047,10 @@ th:has(> .th-with-action > .th-sort) {
   flex: 1;
   overflow-wrap: anywhere;
 }
+.folder-tree-check {
+  flex-shrink: 0;
+  margin: 0;
+}
 .folder-tree-chevron-gap {
   display: inline-block;
   flex-shrink: 0;

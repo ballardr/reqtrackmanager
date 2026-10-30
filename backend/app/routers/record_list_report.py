@@ -37,6 +37,7 @@ from app.services.record_tables import (
     table_csv,
 )
 from app.services.report_document import ForeignReportTemplateError, effective_report_template, resolve_branding
+from app.services.report_file_names import org_default_stem
 from app.services.report_framework import DOCUMENT_FORMATS, ReportFormat, ReportOut, render_result, to_out
 from app.services.tags import TagFilter
 
@@ -94,8 +95,10 @@ def record_list_report(
         content, ext = table_csv(table), "csv"
     else:
         # A document is named like every catalogue report (`<scope>-<slug>`); the CSV is named like the export it equals.
-        stem = f"{stem}-{REPORT_KEY}"
         rendered = render_result(result, format, branding=resolve_branding(db, organization, template))
+        stem = org_default_stem(
+            organization, project, title=provider.label, extension=rendered.extension, fallback=f"{stem}-{REPORT_KEY}",
+        )
         content, ext = rendered.content, rendered.extension
     audit_export(db, current_user, project, record_type, table, ext)
     return file_response(content, stem, ext)

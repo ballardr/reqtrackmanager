@@ -371,6 +371,26 @@ def test_an_image_is_uploaded_listed_downloaded_and_deleted_in_the_project_libra
     assert world.client.get(project_images(project), headers=h).json()["images"] == []
 
 
+def test_the_library_tells_a_picture_in_use_from_one_only_older_versions_use_and_one_nobody_uses(world):
+    project = world.project("Alpha")
+    h = auth_headers(world.token)
+    now, old, never = (upload(world, project_images(project), png(colour=c), f"{c}.png").json() for c in ("red", "green", "blue"))
+    layout = world.client.post(
+        f"/api/v1/projects/{project['id']}/report-layouts", json=layout_body("Report", old["id"]), headers=h,
+    ).json()
+    saved = world.client.put(
+        f"/api/v1/projects/{project['id']}/report-layouts/{layout['id']}/tree",
+        json={"tree": layout_body("Report", now["id"])["tree"], "base_version": 1}, headers=h,
+    )
+    assert saved.status_code == 200, saved.text
+
+    rows = {r["id"]: r for r in world.client.get(project_images(project), headers=h).json()["images"]}
+
+    assert (rows[now["id"]]["used_by"], rows[now["id"]]["in_older_versions"]) == (["Report"], False)
+    assert (rows[old["id"]]["used_by"], rows[old["id"]]["in_older_versions"]) == ([], True)
+    assert (rows[never["id"]]["used_by"], rows[never["id"]]["in_older_versions"]) == ([], False)
+
+
 def test_an_upload_is_judged_by_its_bytes_and_a_refusal_says_why(world):
     project = world.project("Alpha")
     resp = upload(world, project_images(project), b"<html><script>1</script></html>", "logo.png")

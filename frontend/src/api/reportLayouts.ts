@@ -48,6 +48,8 @@ export interface ReportImage {
   owned: boolean;
   /** Names of the layouts whose current version uses it. */
   used_by: string[];
+  /** No current version uses it, but an older saved version of some layout does. */
+  in_older_versions: boolean;
   created_at: string;
 }
 
@@ -404,18 +406,4 @@ export function treeProblems(err: unknown): { path: string; message: string }[] 
     if (Array.isArray(errors)) return errors as { path: string; message: string }[];
   }
   return [];
-}
-
-/**
- * Creates a copy of a layout in the API's own scope, with the source's current tree: the way to customise a
- * layout shared from elsewhere, which is changed only where it lives.
- *
- * @param api The calls of the scope the copy goes to.
- * @param source The layout to copy (it may belong to another scope the caller can read).
- * @param name The new layout's name.
- * @returns The new layout.
- */
-export async function copyReportLayout(api: ReportLayoutApi, source: ReportLayoutSummary, name: string): Promise<ReportLayoutDetail> {
-  const detail = await api.get(source.id);
-  return api.create({ name, description: source.description, folder: source.folder, family: source.family, tree: detail.current.tree });
 }
