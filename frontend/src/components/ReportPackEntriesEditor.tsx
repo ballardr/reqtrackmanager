@@ -28,9 +28,9 @@ import {
 import { reportFormatLabel } from "../api/reportFormats";
 import { useStrings } from "../context/TerminologyContext";
 import { FAMILY_FORMATS, layoutFormats, newUid, type LayoutChoice } from "../utils/reportPackDraft";
+import { FileNameField } from "./FileNameField";
 import { JsonObjectField } from "./JsonObjectField";
 import { LabeledSelect } from "./LabeledSelect";
-import { TextField } from "./FormFields";
 
 /** An entry in the editor's draft, with a client-only id that is dropped when the pack is saved. */
 export interface DraftEntry {
@@ -155,13 +155,13 @@ export function ReportPackEntriesEditor({
                   value: f, label: reportFormatLabel(f),
                 }))}
               />
-              <TextField help={strings.help.reportPackFilename}
+              <FileNameField help={strings.help.reportPackFilename}
                 label={text.filenameLabel}
                 value={entry.filename ?? ""}
                 disabled={disabled}
-                hint={text.filenameHint}
+                kind="entry"
+                extension={entry.format}
                 onChange={(filename) => patch(draft.uid, { filename: filename === "" ? undefined : filename })}
-                inputProps={{ maxLength: 60 }}
               />
             </div>
             {entry.kind === "layout" ? (

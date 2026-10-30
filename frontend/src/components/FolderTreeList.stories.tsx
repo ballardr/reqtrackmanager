@@ -28,12 +28,16 @@ const COLUMNS: FolderTreeColumn<Doc>[] = [
   { id: "note", header: "Note", render: (d) => d.note, hideBelow: true },
 ];
 
+/** The ids of the items at or below a node. */
+const collect = (node: FolderNode<Doc>): string[] => (node.kind === "item" ? [node.item?.id ?? ""] : node.children.flatMap(collect));
+
 /** Hosts the list with its own open folders, so a story sees the chevrons and rows follow the clicks. */
 function Host({
-  docs = DOCS, columns, initiallyOpen = [], width, extraFolders = [], folderActions = false,
-}: { docs?: Doc[]; columns?: FolderTreeColumn<Doc>[]; initiallyOpen?: string[]; width?: string; extraFolders?: string[]; folderActions?: boolean }) {
+  docs = DOCS, columns, initiallyOpen = [], width, extraFolders = [], folderActions = false, ticks = false,
+}: { docs?: Doc[]; columns?: FolderTreeColumn<Doc>[]; initiallyOpen?: string[]; width?: string; extraFolders?: string[]; folderActions?: boolean; ticks?: boolean }) {
   const [open, setOpen] = useState(new Set(initiallyOpen));
   const [chosen, setChosen] = useState("");
+  const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
   const tree = useMemo(() => {
     const nodes = buildFolderTree(docs, (d) => d.folder, (d) => d.title, (d) => d.id);
     const empty: FolderNode<Doc>[] = extraFolders.map((name) => ({ id: `f:${name.toLowerCase()}`, kind: "folder", name, path: name, children: [], count: 0 }));
@@ -49,6 +53,21 @@ function Host({
         folderBadge={(n) => String(n.count)}
         renderItemActions={(d) => <button type="button" className="btn" aria-label={`Star ${d.title}`}>★</button>}
         renderFolderActions={folderActions ? (n) => <button type="button" className="btn" aria-label={`Actions for the folder ${n.name}`}>⋮</button> : undefined}
+        checks={ticks ? {
+          state: (n) => {
+            if (n.kind === "item") return ticked.has(n.item?.id ?? "");
+            const ids = collect(n);
+            const count = ids.filter((id) => ticked.has(id)).length;
+            return count === ids.length ? true : count === 0 ? false : "mixed";
+          },
+          onChange: (n, on) => setTicked((c) => {
+            const next = new Set(c);
+            for (const id of n.kind === "item" ? [n.item?.id ?? ""] : collect(n)) { if (on) next.add(id); else next.delete(id); }
+            return next;
+          }),
+          label: (n) => `Select ${n.name}`,
+          disabled: (n) => n.item?.id === "zip",
+        } : undefined}
         emptyText="Nothing to list."
       />
     </div>
@@ -238,3 +257,18 @@ export const FolderRowsCarryTheirOwnActions: Story = {
 
 export const LightTheme: Story = { ...DeepFoldersIndent, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...DeepFoldersIndent, globals: { theme: "dark" } };
+
+/** With tick boxes, a folder's box covers what is in it, shows the mixed state when only some are ticked, and a row can be left unticked. */
+export const TickBoxesChooseRowsAndAFolderCoversItsItems: Story = {
+  args: { ticks: true, initiallyOpen: ["f:handover"] },
+  play: async ({ canvasElement }) => {
+    const grid = within(canvasElement).getByRole("treegrid", { name: "Documents" });
+    await userEvent.click(within(grid).getByRole("checkbox", { name: "Select Handover" }));
+    await expect(within(grid).getByRole("checkbox", { name: "Select Handover" })).toBeChecked();
+    await expect(within(grid).getByRole("checkbox", { name: "Select Programme handover" })).toBeDisabled();
+    await userEvent.click(within(grid).getByRole("button", { name: "Expand Quarterly" }));
+    await userEvent.click(within(grid).getByRole("button", { name: "Expand 2026" }));
+    await userEvent.click(within(grid).getByRole("checkbox", { name: "Select Handover document" }));
+    await expect(within(grid).getByRole("checkbox", { name: "Select Handover" })).toHaveAttribute("aria-checked", "mixed");
+  },
+};

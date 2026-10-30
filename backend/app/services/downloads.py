@@ -69,8 +69,8 @@ def file_response(content: bytes, stem: str, ext: str) -> Response:
 
     Args:
         content: The file bytes.
-        stem: The filename without extension; the caller passes it through
-            `filename_safe`.
+        stem: The filename without extension. It goes through `content_disposition`, so a quote, a line break or a
+            character outside printable ASCII can never reach the header unencoded.
         ext: One of `pdf`, `csv`, `docx`, `xlsx`, `odt`, `ods`, `html`, `zip`; selects the content type.
 
     Returns:
@@ -81,5 +81,5 @@ def file_response(content: bytes, stem: str, ext: str) -> Response:
     """
     return Response(
         content=content, media_type=_MEDIA_TYPES[ext],
-        headers={"Content-Disposition": f'attachment; filename="{stem}.{ext}"'},
+        headers={"Content-Disposition": content_disposition("attachment", f"{stem}.{ext}")},
     )

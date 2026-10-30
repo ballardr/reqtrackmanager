@@ -23,14 +23,15 @@
  * holds no block model that could drift from the tree (the WYSIWYG editor later edits the same tree). The saved
  * text is the author's own, not re-formatted, so Save never reflows what they typed. Pickers only insert text.
  */
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
-  conflictVersion, copyReportLayout, LAYOUT_FAMILY_LABEL, LAYOUT_ORIGIN_LABEL, reportLayoutPath, treeProblems,
+  conflictVersion, LAYOUT_FAMILY_LABEL, LAYOUT_ORIGIN_LABEL, reportLayoutPath, treeProblems,
   type BlockCatalogue, type ReportFieldCatalogue, type ReportLayoutApi, type ReportLayoutDetail, type ReportWidget,
   type TextParseResult, type TreeCheck,
 } from "../api/reportLayouts";
+import { reportDuplicateApi, type DuplicateResult, type ReportDuplicateApi } from "../api/reportDuplicate";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
@@ -44,6 +45,7 @@ import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { Badge } from "./Badge";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { Modal } from "./Modal";
+import { ReportDuplicateDialog } from "./ReportDuplicateDialog";
 import { ReportLayoutBlockToolbar } from "./ReportLayoutBlockToolbar";
 import { ReportLayoutFieldPicker } from "./ReportLayoutFieldPicker";
 import { ReportLayoutFormModal } from "./ReportLayoutFormModal";
@@ -69,7 +71,7 @@ type EditView = "text" | "blocks";
 /** The views that edit the tree itself (the text view edits text). */
 const isTreeView = (view: EditView) => view !== "text";
 type AsideTab = "preview" | "fields" | "widgets";
-type Dialog = "details" | "delete" | "reload" | "leave" | "preview";
+type Dialog = "details" | "delete" | "reload" | "leave" | "preview" | "duplicate";
 
 /** The outcome of checking one exact block-editor tree. */
 interface TreeChecked {
@@ -92,18 +94,21 @@ interface Checked {
  * @param projectOptions Organisation scope: the projects a preview can be narrowed to.
  */
 export function ReportLayoutDesigner({
-  api, layoutId, backTo, projectOptions,
+  api, layoutId, backTo, projectOptions, duplicateApi: duplicateApiProp,
 }: {
   api: ReportLayoutApi;
   layoutId: string;
   backTo: string;
   projectOptions?: { value: string; label: string }[];
+  /** The calls that duplicate this layout; the live ones for the layout's scope when omitted. */
+  duplicateApi?: ReportDuplicateApi;
 }) {
   const strings = useStrings();
   const text = strings.reportLayouts;
   const outline = strings.reportOutline;
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const duplicateApi = useMemo(() => duplicateApiProp ?? reportDuplicateApi(api.scope), [duplicateApiProp, api.scope]);
   const beginCheck = useRequestSequence();
 
   const [detail, setDetail] = useState<ReportLayoutDetail | null>(null);
@@ -351,14 +356,12 @@ export function ReportLayoutDesigner({
     else navigate(backTo);
   }
 
-  async function makeCopy() {
-    try {
-      const created = await copyReportLayout(api, detail as ReportLayoutDetail, text.copyName(detail?.name ?? ""));
-      showToast(text.copied);
-      navigate(reportLayoutPath(api.scope, created.id));
-    } catch (err) {
-      showToast(toErrorMessage(err, strings.common.error), "error");
-    }
+  /** Opens the copy the server made, in its designer at the tier it landed in. */
+  function openDuplicate(done: DuplicateResult) {
+    setDialog(null);
+    if (!done.new_id) return;
+    const landed = done.target === "organization" && api.scope.kind === "project" ? { kind: "organization" as const, id: done.organization_id } : api.scope;
+    navigate(reportLayoutPath(landed, done.new_id));
   }
 
   const asideTabs: TabDef<AsideTab>[] = [
@@ -399,7 +402,7 @@ export function ReportLayoutDesigner({
         back={{ onClick: leave, label: text.backToList }}
         onEdit={editable ? () => setDialog("details") : undefined}
         actions={[
-          { key: "copy", label: text.makeCopy, onSelect: () => void makeCopy() },
+          { key: "copy", label: text.makeCopy, onSelect: () => setDialog("duplicate") },
           editable && { key: "delete", label: text.delete, danger: true, onSelect: () => setDialog("delete") },
         ]}
       />
@@ -592,6 +595,12 @@ export function ReportLayoutDesigner({
               (err) => showToast(toErrorMessage(err, strings.common.error), "error"),
             );
           }}
+        />
+      )}
+      {dialog === "duplicate" && detail && (
+        <ReportDuplicateDialog
+          api={duplicateApi} source={{ kind: "layout", id: detail.id, name: detail.name }}
+          note={dirty ? strings.reportDuplicate.unsavedNote : undefined} onClose={() => setDialog(null)} onDuplicated={openDuplicate}
         />
       )}
       {dialog === "reload" && (

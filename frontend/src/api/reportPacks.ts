@@ -79,6 +79,8 @@ export interface ReportPackDefinition {
   variables?: PackVariableDeclaration[];
   /** Name of an organisation report template whose branding the PDF and Word entries take by default. */
   template?: string;
+  /** The zip's default file name, a `{{placeholder}}` template without an extension. */
+  file_name?: string;
   entries: ReportPackEntry[];
 }
 

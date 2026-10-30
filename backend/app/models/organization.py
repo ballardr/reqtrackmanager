@@ -251,6 +251,9 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     )
     pat_max_lifetime_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     report_output_retention_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: Default file name template (without extension) for a generated report that sets none of its own
+    #: (`services.report_file_names`); `None` keeps the built-in "<scope>-<report>" names.
+    report_file_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     accent_color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
     header_title: Mapped[str | None] = mapped_column(String(100), nullable=True)

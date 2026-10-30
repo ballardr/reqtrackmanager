@@ -182,6 +182,9 @@ PLACEHOLDER_NAMES: tuple[str, ...] = (
     "project_name", "project_code", "project_description", "report_title", "generated_on", "organisation", "layout_version",
 )
 _PLACEHOLDER = re.compile(r"\{\{\s*([a-z_]+)\s*\}\}")
+#: `{{name}}` (a global placeholder) or `{{alias.field}}` / `{{var.name}}`: every reference a layout's text, a record-image
+#: name pattern and a file name template can hold.
+PLACEHOLDER_RE = re.compile(r"\{\{\s*([a-z][a-z0-9_]*)(?:\.([a-z][a-z0-9_]*))?\s*\}\}")
 
 
 def fill_placeholders(text: str, placeholders: Mapping[str, str] | None) -> str:

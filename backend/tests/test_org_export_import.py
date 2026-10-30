@@ -224,7 +224,7 @@ def test_import_rejects_a_bundle_whose_declared_uncompressed_size_exceeds_the_ca
     assert resp.status_code == 413
 
 
-def test_the_report_output_retention_setting_round_trips_through_the_bundle(client, admin_token):
+def test_the_report_output_settings_round_trip_through_the_bundle(client, admin_token):
     import uuid
 
     from tests.conftest import create_org_admin_in
@@ -232,7 +232,10 @@ def test_the_report_output_retention_setting_round_trips_through_the_bundle(clie
     org, org_admin = create_org_admin_in(client, admin_token, f"Retention Org {uuid.uuid4().hex[:6]}")
     settings_url = f"/api/v1/orgs/{org['id']}/advanced-settings"
     current = client.get(settings_url, headers=auth_headers(org_admin)).json()
-    saved = client.put(settings_url, json={**current, "report_output_retention_days": 5}, headers=auth_headers(org_admin))
+    saved = client.put(
+        settings_url, json={**current, "report_output_retention_days": 5, "report_file_name": "{{project_name}}-{{report_title}}"},
+        headers=auth_headers(org_admin),
+    )
     assert saved.status_code == 200, saved.text
 
     exported = client.get(f"/api/v1/orgs/{org['id']}/export", headers=auth_headers(org_admin))
@@ -249,3 +252,4 @@ def test_the_report_output_retention_setting_round_trips_through_the_bundle(clie
     with SessionLocal() as db:
         copy = db.get(Organization, uuid.UUID(imported.json()["organization"]["id"]))
         assert copy is not None and copy.report_output_retention_days == 5
+        assert copy.report_file_name == "{{project_name}}-{{report_title}}"

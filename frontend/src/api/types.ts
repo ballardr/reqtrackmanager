@@ -1802,6 +1802,8 @@ export interface OrgAdvancedSettings {
   pat_max_lifetime_days: number | null;
   /** Days a background report's file is kept; `null` uses the platform default. */
   report_output_retention_days: number | null;
+  /** Default file name template for a report that sets none of its own; `null` keeps each report's built-in name. */
+  report_file_name: string | null;
   /** Read-only: the platform default and ceiling for `report_output_retention_days`. */
   report_output_default_retention_days: number;
   report_output_max_retention_days: number;

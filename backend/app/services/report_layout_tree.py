@@ -67,9 +67,10 @@ from app.modules.registry import (
     get_report_field_providers,
 )
 from app.services.report_fields import FieldInfo, UnknownReportFieldError, field_catalogue
+from app.services.report_file_names import template_problems
 from app.services.report_layout_block_schema import BlockContainer, BlockField, BlockProvides, BlockSchema
 from app.services.report_math import MAX_TEX_CHARS, split_math, tex_problem
-from app.services.report_model import PLACEHOLDER_NAMES
+from app.services.report_model import PLACEHOLDER_NAMES, PLACEHOLDER_RE
 from app.services.report_page_styles import (
     ORIENTATIONS,
     PAGE_FIELD_NAMES,
@@ -161,8 +162,6 @@ BOOLEAN_KEYS = ("all", "any", "not")
 GROUP_FIELDS: dict[str, str] = {"value": "text", "count": "number"}
 
 _ALIAS = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
-#: `{{name}}` (a global placeholder) or `{{alias.field}}`.
-PLACEHOLDER_RE = re.compile(r"\{\{\s*([a-z][a-z0-9_]*)(?:\.([a-z][a-z0-9_]*))?\s*\}\}")
 _SHEET_NAME_BAD = re.compile(r"[\[\]:*?/\\]")
 
 Ref = tuple[str, str]
@@ -370,7 +369,7 @@ class TreeValidator:
 
         self.check_keys(
             tree, "", required=("schema_version", "family", "nodes"),
-            optional=("orientation", "page_size", "margins", "mirror_margins", "page_styles", "header", "footer", "variables"),
+            optional=("orientation", "page_size", "margins", "mirror_margins", "page_styles", "header", "footer", "variables", "file_name"),
         )
         if tree.get("schema_version") != TREE_SCHEMA_VERSION:
             self.error("schema_version", f"Must be {TREE_SCHEMA_VERSION}.")
@@ -394,6 +393,9 @@ class TreeValidator:
         self.page_styles(tree, declared)
         if "variables" in tree:
             self.variable_declarations(tree["variables"], "variables")
+        if "file_name" in tree:
+            for problem in template_problems(tree["file_name"], variables=list(self.variables)):
+                self.error("file_name", problem)
         if declared == FAMILY_DOCUMENT:
             self.running_text(tree, "")
             for i, style in enumerate(tree["page_styles"] if isinstance(tree.get("page_styles"), list) else []):

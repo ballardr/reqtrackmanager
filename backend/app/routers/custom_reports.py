@@ -206,7 +206,7 @@ def _respond(
     if out is not None:
         return out
     assert rendered is not None
-    return file_response(rendered.content, custom_report_run.file_stem(run), rendered.extension)
+    return file_response(rendered.content, custom_report_run.file_stem(run, rendered.extension), rendered.extension)
 
 
 @project_router.get("/{layout_id}/run", response_model=ReportOut, responses=_RESPONSES)

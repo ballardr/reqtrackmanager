@@ -41,8 +41,8 @@ The **New** menu creates a layout, a pack or a folder. Each row's **Actions** me
 
 | Row | Actions |
 | --- | --- |
-| A layout or pack of your own | Open (the designer or pack editor), Edit details, Move to folder…, Make a copy, Delete (type the name to confirm) |
-| A layout or pack shared from above | View, Move to folder…, Make a copy, Hide in this project (and show it again) |
+| A layout or pack of your own | Open (the designer or pack editor), Edit details, Move to folder…, Duplicate…, Delete (type the name to confirm) |
+| A layout or pack shared from above | View, Move to folder…, Duplicate…, Hide in this project (and show it again) |
 | A module or platform report | Move to folder…, Hide from the list, Show in the list, Reset folder to default, Follow the default again |
 
 Each folder has its own **Actions** menu: **New folder inside**, and, for a folder your organisation or project owns, **Rename** and **Delete**.

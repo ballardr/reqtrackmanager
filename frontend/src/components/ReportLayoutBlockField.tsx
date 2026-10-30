@@ -21,6 +21,7 @@ import { newLeaf, sourceRecordType, type NameInScope, type TreeNode } from "../u
 import {
   DEFAULT_MARGIN_CM, PAGE_ORIENTATIONS, PAGE_SIZES, styleFromTree, styleToTree, type PageMargins, type PageOrientation, type PageSize, type RunningBand,
 } from "../utils/reportPageSetup";
+import { FileNameField } from "./FileNameField";
 import { CheckboxField, TextAreaField, TextField } from "./FormFields";
 import { ReportImageField } from "./ReportImageField";
 import { TextListField } from "./TextListField";
@@ -91,6 +92,14 @@ export function ReportLayoutBlockField({
           label={field.label} value={asText} onChange={setText} disabled={disabled} help={help} required={field.required}
           placeholder={field.kind === "alias" && typeof field.default === "string" ? field.default : undefined}
           inputProps={{ maxLength: field.max_length ?? undefined, spellCheck: field.kind === "tex" ? false : undefined }}
+        />
+      );
+      break;
+    case "file_name":
+      control = (
+        <FileNameField
+          label={field.label} value={asText} onChange={setText} disabled={disabled} kind="layout" variables={env.variables}
+          help={strings.help.reportFileNameLayout}
         />
       );
       break;

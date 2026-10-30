@@ -28,7 +28,7 @@ const orgUser: OrgUser = {
 
 const advanced: OrgAdvancedSettings = {
   smtp_host: null, smtp_port: null, smtp_username: null, smtp_use_tls: true,
-  pat_max_lifetime_days: null, report_output_retention_days: null, report_output_default_retention_days: 7,
+  pat_max_lifetime_days: null, report_output_retention_days: null, report_file_name: null, report_output_default_retention_days: 7,
   report_output_max_retention_days: 30, require_2fa: false, allow_self_signup: false, auto_accept_email_domain: null,
   external_user_policy: "disabled", allow_relaxed_child_project_creation: true,
   force_require_change_request_for_approved_links: false,
@@ -898,7 +898,9 @@ export const NewReportTemplateModalCancel: Story = {
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
     await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
-    await expect(api.post).not.toHaveBeenCalled();
+    // The File name field's live example is a read-only POST; nothing else may be sent.
+    const sent = (api.post as unknown as { mock: { calls: [string][] } }).mock.calls.filter(([path]) => !path.endsWith("/report-file-names/example"));
+    await expect(sent).toEqual([]);
   },
 };
 
@@ -1341,6 +1343,28 @@ export const ReportOutputRetentionIsSaved: Story = {
       expect(api.put).toHaveBeenCalledWith(
         `/api/v1/orgs/${ORG_ID}/advanced-settings`,
         expect.objectContaining({ report_output_retention_days: 3 })
+      )
+    );
+  },
+};
+
+/** The default report file name is set in Templates & reports beside the retention, and is saved with the
+ * organisation's advanced settings (an emptied field is saved as no default). */
+export const ReportFileNameDefaultIsSaved: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "put").mockResolvedValue(advanced);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Templates & reports" }));
+    const field = await canvas.findByRole("textbox", { name: "Default report file name" });
+    await userEvent.type(field, "{{{{project_name}}-{{{{report_title}}", { delay: null });
+    await userEvent.click(canvas.getByRole("button", { name: "Save default file name" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(
+        `/api/v1/orgs/${ORG_ID}/advanced-settings`,
+        expect.objectContaining({ report_file_name: "{{project_name}}-{{report_title}}" })
       )
     );
   },

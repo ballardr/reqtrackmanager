@@ -6,13 +6,14 @@ The definition a report pack is stored in, and its validation.
 Responsibilities:
 - Define the vocabulary: a root object with `schema_version`, optional `variables` (declared exactly as a
   layout's, `services.report_variables`), an optional `template` (the name of an organisation report template whose
-  branding the PDF and Word entries take by default) and `entries`.
+  branding the PDF and Word entries take by default), an optional `file_name` (the zip's default name, a
+  `{{placeholder}}` template: `services.report_file_names`) and `entries`.
 - `validate_definition` / `assert_valid`: check a definition before it is stored, listing every problem.
 - `definition_hash`: SHA-256 of the canonical JSON, for change detection and provenance.
 
 Entries (at most `MAX_ENTRIES`):
 - Layout entry: `{"kind": "layout", "name": "<layout name>", "tier": "organization" | "project" (optional),
-  "format": "pdf", "filename": "overview" (optional), "variables": {"categories": ["A"]} (optional)}`. The layout is
+  "format": "pdf", "filename": "overview" (optional, a file name template), "variables": {"categories": ["A"]} (optional)}`. The layout is
   named, never identified by id, so a pack is portable in a bundle; `tier` pins which owner's layout of that name is
   meant, and left out means the nearest one the scope reaches.
 - Module report entry: `{"kind": "report", "module_key": "risk", "report": "r1", "format": "pdf", "filename": ...,
@@ -34,10 +35,10 @@ Dependencies: `services.report_layout_tree` (the variable declaration checks), `
 from __future__ import annotations
 
 import json
-import re
 from typing import Any
 
 from app.modules.registry import get_all_reports
+from app.services.report_file_names import clean_filename, template_problems
 from app.services.report_framework import REPORT_FORMATS as framework_formats
 from app.services.report_layout_tree import TreeError, TreeValidator, tree_hash
 from app.services.report_render import formats_for
@@ -52,7 +53,6 @@ MAX_ERRORS = 50
 #: The formats a module report can be produced in as a pack entry: every file format the framework offers.
 REPORT_FORMATS = tuple(f for f in framework_formats if f != "json")
 LAYOUT_TIERS = ("organization", "project")
-_FILENAME_BAD = re.compile(r"[^A-Za-z0-9 ._-]")
 
 
 class InvalidPackError(ValueError):
@@ -76,16 +76,6 @@ def definition_hash(definition: dict[str, Any]) -> str:
 def empty_definition() -> dict[str, Any]:
     """A valid definition with no entries (not yet runnable, but savable as a draft)."""
     return {"schema_version": PACK_SCHEMA_VERSION, "entries": []}
-
-
-def clean_filename(name: str) -> str:
-    """`name` reduced to a flat, safe file stem: letters, digits, space, dot, dash and underscore only.
-
-    Leading dots are removed (no hidden or relative names) and the result is cut to `MAX_FILENAME_CHARS`; an empty
-    result is `report`. Path separators and `..` cannot survive, so a stem can never name a directory.
-    """
-    cleaned = _FILENAME_BAD.sub("-", name).strip(" .-")
-    return re.sub(r"\.{2,}", ".", cleaned)[:MAX_FILENAME_CHARS].strip(" .-") or "report"
 
 
 def _value_shape_problem(value: Any) -> str | None:
@@ -126,13 +116,18 @@ class _PackValidator:
         if size > MAX_DEFINITION_BYTES:
             self.error("", f"The pack is too large ({size} bytes; the limit is {MAX_DEFINITION_BYTES}).")
             return self.tree.analysis.errors
-        self.tree.check_keys(definition, "", required=("schema_version", "entries"), optional=("variables", "template"))
+        self.tree.check_keys(definition, "", required=("schema_version", "entries"), optional=("variables", "template", "file_name"))
         if definition.get("schema_version") != PACK_SCHEMA_VERSION:
             self.error("schema_version", f"Must be {PACK_SCHEMA_VERSION}.")
         if "variables" in definition:
             self.tree.variable_declarations(definition["variables"], "variables")
         if "template" in definition:
             self.tree.text(definition["template"], "template", limit=255)
+        if "file_name" in definition:
+            declared = definition.get("variables")
+            names = [d["name"] for d in declared if isinstance(d, dict) and isinstance(d.get("name"), str)] if isinstance(declared, list) else []
+            for problem in template_problems(definition["file_name"], variables=names):
+                self.error("file_name", problem)
         entries = definition.get("entries")
         if not isinstance(entries, list) or len(entries) > MAX_ENTRIES:
             if "entries" in definition:
@@ -169,7 +164,8 @@ class _PackValidator:
             self.error(f"{path}.kind", 'Must be "layout" or "report".')
             return
         if "filename" in entry:
-            self.tree.text(entry["filename"], f"{path}.filename", limit=MAX_FILENAME_CHARS)
+            for problem in template_problems(entry["filename"], any_variable=True):
+                self.error(f"{path}.filename", problem)
 
     def _report_definition(self, entry: dict[str, Any], path: str) -> Any:
         """The module report an entry names, or `None` (with an error)."""

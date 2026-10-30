@@ -58,6 +58,18 @@ export interface FolderTreeItemView {
   description?: string;
 }
 
+/** Tick boxes for choosing rows (a folder's box covers what is in it). */
+export interface FolderTreeChecks<T> {
+  /** Whether the row's box is ticked, `"mixed"` for a folder with only some of its items ticked. */
+  state: (node: FolderNode<T>) => boolean | "mixed";
+  /** Called when the person ticks or clears a row's box. */
+  onChange: (node: FolderNode<T>, checked: boolean) => void;
+  /** The box's accessible name. */
+  label: (node: FolderNode<T>) => string;
+  /** A row that cannot be ticked. */
+  disabled?: (node: FolderNode<T>) => boolean;
+}
+
 /** A visible row: a node with where it sits in the tree. */
 interface Row<T> {
   node: FolderNode<T>;
@@ -117,10 +129,11 @@ function flatten<T>(
  * @param renderItemActions The trailing controls of an item's row (a favourite star), after the last column.
  * @param renderFolderActions The trailing controls of a folder's row (the setup list's New folder, Rename and Delete).
  * @param folderBadge The small count shown beside a folder's name.
+ * @param checks Tick boxes before each row's icon, to choose rows (the setup list's copy mode); none when omitted.
  * @param emptyText Shown instead of the grid when there is nothing to list.
  */
 export function FolderTreeList<T>({
-  nodes, label, expanded, onToggle, itemView, onOpenItem, isSelected, columns = [], renderItemActions, renderFolderActions, folderBadge, emptyText,
+  nodes, label, expanded, onToggle, itemView, onOpenItem, isSelected, columns = [], renderItemActions, renderFolderActions, folderBadge, checks, emptyText,
 }: {
   nodes: FolderNode<T>[];
   label: string;
@@ -133,6 +146,7 @@ export function FolderTreeList<T>({
   renderItemActions?: (item: T) => ReactNode;
   renderFolderActions?: (node: FolderNode<T>) => ReactNode;
   folderBadge?: (node: FolderNode<T>) => string;
+  checks?: FolderTreeChecks<T>;
   emptyText?: string;
 }) {
   const text = useStrings().folderTreeList;
@@ -248,6 +262,7 @@ export function FolderTreeList<T>({
           return (
             <div key={node.id} {...common} aria-expanded={open} className={`folder-tree-row folder-tree-folder${band}`}>
               <div role="gridcell" className="folder-tree-name folder-tree-name-cell" style={indent}>
+                {checks && <RowCheck node={node} checks={checks} />}
                 <button
                   type="button" className="folder-tree-toggle" tabIndex={-1} aria-expanded={open}
                   aria-label={text.toggle(node.name, open)} title={text.toggle(node.name, open)}
@@ -270,6 +285,7 @@ export function FolderTreeList<T>({
         return (
           <div key={node.id} {...common} aria-selected={selected} className={`folder-tree-row${band}${selected ? " folder-tree-selected" : ""}`}>
             <div role="gridcell" className="folder-tree-name folder-tree-name-cell" style={indent}>
+              {checks && <RowCheck node={node} checks={checks} />}
               <span className="folder-tree-chevron-gap" aria-hidden="true" />
               <span role="img" aria-label={view.iconLabel} title={view.iconLabel} className="folder-tree-type-icon">{view.icon}</span>
               <button
@@ -290,6 +306,20 @@ export function FolderTreeList<T>({
         );
       })}
     </div>
+  );
+}
+
+/** One row's tick box; a folder with some of its items ticked shows the mixed state. */
+function RowCheck<T>({ node, checks }: { node: FolderNode<T>; checks: FolderTreeChecks<T> }) {
+  const state = checks.state(node);
+  return (
+    <input
+      type="checkbox" className="folder-tree-check" aria-label={checks.label(node)}
+      checked={state === true} aria-checked={state === "mixed" ? "mixed" : state}
+      ref={(el) => { if (el) el.indeterminate = state === "mixed"; }}
+      disabled={checks.disabled?.(node) ?? false}
+      onChange={(e) => checks.onChange(node, e.target.checked)}
+    />
   );
 }
 

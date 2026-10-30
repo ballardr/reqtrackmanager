@@ -236,6 +236,13 @@ def _require_artefact_type(value: str, field_name: str = "artefact_type") -> str
 _RECORD_CODE = re.compile(r"[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d+")
 
 
+def _require_snippet_key(value: str) -> str:
+    """Validates a report snippet key (lowercase, hyphens or underscores) before it is put in a URL path."""
+    if not re.fullmatch(r"[a-z][a-z0-9_-]{0,59}", value):
+        raise ValueError(f"snippet keys look like 'cover-page', got {value!r}.")
+    return value
+
+
 def _require_field_key(value: str) -> str:
     """Validates a search field key (lowercase, underscores)."""
     if not re.fullmatch(r"[a-z][a-z0-9_]{0,39}", value):
@@ -1573,6 +1580,60 @@ async def format_report_layout_text(tree: dict, project_id: str | None = None, o
     return response.json()
 
 
+@mcp.tool
+async def list_report_snippets(project_id: str | None = None, organization_id: str | None = None) -> list[dict]:
+    """Lists the report snippets a layout can insert: ready-made fragments such as a cover page, a logo at the top right,
+    record images, document control, approvals or a landscape table section. Needs the layout-management permission.
+
+    Args:
+        project_id: The project's UUID. Give one of project_id / organization_id.
+        organization_id: The organisation's UUID.
+
+    Returns:
+        Each snippet's `key`, `name`, `description`, `category`, `family`, `formats` (where the result is true) and
+        `parameters` (`key`, `kind` of image / record_type / text, `required`, `default`, and for a record type the `choices`).
+    """
+    response = await _call_backend("GET", f"{_layout_scope_path(project_id, organization_id)}/snippets")
+    return [{k: v for k, v in snippet.items() if k != "blocks"} for snippet in response.json()]
+
+
+@mcp.tool
+async def apply_report_snippet(
+    key: str,
+    tree: dict,
+    parameters: dict | None = None,
+    container: str = "nodes",
+    index: int | None = None,
+    project_id: str | None = None,
+    organization_id: str | None = None,
+) -> dict:
+    """Inserts a snippet into a layout tree you hold and returns the new tree. Stores nothing: save the result with
+    `save_report_layout_version` or `create_report_layout`. Needs the layout-management permission.
+
+    The snippet's blocks are copied in; nothing links back to it. A page style it needs is added, reused when the layout
+    has an identical one, or renamed ("Cover 2") when a different one has the name. Only problems the snippet causes
+    refuse the insertion; the layout's own are left alone and counted.
+
+    Args:
+        key: The snippet's key (from `list_report_snippets`).
+        tree: The layout tree (from `get_report_layout`). It is not changed.
+        parameters: Values by parameter key: an image is a library image's file id, a record type its key.
+        container: The list of blocks to insert into: `nodes` (the layout), or `nodes[2].children` / `nodes[2].else_children`.
+        index: Where in that list (0 is first); the end when omitted.
+        project_id: The project's UUID. Give one of project_id / organization_id.
+        organization_id: The organisation's UUID.
+
+    Returns:
+        `ok`, `tree` (when ok), `changes` (what was done), `errors` (each with `path` and `message` when refused),
+        `inserted_at` (the path of the first inserted block) and `problems_elsewhere`.
+    """
+    response = await _call_backend(
+        "POST", f"{_layout_scope_path(project_id, organization_id)}/snippets/{_require_snippet_key(key)}/apply",
+        json={"tree": tree, "parameters": parameters or {}, "target": {"container": container, "index": index}},
+    )
+    return response.json()
+
+
 # --- Write mode (MCP_WRITES_ENABLED) ----------------------------------------
 #
 # Registered only when the deployment operator has explicitly opted in.
@@ -2136,6 +2197,94 @@ if MCP_WRITES_ENABLED:
         lid = _require_uuid(layout_id, "layout_id")
         await _call_backend("DELETE", f"{_layout_scope_path(project_id, organization_id)}/{lid}")
         return {"deleted": True, "layout_id": lid}
+
+    @mcp.tool
+    async def copy_reports(
+        source_project_id: str, target_project_id: str, layout_ids: list[str] | None = None, pack_ids: list[str] | None = None,
+        folders: list[str] | None = None, placement_keys: list[str] | None = None, on_conflict: str = "rename",
+        favourites: bool = True, dry_run: bool = True,
+    ) -> dict:
+        """Copies report layouts, packs, folders and module-report placements from one project to another project of the
+        same organisation. Needs the layout-management permission in BOTH projects. Preview first (the default), then apply.
+
+        Each layout or pack is copied as its latest version, version 1 of an independent copy owned by the target project
+        (a layout inherited from the organisation or a parent project is copied as the project's own editable one). Nothing
+        is ever replaced: a name the target already owns is renamed "<name> (copy)" or skipped. Pictures from a project's
+        library are copied into the target's library; organisation pictures stay references.
+
+        Args:
+            source_project_id: The project to copy from.
+            target_project_id: The project to copy into.
+            layout_ids: Layouts the source project can reach (from `list_report_layouts`).
+            pack_ids: Packs the source project can reach (from `list_report_packs`).
+            folders: Report folder paths; those the source project added as folders are copied.
+            placement_keys: Module or platform report keys (`report:<module>.<key>`) the source project places.
+            on_conflict: `rename` (default) or `skip` for a name the target already owns.
+            favourites: Carry the caller's own favourites of the copied reports.
+            dry_run: True (default) only plans: what would be created, renamed, skipped or cannot be carried, with warnings.
+                Show that to the user and call again with False to copy.
+
+        Returns:
+            `{dry_run, target_project_id, items: [{kind, name, action, new_name, warnings, new_id}], warnings, favourites_carried}`.
+        """
+        sid = _require_uuid(source_project_id, "source_project_id")
+        tid = _require_uuid(target_project_id, "target_project_id")
+        response = await _call_backend(
+            "POST", f"/api/v1/projects/{tid}/report-copy",
+            json={
+                "source_project_id": sid, "layout_ids": [_require_uuid(i, "layout_ids") for i in layout_ids or []],
+                "pack_ids": [_require_uuid(i, "pack_ids") for i in pack_ids or []], "folders": folders or [],
+                "placement_keys": placement_keys or [], "on_conflict": on_conflict, "favourites": favourites, "dry_run": dry_run,
+            },
+        )
+        return response.json()
+
+    @mcp.tool
+    async def duplicate_report(
+        kind: str, project_id: str | None = None, organization_id: str | None = None, source_id: str | None = None,
+        starter_key: str | None = None, target: str = "project", name: str | None = None, dry_run: bool = True,
+    ) -> dict:
+        """Duplicates one report layout or pack as an editable basis for a new one, or starts a layout from a built-in
+        starter (Business Requirements Document and the like). Needs the layout-management permission where the copy lands
+        (and, for a copy up to the organisation, the organisation's). Preview first (the default), then apply.
+
+        The copy is independent: the latest version only, as version 1, always editable (even when the source is a starter or
+        shared from the organisation or a parent project). A pack is copied without its saved sets. A name the destination
+        already owns is refused; the default name is "<name> (copy)". A picture from a project's library cannot be copied up
+        to the organisation (the preview lists them and the apply is refused).
+
+        Args:
+            kind: `layout`, `pack` or `starter`.
+            project_id: The project the copy goes into (give this or `organization_id`).
+            organization_id: The organisation the copy goes into, when no project is given.
+            source_id: The layout or pack to copy (from `list_report_layouts` / `list_report_packs`); not used for a starter.
+            starter_key: The starter to start from (`kind: starter`): `business-requirements-document`,
+                `engineering-specification`, `review-package` or `requirements-by-component`.
+            target: `project` (default; with `project_id`) or `organization` (copy up from a project, or the organisation page).
+            name: The copy's name; the first free "<name> (copy)" when omitted.
+            dry_run: True (default) only plans: the final name, whether it shadows an inherited report, warnings and any
+                blocking pictures. Show that to the user and call again with False to create the copy.
+
+        Returns:
+            `{dry_run, kind, source_name, origin, name, suggested_name, name_taken, shadows, folder, warnings,
+            blocked_images, new_id, target}`.
+        """
+        if (project_id is None) == (organization_id is None):
+            raise ValueError("Give exactly one of project_id and organization_id.")
+        base = (
+            f"/api/v1/projects/{_require_uuid(project_id, 'project_id')}" if project_id
+            else f"/api/v1/orgs/{_require_uuid(organization_id, 'organization_id')}"
+        )
+        if organization_id:
+            target = "organization"
+        response = await _call_backend(
+            "POST", f"{base}/report-duplicate",
+            json={
+                "kind": kind, "source_id": _require_uuid(source_id, "source_id") if source_id else None,
+                "starter_key": starter_key, "target": target, "name": name, "dry_run": dry_run,
+            },
+        )
+        return response.json()
 
     @mcp.tool
     async def run_report_pack(

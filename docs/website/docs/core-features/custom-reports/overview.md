@@ -53,6 +53,9 @@ flowchart TD
 ```
 
 - **Formats:** a document layout downloads as PDF, Word, OpenDocument text (ODT, for LibreOffice and other office suites) or a standalone HTML page (no scripts, safe to open or email); a table layout as an Excel workbook or OpenDocument spreadsheet (ODS), one tab per sheet, or CSV, which is a zip of one CSV file per sheet when the layout has several sheets. Text a cell starts with `=`, `+`, `-` or `@` is stored as plain text, never run as a formula. The on-screen view shows each table of the report as a section, titled by the headings above it.
+- **File name:** a layout can set a default **File name** with placeholders such as the project code and the day it was run; see [naming downloaded reports](./naming-downloads.md).
+- **Duplicating:** start a new report from an existing layout or pack, or from a built-in starter; see [duplicating a report](./duplicating-a-report.md).
+- **Copying:** reports can be copied from one project to another project of the organisation; see [copying reports to another project](./copying-between-projects.md).
 - **Choosing projects:** the **Projects** selector lists exactly the projects you hold a role in; downloads carry the same choice as the screen. A project that has hidden the layout is left out, and the report says so.
 
 ## Limits and background runs

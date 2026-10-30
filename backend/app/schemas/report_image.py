@@ -24,6 +24,7 @@ class ReportImageOut(BaseModel):
         tier: `organisation` (every project's layouts may use it) or `project`.
         owned: Whether the library being listed owns it, that is, whether its manager may delete it.
         used_by: Names of the layouts whose current version uses it.
+        in_older_versions: True when no layout's current version uses it but an older saved version does.
         created_at: Upload time (UTC).
     """
 
@@ -34,6 +35,7 @@ class ReportImageOut(BaseModel):
     tier: Literal["organisation", "project"]
     owned: bool
     used_by: list[str]
+    in_older_versions: bool = False
     created_at: datetime
 
 

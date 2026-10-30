@@ -62,6 +62,7 @@ from app.services.email_branding import resolve_email_branding
 from app.services.email_templates import render_email
 from app.services.net_guard import assert_public_host
 from app.services.rbac import require_org_module_enabled_dynamic, require_org_role
+from app.services.report_file_names import ORG_FILE_NAME_PLACEHOLDERS, template_problems
 
 router = APIRouter(tags=["organizations-settings"])
 settings = get_settings()
@@ -88,6 +89,7 @@ def get_advanced_settings(
         smtp_host=org.smtp_host, smtp_port=org.smtp_port, smtp_username=org.smtp_username,
         smtp_use_tls=org.smtp_use_tls,
         pat_max_lifetime_days=org.pat_max_lifetime_days, report_output_retention_days=org.report_output_retention_days,
+        report_file_name=org.report_file_name,
         report_output_default_retention_days=settings.report_output_default_retention_days,
         report_output_max_retention_days=settings.report_output_max_retention_days,
         require_2fa=org.require_2fa,
@@ -130,6 +132,12 @@ def update_advanced_settings(
     # Stored output of background custom reports; capped by the platform ceiling when read
     # (`services.report_run_jobs.effective_retention_days`), so a larger value is accepted but not honoured.
     org.report_output_retention_days = payload.report_output_retention_days
+    file_name = (payload.report_file_name or "").strip() or None
+    if file_name is not None:
+        problems = template_problems(file_name, allowed=ORG_FILE_NAME_PLACEHOLDERS, variables=None)
+        if problems:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, problems[0])
+    org.report_file_name = file_name
     org.require_2fa = payload.require_2fa
     org.allow_self_signup = payload.allow_self_signup
     org.auto_accept_email_domain = payload.auto_accept_email_domain.lower() if payload.auto_accept_email_domain else None
@@ -162,6 +170,7 @@ def update_advanced_settings(
         smtp_host=org.smtp_host, smtp_port=org.smtp_port, smtp_username=org.smtp_username,
         smtp_use_tls=org.smtp_use_tls,
         pat_max_lifetime_days=org.pat_max_lifetime_days, report_output_retention_days=org.report_output_retention_days,
+        report_file_name=org.report_file_name,
         report_output_default_retention_days=settings.report_output_default_retention_days,
         report_output_max_retention_days=settings.report_output_max_retention_days,
         require_2fa=org.require_2fa,

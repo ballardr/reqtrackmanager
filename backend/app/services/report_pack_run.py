@@ -26,8 +26,10 @@ Design decisions:
   what a report shows and are not access control: the manifest records the values used and the preview shows the
   counts, so a wrong choice is visible before anything is sent on.
 - **Names.** The zip holds flat files `NN-<stem>.<ext>` (`NN` is the entry's position, so names are unique and
-  ordered); the stem is the entry's `filename` (or its layout or report name) reduced to letters, digits and
-  `._- ` (`report_pack_definition.clean_filename`), so a name from user text can never be a path.
+  ordered); the stem is the entry's `filename` template, else its layout's `file_name`, else its layout or report
+  name, filled in and reduced to letters, digits and `._- ` (`services.report_file_names`), so a name from user
+  text or a record value can never be a path. The zip itself is named by the pack's `file_name`, else the
+  organisation's default, else scope then pack name.
 - **Bounded.** At most `MAX_ENTRIES` entries, `MAX_ZIP_BYTES` of output and `MAX_PACK_SECONDS` of wall time for the
   whole pack (each layout entry also keeps its own caps). Going over is `PackLimitError`; nothing partial is returned
   or recorded.
@@ -47,7 +49,7 @@ import zipfile
 from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -61,6 +63,7 @@ from app.models.report_pack import ReportPack, ReportPackVersion
 from app.models.user import User
 from app.services import custom_report_run, report_layout_scope, report_layouts, report_pack_sets
 from app.services.client_date import effective_today
+from app.services.report_file_names import clean_filename, render_stem
 from app.services.report_framework import readable_projects
 from app.services.report_layout_eval import LayoutLimitError
 from app.services.report_layout_tree import record_types_of
@@ -70,8 +73,7 @@ from app.services.report_module_run import (
     render_module_report,
     run_module_report,
 )
-from app.services.report_pack_definition import clean_filename
-from app.services.report_variables import VariableValueError, resolve_values
+from app.services.report_variables import VariableValueError, resolve_values, variable_text
 
 MAX_ZIP_BYTES = 100 * 1024 * 1024
 MAX_PACK_SECONDS = 120.0
@@ -160,6 +162,7 @@ class PackRun:
         pack_run_id: Shared by the provenance rows.
         set_name: The saved variable set the values started from, if one was chosen.
         warnings: Remarks on the values (a set value no longer among its options, names ignored).
+        today: The caller's calendar day when the run started, which `{{generated_on}}` in a file name uses.
     """
 
     pack: ReportPack
@@ -173,6 +176,7 @@ class PackRun:
     pack_run_id: uuid.UUID = field(default_factory=uuid.uuid4)
     set_name: str | None = None
     warnings: list[str] = field(default_factory=list)
+    today: date = field(default_factory=effective_today)
 
     @property
     def included(self) -> list[EntryOutcome]:
@@ -225,7 +229,33 @@ def entry_variables(
 
 
 def _stem(entry: Mapping[str, Any], fallback: str) -> str:
+    """The entry's name before it has run: its template with nothing filled in, else `fallback` (a plain name)."""
     return clean_filename(str(entry.get("filename") or fallback))
+
+
+def _layout_stem(entry: Mapping[str, Any], run: custom_report_run.LayoutRun, fallback: str) -> str:
+    """A layout entry's stem: its own `filename` template, else the layout's `file_name`, else `fallback`.
+
+    The values are the layout run's (so `{{var.x}}` is that entry's variable and `{{report_title}}` the layout's name).
+    """
+    plain, texts = custom_report_run.file_values(run, entry["format"])
+    for template in (entry.get("filename"), run.version.tree.get("file_name")):
+        stem = render_stem(template, plain, texts)
+        if stem is not None:
+            return stem
+    return fallback
+
+
+def _report_stem(
+    entry: Mapping[str, Any], organization: Organization, project: Project | None, title: str, fallback: str,
+) -> str:
+    """A module report entry's stem: its `filename` template filled with the run facts, else `fallback`."""
+    plain = {
+        "report_title": title, "project_name": project.name if project else organization.name, "organisation": organization.name,
+        "project_code": (project.code if project else "") or "", "generated_on": effective_today().isoformat(),
+        "format": entry["format"],
+    }
+    return render_stem(entry.get("filename"), plain) or fallback
 
 
 def _find_layout(
@@ -344,6 +374,7 @@ def _layout_entry(
     if by_project and any(v != outcome.variables for v in by_project.values()):
         outcome.variables_by_project = by_project
     outcome.run = run
+    outcome.stem = _layout_stem(entry, run, outcome.stem)
     outcome.record_counts = dict(run.evaluated.stats.records_included)
     outcome.records = sum(outcome.record_counts.values())
     outcome.warnings = [*run.notes, *run.evaluated.warnings][:5]
@@ -367,6 +398,7 @@ def _report_entry(
     if definition is None:
         outcome.reason = "That report is not installed."
         return outcome
+    outcome.stem = _report_stem(entry, organization, project, definition.title, outcome.stem)
     try:
         result = run_module_report(
             db, user, organization=organization, project=project, module_key=module_key, definition=definition,
@@ -584,7 +616,18 @@ def build_zip(run: PackRun, *, background: bool = False) -> bytes:
 
 
 def zip_stem(run: PackRun) -> str:
-    """The download name (without extension): scope then pack name, made safe."""
+    """The download name (without extension): the pack's `file_name` template, else the organisation's default, else
+    scope then pack name, made safe. A template that fills in to nothing usable falls through to the next."""
+    plain = {
+        "report_title": run.pack.name, "project_name": run.scope_label, "organisation": run.organization.name,
+        "project_code": (run.project.code if run.project is not None else "") or "", "generated_on": run.today.isoformat(),
+        "layout_version": str(run.version.version), "format": "zip",
+    }
+    texts = variable_text(run.version.definition.get("variables"), run.values)
+    for template in (run.version.definition.get("file_name"), run.organization.report_file_name):
+        stem = render_stem(template, plain, texts)
+        if stem is not None:
+            return stem
     return f"{clean_filename(run.scope_label)}-{clean_filename(run.pack.name)}"
 
 

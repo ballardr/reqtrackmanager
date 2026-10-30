@@ -6,6 +6,7 @@ import { ApiError } from "../api/client";
 import {
   buildLayoutApi, buildLayoutDetail, buildLayoutSummary, buildOutlineTree, fakeValidate, LAYOUT_TEXT, TEXT_CHECKED_MS,
 } from "../testing/reportLayoutFixtures";
+import { buildDuplicateApi } from "../testing/reportDuplicateFixtures";
 import { saveVersion } from "../testing/saveVersionHelpers";
 import { buildUser, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
 import { ReportLayoutDesigner } from "./ReportLayoutDesigner";
@@ -227,7 +228,7 @@ export const ALayoutSharedFromElsewhereIsReadOnly: Story = {
     await expect(canvas.queryByRole("tab", { name: "Fields" })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Report layout actions" }));
-    await expect((await screen.findAllByRole("menuitem")).map((item) => item.textContent?.trim())).toEqual(["Make a copy"]);
+    await expect((await screen.findAllByRole("menuitem")).map((item) => item.textContent?.trim())).toEqual(["Duplicate…"]);
   },
 };
 
@@ -283,6 +284,21 @@ export const DeletingFromTheHeaderNeedsTheNameTyped: Story = {
     await userEvent.click(dialog.getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(args.api.remove).toHaveBeenCalledWith("layout-1"));
     await expect(await body().findByText("Layout deleted.")).toBeInTheDocument();
+  },
+};
+
+export const DuplicateOpensTheDialogOnTheSavedVersion: Story = {
+  args: { duplicateApi: buildDuplicateApi({ sourceName: "Requirements by component" }) },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await editorOf(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Report layout actions" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Duplicate…" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Duplicate layout" }));
+    await expect(dialog.queryByRole("note")).not.toBeInTheDocument();
+    await waitFor(() => expect(dialog.getByRole("textbox", { name: "Name" })).toHaveValue("Requirements by component (copy)"));
+    await userEvent.click(dialog.getByRole("button", { name: "Cancel" }));
+    await expect(args.duplicateApi!.duplicate).not.toHaveBeenCalledWith(expect.objectContaining({ dry_run: false }));
   },
 };
 

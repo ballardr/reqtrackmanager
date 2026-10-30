@@ -50,13 +50,21 @@ OVERRIDES_KEY = "report_pack_set_overrides"
 ORG_KEY = "report_packs"
 
 
-def _pack_json(db: Session, pack: ReportPack) -> dict[str, Any]:
-    """One pack with every version (oldest first) and the sets saved with it. Author email and time are information only."""
+def pack_entry(
+    db: Session, pack: ReportPack, *, latest_only: bool = False, sets: list[tuple[str, dict[str, Any]]] | None = None,
+) -> dict[str, Any]:
+    """One pack with every version (oldest first) and the sets saved with it. Author email and time are information only.
+
+    `latest_only` keeps just the current version, noted "Copied from <name>, version n". `sets` replaces the
+    pack-defined sets with the given `(name, values)` pairs (a copy carries the sets as one project sees them).
+    """
     versions = report_packs.list_versions(db, pack.id)
+    if latest_only:
+        versions = [v for v in versions if v.version == pack.current_version]
     emails = {
         u.id: u.email for u in db.scalars(select(User).where(User.id.in_({v.created_by for v in versions if v.created_by})))
     } if any(v.created_by for v in versions) else {}
-    sets = db.scalars(
+    pack_sets = db.scalars(
         select(ReportPackVariableSet).where(ReportPackVariableSet.pack_id == pack.id, ReportPackVariableSet.project_id.is_(None))
         .order_by(ReportPackVariableSet.name)
     ).all()
@@ -64,12 +72,16 @@ def _pack_json(db: Session, pack: ReportPack) -> dict[str, Any]:
         "name": pack.name, "description": pack.description, "folder": pack.folder,
         "versions": [
             {
-                "version": v.version, "schema_version": v.schema_version, "definition": v.definition, "comment": v.comment,
+                "version": v.version, "schema_version": v.schema_version, "definition": v.definition,
+                "comment": f"Copied from {pack.name}, version {v.version}"[: report_packs.MAX_COMMENT_CHARS] if latest_only else v.comment,
                 "created_by_email": emails.get(v.created_by) if v.created_by else None, "created_at": v.created_at.isoformat(),
             }
             for v in reversed(versions)
         ],
-        "sets": [{"name": s.name, "values": s.variable_values} for s in sets],
+        "sets": (
+            [{"name": n, "values": v} for n, v in sets] if sets is not None
+            else [{"name": s.name, "values": s.variable_values} for s in pack_sets]
+        ),
     }
 
 
@@ -95,14 +107,14 @@ def export_project_packs(db: Session, project: Project) -> dict[str, Any]:
         ):
             overrides.append({"pack": item.pack.name, "set": set_row.name, "values": ov.variable_values})
     return {
-        PROJECT_KEY: [_pack_json(db, pack) for pack in own], HIDDEN_KEY: hidden, ADDED_SETS_KEY: added,
+        PROJECT_KEY: [pack_entry(db, pack) for pack in own], HIDDEN_KEY: hidden, ADDED_SETS_KEY: added,
         OVERRIDES_KEY: overrides,
     }
 
 
 def export_org_packs(db: Session, organization_id: uuid.UUID) -> dict[str, Any]:
     """The organisation's own packs (with their sets) as an `org.json` section."""
-    return {ORG_KEY: [_pack_json(db, pack) for pack in report_pack_scope.list_org_packs(db, organization_id)]}
+    return {ORG_KEY: [pack_entry(db, pack) for pack in report_pack_scope.list_org_packs(db, organization_id)]}
 
 
 def _import_sets(
@@ -121,11 +133,11 @@ def _import_sets(
             warnings.add(f'Saved set "{item.get("name", "")}" of report pack "{name}" was skipped: it is not valid for this pack.')
 
 
-def _import_pack(
+def import_pack_entry(
     db: Session, entry: dict[str, Any], *, organization_id: uuid.UUID, project_id: uuid.UUID | None, actor: User,
     warnings: BundleImportWarnings, existing_names: set[str] | None = None,
-) -> bool:
-    """Creates one pack (with its sets) from its bundle entry. Returns whether a pack was stored."""
+) -> ReportPack | None:
+    """Creates one pack (with its sets) from its bundle entry. Returns the new pack, or `None` when none was stored."""
     name = str(entry.get("name", "")).strip()
     versions = sorted(
         (v for v in entry.get("versions", []) if isinstance(v, dict) and isinstance(v.get("definition"), dict)),
@@ -150,18 +162,18 @@ def _import_pack(
                 saved = report_packs.save_version(db, pack.id, v["definition"], base_version=stored, actor_id=actor.id, comment=comment)
         except report_packs.PackNameTakenError:
             warnings.add(f'Report pack "{name}" was skipped: a pack with that name already exists.')
-            return False
+            return None
         except (InvalidPackError, ValueError):
             dropped += 1
             continue
         stored = saved.pack.current_version
     if pack is None:
         warnings.add(f'Report pack "{name}" was skipped: none of its versions is valid in this installation.')
-        return False
+        return None
     if dropped:
         warnings.add(f'Report pack "{name}": {dropped} version(s) that are not valid in this installation were left out.')
     _import_sets(db, pack, entry, actor, warnings, name)
-    return True
+    return pack
 
 
 def import_org_packs(
@@ -178,7 +190,9 @@ def import_org_packs(
         if merge else None
     )
     return sum(
-        _import_pack(db, entry, organization_id=organization_id, project_id=None, actor=actor, warnings=warnings, existing_names=existing)
+        import_pack_entry(
+            db, entry, organization_id=organization_id, project_id=None, actor=actor, warnings=warnings, existing_names=existing,
+        ) is not None
         for entry in data.get(ORG_KEY, []) if isinstance(entry, dict)
     )
 
@@ -189,7 +203,7 @@ def import_project_packs(
     """Imports a `project.json`'s own packs, then re-applies the hides, added sets and overrides to the packs it inherits."""
     for entry in data.get(PROJECT_KEY, []):
         if isinstance(entry, dict):
-            _import_pack(db, entry, organization_id=project.organization_id, project_id=project.id, actor=actor, warnings=warnings)
+            import_pack_entry(db, entry, organization_id=project.organization_id, project_id=project.id, actor=actor, warnings=warnings)
     hidden = [h for h in data.get(HIDDEN_KEY, []) if isinstance(h, dict)]
     added = [a for a in data.get(ADDED_SETS_KEY, []) if isinstance(a, dict)]
     overrides = [o for o in data.get(OVERRIDES_KEY, []) if isinstance(o, dict)]
@@ -235,4 +249,6 @@ def import_project_packs(
             warnings.add(f'An override of set "{row.name}" was skipped: its values are not valid for the pack.')
 
 
-__all__ = ["export_org_packs", "export_project_packs", "import_org_packs", "import_project_packs"]
+__all__ = [
+    "export_org_packs", "export_project_packs", "import_org_packs", "import_pack_entry", "import_project_packs", "pack_entry",
+]

@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { ApiError, api } from "../api/client";
 import { saveVersion } from "../testing/saveVersionHelpers";
 import { buildFieldCatalogue, buildLayoutSummary } from "../testing/reportLayoutFixtures";
+import { buildDuplicateApi } from "../testing/reportDuplicateFixtures";
 import { buildDefinition, buildForm, buildPackApi, buildPackSummary } from "../testing/reportPackFixtures";
 import { withToast } from "../testing/storybook-helpers";
 import { ReportPackEditor } from "./ReportPackEditor";
@@ -49,6 +50,19 @@ export const ShowsThePackAndItsReports: Story = {
     await expect(await view.findByRole("heading", { name: "Handover pack" })).toBeInTheDocument();
     await expect(await view.findByRole("region", { name: "Report 1" })).toBeInTheDocument();
     await expect(view.getByRole("button", { name: "Save new version" })).toBeDisabled();
+  },
+};
+
+export const DuplicateOpensTheDialogForThePack: Story = {
+  args: { api: buildPackApi([buildPackSummary()], { stateful: false }), duplicateApi: buildDuplicateApi({ sourceName: "Handover pack" }) },
+  play: async ({ canvasElement }) => {
+    const view = within(canvasElement);
+    await view.findByRole("heading", { name: "Handover pack" });
+    await userEvent.click(view.getByRole("button", { name: "Report pack actions" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Duplicate…" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Duplicate pack" }));
+    await waitFor(() => expect(dialog.getByRole("textbox", { name: "Name" })).toHaveValue("Handover pack (copy)"));
+    await userEvent.click(dialog.getByRole("button", { name: "Cancel" }));
   },
 };
 

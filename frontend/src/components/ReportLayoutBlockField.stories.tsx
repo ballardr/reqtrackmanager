@@ -314,3 +314,21 @@ export const ARecordImagesBlockEditsItsRulesAsLists: Story = {
     await waitFor(() => expect(node(1).order).toBe("uploaded"));
   },
 };
+
+const fileNameField: BlockField = {
+  key: "file_name", label: "File name", kind: "file_name", required: false, help: "", max_length: 200, minimum: null,
+  maximum: null, default: null, choices: [], features: [], depends_on: null, families: [],
+};
+
+/** The layout's File name is a template field: typing sets the key, emptying removes it, and the example is the server's. */
+export const TheLayoutFileNameIsATemplateField: Story = {
+  render: () => <Harness field={fileNameField} initial={{ family: "document" }} environment={{ ...env, variables: ["team"] }} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const box = canvas.getByRole("textbox", { name: "File name" });
+    await userEvent.type(box, "report-{{{{var.team}}");
+    await waitFor(() => expect(nodeOf(canvasElement).file_name).toBe("report-{{var.team}}"));
+    await userEvent.clear(box);
+    await waitFor(() => expect(nodeOf(canvasElement)).not.toHaveProperty("file_name"));
+  },
+};

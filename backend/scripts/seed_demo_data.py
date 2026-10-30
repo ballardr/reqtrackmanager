@@ -2146,7 +2146,8 @@ def main() -> None:
     assign_project_role(h_pm, avionics["id"], demo_engineer["user_id"], "project_manager")
     print("Seeding custom report layouts: an organisation layout every project inherits, Falcon-3's own, and Avionics hiding the organisation's...")
     org_layout = create_report_layout(
-        h_pm, f"/orgs/{org['id']}", "Handover requirements", "Every requirement, grouped by component.", REQUIREMENTS_BY_COMPONENT_LAYOUT,
+        h_pm, f"/orgs/{org['id']}", "Handover requirements", "Every requirement, grouped by component.",
+        {**REQUIREMENTS_BY_COMPONENT_LAYOUT, "file_name": "{{project_code}}-{{report_title}}-{{generated_on}}"},
         folder="Handover/Requirements",
     )
     create_report_layout(

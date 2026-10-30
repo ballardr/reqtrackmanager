@@ -66,6 +66,9 @@ Grammar (one statement per line; indentation is cosmetic):
   a column heading (up to three, most significant first); `empty` is the text shown when the component has
   nothing in it. A line starting `[[widget` is always a widget (and an error if malformed), so prose that needs
   one writes it inside `@text`.
+- `@filename "<template>"` (before the first block, once) is the default name of a downloaded copy, without the
+  extension: `{{report_title}}`, `{{project_code}}`, `{{generated_on}}`, `{{var.name}}` and so on
+  (`services.report_file_names`).
 - Run-time variables are declared before the first block, one per line:
   `@var <name> <text|number|date|bool|enum> [list] [label "<text>"] [default <value>[, ...]] [options "<a>", ...]
   [from <record type>.<field>]`. A condition value or widget parameter written `$name` is a reference to one
@@ -826,6 +829,9 @@ class _Parser:
         if name == "var":
             self._variable(directive, indent, line_no)
             return
+        if name == "filename":
+            self._file_name(directive, indent, line_no)
+            return
         if name == "pagestyle":
             self._page_style(directive, indent, line_no)
             return
@@ -915,6 +921,17 @@ class _Parser:
         cur.expect_end()
         holder[kind] = band
         self.line_of[f"page_styles[{len(styles) - 1}].{kind}" if styles else kind] = line_no
+
+    def _file_name(self, directive: _Directive, indent: int, line_no: int) -> None:
+        """Reads an `@filename "<template>"` line into the root's `file_name` (it belongs before the first block)."""
+        if len(self.frames) > 1 or self.root["nodes"]:
+            raise _Syntax("@filename names the downloaded file of the whole layout: put it before the first block.", indent + 1)
+        if "file_name" in self.tree:
+            raise _Syntax("@filename is written once.", indent + 1)
+        cur = directive.cursor()
+        self.tree["file_name"] = cur.text("the file name in quotes")
+        cur.expect_end()
+        self.line_of["file_name"] = line_no
 
     def _variable(self, directive: _Directive, indent: int, line_no: int) -> None:
         """Reads an `@var` line into the root's `variables` (it belongs before the first block)."""
@@ -1208,6 +1225,8 @@ def format_tree(tree: dict[str, Any]) -> str:
         _write_bands(writer, style)
     for declaration in tree.get("variables", []):
         writer.line(0, _variable_text(declaration))
+    if "file_name" in tree:
+        writer.line(0, f"@filename {_quote(tree['file_name'])}")
     if tree["nodes"]:
         writer.blank()
     writer.blocks(tree["nodes"], 0)

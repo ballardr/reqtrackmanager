@@ -41,7 +41,7 @@ def _out(item: report_images.LibraryImage, own_project: UUID | None) -> ReportIm
     owned = asset.project_id == own_project if own_project is not None else asset.is_org_resource
     return ReportImageOut(
         id=asset.id, filename=asset.filename, content_type=asset.content_type, size_bytes=asset.size_bytes, tier=item.tier,  # type: ignore[arg-type]
-        owned=owned, used_by=item.used_by, created_at=asset.created_at,
+        owned=owned, used_by=item.used_by, in_older_versions=item.in_older_versions, created_at=asset.created_at,
     )
 
 

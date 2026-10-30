@@ -264,10 +264,10 @@ export function buildWidgets(): ReportWidget[] {
 /** Pictures in a project's library: the project's own logo and an organisation one used by two layouts. */
 export function buildReportImages(): ReportImage[] {
   return [
-    { id: "image-1", filename: "site-logo.png", content_type: "image/png", size_bytes: 24_000, tier: "project", owned: true, used_by: [], created_at: "2026-10-20T09:00:00Z" },
+    { id: "image-1", filename: "site-logo.png", content_type: "image/png", size_bytes: 24_000, tier: "project", owned: true, used_by: [], in_older_versions: false, created_at: "2026-10-20T09:00:00Z" },
     {
       id: "image-2", filename: "organisation-wordmark.svg", content_type: "image/svg+xml", size_bytes: 3_400, tier: "organisation", owned: false,
-      used_by: ["Quarterly review", "Decision log"], created_at: "2026-10-01T09:00:00Z",
+      used_by: ["Quarterly review", "Decision log"], in_older_versions: false, created_at: "2026-10-01T09:00:00Z",
     },
   ];
 }
@@ -289,7 +289,7 @@ export function buildImageLibrary(images: ReportImage[] = buildReportImages(), m
     upload: fn(async (file: File) => {
       const added: ReportImage = {
         id: `image-${store.length + 1}`, filename: file.name, content_type: file.type || "image/png", size_bytes: file.size, tier: "project",
-        owned: true, used_by: [], created_at: "2026-10-30T09:00:00Z",
+        owned: true, used_by: [], in_older_versions: false, created_at: "2026-10-30T09:00:00Z",
       };
       store.unshift(added);
       return added;
