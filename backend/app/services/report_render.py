@@ -38,6 +38,8 @@ import re
 import zipfile
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import date, datetime, time
+from decimal import Decimal
 
 from openpyxl import Workbook
 from openpyxl.cell import WriteOnlyCell
@@ -45,18 +47,22 @@ from openpyxl.cell.cell import Cell
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet._write_only import WriteOnlyWorksheet as _WriteOnlyWorksheet
+from openpyxl.worksheet.hyperlink import Hyperlink
 
 from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE
 from app.services.csv_safety import csv_safe
 from app.services.report_docx import render_docx_document
 from app.services.report_html import render_html_document
-from app.services.report_model import ReportDocument, Sheet
+from app.services.report_model import CellLink, DataCell, LinkedText, ReportDocument, Sheet, SheetCell
 from app.services.report_ods import render_ods_workbook
 from app.services.report_odt import render_odt_document
 from app.services.report_pdf import render_pdf_document
 
 #: Excel's longest cell text.
 MAX_CELL_CHARS = 32_767
+#: How a typed date and a typed UTC instant display in XLSX; `report_ods` shows the same layout.
+_DATE_FORMAT = "yyyy-mm-dd"
+_INSTANT_FORMAT = 'yyyy-mm-dd hh:mm:ss"Z"'
 _SHEET_NAME_BAD = re.compile(r"[\[\]:*?/\\]")
 _FILE_NAME_BAD = re.compile(r"[^A-Za-z0-9._ -]+")
 
@@ -158,12 +164,18 @@ def unique_names(names: Sequence[str], *, clean: Callable[[str], str], limit: in
     return out
 
 
+def _csv_text(cell: SheetCell) -> str:
+    """A cell as CSV text: a typed value prints as its own text (it came from a number, date or instant, so it cannot
+    be a formula, and a negative number stays a number); text, linked or not, goes through `csv_safe`. A link is dropped."""
+    return cell.text if isinstance(cell, DataCell) else csv_safe(str(cell))
+
+
 def _csv_bytes(sheet: Sheet) -> bytes:
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow([csv_safe(c) for c in sheet.columns])
     for row in sheet.rows:
-        writer.writerow([csv_safe(c) for c in row])
+        writer.writerow([_csv_text(c) for c in row])
     return buffer.getvalue().encode("utf-8")
 
 
@@ -179,11 +191,40 @@ def render_csv_sheets(source: RenderInput) -> RenderedFile:
     return RenderedFile(out.getvalue(), "zip")
 
 
-def _text_cell(sheet: _WriteOnlyWorksheet, value: str, *, bold: bool = False) -> Cell:
-    """A spreadsheet cell holding `value` as text: guarded against formulas and cut at Excel's limit."""
-    cell = WriteOnlyCell(sheet, value=csv_safe(value)[:MAX_CELL_CHARS])
-    cell.data_type = "s"  # never a formula, whatever the text looks like
-    if bold:
+def sheet_location(name: str, row: int) -> str:
+    """The XLSX location of column A of `row` on the tab `name`: the name quoted, an apostrophe in it doubled."""
+    return f"'{name.replace(chr(39), chr(39) * 2)}'!A{row}"
+
+
+def _cell_link(cell: SheetCell) -> CellLink | None:
+    return cell.link if isinstance(cell, DataCell | LinkedText) else None
+
+
+def _text_cell(sheet: _WriteOnlyWorksheet, value: SheetCell, *, bold: bool = False, names: Sequence[str] = ()) -> Cell:
+    """A spreadsheet cell: text is guarded against formulas and cut at Excel's limit; a `DataCell` is stored typed
+    (a number, a date, or an instant in UTC with no timezone) and shown in the format the sheet gives its type.
+
+    A cell with a link opens its target as an internal location on the tab `names[link.sheet]` (the name the tab
+    really got), written as a link; a link whose sheet is not in `names` is dropped and the cell stays as it is.
+    """
+    if isinstance(value, DataCell):
+        raw = value.value
+        if isinstance(raw, datetime):
+            cell = WriteOnlyCell(sheet, value=raw)
+            cell.number_format = _INSTANT_FORMAT
+        elif isinstance(raw, date):
+            cell = WriteOnlyCell(sheet, value=datetime.combine(raw, time()))
+            cell.number_format = _DATE_FORMAT
+        else:
+            cell = WriteOnlyCell(sheet, value=float(raw) if isinstance(raw, Decimal) else raw)
+    else:
+        cell = WriteOnlyCell(sheet, value=csv_safe(str(value))[:MAX_CELL_CHARS])
+        cell.data_type = "s"  # never a formula, whatever the text looks like
+    link = _cell_link(value)
+    if link is not None and 0 <= link.sheet < len(names):
+        cell.hyperlink = Hyperlink(ref="", location=sheet_location(names[link.sheet], link.row), display=str(value))
+        cell.font = Font(color="0563C1", underline="single", bold=bold)
+    elif bold:
         cell.font = Font(bold=True)
     return cell
 
@@ -196,11 +237,11 @@ def render_xlsx(source: RenderInput) -> RenderedFile:
         ws = workbook.create_sheet(title=name)
         ws.freeze_panes = "A2"
         for index, column in enumerate(sheet.columns, start=1):
-            widest = max([len(column), *(len(row[index - 1]) for row in sheet.rows[:200] if index - 1 < len(row))])
+            widest = max([len(column), *(len(str(row[index - 1])) for row in sheet.rows[:200] if index - 1 < len(row))])
             ws.column_dimensions[get_column_letter(index)].width = min(max(widest + 2, 8), 60)
         ws.append([_text_cell(ws, c, bold=True) for c in sheet.columns])
         for row in sheet.rows:
-            ws.append([_text_cell(ws, c) for c in row])
+            ws.append([_text_cell(ws, c, names=names) for c in row])
     if not source.sheets:
         workbook.create_sheet(title="Sheet")
     out = io.BytesIO()

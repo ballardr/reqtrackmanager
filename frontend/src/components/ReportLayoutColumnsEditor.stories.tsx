@@ -8,14 +8,14 @@ import { ReportLayoutColumnsEditor, ReportLayoutJoinsEditor } from "./ReportLayo
 
 const catalogue = buildFieldCatalogue();
 
-type Column = { field?: string; label?: string; from?: string };
+type Column = { field?: string; label?: string; from?: string; link?: { sheet: string } };
 type Join = { as?: string; source?: Record<string, unknown> };
 
-function ColumnsHarness({ initial, names }: { initial: Column[]; names: NameInScope[] }) {
+function ColumnsHarness({ initial, names, sheets }: { initial: Column[]; names: NameInScope[]; sheets?: { name: string; recordType: string | null }[] }) {
   const [value, setValue] = useState(initial);
   return (
     <>
-      <ReportLayoutColumnsEditor value={value} onChange={setValue} names={names} catalogue={catalogue} />
+      <ReportLayoutColumnsEditor value={value} onChange={setValue} names={names} catalogue={catalogue} sheets={sheets} />
       <pre data-testid="value" hidden>{JSON.stringify(value)}</pre>
     </>
   );
@@ -74,6 +74,46 @@ export const AJoinedSheetChoosesWhichRecordAColumnReads: Story = {
     await waitFor(() => expect(valueOf(canvasElement)).toEqual([{ field: "", from: "pain" }]));
     const field = canvas.getByRole("combobox", { name: "Column 1 field" }) as HTMLSelectElement;
     await expect(Array.from(field.options).map((o) => o.value)).toEqual(["", "code", "title", "severity"]);
+  },
+};
+
+/** In a sheet, a column can open its record's row on another sheet that lists the same kind of record. */
+export const AColumnCanLinkToASheetThatListsItsRecordType: Story = {
+  args: {
+    initial: [{ field: "code" }],
+    sheets: [
+      { name: "Requirements", recordType: "requirement" },
+      { name: "Pain points", recordType: "pain_point" },
+      { name: "Archive", recordType: "requirement" },
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const link = canvas.getByRole("combobox", { name: "Column 1 links to sheet" }) as HTMLSelectElement;
+    // Only the sheets that list requirements are offered, never the pain points sheet.
+    await expect(Array.from(link.options).map((o) => o.value)).toEqual(["", "Requirements", "Archive"]);
+    await userEvent.selectOptions(link, "Requirements");
+    await waitFor(() => expect(valueOf(canvasElement)).toEqual([{ field: "code", link: { sheet: "Requirements" } }]));
+    // Choosing "No link" removes the setting rather than storing an empty name.
+    await userEvent.selectOptions(link, "");
+    await waitFor(() => expect(valueOf(canvasElement)).toEqual([{ field: "code" }]));
+  },
+};
+
+/** A sheet that is gone from the layout still shows as the column's choice, so the problem is visible rather than hidden. */
+export const ALinkToARemovedSheetStaysVisible: Story = {
+  args: { initial: [{ field: "code", link: { sheet: "Old" } }], sheets: [{ name: "Requirements", recordType: "requirement" }] },
+  play: async ({ canvasElement }) => {
+    const link = within(canvasElement).getByRole("combobox", { name: "Column 1 links to sheet" }) as HTMLSelectElement;
+    await expect(link.value).toBe("Old");
+  },
+};
+
+/** No other sheet lists the column's record type, or the block is a document table: there is nothing to link to, so no choice. */
+export const NoLinkChoiceWithoutASheetOfTheSameType: Story = {
+  args: { initial: [{ field: "title" }], sheets: [{ name: "Pain points", recordType: "pain_point" }] },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).queryByRole("combobox", { name: "Column 1 links to sheet" })).toBeNull();
   },
 };
 

@@ -7,6 +7,8 @@ from __future__ import annotations
 import csv
 import io
 import zipfile
+from datetime import UTC, date, datetime, timedelta, timezone
+from decimal import Decimal
 
 import openpyxl
 import pytest
@@ -14,7 +16,23 @@ import pytest
 from app.services import report_render
 from app.services.report_document import ReportBranding
 from app.services.report_html import CSP, render_html_document
-from app.services.report_model import TONE_FILL, BulletList, Gap, Heading, Image, Note, PageBreak, Paragraph, ReportDocument, Sheet, Table
+from app.services.report_model import (
+    TONE_FILL,
+    BulletList,
+    CellLink,
+    DataCell,
+    Gap,
+    Heading,
+    Image,
+    LinkedText,
+    Note,
+    PageBreak,
+    Paragraph,
+    ReportDocument,
+    Sheet,
+    Table,
+    typed_cell,
+)
 from app.services.report_render import MAX_CELL_CHARS, RenderedFile, Renderer, RenderInput, formats_for, render, unique_names
 
 
@@ -155,3 +173,113 @@ def test_html_does_not_inline_bytes_that_are_not_an_image():
     out = page(ReportDocument(title="T", blocks=[Image(b"<script>alert(1)</script>")], branding=ReportBranding(logo_bytes=b"junk")))
 
     assert "base64" not in out and "<script" not in out and "<img" not in out
+
+
+# --- typed cells ---------------------------------------------------------------------------------------------
+
+
+def test_typed_cell_types_numbers_dates_and_instants_and_keeps_everything_else_text():
+    assert typed_cell("3", 3) == DataCell("3", 3)
+    assert typed_cell("-2.5", -2.5) == DataCell("-2.5", -2.5)
+    assert typed_cell("4.20", Decimal("4.20")) == DataCell("4.20", Decimal("4.20"))
+    assert typed_cell("2026-10-30", date(2026, 10, 30)) == DataCell("2026-10-30", date(2026, 10, 30))
+    # An instant is stored as naive UTC: 09:00 at UTC+10 is 23:00 the day before.
+    sydney = datetime(2026, 10, 30, 9, 0, tzinfo=timezone(timedelta(hours=10)))
+    assert typed_cell("x", sydney) == DataCell("x", datetime(2026, 10, 29, 23, 0))
+    la = datetime(2026, 10, 30, 23, 0, tzinfo=timezone(timedelta(hours=-8)))
+    assert typed_cell("x", la) == DataCell("x", datetime(2026, 10, 31, 7, 0))
+    # Not held exactly, not finite, empty, boolean or not a number at all: text.
+    assert typed_cell("1000000000000000", 10**15) == "1000000000000000"
+    assert typed_cell("nan", float("nan")) == "nan" and typed_cell("inf", float("inf")) == "inf"
+    assert typed_cell("NaN", Decimal("NaN")) == "NaN"
+    assert typed_cell("", 5) == "" and typed_cell("Yes", True) == "Yes" and typed_cell("=1+1", "=1+1") == "=1+1"
+
+
+SAMPLE = Sheet("S", ["n", "d", "at", "t"], [
+    [DataCell("-3", -3), DataCell("2026-10-30", date(2026, 10, 30)), DataCell("x", datetime(2026, 10, 30, 9, 15, 30)), "=1+1"],
+    [DataCell("2.5", 2.5), "", "", "-7"],
+])
+
+
+def test_xlsx_stores_typed_cells_as_numbers_and_dates_and_text_stays_guarded():
+    out = render("xlsx", "table", RenderInput("t", sheets=[SAMPLE]))
+
+    sheet = openpyxl.load_workbook(io.BytesIO(out.content))["S"]
+    assert sheet["A2"].value == -3 and sheet["A2"].data_type == "n"
+    assert sheet["A3"].value == 2.5
+    assert sheet["B2"].value == datetime(2026, 10, 30) and sheet["B2"].number_format == "yyyy-mm-dd"
+    assert sheet["C2"].value == datetime(2026, 10, 30, 9, 15, 30) and sheet["C2"].number_format.startswith("yyyy-mm-dd hh:mm:ss")
+    assert sheet["D2"].value == "'=1+1" and sheet["D2"].data_type == "s" and sheet["D3"].value == "'-7"
+
+
+def test_ods_stores_typed_cells_with_value_types_and_text_stays_guarded():
+    out = render("ods", "table", RenderInput("t", sheets=[SAMPLE]))
+
+    with zipfile.ZipFile(io.BytesIO(out.content)) as archive:
+        content = archive.read("content.xml").decode()
+    assert 'office:value-type="float" office:value="-3"' in content and 'office:value="2.5"' in content
+    assert 'office:value-type="date" office:date-value="2026-10-30"' in content
+    assert 'office:date-value="2026-10-30T09:15:30"' in content
+    assert "<text:p>&apos;=1+1</text:p>" in content or "<text:p>'=1+1</text:p>" in content
+    assert 'style:data-style-name="nf_date"' in content and 'style:data-style-name="nf_instant"' in content
+    from xml.dom import minidom
+    minidom.parseString(content.encode())  # well formed
+
+
+def test_csv_writes_a_typed_cell_as_its_text_so_a_negative_number_stays_a_number():
+    out = render("csv", "table", RenderInput("t", sheets=[SAMPLE]))
+
+    assert rows(out.content) == [["n", "d", "at", "t"], ["-3", "2026-10-30", "x", "'=1+1"], ["2.5", "", "", "'-7"]]
+
+
+def test_xlsx_reads_back_in_utc_for_an_aware_instant():
+    cell = typed_cell("t", datetime(2026, 10, 30, 9, 0, tzinfo=UTC))
+    out = render("xlsx", "table", RenderInput("t", sheets=[Sheet("S", ["at"], [[cell]])]))
+
+    assert openpyxl.load_workbook(io.BytesIO(out.content))["S"]["A2"].value == datetime(2026, 10, 30, 9, 0)
+
+
+# --- links between sheets ---------------------------------------------------------------------------------
+
+
+def linked_sheets() -> list[Sheet]:
+    return [
+        Sheet("Owner's list", ["Code"], [["R-1"], ["R-2"]]),
+        Sheet("Pain/Points", ["Title", "Needs", "Count"], [
+            ["Late", LinkedText("R-2", CellLink(0, 3)), DataCell("2", 2, CellLink(0, 2))],
+            ["=evil", LinkedText("=cmd", CellLink(0, 2)), ""],
+            ["Gone", LinkedText("R-9", CellLink(7, 2)), ""],  # a sheet that is not in the workbook
+        ]),
+    ]
+
+
+def test_xlsx_links_open_the_row_on_the_tab_the_sheet_really_got():
+    out = render("xlsx", "table", RenderInput("t", sheets=linked_sheets()))
+
+    workbook = openpyxl.load_workbook(io.BytesIO(out.content))
+    pain = workbook["Pain Points"]  # the slash was cleaned out of the tab name
+    assert pain["B2"].hyperlink.location == "'Owner''s list'!A3" and pain["B2"].value == "R-2"
+    assert pain["C2"].hyperlink.location == "'Owner''s list'!A2" and pain["C2"].value == 2
+    assert pain["B3"].hyperlink.location == "'Owner''s list'!A2" and pain["B3"].value == "'=cmd" and pain["B3"].data_type == "s"
+    assert pain["B4"].hyperlink is None and pain["B4"].value == "R-9"
+    assert pain["B2"].font.underline == "single" and pain["A2"].hyperlink is None
+
+
+def test_ods_links_open_the_row_on_the_tab_the_sheet_really_got():
+    out = render("ods", "table", RenderInput("t", sheets=linked_sheets()))
+
+    with zipfile.ZipFile(io.BytesIO(out.content)) as archive:
+        content = archive.read("content.xml").decode()
+    assert 'xlink:href="#&apos;Owner&apos;&apos;s list&apos;.A3"' in content or "xlink:href=\"#'Owner''s list'.A3\"" in content
+    assert content.count("<text:a ") == 3  # the unknown sheet is plain text
+    assert "table:name=\"Pain Points\"" in content
+    from xml.dom import minidom
+    minidom.parseString(content.encode())
+
+
+def test_csv_drops_links_and_keeps_the_guarded_text():
+    out = render("csv", "table", RenderInput("t", sheets=linked_sheets()))
+
+    with zipfile.ZipFile(io.BytesIO(out.content)) as archive:
+        pain = rows(archive.read(next(n for n in archive.namelist() if n.startswith("Pain"))))
+    assert pain == [["Title", "Needs", "Count"], ["Late", "R-2", "2"], ["'=evil", "'=cmd", ""], ["Gone", "R-9", ""]]

@@ -14003,3 +14003,79 @@ Identify: a pictures column as a way to print files the caller could not open fr
 ### Verification
 
 Backend `test_report_image_columns.py`: the tree (every setting valid, each bad setting naming its path, a type with no attachments naming the reason, a column that is both a field and images, a sheet's `from`), the text view round trip and its error lines, the sizing rule (a percent of the column, scaling with the column, no cap below the physical limit, stacked and wrapping lines, an unreadable picture skipped), a run over Pain Points (each row's own pictures, the 90% default and a chosen size, side by side, most per row, the row's own code in a pattern, a confidential file left out, one file query for all rows, a type that cannot hold attachments refused at save), the sheet's text fallback, every document format drawing the pictures, a 28-picture table over several pages, a picture taller than a page, and the header switch in all four formats. The PDF, Word and ODT output was also rendered (PDF with the ReportLab output viewed page by page; Word and ODT converted by LibreOffice, `lo-check:local`, and viewed). Excel and Word themselves were not run. Storybook: the columns editor with Add images column, settings, removal and read-only; the switch field (on unless set off); Page setup's checkbox, which keeps the word. Playwright `report-image-columns.spec.ts`.
+
+
+## Custom reports Phase 47a: typed spreadsheet cells (2026-10-30)
+
+A sheet's number, date and time-of-day fields are now stored in Excel and OpenDocument spreadsheets as real numbers and dates, so a spreadsheet can sort, filter and add them. They were text, by a deliberate rule (one injection-safe form for every format). The User approved typed cells on 2026-10-30 and asked for them as their own phase before the sheet-link phase.
+
+```mermaid
+flowchart LR
+    A["Field kind: number, date, instant"] --> B["typed_cell(text, value)"]
+    B -->|"finite, under 10^15, a date or instant"| C["DataCell(text, value)"]
+    B -->|"anything else"| D["text"]
+    C --> X["XLSX: number or date + format"]
+    C --> O["ODS: float or date value + data style"]
+    C --> V["CSV: its own text"]
+    D --> G["csv_safe guard, text cell"]
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **Typed only by field kind.** A cell is typed only when the catalogue declares the field `number`, `date` or `instant` and the loaded value is a number, a date or a datetime. Text, enums, people, codes, tags and booleans (`Yes`/`No`) stay text; so does everything a user typed. The single decision point is `report_model.typed_cell`. | Agent |
+| 2 | **Guard rules.** A number that is not finite (`nan`, `inf`) or has 15 or more digits (Excel keeps 15) stays text, so the file is valid and nothing is silently rounded. Text is never converted to a number, so `=1+1` or `-7` typed by a person is still a guarded text cell. | Agent |
+| 3 | **Instants are UTC and have no zone in a spreadsheet.** An aware datetime is converted to UTC and stored naive; the display format ends in a literal `Z` (`yyyy-mm-dd hh:mm:ss"Z"`) so the zone is visible. Browsers still do any conversion to local time (the report is a past instant, per the time rules); a date is the plain calendar date. | Agent |
+| 4 | **CSV is unchanged apart from negative numbers.** A `DataCell` writes its own text and skips `csv_safe`, because its text comes from a typed value and cannot be a formula; a negative number is no longer written as `'-3`. Text still goes through `csv_safe`. | Agent |
+| 5 | **Cell model:** `report_model.DataCell(text, value)` and `SheetCell = str \| DataCell`; `Sheet.rows` holds `SheetCell`. `str(cell)` is the text, so the designer preview, column sizing and every producer that emits strings are unchanged. Phase 47 extends this type with a link target. | Agent |
+| 6 | **Not done:** typing cells in a document table (a document prints text), percentages and currency formats, an author choice of date format, booleans as TRUE/FALSE. | Agent |
+| 7 | **Checklist items judged not applicable:** no table, column or migration; bundles carry only the layout tree; no new field or form, so no help text, story or seed-script change; the time boundary is covered by the instant tests below (09:00 at UTC+10 and 23:00 at UTC-8 are stored as the UTC instant). | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: a typed cell as a way round the formula guard (user text reaching a numeric or date cell, or a cell with a formula data type); a value that produces an invalid or lossy file (`nan`, `inf`, a very large integer, an aware datetime openpyxl refuses); XML injection through the new ODS attributes.
+Verify: only values loaded as a number, date or datetime are typed, and the typed text is made by `format_value` from that value, never from a string; text cells keep `data_type = "s"` and `csv_safe`; the ODS attributes are a float written from a number, or an ISO date from a `date`/`datetime`, never a string from a record. Non-finite and over-large numbers fall back to text (test). LibreOffice read the ODS and XLSX as numbers and dates (`sdval` in its HTML export), with `=1+1` and `-7` still text.
+Remediate: none needed after the checks above. Excel itself was not run.
+
+### Verification
+
+`test_report_render.py`: `typed_cell` for ints, floats, `Decimal`, dates, aware instants at UTC+10 and UTC-8, and the text fallbacks; XLSX stores numbers and dates with their formats and text stays `s` and guarded; ODS has float and date value types, the data styles and well-formed XML; CSV writes the typed text (`-3` stays `-3`, `-7` text is `'-7`); an aware instant reads back as UTC. `test_report_layout_eval.py`: a sheet over requirements types the review date and leaves the title and an empty date as text. The related report suites also passed.
+
+
+## Custom reports Phase 47: links between sheets, a Contents sheet and a linked-sheets snippet (2026-10-31)
+
+A table layout's sheet column can now open the row its record has on another sheet of the same workbook, a layout can start with a generated Contents sheet, and a built-in snippet inserts two linked sheets. Typed cells (numbers, dates, UTC times) came first, as their own change (the entry above).
+
+```mermaid
+flowchart LR
+    T["Sheet column: link {sheet}"] --> V["Validator: sheet exists, lists the column's record type"]
+    V --> E["Evaluator: first row of each root record per sheet"]
+    E --> R["resolve_sheet_links: CellLink(position, row)"]
+    R -->|"record not on the target sheet"| W["plain text + one warning"]
+    R --> X["XLSX hyperlink location"]
+    R --> O["ODS text:a #'Sheet'.A12"]
+    R --> C["CSV: text only"]
+    K["contents_sheet"] --> S["Contents sheet first; positions +1"]
+    F["Fan-out merge"] --> M["links moved by sheet name + each project's row block; Contents rebuilt"]
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **Contents sheet: yes**, a layout option (`contents_sheet`, text `@layout table contents` / `nocontents`, a checkbox in the layout settings). One row per sheet: its name as a link to its heading row, and its row count (typed). A sheet of the author's called "Contents" is refused while it is on. | User |
+| 2 | **Starter: a snippet, not a starter.** Starters are document layouts built from module-contributed parts wrapped in `@if module`; a sheet cannot sit inside an `if` and a starter's family is fixed to document, so a one-sheet-per-module workbook starter is not possible without reworking starters. The plan's fallback was taken: a built-in table snippet, **Two linked sheets** (a sheet of one kind of record and a second whose rows show the record linked to them, as a link), in a new *Workbooks* category. A per-module workbook (requirements, pain points, decisions, personas) is built by inserting it for each pair, or by hand. | User (starter if possible, else snippet); Agent (the snippet's shape) |
+| 3 | **Several records in one cell: XLSX gets one row per linked record, ODS may link every item.** A spreadsheet cell holds one hyperlink in XLSX but several in ODS. **No column produces a cell with several records today** (a column reads one record; a join already gives each linked record its own row), so only a single link per cell exists and nothing is lost; the model (`CellLink` on a cell) would need a list of spans if a column that joins several records into one cell is ever added. The User's wish that each item in such a cell link is therefore met by the join layout in both formats and is not built as a multi-link cell. | User (option 2); Agent (no producer exists) |
+| 4 | **Internal only.** The target is a sheet and a row of the workbook, held by position so the renderer writes the name the tab really got; there is no external URL, no scheme to validate, and no link to the record in the app (not requested; a separate, riskier feature). A sheet name in an anchor is quoted and an apostrophe doubled (`'Owner''s list'!A3`, `#'Owner''s list'.A3`). | Agent |
+| 5 | **A column links by naming a sheet** (`link: {sheet}`), valid when that sheet's own source is the column's record type; the same sheet is allowed. The sheet may be written after the column, so the check runs once every sheet is known. A document table, an images column and a column over a type no sheet lists are refused with the path and the sheets on offer. | Agent |
+| 6 | **A record that is not on the target sheet** (filtered out by its conditions, hidden from the caller, cut by a cap or past the last row a spreadsheet holds, 1,048,576) leaves the cell as plain text; one warning per run counts them. A record on the target sheet twice opens its first row. | Agent |
+| 7 | **Fan-out runs.** An organisation run merges each project's sheets under a Project column; each link is moved to the same record's row in the merged target sheet (the target found by name, plus the rows the earlier projects contributed) and the Contents sheet is rebuilt over the merged sheets. | Agent |
+| 8 | **Designer.** The columns editor offers **Link to sheet** for a sheet column, listing only the layout's sheets that list the column's record type (a link to a sheet that was removed stays visible so the problem shows). The choice is not offered for a document table. The server draws nothing here; the text view reads `link "<sheet>"` after the heading. A column heading written as the bare word `link` must now be quoted. | Agent |
+| 9 | **Checklist items judged not applicable:** no table, column or migration (the tree is JSON and the bundles carry it); no person field; the time rules do not apply (links hold positions). The seed scripts hold no table layout, so they need no change. Excel itself was not run; LibreOffice (`lo-check:local`) was used for the earlier typed-cell check, and the XLSX and ODS anchors were read back from the XML and by openpyxl. | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: a link as a way to make a cell open something outside the workbook (a `file:`, `http:` or `javascript:` target built from a record value), a sheet name breaking out of the anchor (an apostrophe, a quote or markup in the name), a link used to reach a record the caller could not read, and unbounded work in the id-to-row map.
+Verify: the target is never text from a record or from the author's cell: it is a sheet position and a row number chosen by the evaluator, written as an internal location (XLSX `location`, never `r:id` or a URL; ODS `#'Name'.A12`); the sheet name comes from the renderer's own cleaned tab name, with `'` doubled and the attribute escaped (`xml_attr`); a name with `[ ] : * ? / \` is already refused at save. A link exists only for a record that is a root record of the target sheet, and that sheet's rows were loaded through the same authorisation as any other (a hidden record is never on it, so its cell stays text). The map holds `(type, id)` and a row number per root record and is bounded by the existing output cap. The cell text stays formula-guarded and is the cell's own, so a linked `=cmd` is still written as `'=cmd`.
+Remediate: none needed after the checks above.
+
+### Verification
+
+Backend: `test_report_layout_tree.py` (a link to a sheet of the type, written later, to itself, to a missing sheet naming the sheets, to a sheet of another type naming both, malformed links, a document table, the contents flag and its reserved name), `test_report_layout_text.py` (link and contents round trips, the document-table and missing-name errors), `test_report_layout_eval.py` (links to the right row, a record filtered out stays text with one warning, the same sheet and a repeated record, the Contents sheet and the +1 positions), `test_report_render.py` (XLSX locations including an apostrophe name and a tab renamed by cleaning, ODS references, an unknown target dropped, CSV text only and still guarded), `test_custom_report_run.py` (merged sheets with and without Contents), `test_report_snippets.py` (the table snippet and its refusal in a document). Storybook: the columns editor's link choice (only same-type sheets, No link removes it, a removed sheet stays visible, none without a matching sheet). Playwright `report-sheet-links.spec.ts`: a two-sheet workbook downloaded as XLSX and ODS (link locations read from the files, CSV plain), the Contents sheet, the designer's choices, a refused link and the text view.

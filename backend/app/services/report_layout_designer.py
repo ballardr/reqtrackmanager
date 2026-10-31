@@ -184,7 +184,7 @@ def _preview_of(run: custom_report_run.LayoutRun) -> Preview:
         html = rendered.content.decode("utf-8")
     else:
         sheets = [
-            PreviewSheet(s.name, s.columns, s.rows[:PREVIEW_MAX_ROWS], len(s.rows)) for s in evaluated.sheets
+            PreviewSheet(s.name, s.columns, [[str(c) for c in row] for row in s.rows[:PREVIEW_MAX_ROWS]], len(s.rows)) for s in evaluated.sheets
         ]
     return Preview(run.family, html, sheets, warnings, records_read, run.duration_ms, len(run.projects))
 

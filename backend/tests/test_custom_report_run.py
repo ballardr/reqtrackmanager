@@ -910,3 +910,43 @@ def test_an_older_organisation_bundle_s_report_content_is_not_imported_and_warns
     new_org = resp.json()["organization"]["id"]
     [template] = client.get(f"/api/v1/orgs/{new_org}/report-templates", headers=h).json()
     assert template["name"] == "Brand" and "content" not in template
+
+
+# --- merging linked sheets of an organisation run ---------------------------------------------------------
+
+
+def _part(rows_a: int, rows_b: int, *, contents: bool):
+    """One project's table layout: a Pain sheet (two rows) linking to the Reqs sheet's `rows_a` rows."""
+    from app.services.report_layout_eval import EvalStats, EvaluatedLayout
+    from app.services.report_model import CellLink, LinkedText, Sheet, contents_sheet
+
+    offset = 1 if contents else 0
+    reqs = Sheet("Reqs", ["Code"], [[f"R-{n}"] for n in range(rows_a)])
+    pain = Sheet("Pain", ["Title", "Needs"], [["p", LinkedText("R-1", CellLink(offset, 3))]] * rows_b)
+    sheets = [reqs, pain]
+    return EvaluatedLayout("table", None, [contents_sheet(sheets), *sheets] if contents else sheets, [], EvalStats(), "", {}, False, [], {})
+
+
+def test_merged_sheets_keep_their_links_pointing_into_each_projects_block():
+    from app.services.custom_report_run import _merge_sheets
+    from app.services.report_model import CellLink, DataCell, LinkedText
+
+    sheets = _merge_sheets([_part(3, 1, contents=True), _part(2, 2, contents=True)], ["Alpha", "Beta"])
+
+    assert [s.name for s in sheets] == ["Contents", "Reqs", "Pain"]
+    assert sheets[0].rows == [
+        [LinkedText("Reqs", CellLink(1, 1)), DataCell("5", 5)], [LinkedText("Pain", CellLink(2, 1)), DataCell("3", 3)],
+    ]
+    assert sheets[1].columns == ["Project", "Code"] and [r[0] for r in sheets[1].rows] == ["Alpha"] * 3 + ["Beta"] * 2
+    # Alpha's link keeps row 3; Beta's block starts after Alpha's 3 rows, so its row 3 becomes 6.
+    assert [r[2] for r in sheets[2].rows] == [LinkedText("R-1", CellLink(1, 3)), LinkedText("R-1", CellLink(1, 6)), LinkedText("R-1", CellLink(1, 6))]
+
+
+def test_merged_sheets_without_a_contents_sheet_start_at_position_zero():
+    from app.services.custom_report_run import _merge_sheets
+    from app.services.report_model import CellLink, LinkedText
+
+    sheets = _merge_sheets([_part(1, 1, contents=False)], ["Alpha"])
+
+    assert [s.name for s in sheets] == ["Reqs", "Pain"]
+    assert sheets[1].rows[0][2] == LinkedText("R-1", CellLink(0, 3))

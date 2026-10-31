@@ -2263,6 +2263,8 @@ const en = {
     columnField: (n: number) => `Column ${n} field`,
     columnLabel: (n: number) => `Column ${n} heading`,
     columnFrom: (n: number) => `Column ${n} reads from`,
+    columnLink: (n: number) => `Column ${n} links to sheet`,
+    columnNoLink: "No link",
     columnHeadingPlaceholder: "Column heading",
     removeColumn: (n: number) => `Remove column ${n}`,
     moveColumnUp: (n: number) => `Move column ${n} up`,
@@ -3234,6 +3236,7 @@ const en = {
     // Report layouts
     reportPackTier: "Which layout of this name the pack uses when a project has more than one: the organisation's, a project's, or simply the nearest one to the project it runs for.",
     reportPackFilename: "The name of this report's file inside the zip, without an extension. It may use placeholders such as {{report_title}}, {{generated_on}} and {{var.name}}. Left empty, the layout's own file name applies, then its title. The file is numbered by its position, so two reports can share a name.",
+    reportColumnLink: "Makes each cell of this column open that record's row on the sheet you choose, in Excel and OpenDocument spreadsheets. Only sheets that list the same kind of record are offered. A record that is not on that sheet (filtered out, or not visible to you) stays plain text and the run says how many.",
     reportFileNameLayout: "What a downloaded or stored copy of this report is called, without the extension, for example {{project_code}}-{{report_title}}-{{generated_on}}. Letters, digits, spaces, dots, dashes and underscores only; anything else is replaced. Left empty, the organisation's default name applies.",
     reportFileNamePack: "What the zip of this pack is called, without the extension, for example {{project_name}}-{{report_title}}-{{generated_on}}. {{var.name}} is a pack variable. Left empty, the organisation's default name applies.",
     reportFileNameOrganization: "The name given to a downloaded or stored report that sets no file name of its own, including the built-in reports, for example {{project_name}}-{{report_title}}-{{generated_on}}. Layout and pack variables are not available here. Left empty, each report keeps its built-in name.",

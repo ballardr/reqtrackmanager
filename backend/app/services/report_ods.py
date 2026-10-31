@@ -22,9 +22,10 @@ Dependencies: `services.report_odf` (package, escaping), `services.csv_safety`, 
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
+from datetime import date, datetime
 
 from app.services.csv_safety import csv_safe
-from app.services.report_model import Sheet
+from app.services.report_model import CellLink, DataCell, LinkedText, Sheet, SheetCell
 from app.services.report_odf import (
     FONT_FACES,
     MIME_ODS,
@@ -42,17 +43,65 @@ _CM_PER_CHARACTER = 0.19
 _SIZED_ROWS = 200
 
 
-def _cell(value: str, max_chars: int, style: str = "") -> str:
-    """One text cell: guarded against formulas and cut at `max_chars`; an empty value is an empty cell."""
-    text = csv_safe(value)[:max_chars]
+#: Cell styles for typed values: the data style each points at is declared once in the automatic styles.
+_DATE_STYLE, _INSTANT_STYLE = "ce_date", "ce_instant"
+_DATE_DATA_STYLES = (
+    '<number:date-style style:name="nf_date"><number:year number:style="long"/><number:text>-</number:text>'
+    '<number:month number:style="long"/><number:text>-</number:text><number:day number:style="long"/></number:date-style>'
+    '<number:date-style style:name="nf_instant"><number:year number:style="long"/><number:text>-</number:text>'
+    '<number:month number:style="long"/><number:text>-</number:text><number:day number:style="long"/>'
+    '<number:text> </number:text><number:hours number:style="long"/><number:text>:</number:text>'
+    '<number:minutes number:style="long"/><number:text>:</number:text><number:seconds number:style="long"/>'
+    "<number:text>Z</number:text></number:date-style>"
+    f'<style:style style:name="{_DATE_STYLE}" style:family="table-cell" style:data-style-name="nf_date"/>'
+    f'<style:style style:name="{_INSTANT_STYLE}" style:family="table-cell" style:data-style-name="nf_instant"/>'
+)
+
+
+def sheet_reference(name: str, row: int) -> str:
+    """The ODS internal reference to column A of `row` on the tab `name`: the name quoted, an apostrophe in it doubled."""
+    return f"#'{name.replace(chr(39), chr(39) * 2)}'.A{row}"
+
+
+def _paragraph(text: str, link: CellLink | None, names: Sequence[str]) -> str:
+    """The cell's paragraph; with a link to a known tab, its text is an internal link to that tab's row."""
+    shown = xml_text(text)
+    if link is None or not 0 <= link.sheet < len(names):
+        return f"<text:p>{shown}</text:p>"
+    href = xml_attr(sheet_reference(names[link.sheet], link.row))
+    return f'<text:p><text:a xlink:type="simple" xlink:href={href}>{shown}</text:a></text:p>'
+
+
+def _typed_cell(cell: DataCell, names: Sequence[str]) -> str:
+    """One typed cell: a float, a date or a date-time value, with its printed text as the cell's paragraph."""
+    value = cell.value
+    text = _paragraph(cell.text, cell.link, names)
+    if isinstance(value, datetime):
+        stamp = value.isoformat(timespec="seconds")
+        return f'<table:table-cell table:style-name="{_INSTANT_STYLE}" office:value-type="date" office:date-value="{stamp}">{text}</table:table-cell>'
+    if isinstance(value, date):
+        stamp = value.isoformat()
+        return f'<table:table-cell table:style-name="{_DATE_STYLE}" office:value-type="date" office:date-value="{stamp}">{text}</table:table-cell>'
+    return f'<table:table-cell office:value-type="float" office:value="{value}">{text}</table:table-cell>'
+
+
+def _cell(value: SheetCell, max_chars: int, style: str = "", names: Sequence[str] = ()) -> str:
+    """One cell: a typed value as itself; text guarded against formulas and cut at `max_chars`; empty text is an empty cell.
+
+    A link to a tab in `names` makes the text an internal link to that tab's row.
+    """
+    if isinstance(value, DataCell):
+        return _typed_cell(value, names)
+    text = csv_safe(str(value))[:max_chars]
     attr = f' table:style-name="{style}"' if style else ""
     if not text:
         return f"<table:table-cell{attr}/>"
-    return f'<table:table-cell office:value-type="string"{attr}><text:p>{xml_text(text)}</text:p></table:table-cell>'
+    link = value.link if isinstance(value, LinkedText) else None
+    return f'<table:table-cell office:value-type="string"{attr}>{_paragraph(text, link, names)}</table:table-cell>'
 
 
 def _column_width_cm(sheet: Sheet, index: int) -> float:
-    widest = max([len(sheet.columns[index]), *(len(row[index]) for row in sheet.rows[:_SIZED_ROWS] if index < len(row))])
+    widest = max([len(sheet.columns[index]), *(len(str(row[index])) for row in sheet.rows[:_SIZED_ROWS] if index < len(row))])
     return min(max(widest + 2, 8), 60) * _CM_PER_CHARACTER
 
 
@@ -64,8 +113,8 @@ def _content(sheets: Sequence[Sheet], names: Sequence[str], max_chars: int) -> I
         for s, sheet in enumerate(sheets) for c in range(len(sheet.columns))
     ]
     yield (
-        f'{XML_DECLARATION}<office:document-content {namespace_attrs("office", "style", "text", "table", "fo", "svg")} '
-        f'office:version="{ODF_VERSION}">{FONT_FACES}<office:automatic-styles>{"".join(column_styles)}'
+        f'{XML_DECLARATION}<office:document-content {namespace_attrs("office", "style", "text", "table", "fo", "svg", "number", "xlink")} '
+        f'office:version="{ODF_VERSION}">{FONT_FACES}<office:automatic-styles>{"".join(column_styles)}{_DATE_DATA_STYLES}'
         '<style:style style:name="ce_hdr" style:family="table-cell"><style:text-properties fo:font-weight="bold"/></style:style>'
         "</office:automatic-styles><office:body><office:spreadsheet>"
     )
@@ -78,7 +127,7 @@ def _content(sheets: Sequence[Sheet], names: Sequence[str], max_chars: int) -> I
         )
         for start in range(0, len(sheet.rows), _ROWS_PER_CHUNK):
             yield "".join(
-                f"<table:table-row>{''.join(_cell(value, max_chars) for value in row)}</table:table-row>"
+                f"<table:table-row>{''.join(_cell(value, max_chars, names=names) for value in row)}</table:table-row>"
                 for row in sheet.rows[start:start + _ROWS_PER_CHUNK]
             )
         yield "</table:table>"

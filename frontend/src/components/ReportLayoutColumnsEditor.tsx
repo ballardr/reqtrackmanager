@@ -8,6 +8,8 @@
  *   record type, and in a sheet with joins a column also says which record it reads (`from`). An **images column**
  *   (`{images: {...}, label?, from?}`) shows the pictures attached to each row's record; its settings are the server's
  *   `image_column_fields`, drawn by the caller's `renderImageField` with the shared field forms.
+ * - Links (sheets only): a column can open the row of its record on another sheet of the layout that lists the same
+ *   record type (`link: {sheet}`); the choice offers only those sheets.
  * - Joins: up to a few linked record types added to a sheet, each named and following a link from an earlier
  *   name in the sheet (the root records or an earlier join).
  *
@@ -27,6 +29,8 @@ interface Column {
   field?: string;
   label?: string;
   from?: string;
+  /** Opens the row of the cell's record on the named sheet (a sheet column only). */
+  link?: { sheet: string };
   /** Set for an image column (the pictures attached to each row's record): the rules and the size, never with a field. */
   images?: Record<string, unknown>;
 }
@@ -37,23 +41,35 @@ interface Column {
  * @param names The records a column can read: the block's own (and, for a sheet, its joins').
  * @param catalogue The record types and fields.
  * @param disabled Read-only.
+ * @param sheets The layout's sheets and the record type each lists; when given, a column offers **Link to sheet** among the
+ *   sheets that list its record's type.
  * @param imageFields The settings of an image column; with `renderImageField`, adds the Add images column button.
  * @param renderImageField Draws one setting of an image column: the field, the column's settings object, the record type the
  *   column reads, and the change callback (`undefined` removes the key).
  */
 export function ReportLayoutColumnsEditor({
-  value, onChange, names, catalogue, disabled, imageFields = [], renderImageField,
+  value, onChange, names, catalogue, disabled, sheets, imageFields = [], renderImageField,
 }: {
   value: Column[]; onChange: (next: Column[]) => void; names: NameInScope[]; catalogue: ReportFieldCatalogue; disabled?: boolean;
+  sheets?: { name: string; recordType: string | null }[];
   imageFields?: BlockField[];
   renderImageField?: (field: BlockField, rules: Record<string, unknown>, recordType: string | null, change: (key: string, value: unknown) => void) => ReactNode;
 }) {
-  const text = useStrings().reportOutline;
+  const strings = useStrings();
+  const text = strings.reportOutline;
   const several = names.length > 1;
+
+  /** The sheets a column reading `recordType` can open: those that list it, and the one already chosen (so it still shows). */
+  function linkTargets(recordType: string | null | undefined, chosen: string | undefined): string[] {
+    if (!sheets) return [];
+    const found = sheets.filter((s) => s.recordType !== null && s.recordType === recordType).map((s) => s.name);
+    return chosen && !found.includes(chosen) ? [...found, chosen] : found;
+  }
 
   function patch(i: number, change: Partial<Column>) {
     const next = { ...value[i], ...change };
     for (const key of ["label", "from"] as const) if (next[key] === "") delete next[key];
+    if (next.link?.sheet === "") delete next.link;
     onChange(value.map((c, j) => (j === i ? next : c)));
   }
 
@@ -119,6 +135,14 @@ export function ReportLayoutColumnsEditor({
               label={text.columnLabel(i + 1)} value={column.label ?? ""} placeholder={text.columnHeadingPlaceholder} disabled={disabled}
               onChange={(label) => patch(i, { label })}
             />
+            {linkTargets(owner?.recordType, column.link?.sheet).length > 0 && (
+              <LabeledSelect
+                label={text.columnLink(i + 1)} value={column.link?.sheet ?? ""} placeholder={text.columnNoLink} disabled={disabled}
+                help={strings.help.reportColumnLink}
+                options={linkTargets(owner?.recordType, column.link?.sheet).map((n) => ({ value: n, label: n }))}
+                onChange={(sheet) => patch(i, { link: { sheet } })}
+              />
+            )}
             {actions}
           </span>
         );

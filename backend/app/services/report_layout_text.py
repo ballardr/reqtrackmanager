@@ -34,6 +34,8 @@ Grammar (one statement per line; indentation is cosmetic):
   bottom=<cm> left=<cm> right=<cm> gutter=<cm>]` or `@layout table` is the first line. The orientation, size, `mirror`
   (mirrored margins for double-sided printing) and `norepeatheader` (do not print a table's heading row again on each page it
   runs onto; on otherwise) come in any order, each once; `margins` comes last and each side is optional.
+- A `@layout table` line may add `contents` (or `nocontents`): start the workbook with a generated Contents sheet. A
+  sheet's `@column <name>.<field> ["<heading>"] link "<sheet>"` makes the cell open that record's row on the named sheet.
 - Page styles are declared before the first block, one per line, like variables: `@pagestyle "<name>"
   [portrait|landscape] [A3|…] [margins …]`. What a style leaves out is the layout's own. `@section "<name>"` … `@end`
   lays its contents out in that style, on pages of their own.
@@ -136,6 +138,7 @@ _BLOCK_PATH = re.compile(r"nodes(?:\[\d+\]\.(?:children|else_children))*\[\d+\]"
 VARIABLE_CLAUSES = ("label", "default", "options", "from")
 #: Layout line words for whether a table's header row is printed again on each page it runs onto (on unless `norepeatheader`).
 HEADER_REPEAT_WORDS = ("repeatheader", "norepeatheader")
+CONTENTS_WORDS = ("contents", "nocontents")
 
 
 @dataclass(frozen=True)
@@ -817,14 +820,17 @@ class _Parser:
             raise _Syntax(f"The layout must be a {FAMILY_DOCUMENT} or a {FAMILY_TABLE}, not {family!r}.", offset + 2)
         self.tree["family"] = family
         # The orientation, the page size and `mirror` may come in any order, each at most once; `margins` ends the line.
-        while word := cur.accept(*ORIENTATION_WORDS, *PAGE_SIZE_WORDS, "mirror", *HEADER_REPEAT_WORDS):
+        while word := cur.accept(*ORIENTATION_WORDS, *PAGE_SIZE_WORDS, "mirror", *HEADER_REPEAT_WORDS, *CONTENTS_WORDS):
             key = (
                 "orientation" if word in ORIENTATION_WORDS else "mirror_margins" if word == "mirror"
-                else "repeat_table_header" if word in HEADER_REPEAT_WORDS else "page_size"
+                else "repeat_table_header" if word in HEADER_REPEAT_WORDS
+                else "contents_sheet" if word in CONTENTS_WORDS else "page_size"
             )
             if key in self.tree:
                 raise _Syntax(f"The {key.replace('_', ' ')} is written once.", offset)
-            self.tree[key] = word == "repeatheader" if key == "repeat_table_header" else True if word == "mirror" else word
+            self.tree[key] = word in ("repeatheader", "contents") if key in ("repeat_table_header", "contents_sheet") else (
+                True if word == "mirror" else word
+            )
         if cur.accept("margins"):
             self.tree["margins"] = _margins(cur)
         cur.expect_end()
@@ -1009,8 +1015,13 @@ class _Parser:
                 column["field"], column["from"] = field_key, owner
             else:
                 column["field"] = word
-            if cur.peek() is not None:
+            token = cur.peek()
+            if token is not None and not (token.kind == "word" and token.value == "link"):
                 column["label"] = cur.text("the column heading")
+            if cur.accept("link"):
+                if frame.kind != "sheet":
+                    raise _Syntax("Only a sheet column can link to another sheet.", directive.offset + 1)
+                column["link"] = {"sheet": cur.text("the name of the sheet to open, in quotes")}
             cur.expect_end()
             self.line_of[f"{column_path}[{len(node['columns'])}]"] = directive.line_no
             node["columns"].append(column)
@@ -1268,6 +1279,8 @@ def format_tree(tree: dict[str, Any]) -> str:
         header += " mirror"
     if "repeat_table_header" in tree:
         header += " repeatheader" if tree["repeat_table_header"] else " norepeatheader"
+    if "contents_sheet" in tree:
+        header += " contents" if tree["contents_sheet"] else " nocontents"
     if "margins" in tree:
         header += _margins_text(tree["margins"])
     writer.line(0, header)
@@ -1566,7 +1579,9 @@ def _write_columns(w: _Writer, columns: list[dict[str, Any]], depth: int) -> Non
             w.line(depth, _images_line(column))
             continue
         name = f"{column['from']}.{column['field']}" if "from" in column else column["field"]
-        w.line(depth, f"@column {name}" + (f" {_quote(column['label'])}" if "label" in column else ""))
+        label = f" {_quote(column['label'])}" if "label" in column else ""
+        link = f" link {_quote(column['link']['sheet'])}" if "link" in column else ""
+        w.line(depth, f"@column {name}{label}{link}")
 
 
 def _write_table(w: _Writer, node: dict[str, Any], depth: int) -> None:

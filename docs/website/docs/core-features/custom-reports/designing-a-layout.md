@@ -44,7 +44,7 @@ flowchart LR
 
 - **Blocks** shows the same layout as blocks, so you can build a layout without writing the `@` syntax, and it has the full width of the page. **Add block** lists the blocks (*Heading*, *Text* and *Table* first), and the line beside it says where the next one will go: after the selected block, inside it (a block that holds others, such as *for each record*, a group or an *if*, offers each of its lists) or at the end of the layout. The new block is selected at once, and **Ctrl+Z** (**Cmd+Z** on a Mac) takes it back. Drag blocks on the canvas to reorder them or drop them inside another block. Short settings (a heading's words and level, the name a *for each* gives each record) are on the block itself. **Select a block** to edit all its settings in the panel beside the canvas (under it on a narrow screen): *Linked from* lists the names of the enclosing blocks, and a filter offers the fields and operators that suit the field you chose. The arrow keys move around the blocks. A block with a problem shows a warning mark, and the message appears under the field in the panel; **Layout settings** at the top holds the page size and orientation, the margins, the [page styles](#page-setup) and the [variables](./blocks-widgets-and-variables.md#variables). The layout is checked as you pause, **Save new version** and **Run preview** wait until there are no problems, and switching to **Text** shows the same layout as text. You can switch from the text only while it reads without problems. A block dragged outside the layout is not part of it, and the panel says so. **Preview** opens the preview in a dialog; **Preview panel** keeps it open beside the blocks (your choice is remembered).
 
-- **Insert snippet** (beside **Add block** in Blocks, and beside the block shortcuts in Text) adds a ready-made piece to the layout: a cover page, a logo at the top right of the first page, record images, a document control list, an approvals block or a landscape table section. The window lists the snippets by category with a search box, shows the output formats each is true in (PDF, Word, OpenDocument, HTML) and an outline of the blocks it adds, and asks for what it needs: a picture from the library, a kind of record, a short text. A snippet for the other kind of layout (a table snippet in a document) is shown greyed out with the reason. In **Blocks** it goes where the line beside **Add block** says, or at the start of the layout, and one **Ctrl+Z** removes all its blocks (a page style it added stays until you delete it). In **Text** the text is read as a layout first, so it must be free of problems; the snippet goes at the end or the start, and **Undo insertion** puts the text back while you have not edited it. Either way a note lists what was added ("Added page style "Cover""), and a page style or variable the layout already has is reused rather than overwritten. A snippet is copied in: changing the layout later never changes the snippet, and the snippet never changes the layout again. A snippet cannot give anyone access to more than they could already read: its blocks run with the permissions of whoever runs the report.
+- **Insert snippet** (beside **Add block** in Blocks, and beside the block shortcuts in Text) adds a ready-made piece to the layout: a cover page, a logo at the top right of the first page, record images, a document control list, an approvals block, a landscape table section or, for a table layout, two linked sheets. The window lists the snippets by category with a search box, shows the output formats each is true in (PDF, Word, OpenDocument, HTML) and an outline of the blocks it adds, and asks for what it needs: a picture from the library, a kind of record, a short text. A snippet for the other kind of layout (a table snippet in a document) is shown greyed out with the reason. In **Blocks** it goes where the line beside **Add block** says, or at the start of the layout, and one **Ctrl+Z** removes all its blocks (a page style it added stays until you delete it). In **Text** the text is read as a layout first, so it must be free of problems; the snippet goes at the end or the start, and **Undo insertion** puts the text back while you have not edited it. Either way a note lists what was added ("Added page style "Cover""), and a page style or variable the layout already has is reused rather than overwritten. A snippet is copied in: changing the layout later never changes the snippet, and the snippet never changes the layout again. A snippet cannot give anyone access to more than they could already read: its blocks run with the permissions of whoever runs the report.
 - **Save as snippet** keeps a piece you built so you can insert it into other layouts. In **Blocks**, select a block (a container is saved with everything inside it) and choose **Save as snippet**; in **Text**, put the caret in a block or select several, and the top-level blocks you touched are saved. Give it a **Name**, an optional description and a **Category**, and choose where to keep it: this project (also shared with the projects below it) or, from a project, the organisation, which shares it with every project. The window says how many blocks it saves and which page styles and variables it carries along, so it works in a layout that has neither. A selection that needs something defined outside it (an alias of an enclosing "for each") cannot be saved, and a picture from a project's library cannot be kept for the organisation: the window names the picture. Saved snippets appear in **Insert snippet** beside the built-in ones, marked "Saved" with where they come from, and are copied in like any other. They have no parameters: edit the result after inserting.
 - **Report snippets** in **Report Setup** (and an organisation's **Templates & reports**) lists the saved snippets with their source, block count and what they carry. **Edit details** renames or re-describes one, **Make a copy** makes a snippet of your own from it (or **Copy to the organisation**), and **Delete** removes one you own after you type its name; layouts already built from it keep their blocks. A snippet shared from the organisation or a parent project is read-only: **Hide in this project** stops it being offered here, and **Add organisation defaults** brings it back. Snippets travel with the project and organisation exports.
 
@@ -59,6 +59,46 @@ flowchart LR
 - Organisation administrators can design organisation layouts, and project administrators their own project's; others can run layouts but not open the designer.
 
 Next: [blocks, report components and variables](./blocks-widgets-and-variables.md).
+
+## Sheets: numbers and dates stay numbers and dates
+
+In an Excel or OpenDocument spreadsheet, a field that holds a number, a date or a time of day is saved as a real number or date, not as text, so the spreadsheet can sort, filter and add it up. Everything else (titles, statuses, people, codes) stays text.
+
+- A date shows as `2026-10-30`; a time of day (when something happened) shows in UTC as `2026-10-30 09:15:30Z`. A spreadsheet cell has no time zone, so the `Z` says which one it is.
+- A number with a minus sign stays a number. Text that starts with `=`, `+`, `-` or `@` is still written as plain text and cannot run as a formula.
+- A number too long to keep exactly (more than 15 digits) stays text.
+- A CSV file has no types, so it holds the same text as before.
+
+```mermaid
+flowchart LR
+  F[Field in a sheet] -->|number, date, time| T[Typed cell]
+  F -->|anything else| X[Text cell, formula-safe]
+  T --> E[Excel, OpenDocument: real number or date]
+  T --> C[CSV: its text]
+  X --> E
+  X --> C
+```
+
+## Links between sheets and a contents sheet
+
+In a table layout, a column can open the row of the same record on another sheet, in Excel and OpenDocument spreadsheets.
+
+1. Make a sheet for each kind of record (for example *Requirements* and *Pain points*).
+2. On the second sheet, join the first kind of record (the join gives one row per linked record) and add a column that reads it, for example the requirement's code.
+3. In that column's settings choose **Link to sheet** and pick the first sheet. Only sheets that list the same kind of record are offered. In the text view it is `@column req.code "Requirement" link "Requirements"`.
+
+Each cell then opens the matching row on the first sheet. A record that is not on that sheet (filtered out by that sheet's conditions, or not visible to you) stays plain text, and the run says how many cells could not be linked. A CSV file has no links and keeps the text.
+
+Switch on **Contents sheet** in the layout's settings (`@layout table contents` in the text view) to start the workbook with a *Contents* sheet: one row per sheet, its name linking to the sheet, and how many rows it holds. A sheet of your own cannot be called *Contents* while it is on.
+
+```mermaid
+flowchart LR
+  C[Contents sheet] -->|name| R[Requirements sheet]
+  C -->|name| P[Pain points sheet]
+  P -->|Requirement cell| R
+```
+
+One cell opens one row. To follow several linked records from a requirement, use the join, which lists each linked record on its own row, and link the column in each row. A ready-made starting point is the **Two linked sheets** snippet.
 
 ## Page setup
 

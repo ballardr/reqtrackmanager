@@ -1311,6 +1311,18 @@ flowchart LR
   only to the physical page limit); a sheet's cell is the file names as text. The layout root's `repeat_table_header` (default true)
   reaches `Table.repeat_header` (PDF `repeatRows`, Word `w:tblHeader`, ODT header rows, HTML `thead`). The designer draws the column's
   settings from `BlockCatalogue.image_column_fields`.
+- **Sheet links and the Contents sheet.** A sheet column `{"field", "from"?, "label"?, "link": {"sheet": "<name>"}}` makes the
+  cell open the row its record has on the named sheet. `TreeValidator.sheet_links` checks, once every sheet is known, that the
+  sheet exists and its own source is the column's record type (the same sheet is allowed). The evaluator keeps
+  `{(type, id): first row}` per sheet and the cells waiting for a link, and `_Run.resolve_sheet_links` turns each into a
+  `report_model.CellLink(sheet position, row)` (a `LinkedText`, or a `DataCell` with `link`); a record that is not on the target
+  sheet stays plain text and one warning counts them. The target is a position, so XLSX (`'Name'!A12` hyperlink location) and
+  ODS (`text:a` with `#'Name'.A12`) write the name the tab really got after cleaning and de-duplication, with an apostrophe in a
+  name doubled; CSV drops the link. The root `contents_sheet` adds a first sheet (`report_model.contents_sheet`: each sheet's name
+  as a link, and its row count). A fan-out run (`custom_report_run._merge_sheets`) moves each link to the same record's row in
+  the merged target sheet and rebuilds the Contents sheet. A cell holding several records is not produced by any column today
+  (a column reads one record); a join gives one row per linked record. Number, date and time-of-day fields are `DataCell`s
+  (`typed_cell`), a time as naive UTC with a literal `Z` in its number format.
 - **Sources.** A block reads records from `{record_type}` (all of a type in the report's projects),
   `{record_type, linked_from: alias, link_types?, direction?}` (records linked to an enclosing record; link types are
   named, forward or reverse, so a layout moves between projects) or `{group: alias}` (a group's members), plus
@@ -1447,9 +1459,12 @@ flowchart LR
   tables is its note. The catalogue entry lists the formats and, for an organisation layout,
   `supports_project_multi_filter` and the `projects` the caller may choose among; the Reports dialog offers them as a
   **Projects** selector.
-- **Cells and pages are safe by construction.** Every CSV, XLSX and ODS cell goes through `csv_safe` and is written as
-  text (an XLSX cell is typed `s` and an ODS cell is a `string` value with no formula attribute, never a formula,
-  and both are cut at 32,767 characters); sheet and zip member names are
+- **Cells and pages are safe by construction.** Every CSV, XLSX and ODS text cell goes through `csv_safe` and is written
+  as text (an XLSX cell is typed `s` and an ODS cell is a `string` value with no formula attribute, never a formula,
+  and both are cut at 32,767 characters). A sheet cell is `str | report_model.DataCell`: a `number`, `date` or
+  `instant` field becomes a `DataCell` through `typed_cell` (finite, under 10^15, an instant as naive UTC), which XLSX
+  and ODS store as a number or date (`yyyy-mm-dd`, `yyyy-mm-dd hh:mm:ss"Z"`) and CSV writes as its own text, so a typed
+  value is never taken for a formula and user text is never typed; sheet and zip member names are
   cleaned and made unique. The HTML page escapes every string, carries no script and a
   `Content-Security-Policy` of `default-src 'none'; img-src data:; style-src 'unsafe-inline'`, inlines a raster image
   only as a `data:` URI of a type sniffed from its bytes and an SVG only after sanitising. ODT and ODS
