@@ -7,6 +7,7 @@ Responsibilities:
 - Declare the starters (`STARTERS`): a Business Requirements Document, an Engineering Specification, a
   Review Package and Requirements by Component. A starter holds the parts about core records and its own words; every other part is contributed
   by the module whose records it shows (`ModuleDefinition.report_starter_sections`) and merged in by `order`.
+- `missing_starter_names`: which starters an organisation lacks (the UI offers adding only when one does).
 - `add_starter_layouts`: write the starters an organisation does not yet have as ordinary organisation layouts.
 
 Design decisions:
@@ -37,9 +38,10 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.report_layout import FAMILY_DOCUMENT
+from app.models.report_layout import FAMILY_DOCUMENT, ReportLayout
 from app.modules.registry import get_report_starter_sections
 from app.services import report_layouts
 from app.services.report_layouts import LayoutNameTakenError
@@ -251,6 +253,25 @@ STARTERS: tuple[StarterLayout, ...] = (BUSINESS_REQUIREMENTS, SPECIFICATION, REV
 """Every starter, in the order they are written and listed."""
 
 
+def missing_starter_names(db: Session, organization_id: uuid.UUID) -> list[str]:
+    """Lists the starters the organisation does not have as an organisation layout (by name, case-insensitive).
+
+    Args:
+        db: Active session.
+        organization_id: The organisation.
+
+    Returns:
+        The names `add_starter_layouts` would write, in `STARTERS` order; empty when every starter is present.
+    """
+    taken = {
+        name.casefold()
+        for (name,) in db.execute(
+            select(ReportLayout.name).where(ReportLayout.organization_id == organization_id, ReportLayout.project_id.is_(None))
+        )
+    }
+    return [starter.name for starter in STARTERS if starter.name.casefold() not in taken]
+
+
 def add_starter_layouts(db: Session, organization_id: uuid.UUID, *, actor_id: uuid.UUID | None) -> list[str]:
     """Writes the starters the organisation does not have yet as organisation layouts.
 
@@ -278,4 +299,4 @@ def add_starter_layouts(db: Session, organization_id: uuid.UUID, *, actor_id: uu
     return written
 
 
-__all__ = ["STARTERS", "STARTER_NOTE", "StarterLayout", "add_starter_layouts"]
+__all__ = ["STARTERS", "STARTER_NOTE", "StarterLayout", "add_starter_layouts", "missing_starter_names"]

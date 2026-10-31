@@ -13,7 +13,7 @@ const ORG_ID = "org-1";
 const org: Organization = {
   id: ORG_ID, name: "Acme Corp", created_at: "2026-01-01T00:00:00Z", logo_file_id: null,
   default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
-  disabled_at: null, accent_color_hex: null, header_title: null,
+  disabled_at: null, accent_color_hex: null, report_accent_color_hex: null, report_include_logo: true, header_title: null,
   email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
   code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto" }, enforce_code_everywhere: false,
   force_require_change_request_for_approved_links: false,
@@ -28,7 +28,8 @@ const orgUser: OrgUser = {
 
 const advanced: OrgAdvancedSettings = {
   smtp_host: null, smtp_port: null, smtp_username: null, smtp_use_tls: true,
-  pat_max_lifetime_days: null, report_output_retention_days: null, report_file_name: null, report_output_default_retention_days: 7,
+  pat_max_lifetime_days: null, report_output_retention_days: null, report_file_name: null, report_footer_text: null,
+  report_include_cover_page: false, report_chapters_per_component: true, report_output_default_retention_days: 7,
   report_output_max_retention_days: 30, require_2fa: false, allow_self_signup: false, auto_accept_email_domain: null,
   external_user_policy: "disabled", allow_relaxed_child_project_creation: true,
   force_require_change_request_for_approved_links: false,
@@ -118,7 +119,6 @@ function mockOrgAdminApis(overrides: {
     if (path.endsWith("/report-layouts")) return [buildLayoutSummary({ project_id: null, origin: "organization" })];
     // Report Setup merges these three lists with the layouts: empty is a valid answer for each.
     if (path.endsWith("/report-packs") || path.endsWith("/report-placements") || path.endsWith("/report-folders")) return [];
-    if (path.includes("/report-templates")) return [];
     if (path.includes("/advanced-settings")) {
       if (overrides.advancedForbidden) throw new ApiError(403, "Forbidden");
       return overrides.advanced ?? advanced;
@@ -781,41 +781,6 @@ export const UsersSectionMigratedFilterCheckboxesWorkIndependently: Story = {
   },
 };
 
-/** The "org report-template nested-accordion
- * create flow" case: "New template" now opens a `Modal` (a brand-new
- * `ReportTemplate` entity, per the revised Principle 3) instead of an
- * always-visible nested `CollapsibleSection` form. */
-export const NewReportTemplateOpensModalAndCreates: Story = {
-  beforeEach: () => {
-    mockOrgAdminApis();
-    spyOn(api, "post").mockResolvedValue(undefined);
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("link", { name: "Templates & reports" }));
-    await waitFor(() => expect(canvas.getByRole("button", { name: "New template" })).toBeInTheDocument());
-
-    const body = within(document.body);
-    await expect(body.queryByRole("dialog")).not.toBeInTheDocument();
-
-    await userEvent.click(canvas.getByRole("button", { name: "New template" }));
-    const dialog = body.getByRole("dialog", { name: "New template" });
-    await expect(within(dialog).getByRole("button", { name: "Create" })).toBeDisabled();
-
-    await userEvent.type(within(dialog).getByLabelText("Name", { exact: true }), "Corporate Template");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
-
-    await waitFor(() =>
-      expect(api.post).toHaveBeenCalledWith(
-        `/api/v1/orgs/${ORG_ID}/report-templates`,
-        expect.objectContaining({ name: "Corporate Template" })
-      )
-    );
-    await expect(body.queryByRole("dialog")).not.toBeInTheDocument();
-  },
-};
-
 /** Templates & reports lists the organisation's report layouts, shared with every project. */
 export const TemplatesAndReportsListsTheReportLayouts: Story = {
   beforeEach: () => {
@@ -831,76 +796,63 @@ export const TemplatesAndReportsListsTheReportLayouts: Story = {
   },
 };
 
-/** One template can be the organisation's default, applied to every document report that names none. */
-export const ATemplateCanBeTheDefault: Story = {
+/** Report templates are gone: the organisation has one look, set on Branding and Configuration. */
+export const NoReportTemplatesSectionRemains: Story = {
   beforeEach: () => {
     mockOrgAdminApis();
-    spyOn(api, "post").mockResolvedValue(undefined);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Templates & reports" }));
-    await userEvent.click(await canvas.findByRole("button", { name: "New template" }));
-    const dialog = within(within(document.body).getByRole("dialog", { name: "New template" }));
-    await userEvent.type(dialog.getByLabelText("Name", { exact: true }), "House style");
-    await userEvent.click(dialog.getByRole("checkbox", { name: /Default template/ }));
-    await userEvent.click(dialog.getByRole("button", { name: "Create" }));
+    await canvas.findByRole("treegrid", { name: "Reports, packs and tables" });
+    await expect(canvas.queryByRole("button", { name: "Report templates section" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "New template" })).not.toBeInTheDocument();
+  },
+};
+
+/** Branding sets the report accent colour (separate from the UI accent) and whether reports carry the logo. */
+export const BrandingSetsTheReportAccentAndLogo: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "put").mockResolvedValue(org);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Branding & defaults" }));
+    const own = await canvas.findByRole("checkbox", { name: "Give reports their own accent colour" });
+    await expect(own).not.toBeChecked();
+    await expect(canvas.queryByLabelText("Report accent colour")).not.toBeInTheDocument();
+    await userEvent.click(own);
+    await canvas.findByLabelText("Report accent colour");
+    await userEvent.click(canvas.getByRole("checkbox", { name: /^Include .* logo$/ }));
+    await userEvent.click(canvas.getByRole("button", { name: "Save branding" }));
     await waitFor(() =>
-      expect(api.post).toHaveBeenCalledWith(
-        `/api/v1/orgs/${ORG_ID}/report-templates`,
-        expect.objectContaining({ name: "House style", is_default: true }),
+      expect(api.put).toHaveBeenCalledWith(
+        `/api/v1/orgs/${ORG_ID}/branding`,
+        expect.objectContaining({ report_accent_color_hex: expect.stringMatching(/^#[0-9a-fA-F]{6}$/), report_include_logo: false }),
       ),
     );
   },
 };
 
-/** A report template is branding only (name, colour, cover, logo, footer): no introduction or chapters. */
-export const NewReportTemplate: Story = {
+/** An organisation with its own report accent shows it checked, and clearing the box sends `null` (follow the UI accent). */
+export const ClearingTheReportAccentSendsNull: Story = {
   beforeEach: () => {
-    mockOrgAdminApis();
-    spyOn(api, "post").mockResolvedValue(undefined);
+    mockOrgAdminApis({ org: { ...org, report_accent_color_hex: "#aa0000" } });
+    spyOn(api, "put").mockResolvedValue(org);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Templates & reports" }));
-    await userEvent.click(await canvas.findByRole("button", { name: "New template" }));
-    const dialog = within(document.body).getByRole("dialog", { name: "New template" });
-    await expect(within(dialog).queryByLabelText("Report type")).not.toBeInTheDocument();
-    await userEvent.type(within(dialog).getByLabelText("Name", { exact: true }), "Board Pack");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Branding & defaults" }));
+    const own = await canvas.findByRole("checkbox", { name: "Give reports their own accent colour" });
+    await expect(own).toBeChecked();
+    await userEvent.click(own);
+    await userEvent.click(canvas.getByRole("button", { name: "Save branding" }));
     await waitFor(() =>
-      expect(api.post).toHaveBeenCalledWith(
-        `/api/v1/orgs/${ORG_ID}/report-templates`,
-        expect.objectContaining({ name: "Board Pack" })
-      )
+      expect(api.put).toHaveBeenCalledWith(
+        `/api/v1/orgs/${ORG_ID}/branding`, expect.objectContaining({ report_accent_color_hex: null }),
+      ),
     );
-    await expect(api.post).not.toHaveBeenCalledWith(
-      `/api/v1/orgs/${ORG_ID}/report-templates`,
-      expect.objectContaining({ content: expect.anything() })
-    );
-  },
-};
-
-/** Cancelling the "New template" modal creates nothing. */
-export const NewReportTemplateModalCancel: Story = {
-  beforeEach: () => {
-    mockOrgAdminApis();
-    spyOn(api, "post").mockResolvedValue(undefined);
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Templates & reports" }));
-    await waitFor(() => expect(canvas.getByRole("button", { name: "New template" })).toBeInTheDocument());
-
-    await userEvent.click(canvas.getByRole("button", { name: "New template" }));
-    const dialog = within(document.body).getByRole("dialog", { name: "New template" });
-    await userEvent.type(within(dialog).getByLabelText("Name", { exact: true }), "Discarded Template");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-
-    await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
-    // The File name field's live example is a read-only POST; nothing else may be sent.
-    const sent = (api.post as unknown as { mock: { calls: [string][] } }).mock.calls.filter(([path]) => !path.endsWith("/report-file-names/example"));
-    await expect(sent).toEqual([]);
   },
 };
 
@@ -1325,32 +1277,26 @@ export const AdvancedSettingsAllowRelaxedChildProjectCreation: Story = {
   },
 };
 
-/** The retention of stored background reports is set in Templates & reports, shows the platform default and
- * ceiling, and is saved with the organisation's advanced settings. */
-export const ReportOutputRetentionIsSaved: Story = {
+/** Templates & reports opens on the Reports list with every other section closed (Reports itself is open). */
+export const TemplatesAndReportsOpensOnTheReportsList: Story = {
   beforeEach: () => {
     mockOrgAdminApis();
-    spyOn(api, "put").mockResolvedValue(advanced);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Templates & reports" }));
-    const field = await canvas.findByLabelText("Keep background report files for (days)");
-    await expect(canvas.getByText(/platform default of 7 days/)).toBeInTheDocument();
-    await userEvent.type(field, "3");
-    await userEvent.click(canvas.getByRole("button", { name: "Save background report settings" }));
-    await waitFor(() =>
-      expect(api.put).toHaveBeenCalledWith(
-        `/api/v1/orgs/${ORG_ID}/advanced-settings`,
-        expect.objectContaining({ report_output_retention_days: 3 })
-      )
-    );
+    await canvas.findByRole("treegrid", { name: "Reports, packs and tables" });
+    await expect(canvas.getByRole("button", { name: "Reports section" })).toHaveAttribute("aria-expanded", "true");
+    for (const title of ["Report snippets", "Configuration"]) {
+      await expect(canvas.getByRole("button", { name: `${title} section` })).toHaveAttribute("aria-expanded", "false");
+    }
   },
 };
 
-/** The default report file name is set in Templates & reports beside the retention, and is saved with the
- * organisation's advanced settings (an emptied field is saved as no default). */
-export const ReportFileNameDefaultIsSaved: Story = {
+/** Configuration holds the background-report retention (with the platform default and ceiling), the default report
+ * file name and the report look's footer text, cover page and chapter layout; one Save sends them all with the
+ * organisation's advanced settings (an emptied file name is saved as none). */
+export const ReportConfigurationIsSavedWithOneButton: Story = {
   beforeEach: () => {
     mockOrgAdminApis();
     spyOn(api, "put").mockResolvedValue(advanced);
@@ -1358,13 +1304,24 @@ export const ReportFileNameDefaultIsSaved: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Templates & reports" }));
-    const field = await canvas.findByRole("textbox", { name: "Default report file name" });
-    await userEvent.type(field, "{{{{project_name}}-{{{{report_title}}", { delay: null });
-    await userEvent.click(canvas.getByRole("button", { name: "Save default file name" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Configuration section" }));
+    const retention = await canvas.findByLabelText("Keep background report files for (days)");
+    await expect(canvas.getByText(/platform default of 7 days/)).toBeInTheDocument();
+    await userEvent.type(retention, "3");
+    const fileName = await canvas.findByRole("textbox", { name: "Default report file name" });
+    await userEvent.type(fileName, "{{{{project_name}}-{{{{report_title}}", { delay: null });
+    await userEvent.type(canvas.getByRole("textbox", { name: "Default footer text" }), "Confidential");
+    await userEvent.click(canvas.getByRole("checkbox", { name: "Include cover page" }));
+    await userEvent.click(canvas.getByRole("checkbox", { name: /Chapter per/ }));
+    await expect(canvas.getAllByRole("button", { name: "Save configuration" })).toHaveLength(1);
+    await userEvent.click(canvas.getByRole("button", { name: "Save configuration" }));
     await waitFor(() =>
       expect(api.put).toHaveBeenCalledWith(
         `/api/v1/orgs/${ORG_ID}/advanced-settings`,
-        expect.objectContaining({ report_file_name: "{{project_name}}-{{report_title}}" })
+        expect.objectContaining({
+          report_output_retention_days: 3, report_file_name: "{{project_name}}-{{report_title}}",
+          report_footer_text: "Confidential", report_include_cover_page: true, report_chapters_per_component: false,
+        })
       )
     );
   },
@@ -2025,7 +1982,6 @@ function mockProjectsWorkflowWithOneProject(overrides: {
     if (path.includes("/groups")) return groups;
     if (path.includes("/resources")) return [];
     if (path.includes("archived=false")) return [];
-    if (path.includes("/report-templates")) return [];
     if (path.includes("/advanced-settings")) return advanced;
     if (path.includes("/pats")) return [];
     // The org-scoped page-level `reload()` also

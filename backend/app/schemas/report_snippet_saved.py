@@ -57,11 +57,17 @@ class ReportSnippetCheckOut(BaseModel):
 
 
 class ReportSnippetUpdate(BaseModel):
-    """Changes a saved snippet's details; a key left out is unchanged. Its blocks are saved again from a layout instead."""
+    """Changes a saved snippet; a key left out is unchanged.
+
+    Attributes:
+        tree: Replaces the snippet's blocks with all the blocks of this tree (and the page styles and variables they use).
+            Its `family` must be the snippet's own.
+    """
 
     name: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=500)
     category: str | None = Field(default=None, max_length=60)
+    tree: dict[str, Any] | None = None
 
 
 class ReportSnippetCopy(BaseModel):

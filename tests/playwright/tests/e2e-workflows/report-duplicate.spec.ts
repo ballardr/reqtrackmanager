@@ -49,7 +49,7 @@ test.describe("Duplicate a report", () => {
 
   async function openSetup(page: Page, projectId: string) {
     await page.goto(`/projects/${projectId}/admin`);
-    await selectProjectAdminGroup(page, "Report Setup");
+    await selectProjectAdminGroup(page, "Reports");
   }
 
   test("a shared layout is duplicated into the project as its own editable copy", async ({ page, request }) => {

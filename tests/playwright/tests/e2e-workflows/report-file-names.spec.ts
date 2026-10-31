@@ -62,7 +62,7 @@ test.describe("Report file names", () => {
     expect(made.ok(), await made.text()).toBeTruthy();
 
     await page.goto(`/projects/${project.id}/admin`);
-    await selectProjectAdminGroup(page, "Report Setup");
+    await selectProjectAdminGroup(page, "Reports");
     await openSetupReport(page, packName);
 
     await test.step("the live example follows what is typed and names a mistake", async () => {
@@ -104,7 +104,7 @@ test.describe("Report file names", () => {
 
     await page.goto(`/orgs/${org.id}/admin`);
     await selectOrgAdminGroup(page, "Templates & reports");
-    await ensureExpanded(page, "Report file names");
+    await ensureExpanded(page, "Configuration");
 
     await test.step("an invalid default is explained and a valid one is saved", async () => {
       const field = page.getByRole("textbox", { name: "Default report file name" });
@@ -112,14 +112,14 @@ test.describe("Report file names", () => {
       await expect(page.getByRole("alert").filter({ hasText: "Unknown placeholder" })).toBeVisible();
       await field.fill("{{project_name}}-{{report_title}}");
       await expect(page.getByText(/^Example: Apollo-Quarterly review\.pdf$/)).toBeVisible();
-      await page.getByRole("button", { name: "Save default file name" }).click();
+      await page.getByRole("button", { name: "Save configuration" }).click();
       await expect(page.getByText("Settings saved.")).toBeVisible();
     });
 
     await test.step("the setting is kept and the report downloads under it", async () => {
       await page.reload();
       await selectOrgAdminGroup(page, "Templates & reports");
-      await ensureExpanded(page, "Report file names");
+      await ensureExpanded(page, "Configuration");
       await expect(page.getByRole("textbox", { name: "Default report file name" })).toHaveValue("{{project_name}}-{{report_title}}");
       const disposition = (await requirementsReport()).headers()["content-disposition"];
       expect(disposition).toContain(`${project.name}-Requirements report.csv`);

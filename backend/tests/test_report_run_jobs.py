@@ -124,7 +124,7 @@ def test_queueing_records_a_queued_run_pinned_to_the_current_version(world, db):
     assert run["status"] == "queued"
     row = run_row(db, run["id"])
     assert row.layout_version == layout["current_version"] and row.requested_by == world.user_id
-    assert row.params["report_template_id"] is None and row.output_key is None
+    assert "report_template_id" not in row.params and row.output_key is None
 
 
 def test_a_file_format_the_layout_cannot_produce_and_json_are_refused(world):

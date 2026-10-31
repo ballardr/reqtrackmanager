@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
 import { chooseReport } from "./reportPicker";
-import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup } from "./helpers";
+import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD, searchReportSetup, selectOrgAdminGroup } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 const STARTERS = ["Business Requirements Document", "Engineering Specification", "Review Package", "Requirements by Component"];
@@ -51,7 +51,7 @@ test.describe("Report starter layouts", () => {
   async function openOrgLayouts(page: Page, orgId: string) {
     await page.goto(`/orgs/${orgId}/admin`);
     await selectOrgAdminGroup(page, "Templates & reports");
-    await ensureExpanded(page, "Report layouts");
+    await ensureExpanded(page, "Reports");
   }
 
   test("a new organisation has the starters, a project runs one, and a deleted one is brought back", async ({ page, request }) => {
@@ -59,9 +59,11 @@ test.describe("Report starter layouts", () => {
 
     await test.step("Org Admin lists the starters", async () => {
       await openOrgLayouts(page, org.id);
-      const table = page.getByRole("table", { name: "Report layouts" });
-      // A link's name starts with the layout name and then its description, which may mention another starter.
-      for (const name of STARTERS) await expect(table.getByRole("link", { name: new RegExp(`^${name}`) })).toBeVisible();
+      // A row's name starts with the layout name and then its description, which may mention another starter.
+      for (const name of STARTERS) {
+        const grid = await searchReportSetup(page, name);
+        await expect(grid.getByRole("button", { name: new RegExp(`^${name}`) })).toBeVisible();
+      }
     });
 
     await test.step("a project runs the Business Requirements Document on its own records", async () => {
@@ -79,21 +81,31 @@ test.describe("Report starter layouts", () => {
       await expect(page.getByRole("heading", { name: "Functional" })).toBeVisible();
     });
 
-    await test.step("a deleted starter comes back with Add starter layouts, and nothing else changes", async () => {
+    await test.step("Add missing starters is not offered while every starter is present", async () => {
+      await openOrgLayouts(page, org.id);
+      await page.getByRole("button", { name: "New", exact: true }).click();
+      await expect(page.getByRole("menuitem", { name: "New layout" })).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: "Add missing starters" })).toHaveCount(0);
+      await page.keyboard.press("Escape");
+    });
+
+    await test.step("a deleted starter comes back with Add missing starters, and nothing else changes", async () => {
       const layouts: { id: string; name: string }[] = await (await request.get(`${API}/orgs/${org.id}/report-layouts`, { headers })).json();
       const doomed = layouts.find((layout) => layout.name === "Review Package")!;
       expect((await request.delete(`${API}/orgs/${org.id}/report-layouts/${doomed.id}`, { headers })).ok()).toBeTruthy();
 
       await openOrgLayouts(page, org.id);
-      const table = page.getByRole("table", { name: "Report layouts" });
-      await expect(table.getByRole("link", { name: "Review Package" })).toHaveCount(0);
+      await page.getByRole("textbox", { name: "Search reports" }).fill("Review Package");
+      await expect(page.getByText("Nothing matches these filters.")).toBeVisible();
 
-      await page.getByRole("button", { name: "Add starter layouts" }).click();
+      await page.getByRole("button", { name: "New", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Add missing starters" }).click();
       await expect(page.getByText("Added Review Package.")).toBeVisible();
-      await expect(table.getByRole("link", { name: "Review Package" })).toBeVisible();
+      const grid = await searchReportSetup(page, "Review Package");
+      await expect(grid.getByRole("button", { name: /^Review Package/ })).toBeVisible();
 
-      await page.getByRole("button", { name: "Add starter layouts" }).click();
-      await expect(page.getByText("Every starter layout is already here.")).toBeVisible();
+      await page.getByRole("button", { name: "New", exact: true }).click();
+      await expect(page.getByRole("menuitem", { name: "Add missing starters" })).toHaveCount(0);
     });
   });
 });

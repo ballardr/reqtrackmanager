@@ -41,7 +41,7 @@ test.describe("Report snippets", () => {
   /** Creates a layout from Project Admin's Report setup and lands in its designer. */
   async function newLayout(page: Page, projectId: string, name: string) {
     await page.goto(`/projects/${projectId}/admin`);
-    await selectProjectAdminGroup(page, "Report Setup");
+    await selectProjectAdminGroup(page, "Reports");
     await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("menuitem", { name: "New layout" }).click();
     const dialog = page.getByRole("dialog", { name: "New report layout" });

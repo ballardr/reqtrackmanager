@@ -31,7 +31,7 @@ export const LAYOUT_TEXT = `@layout document
 export function buildLayoutSummary(overrides: Partial<ReportLayoutSummary> = {}): ReportLayoutSummary {
   return {
     id: "layout-1", organization_id: "org-1", project_id: "project-1", name: "Requirements by component",
-    description: "Every requirement with its component.", folder: "", report_template_id: null, family: "document", current_version: 2, origin: "project",
+    description: "Every requirement with its component.", folder: "", family: "document", current_version: 2, origin: "project",
     hidden: false, editable: true, updated_at: "2026-10-20T09:30:00Z", ...overrides,
   };
 }
@@ -447,7 +447,7 @@ export function buildLayoutApi(
       if (stateful) found.current_version = next;
       return { ...found, current_version: next, current: { ...buildLayoutVersion(next), tree: body.tree } };
     }),
-    update: fn(async (id: string, body: { name?: string; description?: string; folder?: string; report_template_id?: string | null }) => {
+    update: fn(async (id: string, body: { name?: string; description?: string; folder?: string }) => {
       const found = store.find((layout) => layout.id === id) ?? store[0];
       if (stateful) Object.assign(found, body);
       return { ...found, ...body };
@@ -469,6 +469,7 @@ export function buildLayoutApi(
     images: buildImageLibrary(),
   };
   if (kind === "organization") {
+    fake.missingStarters = fn(async () => []);
     fake.addStarters = fn(async () => []);
   }
   if (kind === "project") {

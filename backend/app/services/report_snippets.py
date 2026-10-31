@@ -53,6 +53,7 @@ from app.modules.registry import (
 )
 from app.services import report_images, report_layout_designer, report_snippet_scope
 from app.services.report_layout_tree import MAX_NODES, TreeError, validate_tree
+from app.services.report_org_values import ORG_LOGO_FILE
 from app.services.report_page_styles import MAX_STYLE_NAME_CHARS
 
 #: The keys of a layout a snippet's `root` may add to.
@@ -302,6 +303,8 @@ def _value_problem(
     if parameter.kind == "record_type":
         return None if value in {c.value for c in visible.choices} else "Not a kind of record this scope can use here."
     if parameter.kind == "image":
+        if value == ORG_LOGO_FILE:  # the organisation's own logo, read when the report runs
+            return None
         try:
             file_id = uuid.UUID(value)
         except ValueError:

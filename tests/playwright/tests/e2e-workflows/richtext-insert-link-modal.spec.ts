@@ -20,7 +20,7 @@ test.describe("RichTextEditor: insert-link uses the app's Modal, not window.prom
     await page.goto("/projects");
     await openProject(page, PROJECT_NAMES.alpha1);
     await page.getByRole("link", { name: "Project admin" }).click();
-    await selectProjectAdminGroup(page, "Report Setup");
+    await selectProjectAdminGroup(page, "Reports");
     await page.getByRole("button", { name: "Rich text" }).first().click();
 
     await page.getByLabel("Link").first().click();

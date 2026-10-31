@@ -121,10 +121,10 @@ Builds its own component/category tree on Beta-2 to control the reassignment sce
 
 Creates one custom field of each of the four types (short text, long text, checkbox, list) and confirms they appear on the requirement create form; deletes one; adds and removes a project group member; sets and then reverts a terminology override, confirming the nav itself relabels (e.g. "Requirements" → "Specs").
 
-### 13. Org report templates and project report setup
+### 13. Org report look and project report setup
 **Personas:** Org Admin Gamma (single-org). **Spec:** `project-admin-templates-and-reports.spec.ts` (R-G-05, C-E-04/05).
 
-Creates, edits, and deletes an org report template (accent colour, cover page/logo toggles, footer, chapter-per-component default); confirms a project's Report Setup has no default template or report content; marks a project as usable as a template and confirms it appears in "New project"'s create-from-template list.
+Confirms the organisation has no report templates section (its look is set on Branding and Configuration, covered by `org-templates-and-reports-page.spec.ts`); confirms a project's Reports has no default template or report content; marks a project as usable as a template and confirms it appears in "New project"'s create-from-template list.
 
 ### 14. Org security controls: org-wide 2FA, display-name lock, member filters, external invites
 **Persona:** Org Admin Gamma. **Spec:** `org-security-controls.spec.ts` (the "28-item batch" round, C-A-13).

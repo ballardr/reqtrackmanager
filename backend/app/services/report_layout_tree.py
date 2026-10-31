@@ -71,6 +71,7 @@ from app.services.report_file_names import template_problems
 from app.services.report_layout_block_schema import BlockContainer, BlockField, BlockProvides, BlockSchema
 from app.services.report_math import MAX_TEX_CHARS, split_math, tex_problem
 from app.services.report_model import CELL_ARRANGEMENTS, CONTENTS_SHEET_NAME, PLACEHOLDER_NAMES, PLACEHOLDER_RE
+from app.services.report_org_values import ORG_FAMILY, ORG_LOGO_FILE, ORG_VALUE_KEYS, org_value_kind
 from app.services.report_page_styles import (
     ORIENTATIONS,
     PAGE_FIELD_NAMES,
@@ -485,6 +486,8 @@ class TreeValidator:
                     here = f"{prefix}{band}.{slot}"
                     if member is None and name not in (*PLACEHOLDER_NAMES, *PAGE_FIELD_NAMES):
                         self.error(here, f'Unknown placeholder "{{{{{name}}}}}". Use: {", ".join((*PLACEHOLDER_NAMES, *PAGE_FIELD_NAMES))}.')
+                    elif member is not None and name == ORG_FAMILY:
+                        self.org_value(member, here)
                     elif member is not None and name != PLACEHOLDER_FAMILY:
                         self.error(here, f'"{{{{{name}.{member}}}}}" names a record field, which a header or footer cannot read.')
                     elif member is not None and member not in self.variables:
@@ -581,6 +584,8 @@ class TreeValidator:
             return default
         if chosen == PLACEHOLDER_FAMILY:
             self.error(path, f'The name "{PLACEHOLDER_FAMILY}" is reserved for variables ({{{{var.name}}}}); choose another.')
+        if chosen == ORG_FAMILY:
+            self.error(path, f'The name "{ORG_FAMILY}" is reserved for the organisation report settings ({{{{org.footer_text}}}}); choose another.')
         if chosen in self.scope:
             self.error(
                 path if value is not None else path.rsplit(".", 1)[0],
@@ -900,7 +905,17 @@ class TreeValidator:
                 if member not in self.variables:
                     self.error(path, f'"{member}" is not a variable of this layout. Variables: {", ".join(self.variables) or "none"}.')
                 continue
+            if name == ORG_FAMILY:
+                self.org_value(member, path)
+                continue
             self.reference(name, member, path)
+
+    def org_value(self, member: str, path: str) -> str | None:
+        """Checks `member` is one of the organisation's report settings a layout may read; returns its kind."""
+        kind = org_value_kind(member)
+        if kind is None:
+            self.error(path, f'"{member}" is not an organisation report setting. Use: {", ".join(ORG_VALUE_KEYS)}.')
+        return kind
 
     # --- run-time variables ----------------------------------------------------------------
 
@@ -1020,6 +1035,8 @@ class TreeValidator:
 
     def reference(self, alias: str, member: str, path: str) -> str | None:
         """Checks `alias.member` is valid in scope, notes the reference and returns the value's kind."""
+        if alias == ORG_FAMILY:
+            return self.org_value(member, path)
         binding = self.scope.get(alias)
         if binding is None:
             self.error(path, f'"{alias}" is not the name of an enclosing block. In scope: {", ".join(self.scope) or "nothing"}.')
@@ -1121,13 +1138,16 @@ def _validate_image(v: TreeValidator, node: dict[str, Any], path: str) -> None:
         ),
     )
     raw = node.get("file", MISSING)
-    if raw is not MISSING:
+    if raw is not MISSING and raw != ORG_LOGO_FILE:
         try:
             ok = isinstance(raw, str) and str(uuid.UUID(raw)) == raw
         except ValueError:
             ok = False
         if not ok:
-            v.error(f"{path}.file", "Must be the id of an image in the library (lower-case, with hyphens).")
+            v.error(
+                f"{path}.file",
+                f'Must be the id of an image in the library (lower-case, with hyphens), or "{ORG_LOGO_FILE}" for the organisation\'s logo.',
+            )
     decorative = node.get("decorative", False)
     if not isinstance(decorative, bool):
         v.error(f"{path}.decorative", "Must be true or false.")

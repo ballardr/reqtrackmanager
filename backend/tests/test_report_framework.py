@@ -257,7 +257,8 @@ def test_openapi_and_mcp_parameters_come_from_the_declaration(probe):
     spec = probe.get("/openapi.json").json()
     operation = spec["paths"][_project_url("{project_id}")]["get"]
     by_name = {p["name"]: p for p in operation["parameters"]}
-    assert {"project_id", "format", "include_children", "report_template_id", "mode", "limit", "flag", "day", "ref"} <= set(by_name)
+    assert {"project_id", "format", "include_children", "mode", "limit", "flag", "day", "ref"} <= set(by_name)
+    assert "report_template_id" not in by_name
     assert by_name["limit"]["schema"]["anyOf"][0]["maximum"] == 5 and by_name["mode"]["description"] == "Mode."
     assert "include_children" not in {p["name"] for p in spec["paths"][_org_url("{organization_id}")]["get"]["parameters"]}
 
@@ -266,7 +267,7 @@ def test_openapi_and_mcp_parameters_come_from_the_declaration(probe):
     names = {p["name"]: p for p in tool.params}
     assert names["project_id"]["in"] == "path" and names["limit"]["type"] == "integer" and "One of: a, b" in names["mode"]["description"]
     assert names["day"]["type"] == "string" and "ISO date" in names["day"]["description"]
-    assert "format" not in names and "report_template_id" not in names
+    assert "format" not in names
     assert f"{KEY}_get_probe_everything_report" in {t.name for t in build_mcp_tool_manifest()}
     # Invalid declarations produce no tool.
     assert all("bad" not in t.name for t in build_mcp_tool_manifest() if t.name.startswith(KEY))
@@ -476,28 +477,23 @@ def test_render_functions_handle_empty_results_and_escape_markup():
     assert render_csv(ReportResult("k", "T", "S", datetime.now(UTC), [], [ReportSection("s", "S", ["=A"], [["+b"]])])).decode() == "'=A\r\n'+b\r\n"
 
 
-def test_template_branding_applies_to_pdf_and_foreign_templates_are_rejected(client, admin_token, probe):
+def test_the_organisations_report_look_applies_to_pdf_and_docx(client, admin_token, probe):
     org, project, token = _setup(client, admin_token, "Brand Co")
-    created = client.post(
-        f"/api/v1/orgs/{org['id']}/report-templates", json={"name": "Branded", "accent_color_hex": "#ff0000", "footer_text": "Confidential"},
-        headers=auth_headers(token),
-    )
-    assert created.status_code == 201, created.text
-    template_id = created.json()["id"]
     plain = _get(probe, token, _project_url(project["id"]), format="pdf").content
-    branded = _get(probe, token, _project_url(project["id"]), format="pdf", report_template_id=template_id).content
-    assert branded.startswith(b"%PDF") and branded != plain
     docx_plain = _get(probe, token, _project_url(project["id"]), format="docx").content
-    docx_branded = _get(probe, token, _project_url(project["id"]), format="docx", report_template_id=template_id).content
+    assert client.put(
+        f"/api/v1/orgs/{org['id']}/branding", json={"report_accent_color_hex": "#ff0000"}, headers=auth_headers(token),
+    ).status_code == 200
+    assert client.put(
+        f"/api/v1/orgs/{org['id']}/advanced-settings", json={"report_footer_text": "Confidential"}, headers=auth_headers(token),
+    ).status_code == 200
+    branded = _get(probe, token, _project_url(project["id"]), format="pdf").content
+    assert branded.startswith(b"%PDF") and branded != plain
+    docx_branded = _get(probe, token, _project_url(project["id"]), format="docx").content
     assert docx_branded[:2] == b"PK" and docx_branded != docx_plain
-    assert _get(probe, token, _org_url(org["id"]), format="pdf", report_template_id=template_id).content.startswith(b"%PDF")
-
-    other, _, other_admin = _setup(client, admin_token, "Brand Other")
-    foreign = client.post(f"/api/v1/orgs/{other['id']}/report-templates", json={"name": "Theirs"}, headers=auth_headers(other_admin))
-    assert foreign.status_code == 201, foreign.text
-    _get(probe, token, _project_url(project["id"]), expect=400, report_template_id=foreign.json()["id"])
-    _get(probe, token, _project_url(project["id"]), expect=400, report_template_id=str(uuid.uuid4()))
-    _get(probe, token, _project_url(project["id"]), expect=422, report_template_id="nope")
+    assert _get(probe, token, _org_url(org["id"]), format="pdf").content.startswith(b"%PDF")
+    # The retired parameter is ignored, not an error: an older client keeps working.
+    _get(probe, token, _project_url(project["id"]), format="pdf", report_template_id=str(uuid.uuid4()))
 
 
 # --- Document layout ----------------------------------------------------------------

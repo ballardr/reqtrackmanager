@@ -727,7 +727,7 @@ export function ReportLayoutDesigner({
             showToast(text.detailsSaved);
             setDetail({
               ...detail, name: updated.name, description: updated.description, folder: updated.folder,
-              report_template_id: updated.report_template_id, updated_at: updated.updated_at,
+              updated_at: updated.updated_at,
             });
           }}
         />

@@ -7,17 +7,17 @@
  * Responsibilities:
  * - List the saved snippets the scope can reach (name and description, category, where each comes from, how many blocks,
  *   and the page styles and variables it carries) with search; a project's list shows the ones it hides, flagged.
- * - Row actions: edit details, make a copy (into the scope, or up to the organisation from a project), delete an own snippet,
+ * - New snippet, and Edit (details and blocks) for an own snippet, in `ReportSnippetEditorDialog`; make a copy (into the scope, or up to the organisation from a project), delete an own snippet,
  *   hide or show an inherited one in a project; "Add organisation defaults" restores the hidden ones.
  * - Follow the confirmation tiers: delete is Tier 2 (type the name); hiding is Tier 1. Every change ends in a toast.
  *
  * Design decisions: the server authorises each row (a 403 shows the load failure; the panel does not guess permissions). A
- * saved snippet's blocks are not edited here: changing them means saving a selection again from the designer. A snippet is
+ * snippet is written in the layout editors (the dialog reuses them), whether it is made here or saved from the designer. A snippet is
  * configuration, not an artefact type, so it has no code and no link; the list is a plain table (it has no folders).
  */
 import { useCallback, useMemo, useState } from "react";
 
-import { LAYOUT_ORIGIN_LABEL } from "../api/reportLayouts";
+import { LAYOUT_ORIGIN_LABEL, reportLayoutApi, type ReportLayoutApi } from "../api/reportLayouts";
 import { reportSnippetStoreApi, type ReportSnippetStoreApi, type SavedSnippet } from "../api/reportSnippets";
 import { ApiError } from "../api/client";
 import { useStrings } from "../context/TerminologyContext";
@@ -28,11 +28,12 @@ import { Badge } from "./Badge";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { DirectoryTable, type DirectoryColumn } from "./DirectoryTable";
 import { FilterPanel } from "./FilterPanel";
-import { ReportSnippetEditDialog } from "./ReportSnippetEditDialog";
+import { ReportSnippetEditorDialog } from "./ReportSnippetEditorDialog";
 import { RestoreOrgDefaultsButton } from "./RestoreOrgDefaultsButton";
 import { Spinner } from "./Spinner";
 
 type Dialog =
+  | { kind: "new" }
   | { kind: "edit"; row: SavedSnippet }
   | { kind: "delete"; row: SavedSnippet }
   | { kind: "hide"; row: SavedSnippet };
@@ -46,12 +47,15 @@ function carriedText(row: SavedSnippet, empty: string): string {
 /**
  * @param api The saved-snippet calls, bound to an organisation or a project; the live ones for `scope` when omitted.
  * @param scope The scope to bind the live calls to (ignored when `api` is given).
+ * @param layoutApi The layout calls of the same scope, for the snippet editor.
  */
 export function ReportSnippetsPanel({
-  api: apiProp, scope,
+  api: apiProp, scope, layoutApi: layoutApiProp,
 }: {
   api?: ReportSnippetStoreApi;
   scope?: { kind: "organization" | "project"; id: string };
+  /** The layout calls the snippet editor draws its block types, fields and pictures from; the live ones for the scope when omitted. */
+  layoutApi?: ReportLayoutApi;
 }) {
   const strings = useStrings();
   const text = strings.reportSnippetsPanel;
@@ -61,6 +65,7 @@ export function ReportSnippetsPanel({
     if (!scope) throw new Error("ReportSnippetsPanel needs an api or a scope.");
     return reportSnippetStoreApi(scope);
   }, [apiProp, scope]);
+  const layoutApi = useMemo(() => layoutApiProp ?? reportLayoutApi(api.scope), [layoutApiProp, api.scope]);
   const inProject = api.scope.kind === "project";
   const [rows, setRows] = useState<SavedSnippet[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -113,7 +118,7 @@ export function ReportSnippetsPanel({
 
   function menuFor(row: SavedSnippet): ActionMenuItem[] {
     const items: ActionMenuItem[] = [];
-    if (row.editable) items.push({ key: "edit", label: text.editDetails, onSelect: () => setDialog({ kind: "edit", row }) });
+    if (row.editable) items.push({ key: "edit", label: text.edit, onSelect: () => setDialog({ kind: "edit", row }) });
     items.push({ key: "copy", label: text.makeCopy, onSelect: () => void copy(row, inProject ? "project" : "organization") });
     if (inProject) items.push({ key: "copy-up", label: text.copyToOrganization, onSelect: () => void copy(row, "organization") });
     if (!row.editable && api.setHidden && !row.hidden) items.push({ key: "hide", label: text.hide, danger: true, onSelect: () => setDialog({ kind: "hide", row }) });
@@ -156,6 +161,9 @@ export function ReportSnippetsPanel({
   return (
     <div className="stack">
       <p className="text-muted" style={{ margin: 0 }}>{text.hint}</p>
+      <div className="row">
+        <button type="button" className="btn btn-primary" aria-haspopup="dialog" onClick={() => setDialog({ kind: "new" })}>{text.newButton}</button>
+      </div>
       {inProject && api.restore && (
         <div className="row">
           <RestoreOrgDefaultsButton
@@ -185,9 +193,15 @@ export function ReportSnippetsPanel({
         ariaLabel={text.listLabel} columns={columns} rows={shown} rowKey={(row) => row.id}
         emptyState={<p className="text-muted" style={{ margin: 0 }}>{rows.length > 0 ? text.noMatch : text.empty}</p>}
       />
+      {dialog?.kind === "new" && (
+        <ReportSnippetEditorDialog
+          api={api} layoutApi={layoutApi} categories={categories} onClose={() => setDialog(null)}
+          onSaved={(saved) => { setDialog(null); showToast(strings.reportSnippetSave.saved(saved.name)); void reload(); }}
+        />
+      )}
       {dialog?.kind === "edit" && (
-        <ReportSnippetEditDialog
-          api={api} snippet={dialog.row} categories={categories} onClose={() => setDialog(null)}
+        <ReportSnippetEditorDialog
+          api={api} layoutApi={layoutApi} snippet={dialog.row} categories={categories} onClose={() => setDialog(null)}
           onSaved={() => { setDialog(null); showToast(text.editSaved); void reload(); }}
         />
       )}

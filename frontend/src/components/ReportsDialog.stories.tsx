@@ -59,7 +59,6 @@ export const RequirementReportHasNoFiltersOrBranding: Story = {
     await expect(dialog.queryByText("Filters")).not.toBeInTheDocument();
     await expect(dialog.queryByLabelText("Report template")).not.toBeInTheDocument();
     await expect(dialog.queryByLabelText("Branding template")).not.toBeInTheDocument();
-    await expect(api.get).not.toHaveBeenCalledWith(expect.stringContaining("/report-templates"));
   },
 };
 

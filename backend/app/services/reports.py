@@ -41,7 +41,6 @@ __all__ = [
     "ReportBranding",
     "ReportRequirementRow",
     "build_requirement_document",
-    "default_chapters_per_component",
     "generate_csv_report",
     "generate_docx_report",
     "generate_pdf_report",
@@ -112,24 +111,6 @@ def _group_rows_by_component_and_category(
     return chapters
 
 
-def default_chapters_per_component(rows: list[ReportRequirementRow]) -> bool:
-    """The `chapters_per_component` default when neither a selected
-    template nor an explicit per-generation choice sets it (see
-    `ReportRequest.chapters_per_component`'s docstring for the full
-    precedence): chaptered (`True`) unless some component in the report's
-    scope has fewer than three requirements, in which case a continuous
-    layout reads better than a near-empty chapter (a whole page break for
-    one or two requirements). An empty report (no rows at all) defaults to
-    chaptered — there's no sparse-chapter problem to avoid when there's
-    nothing to chapter.
-    """
-    for _, sections in _group_rows_by_component_and_category(rows):
-        count = sum(len(category_rows) for _, category_rows in sections)
-        if count < 3:
-            return False
-    return True
-
-
 def build_requirement_document(
     *,
     project_name: str,
@@ -147,7 +128,7 @@ def build_requirement_document(
         rows: The requirement rows to tabulate.
         post_markdown: Markdown rendered after the requirement table (the
             selected resource files, R-G-04).
-        branding: Optional selected `ReportTemplate` styling (R-G-05) — an
+        branding: Optional organisation report look (R-G-05) — an
             accent colour applied to the table header, an optional cover
             page (with the org logo if provided), and an optional footer.
         images: Pre-resolved `attachment:<id>` -> image bytes mapping for
@@ -160,9 +141,8 @@ def build_requirement_document(
             component-level heading or forced page break — categories just
             flow continuously in component/category tree order. The
             caller (`routers/reports.py::generate_report`) resolves which of
-            the two applies before calling this — see
-            `default_chapters_per_component`'s docstring for that
-            precedence.
+            the two applies before calling this (the request's choice, else
+            the organisation's setting).
 
     Returns:
         The portrait requirements document.

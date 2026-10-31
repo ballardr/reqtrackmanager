@@ -105,7 +105,7 @@ PROJECT_COLUMN = "project"
 #: Query parameters every table request takes; a provider declares the rest in `filter_params`.
 GENERIC_PARAMS = frozenset({"format", "project_scope", "tag", "tag_mode"})
 #: Further query parameters the record-list report takes (its own, never a provider's filter).
-REPORT_PARAMS = frozenset({"record_type", "report_template_id"})
+REPORT_PARAMS = frozenset({"record_type"})
 _FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
 #: The column kinds the bulk edit grid edits (a closed set of values or a single value); free text is not.
 GRID_KINDS = frozenset({"enum", "number", "date", "bool"})

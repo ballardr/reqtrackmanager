@@ -8,7 +8,7 @@ A project administrator can copy reports from one project to another project of 
 
 ```mermaid
 flowchart LR
-    A["Tick reports and folders<br/>in Report setup"] --> B["Choose the project"]
+    A["Tick reports and folders<br/>in Reports"] --> B["Choose the project"]
     B --> C["Preview"]
     C --> D["Copy"]
     D --> E["The target lists them as its own"]
@@ -16,10 +16,10 @@ flowchart LR
 
 ## How to copy
 
-1. Open **Project Admin**, **Report Setup**, and choose **Copy to another project…**. Tick boxes appear. A folder's box ticks everything in it. Alternatively, open a report's menu and choose **Copy to another project…** to copy just that one.
+1. Open **Project Admin**, **Reports**, and choose **Copy to another project…**. Tick boxes appear. A folder's box ticks everything in it. Alternatively, open a report's menu and choose **Copy to another project…** to copy just that one.
 2. Choose **Copy…**, then the project to copy into. Only projects where you can manage reports are listed.
 3. Choose what happens if the target already has something with the same name, then **Preview**. Each item says what will happen, with a note for anything that may not work in the target.
-4. Choose **Copy**. The dialog says what was copied and links to the target's Report Setup.
+4. Choose **Copy**. The dialog says what was copied and links to the target's Reports.
 
 ## What is copied
 

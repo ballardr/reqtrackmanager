@@ -13,8 +13,8 @@
  *
  * Design decisions: the server decides every rule (names, pictures, permissions, what a selection needs), so the check
  * and the save cannot disagree; a person without the organisation's right sees the server's refusal when they choose that
- * level, not a guess made here. A saved snippet has no parameters in this version and its blocks are not edited here:
- * changing them means saving the selection again. Follows the form header pattern (`FormActions` in the dialog header) and
+ * level, not a guess made here. A saved snippet has no parameters in this version; changing its blocks later is the
+ * snippet editor's job (`ReportSnippetEditorDialog`). Follows the form header pattern (`FormActions` in the dialog header) and
  * the required-field and field-help patterns.
  */
 import { useEffect, useRef, useState } from "react";
@@ -29,8 +29,8 @@ import { ApiError } from "../api/client";
 import { FormActions } from "./FormActions";
 import { LabeledSelect } from "./LabeledSelect";
 import { Modal } from "./Modal";
+import { ReportSnippetCheckSummary } from "./ReportSnippetCheckSummary";
 import { ReportSnippetFields } from "./ReportSnippetFields";
-import { Spinner } from "./Spinner";
 
 const CHECK_DELAY_MS = 150;
 
@@ -125,21 +125,7 @@ export function ReportSaveSnippetDialog({
           name={name} description={description} category={category} categories={categories}
           onName={setName} onDescription={setDescription} onCategory={setCategory}
         />
-        {check === null && checkError === null && <Spinner />}
-        {checkError && <p role="alert" style={{ margin: 0, color: "var(--color-danger)" }}>{checkError}</p>}
-        {check && check.ok && (
-          <div className="stack" style={{ gap: "var(--space-1)" }} role="status">
-            <span>{text.summary(check.blocks)}</span>
-            {check.page_styles.length > 0 && <span className="text-muted">{text.carries(text.pageStyles, check.page_styles)}</span>}
-            {check.variables.length > 0 && <span className="text-muted">{text.carries(text.variables, check.variables)}</span>}
-          </div>
-        )}
-        {check && !check.ok && (
-          <div role="alert" className="stack" style={{ gap: "var(--space-1)", color: "var(--color-danger)" }}>
-            <span>{text.refused}</span>
-            <ul style={{ margin: 0 }}>{check.errors.map((e, index) => <li key={index}>{e.message}</li>)}</ul>
-          </div>
-        )}
+        <ReportSnippetCheckSummary check={check} error={checkError} />
       </div>
     </Modal>
   );

@@ -31,9 +31,9 @@ Deleting a group never leaves a project without a Project Manager. Every project
 
 **Shared resources** are files that aren't specific to one requirement or change request — a standards document, a reference spec — available to link into any project in the organisation and to append as an extra section on a generated report. See [Core Features → File attachments and shared resources](../core-features/file-attachments-and-shared-resources.md).
 
-## Branding and report templates
+## Branding and the report look
 
-Set the organisation's logo and, under **Templates & reports**, define **report templates** (accent colour, cover page, logo and footer text) and mark one as the **default**, used by every document report that names none. Introductions, chapters and appendices are written in report layouts, not in a template. See [Core Features → Reports and export](../core-features/reports-and-export.md).
+An organisation has **one report look**. On **Branding**, set the logo, an optional **report accent colour** (reports follow the organisation's accent colour until you give them their own) and whether reports carry the logo. Under **Templates & reports → Configuration**, set the default **footer text**, whether built-in reports have a **cover page** and whether the requirements report starts a **chapter for each component**. The built-in reports use all of it; a [report layout](../core-features/custom-reports/designing-a-layout.md) uses only what it asks for, so a client with its own look gets its own layout. Introductions, chapters and appendices are written in report layouts. See [Core Features → Reports and export](../core-features/reports-and-export.md).
 
 ## Tags
 

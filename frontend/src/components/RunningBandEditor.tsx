@@ -7,7 +7,7 @@
  * the same everywhere.
  *
  * Responsibilities:
- * - Choose between "inherit" (a page style takes the layout's; the layout takes the report template's), "its own text"
+ * - Choose between "inherit" (a page style takes the layout's; the layout takes a page number), "its own text"
  *   and "nothing" (an explicitly empty band), and write the band back (`undefined`, an object, `{}`).
  * - Edit the three cells (up to three lines each) and add a placeholder to the cell last edited.
  * - Choose the logo from the layout tier's image library, its height and its cell, through the shared `ReportImageField`.
@@ -30,7 +30,7 @@ import { ReportImageField } from "./ReportImageField";
 
 /** The placeholders a header or footer can name besides the layout's own variables. */
 export const BAND_PLACEHOLDERS = [
-  "report_title", "project_name", "project_code", "organisation", "generated_on", "layout_version", "page", "pages",
+  "report_title", "project_name", "project_code", "organisation", "generated_on", "layout_version", "org.footer_text", "page", "pages",
 ] as const;
 
 type Mode = "inherit" | "custom" | "none";
@@ -44,7 +44,7 @@ function modeOf(value: RunningBand | undefined): Mode {
  * @param kind Whether this is the header or the footer.
  * @param value The band, `undefined` to inherit or `{}` for none.
  * @param onChange Called with the band after any edit.
- * @param inheritFrom What an unset band takes: the report template's (for the layout itself) or the layout's (for a page style).
+ * @param inheritFrom What an unset band takes: the default, a page number (`template`, for the layout itself) or the layout's (`layout`, for a page style).
  * @param margin The margin in cm the band must fit (the top for a header, the bottom for a footer).
  * @param placeholders The placeholder names offered for insertion.
  * @param images The picture library a logo is chosen from, and where an upload goes (absent: the logo cannot be changed).

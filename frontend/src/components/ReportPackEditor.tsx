@@ -34,12 +34,10 @@ import { conflictVersion } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
-import { useReportTemplates } from "../hooks/useReportTemplates";
 import { canonicalJson, newUid, type LayoutChoice } from "../utils/reportPackDraft";
 import { Badge } from "./Badge";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { FileNameField } from "./FileNameField";
-import { LabeledSelect } from "./LabeledSelect";
 import { RecordHeader } from "./RecordHeader";
 import { ReportDuplicateDialog } from "./ReportDuplicateDialog";
 import { ReportPackEntriesEditor, type DraftEntry, type ReportChoice } from "./ReportPackEntriesEditor";
@@ -54,17 +52,16 @@ type Tab = "reports" | "variables" | "sets" | "history";
 type Dialog = "details" | "delete" | "reload" | "leave" | "duplicate";
 
 /** The definition a draft stands for (client ids dropped, empty parts left out). */
-function definitionOf(entries: DraftEntry[], variables: DraftVariable[], template: string, fileName: string): ReportPackDefinition {
+function definitionOf(entries: DraftEntry[], variables: DraftVariable[], fileName: string): ReportPackDefinition {
   const out: ReportPackDefinition = { schema_version: 1, entries: entries.map((d) => d.entry) };
   if (variables.length > 0) out.variables = variables.map((d) => d.variable);
-  if (template) out.template = template;
   if (fileName) out.file_name = fileName;
   return out;
 }
 
 /** The comparable form of a definition (so key order never makes a pack look changed). */
 function signature(definition: ReportPackDefinition): string {
-  return canonicalJson({ ...definition, variables: definition.variables ?? [], template: definition.template ?? "", file_name: definition.file_name ?? "" });
+  return canonicalJson({ ...definition, variables: definition.variables ?? [], file_name: definition.file_name ?? "" });
 }
 
 /**
@@ -84,7 +81,6 @@ export function ReportPackEditor({
   const [loadFailed, setLoadFailed] = useState<string | null>(null);
   const [entries, setEntries] = useState<DraftEntry[]>([]);
   const [variables, setVariables] = useState<DraftVariable[]>([]);
-  const [template, setTemplate] = useState("");
   const [fileName, setFileName] = useState("");
   const [tab, setTab] = useState<Tab>("reports");
   const [dialog, setDialog] = useState<Dialog | null>(null);
@@ -96,7 +92,6 @@ export function ReportPackEditor({
   const [reports, setReports] = useState<ReportChoice[]>([]);
   const [catalogue, setCatalogue] = useState<ReportFieldCatalogue | null>(null);
   const [versions, setVersions] = useState<ReportPackVersionSummary[] | null>(null);
-  const templates = useReportTemplates(detail?.organization_id);
   const inProject = api.scope.kind === "project";
 
   const load = useCallback(async () => {
@@ -106,7 +101,6 @@ export function ReportPackEditor({
       setDetail(loaded);
       setEntries(definition.entries.map((entry) => ({ uid: newUid(), entry })));
       setVariables((definition.variables ?? []).map((variable) => ({ uid: newUid(), variable })));
-      setTemplate(definition.template ?? "");
       setFileName(definition.file_name ?? "");
       setConflict(false);
       setProblems([]);
@@ -136,7 +130,7 @@ export function ReportPackEditor({
   useLoadOnChange(load, [api.scope.kind, api.scope.id, packId]);
   useLoadOnChange(loadTools, [api.scope.kind, api.scope.id]);
 
-  const definition = useMemo(() => definitionOf(entries, variables, template, fileName), [entries, variables, template, fileName]);
+  const definition = useMemo(() => definitionOf(entries, variables, fileName), [entries, variables, fileName]);
   const dirty = detail !== null && signature(definition) !== signature(detail.current.definition);
 
   useEffect(() => {
@@ -250,15 +244,6 @@ export function ReportPackEditor({
 
       {tab === "reports" && (
         <div {...tabPanelProps("report-pack", "reports")} className="stack">
-          {editable && templates.length > 0 && (
-            <LabeledSelect help={strings.help.reportPackTemplate}
-              label={text.templateLabel}
-              value={template}
-              onChange={setTemplate}
-              options={templates.map((t) => ({ value: t.name, label: t.name }))}
-              placeholder={text.templatePlaceholder}
-            />
-          )}
           <FileNameField
             label={strings.reportFileName.packLabel} value={fileName} onChange={setFileName} disabled={!editable} kind="pack" extension="zip"
             variables={variables.map((d) => d.variable.name)} help={strings.help.reportFileNamePack}

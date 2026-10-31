@@ -39,7 +39,7 @@ test.describe("Saved report snippets", () => {
   /** Creates a layout from Project Admin's Report setup and lands in its designer. */
   async function newLayout(page: Page, projectId: string, name: string) {
     await page.goto(`/projects/${projectId}/admin`);
-    await selectProjectAdminGroup(page, "Report Setup");
+    await selectProjectAdminGroup(page, "Reports");
     await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("menuitem", { name: "New layout" }).click();
     const dialog = page.getByRole("dialog", { name: "New report layout" });
@@ -105,7 +105,7 @@ test.describe("Saved report snippets", () => {
 
     await test.step("Report setup lists it with its source", async () => {
       await page.goto(`/projects/${project.id}/admin`);
-      await selectProjectAdminGroup(page, "Report Setup");
+      await selectProjectAdminGroup(page, "Reports");
       const row = snippetsTable(page).getByRole("row", { name: new RegExp(snippetName) });
       await expect(row).toContainText("This project");
       await expect(row).toContainText("House style");
@@ -145,11 +145,11 @@ test.describe("Saved report snippets", () => {
 
     await test.step("the project's list shows it as the organisation's, read-only", async () => {
       await page.goto(`/projects/${project.id}/admin`);
-      await selectProjectAdminGroup(page, "Report Setup");
+      await selectProjectAdminGroup(page, "Reports");
       const row = snippetsTable(page).getByRole("row", { name: new RegExp(name) });
       await expect(row).toContainText("The organisation");
       await page.getByRole("button", { name: `Actions for ${name}` }).click();
-      await expect(page.getByRole("menuitem", { name: "Edit details" })).toHaveCount(0);
+      await expect(page.getByRole("menuitem", { name: "Edit", exact: true })).toHaveCount(0);
       await expect(page.getByRole("menuitem", { name: "Delete" })).toHaveCount(0);
     });
 
@@ -196,15 +196,15 @@ test.describe("Saved report snippets", () => {
     });
     expect(created.status()).toBe(201);
     await page.goto(`/projects/${project.id}/admin`);
-    await selectProjectAdminGroup(page, "Report Setup");
+    await selectProjectAdminGroup(page, "Reports");
 
-    await test.step("Edit details renames it", async () => {
+    await test.step("Edit renames it", async () => {
       await page.getByRole("button", { name: `Actions for ${name}` }).click();
-      await page.getByRole("menuitem", { name: "Edit details" }).click();
+      await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: `Edit ${name}` });
       await dialog.getByRole("textbox", { name: "Name" }).fill(`Renamed ${suffix}`);
       await dialog.getByRole("button", { name: "Save", exact: true }).click();
-      await expect(page.getByText("Snippet details saved.")).toBeVisible();
+      await expect(page.getByText("Snippet saved.")).toBeVisible();
       await expect(snippetsTable(page).getByRole("row", { name: new RegExp(`Renamed ${suffix}`) })).toBeVisible();
     });
 
@@ -217,6 +217,54 @@ test.describe("Saved report snippets", () => {
       await confirm.getByRole("button", { name: "Delete", exact: true }).click();
       await expect(page.getByText("Snippet deleted.")).toBeVisible();
       await expect(snippetsTable(page).getByRole("row", { name: new RegExp(`Renamed ${suffix}`) })).toHaveCount(0);
+    });
+  });
+
+  test("a snippet made from the Report snippets section is edited there and inserted into a layout", async ({ page, request }) => {
+    const { project, suffix } = await setup(page, request);
+    const name = `Panel snippet ${suffix}`;
+    await page.goto(`/projects/${project.id}/admin`);
+    await selectProjectAdminGroup(page, "Reports");
+
+    await test.step("New snippet needs a name and a block before it can be saved", async () => {
+      await page.getByRole("button", { name: "New snippet" }).click();
+      const dialog = page.getByRole("dialog", { name: "New snippet" });
+      await expect(dialog.getByRole("button", { name: "Save snippet" })).toBeDisabled();
+      await dialog.getByRole("textbox", { name: "Name" }).fill(name);
+      await expect(dialog.getByText("Add at least one block to save the snippet.")).toBeVisible();
+      await dialog.getByRole("button", { name: "Add block" }).click();
+      await page.getByRole("menuitem", { name: "Heading 1" }).click();
+      await dialog.getByLabel("Block details").getByRole("textbox", { name: "Heading", exact: true }).fill("Made in setup");
+      await expect(dialog.getByText("Saves 1 block.")).toBeVisible();
+      await expect(dialog.getByRole("combobox", { name: /Kind/ })).toBeDisabled();
+      await dialog.getByRole("button", { name: "Save snippet" }).click();
+      await expect(page.getByText(`Saved the snippet ${name}.`)).toBeVisible();
+      await expect(snippetsTable(page).getByRole("row", { name: new RegExp(name) })).toContainText("This project");
+    });
+
+    await test.step("Edit changes its blocks, through the Text view", async () => {
+      await page.getByRole("button", { name: `Actions for ${name}` }).click();
+      await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: `Edit ${name}` });
+      await dialog.getByRole("tab", { name: "Text" }).click();
+      const text = dialog.getByRole("textbox", { name: "Snippet text" });
+      await expect(text).toHaveValue(/Made in setup/);
+      await text.fill("@layout document\n\n@heading Edited in setup\n\n@heading A second block\n");
+      await expect(dialog.getByText("Saves 2 blocks.")).toBeVisible();
+      await dialog.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(page.getByText("Snippet saved.")).toBeVisible();
+      await expect(snippetsTable(page).getByRole("row", { name: new RegExp(name) })).toContainText("2");
+    });
+
+    await test.step("a layout inserts the edited snippet", async () => {
+      await newLayout(page, project.id, `E2E panel target ${suffix}`);
+      await page.getByRole("tab", { name: "Blocks" }).click();
+      await page.getByRole("button", { name: "Insert snippet" }).click();
+      const dialog = picker(page);
+      await dialog.getByRole("button", { name: `Select ${name}` }).click();
+      await expect(dialog.getByRole("list", { name: `Blocks in ${name}` })).toContainText("Edited in setup");
+      await dialog.getByRole("button", { name: "Insert", exact: true }).click();
+      await expect(page.getByRole("status", { name: "Snippet inserted" })).toContainText(`Inserted ${name}`);
     });
   });
 

@@ -89,7 +89,9 @@ def get_advanced_settings(
         smtp_host=org.smtp_host, smtp_port=org.smtp_port, smtp_username=org.smtp_username,
         smtp_use_tls=org.smtp_use_tls,
         pat_max_lifetime_days=org.pat_max_lifetime_days, report_output_retention_days=org.report_output_retention_days,
-        report_file_name=org.report_file_name,
+        report_file_name=org.report_file_name, report_footer_text=org.report_footer_text,
+        report_include_cover_page=org.report_include_cover_page,
+        report_chapters_per_component=org.report_chapters_per_component,
         report_output_default_retention_days=settings.report_output_default_retention_days,
         report_output_max_retention_days=settings.report_output_max_retention_days,
         require_2fa=org.require_2fa,
@@ -138,6 +140,12 @@ def update_advanced_settings(
         if problems:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, problems[0])
     org.report_file_name = file_name
+    if "report_footer_text" in payload.model_fields_set:
+        org.report_footer_text = (payload.report_footer_text or "").strip() or None
+    if payload.report_include_cover_page is not None:
+        org.report_include_cover_page = payload.report_include_cover_page
+    if payload.report_chapters_per_component is not None:
+        org.report_chapters_per_component = payload.report_chapters_per_component
     org.require_2fa = payload.require_2fa
     org.allow_self_signup = payload.allow_self_signup
     org.auto_accept_email_domain = payload.auto_accept_email_domain.lower() if payload.auto_accept_email_domain else None
@@ -170,7 +178,9 @@ def update_advanced_settings(
         smtp_host=org.smtp_host, smtp_port=org.smtp_port, smtp_username=org.smtp_username,
         smtp_use_tls=org.smtp_use_tls,
         pat_max_lifetime_days=org.pat_max_lifetime_days, report_output_retention_days=org.report_output_retention_days,
-        report_file_name=org.report_file_name,
+        report_file_name=org.report_file_name, report_footer_text=org.report_footer_text,
+        report_include_cover_page=org.report_include_cover_page,
+        report_chapters_per_component=org.report_chapters_per_component,
         report_output_default_retention_days=settings.report_output_default_retention_days,
         report_output_max_retention_days=settings.report_output_max_retention_days,
         require_2fa=org.require_2fa,

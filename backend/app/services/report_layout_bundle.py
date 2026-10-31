@@ -16,8 +16,8 @@ Design decisions:
 - **Authors and times are not restored.** The importer becomes the author and the import time the save
   time (as for the other imported records); the version comment travels. The export carries the original
   author's email and save time as information only.
-- **The branding template travels by name** (`report_template`), resolved against the target organisation's templates;
-  a name it has no template for is reported and the layout falls back to the organisation's default.
+- **There is no branding template.** An older bundle's `report_template` is ignored with a notice: the organisation has
+  one report look, and a layout reads it where it asks (`{{org.*}}`).
 - **Hides travel by layout name**, resolved against the target project's inherited layouts after the
   organisation's layouts have been imported (organisation bundle) or against the organisation it joins
   (project bundle). A name with no inherited layout of that name is reported, not guessed.
@@ -39,11 +39,10 @@ import json
 import uuid
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.file import FileAsset
-from app.models.organization import ReportTemplate
 from app.models.project import Project
 from app.models.report_layout import ReportLayout
 from app.models.user import User
@@ -72,10 +71,8 @@ def layout_entry(db: Session, layout: ReportLayout, *, latest_only: bool = False
     emails = {
         u.id: u.email for u in db.scalars(select(User).where(User.id.in_({v.created_by for v in versions if v.created_by})))
     } if any(v.created_by for v in versions) else {}
-    template = db.get(ReportTemplate, layout.report_template_id) if layout.report_template_id else None
     return {
         "name": layout.name, "description": layout.description, "folder": layout.folder, "family": layout.family,
-        "report_template": template.name if template else None,
         "versions": [
             {
                 "version": v.version, "schema_version": v.schema_version, "tree": v.tree,
@@ -206,13 +203,11 @@ def import_layout_entry(
     if existing_names is not None and name.casefold() in existing_names:
         name = f"{name} (imported)"
     template_name = entry.get("report_template")
-    template_id: uuid.UUID | None = None
     if isinstance(template_name, str) and template_name:
-        template_id = db.scalar(select(ReportTemplate.id).where(
-            ReportTemplate.organization_id == organization_id, func.lower(ReportTemplate.name) == template_name.lower(),
-        ))
-        if template_id is None:
-            warnings.add(f'Report layout "{name}": the report template "{template_name}" does not exist here, so the default applies.')
+        warnings.add(
+            f'Report layout "{name}": the report template "{template_name}" it named is no longer used; '
+            "the organisation's report look applies."
+        )
     layout_id: uuid.UUID | None = None
     stored = 0
     dropped = 0
@@ -224,7 +219,7 @@ def import_layout_entry(
                 saved = report_layouts.create_layout(
                     db, organization_id=organization_id, project_id=project_id, name=name,
                     description=str(entry.get("description", "")), folder=imported_folder(entry.get("folder")),
-                    report_template_id=template_id, family=str(family),
+                    family=str(family),
                     tree=tree, actor_id=actor.id, comment=comment,
                 )
                 layout_id = saved.layout.id

@@ -91,7 +91,7 @@ Same optional `limit`/`offset` pagination convention as the requirements list, w
 
 ## Pull a report
 
-There is one report endpoint, `POST /api/v1/projects/$PROJECT_ID/reports` — never `GET` — because report generation accepts filters and content options (`ReportRequest`: `format`, `component_id`, `category_id`, `status`, `keyword`, `include_archived`, extra Markdown chapters, a branding template id, and more). `format` (`"pdf"`, `"docx"` or `"csv"`) is the only required field; everything else is optional:
+There is one report endpoint, `POST /api/v1/projects/$PROJECT_ID/reports` — never `GET` — because report generation accepts filters and content options (`ReportRequest`: `format`, `component_id`, `category_id`, `status`, `keyword`, `include_archived`, extra Markdown chapters, and more). `format` (`"pdf"`, `"docx"` or `"csv"`) is the only required field; everything else is optional:
 
 ```bash
 # PDF
@@ -110,7 +110,7 @@ curl -s -X POST "http://localhost:8000/api/v1/projects/$PROJECT_ID/reports" \
   -d '{"format": "csv"}' -o report.csv
 ```
 
-`format: "pdf"` returns `application/pdf`; `format: "docx"` returns a Word file (`application/vnd.openxmlformats-officedocument.wordprocessingml.document`); `format: "csv"` returns `text/csv`. All three, with no filters supplied, include every non-archived requirement in the project — see [Core Features → Reports and export](../core-features/reports-and-export.md) for the full option set (branding templates, chapter layout, appended shared-resource sections).
+`format: "pdf"` returns `application/pdf`; `format: "docx"` returns a Word file (`application/vnd.openxmlformats-officedocument.wordprocessingml.document`); `format: "csv"` returns `text/csv`. All three, with no filters supplied, include every non-archived requirement in the project — see [Core Features → Reports and export](../core-features/reports-and-export.md) for the full option set (the organisation's report look, chapter layout, appended shared-resource sections).
 
 ## Where this fits
 

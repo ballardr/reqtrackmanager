@@ -150,6 +150,7 @@ def import_pack_entry(
     dropped = 0
     for v in versions:
         comment = str(v.get("comment", ""))[: report_packs.MAX_COMMENT_CHARS]
+        v = {**v, "definition": {k: val for k, val in v["definition"].items() if k != "template"}}  # an older pack named a branding template
         try:
             if pack is None:
                 saved = report_packs.create_pack(

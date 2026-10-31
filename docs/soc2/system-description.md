@@ -43,7 +43,7 @@ The full technology stack and architectural rationale are maintained in [solutio
 
 | Data category | Examples | Where it lives |
 | --- | --- | --- |
-| Customer content | Requirement text and reasoning, change requests, review comments, file attachments, report templates, report layouts, report run records | PostgreSQL (`requirements`, `requirement_versions`, `change_requests`, etc.) and object storage (attachments) |
+| Customer content | Requirement text and reasoning, change requests, review comments, file attachments, report layouts, report run records | PostgreSQL (`requirements`, `requirement_versions`, `change_requests`, etc.) and object storage (attachments) |
 | User account data | Email, display name, password hash (never plaintext), TOTP secret (2FA), OIDC subject/issuer for SSO-provisioned accounts | PostgreSQL (`users` table) |
 | Authentication/session material | JWT access tokens (bearer, not stored server-side), `token_version` revocation counter | Issued to the client; not persisted beyond the signing counter |
 | Audit and login history | Who did what, when, from what IP; login success/failure events | PostgreSQL (`audit_events`, `login_events` — see [decisions.md](../decisions.md) and `backend/app/services/audit.py`) |

@@ -77,8 +77,6 @@ export type ReportPackEntry = LayoutPackEntry | ReportPackReportEntry;
 export interface ReportPackDefinition {
   schema_version: number;
   variables?: PackVariableDeclaration[];
-  /** Name of an organisation report template whose branding the PDF and Word entries take by default. */
-  template?: string;
   /** The zip's default file name, a `{{placeholder}}` template without an extension. */
   file_name?: string;
   entries: ReportPackEntry[];
@@ -237,7 +235,6 @@ export interface ReportPackForm {
 export interface ReportPackRunBody {
   variables?: PackValues;
   variable_set_id?: string | null;
-  report_template_id?: string | null;
   include_children?: boolean;
   project_ids?: string[];
 }
@@ -267,7 +264,7 @@ export interface ReportPackPreview {
 export interface ReportPackRunApi {
   form(): Promise<ReportPackForm>;
   preview(body: ReportPackRunBody): Promise<ReportPackPreview>;
-  /** Produces the zip while the person waits (a pack over the bounds answers `async_required`; see `isAsyncRequired`). */
+  /** Produces the zip while the person waits (a pack over the bounds answers `async_required`; see `isAsyncRequired`); a `File` carries the name the server chose. */
   download(body: ReportPackRunBody): Promise<Blob>;
   /** Queues the pack to be produced in the background; the person is notified when the zip is ready. */
   queue(body: ReportPackRunBody): Promise<ReportRun>;
@@ -279,7 +276,7 @@ export function reportPackRunApi(scope: LayoutScope, packId: string): ReportPack
   return {
     form: () => api.get<ReportPackForm>(`${base}/form`),
     preview: (body) => api.post<ReportPackPreview>(`${base}/preview`, body),
-    download: (body) => api.postForBlob(`${base}/run`, body),
+    download: (body) => api.postForFile(`${base}/run`, body),
     queue: (body) => api.post<ReportRun>(`${base}/runs`, body),
   };
 }

@@ -17,7 +17,7 @@ flowchart LR
 A report uses the first of these that gives a name:
 
 1. **The layout's own File name** (in the designer's layout settings, or `@filename "…"` in the text view). A pack entry's own file name comes first for that entry.
-2. **The organisation's default** (Organisation Admin, Templates & reports, Report file names). It also names the built-in reports, such as the requirements report, the compliance reports and the module reports.
+2. **The organisation's default** (Organisation Admin, Templates & reports, Configuration). It also names the built-in reports, such as the requirements report, the compliance reports and the module reports.
 3. **The built-in name**, as before: the project or organisation name, then the report's name.
 
 A **pack** has its own *Zip file name*; each report inside it is `NN-<name>.<ext>`, where the name is the entry's *File name*, else the layout's, else the layout's title.

@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, screen, userEvent, waitFor, within } from "storybook/test";
 
-import { buildFolderApi } from "../testing/reportFolderFixtures";
+import { buildFolderApi, openFolderPopover } from "../testing/reportFolderFixtures";
 import { buildPackApi, buildPackSummary } from "../testing/reportPackFixtures";
 import { requiredCaptions } from "../testing/requiredMarkers";
 import { withToast } from "../testing/storybook-helpers";
@@ -62,7 +62,8 @@ export const FolderIsChosenFromTheTreeAndSaved: Story = {
     const dialog = within(await screen.findByRole("dialog", { name: "New report pack" }));
     await expect(requiredCaptions(document.body)).toEqual(["Name"]);
     await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Filed pack");
-    await userEvent.click(await dialog.findByRole("radio", { name: "Quarterly" }));
+    const popover = await openFolderPopover(dialog);
+    await userEvent.click(await popover.findByRole("radio", { name: "Quarterly" }));
     await userEvent.click(dialog.getByRole("button", { name: "Create" }));
     await waitFor(() => expect(args.api!.create).toHaveBeenCalledWith(expect.objectContaining({ folder: "Handover/Quarterly" })));
   },

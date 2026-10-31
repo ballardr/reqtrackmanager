@@ -35,7 +35,6 @@ from app.models.organization import (
     OrgGroup,
     OrgGroupMember,
     PendingInvite,
-    ReportTemplate,
     ServerSettings,
     UserOrgRole,
 )
@@ -122,7 +121,6 @@ __all__ = [
     "ReportPackVersion",
     "ReportFolder",
     "ReportPlacement",
-    "ReportTemplate",
     "ServerSettings",
     "UserOrgRole",
     "PersonalAccessToken",

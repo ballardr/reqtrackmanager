@@ -178,7 +178,7 @@ def org_record_list_report(
     else:
         result = collect(organization.name, provider.label, table)
         stem = f"{stem}-{REPORT_KEY}"
-        rendered = render_result(result, format, branding=resolve_branding(db, organization, None))
+        rendered = render_result(result, format, branding=resolve_branding(db, organization))
         content, ext = rendered.content, rendered.extension
     audit_export(db, current_user, organization, record_type, table, ext)
     return file_response(content, stem, ext)

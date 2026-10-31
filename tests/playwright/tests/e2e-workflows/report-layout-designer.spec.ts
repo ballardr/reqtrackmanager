@@ -51,7 +51,7 @@ test.describe("Report layout designer", () => {
   /** Creates a layout from Project Admin's Report setup and lands in its designer. */
   async function createFromProjectAdmin(page: Page, projectId: string, name: string) {
     await page.goto(`/projects/${projectId}/admin`);
-    await selectProjectAdminGroup(page, "Report Setup");
+    await selectProjectAdminGroup(page, "Reports");
     await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("menuitem", { name: "New layout" }).click();
     const dialog = page.getByRole("dialog", { name: "New report layout" });
@@ -430,7 +430,7 @@ test.describe("Report layout designer", () => {
     expect(created.ok(), await created.text()).toBeTruthy();
 
     await page.goto(`/projects/${project.id}/admin`);
-    await selectProjectAdminGroup(page, "Report Setup");
+    await selectProjectAdminGroup(page, "Reports");
     const item = (grid: Awaited<ReturnType<typeof searchReportSetup>>) => grid.getByRole("button", { name: new RegExp(`^${name}`) });
 
     await test.step("the shared layout is listed, with where it comes from, and opens read-only", async () => {
@@ -475,7 +475,7 @@ test.describe("Report layout designer", () => {
 
     await page.goto(`/orgs/${org.id}/admin`);
     await selectOrgAdminGroup(page, "Templates & reports");
-    await ensureExpanded(page, "Report Setup");
+    await ensureExpanded(page, "Reports");
     await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("menuitem", { name: "New layout" }).click();
     const dialog = page.getByRole("dialog", { name: "New report layout" });

@@ -30,7 +30,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.models.organization import Organization, ReportTemplate
+from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
 from app.modules.registry import (
@@ -123,16 +123,14 @@ def run_module_report(
     return apply_cell_tones(definition.collector(db, ctx), definition.cell_tones)
 
 
-def render_module_report(
-    db: Session, result: ReportResult, fmt: str, *, organization: Organization, template: ReportTemplate | None,
-) -> bytes:
+def render_module_report(db: Session, result: ReportResult, fmt: str, *, organization: Organization) -> bytes:
     """The file of a collected report in `fmt` (any of `report_framework.REPORT_FORMATS` but `json`), with the
-    document formats branded by `template` when one is given.
+    document formats carrying the organisation's report look.
 
     Raises:
         ValueError: `fmt` is not one of those.
     """
-    return render_result(result, fmt, branding=resolve_branding(db, organization, template)).content
+    return render_result(result, fmt, branding=resolve_branding(db, organization)).content
 
 
 __all__ = [

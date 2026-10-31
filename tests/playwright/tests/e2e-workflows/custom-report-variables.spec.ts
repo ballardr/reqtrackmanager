@@ -138,7 +138,7 @@ test.describe("Custom report variables", () => {
     const layout = await createLayout(request, headers, project.id, name, "@layout document\n\n@heading Draft\n");
 
     await page.goto(`/projects/${project.id}/admin`);
-    await selectProjectAdminGroup(page, "Report Setup");
+    await selectProjectAdminGroup(page, "Reports");
     await page.getByRole("link", { name }).click();
     await expect(page.getByRole("heading", { name })).toBeVisible();
     expect(layout.id).toBeTruthy();

@@ -39,7 +39,6 @@ import type {
   ProjectListItem,
   ProjectRole,
   ProjectStatusDefinition,
-  ReportTemplate,
   ScimTokenCreated,
   ScimTokenStatus,
   UserAccess,
@@ -426,6 +425,9 @@ export function OrgAdminPage() {
   const [patMaxLifetimeDays, setPatMaxLifetimeDays] = useState("");
   const [reportOutputRetentionDays, setReportOutputRetentionDays] = useState("");
   const [reportFileName, setReportFileName] = useState("");
+  const [reportFooterText, setReportFooterText] = useState("");
+  const [reportIncludeCoverPage, setReportIncludeCoverPage] = useState(false);
+  const [reportChaptersPerComponent, setReportChaptersPerComponent] = useState(true);
   const [require2fa, setRequire2fa] = useState(false);
   const [allowSelfSignup, setAllowSelfSignup] = useState(false);
   const [autoAcceptEmailDomain, setAutoAcceptEmailDomain] = useState("");
@@ -509,23 +511,12 @@ export function OrgAdminPage() {
   const [scimGeneratedToken, setScimGeneratedToken] = useState<string | null>(null);
   const [scimError, setScimError] = useState<string | null>(null);
 
-  const [reportTemplates, setReportTemplates] = useState<ReportTemplate[]>([]);
-  const [newTemplateName, setNewTemplateName] = useState("");
-  const [newTemplateAccentColor, setNewTemplateAccentColor] = useState("#475569");
-  const [newTemplateIncludeCoverPage, setNewTemplateIncludeCoverPage] = useState(true);
-  const [newTemplateIncludeLogo, setNewTemplateIncludeLogo] = useState(true);
-  const [newTemplateFooterText, setNewTemplateFooterText] = useState("");
-  const [newTemplateChaptersPerComponent, setNewTemplateChaptersPerComponent] = useState(true);
-  const [newTemplateIsDefault, setNewTemplateIsDefault] = useState(false);
-  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
-  // The create/edit form for a report template is a brand-new (or, when
-  // editing, an existing) entity's full field set, not contextual detail
-  // about anything already on screen — per the revised Principle 3 it
-  // opens in a `Modal`, not a permanently-visible nested accordion.
-  const [templateFormOpen, setTemplateFormOpen] = useState(false);
-
   const [useOwnAccentColor, setUseOwnAccentColor] = useState(false);
   const [accentColorInput, setAccentColorInput] = useState("#475569");
+  // The report accent colour follows the UI accent until the person gives reports their own (`null` on the server).
+  const [useOwnReportAccent, setUseOwnReportAccent] = useState(false);
+  const [reportAccentInput, setReportAccentInput] = useState("#475569");
+  const [reportIncludeLogo, setReportIncludeLogo] = useState(true);
   const [headerTitleInput, setHeaderTitleInput] = useState("");
   const [emailFooterCompanyNameInput, setEmailFooterCompanyNameInput] = useState("");
   const [emailFooterWebsiteInput, setEmailFooterWebsiteInput] = useState("");
@@ -631,11 +622,11 @@ export function OrgAdminPage() {
     // a whole for exactly that case — caught here so it surfaces as a
     // real message instead of leaving `org` unset and the page spinning
     // forever (its loading gate is just `if (!org) return <Spinner />`).
-    let o: Organization, allG: OrgGroup[], r: FileAsset[], projects: ProjectListItem[], templates: ReportTemplate[];
+    let o: Organization, allG: OrgGroup[], r: FileAsset[], projects: ProjectListItem[];
     let statuses: ProjectStatusDefinition[];
     let permissionsList: Permission[], customRoleList: CustomRoleDefinition[], entityScopeList: EntityScope[];
     try {
-      [o, allG, r, projects, templates, statuses, permissionsList, customRoleList, entityScopeList] =
+      [o, allG, r, projects, statuses, permissionsList, customRoleList, entityScopeList] =
         await Promise.all([
         api.get<Organization>(`/api/v1/orgs/${orgId}`),
         // Unpaginated — nested-group name resolution and the "add nested
@@ -646,7 +637,6 @@ export function OrgAdminPage() {
         // Scoped to this org server-side: only its projects are used below,
         // and the unscoped list spanned every org the caller belongs to.
         api.get<ProjectListItem[]>(`/api/v1/projects?archived=false&organization_id=${orgId}`),
-        api.get<ReportTemplate[]>(`/api/v1/orgs/${orgId}/report-templates`),
         api.get<ProjectStatusDefinition[]>(`/api/v1/orgs/${orgId}/project-statuses`),
         // Open to any real org role
         // (backend `_VIEW_ROLES`), same tier as every other call in this
@@ -678,6 +668,9 @@ export function OrgAdminPage() {
     setOrgNameEdit(o.name);
     setUseOwnAccentColor(o.accent_color_hex != null);
     setAccentColorInput(o.accent_color_hex ?? "#475569");
+    setUseOwnReportAccent(o.report_accent_color_hex != null);
+    setReportAccentInput(o.report_accent_color_hex ?? o.accent_color_hex ?? "#475569");
+    setReportIncludeLogo(o.report_include_logo);
     setHeaderTitleInput(o.header_title ?? "");
     setEmailFooterCompanyNameInput(o.email_footer_company_name ?? "");
     setEmailFooterWebsiteInput(o.email_footer_website ?? "");
@@ -686,7 +679,6 @@ export function OrgAdminPage() {
     setResources(r);
     setTemplateProjects(projects.filter((p) => p.is_template && p.organization_id === orgId));
     setThisOrgVisibleProjects(projects.filter((p) => p.organization_id === orgId));
-    setReportTemplates(templates);
     setProjectStatuses(statuses);
     setPermissions(permissionsList);
     setCustomRoles(customRoleList);
@@ -707,6 +699,9 @@ export function OrgAdminPage() {
         setPatMaxLifetimeDays(a.pat_max_lifetime_days ? String(a.pat_max_lifetime_days) : "");
         setReportOutputRetentionDays(a.report_output_retention_days ? String(a.report_output_retention_days) : "");
         setReportFileName(a.report_file_name ?? "");
+        setReportFooterText(a.report_footer_text ?? "");
+        setReportIncludeCoverPage(a.report_include_cover_page);
+        setReportChaptersPerComponent(a.report_chapters_per_component);
         setRequire2fa(a.require_2fa);
         setAllowSelfSignup(a.allow_self_signup);
         setAutoAcceptEmailDomain(a.auto_accept_email_domain ?? "");
@@ -877,6 +872,9 @@ export function OrgAdminPage() {
         pat_max_lifetime_days: patMaxLifetimeDays ? Number(patMaxLifetimeDays) : null,
         report_output_retention_days: reportOutputRetentionDays ? Number(reportOutputRetentionDays) : null,
         report_file_name: reportFileName.trim() || null,
+        report_footer_text: reportFooterText.trim() || null,
+        report_include_cover_page: reportIncludeCoverPage,
+        report_chapters_per_component: reportChaptersPerComponent,
         require_2fa: require2fa,
         allow_self_signup: allowSelfSignup,
         auto_accept_email_domain: autoAcceptEmailDomain || null,
@@ -1829,6 +1827,8 @@ export function OrgAdminPage() {
     try {
       await api.put<Organization>(`/api/v1/orgs/${orgId}/branding`, {
         accent_color_hex: useOwnAccentColor ? accentColorInput : null,
+        report_accent_color_hex: useOwnReportAccent ? reportAccentInput : null,
+        report_include_logo: reportIncludeLogo,
         header_title: headerTitleInput || null,
         email_footer_company_name: emailFooterCompanyNameInput || null,
         email_footer_website: emailFooterWebsiteInput || null,
@@ -1917,68 +1917,6 @@ export function OrgAdminPage() {
     } catch (err) {
       setScimError(err instanceof ApiError ? err.message : strings.common.error);
     }
-  }
-
-  function resetTemplateForm() {
-    setEditingTemplateId(null);
-    setNewTemplateName("");
-    setNewTemplateAccentColor("#475569");
-    setNewTemplateIncludeCoverPage(true);
-    setNewTemplateIncludeLogo(true);
-    setNewTemplateFooterText("");
-    setNewTemplateChaptersPerComponent(true);
-    setNewTemplateIsDefault(false);
-  }
-
-  function openNewTemplateForm() {
-    resetTemplateForm();
-    setTemplateFormOpen(true);
-  }
-
-  function closeTemplateForm() {
-    resetTemplateForm();
-    setTemplateFormOpen(false);
-  }
-
-  function startEditTemplate(tpl: ReportTemplate) {
-    setEditingTemplateId(tpl.id);
-    setNewTemplateName(tpl.name);
-    setNewTemplateAccentColor(tpl.accent_color_hex);
-    setNewTemplateIncludeCoverPage(tpl.include_cover_page);
-    setNewTemplateIncludeLogo(tpl.include_logo);
-    setNewTemplateFooterText(tpl.footer_text ?? "");
-    setNewTemplateChaptersPerComponent(tpl.chapters_per_component);
-    setNewTemplateIsDefault(tpl.is_default);
-    setTemplateFormOpen(true);
-  }
-
-  async function saveReportTemplate() {
-    if (!newTemplateName) return;
-    const payload = {
-      name: newTemplateName,
-      accent_color_hex: newTemplateAccentColor,
-      include_cover_page: newTemplateIncludeCoverPage,
-      include_logo: newTemplateIncludeLogo,
-      footer_text: newTemplateFooterText || null,
-      chapters_per_component: newTemplateChaptersPerComponent,
-      is_default: newTemplateIsDefault,
-    };
-    const editing = editingTemplateId !== null;
-    const saved = await run(
-      () => (editing
-        ? api.put(`/api/v1/orgs/${orgId}/report-templates/${editingTemplateId}`, payload)
-        : api.post(`/api/v1/orgs/${orgId}/report-templates`, payload)),
-      editing ? "save" : "create", "report template",
-    );
-    if (!saved) return;
-    closeTemplateForm();
-    reload();
-  }
-
-  async function deleteReportTemplate(templateId: string) {
-    if (!(await run(() => api.delete(`/api/v1/orgs/${orgId}/report-templates/${templateId}`), "delete", "report template"))) return;
-    if (editingTemplateId === templateId) resetTemplateForm();
-    reload();
   }
 
   async function uploadResource(file: File) {
@@ -2601,8 +2539,6 @@ export function OrgAdminPage() {
                   <ul style={{ margin: 0 }}>
                     <li>{strings.importMerge.projectsImported(importMergeResult.projects_imported)}</li>
                     <li>{strings.importMerge.projectsSkipped(importMergeResult.projects_skipped)}</li>
-                    <li>{strings.importMerge.reportTemplatesImported(importMergeResult.report_templates_imported)}</li>
-                    <li>{strings.importMerge.reportTemplatesOverwritten(importMergeResult.report_templates_overwritten)}</li>
                   </ul>
                   {importMergeResult.warnings.length > 0 && (
                     <ul style={{ margin: 0, color: "var(--color-warning, #b58900)" }}>
@@ -3276,6 +3212,21 @@ export function OrgAdminPage() {
               {useOwnAccentColor && (
                 <ColorField helpNotNeeded label={strings.admin.accentColor} value={accentColorInput} onChange={setAccentColorInput} />
               )}
+              <CheckboxField
+                help={strings.help.reportAccentColor}
+                label={strings.orgAdmin.useOwnReportAccent}
+                checked={useOwnReportAccent}
+                onChange={setUseOwnReportAccent}
+              />
+              {useOwnReportAccent && (
+                <ColorField helpNotNeeded label={strings.orgAdmin.reportAccentColor} value={reportAccentInput} onChange={setReportAccentInput} />
+              )}
+              <CheckboxField
+                help={strings.help.reportIncludeLogo}
+                label={strings.admin.includeLogo(orgLabel)}
+                checked={reportIncludeLogo}
+                onChange={setReportIncludeLogo}
+              />
               <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)" }} />
               <h4 style={{ margin: 0 }}>{strings.orgAdmin.emailFooterTitle}</h4>
               <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{strings.orgAdmin.emailFooterHint(orgLabel)}</p>
@@ -3333,13 +3284,13 @@ export function OrgAdminPage() {
               </CollapsibleSection>
             )}
             {orgId && (
-              <CollapsibleSection sectionKey="orgAdmin.reportSnippets" title={strings.reportSnippetsPanel.sectionTitle}>
+              <CollapsibleSection sectionKey="orgAdmin.reportSnippets" title={strings.reportSnippetsPanel.sectionTitle} defaultCollapsed>
                 <ReportSnippetsPanel scope={snippetScope} />
               </CollapsibleSection>
             )}
 
             {advanced && (
-              <CollapsibleSection sectionKey="orgAdmin.reportFileName" title={strings.orgAdmin.reportFileNameTitle}>
+              <CollapsibleSection sectionKey="orgAdmin.reportConfiguration" title={strings.orgAdmin.reportConfigurationTitle} defaultCollapsed>
                 <FileNameField
                   label={strings.reportFileName.organizationLabel}
                   help={strings.help.reportFileNameOrganization}
@@ -3350,15 +3301,6 @@ export function OrgAdminPage() {
                     setReportFileName(next);
                   }}
                 />
-                {advancedError && <div style={{ color: "var(--color-danger)" }}>{advancedError}</div>}
-                <button className="btn btn-primary" onClick={saveAdvanced} style={{ alignSelf: "flex-start" }}>
-                  {strings.reportFileName.save}
-                </button>
-              </CollapsibleSection>
-            )}
-
-            {advanced && (
-              <CollapsibleSection sectionKey="orgAdmin.reportOutput" title={strings.orgAdmin.reportOutputTitle}>
                 <TextField
                   label={strings.orgAdmin.reportOutputRetention}
                   help={strings.help.reportOutputRetention}
@@ -3372,84 +3314,41 @@ export function OrgAdminPage() {
                   )}
                   inputProps={{ type: "number", min: 1, max: 3650, style: { maxWidth: 160 } }}
                 />
+                <TextField
+                  label={strings.orgAdmin.reportFooterText}
+                  help={strings.help.reportFooterText}
+                  value={reportFooterText}
+                  onChange={(next) => {
+                    advancedDirtyRef.current = true;
+                    setReportFooterText(next);
+                  }}
+                  inputProps={{ maxLength: 500 }}
+                />
+                <CheckboxField
+                  label={strings.orgAdmin.reportIncludeCoverPage}
+                  help={strings.help.reportIncludeCoverPage}
+                  checked={reportIncludeCoverPage}
+                  onChange={(next) => {
+                    advancedDirtyRef.current = true;
+                    setReportIncludeCoverPage(next);
+                  }}
+                />
+                <CheckboxField
+                  label={strings.orgAdmin.reportChaptersPerComponent}
+                  help={strings.help.reportChaptersPerComponent}
+                  checked={reportChaptersPerComponent}
+                  onChange={(next) => {
+                    advancedDirtyRef.current = true;
+                    setReportChaptersPerComponent(next);
+                  }}
+                />
                 {advancedError && <div style={{ color: "var(--color-danger)" }}>{advancedError}</div>}
                 <button className="btn btn-primary" onClick={saveAdvanced} style={{ alignSelf: "flex-start" }}>
-                  {strings.orgAdmin.saveReportOutput}
+                  {strings.orgAdmin.saveReportConfiguration}
                 </button>
               </CollapsibleSection>
             )}
 
-            <CollapsibleSection sectionKey="orgAdmin.reportTemplates" title={strings.admin.reportTemplates}>
-              <div className="row" style={{ justifyContent: "flex-end" }}>
-                <button className="btn btn-primary" onClick={openNewTemplateForm}>
-                  <Plus /> {strings.admin.newReportTemplate}
-                </button>
-              </div>
-              {reportTemplates.map((tpl) => (
-                <div key={tpl.id} className="row" style={{ justifyContent: "space-between" }}>
-                  <span>
-                    {tpl.name} <Badge style={{ background: tpl.accent_color_hex }}>&nbsp;&nbsp;</Badge>
-                    {tpl.is_default && <> <Badge>{strings.admin.defaultTemplateBadge}</Badge></>}
-                  </span>
-                  <div className="row" style={{ gap: "var(--space-2)" }}>
-                    <button className="btn" onClick={() => startEditTemplate(tpl)}>
-                      {strings.common.edit}
-                    </button>
-                    <button
-                      className="btn btn-danger"
-                      title={strings.orgAdmin.deleteReportTemplate(tpl.name)}
-                      aria-label={strings.orgAdmin.deleteReportTemplate(tpl.name)}
-                      onClick={() => deleteReportTemplate(tpl.id)}
-                    >
-                      <Trash2 />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </CollapsibleSection>
-            {templateFormOpen && (
-              <Modal
-                title={editingTemplateId ? strings.admin.editReportTemplate : strings.admin.newReportTemplate}
-                onClose={closeTemplateForm}
-                size="lg"
-              >
-                <div className="stack">
-                  <FormGrid minColumn="18rem">
-                    <TextField helpNotNeeded required label={strings.admin.templateName} value={newTemplateName} onChange={setNewTemplateName} />
-                    <ColorField helpNotNeeded label={strings.admin.accentColor} value={newTemplateAccentColor} onChange={setNewTemplateAccentColor} />
-                    <FormGridFull>
-                      <TextField helpNotNeeded label={strings.admin.footerText} value={newTemplateFooterText} onChange={setNewTemplateFooterText} />
-                    </FormGridFull>
-                    <CheckboxField helpNotNeeded
-                      label={strings.admin.includeCoverPage} checked={newTemplateIncludeCoverPage}
-                      onChange={setNewTemplateIncludeCoverPage}
-                    />
-                    <CheckboxField helpNotNeeded
-                      label={strings.admin.includeLogo(orgLabel)} checked={newTemplateIncludeLogo}
-                      onChange={setNewTemplateIncludeLogo}
-                    />
-                    <FormGridFull>
-                      <CheckboxField help={strings.help.reportDefaultTemplate}
-                        label={strings.admin.templateIsDefault} checked={newTemplateIsDefault}
-                        onChange={setNewTemplateIsDefault}
-                      />
-                    </FormGridFull>
-                    <FormGridFull>
-                      <CheckboxField help={strings.help.reportChapterDefault}
-                        label={strings.admin.templateChaptersPerComponent} checked={newTemplateChaptersPerComponent}
-                        onChange={setNewTemplateChaptersPerComponent}
-                      />
-                    </FormGridFull>
-                  </FormGrid>
-                  <FormActions
-                    onCancel={closeTemplateForm}
-                    onSave={saveReportTemplate}
-                    saveLabel={editingTemplateId ? strings.common.save : strings.common.create}
-                    saveDisabled={!newTemplateName}
-                  />
-                </div>
-              </Modal>
-            )}
           </div>
         )}
 

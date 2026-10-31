@@ -182,15 +182,15 @@ test.describe("Custom report background run", () => {
 
     await page.goto(`/orgs/${org.id}/admin`);
     await selectOrgAdminGroup(page, "Templates & reports");
-    await ensureExpanded(page, "Background reports");
+    await ensureExpanded(page, "Configuration");
     await expect(page.getByText(/platform default of 7 days/)).toBeVisible();
     await page.getByLabel("Keep background report files for (days)").fill("3");
-    await page.getByRole("button", { name: "Save background report settings" }).click();
+    await page.getByRole("button", { name: "Save configuration" }).click();
 
     await expect(page.getByText("Settings saved.")).toBeVisible();
     await page.reload();
     await selectOrgAdminGroup(page, "Templates & reports");
-    await ensureExpanded(page, "Background reports");
+    await ensureExpanded(page, "Configuration");
     await expect(page.getByLabel("Keep background report files for (days)")).toHaveValue("3");
   });
 });

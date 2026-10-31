@@ -146,9 +146,22 @@ def _save(
 
 
 def _update(db: Session, user: User, row: SavedReportSnippet, body: ReportSnippetUpdate) -> SavedReportSnippet:
+    """Changes the details and, when a tree is sent, replaces the blocks with all of that tree's; commits.
+
+    Raises:
+        HTTPException: 422 a detail or blocks that cannot be stored, or a tree of the other family; 409 a taken name.
+    """
     try:
+        fragment = None
+        if body.tree is not None:
+            if _family(body.tree) != row.family:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "The blocks must be of the snippet's own kind (document or table).")
+            nodes = body.tree.get("nodes")
+            fragment = report_snippet_store.fragment_from_selection(
+                body.tree, "nodes", 0, len(nodes) if isinstance(nodes, list) else 0,
+            )
         report_snippet_store.update_snippet(
-            db, row, name=body.name, description=body.description, category=body.category, actor_id=user.id,
+            db, row, name=body.name, description=body.description, category=body.category, actor_id=user.id, fragment=fragment,
         )
     except (report_snippet_store.SnippetSaveError, report_snippet_store.SnippetNameTakenError) as exc:
         db.rollback()
@@ -209,7 +222,7 @@ def update_org_snippet(
     organization_id: UUID, snippet_id: UUID, body: ReportSnippetUpdate, current_user: User = Depends(manage_org_layouts),
     db: Session = Depends(get_db),
 ) -> SavedReportSnippetOut:
-    """Renames or re-describes the snippet."""
+    """Renames or re-describes the snippet, and replaces its blocks when a tree is sent."""
     row = _get_owned(db, snippet_id, organization_id=organization_id, project_id=None)
     return _out(_update(db, current_user, row, body), "organization")
 
@@ -360,7 +373,7 @@ def update_project_snippet(
     project_id: UUID, snippet_id: UUID, body: ReportSnippetUpdate, current_user: User = Depends(manage_project_layouts),
     db: Session = Depends(get_db),
 ) -> SavedReportSnippetOut:
-    """Renames or re-describes the project's own snippet."""
+    """Renames or re-describes the project's own snippet, and replaces its blocks when a tree is sent."""
     row = _own(db, _project_or_404(db, project_id), snippet_id)
     return _out(_update(db, current_user, row, body), "project")
 

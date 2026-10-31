@@ -186,11 +186,6 @@ def test_a_document_over_the_row_limit_is_refused_and_the_csv_is_not(world, monk
     assert _report(world, project).status_code == 200
 
 
-def test_a_report_template_must_be_the_organisations_own(world):
-    project = world.project()
-    assert _report(world, project, format="pdf", report_template_id=str(uuid.uuid4())).status_code == 400
-
-
 # --- access and audit ---------------------------------------------------------------------------------------------
 
 

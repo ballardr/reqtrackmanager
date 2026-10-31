@@ -81,7 +81,6 @@ export interface ReportLayoutSummary {
   /** The author's Reports picker folder, up to three levels written `A/B` (`""` = the default folder). */
   folder: string;
   /** The branding template this layout's documents use; `null` follows the organisation's default. */
-  report_template_id: string | null;
   family: LayoutFamily;
   current_version: number;
   origin: LayoutOrigin;
@@ -373,7 +372,7 @@ export interface ReportLayoutApi {
   version(id: string, version: number): Promise<ReportLayoutVersion>;
   save(id: string, body: { tree: ReportLayoutTree; base_version: number; comment?: string }): Promise<ReportLayoutDetail>;
   update(
-    id: string, body: { name?: string; description?: string; folder?: string; report_template_id?: string | null },
+    id: string, body: { name?: string; description?: string; folder?: string },
   ): Promise<ReportLayoutSummary>;
   remove(id: string): Promise<void>;
   parseText(text: string): Promise<TextParseResult>;
@@ -393,6 +392,8 @@ export interface ReportLayoutApi {
   preview(body: PreviewRequest): Promise<PreviewResult>;
   /** The draft's run-time variables with their defaults and current options (nothing is stored). */
   draftVariables(text: string): Promise<DraftVariables>;
+  /** Organisation scope only: the names of the starter layouts the organisation lacks (empty when every starter is present). */
+  missingStarters?(): Promise<string[]>;
   /** Organisation scope only: writes the starter layouts the organisation lacks; resolves to the names added. */
   addStarters?(): Promise<string[]>;
   /** Project scope only: hides or shows an inherited layout. */
@@ -447,6 +448,7 @@ export function reportLayoutApi(scope: LayoutScope): ReportLayoutApi {
     },
   };
   if (scope.kind === "organization") {
+    layouts.missingStarters = async () => (await api.get<{ missing: string[] }>(`${base}/starters`)).missing;
     layouts.addStarters = async () => (await api.post<{ added: string[] }>(`${base}/starters`, {})).added;
   }
   if (scope.kind === "project") {

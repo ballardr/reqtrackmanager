@@ -63,7 +63,7 @@ test.describe("Copy reports between projects", () => {
   test("ticked reports are previewed, copied under a new name where the name is taken, and listed in the target", async ({ page, request }) => {
     const { headers, source, target, names, suffix } = await setup(page, request);
     await page.goto(`/projects/${source.id}/admin`);
-    await selectProjectAdminGroup(page, "Report Setup");
+    await selectProjectAdminGroup(page, "Reports");
 
     await test.step("copy mode shows tick boxes and nothing can be copied until something is ticked", async () => {
       await page.getByRole("button", { name: "Copy to another project…" }).click();
@@ -104,7 +104,7 @@ test.describe("Copy reports between projects", () => {
   test("a single report is copied from its row menu, and skipping a taken name leaves the target's own alone", async ({ page, request }) => {
     const { headers, source, target, names, suffix } = await setup(page, request);
     await page.goto(`/projects/${source.id}/admin`);
-    await selectProjectAdminGroup(page, "Report Setup");
+    await selectProjectAdminGroup(page, "Reports");
     const grid = await searchReportSetup(page, suffix);
     await grid.getByRole("button", { name: `Actions for ${names.second}` }).click();
     await page.getByRole("menuitem", { name: "Copy to another project…" }).click();
@@ -123,7 +123,7 @@ test.describe("Copy reports between projects", () => {
     // Archived projects are not offered, leaving no target at all.
     expect((await request.post(`${API}/projects/${target.id}/archive`, { headers })).ok()).toBeTruthy();
     await page.goto(`/projects/${source.id}/admin`);
-    await selectProjectAdminGroup(page, "Report Setup");
+    await selectProjectAdminGroup(page, "Reports");
     const grid = await searchReportSetup(page, suffix);
     await grid.getByRole("button", { name: `Actions for ${names.first}` }).click();
     await page.getByRole("menuitem", { name: "Copy to another project…" }).click();

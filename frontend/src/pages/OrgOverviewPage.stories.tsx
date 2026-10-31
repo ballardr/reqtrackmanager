@@ -14,7 +14,7 @@ const ORG_ID = "org-1";
 const org: Organization = {
   id: ORG_ID, name: "Acme Corp", created_at: "2026-01-01T00:00:00Z", logo_file_id: null,
   default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
-  disabled_at: null, accent_color_hex: null, header_title: null,
+  disabled_at: null, accent_color_hex: null, report_accent_color_hex: null, report_include_logo: true, header_title: null,
   email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
   code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto" }, enforce_code_everywhere: false,
   force_require_change_request_for_approved_links: false,
@@ -39,7 +39,6 @@ function mockOrgOverviewApis(
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path === `/api/v1/orgs/${ORG_ID}/report-catalogue`) return overrides.reports ?? [];
     if (path.includes("/reports/")) return buildReportResult({ title: "Org fixture report", scope_label: "Acme Corp" });
-    if (path.includes("/report-templates")) return [];
     if (path.startsWith("/api/v1/report-runs")) return [];
     if (path === `/api/v1/orgs/${ORG_ID}`) return overrides.org ?? org;
     if (path.includes("/overview-stats")) return overrides.stats ?? fullTotalStats;

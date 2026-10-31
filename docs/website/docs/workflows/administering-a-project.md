@@ -27,9 +27,9 @@ sidebar_position: 12
 
 **Project Admin → Tags** sets whether anyone who can tag a record may coin a new tag or only the listed ones, and lets you add, rename, colour, merge, reclassify and delete the project's tags, with a usage table per kind of record. A child project follows its parent's list until it adds a tag of its own. See [Tags](../core-features/tags.md#keeping-the-list-tidy-project-admin--tags).
 
-## Report setup
+## Reports
 
-**Project Admin → Report Setup** holds the project's report layouts, report packs and where each report appears. Introductions, chapters and appendices are written in a layout; there is no default report template per project (pick a branding template when generating). See [Reports and export](../core-features/reports-and-export.md#introductions-chapters-and-appendices).
+**Project Admin → Reports** holds the project's report layouts, report packs and where each report appears. Introductions, chapters and appendices are written in a layout; the organisation has one report look, so there is no branding to pick when generating. See [Reports and export](../core-features/reports-and-export.md#introductions-chapters-and-appendices).
 
 ## Terminology
 

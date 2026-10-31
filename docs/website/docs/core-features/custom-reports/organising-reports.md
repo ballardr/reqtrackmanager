@@ -25,7 +25,7 @@ The chosen report is in the page's link (`?report=…`), so a link to a report o
 
 ## Filing your own layouts and packs
 
-A layout or a pack has an optional **Folder** in its create and edit form. You choose it from a tree of the folders already in use, so nothing is misspelt; choose **No folder** to file it under **Custom reports** (layouts) or **Report packs**. Beside the tree:
+A layout or a pack has an optional **Folder** in its create and edit form. The field only says where it is filed now (the folder path, or **No folder**); press it to open a small panel with a tree of the folders already in use, so nothing is misspelt. Choosing a folder closes the panel and the field shows it; the move is saved with the form's **Save**, and **Cancel** discards it. Choose **No folder** to file it under **Custom reports** (layouts) or **Report packs**. In the panel, beside the tree:
 
 - **New folder** adds one inside the folder you have chosen (or at the top level when none is), up to three levels deep, and chooses it.
 - **Rename** changes the last level of the folder you chose. Reports filed in it, and in the folders inside it, follow.
@@ -33,11 +33,11 @@ A layout or a pack has an optional **Folder** in its create and edit form. You c
 
 You can rename or delete only folders your organisation or project owns; a folder that comes from the organisation or a parent project can be filed under but not changed from below. Folders you add travel in a project or organisation [export](../zip-export-import.md) even when empty. The folder travels with the layout or pack in a project or organisation [export](../zip-export-import.md).
 
-## Report Setup: one list for every report
+## Reports: one list for every report
 
-An organisation's **Templates & reports** and a project's **Report Setup** show every report people there can run in one folder list, laid out like the Reports chooser: your layouts, your report packs, and the reports modules and the platform provide. Each row has an icon for its type (a document, a table of rows, or a pack of files), and the folders open and close like a file manager's. **Search** and the **Type**, **Show** (moved from the default, hidden) and, in a project, **Shared from** filters narrow it; a search opens every folder that holds a match.
+An organisation's **Templates & reports** and a project's **Reports** show every report people there can run in one folder list, laid out like the Reports chooser: your layouts, your report packs, and the reports modules and the platform provide. Each row has an icon for its type (a document, a table of rows, or a pack of files), and the folders open and close like a file manager's. **Search** and the **Type**, **Show** (moved from the default, hidden) and, in a project, **Shared from** filters narrow it; a search opens every folder that holds a match.
 
-The **New** menu creates a layout, a pack or a folder. Each row's **Actions** menu offers what applies to it:
+The **New** menu creates a layout, a pack or a folder, starts a layout from a built-in starter, and (in an organisation) offers **Add missing starters** when a starter layout was deleted. Each row's **Actions** menu offers what applies to it:
 
 | Row | Actions |
 | --- | --- |

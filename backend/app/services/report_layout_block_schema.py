@@ -175,12 +175,14 @@ LAYOUT_FIELDS: tuple[BlockField, ...] = (
     BlockField(
         "header", "Header", "running_band",
         help="Text printed at the top of every page, in a left, centre and right cell: {{report_title}}, {{project_code}}, "
-        "{{page}} and so on. A page style that sets none uses this one.", families=("document",),
+        "{{page}}, the organisation's {{org.footer_text}} and so on; a logo may be the organisation's own (org_logo). "
+        "A page style that sets none uses this one.", families=("document",),
     ),
     BlockField(
         "footer", "Footer", "running_band",
         help="Text printed at the bottom of every page, in a left, centre and right cell, for example \"Page {{page}} of {{pages}}\". "
-        "A page style that sets none uses this one. With none here, the report template's footer text and a page number print.",
+        "A page style that sets none uses this one. With none here, a page number prints. {{org.footer_text}} is the organisation's "
+        "default footer text.",
         families=("document",),
     ),
     BlockField(

@@ -64,9 +64,11 @@ type Editor = { mode: "add" | "rename"; name: string } | null;
  * @param extraPaths Further folders to offer that the scope does not own (a module report's default folder).
  * @param onChanged Called after a folder is added, renamed or deleted, so the page behind can reload what it lists.
  * @param onBusyChange Told when a folder change starts and ends, so the form can keep Save disabled until the value has followed it.
+ * @param onPick Called after a row is chosen (not after a rename, add or delete moves the value), so a host can close itself.
+ * @param onConfirmChange Told when the delete confirmation opens and closes, so a popover host stays open behind it.
  */
 export function ReportFolderChooser({
-  value, onChange, api, label, helpKey = "reportFolder", noneLabel, extraPaths = [], onChanged, onBusyChange,
+  value, onChange, api, label, helpKey = "reportFolder", noneLabel, extraPaths = [], onChanged, onBusyChange, onPick, onConfirmChange,
 }: {
   value: string;
   onChange: (path: string) => void;
@@ -77,6 +79,8 @@ export function ReportFolderChooser({
   extraPaths?: string[];
   onChanged?: () => void;
   onBusyChange?: (busy: boolean) => void;
+  onPick?: (path: string) => void;
+  onConfirmChange?: (open: boolean) => void;
 }) {
   const strings = useStrings();
   const text = strings.reportFolders;
@@ -88,6 +92,11 @@ export function ReportFolderChooser({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => onBusyChange?.(busy), [busy, onBusyChange]);
+  useEffect(() => onConfirmChange?.(confirmDelete), [confirmDelete, onConfirmChange]);
+  const pick = (path: string) => {
+    onChange(path);
+    onPick?.(path);
+  };
 
   const chosen = tidyFolder(value);
   const owned = useMemo(() => new Set(folders.folders.filter((f) => f.own).map((f) => f.path.toLowerCase())), [folders.folders]);
@@ -149,10 +158,10 @@ export function ReportFolderChooser({
           id={controlId} role="radiogroup" aria-label={label ?? text.folderLabel}
           style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "var(--space-2)", maxHeight: "14rem", overflowY: "auto" }}
         >
-          <ChoiceRow label={noneLabel ?? text.none} selected={chosen === ""} onSelect={() => onChange("")} />
+          <ChoiceRow label={noneLabel ?? text.none} selected={chosen === ""} onSelect={() => pick("")} />
           <TreeView
             nodes={nodes} nodeLabel={(node) => node.name} emptyText={text.empty}
-            renderNode={(node) => <ChoiceRow label={node.name} selected={isSameFolder(node.path, chosen)} onSelect={() => onChange(node.path)} />}
+            renderNode={(node) => <ChoiceRow label={node.name} selected={isSameFolder(node.path, chosen)} onSelect={() => pick(node.path)} />}
           />
         </div>
         <span className="text-muted" style={{ fontSize: "0.8rem" }}>{chosen === "" ? (noneLabel ?? text.none) : chosen}</span>

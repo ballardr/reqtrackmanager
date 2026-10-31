@@ -2,7 +2,6 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
-import type { ReportTemplate } from "../api/types";
 import { installedModules } from "../modules/registry";
 import { buildReportCatalogueEntry, buildReportResult, buildReportVariable } from "../testing/reportFixtures";
 import { withRouter, withToast } from "../testing/storybook-helpers";
@@ -16,15 +15,8 @@ const orgEntry = buildReportCatalogueEntry({
   path: "/api/v1/orgs/org-1/modules/fixture_report_module/reports/fixture-report",
 });
 
-const template: ReportTemplate = {
-  id: "tpl-1", organization_id: "org-1", name: "Branded template", accent_color_hex: "#475569",
-  include_cover_page: true, include_logo: true, footer_text: null,
-  chapters_per_component: false, is_default: false,
-};
-
-function mockRunApis(opts: { templates?: ReportTemplate[]; result?: ReturnType<typeof buildReportResult> } = {}) {
+function mockRunApis(opts: { result?: ReturnType<typeof buildReportResult> } = {}) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
-    if (path.includes("/report-templates")) return opts.templates ?? [];
     if (path.startsWith(entry.path) || path.startsWith(orgEntry.path)) return opts.result ?? buildReportResult();
     throw new Error(`Unmocked GET: ${path}`);
   });
@@ -227,7 +219,7 @@ export const ProjectReportHasNoProjectPicker: Story = {
 /** A document download has no branding choice, even when the organisation has templates: the server applies the
  * layout's own template, else the organisation's default, so the request names none; it confirms with a toast. */
 export const DocumentDownloadHasNoBrandingChoice: Story = {
-  beforeEach: () => mockRunApis({ templates: [template] }),
+  beforeEach: () => mockRunApis(),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
@@ -242,7 +234,7 @@ export const DocumentDownloadHasNoBrandingChoice: Story = {
 
 /** A CSV download is a flat export: no template in the request. */
 export const CsvDownloadOmitsTemplate: Story = {
-  beforeEach: () => mockRunApis({ templates: [template] }),
+  beforeEach: () => mockRunApis(),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
@@ -256,7 +248,7 @@ export const CsvDownloadOmitsTemplate: Story = {
 /** Every format a module report declares is in the menu, and none of them sends a branding template. */
 export const EveryDeclaredFormatIsInTheMenu: Story = {
   args: { entry: buildReportCatalogueEntry({ formats: ["json", "pdf", "docx", "html", "odt", "csv", "xlsx", "ods"] }) },
-  beforeEach: () => mockRunApis({ templates: [template] }),
+  beforeEach: () => mockRunApis(),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());

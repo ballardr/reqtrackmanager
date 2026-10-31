@@ -37,7 +37,7 @@ Default bootstrap admin login: `admin@example.com` / `ChangeMe123!`.
 
 ## Demo data
 
-A bootstrap admin with an otherwise empty instance isn't much to look at. To populate the running stack with a realistic, presentable dataset — a fictional drone-inspection company, two projects at different lifecycle stages, requirements at varied statuses, an approved and a pending change request, discussion threads, custom fields, and a branded report template:
+A bootstrap admin with an otherwise empty instance isn't much to look at. To populate the running stack with a realistic, presentable dataset — a fictional drone-inspection company, two projects at different lifecycle stages, requirements at varied statuses, an approved and a pending change request, discussion threads, custom fields, and a branded report look:
 
 ```bash
 cd tests/container && docker compose exec backend python scripts/seed_demo_data.py

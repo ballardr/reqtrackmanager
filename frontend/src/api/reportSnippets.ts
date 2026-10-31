@@ -3,7 +3,7 @@
  *
  * Types and calls for author-saved report snippets: a named fragment of a layout that an organisation or project keeps and
  * inserts into other layouts. Inserting one is `ReportLayoutApi.snippets` / `applySnippet` (saved snippets are listed
- * beside the built-in set); this module is saving a selection of a draft, managing the saved ones, copying them between
+ * beside the built-in set); this module is saving a selection of a draft or a whole edited tree, managing the saved ones, copying them between
  * tiers and hiding or restoring an inherited one. Two tiers with one shape (`/orgs/{id}/report-snippets`,
  * `/projects/{id}/report-snippets`), so {@link ReportSnippetStoreApi} is one injectable interface bound to a scope by
  * {@link reportSnippetStoreApi}; the project tier adds hiding and restoring.
@@ -31,6 +31,12 @@ export interface SavedSnippet {
   page_styles: string[];
   variables: string[];
   updated_at: string;
+}
+
+/** A saved snippet with its fragment (`SavedReportSnippetDetailOut`): the blocks it inserts and the page styles and variables they use. */
+export interface SavedSnippetDetail extends SavedSnippet {
+  nodes: ReportLayoutTree[];
+  root: Record<string, unknown>;
 }
 
 /** A run of blocks of a draft: `count` blocks from `start` in the list `container` (`nodes`, `nodes[2].children`). */
@@ -68,7 +74,10 @@ export interface ReportSnippetStoreApi {
   check(tree: ReportLayoutTree, selection: SnippetSelection, level: SnippetLevel): Promise<SnippetCheck>;
   /** Saves the selection as a snippet at `level`. */
   save(body: SnippetDetails & { tree: ReportLayoutTree; selection: SnippetSelection }, level: SnippetLevel): Promise<SavedSnippet>;
-  update(id: string, body: Partial<SnippetDetails>): Promise<SavedSnippet>;
+  /** One snippet with its blocks. */
+  get(id: string): Promise<SavedSnippetDetail>;
+  /** Changes the details and, when `tree` is given, replaces the blocks with all the blocks of that tree. */
+  update(id: string, body: Partial<SnippetDetails> & { tree?: ReportLayoutTree }): Promise<SavedSnippet>;
   remove(id: string): Promise<void>;
   /** Copies a snippet into the scope's own tier (`project`), or up to the organisation. */
   copy(id: string, body: { target: SnippetLevel; name?: string }): Promise<SavedSnippet>;
@@ -95,6 +104,7 @@ export function reportSnippetStoreApi(scope: LayoutScope): ReportSnippetStoreApi
     check: (tree, selection, level) =>
       api.post<SnippetCheck>(`${base}${level === "organization" && scope.kind === "project" ? "/check-organization" : "/check"}`, { tree, selection }),
     save: (body, level) => api.post<SavedSnippet>(`${base}${level === "organization" && scope.kind === "project" ? "/organization" : ""}`, body),
+    get: (id) => api.get<SavedSnippetDetail>(`${base}/${id}`),
     update: (id, body) => api.patch<SavedSnippet>(`${base}/${id}`, body),
     remove: (id) => api.delete<void>(`${base}/${id}`),
     copy: (id, body) => api.post<SavedSnippet>(`${base}/${id}/copy`, body),

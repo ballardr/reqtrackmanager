@@ -78,7 +78,6 @@ from app.services.client_date import effective_today, reset_client_date, set_cli
 from app.services.files import get_storage_backend
 from app.services.notifications import notify
 from app.services.rbac import get_effective_org_roles, get_effective_project_roles
-from app.services.report_document import load_report_template
 from app.services.report_layout_eval import ASYNC_TIMEOUT_SECONDS, LayoutLimitError, LayoutTimeoutError
 from app.services.report_variables import VariableValueError, resolve_values
 
@@ -155,13 +154,13 @@ def _check_capacity(db: Session, user: User) -> None:
 
 def enqueue(
     db: Session, user: User, *, organization: Organization, project: Project | None, layout: ReportLayout,
-    version: ReportLayoutVersion, fmt: str, report_template_id: uuid.UUID | None, include_children: bool = False,
+    version: ReportLayoutVersion, fmt: str, include_children: bool = False,
     requested_project_ids: Sequence[uuid.UUID] | None = None, variables: Mapping[str, Any] | None = None,
 ) -> GeneratedReport:
     """Queues a background run (the caller commits).
 
     The route has already authorised the caller for the project or organisation and the layout, checked the
-    format and the branding template.
+    format.
 
     Args:
         db: Active session.
@@ -171,7 +170,6 @@ def enqueue(
         layout: The layout to run.
         version: The version to pin (the layout's current one).
         fmt: A renderer format of the layout's family.
-        report_template_id: The branding template, if any.
         include_children: Also read readable child projects (project-level run).
         requested_project_ids: The projects selected for an organisation-wide run, `None` for all readable.
         variables: The layout's run-time variable values, already resolved by the route (so a bad value fails the
@@ -189,7 +187,7 @@ def enqueue(
         scope=SCOPE_PROJECT if project else "organization", layout_id=layout.id, layout_name=layout.name,
         layout_version=version.version, tree_hash=version.tree_hash, requested_by=user.id, created_at=_now(),
         format=fmt, engine_version=custom_report_run.ENGINE_VERSION,
-        params=custom_report_run.run_params(report_template_id, include_children, requested_project_ids, variables),
+        params=custom_report_run.run_params(include_children, requested_project_ids, variables),
         scope_project_ids=[str(project.id)] if project else [], widgets=[], record_counts={}, stats={},
         source_digest="", status=STATUS_QUEUED,
     )
@@ -199,7 +197,7 @@ def enqueue(
 
 def enqueue_pack(
     db: Session, user: User, *, organization: Organization, project: Project | None, pack: ReportPack,
-    version: ReportPackVersion, report_template_id: uuid.UUID | None, include_children: bool = False,
+    version: ReportPackVersion, include_children: bool = False,
     requested_project_ids: Sequence[uuid.UUID] | None = None, variables: Mapping[str, Any] | None = None,
     variable_set_id: uuid.UUID | None = None,
 ) -> GeneratedReport:
@@ -214,7 +212,6 @@ def enqueue_pack(
         user: The requester.
         organization / project: The scope (`project` is `None` for an organisation-wide run).
         pack / version: The pack and the pinned version.
-        report_template_id: The branding template, if any.
         include_children: Also read readable child projects (project-level run).
         requested_project_ids: The projects selected for an organisation-wide run.
         variables: The values the person typed (kept as typed; the saved set is resolved when the job runs).
@@ -224,7 +221,7 @@ def enqueue_pack(
         TooManyActiveRunsError: The requester already has `MAX_ACTIVE_PER_USER` active background runs.
     """
     _check_capacity(db, user)
-    params = custom_report_run.run_params(report_template_id, include_children, requested_project_ids, variables)
+    params = custom_report_run.run_params(include_children, requested_project_ids, variables)
     params.update({
         "kind": "pack", "pack_id": str(pack.id), "pack_version": version.version,
         "variable_set_id": str(variable_set_id) if variable_set_id else None, "client_date": effective_today().isoformat(),
@@ -326,9 +323,6 @@ def run_job(db: Session, row: GeneratedReport) -> None:
     elif layout.organization_id != organization.id or layout.project_id is not None:
         return _fail(db, row, FAILURE_ACCESS)
     params = row.params
-    template = None
-    if params.get("report_template_id"):
-        template = load_report_template(db, organization.id, uuid.UUID(params["report_template_id"]))
     requested = [uuid.UUID(p) for p in params["requested_project_ids"]] if params.get("requested_project_ids") is not None else None
     try:
         if project is not None:
@@ -340,7 +334,7 @@ def run_job(db: Session, row: GeneratedReport) -> None:
             run = custom_report_run.run_organization_layout(
                 db, user, organization, layout, version, project_ids=requested, background=True, variables=params.get("variables"),
             )
-        rendered = custom_report_run.render_file(db, run, row.format, template)
+        rendered = custom_report_run.render_file(db, run, row.format)
     except LayoutTimeoutError:
         return _fail(db, row, FAILURE_TIME)
     except LayoutLimitError:
@@ -361,8 +355,7 @@ def run_job(db: Session, row: GeneratedReport) -> None:
         logger.error("Could not store the output of report run %s (%s)", row.id, type(exc).__name__)
         return _fail(db, row, FAILURE_OTHER)
     for name, value in custom_report_run.provenance_fields(
-        run, report_template_id=template.id if template else None, include_children=bool(params.get("include_children")),
-        requested_project_ids=requested,
+        run, include_children=bool(params.get("include_children")), requested_project_ids=requested,
     ).items():
         if name != "created_at":  # when it was asked for, not when evaluation began
             setattr(row, name, value)
@@ -394,7 +387,6 @@ def _run_pack_job(db: Session, row: GeneratedReport, user: User, organization: O
             return _fail(db, row, FAILURE_ACCESS)
     elif pack.organization_id != organization.id or pack.project_id is not None:
         return _fail(db, row, FAILURE_ACCESS)
-    template_id = uuid.UUID(params["report_template_id"]) if params.get("report_template_id") else None
     set_id = uuid.UUID(params["variable_set_id"]) if params.get("variable_set_id") else None
     requested = [uuid.UUID(p) for p in params["requested_project_ids"]] if params.get("requested_project_ids") is not None else None
     token = set_client_date(params.get("client_date"))  # a date variable's `today` is the day it was asked for
@@ -402,12 +394,12 @@ def _run_pack_job(db: Session, row: GeneratedReport, user: User, organization: O
         try:
             if project is not None:
                 run = report_pack_run.run_project_pack(
-                    db, user, project, pack, version, params.get("variables"), template_id=template_id,
+                    db, user, project, pack, version, params.get("variables"),
                     include_children=bool(params.get("include_children")), set_id=set_id, background=True,
                 )
             else:
                 run = report_pack_run.run_organization_pack(
-                    db, user, organization, pack, version, params.get("variables"), template_id=template_id,
+                    db, user, organization, pack, version, params.get("variables"),
                     project_ids=requested, set_id=set_id, background=True,
                 )
             run.pack_run_id = row.pack_run_id or run.pack_run_id
@@ -619,13 +611,10 @@ def requeue(db: Session, user: User, run_id: uuid.UUID) -> tuple[GeneratedReport
     assert organization is not None
     project = db.get(Project, old.project_id) if old.project_id else None
     params = old.params or {}
-    template_id = uuid.UUID(params["report_template_id"]) if params.get("report_template_id") else None
-    if template_id is not None and load_report_template(db, organization.id, template_id) is None:
-        template_id = None  # the branding was deleted since; the report still runs, unbranded
     requested = [uuid.UUID(p) for p in params["requested_project_ids"]] if params.get("requested_project_ids") is not None else None
     include_children = bool(params.get("include_children"))
     if params.get("kind") == "pack":
-        return _requeue_pack(db, user, old, organization, project, template_id, requested, include_children)
+        return _requeue_pack(db, user, old, organization, project, requested, include_children)
     layout = db.get(ReportLayout, old.layout_id)
     if layout is None or (old.scope == SCOPE_PROJECT and project is None):
         raise RunNotAvailableError("This report no longer exists.")
@@ -645,14 +634,14 @@ def requeue(db: Session, user: User, run_id: uuid.UUID) -> tuple[GeneratedReport
         raise RepeatRefusedError("The values this report was run with no longer fit the layout. Run it again from the Reports dialog.") from exc
     row = enqueue(
         db, user, organization=organization, project=project, layout=layout, version=version, fmt=old.format,
-        report_template_id=template_id, include_children=include_children, requested_project_ids=requested, variables=values,
+        include_children=include_children, requested_project_ids=requested, variables=values,
     )
     return row, version.version != old.layout_version
 
 
 def _requeue_pack(
     db: Session, user: User, old: GeneratedReport, organization: Organization, project: Project | None,
-    template_id: uuid.UUID | None, requested: list[uuid.UUID] | None, include_children: bool,
+    requested: list[uuid.UUID] | None, include_children: bool,
 ) -> tuple[GeneratedReport, bool]:
     """`requeue` for a pack run (see there for the arguments and errors)."""
     params = old.params
@@ -672,7 +661,7 @@ def _requeue_pack(
     except (report_pack_run.UnknownSetError, VariableValueError) as exc:
         raise RepeatRefusedError("The values this report was run with no longer fit the pack. Run it again from the Reports dialog.") from exc
     row = enqueue_pack(
-        db, user, organization=organization, project=project, pack=pack, version=version, report_template_id=template_id,
+        db, user, organization=organization, project=project, pack=pack, version=version,
         include_children=include_children, requested_project_ids=requested, variables=params.get("variables"),
         variable_set_id=set_id,
     )

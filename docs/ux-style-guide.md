@@ -71,7 +71,6 @@ flowchart TD
   Root --> S4["Project statuses"]
   Root --> S5["Link types"]
   Root --> S6["Branding"]
-  Root --> S8["Report templates"]
   Root --> S9["SSO / OIDC"]
   Root --> S10["SCIM"]
   Root --> S11["Default template"]
@@ -99,7 +98,6 @@ flowchart TD
   G3 --> G3c["Link types"]
   G4 --> G4a["Branding — logo, colour, footer"]
   G4 --> G4b["Default template project"]
-  G5 --> G5b["Report templates"]
   G6 --> G6a["SSO / OIDC — incl. IdP group-name mapping, moved from Groups"]
   G6 --> G6b["SCIM"]
   G6 --> G6c["SMTP & email"]
@@ -1153,7 +1151,7 @@ A choice among dozens of named items that are grouped by the person's own habits
 - **Collapsed by default.** Only the folder holding the current choice starts open. A search or a type filter opens every folder that still holds a match and restores the person's own layout when cleared.
 - **Favourites are per person**, a list of stable keys in `ui_preferences`, never a table, and never browser-local.
 - **A shared list, not a per-page copy.** `FolderTreeList` takes `expanded` and `onToggle`, so the caller controls expansion; the designer's widget list (module, report, part) uses `TreeView`'s controlled mode. Group names are said once, as a folder, never repeated in front of each item ("Decision Management · Decision register").
-- **Folders are labels** on the item (an author's `folder` field, a placement override), written as a path with `/`, up to three levels, tidied by `utils/reportFolders` and by the server. The control is `ReportFolderChooser`: a tree of the folders the scope can use (with the levels above each), a first row for "no folder", and New folder (inside the chosen one), Rename and Delete beside it. There is no free-text path. Rename and Delete are offered only for a folder the scope owns, with the reason on the disabled button; Delete is a Tier-1 confirm that says what moves up and that no report is deleted, and every change ends in a Toast. It sits inside forms, so Enter in its name box applies the name rather than submitting the form.
+- **Folders are labels** on the item (an author's `folder` field, a placement override), written as a path with `/`, up to three levels, tidied by `utils/reportFolders` and by the server. In a layout or pack form the field is `ReportFolderField`: a button that only shows the current folder (or "No folder") and opens a `Popover` holding the chooser; picking a row closes it, and it stays open while a folder change is in flight or its delete confirmation is up. The control it holds, and the one a Move dialog uses directly, is `ReportFolderChooser`: a tree of the folders the scope can use (with the levels above each), a first row for "no folder", and New folder (inside the chosen one), Rename and Delete beside it. There is no free-text path. Rename and Delete are offered only for a folder the scope owns, with the reason on the disabled button; Delete is a Tier-1 confirm that says what moves up and that no report is deleted, and every change ends in a Toast. It sits inside forms, so Enter in its name box applies the name rather than submitting the form.
 
 ## Pattern: folder tree list
 
@@ -1226,7 +1224,7 @@ Typography: the app's own system-font stack (`-apple-system, BlinkMacSystemFont,
 | Meaning | Icon | Notes |
 |---|---|---|
 | Add / create | `Plus` | |
-| Edit / rename | `Pencil` | One known exception: the report-template Edit button has no icon at all — worth fixing rather than copying. |
+| Edit / rename | `Pencil` | |
 | Delete permanently | `Trash2` | A second exception (`CommentThread.tsx` using `X` for this) was fixed in the sixth pass. |
 | Reversible on/off toggle (disable/enable) | `Power` | First use: `ServerOrganisationsPage.tsx`'s per-row `ActionMenu` — distinct from `Trash2` (irreversible) and `Archive`/`ArchiveRestore` (a different, project-scoped lifecycle state) below. |
 | Reorder up/down, or a sorted column's direction | `ArrowUp` / `ArrowDown` | Shared between manual reorder and `SortableHeader`'s sort-direction indicator — see "Pattern: sortable column header." |

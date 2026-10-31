@@ -38,6 +38,8 @@ depends_on: str | Sequence[str] | None = None
 
 
 def _has_column(table: str, column: str) -> bool:
+    if not sa.inspect(op.get_bind()).has_table(table):
+        return False
     return any(c["name"] == column for c in sa.inspect(op.get_bind()).get_columns(table))
 
 

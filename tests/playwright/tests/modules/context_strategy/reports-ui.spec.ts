@@ -259,12 +259,7 @@ test.describe("Context & Strategy: Reports UI", () => {
   });
 
   test("every catalogue report downloads as PDF and CSV, with no branding choice on the download", async ({ page, request }) => {
-    const { project, org, headers, titles } = await setup(page, request);
-    // A template exists, yet the download offers no choice of it.
-    const created = await request.post(`${API_BASE_URL}/api/v1/orgs/${org.id}/report-templates`, {
-      headers, data: { name: "E2E Reports Branding", accent_color_hex: "#112233" },
-    });
-    expect(created.ok(), await created.text()).toBeTruthy();
+    const { project, titles } = await setup(page, request);
     await page.goto(`/projects/${project.id}?reports=choose`);
     await expect(reportPickerButton(page)).toBeVisible();
 

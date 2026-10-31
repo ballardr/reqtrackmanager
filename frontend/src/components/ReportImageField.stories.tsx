@@ -34,6 +34,19 @@ export const NoPictureChosenYetIsMarkedRequired: Story = {
 };
 
 /** Selecting a picture and pressing Use image stores its file id and closes the dialog (a double click does both). */
+/** The organisation's own logo can stand in for a library picture: no thumbnail, no library file, and it can be swapped back. */
+export const TheOrganisationsLogoCanBeChosen: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Use the organisation's logo" }));
+    await expect(canvas.getByLabelText("Chosen")).toHaveTextContent("org_logo");
+    await expect(canvas.getByText("The organisation's logo")).toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Use the organisation's logo" })).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Change image…" }));
+    await expect(await dialog()).toBeInTheDocument();
+  },
+};
+
 export const PickingAPictureFromTheLibrary: Story = {
   play: async ({ canvasElement }) => {
     await userEvent.click(within(canvasElement).getByRole("button", { name: "Choose image…" }));

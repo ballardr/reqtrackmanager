@@ -5,7 +5,7 @@
  * server does for one scope (a duplicate is refused, a rename keeps the parent, a delete drops the folder and the
  * folders inside it are re-rooted one level up).
  */
-import { fn } from "storybook/test";
+import { fn, screen, userEvent, within } from "storybook/test";
 
 import type { ReportFolder, ReportFolderApi, ReportFolderChange } from "../api/reportFolders";
 import { followFolder, isInsideFolder, parentFolder, tidyFolder } from "../utils/reportFolders";
@@ -59,4 +59,16 @@ export function buildFolderApi(
       return change(null);
     }),
   };
+}
+
+/**
+ * Presses a form's Folder field and returns the popover that holds the chooser (it is portalled to the body, so it is
+ * found on `screen`, not inside the dialog).
+ *
+ * @param dialog The dialog the Folder field sits in.
+ * @param shown What the field currently shows: "No folder" or the folder path.
+ */
+export async function openFolderPopover(dialog: ReturnType<typeof within>, shown = "No folder") {
+  await userEvent.click(await dialog.findByRole("button", { name: `Folder: ${shown}` }));
+  return within(await screen.findByRole("dialog", { name: "Move to a folder" }));
 }

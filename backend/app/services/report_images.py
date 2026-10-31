@@ -47,6 +47,7 @@ from app.models.report_layout import ReportLayout, ReportLayoutVersion
 from app.models.report_snippet import SavedReportSnippet
 from app.services.files import delete_file, read_file, upload_file
 from app.services.report_layout_tree import TreeError
+from app.services.report_org_values import ORG_LOGO_FILE
 from app.services.report_svg import UnsafeSvgError, sanitize_svg
 
 #: Raster formats embedded, by Pillow format name, and the content type each is stored and drawn as.
@@ -239,6 +240,28 @@ def load_image(
         return None, "was not found (it may have been deleted)"
     if not usable_by_layout(asset, organization_id, layout_project_id):
         return None, "is not in a library this layout may use"
+    return _resolve_asset(asset)
+
+
+def load_org_logo(db: Session, logo_file_id: uuid.UUID | None, organization_id: uuid.UUID) -> tuple[ResolvedImage | None, str]:
+    """Reads the organisation's logo for a run (it is the organisation's own file, not a library picture).
+
+    Args:
+        db: Active session (read only).
+        logo_file_id: `Organization.logo_file_id`.
+        organization_id: The organisation; a logo file of any other is refused.
+
+    Returns:
+        `(image, "")`, or `(None, reason)` with a short reason for the run's warning. Never raises for a bad image.
+    """
+    asset = db.get(FileAsset, logo_file_id) if logo_file_id else None
+    if asset is None or asset.organization_id != organization_id:
+        return None, "has no organisation logo to use"
+    return _resolve_asset(asset)
+
+
+def _resolve_asset(asset: FileAsset) -> tuple[ResolvedImage | None, str]:
+    """The picture in `asset`, normalised for embedding, or `(None, reason)`."""
     try:
         raw = read_file(asset)
     except Exception:  # noqa: BLE001 - a missing object in storage must not fail the report
@@ -394,7 +417,8 @@ def _logo_nodes(holder: Any, path: str) -> Iterator[tuple[str, dict[str, Any]]]:
 def image_nodes(tree: dict[str, Any]) -> Iterator[tuple[str, dict[str, Any]]]:
     """Every picture a tree names, with its path: each `image` block (`nodes[0].children[1]`) and each header or
     footer logo (`header.logo`, `page_styles[1].footer.logo`). All have a `file` key, so every rule that applies to
-    a picture (the library tier, the bundle, "used by") applies to a logo too."""
+    a picture (the library tier, the bundle, "used by") applies to a logo too. The organisation's own logo
+    (`ORG_LOGO_FILE`) is not a library picture and is left out."""
 
     def walk(nodes: Any, path: str) -> Iterator[tuple[str, dict[str, Any]]]:
         if not isinstance(nodes, list):
@@ -408,11 +432,16 @@ def image_nodes(tree: dict[str, Any]) -> Iterator[tuple[str, dict[str, Any]]]:
             for key in ("children", "else_children"):
                 yield from walk(node.get(key), f"{here}.{key}")
 
-    yield from _logo_nodes(tree, "")
-    styles = tree.get("page_styles")
-    for i, style in enumerate(styles if isinstance(styles, list) else []):
-        yield from _logo_nodes(style, f"page_styles[{i}]")
-    yield from walk(tree.get("nodes"), "nodes")
+    def every() -> Iterator[tuple[str, dict[str, Any]]]:
+        yield from _logo_nodes(tree, "")
+        styles = tree.get("page_styles")
+        for i, style in enumerate(styles if isinstance(styles, list) else []):
+            yield from _logo_nodes(style, f"page_styles[{i}]")
+        yield from walk(tree.get("nodes"), "nodes")
+
+    for path, node in every():
+        if node.get("file") != ORG_LOGO_FILE:  # the organisation's logo is not a library picture
+            yield path, node
 
 
 def image_problems(
@@ -453,6 +482,6 @@ def image_problems(
 __all__ = [
     "JPEG_QUALITY", "MAX_REPORT_IMAGES", "max_image_bytes", "max_image_pixels", "max_total_image_bytes",
     "RASTER_TYPES", "SVG_TYPE", "ImageRejectedError", "LibraryImage", "NormalisedImage", "ResolvedImage",
-    "delete_library_image", "image_nodes", "image_problems", "library_asset", "list_library", "load_image",
+    "delete_library_image", "image_nodes", "image_problems", "library_asset", "list_library", "load_image", "load_org_logo",
     "normalise_raster", "sniff_image", "upload_library_image", "usable_by_layout", "used_by",
 ]

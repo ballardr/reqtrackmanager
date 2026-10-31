@@ -9,13 +9,13 @@ sidebar_position: 9
 Click **Reports** at the top of the project overview, and pick the **Requirements report**:
 
 1. To include only some requirements, filter the **Requirements** list first (component, category, status, tag, or a range of target versions) and use **List actions → Download report** or **Export**: they carry the list's filters.
-2. A PDF or Word export is branded with the organisation's default **report template** — an accent colour, cover page, logo and footer — so output is consistently on-brand.
+2. A PDF or Word export is carries the organisation's **report look** — an accent colour, cover page, logo and footer — so output is consistently on-brand.
 3. Generate the report with **Generate PDF**, or choose **More formats** for an editable Word or ODT file, an HTML page, or the flat table as CSV, Excel or ODS — a document format can append the organisation's shared resource files. For an introduction, chapters and appendices, start from the **Requirements by Component** layout (see [Introductions, chapters and appendices](../core-features/reports-and-export.md#introductions-chapters-and-appendices)).
 
 | Reports dialog |
 | --- |
-| PDF/Word/CSV export branded with the organisation's default template |
-| ![Reports page with filters and a selected branding template](../../static/img/screenshots/reports-page.png) |
+| PDF/Word/CSV export with the organisation's report look |
+| ![Reports page with filters and a selected report look](../../static/img/screenshots/reports-page.png) |
 
 ## Exporting requirements to CSV
 
@@ -76,4 +76,4 @@ The **Risk** register, the **Decisions** list and Compliance **Evidence** have t
 
 ## Where this fits
 
-See [Core Features → Reports and export](../core-features/reports-and-export.md) for the report formats, branding templates and placeholders, and [Authoring and reviewing requirements](./authoring-and-reviewing-requirements.md) for creating requirements one at a time instead of in bulk.
+See [Core Features → Reports and export](../core-features/reports-and-export.md) for the report formats, the report look and placeholders, and [Authoring and reviewing requirements](./authoring-and-reviewing-requirements.md) for creating requirements one at a time instead of in bulk.

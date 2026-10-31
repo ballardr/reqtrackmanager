@@ -102,7 +102,7 @@ def list_project_statuses(
 ):
     """Lists an organisation's project statuses — any org member may need
     this to populate a project's status picker, so listing isn't admin-only
-    (only create/rename/move/delete are), mirroring `list_report_templates`."""
+    (only create/rename/move/delete are)."""
     return db.scalars(
         select(ProjectStatusDefinition).where(ProjectStatusDefinition.organization_id == organization_id)
         .order_by(ProjectStatusDefinition.sort_order)

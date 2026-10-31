@@ -254,6 +254,16 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     #: Default file name template (without extension) for a generated report that sets none of its own
     #: (`services.report_file_names`); `None` keeps the built-in "<scope>-<report>" names.
     report_file_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    #: The organisation's one report look. Built-in reports (requirements PDF, module reports) apply it; a custom layout
+    #: applies none of it unless the layout reads it as `{{org.*}}` (`services.report_org_values`).
+    #: `report_accent_color_hex` falls back to the UI accent (`accent_color_hex`), then the platform default.
+    report_accent_color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    report_include_logo: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    report_footer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    report_include_cover_page: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    #: Whether the requirements report organises requirements into one chapter per component, each on its own page.
+    #: A per-generation choice (`ReportRequest.chapters_per_component`) overrides it.
+    report_chapters_per_component: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
 
     accent_color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
     header_title: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -387,46 +397,6 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
     default_module_entitlement_policy: Mapped[ModuleEntitlementPolicy] = mapped_column(
         str_enum(ModuleEntitlementPolicy), default=ModuleEntitlementPolicy.OPEN
     )
-
-
-class ReportTemplate(UUIDPKMixin, TimestampMixin, Base):
-    """A named, reusable PDF report preset for an organisation (R-G-05):
-    branding (accent colour, cover page, logo, footer).
-
-    Org-scoped (shared across the org's projects) to match how the org logo
-    already works. Selected optionally at report-generation time; when none
-    is selected, `services/reports.py` produces today's plain, unbranded
-    output with the project's own resolved content.
-
-    Attributes:
-        chapters_per_component: Whether a PDF generated with this template
-            organises requirements into one chapter per component (each on
-            its own page) with a sub-section per category, or renders
-            continuously (category headings only, no per-component page
-            breaks) — see `services/reports.py::generate_pdf_report`. A
-            per-generation choice on the report page (`ReportRequest.
-            chapters_per_component`) always overrides this when set.
-        is_default: Whether this is the organisation's default template, applied to a document report that names
-            none (at most one per organisation: a partial unique index; setting one clears the previous).
-    """
-
-    __tablename__ = "report_templates"
-    __table_args__ = (
-        UniqueConstraint("organization_id", "name"),
-        Index(
-            "uq_report_templates_one_default", "organization_id", unique=True, postgresql_where=text("is_default"),
-        ),
-    )
-
-    organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"))
-    name: Mapped[str] = mapped_column(String(255))
-    accent_color_hex: Mapped[str] = mapped_column(String(7), default="#475569")
-    include_cover_page: Mapped[bool] = mapped_column(Boolean, default=True)
-    include_logo: Mapped[bool] = mapped_column(Boolean, default=True)
-    footer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    chapters_per_component: Mapped[bool] = mapped_column(Boolean, default=True)
-    is_default: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
-    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
 
 
 class PendingInvite(UUIDPKMixin, TimestampMixin, Base):

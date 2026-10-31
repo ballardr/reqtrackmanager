@@ -18,7 +18,7 @@ Responsibilities:
   queries tags itself; `ReportDefinition.record_types` declares what a report names.
 - Output: `render_result` is the one place a module report's file formats are decided: `csv` (first
   section only, formula-neutralised), the documents `pdf`, `docx`, `html` and `odt` (every section; one
-  neutral `ReportDocument` from `build_result_document`, so a template's cover, accent colour and footer
+  neutral `ReportDocument` from `build_result_document`, so the organisation's cover, accent colour and footer
   apply to each and the formats cannot drift) and the spreadsheets `xlsx` and `ods` (every section as a
   tab, through the `report_render` registry the custom reports use).
 - HTTP: `build_report_routers` turns `ReportDefinition`s into a project router
@@ -73,7 +73,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.organization import Organization, ReportTemplate
+from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
 from app.modules.registry import (
@@ -101,12 +101,7 @@ from app.services.rbac import (
     require_project_module_enabled,
     user_satisfies_module_role,
 )
-from app.services.report_document import (
-    ForeignReportTemplateError,
-    ReportBranding,
-    effective_report_template,
-    resolve_branding,
-)
+from app.services.report_document import ReportBranding, resolve_branding
 from app.services.report_docx import render_docx_document
 from app.services.report_file_names import org_default_stem
 from app.services.report_model import TONE_FILL, Block, Gap, Heading, Note, ReportDocument, Sheet, Table
@@ -506,7 +501,7 @@ def build_result_document(result: ReportResult, *, branding: ReportBranding | No
 
     Args:
         result: The collected report.
-        branding: Optional organisation template branding (accent colour,
+        branding: Optional organisation report look (accent colour,
             cover page, logo, footer); `None` renders the plain default style.
 
     Returns:
@@ -533,7 +528,7 @@ def render_pdf(result: ReportResult, *, branding: ReportBranding | None = None) 
 
     Args:
         result: The collected report.
-        branding: Optional organisation template branding; see `build_result_document`.
+        branding: Optional organisation report look; see `build_result_document`.
 
     Returns:
         PDF bytes.
@@ -546,7 +541,7 @@ def render_docx(result: ReportResult, *, branding: ReportBranding | None = None)
 
     Args:
         result: The collected report.
-        branding: Optional organisation template branding; see `build_result_document`.
+        branding: Optional organisation report look; see `build_result_document`.
 
     Returns:
         DOCX bytes.
@@ -574,7 +569,7 @@ def render_result(result: ReportResult, fmt: str, *, branding: ReportBranding | 
     Args:
         result: The collected report.
         fmt: One of `REPORT_FORMATS` other than `json`.
-        branding: Organisation template branding for the document formats; spreadsheets carry none.
+        branding: Organisation report look for the document formats; spreadsheets carry none.
 
     Returns:
         The file bytes and extension.
@@ -785,21 +780,9 @@ def _respond(
     return file_response(rendered.content, stem, rendered.extension)
 
 
-def _template_for(db: Session, organization: Organization, template_id: UUID | None) -> ReportTemplate | None:
-    """The branding template: the one requested, else the organisation's default, `None` when neither.
-
-    Raises:
-        HTTPException: 400 when the requested one is not one of the organisation's.
-    """
-    try:
-        return effective_report_template(db, organization.id, template_id)
-    except ForeignReportTemplateError as exc:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
-
-
 def _route_signature(path_param: str, definition: ReportDefinition, *, project_level: bool, dependency: Callable) -> inspect.Signature:
     """The generated endpoint's signature: path id, `format`, optional
-    `include_children`, `report_template_id`, the declared parameters as typed
+    `include_children`, the declared parameters as typed
     `Query` values, then the user/session dependencies."""
     P = inspect.Parameter
     params = [
@@ -813,7 +796,6 @@ def _route_signature(path_param: str, definition: ReportDefinition, *, project_l
             "project_id", P.POSITIONAL_OR_KEYWORD, annotation=UUID | None,
             default=Query(None, description="Narrow the report to this one project (must be in its scope)."),
         ))
-    params.append(P("report_template_id", P.POSITIONAL_OR_KEYWORD, annotation=UUID | None, default=Query(None)))
     for param in definition.params:
         bounds = {"ge": param.minimum, "le": param.maximum} if param.type == "integer" else {}
         params.append(P(
@@ -839,7 +821,6 @@ def _build_project_route(module_key: str, definition: ReportDefinition) -> Calla
         organization = db.get(Organization, project.organization_id)
         assert organization is not None  # the project's own organisation
         params = validated_params(live, kw)
-        template = _template_for(db, organization, kw["report_template_id"])
         ctx = ReportContext(
             module_key=module_key, organization=organization, root_project=project, params=params,
             projects=readable_projects(
@@ -849,14 +830,13 @@ def _build_project_route(module_key: str, definition: ReportDefinition) -> Calla
         )
         result = apply_cell_tones(live.collector(db, ctx), live.cell_tones)
         return _respond(
-            result, live, kw["format"], project.name, resolve_branding(db, organization, template), organization, project,
+            result, live, kw["format"], project.name, resolve_branding(db, organization), organization, project,
         )
 
     endpoint.__signature__ = _route_signature("project_id", definition, project_level=True, dependency=dependency)  # type: ignore[attr-defined]
     endpoint.__doc__ = (
         f"{definition.title} for this project: {definition.description} `format` is json (default), pdf, docx, html, odt, csv, xlsx or ods; "
-        "`include_children` adds readable child projects; `report_template_id` applies an organisation report "
-        "template's branding to the document formats."
+        "`include_children` adds readable child projects. The document formats carry the organisation's report look."
     )
     return endpoint
 
@@ -876,7 +856,6 @@ def _build_org_route(module_key: str, definition: ReportDefinition) -> Callable[
         organization = db.get(Organization, organization_id)
         assert organization is not None  # the route dependency has checked the organisation
         params = validated_params(live, kw)
-        template = _template_for(db, organization, kw["report_template_id"])
         projects = scope_projects(
             db, current_user, definition=live, organization=organization, root_project=None, include_children=False,
         )
@@ -892,7 +871,7 @@ def _build_org_route(module_key: str, definition: ReportDefinition) -> Callable[
         )
         result = apply_cell_tones(live.collector(db, ctx), live.cell_tones)
         return _respond(
-            result, live, kw["format"], organization.name, resolve_branding(db, organization, template), organization, None,
+            result, live, kw["format"], organization.name, resolve_branding(db, organization), organization, None,
         )
 
     endpoint.__signature__ = _route_signature("organization_id", definition, project_level=False, dependency=dependency)  # type: ignore[attr-defined]
@@ -948,7 +927,7 @@ def _build_org_breakdown_route(module_key: str, definition: ReportDefinition) ->
 
     full = _route_signature("organization_id", definition, project_level=False, dependency=dependency)
     endpoint.__signature__ = full.replace(  # type: ignore[attr-defined]
-        parameters=[p for p in full.parameters.values() if p.name not in ("format", "project_id", "report_template_id")],
+        parameters=[p for p in full.parameters.values() if p.name not in ("format", "project_id")],
     )
     endpoint.__doc__ = (
         f"{definition.title} headline figures per project: the organisation report's figures evaluated for each "
@@ -1114,7 +1093,6 @@ class ReportCatalogueEntryOut(BaseModel):
     `record_types` are the registered record types the report names or reads (a record list offers the reports that
     list its type under "Download report").
     `view_only` marks a report meant to be read on screen, which a record list's "Download report" does not offer.
-    `report_template_id` is a custom layout's own branding template (`None` = the organisation's default applies).
     """
 
     module_key: str
@@ -1138,7 +1116,6 @@ class ReportCatalogueEntryOut(BaseModel):
     placement_key: str = ""
     record_types: list[str] = []
     view_only: bool = False
-    report_template_id: UUID | None = None
 
 
 def param_out(param: ReportParamDefinition) -> ReportParamOut:

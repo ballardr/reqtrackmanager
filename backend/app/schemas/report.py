@@ -33,15 +33,10 @@ class ReportRequest(BaseModel):
             render as additional report sections, appended after the
             requirement table (R-G-04). Only text/markdown files can be
             rendered as text; other content types are noted but skipped.
-        report_template_id: An optional selected `ReportTemplate` (R-G-05)
-            to brand the PDF with (accent colour, cover page, footer, logo).
-            Ignored for the table formats (CSV, Excel, OpenDocument spreadsheet), which have no branded layout.
         chapters_per_component: Per-generation override of whether the PDF
             chapters by component (`True`) or renders continuously
-            (`False`) — `None` (the default) defers to the selected
-            template's own setting, or — with no template — a heuristic
-            (`services.reports.default_chapters_per_component`). Always
-            wins over both when explicitly set. Ignored for the table formats.
+            (`False`) — `None` (the default) defers to the organisation's
+            setting (`Organization.report_chapters_per_component`). Ignored for the table formats.
     """
 
     format: Literal["pdf", "docx", "odt", "html", "csv", "xlsx", "ods"]
@@ -51,5 +46,4 @@ class ReportRequest(BaseModel):
     status: RequirementStatus | None = None
     keyword: str | None = None
     resource_file_ids: list[UUID] = []
-    report_template_id: UUID | None = None
     chapters_per_component: bool | None = None
