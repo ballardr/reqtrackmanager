@@ -33,16 +33,10 @@ from app.services.codes import display_code
 from app.services.downloads import file_response, filename_safe
 from app.services.files import read_file
 from app.services.rbac import require_project_view
-from app.services.report_document import (
-    ForeignReportTemplateError,
-    effective_report_template,
-    resolve_branding,
-    resolve_report_images,
-)
+from app.services.report_document import resolve_branding, resolve_report_images
 from app.services.report_file_names import org_default_stem
 from app.services.reports import (
     ReportRequirementRow,
-    default_chapters_per_component,
     generate_csv_report,
     generate_docx_report,
     generate_html_report,
@@ -149,22 +143,13 @@ def generate_report(
 
     resource_markdown = _resource_sections_markdown(db, project, payload.resource_file_ids)
 
-    try:
-        template = effective_report_template(db, project.organization_id, payload.report_template_id)
-    except ForeignReportTemplateError as exc:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
-    branding = resolve_branding(db, org, template)
+    assert org is not None  # the project's own organisation
+    branding = resolve_branding(db, org)
 
-    # Precedence: an explicit per-generation choice always wins; failing
-    # that, a selected template's own setting; failing that (no template),
-    # the sparse-chapter heuristic. See ReportRequest.chapters_per_component
-    # and default_chapters_per_component's docstrings.
-    if payload.chapters_per_component is not None:
-        chapters_per_component = payload.chapters_per_component
-    elif template is not None:
-        chapters_per_component = template.chapters_per_component
-    else:
-        chapters_per_component = default_chapters_per_component(rows)
+    # Precedence: an explicit per-generation choice wins, else the organisation's setting.
+    chapters_per_component = (
+        payload.chapters_per_component if payload.chapters_per_component is not None else org.report_chapters_per_component
+    )
 
     images = resolve_report_images(db, project.organization_id, resource_markdown)
     generate = {

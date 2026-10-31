@@ -277,15 +277,6 @@ def test_a_table_layout_with_several_sheets_downloads_as_a_zip_of_csv_files(worl
         assert archive.read("First.csv").decode().splitlines()[0] == "Code,Title"
 
 
-def test_an_invalid_branding_template_is_refused(world):
-    project = world.project()
-    layout = make_layout(world, document_tree(), "Doc", project=project)
-
-    resp = project_run(world, project, layout, format="pdf", report_template_id=str(uuid.uuid4()))
-
-    assert resp.status_code == 400
-
-
 def test_include_children_reads_the_readable_child_projects(world):
     parent = world.project("Parent")
     child = world.project("Child", parent=parent)
@@ -579,9 +570,7 @@ def test_every_run_records_its_provenance_without_content(world, db):
     assert first.engine_version == custom_report_run.ENGINE_VERSION and first.created_at.tzinfo is not None
     assert first.scope_project_ids == [project["id"]] and first.widgets == []
     assert first.record_counts == {"requirement": 1} and first.stats["rows"] == 0 and first.stats["blocks"] >= 2
-    assert first.params == {
-        "report_template_id": None, "include_children": False, "requested_project_ids": None, "variables": {},
-    }
+    assert first.params == {"include_children": False, "requested_project_ids": None, "variables": {}}
     assert rows[1].params["include_children"] is True
     for row in rows:
         assert "Confidential widget spec" not in str(
@@ -892,12 +881,11 @@ def test_an_older_project_bundle_s_report_content_is_not_imported_and_warns_once
 
 def test_an_older_organisation_bundle_s_report_content_is_not_imported_and_warns_once(client, admin_token, world):
     h = auth_headers(world.token)
-    client.post(f"/api/v1/orgs/{world.org['id']}/report-templates", json={"name": "Brand"}, headers=h)
     bundle = client.get(f"/api/v1/orgs/{world.org['id']}/export", headers=h).content
 
     def add_legacy(parsed: dict) -> None:
         parsed["report_content"] = [{"report_key": "requirements", "intro": "Old org intro"}]
-        parsed["report_templates"][0]["content"] = [{"report_key": "requirements", "intro": "Old template intro"}]
+        parsed["report_templates"] = [{"name": "Brand", "content": [{"report_key": "requirements", "intro": "Old template intro"}]}]
 
     resp = client.post(
         "/api/v1/orgs/import", data={"name": f"Copy {uuid.uuid4().hex[:6]}"},
@@ -907,9 +895,7 @@ def test_an_older_organisation_bundle_s_report_content_is_not_imported_and_warns
 
     assert resp.status_code == 201, resp.text
     assert len([w for w in resp.json()["warnings"] if "report content has been removed" in w]) == 1
-    new_org = resp.json()["organization"]["id"]
-    [template] = client.get(f"/api/v1/orgs/{new_org}/report-templates", headers=h).json()
-    assert template["name"] == "Brand" and "content" not in template
+    assert "content" not in str(resp.json()["organization"])
 
 
 # --- merging linked sheets of an organisation run ---------------------------------------------------------

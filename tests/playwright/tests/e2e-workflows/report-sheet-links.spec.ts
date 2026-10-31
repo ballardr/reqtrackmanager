@@ -155,7 +155,7 @@ test.describe("Report sheet links", () => {
 
     await test.step("in the Blocks view each column offers only the sheets that list its own kind of record", async () => {
       await page.goto(`/projects/${project.id}/admin`);
-      await selectProjectAdminGroup(page, "Report Setup");
+      await selectProjectAdminGroup(page, "Reports");
       await openSetupReport(page, layoutName);
       await page.getByRole("tab", { name: "Blocks" }).click();
       const inspector = page.getByLabel("Block details");

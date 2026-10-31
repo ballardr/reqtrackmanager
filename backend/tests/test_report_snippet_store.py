@@ -372,6 +372,60 @@ def test_renaming_and_deleting_a_snippet_leaves_layouts_built_from_it_unchanged(
     assert gone.status_code == 404
 
 
+def test_a_whole_tree_creates_a_snippet_and_replaces_its_blocks_on_update(world):
+    first = doc(HEADING, TEXT)
+    made = save(world, org_url(world), first, "From scratch", count=2).json()
+    assert made["blocks"] == 2
+
+    edited = doc({"type": "text", "text": "Rewritten"})
+    resp = world.client.patch(org_url(world, f"/{made['id']}"), json={"tree": edited}, headers=auth_headers(world.token))
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["blocks"] == 1 and resp.json()["name"] == "From scratch"
+    detail = world.client.get(org_url(world, f"/{made['id']}"), headers=auth_headers(world.token)).json()
+    assert detail["nodes"] == edited["nodes"]
+
+
+def test_replacing_the_blocks_carries_what_they_use_and_is_checked_like_a_new_snippet(world):
+    made = save(world, org_url(world), doc(HEADING), "Checked").json()
+    styled = doc(
+        {"type": "section", "page_style": "Wide", "children": [TEXT]},
+        page_styles=[{"name": "Wide", "orientation": "landscape"}],
+    )
+
+    ok = world.client.patch(org_url(world, f"/{made['id']}"), json={"tree": styled}, headers=auth_headers(world.token))
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["page_styles"] == ["Wide"]
+
+    empty = world.client.patch(org_url(world, f"/{made['id']}"), json={"tree": doc()}, headers=auth_headers(world.token))
+    assert empty.status_code == 422
+    unknown = world.client.patch(
+        org_url(world, f"/{made['id']}"), json={"tree": doc({"type": "no_such_block"})}, headers=auth_headers(world.token),
+    )
+    assert unknown.status_code == 422
+    kept = world.client.get(org_url(world, f"/{made['id']}"), headers=auth_headers(world.token)).json()
+    assert kept["nodes"][0]["type"] == "section"
+
+
+def test_replacing_the_blocks_with_a_tree_of_the_other_family_is_refused(world):
+    made = save(world, org_url(world), doc(HEADING), "Document one").json()
+
+    resp = world.client.patch(
+        org_url(world, f"/{made['id']}"), json={"tree": {**empty_tree("table"), "nodes": []}}, headers=auth_headers(world.token),
+    )
+
+    assert resp.status_code == 422
+
+
+def test_replacing_the_blocks_of_an_inherited_snippet_is_forbidden_in_the_project(world):
+    org_one = save(world, org_url(world), doc(HEADING), "Inherited").json()
+    project = world.project("Edits")
+
+    resp = world.client.patch(project_url(project, f"/{org_one['id']}"), json={"tree": doc(TEXT)}, headers=auth_headers(world.token))
+
+    assert resp.status_code == 403
+
+
 def test_a_rename_to_a_taken_name_is_a_conflict(world):
     save(world, org_url(world), doc(HEADING), "One")
     two = save(world, org_url(world), doc(HEADING), "Two").json()

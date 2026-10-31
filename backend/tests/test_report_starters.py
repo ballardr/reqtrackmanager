@@ -119,6 +119,30 @@ def test_a_starter_name_an_organisation_already_uses_is_skipped(world):
     assert add_starters(world).json() == {"added": ["Business Requirements Document"]}
 
 
+def missing_starters(world: World, token: str | None = None):
+    return world.client.get(f"/api/v1/orgs/{world.org['id']}/report-layouts/starters", headers=auth_headers(token or world.token))
+
+
+def test_the_missing_starters_are_listed_so_the_ui_offers_adding_only_when_one_is_missing(world):
+    base = f"/api/v1/orgs/{world.org['id']}/report-layouts"
+    assert missing_starters(world).json() == {"missing": []}
+
+    gone = by_name(org_layouts(world), "Review Package")
+    assert world.client.delete(f"{base}/{gone['id']}", headers=auth_headers(world.token)).status_code == 204
+    assert missing_starters(world).json() == {"missing": ["Review Package"]}
+
+    assert add_starters(world).json() == {"added": ["Review Package"]}
+    assert missing_starters(world).json() == {"missing": []}
+
+
+def test_listing_the_missing_starters_needs_the_manage_permission(world):
+    email = "plain-member-missing@example.com"
+    create_org_user(world.client, world.token, world.org["id"], email)
+    member = login(world.client, email, "Password123!")
+
+    assert missing_starters(world, member).status_code == 403
+
+
 def test_adding_the_starters_needs_the_manage_permission(world):
     email = "plain-member@example.com"
     create_org_user(world.client, world.token, world.org["id"], email)
@@ -216,3 +240,4 @@ def test_a_starter_still_runs_where_a_module_is_off(world, name):
     resp = run_starter(world, project, name)
 
     assert resp.status_code == 200, resp.text
+

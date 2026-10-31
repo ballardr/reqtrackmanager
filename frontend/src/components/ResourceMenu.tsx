@@ -134,7 +134,7 @@ export function ResourceMenu<K extends string>({
             outermost ".row" match in DOM order for *any* text anywhere in the
             selected group's content, silently hijacking every such locator on
             every page that adopts ResourceMenu (found via a real Playwright
-            failure on Org Admin's Report templates delete button during this
+            failure on an Org Admin delete button during this
             component's first rollout). */
         <div className="resource-menu">
           {isNarrow ? (

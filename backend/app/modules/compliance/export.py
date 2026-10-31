@@ -190,7 +190,7 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
 
     Includes archived standards/versions/mappings — this module's own
     established "export everything, let the reader filter" convention
-    (`report_templates`/`members` aren't filtered by any lifecycle flag
+    (`members` aren't filtered by any lifecycle flag
     either), since a bundle is a backup/migration artefact, not a live
     listing.
     """

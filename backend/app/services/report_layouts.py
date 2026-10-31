@@ -33,7 +33,6 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models.organization import ReportTemplate
 from app.models.project import Project
 from app.models.report_layout import LAYOUT_FAMILIES, ReportLayout, ReportLayoutVersion
 from app.models.report_placement import ReportPlacement
@@ -119,7 +118,6 @@ def create_layout(
     actor_id: uuid.UUID | None,
     comment: str = "",
     folder: str = "",
-    report_template_id: uuid.UUID | None = None,
 ) -> SavedLayout:
     """Creates a layout and its version 1.
 
@@ -129,7 +127,6 @@ def create_layout(
         project_id: The owning project, or `None` for an organisation-level layout.
         name / description: Display text.
         folder: The Reports picker folder (`""` for none).
-        report_template_id: The organisation branding template the layout's documents use (`None` = the default).
         family: `document` or `table`; fixed for the layout's life.
         tree: The layout tree.
         actor_id: The author.
@@ -139,14 +136,13 @@ def create_layout(
         The stored layout and version.
 
     Raises:
-        ValueError: A bad name, description, folder, family, a template of another organisation, or a project outside it.
+        ValueError: A bad name, description, folder, family, or a project outside it.
         InvalidLayoutError: The tree is not valid, or an image block names a picture the layout may not use.
         LayoutNameTakenError: The owner already has a layout of that name.
     """
     name = _clean_name(name)
     _check_text(description, MAX_DESCRIPTION_CHARS, "description")
     folder = clean_folder(folder)
-    _check_template(db, organization_id, report_template_id)
     _check_text(comment, MAX_COMMENT_CHARS, "comment")
     if family not in LAYOUT_FAMILIES:
         raise ValueError(f"The family is one of: {', '.join(LAYOUT_FAMILIES)}.")
@@ -161,7 +157,7 @@ def create_layout(
 
     layout = ReportLayout(
         organization_id=organization_id, project_id=project_id, name=name, description=description, folder=folder,
-        report_template_id=report_template_id, family=family, current_version=1, created_by=actor_id,
+        family=family, current_version=1, created_by=actor_id,
     )
     try:
         with db.begin_nested():  # a savepoint, so a concurrent create of the same name leaves the caller's work intact
@@ -230,37 +226,14 @@ def save_version(
     return SavedLayout(layout, version, True)
 
 
-def _check_template(db: Session, organization_id: uuid.UUID, template_id: uuid.UUID | None) -> None:
-    """Refuses a branding template that is not the organisation's.
-
-    Raises:
-        ValueError: The template does not exist in the organisation.
-    """
-    if template_id is None:
-        return
-    template = db.get(ReportTemplate, template_id)
-    if template is None or template.organization_id != organization_id:
-        raise ValueError("The report template does not belong to the organisation.")
-
-
-class _Unchanged:
-    """Marks an argument left out, so `None` can mean "clear"."""
-
-
-UNCHANGED = _Unchanged()
-
-
 def update_details(
     db: Session, layout: ReportLayout, *, name: str | None = None, description: str | None = None,
-    folder: str | None = None, report_template_id: uuid.UUID | None | _Unchanged = UNCHANGED,
-    actor_id: uuid.UUID | None,
+    folder: str | None = None, actor_id: uuid.UUID | None,
 ) -> ReportLayout:
-    """Renames, re-describes or re-files a layout, or sets its branding template (not a new version: the tree is unchanged).
-
-    `report_template_id` left as `UNCHANGED` keeps the template; `None` clears the override.
+    """Renames, re-describes or re-files a layout (not a new version: the tree is unchanged).
 
     Raises:
-        ValueError: A bad name, description, folder or a template of another organisation.
+        ValueError: A bad name, description or folder.
         LayoutNameTakenError: The new name is taken.
     """
     changed: list[str] = []
@@ -274,10 +247,6 @@ def update_details(
     if folder is not None and (new_folder := clean_folder(folder)) != layout.folder:
         layout.folder = new_folder
         changed.append("folder")
-    if not isinstance(report_template_id, _Unchanged) and report_template_id != layout.report_template_id:
-        _check_template(db, layout.organization_id, report_template_id)
-        layout.report_template_id = report_template_id
-        changed.append("report_template_id")
     if changed:
         db.flush()
         log_event(

@@ -122,7 +122,6 @@ class ReportPackRunRequest(BaseModel):
     """Values for a pack run or its preview. Sent as a body so the values never appear in a URL."""
 
     variables: dict[str, Any] | None = Field(default=None, max_length=50, description="Values for the pack's variables.")
-    report_template_id: UUID | None = None
     include_children: bool = False
     project_ids: list[UUID] | None = Field(default=None, max_length=200, description="Organisation packs: narrow to these projects.")
     variable_set_id: UUID | None = Field(default=None, description="A saved set to start from; `variables` win over its values.")

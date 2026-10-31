@@ -36,7 +36,7 @@ from app.services.record_tables import (
     split_params,
     table_csv,
 )
-from app.services.report_document import ForeignReportTemplateError, effective_report_template, resolve_branding
+from app.services.report_document import resolve_branding
 from app.services.report_file_names import org_default_stem
 from app.services.report_framework import DOCUMENT_FORMATS, ReportFormat, ReportOut, render_result, to_out
 from app.services.tags import TagFilter
@@ -51,16 +51,14 @@ def record_list_report(
         None, description="The record type to list, e.g. `requirement`; default: Requirements, else the first the caller may list.",
     ),
     format: ReportFormat = Query("json", description="json (default), pdf, docx, html, odt, csv, xlsx or ods."),
-    report_template_id: UUID | None = Query(None, description="An organisation report template's branding for the PDF and Word."),
     tag_filter: TagFilter = Depends(), project_scope: ProjectScope = Depends(),
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ) -> Response | ReportOut:
     """The list of `record_type` as a report, with the list's own filters.
 
     Raises:
-        HTTPException: 404 the project, the type or its module is not found (or the caller may list no type); 403 no `view` permission; 400 the
-            template is not the organisation's; 413 a PDF or Word of more than `MAX_DOCUMENT_ROWS` rows (use
-            `csv` or narrow the filters); 422 an unsupported filter.
+        HTTPException: 404 the project, the type or its module is not found (or the caller may list no type); 403 no `view` permission;
+            413 a PDF or Word of more than `MAX_DOCUMENT_ROWS` rows (use `csv` or narrow the filters); 422 an unsupported filter.
     """
     project = db.get(Project, project_id)
     if project is None:
@@ -74,10 +72,6 @@ def record_list_report(
     require_view(db, current_user, project, record_type)
     filters = split_params(provider, request.query_params.multi_items(), also=REPORT_PARAMS)
     organization = db.get(Organization, project.organization_id)
-    try:
-        template = effective_report_template(db, organization.id, report_template_id)
-    except ForeignReportTemplateError as exc:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     table = build_table(
         db, current_user, project, record_type, provider, filters=filters, tag_filter=tag_filter, project_scope=project_scope,
     )
@@ -95,7 +89,7 @@ def record_list_report(
         content, ext = table_csv(table), "csv"
     else:
         # A document is named like every catalogue report (`<scope>-<slug>`); the CSV is named like the export it equals.
-        rendered = render_result(result, format, branding=resolve_branding(db, organization, template))
+        rendered = render_result(result, format, branding=resolve_branding(db, organization))
         stem = org_default_stem(
             organization, project, title=provider.label, extension=rendered.extension, fallback=f"{stem}-{REPORT_KEY}",
         )

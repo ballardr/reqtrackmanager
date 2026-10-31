@@ -6,6 +6,8 @@
  *
  * Responsibilities:
  * - Show the chosen picture (thumbnail and name), or that it is no longer in the library.
+ * - Offer the organisation's own logo as the picture (`ORG_LOGO_FILE`), which the run reads from the organisation and
+ *   which is not a library picture.
  * - List the library in a dialog (search by name, tier, size, which layouts use each), upload with feedback, and
  *   delete an owned picture behind a confirmation that names the layouts using it.
  * - Show what a selected picture says about itself (pixel size, and for a photograph when it was taken, the camera,
@@ -39,6 +41,9 @@ import { Modal } from "./Modal";
 import { Spinner } from "./Spinner";
 
 const ACCEPT = "image/png,image/jpeg,image/gif,image/webp,image/svg+xml";
+
+/** The `file` that stands for the organisation's logo (`services.report_org_values.ORG_LOGO_FILE`). */
+export const ORG_LOGO_FILE = "org_logo";
 
 /**
  * @param label The field's caption.
@@ -88,16 +93,22 @@ export function ReportImageField({
   }, [library, reads]);
 
   const images = listing?.images ?? null;
+  const isOrgLogo = value === ORG_LOGO_FILE;
   const chosen = images?.find((image) => image.id === value) ?? null;
-  const gone = value !== "" && images !== null && chosen === null;
+  const gone = value !== "" && !isOrgLogo && images !== null && chosen === null;
 
   return (
     <FieldShell label={label} controlId={controlId} help={help} required={required}>
       <div className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
-        {value !== "" && !gone && <img className="report-image-thumb" src={fileUrl(value)} alt="" />}
+        {value !== "" && !gone && !isOrgLogo && <img className="report-image-thumb" src={fileUrl(value)} alt="" />}
         <span className="text-muted" style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
-          {chosen?.filename ?? (gone ? text.missing : value === "" ? text.none : "…")}
+          {isOrgLogo ? text.organizationLogo : (chosen?.filename ?? (gone ? text.missing : value === "" ? text.none : "…"))}
         </span>
+        {!isOrgLogo && (
+          <button type="button" className="btn btn-sm" disabled={disabled} onClick={() => onChange(ORG_LOGO_FILE)}>
+            {text.useOrganizationLogo}
+          </button>
+        )}
         <button
           id={controlId} type="button" className="btn btn-sm" disabled={disabled} onClick={() => setOpen(true)}
           aria-label={value === "" ? text.choose : text.change}

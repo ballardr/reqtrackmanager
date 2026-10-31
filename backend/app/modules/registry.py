@@ -1912,7 +1912,7 @@ REPORT_PARAM_TYPES: frozenset[str] = frozenset({"string", "integer", "boolean", 
 REPORT_ORG_SCOPES: frozenset[str] = frozenset({"readable_projects", "all_org_projects"})
 # Query names the framework owns; a declared parameter may not shadow one.
 RESERVED_REPORT_PARAM_NAMES: frozenset[str] = frozenset({
-    "format", "include_children", "report_template_id", "project_id", "organization_id", "current_user", "db",
+    "format", "include_children", "project_id", "organization_id", "current_user", "db",
     "request",
 })
 _REPORT_SLUG_PATTERN = re.compile(r"^[a-z][a-z0-9-]{0,63}$")

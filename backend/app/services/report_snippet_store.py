@@ -10,8 +10,8 @@ Responsibilities:
 - `create_snippet` / `update_snippet` / `delete_snippet` / `copy_snippet`: the stored row and its audit events.
 
 Design decisions:
-- **A saved snippet is the blocks exactly as saved**, with no parameters; the author edits after inserting. Changing a
-  snippet's blocks means saving a selection again (a new snippet, or delete and save), not a second editor.
+- **A saved snippet is the blocks exactly as saved**, with no parameters; the author edits after inserting. Its blocks
+  change by saving a whole edited tree over them (`update_snippet(fragment=...)`), checked as a new snippet is.
 - **Checked as a whole layout would be.** The fragment is wrapped in a minimal tree and validated by the tree validator,
   so no unknown block, no raw HTML, no field the registry does not know and no reference to something defined outside the
   selection (an alias of an enclosing `each`) can be stored. A rejected selection says why, with paths in the fragment.
@@ -273,12 +273,21 @@ def create_snippet(
 
 def update_snippet(
     db: Session, row: SavedReportSnippet, *, name: str | None, description: str | None, category: str | None,
-    actor_id: uuid.UUID | None,
+    actor_id: uuid.UUID | None, fragment: Fragment | None = None,
 ) -> SavedReportSnippet:
-    """Changes a saved snippet's name, description or category (its blocks never change).
+    """Changes a saved snippet's name, description, category or blocks.
+
+    Args:
+        db: Active session (the caller commits).
+        row: The snippet (the caller has checked the right to change it).
+        name: The new name, or `None` to keep it.
+        description: The new description, or `None` to keep it.
+        category: The new category, or `None` to keep it.
+        actor_id: The author of the change.
+        fragment: The blocks (and what they use from the root) that replace the snippet's, or `None` to keep them.
 
     Raises:
-        SnippetSaveError: A detail is invalid.
+        SnippetSaveError: A detail is invalid or the new fragment is not usable at the snippet's tier.
         SnippetNameTakenError: The owner already has another saved snippet of that name.
     """
     new_name, new_description, new_category = _clean_details(
@@ -290,11 +299,19 @@ def update_snippet(
             ("name", row.name, new_name), ("description", row.description, new_description), ("category", row.category, new_category),
         ) if old != new
     ]
+    if fragment is not None:
+        errors = validate_fragment(db, row.organization_id, row.project_id, row.family, fragment.blocks, fragment.root)
+        if errors:
+            raise SnippetSaveError(errors)
+        if fragment.blocks != row.blocks or fragment.root != row.root:
+            changed.append("blocks")
     if not changed:
         return row
     if "name" in changed:
         _assert_name_free(db, row.organization_id, row.project_id, new_name, except_id=row.id)
     row.name, row.description, row.category = new_name, new_description, new_category
+    if "blocks" in changed and fragment is not None:
+        row.blocks, row.root = fragment.blocks, fragment.root
     try:
         db.flush()
     except IntegrityError as exc:
@@ -302,7 +319,7 @@ def update_snippet(
         raise SnippetNameTakenError(f'A saved snippet called "{new_name}" already exists here.') from exc
     log_event(
         db, entity_type="report_snippet", entity_id=row.id, action="updated", actor_id=actor_id,
-        organization_id=row.organization_id, project_id=row.project_id, detail={"fields": changed},
+        organization_id=row.organization_id, project_id=row.project_id, detail={"fields": changed, "blocks": len(row.blocks)},
     )
     return row
 

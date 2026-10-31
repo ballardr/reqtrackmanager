@@ -1,9 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, fn, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, fn, screen, userEvent, waitFor, within } from "storybook/test";
 
-import { api as http } from "../api/client";
-
-import { buildFolderApi } from "../testing/reportFolderFixtures";
+import { buildFolderApi, openFolderPopover } from "../testing/reportFolderFixtures";
 import { buildLayoutApi, buildLayoutSummary } from "../testing/reportLayoutFixtures";
 import { requiredCaptions } from "../testing/requiredMarkers";
 import { ReportLayoutFormModal } from "./ReportLayoutFormModal";
@@ -60,9 +58,12 @@ export const FolderIsChosenFromTheTreeAndSaved: Story = {
   play: async ({ args }) => {
     const dialog = within(await screen.findByRole("dialog", { name: "New report layout" }));
     await expect(requiredCaptions(document.body)).toEqual(["Name", "Kind of report"]);
-    await expect(await dialog.findByRole("radio", { name: "No folder (the default)" })).toBeChecked();
     await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Filed");
-    await userEvent.click(await dialog.findByRole("radio", { name: "Quarterly" }));
+    const popover = await openFolderPopover(dialog);
+    await expect(await popover.findByRole("radio", { name: "No folder (the default)" })).toBeChecked();
+    await userEvent.click(await popover.findByRole("radio", { name: "Quarterly" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Move to a folder" })).not.toBeInTheDocument());
+    await expect(dialog.getByRole("button", { name: "Folder: Handover/Quarterly" })).toBeInTheDocument();
     await userEvent.click(dialog.getByRole("button", { name: "Create" }));
     await waitFor(() => expect(args.api.create).toHaveBeenCalledWith(expect.objectContaining({ name: "Filed", folder: "Handover/Quarterly" })));
   },
@@ -74,10 +75,13 @@ export const AFolderAddedHereIsSavedWithTheLayout: Story = {
   play: async ({ args }) => {
     const dialog = within(await screen.findByRole("dialog", { name: "New report layout" }));
     await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Fresh");
-    await userEvent.click(await dialog.findByRole("button", { name: "New folder" }));
-    await userEvent.type(dialog.getByRole("textbox", { name: "Name of the new folder" }), "Annual");
-    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
+    const popover = await openFolderPopover(dialog);
+    await userEvent.click(await popover.findByRole("button", { name: "New folder" }));
+    await userEvent.type(popover.getByRole("textbox", { name: "Name of the new folder" }), "Annual");
+    await userEvent.click(popover.getByRole("button", { name: "Add" }));
     await waitFor(() => expect(args.onFoldersChanged).toHaveBeenCalled());
+    await userEvent.keyboard("{Escape}");
+    await expect(dialog.getByRole("button", { name: "Folder: Annual" })).toBeInTheDocument();
     await userEvent.click(dialog.getByRole("button", { name: "Create" }));
     await waitFor(() => expect(args.api.create).toHaveBeenCalledWith(expect.objectContaining({ name: "Fresh", folder: "Annual" })));
   },
@@ -99,12 +103,13 @@ export const SaveWaitsForAFolderChangeToFinish: Story = {
     const dialog = within(await screen.findByRole("dialog", { name: "New report layout" }));
     await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Waiting");
     await expect(dialog.getByRole("button", { name: "Create" })).toBeEnabled();
-    await userEvent.click(await dialog.findByRole("button", { name: "New folder" }));
-    await userEvent.type(dialog.getByRole("textbox", { name: "Name of the new folder" }), "Slow");
-    await userEvent.click(dialog.getByRole("button", { name: "Add" }));
+    const popover = await openFolderPopover(dialog);
+    await userEvent.click(await popover.findByRole("button", { name: "New folder" }));
+    await userEvent.type(popover.getByRole("textbox", { name: "Name of the new folder" }), "Slow");
+    await userEvent.click(popover.getByRole("button", { name: "Add" }));
     await waitFor(() => expect(dialog.getByRole("button", { name: "Create" })).toBeDisabled());
     slowFolders.release();
-    await expect(await dialog.findByRole("radio", { name: "Slow" })).toBeChecked();
+    await expect(await popover.findByRole("radio", { name: "Slow" })).toBeChecked();
     await waitFor(() => expect(dialog.getByRole("button", { name: "Create" })).toBeEnabled());
   },
 };
@@ -114,41 +119,62 @@ export const EditingChangesTheFolder: Story = {
   args: { layout: buildLayoutSummary({ folder: "Shared" }) },
   play: async ({ args }) => {
     const dialog = within(await screen.findByRole("dialog", { name: "Layout details" }));
-    await expect(await dialog.findByRole("radio", { name: "Shared" })).toBeChecked();
-    await userEvent.click(dialog.getByRole("radio", { name: "Handover" }));
+    const popover = await openFolderPopover(dialog, "Shared");
+    await expect(await popover.findByRole("radio", { name: "Shared" })).toBeChecked();
+    await userEvent.click(popover.getByRole("radio", { name: "Handover" }));
     await userEvent.click(dialog.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(args.api.update).toHaveBeenCalledWith("layout-1", expect.objectContaining({ folder: "Handover" })));
   },
 };
 
-/** Editing offers the layout's own branding template (the organisation's default until one is chosen); creating does not. */
-export const EditingOffersTheLayoutsOwnTemplate: Story = {
+/** A layout has no branding choice: the organisation has one report look, which the layout reads where it asks. */
+export const EditingOffersNoTemplate: Story = {
   args: { layout: buildLayoutSummary() },
-  beforeEach: () => {
-    spyOn(http, "get").mockImplementation(async (path: string) => {
-      if (path.includes("/report-templates")) {
-        return [{
-          id: "tpl-1", organization_id: "org-1", name: "Corporate", accent_color_hex: "#475569", include_cover_page: true,
-          include_logo: true, footer_text: null, chapters_per_component: true, is_default: true,
-        }];
-      }
-      return [];
-    });
-  },
   play: async ({ args }) => {
     const dialog = within(await screen.findByRole("dialog", { name: "Layout details" }));
-    const select = await dialog.findByRole("combobox", { name: "Branding template" });
-    await expect(select).toHaveValue("");
-    await userEvent.selectOptions(select, "tpl-1");
+    await expect(await dialog.findByRole("textbox", { name: /Name/ })).toBeInTheDocument();
+    await expect(dialog.queryByRole("combobox", { name: "Branding template" })).not.toBeInTheDocument();
     await userEvent.click(dialog.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(args.api.update).toHaveBeenCalledWith("layout-1", expect.objectContaining({ report_template_id: "tpl-1" })));
+    await waitFor(() => expect(args.api.update).toHaveBeenCalledWith("layout-1", expect.not.objectContaining({ report_template_id: expect.anything() })));
   },
 };
 
-/** Creating a layout does not ask for a template: the organisation's default applies until the layout is edited. */
+/** Creating a layout does not ask for a template either. */
 export const CreatingOffersNoTemplate: Story = {
   play: async () => {
     const dialog = within(await screen.findByRole("dialog", { name: "New report layout" }));
     await expect(dialog.queryByRole("combobox", { name: "Branding template" })).not.toBeInTheDocument();
+  },
+};
+
+/** The form only says where the layout is; the tree is not on the form until the field is pressed, and Cancel discards a move. */
+export const FolderShowsAsAValueAndOpensAPopoverToMove: Story = {
+  args: { layout: buildLayoutSummary({ folder: "Shared" }) },
+  play: async ({ args }) => {
+    const dialog = within(await screen.findByRole("dialog", { name: "Layout details" }));
+    await expect(dialog.queryByRole("radiogroup")).not.toBeInTheDocument();
+    const field = dialog.getByRole("button", { name: "Folder: Shared" });
+    await expect(field).toHaveTextContent("Shared");
+    const popover = await openFolderPopover(dialog, "Shared");
+    await userEvent.click(popover.getByRole("radio", { name: "Handover" }));
+    await expect(dialog.getByRole("button", { name: "Folder: Handover" })).toBeInTheDocument();
+    await userEvent.click(dialog.getByRole("button", { name: "Cancel" }));
+    await expect(args.api.update).not.toHaveBeenCalled();
+    await expect(args.onClose).toHaveBeenCalled();
+  },
+};
+
+/** Deleting a folder asks first, and the confirmation dialog does not close the popover behind it. */
+export const TheDeleteConfirmationKeepsThePopoverOpen: Story = {
+  play: async () => {
+    const dialog = within(await screen.findByRole("dialog", { name: "New report layout" }));
+    const popover = await openFolderPopover(dialog);
+    await userEvent.click(await popover.findByRole("radio", { name: "Handover" }));
+    await userEvent.click(await dialog.findByRole("button", { name: "Folder: Handover" }));
+    const reopened = within(await screen.findByRole("dialog", { name: "Move to a folder" }));
+    await userEvent.click(reopened.getByRole("button", { name: "Delete" }));
+    const confirm = within(await screen.findByRole("dialog", { name: /Delete the folder Handover/ }));
+    await userEvent.click(confirm.getByRole("button", { name: "Delete" }));
+    await expect(await dialog.findByRole("button", { name: "Folder: No folder" })).toBeInTheDocument();
   },
 };

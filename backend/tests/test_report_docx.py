@@ -274,30 +274,20 @@ def test_requirement_report_docx_download(client, admin_token):
     assert doc.tables[0].rows[1].cells[3].text == "Draft"  # label map, not the raw enum
 
 
-def test_requirement_report_docx_applies_template_branding_and_rejects_a_foreign_template(client, admin_token):
+def test_requirement_report_docx_applies_the_organisations_report_look(client, admin_token):
     org, token = create_org_admin_in(client, admin_token, "DocxBrandOrg")
     project = _seed_requirement(client, token, org["id"])
-    created = client.post(
-        f"/api/v1/orgs/{org['id']}/report-templates",
-        json={"name": "Branded", "accent_color_hex": "#ff0000", "footer_text": "Confidential", "include_cover_page": True},
-        headers=auth_headers(token),
-    )
-    assert created.status_code == 201, created.text
-    resp = client.post(
-        f"/api/v1/projects/{project['id']}/reports", json={"format": "docx", "report_template_id": created.json()["id"]},
-        headers=auth_headers(token),
-    )
+    assert client.put(
+        f"/api/v1/orgs/{org['id']}/branding", json={"report_accent_color_hex": "#ff0000"}, headers=auth_headers(token),
+    ).status_code == 200
+    assert client.put(
+        f"/api/v1/orgs/{org['id']}/advanced-settings",
+        json={"report_footer_text": "Confidential", "report_include_cover_page": True}, headers=auth_headers(token),
+    ).status_code == 200
+    resp = client.post(f"/api/v1/projects/{project['id']}/reports", json={"format": "docx"}, headers=auth_headers(token))
     assert resp.status_code == 200, resp.text
     doc = _open(resp.content)
     assert _header_fill(doc.tables[0]) == "FF0000" and "Confidential" in doc.sections[0].footer.paragraphs[0].text
-
-    other, other_token = create_org_admin_in(client, admin_token, "DocxForeignOrg")
-    foreign = client.post(f"/api/v1/orgs/{other['id']}/report-templates", json={"name": "Theirs"}, headers=auth_headers(other_token))
-    bad = client.post(
-        f"/api/v1/projects/{project['id']}/reports", json={"format": "docx", "report_template_id": foreign.json()["id"]},
-        headers=auth_headers(token),
-    )
-    assert bad.status_code == 400
 
 
 def test_requirement_report_docx_needs_project_access(client, admin_token):

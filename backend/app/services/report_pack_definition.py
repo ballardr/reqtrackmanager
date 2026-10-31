@@ -5,8 +5,7 @@ The definition a report pack is stored in, and its validation.
 
 Responsibilities:
 - Define the vocabulary: a root object with `schema_version`, optional `variables` (declared exactly as a
-  layout's, `services.report_variables`), an optional `template` (the name of an organisation report template whose
-  branding the PDF and Word entries take by default), an optional `file_name` (the zip's default name, a
+  layout's, `services.report_variables`), an optional `file_name` (the zip's default name, a
   `{{placeholder}}` template: `services.report_file_names`) and `entries`.
 - `validate_definition` / `assert_valid`: check a definition before it is stored, listing every problem.
 - `definition_hash`: SHA-256 of the canonical JSON, for change detection and provenance.
@@ -116,13 +115,11 @@ class _PackValidator:
         if size > MAX_DEFINITION_BYTES:
             self.error("", f"The pack is too large ({size} bytes; the limit is {MAX_DEFINITION_BYTES}).")
             return self.tree.analysis.errors
-        self.tree.check_keys(definition, "", required=("schema_version", "entries"), optional=("variables", "template", "file_name"))
+        self.tree.check_keys(definition, "", required=("schema_version", "entries"), optional=("variables", "file_name"))
         if definition.get("schema_version") != PACK_SCHEMA_VERSION:
             self.error("schema_version", f"Must be {PACK_SCHEMA_VERSION}.")
         if "variables" in definition:
             self.tree.variable_declarations(definition["variables"], "variables")
-        if "template" in definition:
-            self.tree.text(definition["template"], "template", limit=255)
         if "file_name" in definition:
             declared = definition.get("variables")
             names = [d["name"] for d in declared if isinstance(d, dict) and isinstance(d.get("name"), str)] if isinstance(declared, list) else []

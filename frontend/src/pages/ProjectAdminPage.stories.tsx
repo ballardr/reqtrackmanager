@@ -95,7 +95,7 @@ function mockProjectAdminApis(
   const organization: Organization = overrides.organization ?? {
     id: "org-1", name: "Acme Corp", created_at: "2026-01-01T00:00:00Z", logo_file_id: null,
     default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
-    disabled_at: null, accent_color_hex: null, header_title: null,
+    disabled_at: null, accent_color_hex: null, report_accent_color_hex: null, report_include_logo: true, header_title: null,
     email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
     code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto" }, enforce_code_everywhere: false,
     force_require_change_request_for_approved_links: false,
@@ -134,7 +134,6 @@ function mockProjectAdminApis(
     if (path.endsWith("/report-layouts")) return [buildLayoutSummary({ project_id: PROJECT_ID })];
     // Report Setup merges these three lists with the layouts: empty is a valid answer for each.
     if (path.endsWith("/report-packs") || path.endsWith("/report-placements") || path.endsWith("/report-folders")) return [];
-    if (path.includes("/report-templates")) return [];
     // Hierarchical projects (docs/decisions.md). Checked before the plain
     // "/users" check below — /orgs/{id}/users also matches that.
     if (path.includes("/member-sources")) return overrides.memberSources ?? [];
@@ -378,7 +377,7 @@ function buildForcedOrg(): Organization {
   return {
     id: "org-1", name: "Acme Corp", created_at: "2026-01-01T00:00:00Z", logo_file_id: null,
     default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
-    disabled_at: null, accent_color_hex: null, header_title: null,
+    disabled_at: null, accent_color_hex: null, report_accent_color_hex: null, report_include_logo: true, header_title: null,
     email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
     code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto" }, enforce_code_everywhere: false,
     force_require_change_request_for_approved_links: true,
@@ -1133,28 +1132,28 @@ export const MembersTabPendingInviteResend: Story = {
   },
 };
 
-/** Report Setup holds layouts, packs and placements only: no report-content editor or default template. */
+/** Reports holds layouts, packs and placements only: no report-content editor or default template. */
 export const ReportSetupTab: Story = {
   beforeEach: () => {
     mockProjectAdminApis();
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Report Setup" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Reports" }));
     await canvas.findByRole("treegrid", { name: "Reports, packs and tables" });
     await expect(canvas.queryByLabelText("Report type")).not.toBeInTheDocument();
     await expect(canvas.queryByLabelText("Default report template")).not.toBeInTheDocument();
   },
 };
 
-/** Report Setup lists the project's report layouts in one folder list, each opening in the designer. */
+/** Reports lists the project's report layouts in one folder list, each opening in the designer. */
 export const ReportSetupListsTheReportLayouts: Story = {
   beforeEach: () => {
     mockProjectAdminApis();
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Report Setup" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Reports" }));
     const grid = within(await canvas.findByRole("treegrid", { name: "Reports, packs and tables" }));
     await userEvent.click(grid.getByRole("button", { name: "Expand Custom reports" }));
     await expect(grid.getByRole("button", { name: /^Requirements by component/ })).toBeInTheDocument();

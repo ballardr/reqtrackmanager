@@ -64,6 +64,7 @@ from app.schemas.report_layout import (
     ReportLayoutRestore,
     ReportLayoutRestoreOut,
     ReportLayoutSave,
+    ReportLayoutStartersMissingOut,
     ReportLayoutStartersOut,
     ReportLayoutTextError,
     ReportLayoutTextFormat,
@@ -128,7 +129,7 @@ def _summary(layout: ReportLayout, origin: Origin, *, hidden: bool = False, edit
     """A layout's summary as one scope sees it."""
     return ReportLayoutOut(
         id=layout.id, organization_id=layout.organization_id, project_id=layout.project_id, name=layout.name,
-        description=layout.description, folder=layout.folder, report_template_id=layout.report_template_id,
+        description=layout.description, folder=layout.folder,
         family=layout.family, current_version=layout.current_version,
         origin=origin, hidden=hidden, editable=editable, updated_at=layout.updated_at,
     )
@@ -355,7 +356,7 @@ def _create(db: Session, user: User, body: ReportLayoutCreate, *, organization_i
     try:
         saved = report_layouts.create_layout(
             db, organization_id=organization_id, project_id=project_id, name=body.name, description=body.description,
-            folder=body.folder, report_template_id=body.report_template_id, family=body.family, tree=body.tree,
+            folder=body.folder, family=body.family, tree=body.tree,
             actor_id=user.id, comment=body.comment,
         )
     except (ValueError, InvalidLayoutError) as exc:
@@ -380,7 +381,6 @@ def _update(db: Session, user: User, layout: ReportLayout, body: ReportLayoutUpd
     try:
         report_layouts.update_details(
             db, layout, name=body.name, description=body.description, folder=body.folder, actor_id=user.id,
-            report_template_id=body.report_template_id if "report_template_id" in body.model_fields_set else report_layouts.UNCHANGED,
         )
     except ValueError as exc:
         db.rollback()
@@ -433,6 +433,20 @@ def create_org_layout(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
     layout = _create(db, current_user, body, organization_id=organization_id, project_id=None)
     return _detail(db, layout, "organization")
+
+
+@org_router.get("/starters", response_model=ReportLayoutStartersMissingOut)
+def list_missing_org_starter_layouts(
+    organization_id: UUID, current_user: User = Depends(manage_org_layouts), db: Session = Depends(get_db),
+) -> ReportLayoutStartersMissingOut:
+    """Lists the starter layouts the organisation does not have, so the UI offers adding them only when one is missing.
+
+    Raises:
+        HTTPException: 404 the organisation does not exist.
+    """
+    if db.get(Organization, organization_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    return ReportLayoutStartersMissingOut(missing=report_starters.missing_starter_names(db, organization_id))
 
 
 @org_router.post("/starters", response_model=ReportLayoutStartersOut)

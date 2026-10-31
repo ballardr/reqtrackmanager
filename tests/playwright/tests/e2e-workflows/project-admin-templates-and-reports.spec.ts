@@ -1,74 +1,29 @@
 import { expect, test } from "@playwright/test";
 
-import { ensureExpanded, loginAs, openProject, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
+import { loginAs, openProject, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
 
 /**
- * Job to be done: an org admin defines a reusable report template (accent
- * colour, cover page/logo toggles, footer, chapter-per-component default —
- * R-G-05), and a project can be marked usable as a template for future
- * project creation (C-E-04). A template is branding only; a project has no
- * default template and no report content to set.
+ * Job to be done: an org admin finds the organisation's report look on Branding and Configuration, not in a list of
+ * report templates (there are none), and a project can be marked usable as a template for future project creation
+ * (C-E-04). A project has no default template and no report content to set.
  *
  * Uses Gamma (single-org admin, `/orgs` redirects straight to its admin
  * page) to stay isolated from the Alpha/Beta specs in this suite.
  */
 
-test.describe("org report templates and project report setup", () => {
-  test("create/edit/delete an org report template, see that a project has no default template, mark a project as a template", async ({
+test.describe("org report look and project report setup", () => {
+  test("there is no report templates section, a project has no default template, mark a project as a template", async ({
     page,
   }) => {
-    const templateName = `E2E Corporate Template ${Date.now()}`;
-
     await loginAs(page, PERSONAS.orgAdminGamma.email);
     await page.goto("/orgs");
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
 
-    // Scoped to the Report templates section itself, not the whole page —
-    // other CollapsibleSections within the same "Templates & reports"
-    // resource-menu group can be
-    // left expanded/collapsed server-side by an earlier spec sharing this
-    // same Gamma admin persona. A page-wide,
-    // unscoped query is a strict-mode violation waiting to happen whenever
-    // that section is already open. (Sections in *other* resource-menu
-    // groups, e.g. "Organisation users" or "SMTP & email", are unmounted
-    // entirely while this group is selected, so they're no longer a
-    // concern here the way they were before the restructure — but the
-    // scoping is still worth keeping for the sibling section that remains.)
-    const reportTemplatesSection = page.locator(".card", {
-      has: page.getByRole("button", { name: "Report templates section" }),
-    });
-
-    await test.step("create a report template", async () => {
-      // Report templates moved into the "Templates & reports" resource-menu
-      // group — a real
-      // navigation, so it must be selected before the section is reachable
-      // at all.
+    await test.step("Templates & reports has no Report templates section", async () => {
       await selectOrgAdminGroup(page, "Templates & reports");
-      await ensureExpanded(page, "Report templates");
-      // The create/edit form itself opens in a `Modal`, not inline within
-      // the section — portalled to `document.body`, so it's queried from
-      // `page`, not scoped to `reportTemplatesSection`.
-      await reportTemplatesSection.getByRole("button", { name: "New template" }).click();
-      const createDialog = page.getByRole("dialog", { name: "New template" });
-      await createDialog.getByLabel("Name", { exact: true }).fill(templateName);
-      await createDialog.getByLabel("Include cover page").check();
-      await createDialog.getByLabel("Include organisation logo").check();
-      await createDialog.getByLabel("Footer text").fill("Confidential — E2E Gamma Labs");
-      await createDialog.getByLabel("Chapter per component by default").check();
-      await createDialog.getByRole("button", { name: "Create", exact: true }).click();
-      await expect(createDialog).not.toBeVisible();
-      await expect(reportTemplatesSection.getByText(templateName)).toBeVisible();
-    });
-
-    const revisedName = `${templateName} (Revised)`;
-    await test.step("edit the template", async () => {
-      const row = reportTemplatesSection.locator(".row", { hasText: templateName }).first();
-      await row.getByRole("button", { name: "Edit" }).click();
-      const editDialog = page.getByRole("dialog", { name: "Edit template" });
-      await editDialog.getByLabel("Name", { exact: true }).fill(revisedName);
-      await editDialog.getByRole("button", { name: "Save", exact: true }).click();
-      await expect(editDialog).not.toBeVisible();
-      await expect(reportTemplatesSection.getByText(revisedName)).toBeVisible();
+      await expect(page.getByRole("button", { name: "Reports section" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Report templates section" })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "New template" })).toHaveCount(0);
     });
 
     await test.step("a project's Report Setup has layouts and no default template or report content", async () => {
@@ -77,7 +32,7 @@ test.describe("org report templates and project report setup", () => {
       await page.goto("/projects");
       await openProject(page, PROJECT_NAMES.gamma1);
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await selectProjectAdminGroup(page, "Report Setup");
+      await selectProjectAdminGroup(page, "Reports");
       await expect(page.getByRole("button", { name: "New", exact: true })).toBeVisible();
       await expect(page.getByRole("treegrid", { name: "Reports, packs and tables" })).toBeVisible();
       await expect(page.getByLabel("Default report template")).toHaveCount(0);
@@ -91,15 +46,6 @@ test.describe("org report templates and project report setup", () => {
       await expect(dialog.getByRole("button", { name: "Generate PDF" })).toBeVisible();
       await expect(dialog.getByLabel("Report template")).toHaveCount(0);
       await expect(dialog.getByText("Template & layout")).toHaveCount(0);
-    });
-
-    await test.step("delete the template", async () => {
-      await page.goto("/orgs");
-      await selectOrgAdminGroup(page, "Templates & reports");
-      await ensureExpanded(page, "Report templates");
-      const row = page.locator(".row", { hasText: revisedName }).first();
-      await row.getByRole("button").last().click();
-      await expect(page.getByText(revisedName)).toHaveCount(0);
     });
 
     await test.step("mark Gamma-2 as usable as a project template", async () => {

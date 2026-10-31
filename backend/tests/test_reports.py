@@ -12,7 +12,6 @@ import pytest
 from app.services.reports import (
     ReportRequirementRow,
     _group_rows_by_component_and_category,
-    default_chapters_per_component,
     generate_csv_report,
     generate_sheet_report,
     requirement_table,
@@ -247,61 +246,33 @@ def test_csv_report_endpoint_reflects_projects_saved_terminology_override(client
     assert header_line == "ID,Name,Module,Topic,Status,Reasoning,Clarification,Tags"
 
 
-def test_default_chapters_per_component_heuristic():
-    """Chaptered unless some component in scope has fewer than three
-    requirements — see default_chapters_per_component's docstring."""
-    assert default_chapters_per_component([]) is True  # nothing to chapter
-
-    all_healthy = [
-        _row("A-1-001", "Airframe", 0, "Functional", 0),
-        _row("A-1-002", "Airframe", 0, "Functional", 0),
-        _row("A-1-003", "Airframe", 0, "Functional", 0),
-        _row("B-1-001", "Avionics", 1, "Safety", 0),
-        _row("B-1-002", "Avionics", 1, "Safety", 0),
-        _row("B-1-003", "Avionics", 1, "Safety", 0),
-    ]
-    assert default_chapters_per_component(all_healthy) is True
-
-    one_sparse = [
-        *all_healthy,
-        _row("C-1-001", "Firmware", 2, "Regulatory", 0),  # only 1 requirement in this component
-    ]
-    assert default_chapters_per_component(one_sparse) is False
-
-
-def test_chapters_per_component_precedence_payload_beats_template_beats_heuristic(client, admin_token, org_id):
-    """Router-level: an explicit payload choice wins over the selected
-    template's setting, which wins over the sparse-component heuristic."""
+def test_chapters_per_component_precedence_payload_beats_the_organisations_setting(client, admin_token, org_id):
+    """Router-level: an explicit payload choice wins over the organisation's setting."""
     project = create_project(client, admin_token, org_id)
     sw_id, perf_id = create_component_and_category(client, admin_token, project["id"])
-    # Only one requirement in this component -> heuristic alone would pick continuous.
     client.post(
         f"/api/v1/projects/{project['id']}/requirements",
         json={"name": "Solo requirement", "reasoning": "x", "component_id": sw_id, "category_id": perf_id},
         headers=auth_headers(admin_token),
     )
+    url = f"/api/v1/projects/{project['id']}/reports"
 
-    heuristic_resp = client.post(f"/api/v1/projects/{project['id']}/reports", json={"format": "pdf"}, headers=auth_headers(admin_token))
-    assert heuristic_resp.status_code == 200
+    def settings(chapters: bool) -> None:
+        resp = client.put(
+            f"/api/v1/orgs/{org_id}/advanced-settings", json={"report_chapters_per_component": chapters}, headers=auth_headers(admin_token),
+        )
+        assert resp.status_code == 200, resp.text
 
-    template_forces_chapters = client.post(
-        f"/api/v1/orgs/{org_id}/report-templates",
-        json={"name": "Always Chaptered", "chapters_per_component": True}, headers=auth_headers(admin_token),
-    ).json()
-    template_resp = client.post(
-        f"/api/v1/projects/{project['id']}/reports",
-        json={"format": "pdf", "report_template_id": template_forces_chapters["id"]}, headers=auth_headers(admin_token),
-    )
-    assert template_resp.status_code == 200
-    # The template forces chaptered (with its page break + heading) despite
-    # the sparse component the heuristic alone would have gone continuous for.
-    assert len(template_resp.content) > len(heuristic_resp.content)
+    settings(False)
+    continuous = client.post(url, json={"format": "pdf"}, headers=auth_headers(admin_token))
+    assert continuous.status_code == 200
 
-    payload_overrides_template = client.post(
-        f"/api/v1/projects/{project['id']}/reports",
-        json={"format": "pdf", "report_template_id": template_forces_chapters["id"], "chapters_per_component": False},
-        headers=auth_headers(admin_token),
-    )
-    assert payload_overrides_template.status_code == 200
-    # Explicit payload choice (continuous) wins over the template's chaptered setting.
-    assert len(payload_overrides_template.content) < len(template_resp.content)
+    settings(True)
+    chaptered = client.post(url, json={"format": "pdf"}, headers=auth_headers(admin_token))
+    assert chaptered.status_code == 200
+    # Chaptered adds the component heading and its page break.
+    assert len(chaptered.content) > len(continuous.content)
+
+    overridden = client.post(url, json={"format": "pdf", "chapters_per_component": False}, headers=auth_headers(admin_token))
+    assert overridden.status_code == 200
+    assert len(overridden.content) < len(chaptered.content)

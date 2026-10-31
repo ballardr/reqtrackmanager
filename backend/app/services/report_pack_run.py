@@ -52,11 +52,10 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.generated_report import GeneratedReport
-from app.models.organization import Organization, ReportTemplate
+from app.models.organization import Organization
 from app.models.project import Project
 from app.models.report_layout import ReportLayout
 from app.models.report_pack import ReportPack, ReportPackVersion
@@ -158,7 +157,6 @@ class PackRun:
         generated_at: When the run started (UTC).
         values: The resolved pack variable values.
         entries: One outcome per entry, in order.
-        template_id: The branding template applied to documents, if any.
         pack_run_id: Shared by the provenance rows.
         set_name: The saved variable set the values started from, if one was chosen.
         warnings: Remarks on the values (a set value no longer among its options, names ignored).
@@ -172,7 +170,6 @@ class PackRun:
     generated_at: datetime
     values: dict[str, Any]
     entries: list[EntryOutcome]
-    template_id: uuid.UUID | None = None
     pack_run_id: uuid.UUID = field(default_factory=uuid.uuid4)
     set_name: str | None = None
     warnings: list[str] = field(default_factory=list)
@@ -318,7 +315,7 @@ def _clock_left(deadline: float) -> None:
 def _layout_entry(
     db: Session, user: User, organization: Organization, project: Project | None, entry: Mapping[str, Any],
     index: int, pack_declarations: Sequence[Mapping[str, Any]] | None, pack_values: Mapping[str, Any], *,
-    values_for: Callable[[Project], Mapping[str, Any]] | None, template: ReportTemplate | None,
+    values_for: Callable[[Project], Mapping[str, Any]] | None,
     project_ids: Sequence[uuid.UUID] | None, include_children: bool, render: bool, background: bool = False,
 ) -> EntryOutcome:
     outcome = EntryOutcome(index, "layout", str(entry["name"]), entry["format"], stem=_stem(entry, str(entry["name"])))
@@ -379,7 +376,7 @@ def _layout_entry(
     outcome.records = sum(outcome.record_counts.values())
     outcome.warnings = [*run.notes, *run.evaluated.warnings][:5]
     if render:
-        rendered = custom_report_run.render_file(db, run, entry["format"], template)
+        rendered = custom_report_run.render_file(db, run, entry["format"])
         outcome.content, outcome.extension = rendered.content, rendered.extension
     outcome.status = STATUS_INCLUDED
     return outcome
@@ -387,7 +384,7 @@ def _layout_entry(
 
 def _report_entry(
     db: Session, user: User, organization: Organization, project: Project | None, entry: Mapping[str, Any], index: int, *,
-    template: ReportTemplate | None, include_children: bool, render: bool,
+    include_children: bool, render: bool,
 ) -> EntryOutcome:
     module_key, report_key = entry["module_key"], entry["report"]
     definition = find_report(module_key, report_key)
@@ -410,27 +407,15 @@ def _report_entry(
     outcome.records = sum(len(section.rows) for section in result.sections)
     outcome.record_counts = {"rows": outcome.records}
     if render:
-        outcome.content = render_module_report(db, result, entry["format"], organization=organization, template=template)
+        outcome.content = render_module_report(db, result, entry["format"], organization=organization)
         outcome.extension = entry["format"]
     outcome.status = STATUS_INCLUDED
     return outcome
 
 
-def _template(db: Session, organization: Organization, version: ReportPackVersion, template_id: uuid.UUID | None) -> ReportTemplate | None:
-    """The branding template: the one requested, else the pack's own by name, else the organisation's default."""
-    if template_id is not None:
-        return db.scalar(select(ReportTemplate).where(ReportTemplate.id == template_id, ReportTemplate.organization_id == organization.id))
-    name = version.definition.get("template")
-    if name:
-        named = db.scalar(select(ReportTemplate).where(ReportTemplate.organization_id == organization.id, ReportTemplate.name == name))
-        if named is not None:
-            return named
-    return db.scalar(select(ReportTemplate).where(ReportTemplate.organization_id == organization.id, ReportTemplate.is_default))
-
-
 def _run(
     db: Session, user: User, pack: ReportPack, version: ReportPackVersion, organization: Organization,
-    project: Project | None, values: dict[str, Any], *, template_id: uuid.UUID | None, project_ids: Sequence[uuid.UUID] | None,
+    project: Project | None, values: dict[str, Any], *, project_ids: Sequence[uuid.UUID] | None,
     include_children: bool, render: bool, values_for: Callable[[Project], Mapping[str, Any]] | None = None,
     set_name: str | None = None, warnings: Sequence[str] = (), background: bool = False,
 ) -> PackRun:
@@ -439,7 +424,6 @@ def _run(
         raise NothingToRunError("This pack has no reports.")
     started = datetime.now(UTC)
     deadline = time.monotonic() + (ASYNC_MAX_PACK_SECONDS if background else MAX_PACK_SECONDS)
-    template = _template(db, organization, version, template_id)
     declarations = version.definition.get("variables")
     outcomes: list[EntryOutcome] = []
     for index, entry in enumerate(entries):
@@ -447,15 +431,14 @@ def _run(
         if entry["kind"] == "layout":
             outcomes.append(_layout_entry(
                 db, user, organization, project, entry, index, declarations, values, values_for=values_for,
-                template=template, project_ids=project_ids, include_children=include_children, render=render,
-                background=background,
+                project_ids=project_ids, include_children=include_children, render=render, background=background,
             ))
         else:
             outcomes.append(_report_entry(
-                db, user, organization, project, entry, index, template=template, include_children=include_children, render=render,
+                db, user, organization, project, entry, index, include_children=include_children, render=render,
             ))
     run = PackRun(
-        pack, version, organization, project, started, values, outcomes, template.id if template else None,
+        pack, version, organization, project, started, values, outcomes,
         set_name=set_name, warnings=list(warnings),
     )
     if not run.included:
@@ -498,7 +481,7 @@ def check_request(
 
 def run_project_pack(
     db: Session, user: User, project: Project, pack: ReportPack, version: ReportPackVersion,
-    supplied: Mapping[str, Any] | None = None, *, template_id: uuid.UUID | None = None, include_children: bool = False,
+    supplied: Mapping[str, Any] | None = None, *, include_children: bool = False,
     render: bool = True, set_id: uuid.UUID | None = None, background: bool = False,
 ) -> PackRun:
     """Runs a pack for `project` as `user`.
@@ -510,7 +493,6 @@ def run_project_pack(
         pack: A pack the project can reach (not hidden).
         version: The pinned version (the pack's current one).
         supplied: Pack variable values; they win over a chosen set's, and a variable left out takes its default.
-        template_id: A branding template of the organisation (else the pack's default by name).
         include_children: Also read readable child projects.
         render: Produce the files; `False` evaluates only (the preview of counts).
         set_id: A saved variable set to start from, as this project sees it (its overrides applied).
@@ -531,14 +513,14 @@ def run_project_pack(
     values = resolve_pack_values(version, chosen)
     remarks += report_pack_sets.stale_warnings(db, version, chosen, [project.id]) if set_id is not None else []
     return _run(
-        db, user, pack, version, organization, project, values, template_id=template_id, project_ids=None,
+        db, user, pack, version, organization, project, values, project_ids=None,
         include_children=include_children, render=render, set_name=set_name, warnings=remarks, background=background,
     )
 
 
 def run_organization_pack(
     db: Session, user: User, organization: Organization, pack: ReportPack, version: ReportPackVersion,
-    supplied: Mapping[str, Any] | None = None, *, template_id: uuid.UUID | None = None,
+    supplied: Mapping[str, Any] | None = None, *,
     project_ids: Sequence[uuid.UUID] | None = None, render: bool = True, set_id: uuid.UUID | None = None,
     background: bool = False,
 ) -> PackRun:
@@ -565,7 +547,7 @@ def run_organization_pack(
         scope = readable_projects(db, user, organization=organization, root_project=None, include_children=False)
         remarks += report_pack_sets.stale_warnings(db, version, chosen, [p.id for p in scope][: custom_report_run.MAX_FANOUT_PROJECTS])
     return _run(
-        db, user, pack, version, organization, None, values, template_id=template_id, project_ids=project_ids,
+        db, user, pack, version, organization, None, values, project_ids=project_ids,
         include_children=False, render=render, values_for=values_for, set_name=set_name, warnings=remarks,
         background=background,
     )
@@ -645,8 +627,8 @@ def record_pack_run(
     for entry in run.included:
         if entry.run is not None:
             row = custom_report_run.record_run(
-                db, user, entry.run, entry.format, report_template_id=run.template_id,
-                include_children=include_children, requested_project_ids=requested_project_ids,
+                db, user, entry.run, entry.format, include_children=include_children,
+                requested_project_ids=requested_project_ids,
             )
         else:
             counts: dict[str, int] = defaultdict(int, entry.record_counts)
@@ -657,7 +639,7 @@ def record_pack_run(
                 layout_id=uuid.uuid5(uuid.NAMESPACE_URL, f"report:{entry.report_key}"), layout_name=entry.title,
                 layout_version=0, tree_hash="", requested_by=user.id, created_at=run.generated_at, format=entry.format,
                 engine_version=custom_report_run.ENGINE_VERSION, report_key=entry.report_key, status="completed",
-                params=custom_report_run.run_params(run.template_id, include_children, requested_project_ids),
+                params=custom_report_run.run_params(include_children, requested_project_ids),
                 scope_project_ids=[str(run.project.id)] if run.project else [], widgets=[], record_counts=dict(counts),
                 stats={"rows": entry.records}, source_digest="",
             )

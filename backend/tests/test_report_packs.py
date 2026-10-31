@@ -78,7 +78,7 @@ def test_a_pack_with_layout_and_report_entries_and_variables_is_valid():
         layout_entry("Overview", "pdf", filename="overview", variables={"categories": ["A"]}, tier="organization"),
         layout_entry("Rows", "xlsx"),
         {"kind": "report", "module_key": "decisions", "report": "d1", "format": "docx", "params": {"status": "approved"}},
-        variables=[CATEGORIES], template="Corporate",
+        variables=[CATEGORIES],
     )
     assert errors_of(value) == []
 
@@ -1120,7 +1120,6 @@ def test_a_bad_value_or_set_is_refused_when_queueing_not_in_the_job(world, scene
     bad = queue_pack(world, scene, pack, {"variables": {"categories": "nope"}})
     assert bad.status_code == 422 and bad.json()["detail"]["code"] == "variable_values"
     assert queue_pack(world, scene, pack, {"variable_set_id": str(uuid.uuid4())}).status_code == 404
-    assert queue_pack(world, scene, pack, {"report_template_id": str(uuid.uuid4())}).status_code == 400
 
 
 def test_the_job_runs_as_the_requester_and_fails_when_they_lost_access(world, scene, db):

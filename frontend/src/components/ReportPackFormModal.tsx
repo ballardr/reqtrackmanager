@@ -18,7 +18,7 @@ import { tidyFolder } from "../utils/reportFolders";
 import { FormActions } from "./FormActions";
 import { TextAreaField, TextField } from "./FormFields";
 import { Modal } from "./Modal";
-import { ReportFolderChooser } from "./ReportFolderChooser";
+import { ReportFolderField } from "./ReportFolderField";
 
 /** The fields a pack's create and edit forms share, so a field added later reaches both. */
 export function ReportPackFields({
@@ -36,7 +36,7 @@ export function ReportPackFields({
         label={text.nameLabel} value={name} onChange={onName} inputProps={{ maxLength: 200, autoFocus: true }}
       />
       <TextAreaField helpNotNeeded label={text.descriptionLabel} value={description} onChange={onDescription} />
-      <ReportFolderChooser value={folder} onChange={onFolder} api={folderApi} onChanged={onFoldersChanged} onBusyChange={onFolderBusy} />
+      <ReportFolderField value={folder} onChange={onFolder} api={folderApi} onChanged={onFoldersChanged} onBusyChange={onFolderBusy} />
     </>
   );
 }

@@ -133,6 +133,9 @@ class OrganizationOut(BaseModel):
     is_active: bool = True
     disabled_at: datetime | None = None
     accent_color_hex: str | None = None
+    #: The organisation's report accent colour (`None` = follow the UI accent) and whether its logo is on reports.
+    report_accent_color_hex: str | None = None
+    report_include_logo: bool = True
     header_title: str | None = None
     email_footer_company_name: str | None = None
     email_footer_website: str | None = None
@@ -207,8 +210,6 @@ class OrgMergeResult(BaseModel):
     warnings: list[str] = []
     projects_imported: int
     projects_skipped: int
-    report_templates_imported: int
-    report_templates_overwritten: int
 
 
 _HEX_COLOR_PATTERN = r"^#[0-9a-fA-F]{6}$"
@@ -225,6 +226,9 @@ class OrgBrandingUpdate(BaseModel):
     email_footer_company_name: str | None = Field(default=None, max_length=255)
     email_footer_website: str | None = Field(default=None, max_length=500)
     email_footer_address: str | None = Field(default=None, max_length=2000)
+    #: Sent only when set: a client that does not know these leaves the report look as it is.
+    report_accent_color_hex: str | None = Field(default=None, pattern=_HEX_COLOR_PATTERN)
+    report_include_logo: bool | None = None
 
     @field_validator("header_title", "email_footer_company_name", "email_footer_website", "email_footer_address")
     @classmethod
@@ -256,6 +260,10 @@ class OrgAdvancedSettingsOut(BaseModel):
     pat_max_lifetime_days: int | None = None
     report_output_retention_days: int | None = None
     report_file_name: str | None = None
+    #: The report look the Configuration section sets (the accent and logo are on the Branding page).
+    report_footer_text: str | None = None
+    report_include_cover_page: bool = False
+    report_chapters_per_component: bool = True
     #: Read-only: the platform default and ceiling the organisation's own value sits between.
     report_output_default_retention_days: int = 7
     report_output_max_retention_days: int = 30
@@ -277,6 +285,10 @@ class OrgAdvancedSettingsUpdate(BaseModel):
     pat_max_lifetime_days: int | None = Field(default=None, ge=1, le=3650)
     report_output_retention_days: int | None = Field(default=None, ge=1, le=3650)
     report_file_name: str | None = Field(default=None, max_length=200)
+    #: Sent only when set: a client that does not know these leaves the report look as it is.
+    report_footer_text: str | None = Field(default=None, max_length=500)
+    report_include_cover_page: bool | None = None
+    report_chapters_per_component: bool | None = None
     require_2fa: bool = False
     allow_self_signup: bool = False
     auto_accept_email_domain: str | None = Field(default=None, max_length=255)
@@ -858,28 +870,6 @@ class OrgLoginInfoOut(BaseModel):
     login_background_file_id: UUID | None = None
     sso_enabled: bool
     sso_only: bool
-
-
-class ReportTemplateCreate(BaseModel):
-    name: str
-    accent_color_hex: str = Field(default="#475569", pattern=_HEX_COLOR_PATTERN)
-    include_cover_page: bool = True
-    include_logo: bool = True
-    footer_text: str | None = None
-    chapters_per_component: bool = True
-    is_default: bool = False
-
-
-class ReportTemplateOut(BaseModel):
-    id: UUID
-    organization_id: UUID
-    name: str
-    accent_color_hex: str
-    include_cover_page: bool
-    include_logo: bool
-    footer_text: str | None = None
-    chapters_per_component: bool = True
-    is_default: bool = False
 
 
 class OrgProjectSummaryOut(BaseModel):

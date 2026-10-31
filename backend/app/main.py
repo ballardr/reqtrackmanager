@@ -187,7 +187,10 @@ app.add_middleware(
     # was caught only by a live Playwright run against a real browser
     # (`fetch().headers.get()` silently returning null) — curl and pytest's
     # TestClient both bypass CORS entirely, so neither could have caught it.
-    expose_headers=["X-Total-Count", "X-Total-Unfiltered-Count"],
+    # `Content-Disposition` carries the server's chosen name for a generated file (a pack's zip is named by its
+    # file-name template); a cross-origin browser hides it from JS unless exposed, and the download would fall back
+    # to a client-side guess.
+    expose_headers=["X-Total-Count", "X-Total-Unfiltered-Count", "Content-Disposition"],
 )
 
 

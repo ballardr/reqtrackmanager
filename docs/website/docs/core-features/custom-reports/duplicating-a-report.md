@@ -10,7 +10,7 @@ You need to be able to manage report layouts where the copy goes. A person who c
 
 ```mermaid
 flowchart LR
-    A["Report Setup row menu,<br/>designer or pack editor"] --> B["Duplicate…"]
+    A["Reports row menu,<br/>designer or pack editor"] --> B["Duplicate…"]
     S["New, New from a starter…"] --> B
     B --> C["Name and destination"]
     C --> D["Create copy"]
@@ -19,7 +19,7 @@ flowchart LR
 
 ## How to duplicate
 
-1. In **Report Setup**, open a row's menu and choose **Duplicate…**. The same action is in the menu of the designer and of the pack editor. To start from a built-in starter, choose **New**, then **New from a starter…** and pick the starter. The starters work even if your organisation's own copy was edited or deleted.
+1. In **Reports**, open a row's menu and choose **Duplicate…**. The same action is in the menu of the designer and of the pack editor. To start from a built-in starter, choose **New**, then **New from a starter…** and pick the starter. The starters work even if your organisation's own copy was edited or deleted.
 2. The name is filled in as **Name (copy)** (then **(copy 2)** and so on). Change it if you like. A name this place already uses is refused before anything is created. A name that matches a report only inherited from above is allowed and warned about: your copy then shadows it in this project.
 3. In a project, choose where the copy goes: **This project** or **The organisation** (shared with every project; needs the organisation's report right).
 4. Choose **Create copy**. The copy opens in the designer (or pack editor).

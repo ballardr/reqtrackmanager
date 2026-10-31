@@ -12,6 +12,7 @@ import re
 import uuid
 import zipfile
 import zlib
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -36,7 +37,7 @@ from app.services.report_model import (
 )
 from app.services.report_odt import render_odt_document
 from app.services.report_pdf import render_pdf_document
-from app.services.report_running import apply_template_defaults, cell_lines
+from app.services.report_running import apply_default_bands, cell_lines
 from tests.conftest import auth_headers
 from tests.link_world import World
 
@@ -172,28 +173,27 @@ def test_a_mirrored_band_swaps_its_left_and_right_cells_and_a_logo_in_one_of_the
     assert (swapped.left, swapped.centre, swapped.right, swapped.logo_slot) == (("R",), ("C",), ("L",), "right")
 
 
-def test_the_template_supplies_the_footer_and_logo_only_where_the_page_style_says_nothing():
+def test_a_page_number_footer_is_supplied_only_where_the_page_style_says_nothing():
     own = RunningBand(left=("mine",))
-    branding = ReportBranding(footer_text="Corporate", logo_bytes=png(), include_cover_page=True)
     document = ReportDocument(
         title="T", footer=own, blocks=[Paragraph("a"), PageStyleChange(PageStyle(), section_start=True)],
     )
-    result = apply_template_defaults(document, branding)
+    result = apply_default_bands(document)
     assert result.footer is own  # the layout's own footer wins
-    assert result.header is not None and result.header.logo is not None and result.header.first_page is False  # the cover page keeps none
+    assert result.header is None  # the organisation's logo is never put in a layout's header for it
     section = result.blocks[1]
-    assert isinstance(section, PageStyleChange) and section.style.footer.centre == ("Corporate  ·  Page ", PageField.PAGE)
-    assert section.style.footer.first_page is False
+    assert isinstance(section, PageStyleChange) and section.style.footer.centre == ("Page ", PageField.PAGE)
+    assert section.style.footer.first_page is True
 
 
-def test_with_no_template_a_layout_still_gets_a_page_number_footer_and_no_header():
-    result = apply_template_defaults(ReportDocument(title="T"), None)
+def test_with_nothing_written_a_layout_gets_a_page_number_footer_and_no_header():
+    result = apply_default_bands(ReportDocument(title="T"))
     assert result.header is None and result.footer.centre == ("Page ", PageField.PAGE) and result.footer.first_page is True
 
 
 def test_an_explicitly_empty_band_is_kept_and_prints_nothing():
     empty = RunningBand()
-    result = apply_template_defaults(ReportDocument(title="T", footer=empty), ReportBranding(footer_text="Corporate"))
+    result = apply_default_bands(ReportDocument(title="T", footer=empty))
     assert result.footer is empty and result.footer.empty
 
 
@@ -373,9 +373,11 @@ def test_the_preview_fills_the_placeholders_in_a_header_and_leaves_the_page_fiel
     assert "{{" not in html
 
 
-@pytest.mark.parametrize(("local_date", "expected"), [("2026-10-30", "2026-10-30"), ("2026-10-29", "2026-10-29")])
-def test_the_run_date_is_the_callers_own_calendar_day_not_the_servers(world, local_date, expected):
-    # 09:00 at UTC+10 is the previous day in UTC and 23:00 at UTC-8 is the next: the browser sends its own day.
+@pytest.mark.parametrize("offset_days", [-1, 1])
+def test_the_run_date_is_the_callers_own_calendar_day_not_the_servers(world, offset_days):
+    # 09:00 at UTC+10 is the previous day in UTC and 23:00 at UTC-8 is the next: the browser sends its own day,
+    # which the server accepts within a day of its own (relative to today so the test does not age).
+    local_date = expected = (datetime.now(UTC).date() + timedelta(days=offset_days)).isoformat()
     project = world.project("Alpha")
     html = preview(world, project, '@layout document\n@footer left "{{generated_on}}"\n\nBody\n', **{"X-Client-Date": local_date})["html"]
     assert expected in html

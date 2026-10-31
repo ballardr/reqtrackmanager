@@ -1,8 +1,8 @@
 /**
  * Module: testing/reportSnippetStoreFixtures
  *
- * Storybook-only fake `ReportSnippetStoreApi`: answers the save dialog's check and save, and the snippets panel's list, edit,
- * copy, delete, hide and restore the way the server would (what a selection carries, a project picture refused at the
+ * Storybook-only fake `ReportSnippetStoreApi`: answers the save dialog's check and save, the snippet editor's get and update,
+ * and the snippets panel's list, edit, copy, delete, hide and restore the way the server would (what a selection carries, a project picture refused at the
  * organisation level, a taken name), so the dialog and the panel can be driven without a server.
  */
 import { fn } from "storybook/test";
@@ -85,10 +85,16 @@ export function buildSnippetStoreApi(
       store.push(made);
       return made;
     }),
+    get: fn(async (id: string) => {
+      const found = store.find((s) => s.id === id) ?? store[0];
+      return { ...found, nodes: [{ type: "heading", text: found.name, level: 1 }], root: {} };
+    }),
     update: fn(async (id, body) => {
       const found = store.find((s) => s.id === id) ?? store[0];
       if (body.name && taken.includes(body.name.trim().toLowerCase())) throw new ApiError(409, "A saved snippet with this name already exists here.");
-      Object.assign(found, body);
+      const { tree, ...details } = body;
+      Object.assign(found, details);
+      if (tree && Array.isArray(tree.nodes)) found.blocks = tree.nodes.length;
       return { ...found };
     }),
     remove: fn(async (id: string) => {

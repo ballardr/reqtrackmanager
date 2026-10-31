@@ -15,7 +15,7 @@ flowchart TB
     P2 --> P2a[Child project]
     P2 --> P2b[Child project]
     Org --> Users["Users & groups"]
-    Org --> Settings["Branding, SSO, report templates"]
+    Org --> Settings["Branding, SSO, report look"]
 ```
 
 A single user account can belong to more than one organisation at once — an organisation switcher appears wherever an organisation context is needed, regardless of whether the account signed in natively or via one organisation's SSO.

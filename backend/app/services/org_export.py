@@ -18,7 +18,7 @@ file never constructs a module's own entity types, only calls its declared
 folds their results (a `dict` merged via `**` into `org_json`; conflict
 dicts extended onto this file's own `conflicts` list; summary counts merged
 into the returned/audit-logged summary) alongside the core sections this
-file still owns directly (settings, members, groups, report templates,
+file still owns directly (settings, members, groups, the report look,
 projects). See `app.modules.compliance.export`'s own module docstring for
 why Compliance's own content belongs at the *organisation* level in a
 bundle, not per-project (§31's "A Compliance Standard is not a Project"),
@@ -28,16 +28,16 @@ project_export`'s bundle instead via that module's `ModuleProjectBundleHooks`.
 - `import_org_bundle`: creates a brand-new organisation. For backup,
   offboarding, and cross-instance migration (as opposed to
   `services.project_export`, which moves a single project).
-- `merge_org_bundle`: imports the bundle's users, groups, projects, and
-  report templates into an *existing* organisation the caller already
-  administers — never the organisation's own profile (branding, SMTP,
+- `merge_org_bundle`: imports the bundle's users, groups, projects and
+  layouts into an *existing* organisation the caller already
+  administers — never the organisation's own profile (branding, report look, SMTP,
   SSO/OIDC, logo, default template). See `merge_org_bundle`'s own
   docstring for why this is a deliberately narrower, separate path rather
   than a flag on `import_org_bundle`.
 
 Both import paths share the bundle-parsing and per-entity-kind import logic
 below (`_parse_org_bundle`, `_import_members`, `_import_org_groups`,
-`_import_report_templates`, `_import_projects`) rather than duplicating it —
+`_import_report_look`, `_import_projects`) rather than duplicating it —
 `import_org_bundle` always calls them with "no conflicts possible" arguments
 (a freshly created organisation has nothing to collide with), while
 `merge_org_bundle` passes real conflict resolutions into the same helpers.
@@ -96,6 +96,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import zipfile
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -108,7 +109,7 @@ from sqlalchemy.orm import Session
 
 from app.models.enums import OrgRole
 from app.models.file import FileAsset
-from app.models.organization import Organization, OrgGroup, OrgGroupMember, ReportTemplate, UserOrgRole
+from app.models.organization import Organization, OrgGroup, OrgGroupMember, UserOrgRole
 from app.models.project import Project
 from app.models.user import User
 from app.modules.registry import get_all_module_org_bundle_hooks
@@ -150,12 +151,11 @@ ORG_BUNDLE_FORMAT_VERSION = 1
 # `"compliance_standard"`) declare their own valid values via `ModuleOrgBundleHooks.
 # merge_resolution_choices` instead, merged in at the two call sites below.
 _PROJECT_RESOLUTIONS = {"skip", "import_as_copy"}
-_REPORT_TEMPLATE_RESOLUTIONS = {"keep_existing", "use_import"}
 
 
 def build_org_bundle(db: Session, org: Organization, exported_by: User) -> bytes:
     """Builds an organisation export bundle: `manifest.json`, `org.json`
-    (settings/members/groups/report templates), `projects/<ref>/project.json`
+    (settings/members/groups/report look), `projects/<ref>/project.json`
     per project (same shape `services.project_export` produces standalone),
     and one shared `files/` directory (org resources + every project's
     attachments).
@@ -178,15 +178,11 @@ def build_org_bundle(db: Session, org: Organization, exported_by: User) -> bytes
         projects_json[project_ref_by_id[p.id]] = project_json
         file_assets_by_id.update(project_files)
 
-    report_templates = list(db.scalars(select(ReportTemplate).where(ReportTemplate.organization_id == org.id)))
-    report_templates_json = [
-        {
-            "name": t.name, "accent_color_hex": t.accent_color_hex, "include_cover_page": t.include_cover_page,
-            "include_logo": t.include_logo, "footer_text": t.footer_text,
-            "chapters_per_component": t.chapters_per_component, "is_default": t.is_default,
-        }
-        for t in report_templates
-    ]
+    report_look = {
+        "accent_color_hex": org.report_accent_color_hex, "include_cover_page": org.report_include_cover_page,
+        "include_logo": org.report_include_logo, "footer_text": org.report_footer_text,
+        "chapters_per_component": org.report_chapters_per_component,
+    }
 
     module_bundle_json: dict[str, Any] = {
         **export_org_layouts(db, org.id, file_assets_by_id), **export_org_packs(db, org.id), **export_org_placements(db, org.id),
@@ -255,7 +251,7 @@ def build_org_bundle(db: Session, org: Organization, exported_by: User) -> bytes
         "login_background_file_ref": f"{background_asset.id}_{background_asset.filename}" if background_asset else None,
         "login_background_content_type": background_asset.content_type if background_asset else None,
         "default_template_project_ref": project_ref_by_id.get(org.default_template_project_id),
-        "report_templates": report_templates_json, "members": members_json, "org_groups": org_groups_json,
+        "report_look": report_look, "members": members_json, "org_groups": org_groups_json,
         **module_bundle_json,
     }
 
@@ -417,7 +413,7 @@ def _import_org_groups(
     name if the target org already has one, adding the bundle's members
     into it (a union — never removes an existing member), rather than
     creating a duplicate; purely additive either way, so unlike projects
-    and report templates this never needs a conflict resolution.
+    this never needs a conflict resolution.
 
     A banned member is skipped, same as `_import_members` — org group
     membership isn't just a label here: `rbac.get_effective_project_roles`
@@ -530,7 +526,7 @@ def _warn_legacy_report_content(data: dict[str, Any], warnings: BundleImportWarn
     """Warns once when an older bundle carries report introductions, chapters or appendices (including a
     template's), which are no longer imported."""
     legacy = any(data.get(key) for key in LEGACY_REPORT_CONTENT_KEYS) or any(
-        t.get("content") for t in data.get("report_templates", [])
+        isinstance(t, dict) and t.get("content") for t in data.get("report_templates", [])
     )
     if legacy:
         warnings.add("Report introductions, chapters and appendices in this bundle were not imported: report content has been removed.")
@@ -546,46 +542,30 @@ def _bundled_file_name(value: Any, warnings: BundleImportWarnings) -> str | None
     return str(value)
 
 
-def _import_report_templates(
-    db: Session, org: Organization, data: dict[str, Any], current_user: User, *, resolutions: dict[str, str] | None,
-    warnings: BundleImportWarnings,
-) -> None:
-    """Creates report templates from a bundle. `resolutions=None`
-    (`import_org_bundle`): always creates fresh — a brand-new organisation
-    can't already have a same-named template. Otherwise (`merge_org_bundle`):
-    a bundle template whose name matches one `target_org` already has (`
-    ReportTemplate` is unique per `organization_id`+`name`) is skipped
-    (`"keep_existing"`) or overwrites the existing row's fields in place
-    (`"use_import"`) per `resolutions[f"report_template:{name}"]` — an
-    in-place overwrite is safe here (unlike a project, never done silently
-    for one — see `_import_projects`) because a report template is pure
-    presentation config with no history or sub-content to lose."""
-    existing_by_name: dict[str, ReportTemplate] = {}
-    if resolutions is not None:
-        existing_by_name = {
-            t.name.strip().lower(): t for t in db.scalars(select(ReportTemplate).where(ReportTemplate.organization_id == org.id))
-        }
-    has_default = resolutions is not None and any(t.is_default for t in existing_by_name.values())
-    for t in data.get("report_templates", []):
-        existing = existing_by_name.get(t["name"].strip().lower()) if resolutions is not None else None
-        if existing is not None:
-            if resolutions[f"report_template:{t['name']}"] == "keep_existing":
-                continue
-            existing.accent_color_hex = t.get("accent_color_hex", "#475569")
-            existing.include_cover_page = t.get("include_cover_page", True)
-            existing.include_logo = t.get("include_logo", True)
-            existing.footer_text = t.get("footer_text")
-            existing.chapters_per_component = t.get("chapters_per_component", True)
-            continue
-        template = ReportTemplate(
-            organization_id=org.id, name=t["name"], accent_color_hex=t.get("accent_color_hex", "#475569"),
-            include_cover_page=t.get("include_cover_page", True), include_logo=t.get("include_logo", True),
-            footer_text=t.get("footer_text"), chapters_per_component=t.get("chapters_per_component", True),
-            is_default=bool(t.get("is_default")) and not has_default, created_by=current_user.id,
-        )
-        has_default = has_default or template.is_default
-        db.add(template)
-        db.flush()
+def _import_report_look(db: Session, org: Organization, data: dict[str, Any], warnings: BundleImportWarnings) -> None:
+    """Sets a brand-new organisation's report look from a bundle.
+
+    A current bundle carries `report_look`. An older one carried named `report_templates`: the default one (else the
+    only one, else none) becomes the look, and each further template is dropped with one notice, because the
+    organisation has a single report look.
+    """
+    look = data.get("report_look")
+    legacy = [t for t in data.get("report_templates", []) if isinstance(t, dict)]
+    if not isinstance(look, dict) and legacy:
+        look = next((t for t in legacy if t.get("is_default")), legacy[0] if len(legacy) == 1 else None)
+        dropped = len(legacy) - (1 if look is not None else 0)
+        if dropped:
+            warnings.add(f"{dropped} report template(s) in this bundle were not imported: an organisation has one report look.")
+    if not isinstance(look, dict):
+        return
+    accent = look.get("accent_color_hex")
+    org.report_accent_color_hex = accent if isinstance(accent, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", accent) else None
+    org.report_include_cover_page = bool(look.get("include_cover_page", False))
+    org.report_include_logo = bool(look.get("include_logo", True))
+    footer = look.get("footer_text")
+    org.report_footer_text = footer if isinstance(footer, str) and footer.strip() else None
+    org.report_chapters_per_component = bool(look.get("chapters_per_component", True))
+    db.flush()
 
 
 def _import_projects(
@@ -599,7 +579,7 @@ def _import_projects(
     matches an existing project in `org` is skipped (`"skip"`) or imported
     as a distinct copy renamed `"<name> (imported)"` (`"import_as_copy"`)
     per `resolutions[f"project:{ref}"]` — never overwritten in place, unlike
-    a report template (`_import_report_templates`): a project carries real
+    anything else: a project carries real
     requirement/change-request history that an in-place replace would
     destroy, which is a materially bigger and more destructive operation
     than this merge feature covers.
@@ -667,7 +647,7 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
     )
     db.add(org)
     db.flush()
-    _import_report_templates(db, org, data, current_user, resolutions=None, warnings=warnings)  # before layouts name them
+    _import_report_look(db, org, data, warnings)
     import_org_layouts(db, org.id, data, current_user, warnings, merge=False, file_bytes_by_ref=file_bytes_by_ref)
     import_org_packs(db, org.id, data, current_user, warnings, merge=False)
     import_org_snippets(db, org.id, data, current_user, warnings, merge=False, file_bytes_by_ref=file_bytes_by_ref)
@@ -737,9 +717,6 @@ def _compute_merge_conflicts(
     existing_projects_by_name = {
         p.name.strip().lower(): p for p in db.scalars(select(Project).where(Project.organization_id == target_org.id))
     }
-    existing_templates_by_name = {
-        t.name.strip().lower(): t for t in db.scalars(select(ReportTemplate).where(ReportTemplate.organization_id == target_org.id))
-    }
 
     conflicts: list[dict[str, Any]] = []
     for ref, project_data in project_data_by_ref.items():
@@ -747,10 +724,6 @@ def _compute_merge_conflicts(
         existing = existing_projects_by_name.get(name.strip().lower())
         if existing is not None:
             conflicts.append({"id": f"project:{ref}", "kind": "project", "name": name, "existing_id": str(existing.id)})
-    for t in data.get("report_templates", []):
-        existing = existing_templates_by_name.get(t["name"].strip().lower())
-        if existing is not None:
-            conflicts.append({"id": f"report_template:{t['name']}", "kind": "report_template", "name": t["name"], "existing_id": str(existing.id)})
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         if hooks.compute_merge_conflicts is not None:
             conflicts.extend(hooks.compute_merge_conflicts(db, target_org, data))
@@ -758,8 +731,8 @@ def _compute_merge_conflicts(
 
 
 def detect_merge_conflicts(db: Session, target_org: Organization, zip_bytes: bytes) -> list[dict[str, Any]]:
-    """Parses an org bundle and reports which of its projects, report
-    templates, and any registered module's own org-level entities (e.g.
+    """Parses an org bundle and reports which of its projects
+    and any registered module's own org-level entities (e.g.
     Compliance's standards, via its `ModuleOrgBundleHooks.compute_merge_
     conflicts`) collide (by name/reference) with something `target_org`
     already has, without writing anything — the preview step before
@@ -773,7 +746,7 @@ def detect_merge_conflicts(db: Session, target_org: Organization, zip_bytes: byt
     Returns:
         A list of `{"id", "kind", "name", "existing_id"}` dicts. `id` is
         the exact key `merge_org_bundle`'s `resolutions` argument must
-        supply a resolution for; `kind` is `"project"`, `"report_template"`,
+        supply a resolution for; `kind` is `"project"`,
         or a registered module's own declared conflict kind (e.g.
         Compliance's `"compliance_standard"`).
     """
@@ -784,8 +757,8 @@ def detect_merge_conflicts(db: Session, target_org: Organization, zip_bytes: byt
 def merge_org_bundle(
     db: Session, *, target_org: Organization, zip_bytes: bytes, resolutions: dict[str, str], current_user: User,
 ) -> tuple[list[str], dict[str, int]]:
-    """Imports an org bundle's users, groups, projects, and report
-    templates into `target_org` — an organisation that already exists,
+    """Imports an org bundle's users, groups and projects
+    into `target_org` — an organisation that already exists,
     unlike `import_org_bundle` which always creates a brand-new one.
 
     Deliberately narrower than `import_org_bundle` in what it touches:
@@ -805,7 +778,7 @@ def merge_org_bundle(
 
     `resolutions` must have exactly one entry per conflict
     `detect_merge_conflicts` would report for this same bundle/`target_org`
-    pair — a project or report template that collides by name and has no
+    pair — a project that collides by name and has no
     supplied resolution is refused outright (400) rather than silently
     defaulted either way, so an import can never partially apply an
     unreviewed conflict.
@@ -817,14 +790,12 @@ def merge_org_bundle(
         resolutions: Conflict id (`detect_merge_conflicts`'s `"id"` field)
             -> `"skip"`/`"import_as_copy"` for a `"project"` or
             `"compliance_standard"` conflict, or `"keep_existing"`/
-            `"use_import"` for a `"report_template"` one.
         current_user: The org admin performing the import.
 
     Returns:
         Human-readable warnings (same shape as `import_org_bundle`'s), and
         a summary of what happened: `projects_imported`,
-        `projects_skipped`, `report_templates_imported`,
-        `report_templates_overwritten`, plus whatever each registered
+        `projects_skipped`, plus whatever each registered
         module's own `ModuleOrgBundleHooks.summarize_merge` contributes
         (e.g. Compliance's `compliance_standards_imported`/`compliance_
         standards_skipped`).
@@ -842,7 +813,7 @@ def merge_org_bundle(
     if missing:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Missing a resolution for: {', '.join(missing)}.")
     _resolution_choices_by_kind: dict[str, set[str] | frozenset[str]] = {
-        "project": _PROJECT_RESOLUTIONS, "report_template": _REPORT_TEMPLATE_RESOLUTIONS,
+        "project": _PROJECT_RESOLUTIONS,
     }
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         _resolution_choices_by_kind.update(hooks.merge_resolution_choices)
@@ -854,7 +825,6 @@ def merge_org_bundle(
     acting_user, find_user = _import_members(db, target_org, data, current_user, warnings, reassign_acting_user=False)
     users = UserResolver(db, acting_user, warnings)
     _import_org_groups(db, target_org, data, find_user, warnings, merge_by_name=True)
-    _import_report_templates(db, target_org, data, current_user, resolutions=resolutions, warnings=warnings)  # before layouts name them
     import_org_layouts(db, target_org.id, data, current_user, warnings, merge=True, file_bytes_by_ref=file_bytes_by_ref)
     import_org_packs(db, target_org.id, data, current_user, warnings, merge=True)
     import_org_snippets(db, target_org.id, data, current_user, warnings, merge=True, file_bytes_by_ref=file_bytes_by_ref)
@@ -868,14 +838,9 @@ def merge_org_bundle(
     )
 
     project_conflicts = [c for c in conflicts if c["kind"] == "project"]
-    template_conflicts = [c for c in conflicts if c["kind"] == "report_template"]
     summary = {
         "projects_imported": len(project_id_by_ref),
         "projects_skipped": sum(1 for c in project_conflicts if resolutions[c["id"]] == "skip"),
-        "report_templates_imported": len(data.get("report_templates", [])) - len(template_conflicts) + sum(
-            1 for c in template_conflicts if resolutions[c["id"]] == "use_import"
-        ),
-        "report_templates_overwritten": sum(1 for c in template_conflicts if resolutions[c["id"]] == "use_import"),
     }
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         if hooks.summarize_merge is not None:

@@ -6,6 +6,6 @@ import type { MergeConflict } from "../api/types";
  * data just by being submitted without every choice touched. */
 export function defaultResolutions(conflicts: MergeConflict[]): Record<string, string> {
   return Object.fromEntries(
-    conflicts.map((c) => [c.id, c.kind === "project" ? "skip" : "keep_existing"]),
+    conflicts.map((c) => [c.id, "skip"]),
   );
 }

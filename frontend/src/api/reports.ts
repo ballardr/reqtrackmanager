@@ -75,8 +75,6 @@ export interface ReportCatalogueEntry {
   record_types: string[];
   /** A report meant to be read on screen: a record list's download dialog does not offer it. */
   view_only: boolean;
-  /** A custom layout's own branding template; `null` means the organisation's default applies. */
-  report_template_id: string | null;
 }
 
 /** A custom report layout's run-time variable as the run form shows it (`ReportVariableOut`). */
@@ -255,14 +253,12 @@ export const reportsApi = {
     api.getForBlob(`${entry.path}?${reportQuery(format, values)}`),
   /**
    * Queues a custom report to be produced in the background (the entry's `run` route becomes `runs`).
-   * `values` are the same run values as a download: `include_children`, `project_ids` (comma-separated) and
-   * `report_template_id`.
+   * `values` are the same run values as a download: `include_children`, `project_ids` (comma-separated) and `variables`.
    */
   queueRun: (entry: ReportCatalogueEntry, format: ReportFileKind, values: ReportRunValues) => {
     const body: Record<string, unknown> = { format };
     if (values.include_children) body.include_children = true;
     if (typeof values.project_ids === "string" && values.project_ids) body.project_ids = values.project_ids.split(",");
-    if (values.report_template_id) body.report_template_id = values.report_template_id;
     if (typeof values.variables === "string" && values.variables) body.variables = JSON.parse(values.variables);
     return api.post<ReportRun>(entry.path.replace(/\/run$/, "/runs"), body);
   },

@@ -220,6 +220,14 @@ def test_the_logo_is_sized_and_placed_at_the_top_right_of_the_pages_text_edge(wo
     assert block["alt"] == "Logo"
 
 
+def test_the_organisations_own_logo_can_be_the_logos_picture(world):
+    base = org_base(world)
+
+    block = ok(apply(world, base, "logo-top-right", doc(), {"image": "org_logo"}))["tree"]["nodes"][0]
+
+    assert block["file"] == "org_logo" and block["placement"] == "front" and block["width"] > 0
+
+
 def test_the_logo_follows_the_layouts_paper_and_margins(world):
     base = org_base(world)
     logo = upload(world, f"/api/v1/orgs/{world.org['id']}/report-images", width=400, height=100)

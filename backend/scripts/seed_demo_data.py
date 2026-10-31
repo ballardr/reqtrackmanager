@@ -5,7 +5,7 @@ Seeds a realistic, presentable demo dataset — a fictional engineering
 company ("Solstice Robotics") with three projects (one a sub-project of
 another, demonstrating hierarchical projects), requirements at varied
 lifecycle stages, an in-review and an approved change request, discussion
-comments, custom fields, and a report branding template. Intended for
+comments, custom fields, and a report look. Intended for
 screenshots, demos, and (eventually) a public demo instance.
 
 Design notes:
@@ -717,20 +717,26 @@ def archive_action(headers: dict, project_id: str, action_id: str) -> None:
     r.raise_for_status()
 
 
-def create_report_template(
-    headers: dict, org_id: str, *, name: str, accent_color_hex: str, footer_text: str, is_default: bool = False,
-) -> dict:
-    """Creates a report template (branding only); the default one brands every document report that names none."""
-    r = httpx.post(
-        f"{BASE}/orgs/{org_id}/report-templates",
-        json={
-            "name": name, "accent_color_hex": accent_color_hex, "include_cover_page": True,
-            "include_logo": False, "footer_text": footer_text, "is_default": is_default,
-        },
+def set_report_look(
+    headers: dict, org_id: str, *, accent_color_hex: str, footer_text: str, include_cover_page: bool = True,
+) -> None:
+    """Sets the organisation's one report look: accent colour and logo (Branding), footer and cover page (Configuration).
+
+    The advanced-settings endpoint replaces the settings it is given, so the current ones are read and sent back.
+    """
+    r = httpx.put(
+        f"{BASE}/orgs/{org_id}/branding",
+        json={"report_accent_color_hex": accent_color_hex, "report_include_logo": False},
         headers=headers, timeout=30,
     )
     r.raise_for_status()
-    return r.json()
+    r = httpx.get(f"{BASE}/orgs/{org_id}/advanced-settings", headers=headers, timeout=30)
+    r.raise_for_status()
+    current = r.json()
+    for read_only in ("report_output_default_retention_days", "report_output_max_retention_days"):
+        current.pop(read_only, None)
+    current.update(report_footer_text=footer_text, report_include_cover_page=include_cover_page)
+    httpx.put(f"{BASE}/orgs/{org_id}/advanced-settings", json=current, headers=headers, timeout=30).raise_for_status()
 
 
 # --- Compliance Module helpers -
@@ -1913,11 +1919,8 @@ def main() -> None:
 
     h_pm = h(login("demo.admin@example.com", PASSWORD))
 
-    print("Branding a report template...")
-    create_report_template(
-        h_pm, org["id"], name="Solstice Standard Report", accent_color_hex="#0F62FE",
-        footer_text="Solstice Robotics — Confidential", is_default=True,
-    )
+    print("Setting the organisation's report look...")
+    set_report_look(h_pm, org["id"], accent_color_hex="#0F62FE", footer_text="Solstice Robotics — Confidential")
 
     print("Setting organisation outgoing-email branding...")
     httpx.put(

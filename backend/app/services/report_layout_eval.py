@@ -89,7 +89,7 @@ from app.services.link_graph import ArtefactResolver
 from app.services.link_type_scope import resolve_link_type_scope
 from app.services.report_fields import RESERVED_FIELD_KEYS, FieldInfo, ReportRecord, field_catalogue, format_value, load_records
 from app.services.report_framework import ReportContext, ReportResult
-from app.services.report_images import MAX_REPORT_IMAGES, ResolvedImage, load_image, max_total_image_bytes
+from app.services.report_images import MAX_REPORT_IMAGES, ResolvedImage, load_image, load_org_logo, max_total_image_bytes
 from app.services.report_layout_tree import (
     DEFAULT_GROUP_ALIAS,
     DEFAULT_RECORD_ALIAS,
@@ -132,6 +132,7 @@ from app.services.report_model import (
     text_runs,
     typed_cell,
 )
+from app.services.report_org_values import ORG_FAMILY, ORG_LOGO_FILE, org_value_kind, report_org_values
 from app.services.report_page_styles import effective_bands, resolve_page_styles
 from app.services.report_record_images import candidate_files, compile_pattern, load_attachment_image, record_files
 from app.services.report_traversal import MAX_LINKED, MAX_ROOTS, LinkDirection, linked_records, root_records
@@ -408,6 +409,8 @@ class _Run:
         self.project_ids = project_ids or [p.id for p in ctx.projects] or [project.id]
         #: `{variable name: printed value}` for `{{var.name}}`.
         self.variable_text: dict[str, str] = {}
+        #: The organisation's report look, read as `{{org.key}}` and `org.key` in a condition.
+        self.org_values: dict[str, Any] = report_org_values(db, ctx.organization)
         self.placeholders: dict[str, str] = {
             "project_name": ctx.scope_label, "report_title": title,
             "project_code": getattr(project, "code", "") or "", "project_description": getattr(project, "summary", "") or "",
@@ -433,7 +436,7 @@ class _Run:
         self._equations = 0
         #: The owner of the layout being run, and the picture cache, byte total and caption counter of its image blocks.
         self.layout_project_id: uuid.UUID | None = None
-        self._images: dict[uuid.UUID, ResolvedImage | None] = {}
+        self._images: dict[str, ResolvedImage | None] = {}
         self._image_bytes = 0
         self._figures = 0
         #: Attachments by record (filled one batch per `each`), and the decoded attachment pictures by file id.
@@ -523,23 +526,29 @@ class _Run:
         if self._output > self.max_output:
             raise LayoutLimitError(f"The report is too large. {_NARROW_OR_BACKGROUND}")
 
-    def library_image(self, file_id: uuid.UUID) -> ResolvedImage | None:
+    def library_image(self, file_ref: str) -> ResolvedImage | None:
         """The picture for an image block, or `None` (with one warning) when it cannot be used.
+
+        Args:
+            file_ref: A library file id, or `ORG_LOGO_FILE` for the organisation's logo.
 
         Raises:
             LayoutLimitError: The run embeds more pictures, or more picture bytes, than one report may.
         """
-        if file_id not in self._images:
-            image, reason = load_image(self.db, self.ctx.organization.id, self.layout_project_id, file_id)
-            self._images[file_id] = image
+        if file_ref not in self._images:
+            if file_ref == ORG_LOGO_FILE:
+                image, reason = load_org_logo(self.db, self.ctx.organization.logo_file_id, self.ctx.organization.id)
+            else:
+                image, reason = load_image(self.db, self.ctx.organization.id, self.layout_project_id, uuid.UUID(file_ref))
+            self._images[file_ref] = image
             if image is None:
                 self.warn(f"An image in the layout {reason}, so it was left out.")
-        image = self._images[file_id]
+        image = self._images[file_ref]
         if image is None:
             return None
         self._admit_picture(image)
-        if str(file_id) not in self.stats.image_files:
-            self.stats.image_files.append(str(file_id))
+        if file_ref not in self.stats.image_files:
+            self.stats.image_files.append(file_ref)
         self.stats.images += 1
         return image
 
@@ -678,7 +687,7 @@ class _Run:
         logo, slot, height = None, "left", 1.0
         spec = source.get("logo")
         if isinstance(spec, dict):
-            picture = self.library_image(uuid.UUID(spec["file"]))
+            picture = self.library_image(spec["file"])
             if picture is not None:
                 logo = Image(data=picture.data, svg=picture.svg, decorative=True)
                 slot, height = spec.get("slot", "left"), float(spec["height"])
@@ -788,6 +797,9 @@ class _Run:
             return self.placeholders.get(name, match.group(0)), False
         if name == PLACEHOLDER_FAMILY:
             return self.variable_text.get(member, match.group(0)), False
+        if name == ORG_FAMILY:
+            value = self.org_values.get(member)
+            return (match.group(0) if value is None else ("Yes" if value is True else "No" if value is False else str(value))), False
         bound = scope.get(name)
         if bound is None:
             return match.group(0), True
@@ -1182,7 +1194,7 @@ def _picture(image: ResolvedImage, node: dict[str, Any], *, alt: str, decorative
 
 def _eval_image(run: _Run, node: dict[str, Any], scope: Scope) -> None:
     """A picture from the layout tier's library, with its caption (numbered "Figure n: " by the block's numbering) and size."""
-    image = run.library_image(uuid.UUID(node["file"]))
+    image = run.library_image(node["file"])
     if image is None:
         return
     caption = run.fill(node["caption"], scope).strip() if "caption" in node else ""
@@ -1334,6 +1346,8 @@ def _eval_if(run: _Run, node: dict[str, Any], scope: Scope) -> None:
         if "module" in when:
             return is_module_enabled_for_project(run.db, run.project.id, when["module"])
         alias, member = when["ref"].split(".")
+        if alias == ORG_FAMILY:
+            return matches_value(run.org_values[member], org_value_kind(member) or "text", when["op"], when.get("value"))
         bound = scope[alias]
         if bound.kind == "group":
             actual: Any = bound.label if member == "value" else len(bound.members)

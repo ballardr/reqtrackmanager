@@ -16,7 +16,7 @@ flowchart LR
     D1 & D2 & D3 & D4 --> E["On screen · PDF · Word · CSV · AI assistant"]
 ```
 
-Click **Reports** at the top of the project overview, and pick a report from the **Report** picker; the module's reports appear there only while Decision Management is enabled for the project. How the page works (options, figures, export, branding template) is the same as for every module report; see [Context & Strategy → Reports](../context-strategy-module/reports.md#generating-a-report). A report covers only what you can read, and **Include child projects** adds readable sub-projects that have the module enabled.
+Click **Reports** at the top of the project overview, and pick a report from the **Report** picker; the module's reports appear there only while Decision Management is enabled for the project. How the page works (options, figures, export, report look) is the same as for every module report; see [Context & Strategy → Reports](../context-strategy-module/reports.md#generating-a-report). A report covers only what you can read, and **Include child projects** adds readable sub-projects that have the module enabled.
 
 ## The reports
 

@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, screen, userEvent, waitFor, within } from "storybook/test";
 
+import { buildLayoutApi } from "../testing/reportLayoutFixtures";
 import { buildSavedSnippets, buildSnippetStoreApi } from "../testing/reportSnippetStoreFixtures";
 import { buildUser, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { ReportSnippetsPanel } from "./ReportSnippetsPanel";
@@ -14,7 +15,7 @@ const meta: Meta<typeof ReportSnippetsPanel> = {
   title: "Components/Reports/ReportSnippetsPanel",
   component: ReportSnippetsPanel,
   decorators: [withToast(), withStatefulAuth(buildUser({ ui_preferences: {} }))],
-  args: { api: buildSnippetStoreApi() },
+  args: { api: buildSnippetStoreApi(), layoutApi: buildLayoutApi([], { stateful: false }) },
   // Each replay builds its own fake so a hide or a delete never changes what the next story reads.
   render: (args) => <ReportSnippetsPanel {...args} api={args.api ?? buildSnippetStoreApi()} />,
 };
@@ -71,7 +72,7 @@ export const AnOwnSnippetCanBeEditedCopiedAndDeletedButNotHidden: Story = {
     await table(canvasElement);
     const menu = await menuOf("House risk table");
     await expect(menu.getAllByRole("menuitem").map((i) => i.textContent?.trim())).toEqual([
-      "Edit details", "Make a copy", "Copy to the organisation", "Delete",
+      "Edit", "Make a copy", "Copy to the organisation", "Delete",
     ]);
   },
 };
@@ -137,18 +138,33 @@ export const DeletingAnOwnSnippetNeedsItsNameTyped: Story = {
   },
 };
 
-export const EditingChangesTheDetailsThroughTheSameFieldsAsSaving: Story = {
+export const NewSnippetOpensTheEditorOnAnEmptySnippet: Story = {
+  args: { api: buildSnippetStoreApi() },
+  play: async ({ canvasElement }) => {
+    await table(canvasElement);
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "New snippet" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "New snippet" }));
+    await expect(await dialog.findByText("Add at least one block to save the snippet.")).toBeInTheDocument();
+  },
+};
+
+export const EditingChangesTheDetailsAndTheBlocksThroughTheEditorsOfALayout: Story = {
   args: { api: buildSnippetStoreApi() },
   play: async ({ args, canvasElement }) => {
     await table(canvasElement);
-    await userEvent.click(await (await menuOf("House risk table")).findByRole("menuitem", { name: "Edit details" }));
+    await userEvent.click(await (await menuOf("House risk table")).findByRole("menuitem", { name: "Edit" }));
     const dialog = within(await screen.findByRole("dialog", { name: "Edit House risk table" }));
     const name = dialog.getByRole("textbox", { name: "Name" });
     await expect(name).toHaveValue("House risk table");
     await userEvent.clear(name);
     await userEvent.type(name, "Risk table");
-    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(args.api?.update).toHaveBeenCalledWith("snippet-1", { name: "Risk table", description: "Heading and a table of risks in the house style.", category: "House style" }));
+    const save = dialog.getByRole("button", { name: "Save" });
+    await waitFor(() => expect(save).toBeEnabled());
+    await userEvent.click(save);
+    await waitFor(() => expect(args.api?.update).toHaveBeenCalledWith("snippet-1", expect.objectContaining({
+      name: "Risk table", description: "Heading and a table of risks in the house style.", category: "House style",
+      tree: expect.objectContaining({ nodes: [{ type: "heading", text: "House risk table", level: 1 }] }),
+    })));
     await expect(await within(canvasElement).findByText("Risk table")).toBeInTheDocument();
   },
 };
@@ -157,12 +173,14 @@ export const ATakenNameWhenEditingIsReportedInTheDialog: Story = {
   args: { api: buildSnippetStoreApi(undefined, { taken: ["approval footer"] }) },
   play: async ({ canvasElement }) => {
     await table(canvasElement);
-    await userEvent.click(await (await menuOf("House risk table")).findByRole("menuitem", { name: "Edit details" }));
+    await userEvent.click(await (await menuOf("House risk table")).findByRole("menuitem", { name: "Edit" }));
     const dialog = within(await screen.findByRole("dialog", { name: "Edit House risk table" }));
     const name = dialog.getByRole("textbox", { name: "Name" });
     await userEvent.clear(name);
     await userEvent.type(name, "Approval footer");
-    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
+    const save = dialog.getByRole("button", { name: "Save" });
+    await waitFor(() => expect(save).toBeEnabled());
+    await userEvent.click(save);
     await expect(await dialog.findByText("A saved snippet with this name already exists here.")).toBeInTheDocument();
   },
 };
@@ -198,7 +216,7 @@ export const AnOrganisationListHasNoHideOrCopyUp: Story = {
   play: async ({ canvasElement }) => {
     await table(canvasElement);
     const menu = await menuOf("Approval footer");
-    await expect(menu.getAllByRole("menuitem").map((i) => i.textContent?.trim())).toEqual(["Edit details", "Make a copy", "Delete"]);
+    await expect(menu.getAllByRole("menuitem").map((i) => i.textContent?.trim())).toEqual(["Edit", "Make a copy", "Delete"]);
     await expect(within(canvasElement).queryByRole("button", { name: /Add organisation defaults/ })).not.toBeInTheDocument();
   },
 };

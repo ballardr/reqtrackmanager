@@ -77,7 +77,6 @@ from app.services.rbac import (
     require_project_view,
     require_project_view_or_manage,
 )
-from app.services.report_document import load_report_template
 from app.services.report_framework import ReportVariableOut
 from app.services.report_pack_definition import InvalidPackError
 from app.services.report_pack_scope import Origin, ScopedPack
@@ -260,15 +259,13 @@ def _queue(
     """Queues a background pack run after checking its values and set now.
 
     Raises:
-        HTTPException: 404 an unknown set, 422 `variable_values`, 400 a template of another organisation, 429 too many queued.
+        HTTPException: 404 an unknown set, 422 `variable_values`, 429 too many queued.
     """
-    if body.report_template_id is not None and load_report_template(db, organization.id, body.report_template_id) is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid report_template_id for this organisation.")
     _guard_pack(lambda: report_pack_run.check_request(db, pack, version, project, body.variables, body.variable_set_id))
     try:
         row = report_run_jobs.enqueue_pack(
             db, user, organization=organization, project=project, pack=pack, version=version,
-            report_template_id=body.report_template_id, include_children=body.include_children,
+            include_children=body.include_children,
             requested_project_ids=body.project_ids if project is None else None, variables=body.variables,
             variable_set_id=body.variable_set_id,
         )
@@ -393,7 +390,7 @@ def preview_org_pack(
     """What each report in the pack would include for the chosen values. Nothing is stored or produced."""
     organization, pack, version = _org_pack(db, organization_id, pack_id)
     run = _guard_pack(lambda: report_pack_run.run_organization_pack(
-        db, current_user, organization, pack, version, body.variables, template_id=body.report_template_id,
+        db, current_user, organization, pack, version, body.variables,
         project_ids=body.project_ids, render=False, set_id=body.variable_set_id,
     ))
     return _preview_out(run)
@@ -411,7 +408,7 @@ def run_org_pack(
     """
     organization, pack, version = _org_pack(db, organization_id, pack_id)
     run = _guard_pack(lambda: report_pack_run.run_organization_pack(
-        db, current_user, organization, pack, version, body.variables, template_id=body.report_template_id,
+        db, current_user, organization, pack, version, body.variables,
         project_ids=body.project_ids, set_id=body.variable_set_id,
     ), file_run=True)
     return _respond(db, current_user, run, body)
@@ -758,7 +755,7 @@ def preview_project_pack(
     project = _project_or_404(db, project_id)
     pack, version = _runnable(db, project, pack_id)
     run = _guard_pack(lambda: report_pack_run.run_project_pack(
-        db, current_user, project, pack, version, body.variables, template_id=body.report_template_id,
+        db, current_user, project, pack, version, body.variables,
         include_children=body.include_children, render=False, set_id=body.variable_set_id,
     ))
     return _preview_out(run)
@@ -795,7 +792,7 @@ def run_project_pack(
     project = _project_or_404(db, project_id)
     pack, version = _runnable(db, project, pack_id)
     run = _guard_pack(lambda: report_pack_run.run_project_pack(
-        db, current_user, project, pack, version, body.variables, template_id=body.report_template_id,
+        db, current_user, project, pack, version, body.variables,
         include_children=body.include_children, set_id=body.variable_set_id,
     ), file_run=True)
     return _respond(db, current_user, run, body)

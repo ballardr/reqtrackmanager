@@ -1,5 +1,5 @@
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
-import { expect, screen, userEvent, waitFor, within } from "storybook/test";
+import { expect, fn, screen, userEvent, waitFor, within } from "storybook/test";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { buildCopyApi } from "../testing/reportCopyFixtures";
@@ -112,7 +112,7 @@ export const VersionTypeAndFolderColumnsAreOffUntilChosen: Story = {
   },
 };
 
-export const AnOrganisationListHasNoSharedFromColumnAndOffersStarterLayouts: Story = {
+export const AnOrganisationListHasNoSharedFromColumnAndHidesAddMissingStartersWhenNoneAreMissing: Story = {
   args: {
     layoutApi: buildLayoutApi([OWN_LAYOUT], { kind: "organization" }),
     packApi: buildPackApi([], { kind: "organization" }),
@@ -122,9 +122,50 @@ export const AnOrganisationListHasNoSharedFromColumnAndOffersStarterLayouts: Sto
   play: async ({ canvasElement, args }) => {
     const grid = await list(canvasElement);
     await expect(grid.queryByRole("columnheader", { name: "Shared from" })).not.toBeInTheDocument();
-    await userEvent.click(within(canvasElement).getByRole("button", { name: "Add starter layouts" }));
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "New" }));
+    await expect(await screen.findByRole("menuitem", { name: "New layout" })).toBeInTheDocument();
+    await expect(screen.queryByRole("menuitem", { name: "Add missing starters" })).not.toBeInTheDocument();
+    await expect(args.layoutApi!.missingStarters).toHaveBeenCalled();
+  },
+};
+
+export const TheNewMenuAddsMissingStartersAndTheItemGoesOnceNoneAreMissing: Story = {
+  args: {
+    layoutApi: (() => {
+      let missing = ["Review Package"];
+      return buildLayoutApi([OWN_LAYOUT], {
+        kind: "organization",
+        missingStarters: fn(async () => missing),
+        addStarters: fn(async () => {
+          const added = missing;
+          missing = [];
+          return added;
+        }),
+      });
+    })(),
+    packApi: buildPackApi([], { kind: "organization" }),
+    placementApi: buildPlacementApi([layoutPlacement("1", "Handover document", "report", "Custom reports")], "organization"),
+    folderApi: buildFolderApi([], "organization"),
+  },
+  play: async ({ canvasElement, args }) => {
+    await list(canvasElement);
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "New" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Add missing starters" }));
     await waitFor(() => expect(args.layoutApi!.addStarters).toHaveBeenCalledTimes(1));
-    await expect(await within(document.body).findByText("Every starter layout is already here.")).toBeInTheDocument();
+    await expect(await within(document.body).findByText("Added Review Package.")).toBeInTheDocument();
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "New" }));
+    await expect(await screen.findByRole("menuitem", { name: "New layout" })).toBeInTheDocument();
+    await expect(screen.queryByRole("menuitem", { name: "Add missing starters" })).not.toBeInTheDocument();
+  },
+};
+
+export const AProjectListNeverOffersStarters: Story = {
+  args: fresh(),
+  play: async ({ canvasElement }) => {
+    await list(canvasElement);
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "New" }));
+    await expect(await screen.findByRole("menuitem", { name: "New layout" })).toBeInTheDocument();
+    await expect(screen.queryByRole("menuitem", { name: "Add missing starters" })).not.toBeInTheDocument();
   },
 };
 

@@ -23,8 +23,8 @@
  * - For a custom report with run-time variables, show their form (`ReportVariablesForm`) and send the chosen values
  *   as the `variables` run value; a variable with no default and no value holds the run back until it has one, so
  *   the report is never produced for a choice the person has not made.
- * - Download through the shared `ReportExportButton`, with a toast on success or failure. Branding is not
- *   chosen here: the server applies the layout's own template, else the organisation's default. Downloads send
+ * - Download through the shared `ReportExportButton`, with a toast on success or failure. The organisation's
+ *   report look is the server's to apply, not chosen here. Downloads send
  *   the same values as the screen so a file never silently widens the view
  *   (style guide: "report export trigger").
  *

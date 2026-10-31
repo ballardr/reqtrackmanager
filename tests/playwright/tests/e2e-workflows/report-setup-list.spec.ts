@@ -53,7 +53,7 @@ test.describe("Report setup list", () => {
 
   async function openSetup(page: Page, projectId: string) {
     await page.goto(`/projects/${projectId}/admin`);
-    await selectProjectAdminGroup(page, "Report Setup");
+    await selectProjectAdminGroup(page, "Reports");
   }
 
   test("layouts, tables, packs and module reports are rows of one list, each with its type icon", async ({ page, request }) => {
@@ -162,7 +162,7 @@ test.describe("Report setup list", () => {
 
     await test.step("the choice survives a reload, and the reset brings the defaults back", async () => {
       await page.reload();
-      await selectProjectAdminGroup(page, "Report Setup");
+      await selectProjectAdminGroup(page, "Reports");
       await expect(grid.getByRole("columnheader", { name: /Type/ })).toBeVisible();
       await page.getByRole("button", { name: "Choose columns" }).click();
       await page.getByRole("dialog", { name: "Columns" }).getByRole("button", { name: "Show the default columns" }).click();

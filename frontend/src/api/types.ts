@@ -450,6 +450,10 @@ export interface Organization {
   is_active: boolean;
   disabled_at: string | null;
   accent_color_hex: string | null;
+  /** The accent colour of reports; `null` follows `accent_color_hex`. */
+  report_accent_color_hex: string | null;
+  /** Whether reports carry the organisation's logo. */
+  report_include_logo: boolean;
   header_title: string | null;
   email_footer_company_name: string | null;
   email_footer_website: string | null;
@@ -486,7 +490,8 @@ export interface OrgCreationChoice {
 
 export interface MergeConflict {
   id: string;
-  kind: "project" | "report_template";
+  /** `project`, or a module's own kind (for example `compliance_standard`). */
+  kind: string;
   name: string;
   existing_id: string;
 }
@@ -499,8 +504,6 @@ export interface OrgMergeResult {
   warnings: string[];
   projects_imported: number;
   projects_skipped: number;
-  report_templates_imported: number;
-  report_templates_overwritten: number;
 }
 
 export interface ServerSettings {
@@ -1804,6 +1807,10 @@ export interface OrgAdvancedSettings {
   report_output_retention_days: number | null;
   /** Default file name template for a report that sets none of its own; `null` keeps each report's built-in name. */
   report_file_name: string | null;
+  /** The organisation's report look, set under Configuration (the accent colour and logo are on the Branding page). */
+  report_footer_text: string | null;
+  report_include_cover_page: boolean;
+  report_chapters_per_component: boolean;
   /** Read-only: the platform default and ceiling for `report_output_retention_days`. */
   report_output_default_retention_days: number;
   report_output_max_retention_days: number;
@@ -2131,19 +2138,6 @@ export interface ForceResetResult {
 
 export interface BulkRevokeResult {
   revoked_count: number;
-}
-
-export interface ReportTemplate {
-  id: string;
-  organization_id: string;
-  name: string;
-  accent_color_hex: string;
-  include_cover_page: boolean;
-  include_logo: boolean;
-  footer_text: string | null;
-  chapters_per_component: boolean;
-  /** The organisation's default template: used by every document report that names none. */
-  is_default: boolean;
 }
 
 export interface OrgSsoConfig {

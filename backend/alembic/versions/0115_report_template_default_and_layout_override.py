@@ -11,6 +11,7 @@ default). Existing rows get no default and no override, so no report changes unt
 
 from collections.abc import Sequence
 
+import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0115"
@@ -20,6 +21,8 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    if not sa.inspect(op.get_bind()).has_table("report_templates"):
+        return  # a database built from the current models has no report templates (they became the organisation's report look)
     op.execute("ALTER TABLE report_templates ADD COLUMN IF NOT EXISTS is_default BOOLEAN NOT NULL DEFAULT false")
     op.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_report_templates_one_default ON report_templates (organization_id) WHERE is_default"
@@ -32,5 +35,6 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute("ALTER TABLE report_layouts DROP COLUMN IF EXISTS report_template_id")
-    op.execute("DROP INDEX IF EXISTS uq_report_templates_one_default")
-    op.execute("ALTER TABLE report_templates DROP COLUMN IF EXISTS is_default")
+    if sa.inspect(op.get_bind()).has_table("report_templates"):
+        op.execute("DROP INDEX IF EXISTS uq_report_templates_one_default")
+        op.execute("ALTER TABLE report_templates DROP COLUMN IF EXISTS is_default")

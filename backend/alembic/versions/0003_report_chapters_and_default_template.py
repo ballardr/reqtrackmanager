@@ -20,6 +20,7 @@ end state either way.
 
 from collections.abc import Sequence
 
+import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0003"
@@ -29,6 +30,8 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    if not sa.inspect(op.get_bind()).has_table("report_templates"):
+        return  # a database built from the current models has no report templates (they became the organisation's report look)
     op.execute(
         "ALTER TABLE report_templates ADD COLUMN IF NOT EXISTS chapters_per_component BOOLEAN NOT NULL DEFAULT true"
     )
@@ -40,4 +43,5 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute("ALTER TABLE projects DROP COLUMN IF EXISTS default_report_template_id")
-    op.execute("ALTER TABLE report_templates DROP COLUMN IF EXISTS chapters_per_component")
+    if sa.inspect(op.get_bind()).has_table("report_templates"):
+        op.execute("ALTER TABLE report_templates DROP COLUMN IF EXISTS chapters_per_component")

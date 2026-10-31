@@ -6,7 +6,7 @@ organisation (`POST /orgs/{id}/import/preview`, `POST
 (`test_org_export_import.py`), which always creates a brand-new
 organisation. Covers: no-conflict merge (users/groups/projects/report
 templates all added), a project-name collision resolved both ways
-(skip/import-as-copy), a report-template-name collision resolved both ways
+(skip/import-as-copy), the target's report look left alone
 (keep-existing/use-import), that the target organisation's own profile
 (branding/SMTP/SSO) is never touched, and the 400s for an incomplete or
 invalid `resolutions` payload.
@@ -59,11 +59,6 @@ def test_merge_with_no_conflicts_adds_users_groups_projects_and_templates(client
         f"/api/v1/orgs/{source_org['id']}/groups", json={"name": "Merge Source Group"}, headers=auth_headers(source_token),
     )
     assert group_resp.status_code == 201, group_resp.text
-    template_resp = client.post(
-        f"/api/v1/orgs/{source_org['id']}/report-templates", json={"name": "Merge Source Template"},
-        headers=auth_headers(source_token),
-    )
-    assert template_resp.status_code == 201, template_resp.text
 
     target_org, target_token = create_org_admin_in(client, admin_token, "Merge Target Org Clean")
     # The bundle's member already has an account in the source organisation, so the target has to allow
@@ -84,8 +79,6 @@ def test_merge_with_no_conflicts_adds_users_groups_projects_and_templates(client
     body = merge_resp.json()
     assert body["projects_imported"] == 1
     assert body["projects_skipped"] == 0
-    assert body["report_templates_imported"] == 1
-    assert body["report_templates_overwritten"] == 0
 
     target_projects = client.get(f"/api/v1/projects?organization_id={target_org['id']}", headers=auth_headers(target_token)).json()
     assert any(p["name"] == "Merge Source Project" for p in target_projects)
@@ -96,9 +89,6 @@ def test_merge_with_no_conflicts_adds_users_groups_projects_and_templates(client
 
     target_groups = client.get(f"/api/v1/orgs/{target_org['id']}/groups", headers=auth_headers(target_token)).json()
     assert any(g["name"] == "Merge Source Group" for g in target_groups)
-
-    target_templates = client.get(f"/api/v1/orgs/{target_org['id']}/report-templates", headers=auth_headers(target_token)).json()
-    assert any(t["name"] == "Merge Source Template" for t in target_templates)
 
 
 def test_merge_audit_event_records_the_source_bundles_provenance(client, admin_token):
@@ -161,39 +151,25 @@ def test_merge_project_name_conflict_can_be_skipped_or_imported_as_a_copy(client
     assert len([p for p in projects_after_copy if p["name"] == "Shared Project Name"]) == 1
 
 
-def test_merge_report_template_conflict_can_be_kept_or_overwritten(client, admin_token):
-    source_org, source_token = create_org_admin_in(client, admin_token, "Merge Template Conflict Source")
-    client.post(
-        f"/api/v1/orgs/{source_org['id']}/report-templates",
-        json={"name": "Shared Template", "footer_text": "From the source org"},
+def test_merge_never_touches_the_target_orgs_report_look(client, admin_token):
+    source_org, source_token = create_org_admin_in(client, admin_token, "Merge Look Source")
+    client.put(
+        f"/api/v1/orgs/{source_org['id']}/advanced-settings", json={"report_footer_text": "From the source org"},
         headers=auth_headers(source_token),
     )
     bundle_bytes = _export(client, source_token, source_org["id"])
 
-    target_org, target_token = create_org_admin_in(client, admin_token, "Merge Template Conflict Target")
-    existing = client.post(
-        f"/api/v1/orgs/{target_org['id']}/report-templates",
-        json={"name": "Shared Template", "footer_text": "From the target org"},
+    target_org, target_token = create_org_admin_in(client, admin_token, "Merge Look Target")
+    client.put(
+        f"/api/v1/orgs/{target_org['id']}/advanced-settings", json={"report_footer_text": "From the target org"},
         headers=auth_headers(target_token),
-    ).json()
+    )
 
-    conflicts = _preview(client, target_token, target_org["id"], bundle_bytes)
-    assert len(conflicts) == 1
-    conflict = conflicts[0]
-    assert conflict["kind"] == "report_template"
-    assert conflict["existing_id"] == existing["id"]
-
-    keep_resp = _merge(client, target_token, target_org["id"], bundle_bytes, resolutions={conflict["id"]: "keep_existing"})
-    assert keep_resp.status_code == 200, keep_resp.text
-    assert keep_resp.json()["report_templates_overwritten"] == 0
-    templates = client.get(f"/api/v1/orgs/{target_org['id']}/report-templates", headers=auth_headers(target_token)).json()
-    assert next(t for t in templates if t["name"] == "Shared Template")["footer_text"] == "From the target org"
-
-    use_import_resp = _merge(client, target_token, target_org["id"], bundle_bytes, resolutions={conflict["id"]: "use_import"})
-    assert use_import_resp.status_code == 200, use_import_resp.text
-    assert use_import_resp.json()["report_templates_overwritten"] == 1
-    templates = client.get(f"/api/v1/orgs/{target_org['id']}/report-templates", headers=auth_headers(target_token)).json()
-    assert next(t for t in templates if t["name"] == "Shared Template")["footer_text"] == "From the source org"
+    assert _preview(client, target_token, target_org["id"], bundle_bytes) == []
+    merged = _merge(client, target_token, target_org["id"], bundle_bytes, resolutions={})
+    assert merged.status_code == 200, merged.text
+    after = client.get(f"/api/v1/orgs/{target_org['id']}/advanced-settings", headers=auth_headers(target_token)).json()
+    assert after["report_footer_text"] == "From the target org"
 
 
 def test_merge_never_touches_the_target_orgs_own_profile(client, admin_token):

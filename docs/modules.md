@@ -1440,9 +1440,9 @@ flowchart LR
 ```
 
 - **Routes** (`routers/custom_reports.py`, `services/custom_report_run.py`).
-  `GET /projects/{id}/custom-reports/{layout}/run?format=&include_children=&report_template_id=` runs a layout the
+  `GET /projects/{id}/custom-reports/{layout}/run?format=&include_children=` runs a layout the
   project can reach (its own, an ancestor's or the organisation's) unless the project hid it (404).
-  `GET /orgs/{id}/custom-reports/{layout}/run?format=&project_ids=a,b&report_template_id=` runs an organisation layout
+  `GET /orgs/{id}/custom-reports/{layout}/run?format=&project_ids=a,b` runs an organisation layout
   once **per project** the caller holds a role in and merges the results; `project_ids` can only narrow that set (404
   for a project outside it), a project that hid the layout is left out (and the report says so), at most
   `MAX_FANOUT_PROJECTS` are evaluated, and a document gets one heading per project with a page break between them
@@ -1580,7 +1580,7 @@ flowchart LR
   fan-out rules apply unchanged; it writes no `generated_reports` row and no audit event (nothing was produced to keep)
   and never logs the text. Refusals (413, 408, 404, 422) are the run route's (`routers.custom_reports.guard_run`).
 - **Frontend.** `api/reportLayouts.ts` (`ReportLayoutApi`, one injectable interface per scope), `ReportSetupPanel` (the
-  one folder list of layouts, packs and module reports in Project Admin's Report Setup and Org Admin's Templates & reports), `ReportLayoutFormModal` (create and edit share
+  one folder list of layouts, packs and module reports in Project Admin's Reports and Org Admin's Templates & reports), `ReportLayoutFormModal` (create and edit share
   `ReportLayoutFields`), `ReportLayoutDesigner` (page `/projects/:id/report-layouts/:layoutId`, `/orgs/:id/report-layouts/:layoutId`),
   `ReportLayoutFieldPicker`, `ReportLayoutWidgetPicker` (reuses `ReportParamsForm`), `ReportLayoutPreviewPanel` (a
   sandboxed frame with an empty `sandbox` attribute for the HTML) and `ReportLayoutHistory` (a line diff of two
@@ -1632,7 +1632,7 @@ flowchart LR
   (`@page psN`) for printing. A table-family layout has no pages and refuses the keys.
 - **Headers and footers.** The root and each page style may carry `header` and `footer`: `{left?, centre?, right?, logo?: {file, height, slot?},
   first_page?: "same"|"none"}` (a cell is text of up to 300 characters on three lines; `{}` prints nothing; a style that writes none prints the
-  document's, and the document's, where it writes none, the branding template's: its footer text and page number, and its logo as a header).
+  document's, and the document's, where it writes none, a page number; the organisation's footer text and logo are read as `{{org.footer_text}}` and the `org_logo` picture, §4ab).
   Cells take the report-wide placeholders, `{{layout_version}}`, `{{page}}`, `{{pages}}` and `{{var.name}}`, never a record field; the
   evaluator fills them (`generated_on` is the caller's own day) and leaves the two page fields to the renderer (`RunningBand`,
   `report_model`). A band must fit inside its margin (0.5 cm to the page edge + its tallest cell, `report_page_styles.band_height_cm`), checked
@@ -1734,7 +1734,7 @@ flowchart LR
 - **Hand-off.** There is no cost estimate: the synchronous run is attempted with its normal limits and the `LayoutLimitError`
   it raises for a file format becomes a 409 `async_required` (the on-screen `json` form keeps 413/408, there being no file
   to queue). `ReportRunner` answers it with `POST .../custom-reports/{layout}/runs` (project and organisation; body
-  `format`, `report_template_id`, `include_children` or `project_ids`), which pins the layout's current version and the
+  `format`, `include_children` or `project_ids`), which pins the layout's current version and the
   request on a `queued` row (202). At most `MAX_ACTIVE_PER_USER` (5) rows per requester are queued or running (429).
 - **Job state** is `GeneratedReport.status`: `completed` (a synchronous run), `queued`, `running`, `ready`, `failed`,
   `expired`; with `started_at`, `finished_at`, `expires_at`, `output_key`, `output_filename`, `output_size` and a fixed-sentence
@@ -1752,7 +1752,7 @@ flowchart LR
   person's run is a 404. Download re-checks the same access and the expiry. `?active=true` narrows the list to runs
   that are queued or running (the top-bar indicator).
 - **Generate again.** `POST /api/v1/report-runs/{id}/again` (`report_run_jobs.requeue`) queues a fresh run of an
-  `expired` or `failed` run's stored request (format, scope, branding template, variable values, pack set): the requester,
+  `expired` or `failed` run's stored request (format, scope, variable values, pack set): the requester,
   the layout or pack's reach and its *current* version are checked again, the old file is never reused, the queue limit
   applies and the response says whether the definition changed since (`definition_changed`). 404 not the caller's or the
   report is gone or unreachable; 409 the run is waiting, running or still downloadable; 422 the stored values no longer fit;
@@ -1865,7 +1865,7 @@ flowchart LR
 - **`if` on a module.** An `if` test can be `{"module": key}` (text view: `@if module risk_management`): true where that module is
   available in the project being run. The part, heading included, is left out otherwise, rather than printed with a false "none recorded".
 - **Adding them.** New organisations get them at creation (`routers/orgs/core.py`, `services/bootstrap.py`); an existing organisation
-  asks with `POST /orgs/{id}/report-layouts/starters` (the Add starter layouts button, manage-layouts permission). A starter whose name is
+  asks with `POST /orgs/{id}/report-layouts/starters` (New → Add missing starters on the Reports list, manage-layouts permission); `GET` on the same path names the starters still missing, and the menu item is offered only when one is. A starter whose name is
   already used is skipped, so it is safe to repeat and never overwrites an edit. An upgrade seeds nothing by itself.
 - A new module with something to say in a starter adds a section; a new starter adds a `StarterLayout` and a key in
   `services/report_starter_blocks.py`. `backend/tests/test_report_starters.py` validates every starter as assembled.
@@ -1952,7 +1952,7 @@ flowchart LR
   widget list and the module run all use.
 - Favourites are not a table: they are a list of report keys in the person's `ui_preferences` (`report_favourites`). The folders left open are kept the same way (`report_picker_folders`: folder ids by picker; each host names its picker with `pickerId`), and a picker opens fully collapsed the first time.
 - Frontend: `ReportPicker` (dialog over the shared `FolderTreeList`), `ReportSetupPanel` (Org Admin and
-  Project Admin: layouts, packs and module reports as one folder list, merged client-side in `utils/reportSetupRows` from the layout, pack, placement and folder lists) and `ReportFolderChooser`.
+  Project Admin: layouts, packs and module reports as one folder list, merged client-side in `utils/reportSetupRows` from the layout, pack, placement and folder lists) `ReportFolderChooser` and `ReportFolderField` (the form field that opens the chooser in a popover).
 
 ### 4y. Custom reports: default file names (Module 10 Phase 40)
 
@@ -2086,6 +2086,47 @@ flowchart LR
   `update_saved_report_snippet`, `delete_saved_report_snippet`, `set_saved_report_snippet_visibility`,
   `copy_saved_report_snippet` (write mode).
 
+### 4ab. The organisation's report look (Module 10 Phase 49)
+
+An organisation has **one report look**, not a list of templates: `Organization.report_accent_color_hex` (`NULL` follows the UI
+accent, then the platform's), `report_include_logo`, `report_footer_text`, `report_include_cover_page` and
+`report_chapters_per_component`. The accent and logo are set on the Branding page, the others under Templates & reports →
+Configuration (`PUT /orgs/{id}/branding`, `PUT /orgs/{id}/advanced-settings`; a client that does not send a field leaves it).
+
+```mermaid
+flowchart LR
+    Org["Organization report look"] --> Built["Built-in report<br/>(requirements, module, record-list)"]
+    Org --> Reader["report_org_values"]
+    Reader --> Text["{{org.footer_text}} in text, header, footer"]
+    Reader --> Cond["if org.include_cover_page"]
+    Reader --> Logo["org_logo image / header logo"]
+    Text --> Layout["Custom layout"]
+    Cond --> Layout
+    Logo --> Layout
+    Org -. accent only .-> Layout
+```
+
+- **A built-in report applies the look**, always: `report_document.resolve_branding(db, organization)` (accent, cover page, logo,
+  footer, and `report_chapters_per_component`, which a request's `chapters_per_component` overrides).
+- **A custom layout is never forced.** It prints the footer text, the cover page and the logo only where it reads them; the
+  renderers are given the accent colour alone (`report_document.layout_branding`) and the only default a layout gets is a page
+  number (`report_running.apply_default_bands`).
+- **The `org` scope** is a closed set owned by core (`services/report_org_values.py`: `footer_text`, `include_cover_page`,
+  `include_logo`, `chapters_per_component`, `report_accent`), not a registry. It reads as `{{org.key}}` in text, headings, captions
+  and header/footer cells, and as `org.key` in an `if` (a bool takes `eq`/`ne` with `true`/`false`; the text view writes
+  `@if org.include_cover_page eq true`). An unknown key is a checked problem at save time; `org` is a reserved block name, like
+  `var`. A value is text or a boolean and never becomes markup.
+- **The logo is an image source**: an `image` block's or a header/footer logo's `file` may be `org_logo` (no library file; the
+  run warns once and leaves it out when the organisation has no logo). It is not a library picture, so image visibility,
+  "used by" and bundles skip it.
+- **Migration 0121** folded the old `report_templates` into the organisation (the default template, else the only one; extras are
+  dropped and counted in the log) and saved a **new version** of each document layout whose effective template had a footer,
+  a cover page or a logo, so it reads the values where the old output printed them. The cover is an `if` block of the
+  organisation's logo, the title and a page break; the engine's plain title still prints above it, which the old cover page replaced.
+- **Bundles.** `org.json` carries `report_look`; an older bundle's `report_templates` becomes the look on a new organisation (the
+  default one, else the only one) with a notice for each extra, and is ignored by a merge (the target's look is never touched). A
+  layout entry's `report_template` and a pack definition's `template` are ignored with a notice.
+
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 
 A module that reports on its records declares a `ReportDefinition` per report on
@@ -2151,12 +2192,11 @@ REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
   well as one with a single prefix: include it with `prefix=<the module's project prefix>`.
 - **Parameters** are declared, not hand-written: core validates types and bounds
   (422), checks `choices` (400), applies defaults, and derives the OpenAPI and
-  MCP parameters from the same declaration. `format`, `include_children`
-  and `report_template_id` are framework-level; unknown query parameters are
+  MCP parameters from the same declaration. `format` and `include_children`
+  are framework-level; unknown query parameters (an older client's `report_template_id` among them) are
   ignored.
-- **Branding.** `?report_template_id=` applies an organisation report template's
-  accent colour, cover page, logo and footer to the PDF and DOCX (400 for another
-  organisation's template). A report prints its own scope line, notes and sections;
+- **Branding.** The organisation's one report look (§4ab) is applied to the PDF and DOCX
+  automatically: there is no template to choose. A report prints its own scope line, notes and sections;
   authored text around a report is written in a layout that embeds its widgets
   (§4p), so declaring a report is all a module does.
 - **Validation.** A definition with a duplicate key/slug, malformed parameter,

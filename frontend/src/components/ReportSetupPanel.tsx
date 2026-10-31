@@ -117,6 +117,7 @@ export function ReportSetupPanel({
   const folderApi = useMemo(() => folderApiProp ?? reportFolderApi(scope), [folderApiProp, scope]);
   const duplicateApi = useMemo(() => duplicateApiProp ?? reportDuplicateApi(scope), [duplicateApiProp, scope]);
   const [data, setData] = useState<Loaded | null>(null);
+  const [missingStarters, setMissingStarters] = useState<string[]>([]);
   const [failed, setFailed] = useState(false);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [filter, setFilter] = useState<ReportSetupFilter>(EMPTY_SETUP_FILTER);
@@ -132,6 +133,8 @@ export function ReportSetupPanel({
         folderApi.list().catch(() => [] as ReportFolder[]),
       ]);
       setData({ placements, layouts, packs, folders });
+      // Only an offer: if the check fails the action stays out of the menu and the list still works.
+      setMissingStarters(await (layoutApi.missingStarters?.() ?? Promise.resolve([])).catch(() => [] as string[]));
       setFailed(false);
     } catch {
       setFailed(true);
@@ -364,6 +367,15 @@ export function ReportSetupPanel({
     { key: "pack", label: text.newPack, onSelect: () => setDialog({ kind: "create-pack" }) },
     { key: "starter", label: strings.reportDuplicate.fromStarter, onSelect: () => setDialog({ kind: "from-starter" }) },
     { key: "folder", label: text.newFolder, onSelect: () => setDialog({ kind: "folder-add", parent: "" }) },
+    ...(layoutApi.addStarters && missingStarters.length > 0
+      ? [{
+        key: "add-missing-starters", label: text.addMissingStarters,
+        onSelect: () => void run(async () => {
+          const added = (await layoutApi.addStarters?.()) ?? [];
+          return added.length > 0 ? strings.reportLayouts.startersAdded(added) : strings.reportLayouts.startersNone;
+        }),
+      }]
+      : []),
   ];
 
   const set = (patch: Partial<ReportSetupFilter>) => setFilter({ ...filter, ...patch });
@@ -374,17 +386,6 @@ export function ReportSetupPanel({
       <p className="text-muted" style={{ margin: 0 }}>{inProject ? text.projectDescription : text.orgDescription}</p>
       <div className="row">
         <MenuButton primary label={text.new} menuLabel={text.newMenu} items={newItems} />
-        {layoutApi.addStarters && (
-          <button
-            type="button" className="btn"
-            onClick={() => void run(async () => {
-              const added = (await layoutApi.addStarters?.()) ?? [];
-              return added.length > 0 ? strings.reportLayouts.startersAdded(added) : strings.reportLayouts.startersNone;
-            })}
-          >
-            {text.addStarters}
-          </button>
-        )}
         {inProject && (layoutApi.restore || packApi.restore) && (
           <RestoreOrgDefaultsButton
             hidden={hiddenObjects.map((r) => ({ id: r.key, name: r.title }))}

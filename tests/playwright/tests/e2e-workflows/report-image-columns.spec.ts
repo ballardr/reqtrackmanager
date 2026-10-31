@@ -94,7 +94,7 @@ test.describe("Report image columns", () => {
   test("an images column is added in the designer, sized and arranged, previewed and printed", async ({ page, request }) => {
     const { headers, project, layoutId, layoutName } = await setup(page, request);
     await page.goto(`/projects/${project.id}/admin`);
-    await selectProjectAdminGroup(page, "Report Setup");
+    await selectProjectAdminGroup(page, "Reports");
     await openSetupReport(page, layoutName);
     await page.getByRole("tab", { name: "Blocks" }).click();
     await page.locator(".blocklyText.rl-block-title", { hasText: /^Table$/ }).first().click();
@@ -136,7 +136,7 @@ test.describe("Report image columns", () => {
   test("the text view writes an images column and the heading-row switch is a page setup option", async ({ page, request }) => {
     const { project, layoutName } = await setup(page, request);
     await page.goto(`/projects/${project.id}/admin`);
-    await selectProjectAdminGroup(page, "Report Setup");
+    await selectProjectAdminGroup(page, "Reports");
     await openSetupReport(page, layoutName);
     const editor = page.getByRole("textbox", { name: "Layout text" });
     await editor.fill("@layout document\n\n@table pain_point\n  @column code\n  @images types png width 80 percent\n@end\n");

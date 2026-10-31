@@ -201,9 +201,36 @@ export const api = {
   /** Posts JSON and returns the file in the response; a failed response throws the same `ApiError` (with its structured `detail`) as any other call. */
   postForBlob: async (path: string, body?: unknown): Promise<Blob> =>
     (await rawRequest(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined })).blob(),
+  /**
+   * Posts JSON and returns the file as a `File` named as the server named it (its `Content-Disposition`), so a download
+   * keeps the name the server's rules produced; a response with no name yields a plain `Blob`.
+   */
+  postForFile: async (path: string, body?: unknown): Promise<Blob> => {
+    const response = await rawRequest(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined });
+    const blob = await response.blob();
+    const name = dispositionFileName(response.headers.get("Content-Disposition"));
+    return name ? new File([blob], name, { type: blob.type }) : blob;
+  },
   /** Downloads a file; a failed response throws the same `ApiError` (message and structured `detail`) as any other call. */
   getForBlob: async (path: string): Promise<Blob> => (await rawRequest(path)).blob(),
 };
+
+/**
+ * The file name the server chose in a `Content-Disposition` header (the RFC 5987 `filename*` form when present, else the
+ * quoted `filename`), or `null` when there is none.
+ */
+export function dispositionFileName(header: string | null): string | null {
+  if (!header) return null;
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded[1].trim());
+    } catch {
+      // A malformed escape: fall through to the plain form.
+    }
+  }
+  return /filename="([^"]*)"/i.exec(header)?.[1] ?? null;
+}
 
 export function wsBaseUrl(): string {
   return BASE_URL.replace(/^http/, "ws");

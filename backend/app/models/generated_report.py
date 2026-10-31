@@ -71,7 +71,7 @@ class GeneratedReport(UUIDPKMixin, Base):
         created_at: When the run started (UTC).
         format: The output format requested (`json`, `pdf`, `docx`, `odt`, `html`, `csv`, `xlsx`, `ods`).
         engine_version: The layout engine's version (changes when evaluation semantics change).
-        params: Run parameters: `report_template_id`, `include_children`, `requested_project_ids`.
+        params: Run parameters: `include_children`, `requested_project_ids`.
         scope_project_ids: The projects the run covered.
         widgets: Keys of the widgets that ran (`<module key>.<report slug>`, distinct, sorted); `[]` for a layout with none.
         record_counts: Records read, by artefact type.

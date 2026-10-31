@@ -11,7 +11,7 @@ function org(overrides: Partial<Organization> = {}): Organization {
   return {
     id: "org-1", name: "Acme Corp", created_at: "2026-01-01T00:00:00Z", logo_file_id: null,
     default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
-    disabled_at: null, accent_color_hex: null, header_title: null,
+    disabled_at: null, accent_color_hex: null, report_accent_color_hex: null, report_include_logo: true, header_title: null,
     email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
   code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto" }, enforce_code_everywhere: false,
   force_require_change_request_for_approved_links: false,

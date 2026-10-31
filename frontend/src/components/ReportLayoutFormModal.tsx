@@ -16,43 +16,30 @@ import { LAYOUT_FAMILY_LABEL } from "../api/reportLayouts";
 import { reportFolderApi, type ReportFolderApi } from "../api/reportFolders";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage } from "../context/ToastContext";
-import { useReportTemplates } from "../hooks/useReportTemplates";
-import type { ReportTemplate } from "../api/types";
 import { tidyFolder } from "../utils/reportFolders";
 import { FormActions } from "./FormActions";
 import { TextAreaField, TextField } from "./FormFields";
 import { LabeledSelect } from "./LabeledSelect";
 import { Modal } from "./Modal";
-import { ReportFolderChooser } from "./ReportFolderChooser";
+import { ReportFolderField } from "./ReportFolderField";
 
 /** The fields a layout's create and edit forms share, so a field added later reaches both. */
 export function ReportLayoutFields({
-  name, description, folder, folderApi, onName, onDescription, onFolder, onFoldersChanged, onFolderBusy, templates, templateId, onTemplate,
+  name, description, folder, folderApi, onName, onDescription, onFolder, onFoldersChanged, onFolderBusy,
 }: {
   name: string; description: string; folder: string; folderApi: ReportFolderApi; onFoldersChanged?: () => void;
   /** Told while a folder change is in flight (the form keeps Save disabled). */
   onFolderBusy?: (busy: boolean) => void;
   onName: (value: string) => void; onDescription: (value: string) => void; onFolder: (value: string) => void;
-  /** The organisation's templates, offered only when there are any (editing). */
-  templates?: ReportTemplate[]; templateId?: string; onTemplate?: (value: string) => void;
 }) {
-  const allStrings = useStrings();
-  const strings = allStrings.reportLayouts;
+  const strings = useStrings().reportLayouts;
   return (
     <>
       <TextField helpNotNeeded required
         label={strings.nameLabel} value={name} onChange={onName} inputProps={{ maxLength: 200, autoFocus: true }}
       />
       <TextAreaField helpNotNeeded label={strings.descriptionLabel} value={description} onChange={onDescription} />
-      <ReportFolderChooser value={folder} onChange={onFolder} api={folderApi} onChanged={onFoldersChanged} onBusyChange={onFolderBusy} />
-      {templates && templates.length > 0 && onTemplate && (
-        <LabeledSelect
-          label={strings.templateLabel} help={allStrings.help.reportLayoutTemplate}
-          value={templateId ?? ""} onChange={onTemplate}
-          options={templates.map((t) => ({ value: t.id, label: t.name }))}
-          placeholder={strings.templateDefault}
-        />
-      )}
+      <ReportFolderField value={folder} onChange={onFolder} api={folderApi} onChanged={onFoldersChanged} onBusyChange={onFolderBusy} />
     </>
   );
 }
@@ -80,8 +67,6 @@ export function ReportLayoutFormModal({
   const [name, setName] = useState(layout?.name ?? "");
   const [description, setDescription] = useState(layout?.description ?? "");
   const [folder, setFolder] = useState(layout?.folder ?? "");
-  const [templateId, setTemplateId] = useState(layout?.report_template_id ?? "");
-  const templates = useReportTemplates(layout?.organization_id);
   const folderApi = useMemo(() => folderApiProp ?? reportFolderApi(api.scope), [folderApiProp, api.scope]);
   const [family, setFamily] = useState<LayoutFamily>(layout?.family ?? "document");
   const [error, setError] = useState<string | null>(null);
@@ -95,7 +80,7 @@ export function ReportLayoutFormModal({
       let saved: ReportLayoutSummary | ReportLayoutDetail;
       if (layout) {
         saved = await api.update(layout.id, {
-          name: name.trim(), description, folder: tidyFolder(folder), report_template_id: templateId || null,
+          name: name.trim(), description, folder: tidyFolder(folder),
         });
       } else {
         // The server writes the empty tree of a family, so the client never spells out the tree's shape.
@@ -118,7 +103,6 @@ export function ReportLayoutFormModal({
         <ReportLayoutFields
           name={name} description={description} folder={folder} folderApi={folderApi} onFoldersChanged={onFoldersChanged} onFolderBusy={setFolderBusy}
           onName={setName} onDescription={setDescription} onFolder={setFolder}
-          templates={layout ? templates : undefined} templateId={templateId} onTemplate={setTemplateId}
         />
         {!layout && (
           <LabeledSelect required

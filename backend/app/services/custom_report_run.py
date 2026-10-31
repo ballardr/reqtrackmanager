@@ -54,7 +54,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.models.generated_report import SCOPE_ORGANIZATION, SCOPE_PROJECT, STATUS_COMPLETED, GeneratedReport
-from app.models.organization import Organization, ReportTemplate
+from app.models.organization import Organization
 from app.models.project import Project
 from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE, ReportLayout, ReportLayoutVersion
 from app.models.user import User
@@ -62,7 +62,7 @@ from app.services import definition_suppression, report_layout_scope, report_lay
 from app.services.client_date import effective_today
 from app.services.downloads import filename_safe
 from app.services.link_graph import ArtefactResolver
-from app.services.report_document import ReportBranding, resolve_branding
+from app.services.report_document import ReportBranding, layout_branding
 from app.services.report_file_names import render_stem
 from app.services.report_framework import (
     ReportCatalogueEntryOut,
@@ -109,7 +109,7 @@ from app.services.report_model import (
     linked,
 )
 from app.services.report_render import RenderedFile, RenderInput, formats_for, render
-from app.services.report_running import apply_template_defaults
+from app.services.report_running import apply_default_bands
 from app.services.report_variables import describe_variables, variable_text
 
 ENGINE_VERSION = "1"
@@ -495,7 +495,7 @@ def document_for(run: LayoutRun, *, branding: ReportBranding | None) -> ReportDo
 
     Args:
         run: A finished document-family run.
-        branding: The organisation template's branding, or `None`.
+        branding: The branding for the renderers (the accent colour), or `None`.
 
     Returns:
         The document: a scope line, the run's notes, then the evaluated blocks.
@@ -503,7 +503,7 @@ def document_for(run: LayoutRun, *, branding: ReportBranding | None) -> ReportDo
     document = run.evaluated.document
     assert document is not None
     blocks: list[Block] = [Note(_scope_line(run)), Gap(0.2), *[Note(n) for n in run.notes], *document.blocks]
-    return apply_template_defaults(replace(document, title=run.layout.name, blocks=blocks, branding=branding), branding)
+    return apply_default_bands(replace(document, title=run.layout.name, blocks=blocks, branding=branding))
 
 
 def render_input_for(run: LayoutRun, *, branding: ReportBranding | None = None) -> RenderInput:
@@ -513,19 +513,18 @@ def render_input_for(run: LayoutRun, *, branding: ReportBranding | None = None) 
     return RenderInput(run.layout.name, sheets=run.evaluated.sheets)
 
 
-def render_file(db: Session, run: LayoutRun, fmt: str, template: ReportTemplate | None) -> RenderedFile:
-    """Renders a finished run as a file in `fmt`: a document's branding, or the sheets.
+def render_file(db: Session, run: LayoutRun, fmt: str) -> RenderedFile:
+    """Renders a finished run as a file in `fmt`: a document with the organisation's accent colour, or the sheets.
 
     Args:
         db: Active session (read only).
         run: A finished run.
         fmt: A renderer format of the layout's family (not `json`).
-        template: The branding template to apply to a document, if any.
 
     Returns:
         The rendered file.
     """
-    branding = resolve_branding(db, run.organization, template) if run.family == FAMILY_DOCUMENT else None
+    branding = layout_branding(db, run.organization) if run.family == FAMILY_DOCUMENT else None
     return render(fmt, run.family, render_input_for(run, branding=branding))
 
 
@@ -573,8 +572,7 @@ def file_stem(run: LayoutRun, extension: str) -> str:
 
 
 def provenance_fields(
-    run: LayoutRun, *, report_template_id: uuid.UUID | None, include_children: bool = False,
-    requested_project_ids: Sequence[uuid.UUID] | None = None,
+    run: LayoutRun, *, include_children: bool = False, requested_project_ids: Sequence[uuid.UUID] | None = None,
 ) -> dict[str, Any]:
     """The columns of a `GeneratedReport` that describe a finished run (everything but who asked and in what format).
 
@@ -588,7 +586,7 @@ def provenance_fields(
         "scope": SCOPE_PROJECT if run.root_project else SCOPE_ORGANIZATION,
         "layout_id": run.layout.id, "layout_name": run.layout.name, "layout_version": run.version.version,
         "tree_hash": run.version.tree_hash, "created_at": run.generated_at, "engine_version": ENGINE_VERSION,
-        "params": run_params(report_template_id, include_children, requested_project_ids, run.evaluated.variables),
+        "params": run_params(include_children, requested_project_ids, run.evaluated.variables),
         "scope_project_ids": [str(p.id) for p in run.projects], "widgets": list(run.evaluated.widgets),
         "record_counts": dict(counts),
         "stats": {
@@ -605,8 +603,7 @@ def provenance_fields(
 
 
 def run_params(
-    report_template_id: uuid.UUID | None, include_children: bool, requested_project_ids: Sequence[uuid.UUID] | None,
-    variables: Mapping[str, Any] | None = None,
+    include_children: bool, requested_project_ids: Sequence[uuid.UUID] | None, variables: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The run parameters stored on the provenance row (and read back to run a background job).
 
@@ -614,7 +611,6 @@ def run_params(
     and audited, never written to a log line.
     """
     return {
-        "report_template_id": str(report_template_id) if report_template_id else None,
         "include_children": include_children,
         "requested_project_ids": [str(p) for p in requested_project_ids] if requested_project_ids is not None else None,
         "variables": dict(variables or {}),
@@ -622,8 +618,8 @@ def run_params(
 
 
 def record_run(
-    db: Session, user: User, run: LayoutRun, fmt: str, *, report_template_id: uuid.UUID | None,
-    include_children: bool = False, requested_project_ids: Sequence[uuid.UUID] | None = None,
+    db: Session, user: User, run: LayoutRun, fmt: str, *, include_children: bool = False,
+    requested_project_ids: Sequence[uuid.UUID] | None = None,
 ) -> GeneratedReport:
     """Adds the provenance row of a synchronous run (the caller commits).
 
@@ -632,7 +628,6 @@ def record_run(
         user: The caller.
         run: The finished run.
         fmt: The requested format.
-        report_template_id: The branding template applied, if any.
         include_children: Whether child projects were included (project-level run).
         requested_project_ids: The selection of an organisation-wide run, `None` for "all readable".
 
@@ -641,10 +636,7 @@ def record_run(
     """
     row = GeneratedReport(
         requested_by=user.id, format=fmt, status=STATUS_COMPLETED,
-        **provenance_fields(
-            run, report_template_id=report_template_id, include_children=include_children,
-            requested_project_ids=requested_project_ids,
-        ),
+        **provenance_fields(run, include_children=include_children, requested_project_ids=requested_project_ids),
     )
     db.add(row)
     return row
@@ -678,7 +670,7 @@ def _entry(
         projects=[ReportProjectOut(id=p.id, name=p.name) for p in projects], params=[],
         variables=[ReportVariableOut.model_validate(v) for v in form],
         kind="sheet" if layout.family == FAMILY_TABLE else "report", folder=layout.folder,
-        record_types=record_types_of(tree), report_template_id=layout.report_template_id,
+        record_types=record_types_of(tree),
     )
 
 

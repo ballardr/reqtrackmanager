@@ -5,8 +5,8 @@ The document-level layer every generated report shares, whatever it reports
 on (requirements in `services.reports`, any module's report in
 `services.report_framework`):
 
-- `ReportBranding` and `resolve_branding`: an organisation `ReportTemplate`'s
-  accent colour, cover page, logo and footer.
+- `ReportBranding`, `resolve_branding` and `layout_branding`: the organisation's report accent colour, cover page, logo
+  and footer for a built-in report, and the accent alone for a custom layout.
 - `title_flowables`, `build_pdf`: the cover/title block, footer and A4 document
   build, parameterised by page size so tall requirement tables and wide module
   tables use the same shell.
@@ -27,7 +27,7 @@ Design decisions:
   `attachment:<id>` references to bytes beforehand, restricted to the
   organisation's own shared resources, so the renderer never reasons about
   tenant isolation.
-- A template carries branding only; authored text belongs to a report layout.
+- The organisation has one report look; authored text belongs to a report layout.
 
 Dependencies: ReportLab, markdown-it-py, `services.files`, `services.branding`, `services.report_fonts`.
 """
@@ -53,15 +53,15 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.file import FileAsset
-from app.models.organization import Organization, ReportTemplate
+from app.models.organization import Organization
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX, readable_on_white
 from app.services.files import read_file
 from app.services.report_fonts import draw_centred, mark_fallback, needs_fallback
 from app.services.report_model import TONE_FILL, text_on
+from app.services.report_org_values import report_accent_hex
 
 STYLES = getSampleStyleSheet()
 _MAX_IMAGE_WIDTH = A4[0] - 4 * cm  # matches SimpleDocTemplate's leftMargin+rightMargin default (2cm each)
@@ -97,8 +97,7 @@ def safe(text: str, *, bold: bool = False) -> str:
 
 @dataclass
 class ReportBranding:
-    """Optional per-report branding, sourced from an org's `ReportTemplate`
-    (R-G-05). Builders fall back to plain, unbranded styling when this is
+    """The organisation's report look (R-G-05). Builders fall back to plain, unbranded styling when this is
     omitted entirely."""
 
     accent_color_hex: str = DEFAULT_ACCENT_COLOR_HEX
@@ -107,81 +106,46 @@ class ReportBranding:
     logo_bytes: bytes | None = None
 
 
-def load_report_template(db: Session, organization_id: UUID, template_id: UUID) -> ReportTemplate | None:
-    """Loads a report template, enforcing that it belongs to `organization_id`.
+def resolve_branding(db: Session, organization: Organization | None) -> ReportBranding | None:
+    """The branding a built-in report applies: the organisation's one report look.
 
     Args:
         db: Database session.
-        organization_id: The organisation the report is generated for.
-        template_id: The requested template.
+        organization: The owning organisation (source of the look and the logo).
 
     Returns:
-        The template, or `None` when it does not exist or belongs to another
-        organisation (the caller turns that into its own 400).
+        `None` when there is no organisation; otherwise the report accent colour, cover page flag, footer and (when the
+        organisation wants its logo on reports and has one) logo bytes.
     """
-    template = db.get(ReportTemplate, template_id)
-    if template is None or template.organization_id != organization_id:
-        return None
-    return template
-
-
-class ForeignReportTemplateError(ValueError):
-    """A requested branding template is not one of the organisation's."""
-
-
-def effective_report_template(
-    db: Session, organization_id: UUID, requested_id: UUID | None, *, layout_template_id: UUID | None = None,
-) -> ReportTemplate | None:
-    """The branding template a report run uses: the one asked for, else the layout's own, else the organisation's default.
-
-    Args:
-        db: Database session.
-        organization_id: The organisation the report is generated for.
-        requested_id: The template the caller named, if any.
-        layout_template_id: The layout's template override, for a custom layout.
-
-    Returns:
-        The template, or `None` when none applies (an unbranded report).
-
-    Raises:
-        ForeignReportTemplateError: `requested_id` is not one of the organisation's templates.
-    """
-    if requested_id is not None:
-        template = load_report_template(db, organization_id, requested_id)
-        if template is None:
-            raise ForeignReportTemplateError("Invalid report_template_id for this organisation.")
-        return template
-    if layout_template_id is not None:
-        template = load_report_template(db, organization_id, layout_template_id)
-        if template is not None:
-            return template
-    return db.scalar(select(ReportTemplate).where(ReportTemplate.organization_id == organization_id, ReportTemplate.is_default))
-
-
-def resolve_branding(db: Session, organization: Organization | None, template: ReportTemplate | None) -> ReportBranding | None:
-    """Builds the branding a template selects.
-
-    Args:
-        db: Database session.
-        organization: The owning organisation (source of the logo).
-        template: The selected template, or `None` for an unbranded report.
-
-    Returns:
-        `None` when no template is selected; otherwise the template's accent
-        colour, cover page flag, footer and (when it asks for one and the
-        organisation has one) logo bytes.
-    """
-    if template is None:
+    if organization is None:
         return None
     logo_bytes = None
-    if template.include_logo:
-        logo_asset = db.get(FileAsset, organization.logo_file_id) if organization and organization.logo_file_id else None
+    if organization.report_include_logo:
+        logo_asset = db.get(FileAsset, organization.logo_file_id) if organization.logo_file_id else None
         if logo_asset is not None:
             logo_bytes = read_file(logo_asset)
     return ReportBranding(
-        accent_color_hex=template.accent_color_hex, include_cover_page=template.include_cover_page,
-        footer_text=template.footer_text, logo_bytes=logo_bytes,
+        accent_color_hex=report_accent_hex(db, organization), include_cover_page=organization.report_include_cover_page,
+        footer_text=organization.report_footer_text, logo_bytes=logo_bytes,
     )
+
+
+def layout_branding(db: Session, organization: Organization | None) -> ReportBranding | None:
+    """The branding a custom layout's document gets: the accent colour only.
+
+    A custom layout prints a cover page, footer text and logo only where it reads them (`services.report_org_values`),
+    so the renderers are given none of those.
+
+    Args:
+        db: Database session.
+        organization: The owning organisation.
+
+    Returns:
+        `None` when there is no organisation; otherwise a branding with the report accent colour and nothing else.
+    """
+    if organization is None:
+        return None
+    return ReportBranding(accent_color_hex=report_accent_hex(db, organization))
 
 
 def title_flowables(title: str, branding: ReportBranding | None) -> list:

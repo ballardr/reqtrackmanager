@@ -14079,3 +14079,87 @@ Remediate: none needed after the checks above.
 ### Verification
 
 Backend: `test_report_layout_tree.py` (a link to a sheet of the type, written later, to itself, to a missing sheet naming the sheets, to a sheet of another type naming both, malformed links, a document table, the contents flag and its reserved name), `test_report_layout_text.py` (link and contents round trips, the document-table and missing-name errors), `test_report_layout_eval.py` (links to the right row, a record filtered out stays text with one warning, the same sheet and a repeated record, the Contents sheet and the +1 positions), `test_report_render.py` (XLSX locations including an apostrophe name and a tab renamed by cleaning, ODS references, an unknown target dropped, CSV text only and still guarded), `test_custom_report_run.py` (merged sheets with and without Contents), `test_report_snippets.py` (the table snippet and its refusal in a document). Storybook: the columns editor's link choice (only same-type sheets, No link removes it, a removed sheet stays visible, none without a matching sheet). Playwright `report-sheet-links.spec.ts`: a two-sheet workbook downloaded as XLSX and ODS (link locations read from the files, CSV plain), the Contents sheet, the designer's choices, a refused link and the text view.
+
+## Custom reports Phase 48: Templates & reports page: collapsed sections, one Configuration section, starters in the New menu (2026-10-31)
+
+The eighth review's first phase. Page behaviour and strings only, plus one read endpoint.
+
+| Choice | Decision | Decided by |
+|---|---|---|
+| Section state | Org Admin → Templates & reports opens with **Reports** (renamed from Report Setup) expanded and Report snippets, Configuration and Report templates collapsed (`defaultCollapsed`). A person's saved open/closed choice (`ui_preferences`) is kept, so an existing person sees the page as they left it; only a first visit gets the new default. | User (review), Agent (keeping saved state) |
+| Rename | `strings.admin.reportSetup` is "Reports" in the organisation page and the Project Admin nav item and heading; the website pages and the decisions that name the old label were updated, historic decisions-log entries keep the name they were written under. | User (review) |
+| Configuration | Report file names and Background reports are one **Configuration** section with one **Save configuration** button (both fields already travelled in one `saveAdvanced` call, so there is no new endpoint). Phase 49 adds the footer, cover page and chapters fields here. | User (review) |
+| Starters | The Add starter layouts button is gone. **Add missing starters** is an item of the New menu, shown only while a starter is missing. `GET /orgs/{id}/report-layouts/starters` returns `{missing: [names]}` (`report_starters.missing_starter_names`, the same case-insensitive name rule `add_starter_layouts` uses; manage-layouts permission). The plan said the starters endpoint already knew what was present; it only had a POST, so the read was added. A failed check hides the item rather than the list. | Agent |
+| Project page | A project has no starter action (starters are an organisation action), so the rule has nothing to hide there; the project Reports list is unchanged apart from the label. | Agent |
+
+### Found and fixed on the way
+
+- **A pack's zip was downloaded under the pack's name, ignoring the file-name template.** The server names the zip by the pack's `file_name`, else the organisation default (`Content-Disposition`), but `ReportPackRunner` always saved it as `<pack name>.zip`; the Playwright spec for it was failing. Two causes: the client never read the header, and a cross-origin browser cannot read `Content-Disposition` unless CORS exposes it. `api.postForFile` now returns a `File` named as the server named it (`dispositionFileName` reads `filename*` first), the runner falls back to the pack's name only when there is none, and `CORSMiddleware.expose_headers` lists `Content-Disposition` (`backend/tests/test_cors_expose_headers.py`). Same class of defect as the `X-Total-Unfiltered-Count` entry: pytest's TestClient and curl bypass CORS, only the browser spec sees it.
+- `report-starter-layouts.spec.ts` still looked for a "Report layouts" table that the setup list replaced; it now uses the folder list.
+
+### Verification
+
+Backend: `test_report_starters.py` (missing list empty, after a delete, after adding again; permission 403), `test_cors_expose_headers.py`. Storybook: `ReportSetupPanel` (organisation without a missing starter has no item; with one the item adds it and goes; a project never offers it), `OrgAdminPage` (only Reports open; one Save sends the retention and file name), `ProjectAdminPage` (label). Playwright: new `org-templates-and-reports-page.spec.ts` (default section state, one Save kept across a reload), `report-starter-layouts.spec.ts` (item absent, adds a deleted starter, absent again), `report-file-names.spec.ts` (pack zip name), the other report specs renamed to the new label. No authentication, authorisation, secret or retention behaviour changed (the new endpoint reuses the existing manage gate); the website's screenshots wait for the docs phase.
+
+## Custom reports Phase 49: one report look per organisation; layouts read it (2026-10-31)
+
+Report templates are gone. An organisation has one report look (`Organization.report_accent_color_hex`, `report_include_logo`, `report_footer_text`, `report_include_cover_page`, `report_chapters_per_component`); a built-in report applies it, and a custom layout prints any of it only where it asks. See `docs/modules.md` §4ab for the mechanism.
+
+| Question | Decision | Decided by |
+|---|---|---|
+| One look or several | One per organisation. "Different clients are different custom layouts." The template list, `report_templates`, a layout's template override, a pack's `template` name and every `report_template_id` parameter (REST, MCP, run records, bundles) are removed; an older client that still sends `report_template_id` is ignored, not refused. | User |
+| Where each setting lives | Report accent colour and Include logo on the Branding page (`PUT /branding`); default footer text, Include cover page and Chapter per component in the Configuration section (`PUT /advanced-settings`). A field a client does not send is left as it is (`model_fields_set` for the nullable ones), because both endpoints already replace the rest. | User, Agent (partial-update rule) |
+| A custom layout is never forced | The layout's document formats get the accent colour only (`layout_branding`) and a page-number footer where it wrote none. It reads the rest as `{{org.footer_text}}`, `if org.include_cover_page`, `org.include_logo`, `org.chapters_per_component`, `org.report_accent` and the `org_logo` image. Built-in reports (requirements report, module and record-list reports) apply the look. | User |
+| Separate report accent | Yes; unset follows the organisation's UI accent, then the platform's (`report_accent_hex`). | User |
+| Migration | Existing layouts keep their look: the default template (else the only one) becomes the organisation's look; each document layout whose effective template had footer text, a cover page or a logo is saved as a **new version** that reads the values (root footer `{{org.footer_text}}  ·  Page {{page}}`, header logo `org_logo`, a cover `if` block), unless it wrote its own header or footer. An organisation with no template keeps the plain look it had (logo off). Extra templates are dropped and counted in the migration log. | User (migrate), Agent (shape) |
+| `org` scope | A closed set owned by core, validated at save (`{{org.nope}}` is a problem), reserved as a block name like `var`, text or boolean only. Not a registry: these are organisation settings, not module data. | Agent |
+| Logo as an image source | `file: "org_logo"` on an `image` block or a header/footer logo. It is not a library picture, so `image_nodes` leaves it out and bundles, visibility and "used by" never see it. | Agent |
+| Chapters per component | The sparse-component heuristic (`default_chapters_per_component`) is removed: it only applied to an organisation with no template, and every organisation now has an explicit value (default on). A request's `chapters_per_component` still overrides. An organisation that had no template and relied on the heuristic now chapters every component until it switches the setting off. | Agent |
+| Bundles | `org.json` carries `report_look`. An older bundle's templates become the look of a new organisation (default, else only) with a notice per dropped extra; a merge never touches the target's look. A layout bundle's `report_template` and a pack definition's `template` are ignored with a notice; stored pack definitions lost the key and were re-hashed. | Agent |
+| Old migrations | `0003`, `0071` and `0115` now return early when `report_templates` does not exist, because a database built from the current models (the test database) no longer creates it. | Agent |
+
+### Not done in the migration (flagged)
+
+- The engine still prints a plain title above a cover: the old cover page replaced the title block, the migrated `if` cover adds the logo and title after it. Making a layout able to suppress the engine title is a separate change.
+- The designer's image and logo pickers do not yet offer "Organisation logo"; the Text view takes `logo "org_logo"` and the Blocks editor keeps a value it did not write.
+
+### Found and fixed on the way
+
+- A merge conflict of a module's own kind (a Compliance standard) was given the resolution `keep_existing` by the frontend, which the server refuses for that kind, and the panel never showed it. `defaultResolutions` now defaults every conflict to `skip` and `ImportConflictPanel` lists the non-project conflicts under "Other items" with skip or import-as-copy.
+
+### Verification
+
+Backend: new `test_report_look.py` (settings round trip and partial clients, permissions, the built-in report applying the look, a layout printing the footer only when it reads it, the cover and logo conditions, the logo image, validation of `org.*`, the text format, bundles, the migration's layout rewrite and pack strip against the real tables); the template tests in the report, record-list, framework, pack, run-job and org-merge suites were rewritten or removed. Storybook: `OrgAdminPage` (no templates section; Branding sets and clears the report accent and logo; Configuration saves the footer, cover and chapters), `ReportLayoutFormModal`, `ImportConflictPanel`. Playwright: `org-templates-and-reports-page.spec.ts` (Configuration and Branding persist), `project-admin-templates-and-reports.spec.ts`, `reports-dialog.spec.ts`. The SOC 2 policies are unaffected (no Restricted data, no authorisation change: the two endpoints keep their org-admin gate).
+
+## Custom reports Phase 50: the Folder field of a layout or pack form is a value that opens a move popover (2026-10-31)
+
+The layout and pack create/edit forms no longer carry the whole folder tree inline. `ReportFolderField` shows the folder as a button styled as a field (the path, or "No folder") and opens a `Popover` holding the unchanged `ReportFolderChooser`. Frontend only: no API, schema, migration or bundle change.
+
+| Question | Decision | Decided by |
+|---|---|---|
+| What the form shows | The current folder only, labelled "Folder", with the field help (reworded: press it to move). Create and edit use the same field through the shared `ReportLayoutFields` / `ReportPackFields` groups. | User |
+| Packs | Changed too: the pack form had the identical inline chooser, and a second one-off copy is what the shared-component rule forbids. | Agent |
+| When the move is written | With the form's Save, as before (the chooser only edits form state); Cancel discards it. Add, Rename and Delete folder stay inside the chooser and apply at once, as before. | Agent |
+| When the popover closes | When a row is chosen (new `onPick`), not after adding, renaming or deleting a folder, so a person can add a folder and still choose another. | Agent |
+| Staying open behind a dialog | The delete confirmation is a separate modal, and a click in it is "outside" the popover, which would close the popover and unmount the chooser under the dialog. The chooser now reports `onConfirmChange`, and the field ignores a close while that dialog or a folder change is in flight. | Agent |
+| Move dialog | Keeps the chooser inline: it is a dialog whose only job is moving, so a popover inside it would add a click for nothing. | Agent |
+
+Verification: stories for `ReportFolderField` (value only, pick closes and sets, add keeps it open) and the layout and pack forms (move saved, Cancel discards, delete confirmation keeps the popover open, Save waits for a folder change); the Playwright folder spec now drives the popover. The SOC 2 policies are unaffected (UI only).
+
+## Custom reports Phase 51: report snippets are created and edited from the Report snippets section (2026-10-31)
+
+The Report snippets section (organisation Templates & reports, project Reports) gains **New snippet**, and **Edit** (formerly Edit details) now changes a snippet's blocks as well as its details. One dialog, `ReportSnippetEditorDialog`, serves both; it reuses the layout editors (`ReportLayoutBlocks`, the layout text parser) rather than a snippet-specific editor.
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Editing surface | The shared Blocks and Text editors on a tree, with the server's `parseText`/`formatTree`/`validate` as in the designer. No per-panel editor. | User |
+| Editing existing blocks | Yes: an own snippet's blocks are editable, not only its details. | User |
+| Kind | Chosen first on create (document or table), disabled once the first block exists, fixed on edit. The empty tree is written by the server (`@layout <kind>`), never spelled out in the client. | Agent |
+| API | No new create endpoint: a new snippet is `save` with the whole tree selected (`nodes`, from 0, all). `PATCH .../report-snippets/{id}` gains an optional `tree`; its blocks replace the snippet's through the same `fragment_from_selection` and `validate_fragment` a save uses, so the same rules refuse the same problems (family must match, at least one block, pictures obey the tier rule). The audit event records `blocks` among the changed fields and the block count, never text. | Agent |
+| Permissions | Unchanged: the layout-management permission of the tier; an inherited snippet is still read-only (403). | Agent |
+| Page styles and variables | A defined page style or variable the blocks do not use is not stored (the fragment carries only what the blocks use), as when saving a selection. | Agent |
+| Shared check display | The server check's result (block count, what it carries, reasons) is one component, `ReportSnippetCheckSummary`, used by the save dialog and the editor. | Agent |
+
+Not done, and flagged: the designer still has its own copy of the Blocks/Text switching logic (it also carries the preview, pickers and version history); the dialog does not share that code. Extracting a shared tree-editor hook from the designer is a larger refactor than this phase and is not scoped.
+
+Verification: backend tests (whole-tree replace, carried page styles, empty/unknown/other-kind refusals, inherited 403); stories for the dialog and the panel; Playwright spec creates a snippet from the panel, edits it through Text and inserts it into a layout. The SOC 2 policies are unaffected (no authorisation, secret, logging or retention change; same audit pattern).

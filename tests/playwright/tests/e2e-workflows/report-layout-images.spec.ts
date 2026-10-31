@@ -70,7 +70,7 @@ test.describe("Report layout images", () => {
     const { project, suffix, headers } = await setup(page, request);
     const name = `E2E picture layout ${suffix}`;
     await page.goto(`/projects/${project.id}/admin`);
-    await selectProjectAdminGroup(page, "Report Setup");
+    await selectProjectAdminGroup(page, "Reports");
     await newLayout(page, name);
     const fileName = `logo-${suffix}.png`;
     let inspector = await addPicture(page, fileName);
@@ -158,7 +158,7 @@ test.describe("Report layout images", () => {
     expect(made.ok(), await made.text()).toBeTruthy();
 
     await page.goto(`/projects/${project.id}/admin`);
-    await selectProjectAdminGroup(page, "Report Setup");
+    await selectProjectAdminGroup(page, "Reports");
     await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("menuitem", { name: "New layout" }).click();
     const dialog = page.getByRole("dialog", { name: "New report layout" });
@@ -194,7 +194,7 @@ test.describe("Report layout images", () => {
   test("text wraps beside a picture only when it says which side it is on, and a layered picture has no alignment", async ({ page, request }) => {
     const { project, suffix } = await setup(page, request);
     await page.goto(`/projects/${project.id}/admin`);
-    await selectProjectAdminGroup(page, "Report Setup");
+    await selectProjectAdminGroup(page, "Reports");
     await newLayout(page, `E2E placement ${suffix}`);
     const inspector = await addPicture(page, `placed-${suffix}.png`);
     await inspector.getByRole("textbox", { name: "Alternative text" }).fill("A mark");
@@ -228,7 +228,7 @@ test.describe("Report layout images", () => {
   test("a picture behind the text takes its position from the page corner", async ({ page, request }) => {
     const { project, suffix } = await setup(page, request);
     await page.goto(`/projects/${project.id}/admin`);
-    await selectProjectAdminGroup(page, "Report Setup");
+    await selectProjectAdminGroup(page, "Reports");
     await newLayout(page, `E2E layered ${suffix}`);
     const inspector = await addPicture(page, `layered-${suffix}.png`);
     await inspector.getByRole("textbox", { name: "Alternative text" }).fill("A watermark");
@@ -267,7 +267,7 @@ test.describe("Report layout images", () => {
     const name = `E2E org picture ${suffix}`;
     await page.goto(`/orgs/${org.id}/admin`);
     await selectOrgAdminGroup(page, "Templates & reports");
-    await ensureExpanded(page, "Report Setup");
+    await ensureExpanded(page, "Reports");
     await newLayout(page, name);
     const fileName = `wordmark-${suffix}.png`;
     const inspector = await addPicture(page, fileName);
@@ -279,7 +279,7 @@ test.describe("Report layout images", () => {
 
     await test.step("the project's library lists the organisation's picture, which the project cannot delete", async () => {
       await page.goto(`/projects/${project.id}/admin`);
-      await selectProjectAdminGroup(page, "Report Setup");
+      await selectProjectAdminGroup(page, "Reports");
       await newLayout(page, `E2E project picture ${suffix}`);
       await page.getByRole("tab", { name: "Blocks" }).click();
       await page.getByRole("button", { name: "Add block" }).click();

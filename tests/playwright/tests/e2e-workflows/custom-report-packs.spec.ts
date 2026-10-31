@@ -142,7 +142,7 @@ test.describe("Custom report packs", () => {
 
     await test.step("the project's Report setup lists the shared pack and its set", async () => {
       await page.goto(`/projects/${project.id}/admin`);
-      await selectProjectAdminGroup(page, "Report Setup");
+      await selectProjectAdminGroup(page, "Reports");
       await openSetupReport(page, packName);
       await expect(page.getByRole("heading", { name: packName })).toBeVisible();
       await expect(page.getByText(/is read-only here/)).toBeVisible();
@@ -177,7 +177,7 @@ test.describe("Custom report packs", () => {
 
     await test.step("resetting the override brings the shared values back", async () => {
       await page.goto(`/projects/${project.id}/admin`);
-      await selectProjectAdminGroup(page, "Report Setup");
+      await selectProjectAdminGroup(page, "Reports");
       await openSetupReport(page, packName);
       await page.getByRole("tab", { name: "Saved sets" }).click();
       await page.getByRole("button", { name: "Actions for Team Alpha" }).click();
@@ -194,7 +194,7 @@ test.describe("Custom report packs", () => {
     const packName = `E2E Built pack ${suffix}`;
 
     await page.goto(`/projects/${project.id}/admin`);
-    await selectProjectAdminGroup(page, "Report Setup");
+    await selectProjectAdminGroup(page, "Reports");
 
     await test.step("a new pack opens its editor", async () => {
       await page.getByRole("button", { name: "New", exact: true }).click();

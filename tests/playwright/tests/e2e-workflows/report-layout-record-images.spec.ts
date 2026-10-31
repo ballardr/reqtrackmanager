@@ -115,7 +115,7 @@ test.describe("Report layout record images", () => {
 
     await test.step("the layout's rules are shown in the block's details and drive the preview", async () => {
       await page.goto(`/projects/${project.id}/admin`);
-      await selectProjectAdminGroup(page, "Report Setup");
+      await selectProjectAdminGroup(page, "Reports");
       await openSetupReport(page, layoutName);
       await page.getByRole("tab", { name: "Blocks" }).click();
       await page.locator(".blocklyText", { hasText: /Record\s+images/ }).first().click();

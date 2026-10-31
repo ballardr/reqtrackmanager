@@ -27,7 +27,6 @@ function mockApis() {
     if (path.endsWith("/report-layouts/fields")) return buildFieldCatalogue();
     if (path.endsWith("/report-catalogue")) return [];
     if (path.endsWith("/form")) return buildForm();
-    if (path.endsWith("/report-templates")) return [];
     throw new Error(`unmocked path: ${path}`);
   });
 }

@@ -1,13 +1,12 @@
 import { expect, test } from "@playwright/test";
 
-import { createDisposableProject, installCleanupHook, loginAs, onCleanup, PERSONAS } from "./helpers";
+import { createDisposableProject, installCleanupHook, loginAs, PERSONAS } from "./helpers";
 
 /**
  * Job to be done: choose and download a report from the project (or organisation) overview, in one dialog, and have
- * the organisation's default branding template used unless a report names another.
+ * the organisation's one report look applied by the server (a download names no branding).
  *
- * Each test works in its own disposable project and removes the templates it makes, since a default template
- * would otherwise brand every later export in the shared organisation.
+ * Each test works in its own disposable project.
  */
 test.describe("Reports dialog", () => {
   installCleanupHook();
@@ -43,18 +42,8 @@ test.describe("Reports dialog", () => {
     await expect(page.getByRole("dialog", { name: "Reports" }).getByLabel("Record type")).toBeVisible();
   });
 
-  test("the organisation's default template applies without a choice in the dialog, and only one is the default", async ({ page }) => {
-    const project = await createDisposableProject(page.request, PERSONAS.orgAdminAlphaBeta.email, "E2E Default Template");
-    const name = `E2E Default ${Date.now()}`;
-    const created = await page.request.post(`${API}/orgs/${project.organizationId}/report-templates`, {
-      headers: project.headers, data: { name, is_default: true },
-    });
-    expect(created.ok(), await created.text()).toBeTruthy();
-    const templateId: string = (await created.json()).id;
-    onCleanup(async (cleanupRequest) => {
-      await cleanupRequest.delete(`${API}/orgs/${project.organizationId}/report-templates/${templateId}`, { headers: project.headers });
-    });
-
+  test("the requirement report names no branding: the organisation's report look is applied by the server", async ({ page }) => {
+    const project = await createDisposableProject(page.request, PERSONAS.orgAdminAlphaBeta.email, "E2E Report Look");
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await page.goto(`/projects/${project.projectId}?reports=choose`);
 
@@ -66,25 +55,15 @@ test.describe("Reports dialog", () => {
       await expect(dialog.getByText("Filters", { exact: true })).toHaveCount(0);
     });
 
-    await test.step("a download names no template: the server applies the default", async () => {
+    await test.step("a download names no template", async () => {
       const request = page.waitForRequest((r) => r.method() === "POST" && r.url().endsWith(`/projects/${project.projectId}/reports`));
       await page.getByRole("dialog", { name: "Reports" }).getByRole("button", { name: "Generate PDF" }).click();
       expect((await request).postDataJSON()).not.toHaveProperty("report_template_id");
     });
 
-    await test.step("only one template is the default", async () => {
-      const second = await page.request.post(`${API}/orgs/${project.organizationId}/report-templates`, {
-        headers: project.headers, data: { name: `${name} second`, is_default: true },
-      });
-      expect(second.ok()).toBeTruthy();
-      const secondId: string = (await second.json()).id;
-      onCleanup(async (cleanupRequest) => {
-        await cleanupRequest.delete(`${API}/orgs/${project.organizationId}/report-templates/${secondId}`, { headers: project.headers });
-      });
-      const listed: { id: string; is_default: boolean }[] = await (
-        await page.request.get(`${API}/orgs/${project.organizationId}/report-templates`, { headers: project.headers })
-      ).json();
-      expect(listed.filter((t) => t.is_default).map((t) => t.id)).toEqual([secondId]);
+    await test.step("report templates no longer exist", async () => {
+      const gone = await page.request.get(`${API}/orgs/${project.organizationId}/report-templates`, { headers: project.headers });
+      expect(gone.status()).toBe(404);
     });
   });
 });

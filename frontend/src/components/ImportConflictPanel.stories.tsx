@@ -8,8 +8,8 @@ import { ImportConflictPanel } from "./ImportConflictPanel";
 const PROJECT_CONFLICT: MergeConflict = {
   id: "project:P-1", kind: "project", name: "Shared Project Name", existing_id: "11111111-1111-1111-1111-111111111111",
 };
-const TEMPLATE_CONFLICT: MergeConflict = {
-  id: "report_template:Shared Template", kind: "report_template", name: "Shared Template",
+const STANDARD_CONFLICT: MergeConflict = {
+  id: "compliance_standard:ISO-27001", kind: "compliance_standard", name: "ISO 27001",
   existing_id: "22222222-2222-2222-2222-222222222222",
 };
 
@@ -31,16 +31,16 @@ export const ProjectConflictOnly: Story = {
   },
 };
 
-export const ProjectAndTemplateConflicts: Story = {
+export const ProjectAndModuleConflicts: Story = {
   args: {
-    conflicts: [PROJECT_CONFLICT, TEMPLATE_CONFLICT],
-    resolutions: defaultResolutions([PROJECT_CONFLICT, TEMPLATE_CONFLICT]),
+    conflicts: [PROJECT_CONFLICT, STANDARD_CONFLICT],
+    resolutions: defaultResolutions([PROJECT_CONFLICT, STANDARD_CONFLICT]),
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByText("Projects")).toBeInTheDocument();
-    await expect(canvas.getByText("Report templates")).toBeInTheDocument();
-    await expect(canvas.getByRole("radio", { name: "Keep the existing template" })).toBeChecked();
+    await expect(canvas.getByText("Other items")).toBeInTheDocument();
+    await expect(canvas.getByRole("radio", { name: "Skip (keep the existing one)" })).toBeChecked();
   },
 };
 
@@ -53,5 +53,5 @@ export const ChangingAResolution: Story = {
   },
 };
 
-export const LightTheme: Story = { ...ProjectAndTemplateConflicts, globals: { theme: "light" } };
-export const DarkTheme: Story = { ...ProjectAndTemplateConflicts, globals: { theme: "dark" } };
+export const LightTheme: Story = { ...ProjectAndModuleConflicts, globals: { theme: "light" } };
+export const DarkTheme: Story = { ...ProjectAndModuleConflicts, globals: { theme: "dark" } };

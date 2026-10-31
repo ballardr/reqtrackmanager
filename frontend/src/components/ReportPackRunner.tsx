@@ -148,7 +148,9 @@ export function ReportPackRunner({
     if (!body) return;
     setDownloading(true);
     try {
-      downloadBlob(await api.download(body), zipName(name));
+      const zip = await api.download(body);
+      // The server names the zip by the pack's file name template; the pack's own name is only the fallback.
+      downloadBlob(zip, zip instanceof File && zip.name ? zip.name : zipName(name));
       showToast(text.downloaded(name), "success");
     } catch (err) {
       if (isAsyncRequired(err)) {
