@@ -36,6 +36,9 @@ Grammar (one statement per line; indentation is cosmetic):
   runs onto; on otherwise) come in any order, each once; `margins` comes last and each side is optional.
 - A `@layout table` line may add `contents` (or `nocontents`): start the workbook with a generated Contents sheet. A
   sheet's `@column <name>.<field> ["<heading>"] link "<sheet>"` makes the cell open that record's row on the named sheet.
+- A table or sheet column may add `width 12%` (a share of the table), `width 4 cm` or `width 40 mm`, or `width auto` (the
+  same as no width); `@images` writes it `colwidth` because its `width` is the picture's. Columns with a width keep it in
+  every output format; the others share what is left.
 - Page styles are declared before the first block, one per line, like variables: `@pagestyle "<name>"
   [portrait|landscape] [A3|…] [margins …]`. What a style leaves out is the layout's own. `@section "<name>"` … `@end`
   lays its contents out in that style, on pages of their own.
@@ -102,6 +105,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE
+from app.services.report_column_width import canonical_width, width_problem
 from app.services.report_layout_tree import (
     LIST_OPERATORS,
     MAX_CONDITION_DEPTH,
@@ -1016,12 +1020,22 @@ class _Parser:
             else:
                 column["field"] = word
             token = cur.peek()
-            if token is not None and not (token.kind == "word" and token.value == "link"):
+            if token is not None and not (token.kind == "word" and token.value in _COLUMN_CLAUSES):
                 column["label"] = cur.text("the column heading")
-            if cur.accept("link"):
-                if frame.kind != "sheet":
-                    raise _Syntax("Only a sheet column can link to another sheet.", directive.offset + 1)
-                column["link"] = {"sheet": cur.text("the name of the sheet to open, in quotes")}
+            while (token := cur.peek()) is not None:
+                clause = cur.accept(*_COLUMN_CLAUSES)
+                if clause is None:
+                    raise _Syntax(f"Unexpected {token.shown()}. Clauses: {', '.join(_COLUMN_CLAUSES)}.", token.column)
+                if clause in column:
+                    raise _Syntax(f"{clause} is written once.", token.column)
+                if clause == "link":
+                    if frame.kind != "sheet":
+                        raise _Syntax("Only a sheet column can link to another sheet.", directive.offset + 1)
+                    column["link"] = {"sheet": cur.text("the name of the sheet to open, in quotes")}
+                else:
+                    width = _width_clause(cur)
+                    if width is not None:
+                        column["width"] = width
             cur.expect_end()
             self.line_of[f"{column_path}[{len(node['columns'])}]"] = directive.line_no
             node["columns"].append(column)
@@ -1060,8 +1074,8 @@ class _Parser:
             word = cur.accept(*_IMAGE_COLUMN_CLAUSES)
             if word is None:
                 raise _Syntax(f"Unexpected {token.shown()}. Clauses: {', '.join(_IMAGE_COLUMN_CLAUSES)}.", token.column)
-            target = column if word in ("label", "from") else rules
-            if word in target:
+            target = column if word in ("label", "from", "colwidth") else rules
+            if ("width" if word == "colwidth" else word) in target:
                 raise _Syntax(f"{word} is written once.", token.column)
             if word == "names":
                 rules[word] = cur.comma_list(lambda: cur.text("a file name pattern in quotes"))
@@ -1069,6 +1083,9 @@ class _Parser:
                 rules[word] = cur.comma_list(lambda: cur.word("a file type such as png"))
             elif word == "label":
                 column[word] = cur.text("the column heading in quotes")
+            elif word == "colwidth":
+                if (spec := _width_clause(cur)) is not None:
+                    column["width"] = spec
             elif word == "from":
                 if frame.kind != "sheet":
                     raise _Syntax("Only a sheet reads pictures from a joined name.", token.column)
@@ -1408,6 +1425,29 @@ def _boolean_word(cur: _Cursor, what: str) -> bool:
     return token.value == "true"
 
 
+#: Words that follow a `@column`'s heading.
+_COLUMN_CLAUSES = ("link", "width")
+
+
+def _width_clause(cur: _Cursor) -> str | None:
+    """A column's width after `width`/`colwidth`: `12%`, `4 cm`, `40 mm`, or `auto` (no forced width, so `None`)."""
+    token = cur.take("a width such as 12%, 4 cm or auto")
+    if token.kind != "word":
+        raise _Syntax(f"Expected a width such as 12%, 4 cm or auto, found {token.shown()}.", token.column)
+    if token.value == "auto":
+        return None
+    spec = token.value
+    if not spec.endswith("%"):
+        unit = cur.accept("cm", "mm")
+        if unit is None:
+            raise _Syntax('Write the width as a percentage ("12%") or a length ("4 cm", "40 mm"), or auto.', token.column)
+        spec = f"{spec} {unit}"
+    problem = width_problem(spec)
+    if problem:
+        raise _Syntax(problem, token.column)
+    return canonical_width(spec)
+
+
 def _number_word(cur: _Cursor, what: str) -> int | float:
     """A bare number."""
     token = cur.take(what)
@@ -1546,7 +1586,7 @@ def _parse_table(p: _Parser, d: _Directive) -> None:
     p.open(node, d.line_no, "table")
 
 
-_IMAGE_COLUMN_CLAUSES = ("names", "types", "max_count", "order", "max_size_mb", "width", "height", "arrange", "label", "from")
+_IMAGE_COLUMN_CLAUSES = ("names", "types", "max_count", "order", "max_size_mb", "width", "height", "arrange", "label", "from", "colwidth")
 
 
 def _images_line(column: dict[str, Any]) -> str:
@@ -1554,16 +1594,19 @@ def _images_line(column: dict[str, Any]) -> str:
     rules = column["images"]
     parts = ["@images"]
     for word in _IMAGE_COLUMN_CLAUSES:
-        source = column if word in ("label", "from") else rules
-        if word not in source or source[word] == []:
+        source = column if word in ("label", "from", "colwidth") else rules
+        key = "width" if word == "colwidth" else word
+        if key not in source or source[key] == []:
             continue
-        value = source[word]
+        value = source[key]
         if word == "names":
             parts.append("names " + ", ".join(_quote(item) for item in value))
         elif word == "types":
             parts.append("types " + ", ".join(value))
         elif word == "label":
             parts.append(f"label {_quote(value)}")
+        elif word == "colwidth":
+            parts.append(f"colwidth {canonical_width(value)}")
         elif word in ("width", "height"):
             parts.append(f"{word} {json.dumps(value)}" + (f" {rules[word + '_unit']}" if word + "_unit" in rules else ""))
         elif word in ("max_count", "max_size_mb"):
@@ -1581,7 +1624,8 @@ def _write_columns(w: _Writer, columns: list[dict[str, Any]], depth: int) -> Non
         name = f"{column['from']}.{column['field']}" if "from" in column else column["field"]
         label = f" {_quote(column['label'])}" if "label" in column else ""
         link = f" link {_quote(column['link']['sheet'])}" if "link" in column else ""
-        w.line(depth, f"@column {name}{label}{link}")
+        width = f" width {canonical_width(column['width'])}" if "width" in column else ""
+        w.line(depth, f"@column {name}{label}{link}{width}")
 
 
 def _write_table(w: _Writer, node: dict[str, Any], depth: int) -> None:

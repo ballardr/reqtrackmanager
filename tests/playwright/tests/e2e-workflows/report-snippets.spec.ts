@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, saveNewVersion, selectProjectAdminGroup } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreviewDialog, PASSWORD, saveNewVersion, selectProjectAdminGroup } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 /** A 1 x 1 pixel PNG. */
@@ -65,7 +65,8 @@ test.describe("Report snippets", () => {
     });
 
     await test.step("the dialog offers the snippets by category and names where the cover will go", async () => {
-      await page.getByRole("button", { name: "Insert snippet" }).click();
+      await page.getByRole("button", { name: "Snippets" }).click();
+      await page.getByRole("menuitem", { name: "Insert snippet" }).click();
       const dialog = picker(page);
       await expect(dialog.getByRole("button", { name: "Select Cover page" })).toBeVisible();
       await expect(dialog.getByRole("button", { name: "Select Approvals" })).toBeVisible();
@@ -85,7 +86,7 @@ test.describe("Report snippets", () => {
     });
 
     await test.step("the preview shows the cover's title lines", async () => {
-      await page.getByRole("button", { name: "Preview", exact: true }).click();
+      await openDesignerPreviewDialog(page);
       const dialog = page.getByRole("dialog", { name: "Report preview" });
       await dialog.getByRole("button", { name: "Run preview" }).click();
       const frame = dialog.frameLocator('iframe[title="Report preview"]');
@@ -109,7 +110,8 @@ test.describe("Report snippets", () => {
     const { project, suffix } = await setup(page, request);
     await newLayout(page, project.id, `E2E snippet logo ${suffix}`);
     await page.getByRole("tab", { name: "Blocks" }).click();
-    await page.getByRole("button", { name: "Insert snippet" }).click();
+    await page.getByRole("button", { name: "Snippets" }).click();
+    await page.getByRole("menuitem", { name: "Insert snippet" }).click();
     const dialog = picker(page);
     await dialog.getByRole("button", { name: "Select Logo, top right of the first page" }).click();
     await expect(dialog.getByRole("button", { name: "Insert", exact: true })).toBeDisabled();
@@ -138,7 +140,8 @@ test.describe("Report snippets", () => {
     await expect(page.getByText("The text is valid.")).toBeVisible();
 
     await test.step("insert at the end", async () => {
-      await page.getByRole("button", { name: "Insert snippet" }).click();
+      await page.getByRole("button", { name: "Snippets" }).click();
+      await page.getByRole("menuitem", { name: "Insert snippet" }).click();
       const dialog = picker(page);
       await dialog.getByRole("button", { name: "Select Approvals" }).click();
       await expect(dialog.getByRole("combobox", { name: "Where to insert the snippet" })).toHaveValue("0");
@@ -155,7 +158,8 @@ test.describe("Report snippets", () => {
     });
 
     await test.step("insert at the start, then edit: Undo is no longer offered, and the layout saves", async () => {
-      await page.getByRole("button", { name: "Insert snippet" }).click();
+      await page.getByRole("button", { name: "Snippets" }).click();
+      await page.getByRole("menuitem", { name: "Insert snippet" }).click();
       const dialog = picker(page);
       await dialog.getByRole("button", { name: "Select Document control" }).click();
       await dialog.getByRole("combobox", { name: "Where to insert the snippet" }).selectOption({ label: "Inserting at the start of the layout" });
@@ -174,7 +178,8 @@ test.describe("Report snippets", () => {
     const { org, headers, project, suffix } = await setup(page, request);
     await newLayout(page, project.id, `E2E snippet refusals ${suffix}`);
     await page.getByRole("textbox", { name: "Layout text" }).fill("@layout document\n\n@nonsense here\n");
-    await page.getByRole("button", { name: "Insert snippet" }).click();
+    await page.getByRole("button", { name: "Snippets" }).click();
+    await page.getByRole("menuitem", { name: "Insert snippet" }).click();
     await expect(page.getByText(/Fix the problems in the text before inserting a snippet/)).toBeVisible();
     await expect(picker(page)).toHaveCount(0);
 

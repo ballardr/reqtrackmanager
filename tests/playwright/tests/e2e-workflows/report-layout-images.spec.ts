@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD, saveNewVersion, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
+import { closeDesignerPreviewDialog, deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, openDesignerPreviewDialog, PASSWORD, saveNewVersion, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 /** A 1 x 1 pixel PNG. */
@@ -91,14 +91,14 @@ test.describe("Report layout images", () => {
     });
 
     await test.step("the preview draws the picture in its figure, aligned, with a numbered caption", async () => {
-      await page.getByRole("button", { name: "Preview", exact: true }).click();
+      await openDesignerPreviewDialog(page);
       const dialog = page.getByRole("dialog", { name: "Report preview" });
       await dialog.getByRole("button", { name: "Run preview" }).click();
       const frame = dialog.frameLocator('iframe[title="Report preview"]');
       await expect(frame.locator("figure.image.align-right img[alt='The company logo']")).toBeVisible();
       await expect(frame.locator("figure.image img")).toHaveAttribute("style", /width:8\.5cm/);
       await expect(frame.getByText(`Figure 1: The logo of ${project.name}`)).toBeVisible();
-      await dialog.getByRole("button", { name: "Close" }).click();
+      await closeDesignerPreviewDialog(page);
     });
 
     await test.step("saving and reloading keep the picture, and the text view names its file", async () => {
@@ -201,7 +201,7 @@ test.describe("Report layout images", () => {
     await inspector.getByRole("spinbutton", { name: "Width", exact: true }).fill("4");
 
     async function previewFrame() {
-      await page.getByRole("button", { name: "Preview", exact: true }).click();
+      await openDesignerPreviewDialog(page);
       const dialog = page.getByRole("dialog", { name: "Report preview" });
       await dialog.getByRole("button", { name: "Run preview" }).click();
       return { dialog, frame: dialog.frameLocator('iframe[title="Report preview"]') };
@@ -215,7 +215,7 @@ test.describe("Report layout images", () => {
       await expect(page.getByText("No problems.")).toBeVisible();
       const { dialog, frame } = await previewFrame();
       await expect(frame.locator("figure.image.wrap-right img[alt='A mark']")).toBeVisible();
-      await dialog.getByRole("button", { name: "Close" }).click();
+      await closeDesignerPreviewDialog(page);
     });
 
     await test.step("a picture over the page has a position from a corner, in the text view and the preview", async () => {
@@ -239,12 +239,12 @@ test.describe("Report layout images", () => {
     await expect(page.getByText("No problems.")).toBeVisible();
 
     await test.step("the preview lays it under the text at its offsets", async () => {
-      await page.getByRole("button", { name: "Preview", exact: true }).click();
+      await openDesignerPreviewDialog(page);
       const dialog = page.getByRole("dialog", { name: "Report preview" });
       await dialog.getByRole("button", { name: "Run preview" }).click();
       const frame = dialog.frameLocator('iframe[title="Report preview"]');
       await expect(frame.locator("div.layer-anchor.behind figure.image[style*='left:2cm'][style*='top:3cm'] img[alt='A watermark']")).toBeVisible();
-      await dialog.getByRole("button", { name: "Close" }).click();
+      await closeDesignerPreviewDialog(page);
     });
 
     await test.step("saving and reading the text view show the placement clauses", async () => {

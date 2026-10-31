@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD, searchReportSetup, selectOrgAdminGroup, selectProjectAdminGroup, saveNewVersion } from "./helpers";
+import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, openDesignerPreviewDialog, PASSWORD, searchReportSetup, selectOrgAdminGroup, selectProjectAdminGroup, saveNewVersion } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -108,13 +108,23 @@ test.describe("Report layout designer", () => {
     const inspector = page.getByLabel("Block details");
     const where = page.getByRole("combobox", { name: "Where to add the block" });
 
-    await test.step("the block editor starts empty and has the full width, with no palette column and no preview", async () => {
+    await test.step("the block editor starts empty and has the canvas beside a panel on the block editor tab, with no palette column", async () => {
       await page.getByRole("tab", { name: "Blocks" }).click();
       await expect(page.getByRole("region", { name: "Block editor" })).toBeVisible();
       await expect(inspector.getByText("Select a block to edit its settings.")).toBeVisible();
       await expect(page.getByText("Adding at the end of the layout")).toBeVisible();
       await expect(page.locator(".blocklyToolboxFlyout, .blocklyFlyout").first()).toBeHidden();
       await expect(page.getByRole("button", { name: "Run preview" })).toHaveCount(0);
+      // Layout settings are not a section above the blocks: they open from the layout block.
+      await expect(page.getByText("Layout settings", { exact: true })).toHaveCount(0);
+      // One Snippets button holds both snippet actions; Save as snippet waits for a selected block.
+      await expect(page.getByRole("button", { name: "Insert snippet" })).toHaveCount(0);
+      await page.getByRole("button", { name: "Snippets" }).click();
+      await expect(page.getByRole("menuitem", { name: "Insert snippet" })).toBeEnabled();
+      await expect(page.getByRole("menuitem", { name: "Save as snippet" })).toBeDisabled();
+      await page.keyboard.press("Escape");
+      await page.locator(".blocklyText", { hasText: /^Layout$/ }).click();
+      await expect(inspector.getByRole("combobox", { name: "Page orientation" })).toBeVisible();
       // The canvas is wider than the old half-page column (about 150px once the palette was open).
       const stage = await page.locator(".blocks-stage").boundingBox();
       const viewport = page.viewportSize();
@@ -133,8 +143,9 @@ test.describe("Report layout designer", () => {
       await page.getByRole("menuitem", { name: "Heading 2" }).click();
       await inspector.getByRole("textbox", { name: "Heading", exact: true }).fill("{{req.title}}");
       await expect(page.getByText("No problems.")).toBeVisible();
-      // The block on the workspace shows the same words.
-      await expect(page.locator(".blocklyEditableField .blocklyText", { hasText: "{{req.title}}" })).toBeVisible();
+      // The block on the workspace shows the same words, read-only: no value is edited on a block.
+      await expect(page.locator(".blocklyText.rl-summary", { hasText: "{{req.title}}" })).toBeVisible();
+      await expect(page.locator(".blocklyEditableField")).toHaveCount(0);
     });
 
     await test.step("blocks land where the line beside Add block says", async () => {
@@ -158,18 +169,23 @@ test.describe("Report layout designer", () => {
       await expect(inspector.getByTestId("block-inspector")).toContainText("Heading block");
     });
 
-    await test.step("the preview opens in a dialog, or beside the blocks when switched on, and lists this project's requirements", async () => {
-      await page.getByRole("button", { name: "Preview", exact: true }).click();
+    await test.step("the Preview tab of the right-hand panel lists this project's requirements, in the panel or in a dialog", async () => {
+      const panel = page.getByRole("complementary", { name: "Designer tools" });
+      await panel.getByRole("tab", { name: "Preview", exact: true }).click();
+      await panel.getByRole("button", { name: "Run preview" }).click();
+      const inline = panel.frameLocator('iframe[title="Report preview"]');
+      for (const requirement of requirements) await expect(inline.getByText(requirement)).toBeVisible();
+      await openDesignerPreviewDialog(page);
       const dialog = page.getByRole("dialog", { name: "Report preview" });
       await dialog.getByRole("button", { name: "Run preview" }).click();
       const frame = dialog.frameLocator('iframe[title="Report preview"]');
       for (const requirement of requirements) await expect(frame.getByText(requirement)).toBeVisible();
       await dialog.getByRole("button", { name: "Close" }).click();
       await expect(dialog).toBeHidden();
-      await page.getByRole("button", { name: "Preview panel" }).click();
-      await expect(page.getByRole("button", { name: "Run preview" })).toBeVisible();
-      await page.getByRole("button", { name: "Preview panel" }).click();
-      await expect(page.getByRole("button", { name: "Run preview" })).toHaveCount(0);
+      // Selecting a block takes the panel back to the block editor.
+      await page.locator(".blocklyText.rl-block-title", { hasText: /^Heading$/ }).click();
+      await expect(panel.getByRole("tab", { name: "Block", exact: true })).toHaveAttribute("aria-selected", "true");
+      await expect(inspector.getByTestId("block-inspector")).toBeVisible();
     });
 
     await test.step("a block with a problem says so and holds back saving", async () => {
@@ -190,7 +206,48 @@ test.describe("Report layout designer", () => {
     await test.step("a reload and the block editor show the saved blocks", async () => {
       await page.reload();
       await page.getByRole("tab", { name: "Blocks" }).click();
-      await expect(page.locator(".blocklyEditableField .blocklyText", { hasText: "{{req.title}}" })).toBeVisible();
+      await expect(page.locator(".blocklyText.rl-summary", { hasText: "{{req.title}}" })).toBeVisible();
+    });
+  });
+
+  test("the right-hand panel has tabs for each view, folds to a rail, and remembers its tab and fold", async ({ page, request }) => {
+    const { project, suffix } = await setup(page, request);
+    await createFromProjectAdmin(page, project.id, `E2E panel layout ${suffix}`);
+    const panel = page.getByRole("complementary", { name: "Designer tools" });
+
+    await test.step("the Text view's panel has Preview, Fields and Widgets", async () => {
+      await expect(panel.getByRole("tab")).toHaveText(["Preview", "Fields", "Widgets"]);
+      await panel.getByRole("tab", { name: "Widgets" }).click();
+      await expect(panel.getByRole("tab", { name: "Widgets" })).toHaveAttribute("aria-selected", "true");
+    });
+
+    await test.step("the Blocks view's panel has Block and Preview, the block editor first", async () => {
+      await page.getByRole("tab", { name: "Blocks" }).click();
+      await expect(panel.getByRole("tab")).toHaveText(["Block", "Preview"]);
+      await expect(panel.getByRole("tab", { name: "Block", exact: true })).toHaveAttribute("aria-selected", "true");
+      await expect(panel.getByText("Select a block to edit its settings.")).toBeVisible();
+    });
+
+    await test.step("the panel folds to a rail, giving the canvas the width, and unfolds", async () => {
+      const before = await page.locator(".blocks-stage").boundingBox();
+      await page.getByRole("button", { name: "Hide designer panel" }).click();
+      await expect(panel.getByRole("tab")).toHaveCount(0);
+      const folded = await page.locator(".blocks-stage").boundingBox();
+      expect(folded?.width ?? 0).toBeGreaterThan(before?.width ?? 0);
+      // One fold for both views.
+      await page.getByRole("tab", { name: "Text" }).click();
+      await expect(page.getByRole("button", { name: "Show designer panel" })).toBeVisible();
+      await page.getByRole("button", { name: "Show designer panel" }).click();
+      await expect(panel.getByRole("tab", { name: "Fields" })).toBeVisible();
+    });
+
+    await test.step("a reload keeps the last tab of the Text view and the fold", async () => {
+      await page.reload();
+      await expect(panel.getByRole("tab", { name: "Widgets" })).toHaveAttribute("aria-selected", "true");
+      await page.getByRole("button", { name: "Hide designer panel" }).click();
+      await page.reload();
+      await expect(page.getByRole("button", { name: "Show designer panel" })).toBeVisible();
+      await expect(panel.getByRole("tab")).toHaveCount(0);
     });
   });
 
@@ -284,7 +341,7 @@ test.describe("Report layout designer", () => {
       await expect(page.getByText("Saved as version 2.")).toBeVisible();
       await page.reload();
       await page.getByRole("tab", { name: "Blocks" }).click();
-      await page.getByText("Layout settings").click();
+      await page.locator(".blocklyText", { hasText: /^Layout$/ }).click();
       await expect(page.getByRole("group", { name: "Wide tables" })).toBeVisible();
       await expect(page.getByRole("checkbox", { name: "Mirror margins" })).toBeChecked();
     });
@@ -327,7 +384,7 @@ test.describe("Report layout designer", () => {
       await expect(page.getByText("Saved as version 2.")).toBeVisible();
       await page.reload();
       await page.getByRole("tab", { name: "Blocks" }).click();
-      await page.getByText("Layout settings").click();
+      await page.locator(".blocklyText", { hasText: /^Layout$/ }).click();
       await expect(page.getByRole("combobox", { name: "Header: print" })).toHaveValue("custom");
       await expect(page.getByRole("textbox", { name: "Footer, right cell" })).toHaveValue("Page {{page}} of {{pages}}");
     });

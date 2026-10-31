@@ -1,15 +1,13 @@
 /**
  * Module: components/ReportLayoutSettings
  *
- * The layout-level part of the designer's block views: problems about the layout itself and a "Layout settings"
- * section holding the keys that belong to the layout rather than to a block (page orientation, variables).
+ * The layout-level part of the block editor: the keys that belong to the layout rather than to a block (page
+ * orientation, variables), shown in the block editor beside the canvas when the layout block is selected.
  *
  * Responsibilities: draw the layout fields the block catalogue lists for the layout's family with the shared field
- * forms, list the server's problems that are not about any block (and not already shown on a settings field), and
- * open the section on its own when one of its fields has a problem.
+ * forms, and list the server's problems that are not about any block (and not already shown on a settings field).
  */
 import type { BlockCatalogue, LayoutFamily, TreeProblem } from "../api/reportLayouts";
-import { useStrings } from "../context/TerminologyContext";
 import { owningNode, setAt, type Tree } from "../utils/reportLayoutTree";
 import { ReportLayoutBlockField, type BlockEnv } from "./ReportLayoutBlockField";
 
@@ -31,7 +29,6 @@ export function ReportLayoutSettings({
   env: BlockEnv;
   problems: TreeProblem[];
 }) {
-  const text = useStrings().reportOutline;
   const layoutProblems = problems.filter((p) => owningNode(p.path) === null);
   const fields = blocks.layout_fields.filter((f) => f.families.length === 0 || f.families.includes(family));
   const aboutField = (p: TreeProblem, key: string) => p.path === key || p.path.startsWith(`${key}[`) || p.path.startsWith(`${key}.`);
@@ -43,20 +40,13 @@ export function ReportLayoutSettings({
           {loose.map((p, i) => <li key={i}>{p.path === "" ? p.message : `${p.path}: ${p.message}`}</li>)}
         </ul>
       )}
-      {fields.length > 0 && (
-        <details className="card stack" open={fields.some((f) => layoutProblems.some((p) => aboutField(p, f.key)))}>
-          <summary><strong>{text.settingsTitle}</strong></summary>
-          <div className="stack" style={{ marginTop: "var(--space-3)" }}>
-            {fields.map((field) => (
-              <ReportLayoutBlockField
-                key={field.key} field={field} node={tree} names={[]} env={env}
-                problems={layoutProblems.filter((p) => aboutField(p, field.key)).map((p) => p.message)}
-                onChange={(key, value) => onChange(setAt(tree, [key], value))}
-              />
-            ))}
-          </div>
-        </details>
-      )}
+      {fields.map((field) => (
+        <ReportLayoutBlockField
+          key={field.key} field={field} node={tree} names={[]} env={env}
+          problems={layoutProblems.filter((p) => aboutField(p, field.key)).map((p) => p.message)}
+          onChange={(key, value) => onChange(setAt(tree, [key], value))}
+        />
+      ))}
     </>
   );
 }

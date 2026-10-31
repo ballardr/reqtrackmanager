@@ -87,6 +87,7 @@ from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE
 from app.modules.registry import is_module_enabled_for_project
 from app.services.link_graph import ArtefactResolver
 from app.services.link_type_scope import resolve_link_type_scope
+from app.services.report_column_width import sheet_widths_cm
 from app.services.report_fields import RESERVED_FIELD_KEYS, FieldInfo, ReportRecord, field_catalogue, format_value, load_records
 from app.services.report_framework import ReportContext, ReportResult
 from app.services.report_images import MAX_REPORT_IMAGES, ResolvedImage, load_image, load_org_logo, max_total_image_bytes
@@ -1301,9 +1302,11 @@ def _eval_table(run: _Run, node: dict[str, Any], scope: Scope) -> None:
     if found.records:
         labels, rows = _table_cells(run, node, scope, found.records)
         weights = [IMAGE_COLUMN_WEIGHT if "images" in c else 1.0 for c in node["columns"]]
+        widths = [c.get("width") for c in node["columns"]]
         run.emit(Table(
             labels, rows, compact=True, repeat_header=run.repeat_table_header,
             weights=weights if IMAGE_COLUMN_WEIGHT in weights else None,
+            widths=widths if any(widths) else None,
         ))
     elif node.get("empty_text"):
         run.emit(Note(run.fill(node["empty_text"], scope)))
@@ -1426,7 +1429,8 @@ def _eval_sheet(run: _Run, node: dict[str, Any], scope: Scope) -> None:
         rows.append(row)
     run.stats.rows += len(rows)
     run._count_output(1 + len(rows))
-    run.sheets.append(Sheet(node["name"], labels, rows))
+    widths = [c.get("width") for c in columns]
+    run.sheets.append(Sheet(node["name"], labels, rows, widths_cm=sheet_widths_cm(widths) if any(widths) else None))
     run.sheet_row_of.append(first_row)
     count = root.hidden + root.unavailable + unseen
     if count:

@@ -8,7 +8,7 @@ import { ReportLayoutColumnsEditor, ReportLayoutJoinsEditor } from "./ReportLayo
 
 const catalogue = buildFieldCatalogue();
 
-type Column = { field?: string; label?: string; from?: string; link?: { sheet: string } };
+type Column = { field?: string; label?: string; from?: string; width?: string; link?: { sheet: string } };
 type Join = { as?: string; source?: Record<string, unknown> };
 
 function ColumnsHarness({ initial, names, sheets }: { initial: Column[]; names: NameInScope[]; sheets?: { name: string; recordType: string | null }[] }) {
@@ -97,6 +97,20 @@ export const AColumnCanLinkToASheetThatListsItsRecordType: Story = {
     // Choosing "No link" removes the setting rather than storing an empty name.
     await userEvent.selectOptions(link, "");
     await waitFor(() => expect(valueOf(canvasElement)).toEqual([{ field: "code" }]));
+  },
+};
+
+/** A column's width is typed as a share of the table or a length; emptying it goes back to automatic and removes the setting. */
+export const AColumnWidthIsSetAndCleared: Story = {
+  args: { initial: [{ field: "code" }, { field: "title" }] },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const width = canvas.getByRole("textbox", { name: "Column 1 width" });
+    await expect(width).toHaveAttribute("placeholder", "auto");
+    await userEvent.type(width, "12%");
+    await waitFor(() => expect(valueOf(canvasElement)).toEqual([{ field: "code", width: "12%" }, { field: "title" }]));
+    await userEvent.clear(width);
+    await waitFor(() => expect(valueOf(canvasElement)).toEqual([{ field: "code" }, { field: "title" }]));
   },
 };
 

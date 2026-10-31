@@ -50,6 +50,7 @@ from app.services.report_starter_blocks import (
     ENGINEERING_SPECIFICATION,
     REQUIREMENTS_BY_COMPONENT,
     REVIEW_PACKAGE,
+    fixed_columns,
     heading,
     section,
     table,
@@ -148,11 +149,10 @@ SPECIFICATION = StarterLayout(
                     heading("{{comp.value}} ({{comp.count}})", 3),
                     {
                         "type": "table", "source": {"group": "comp", "sort": [{"field": "code"}]},
-                        "columns": [
-                            {"field": "code", "label": "Code"}, {"field": "title", "label": "Requirement"},
-                            {"field": "description", "label": "Description"}, {"field": "level", "label": "Level"},
-                            {"field": "category", "label": "Category"}, {"field": "status", "label": "Status"},
-                        ],
+                        "columns": fixed_columns([
+                            ("code", "Code"), ("title", "Requirement"), ("description", "Description"), ("level", "Level"),
+                            ("category", "Category"), ("status", "Status"),
+                        ]),
                         "empty_text": "No requirements.",
                     },
                 ],
@@ -233,11 +233,9 @@ BY_COMPONENT = StarterLayout(
                             heading("{{cat.value}}", 3),
                             {
                                 "type": "table", "source": {"group": "cat", "sort": [{"field": "code"}]},
-                                "columns": [
-                                    {"field": "code", "label": "ID"}, {"field": "title", "label": "Name"},
-                                    {"field": "reasoning", "label": "Reasoning"}, {"field": "status", "label": "Status"},
-                                    {"field": "tags", "label": "Tags"},
-                                ],
+                                "columns": fixed_columns([
+                                    ("code", "ID"), ("title", "Name"), ("reasoning", "Reasoning"), ("status", "Status"), ("tags", "Tags"),
+                                ]),
                                 "empty_text": "No requirements.",
                             },
                         ],

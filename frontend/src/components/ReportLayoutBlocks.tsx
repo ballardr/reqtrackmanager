@@ -2,9 +2,10 @@
  * Module: components/ReportLayoutBlocks
  *
  * The block editor: a layout drawn as blocks on a Blockly workspace, with the selected block's full form (every
- * field, including source, columns, condition, widget settings and long text) in an inspector beside it. It is the
- * designer's second view of the layout tree. The canvas takes the page's width; the inspector sits beside it when
- * there is room and under it when there is not.
+ * field, including source, columns, condition, widget settings and long text) in an inspector. It is the
+ * designer's second view of the layout tree. The canvas takes the width of its column; the inspector is drawn into a
+ * host element the caller owns (the designer's side panel, or a place under the canvas in a dialog), so the caller
+ * decides where the form lives and this component holds no layout for it.
  *
  * Responsibilities:
  * - Draw the tree as blocks and write every edit back to the tree through `onChange`; the tree is the designer's,
@@ -19,17 +20,20 @@
  * - Insert a snippet at the same place, or at the start of the layout ("Insert snippet", `ReportSnippetPicker`): the server returns the new tree; its
  *   root-level changes (page styles, variables) are taken as they are and its blocks are created in the workspace in one
  *   undo group, so Ctrl+Z removes them together.
+ * - Tell the caller (`onInspect`) when the inspector has something new to show (a block was selected, the layout's settings
+ *   were opened), so a tabbed host can bring it forward.
  * - Follow the app's light and dark themes.
  *
  * Design decisions: there is no Blockly toolbox (flyout palette): it took a column of the canvas and listed the least
  * used blocks first; the dropdown is the one way to add and says where the block will land. Blockly is loaded lazily by the designer (`React.lazy`), keeping its ~1 MB out of the main
- * bundle. Blocks carry short fields inline as a quick edit; the inspector holds every field with the shared field
+ * bundle. Blocks show a read-only summary; the inspector holds every field with the shared field
  * editors, reused as they are, because embedding React inside SVG blocks would give two editing worlds, and a plain
  * form is the route for people who do not use a pointer. A block
  * dropped outside the layout is not part of it and is counted, not silently dropped. Validity is the server's.
  */
 import * as Blockly from "blockly/core";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import type {
   BlockCatalogue, BlockType, LayoutFamily, ReportFieldCatalogue, ReportImageLibrary, ReportLayoutApi, ReportSnippet, ReportWidget, SnippetApplyResult,
@@ -37,12 +41,12 @@ import type {
 } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";
 import {
-  ROOT_INPUT, ROOT_TYPE, SUMMARY_FIELD, blockSummary, chainToNodes, controlValue, inlineFields, layoutType, looseBlockCount,
+  ROOT_INPUT, ROOT_TYPE, SUMMARY_FIELD, blockSummary, chainToNodes, layoutType, looseBlockCount,
   nodeData, nodeToBlockState, paletteEntries, shapeOf, treeToWorkspaceState, workspaceStateToTree, type BlockState,
 } from "../utils/reportLayoutBlockly";
 import { buildTheme, registerBlocks } from "../utils/reportLayoutBlocklyBlocks";
 import {
-  cloneNode, formatPath, listAt, namesInScope, nodeAt, parsePath, problemsForNode, setAt, sourceRecordType, stableJson, summarise, type Seg, type Tree, type TreeNode,
+  cloneNode, formatPath, listAt, namesInScope, nodeAt, owningNode, parsePath, problemsForNode, setAt, sourceRecordType, stableJson, summarise, type Seg, type Tree, type TreeNode,
 } from "../utils/reportLayoutTree";
 import type { SnippetSelection } from "../api/reportSnippets";
 import { insertedBlocks, withBlocksOf } from "../utils/reportSnippets";
@@ -51,6 +55,7 @@ import { MenuButton } from "./MenuButton";
 import { ReportLayoutJsonField } from "./ReportLayoutJsonField";
 import { ReportLayoutBlockField, type BlockEnv } from "./ReportLayoutBlockField";
 import { ReportLayoutSettings } from "./ReportLayoutSettings";
+import { ReportSnippetMenu } from "./ReportSnippetMenu";
 import { ReportSnippetPicker, type SnippetPlace } from "./ReportSnippetPicker";
 import type { SnippetNoticeData } from "./ReportSnippetNotice";
 
@@ -79,13 +84,8 @@ function workspaceNodes(ws: Blockly.WorkspaceSvg, types: BlockType[]): TreeNode[
   return chainToNodes(root?.inputs?.[ROOT_INPUT]?.block, types);
 }
 
-/** What an inline control holds when its key is not set. */
-function emptyControl(kind: string): string | boolean {
-  return kind === "boolean" ? false : "";
-}
-
 /**
- * Writes `nodes` into the blocks of `first`'s chain, in place: each block's data and inline fields. The shapes must
+ * Writes `nodes` into the blocks of `first`'s chain, in place: each block's data and summary. The shapes must
  * match (checked by the caller).
  */
 function patchChain(first: Blockly.Block | null, nodes: unknown, types: BlockType[]): void {
@@ -98,12 +98,6 @@ function patchChain(first: Blockly.Block | null, nodes: unknown, types: BlockTyp
     const node = raw as TreeNode;
     const type = types.find((t) => t.type === layoutType(block.type));
     block.data = nodeData(node, types);
-    for (const field of type ? inlineFields(type) : []) {
-      const want = controlValue(field, node) ?? emptyControl(field.kind);
-      if (block.getFieldValue(field.key) !== want && !(field.kind === "boolean" && block.getFieldValue(field.key) === (want ? "TRUE" : "FALSE"))) {
-        block.setFieldValue(want, field.key);
-      }
-    }
     const summary = blockSummary(node, type);
     if (summary !== undefined && block.getFieldValue(SUMMARY_FIELD) !== summary) block.setFieldValue(summary, SUMMARY_FIELD);
     for (const container of type?.containers ?? []) patchChain(block.getInputTargetBlock(container.key), node[container.key], types);
@@ -133,13 +127,14 @@ function describeBlock(node: TreeNode, type: BlockType | undefined): string {
  * @param widgets The report components a widget block can embed.
  * @param problems The server's problems for the tree.
  * @param readOnly A layout shared from elsewhere: shown, not editable.
- * @param toolbarEnd Controls the designer puts at the end of the toolbar above the canvas (the preview buttons).
+ * @param inspectorHost The element the inspector is drawn into (a portal; nothing is drawn until it exists).
+ * @param onInspect Called when a block is selected or the layout's settings are opened.
  * @param images The picture library an image block chooses from (absent where the layout has none).
  * @param snippets The snippet calls, and what to tell the designer after an insertion; with `images` (a snippet may need a
  *   picture), else no Insert snippet button. `onSave`, when given, adds Save as snippet for the selected block.
  */
 export function ReportLayoutBlocks({
-  tree, onChange, family, blocks, catalogue, widgets, problems, readOnly = false, toolbarEnd, images, snippets,
+  tree, onChange, family, blocks, catalogue, widgets, problems, readOnly = false, inspectorHost, onInspect, images, snippets,
 }: {
   tree: Tree;
   onChange: (next: Tree) => void;
@@ -149,7 +144,8 @@ export function ReportLayoutBlocks({
   widgets: ReportWidget[];
   problems: TreeProblem[];
   readOnly?: boolean;
-  toolbarEnd?: ReactNode;
+  inspectorHost: HTMLElement | null;
+  onInspect?: () => void;
   images?: { library: ReportImageLibrary; scope: "organization" | "project" };
   snippets?: {
     api: Pick<ReportLayoutApi, "snippets" | "applySnippet">;
@@ -166,10 +162,14 @@ export function ReportLayoutBlocks({
   /** The tree the workspace shows; an incoming tree equal to it needs no redraw. */
   const shown = useRef({ tree, json: stableJson(tree) });
   const latest = useRef({ onChange, types: blocks.blocks });
+  const inspect = useRef(onInspect);
   useEffect(() => {
     latest.current = { onChange, types: blocks.blocks };
-  }, [onChange, blocks.blocks]);
+    inspect.current = onInspect;
+  }, [onChange, blocks.blocks, onInspect]);
   const [selected, setSelected] = useState<string | null>(null);
+  /** The inspector shows the layout's own settings (the layout block is selected, or its settings button was pressed). */
+  const [layoutOpen, setLayoutOpen] = useState(false);
   const [loose, setLoose] = useState(0);
   const [ready, setReady] = useState(false);
   /** The place chosen in the Add block dropdown (an index into `targets`) and the block it was chosen for. */
@@ -178,6 +178,7 @@ export function ReportLayoutBlocks({
   const types = blocks.blocks;
   const layoutLabel = text.layoutBlock;
   const unknownLabel = text.unknownBlockOnCanvas;
+  const settingsLabel = text.settingsButton;
   const declared = Array.isArray(tree.variables) ? (tree.variables as { name?: string }[]).map((v) => String(v.name ?? "")).filter(Boolean) : [];
   const pageStyles = Array.isArray(tree.page_styles) ? (tree.page_styles as { name?: string }[]).map((s) => String(s.name ?? "")).filter(Boolean) : [];
   const sheets = (Array.isArray(tree.nodes) ? (tree.nodes as TreeNode[]) : [])
@@ -188,7 +189,15 @@ export function ReportLayoutBlocks({
   // The workspace lives as long as the catalogue, family and mode it was built for.
   useEffect(() => {
     if (!host.current) return undefined;
-    registerBlocks(types, { layout: layoutLabel, unknownBlock: unknownLabel });
+    registerBlocks(types, {
+      layout: layoutLabel, unknownBlock: unknownLabel, settings: settingsLabel,
+      onSettings: () => {
+        const root = workspace.current?.getTopBlocks(false).find((b) => b.type === ROOT_TYPE);
+        if (root) Blockly.common.setSelected(root);
+        setLayoutOpen(true);
+        inspect.current?.();
+      },
+    });
     const ws = Blockly.inject(host.current, {
       readOnly,
       theme: buildTheme(),
@@ -207,7 +216,12 @@ export function ReportLayoutBlocks({
         // Blockly deselects when focus leaves the workspace, which is exactly what typing in the inspector does, so only
         // a newly selected block changes the inspector: it keeps showing the last block until another is chosen.
         const id = (event as Blockly.Events.Selected).newElementId;
-        if (id) setSelected(indexPaths(ws).get(id) ?? null);
+        if (id) {
+          const isLayout = ws.getBlockById(id)?.type === ROOT_TYPE;
+          setLayoutOpen(isLayout);
+          if (!isLayout) setSelected(indexPaths(ws).get(id) ?? null);
+          inspect.current?.();
+        }
         return;
       }
       if (event.isUiEvent || event.type === Blockly.Events.FINISHED_LOADING) return;
@@ -235,7 +249,7 @@ export function ReportLayoutBlocks({
       ws.dispose();
     };
     // The tree is read through `shown`, so a keystroke never rebuilds the workspace.
-  }, [types, readOnly, layoutLabel, unknownLabel]);
+  }, [types, readOnly, layoutLabel, unknownLabel, settingsLabel]);
 
   // A tree that did not come from the workspace (the inspector, the settings) is patched in, or redrawn if its shape changed.
   useEffect(() => {
@@ -271,6 +285,9 @@ export function ReportLayoutBlocks({
         const all = [...messages.own, ...[...messages.byKey.values()].flat()];
         ws.getBlockById(id)?.setWarningText(all.length > 0 ? all.join("\n") : null);
       }
+      // Problems about the layout itself (its settings) are shown on the layout block.
+      const layoutMessages = problems.filter((p) => owningNode(p.path) === null).map((p) => (p.path === "" ? p.message : `${p.path}: ${p.message}`));
+      ws.getTopBlocks(false).find((b) => b.type === ROOT_TYPE)?.setWarningText(layoutMessages.length > 0 ? layoutMessages.join("\n") : null);
     } finally {
       Blockly.Events.enable();
     }
@@ -335,7 +352,7 @@ export function ReportLayoutBlocks({
   }
 
   /** The selected block as the run Save as snippet saves, or `null` with nothing selected. */
-  const savable = addr && node ? selectionOfBlock(addr) : null;
+  const savable = addr && node && !layoutOpen ? selectionOfBlock(addr) : null;
 
   /** Where a snippet can go: the place Add block states, and the start of the layout (a cover page or a logo belongs there). */
   const snippetPlaces: SnippetPlace[] = [
@@ -381,25 +398,71 @@ export function ReportLayoutBlocks({
     />
   );
 
+  const inspector = (
+    <aside className="stack blocks-inspector" aria-label={text.inspectorLabel}>
+      {loose > 0 && <p role="status" className="text-muted" style={{ margin: 0 }}>{text.looseBlocks(loose)}</p>}
+      {layoutOpen ? (
+        <div className="stack" data-testid="layout-inspector">
+          <strong>{text.settingsTitle}</strong>
+          <ReportLayoutSettings tree={tree} onChange={onChange} family={family} blocks={blocks} env={env} problems={problems} />
+        </div>
+      ) : node && addr && selected ? (
+        <div className="stack" data-testid="block-inspector">
+          <strong>{text.inspectorTitle(type?.label ?? String(node.type ?? "?"))}</strong>
+          {(() => {
+            // Problems about the block as a whole, or a key no field is drawn for (a typo in JSON, a child list's own limit).
+            const found = problemsForNode(problems, selected);
+            const drawn = new Set(type?.described ? type.fields.map((f) => f.key) : []);
+            const stray = [...found.byKey.entries()].filter(([key]) => !drawn.has(key)).flatMap(([, list]) => list);
+            const messages = [...found.own, ...stray];
+            return messages.length > 0 ? (
+              <ul className="outline-field-problems" role="alert">{messages.map((m, i) => <li key={i}>{m}</li>)}</ul>
+            ) : null;
+          })()}
+          {type && type.described ? (
+            type.fields.map((field) => (
+              <ReportLayoutBlockField
+                key={field.key} field={field} node={node} names={namesInScope(tree, addr, types)} env={env}
+                problems={problemsForNode(problems, selected).byKey.get(field.key) ?? []}
+                onChange={(key, value) => onChange(setAt(tree, [...addr, key], value))}
+              />
+            ))
+          ) : (
+            <ReportLayoutJsonField
+              label={text.unknownBlock(String(node.type ?? "?"))} value={node} disabled={readOnly}
+              onChange={(next) => {
+                if (next !== null && typeof next === "object" && !Array.isArray(next)) onChange(setAt(tree, addr, next));
+              }}
+            />
+          )}
+          {!readOnly && type?.containers.map((container) => (
+            <div key={container.key}>
+              {addMenu(text.addInside(container.label), () => ({
+                list: [...addr, container.key], index: Array.isArray(node[container.key]) ? (node[container.key] as unknown[]).length : 0,
+              }))}
+            </div>
+          ))}
+          {type && type.fields.length === 0 && type.containers.length === 0 && <p className="text-muted" style={{ margin: 0 }}>{text.noSettings}</p>}
+        </div>
+      ) : (
+        <p className="text-muted" style={{ margin: 0 }}>{text.selectBlock}</p>
+      )}
+    </aside>
+  );
+
   return (
     <div className="stack" role="region" aria-label={text.blocksLabel}>
-      <ReportLayoutSettings tree={tree} onChange={onChange} family={family} blocks={blocks} env={env} problems={problems} />
       <p className="text-muted" style={{ margin: 0 }}>{readOnly ? text.blocksReadOnlyHint : text.blocksHint}</p>
       <div className="row blocks-toolbar">
         {!readOnly && (
           <>
             {addMenu(text.addBlock, () => target)}
             {snippets && images && (
-              <button type="button" className="btn" aria-haspopup="dialog" onClick={() => setPickerOpen(true)}>{snippetText.insertButton}</button>
-            )}
-            {snippets?.onSave && (
-              <button
-                type="button" className="btn" aria-haspopup="dialog" disabled={savable === null}
-                title={savable === null ? snippetText.saveButtonHint : undefined}
-                onClick={() => { if (savable) snippets.onSave?.(savable, snippetText.saveSelected(describeBlock(node ?? {}, type))); }}
-              >
-                {snippetText.saveButton}
-              </button>
+              <ReportSnippetMenu
+                onInsert={() => setPickerOpen(true)}
+                onSave={snippets.onSave ? () => { if (savable) snippets.onSave?.(savable, snippetText.saveSelected(describeBlock(node ?? {}, type))); } : undefined}
+                saveDisabledReason={savable === null ? snippetText.saveButtonHint : undefined}
+              />
             )}
             {targets.length > 1 ? (
               <select
@@ -413,7 +476,6 @@ export function ReportLayoutBlocks({
             )}
           </>
         )}
-        {toolbarEnd && <span className="blocks-toolbar-end">{toolbarEnd}</span>}
       </div>
       {pickerOpen && snippets && images && (
         <ReportSnippetPicker
@@ -422,57 +484,10 @@ export function ReportLayoutBlocks({
           onClose={() => setPickerOpen(false)} onInserted={insertSnippet}
         />
       )}
-      <div className="blocks-host">
-        <div className="blocks-layout">
-          <div className="blocks-stage">
-            <div ref={host} className="blocks-workspace" aria-label={text.workspaceLabel} />
-          </div>
-          <aside className="stack blocks-inspector" aria-label={text.inspectorLabel}>
-            {loose > 0 && <p role="status" className="text-muted" style={{ margin: 0 }}>{text.looseBlocks(loose)}</p>}
-            {node && addr && selected ? (
-              <div className="stack" data-testid="block-inspector">
-                <strong>{text.inspectorTitle(type?.label ?? String(node.type ?? "?"))}</strong>
-                {(() => {
-                  // Problems about the block as a whole, or a key no field is drawn for (a typo in JSON, a child list's own limit).
-                  const found = problemsForNode(problems, selected);
-                  const drawn = new Set(type?.described ? type.fields.map((f) => f.key) : []);
-                  const stray = [...found.byKey.entries()].filter(([key]) => !drawn.has(key)).flatMap(([, list]) => list);
-                  const messages = [...found.own, ...stray];
-                  return messages.length > 0 ? (
-                    <ul className="outline-field-problems" role="alert">{messages.map((m, i) => <li key={i}>{m}</li>)}</ul>
-                  ) : null;
-                })()}
-                {type && type.described ? (
-                  type.fields.map((field) => (
-                    <ReportLayoutBlockField
-                      key={field.key} field={field} node={node} names={namesInScope(tree, addr, types)} env={env}
-                      problems={problemsForNode(problems, selected).byKey.get(field.key) ?? []}
-                      onChange={(key, value) => onChange(setAt(tree, [...addr, key], value))}
-                    />
-                  ))
-                ) : (
-                  <ReportLayoutJsonField
-                    label={text.unknownBlock(String(node.type ?? "?"))} value={node} disabled={readOnly}
-                    onChange={(next) => {
-                      if (next !== null && typeof next === "object" && !Array.isArray(next)) onChange(setAt(tree, addr, next));
-                    }}
-                  />
-                )}
-                {!readOnly && type?.containers.map((container) => (
-                  <div key={container.key}>
-                    {addMenu(text.addInside(container.label), () => ({
-                      list: [...addr, container.key], index: Array.isArray(node[container.key]) ? (node[container.key] as unknown[]).length : 0,
-                    }))}
-                  </div>
-                ))}
-                {type && type.fields.length === 0 && type.containers.length === 0 && <p className="text-muted" style={{ margin: 0 }}>{text.noSettings}</p>}
-              </div>
-            ) : (
-              <p className="text-muted" style={{ margin: 0 }}>{text.selectBlock}</p>
-            )}
-          </aside>
-        </div>
+      <div className="blocks-stage">
+        <div ref={host} className="blocks-workspace" aria-label={text.workspaceLabel} />
       </div>
+      {inspectorHost && createPortal(inspector, inspectorHost)}
     </div>
   );
 }

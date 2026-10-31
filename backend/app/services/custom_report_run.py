@@ -394,12 +394,14 @@ def _merge_sheets(parts: Sequence[EvaluatedLayout], project_names: Sequence[str]
     with_contents = any(sheet.contents for part in parts for sheet in part.sheets)
     offset = 1 if with_contents else 0
     headers: dict[str, list[str]] = {}
+    widths: dict[str, list[float | None] | None] = {}  # the forced column widths, with none for the added Project column
     start: dict[tuple[int, str], int] = {}
     total: dict[str, int] = {}
     for i, part in enumerate(parts):
         for sheet in part.sheets:
             if not sheet.contents:
                 headers.setdefault(sheet.name, ["Project", *sheet.columns])
+                widths.setdefault(sheet.name, None if sheet.widths_cm is None else [None, *sheet.widths_cm])
                 start[i, sheet.name] = total.get(sheet.name, 0)
                 total[sheet.name] = start[i, sheet.name] + len(sheet.rows)
     position = {name: n + offset for n, name in enumerate(headers)}
@@ -418,7 +420,7 @@ def _merge_sheets(parts: Sequence[EvaluatedLayout], project_names: Sequence[str]
         for sheet in part.sheets:
             if not sheet.contents:
                 merged[sheet.name].extend([project, *(moved(c, i, part) for c in row)] for row in sheet.rows)
-    sheets = [Sheet(name, columns, merged[name]) for name, columns in headers.items()]
+    sheets = [Sheet(name, columns, merged[name], widths_cm=widths[name]) for name, columns in headers.items()]
     return [contents_sheet(sheets), *sheets] if with_contents else sheets
 
 

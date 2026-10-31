@@ -567,7 +567,7 @@ def _table(doc: DocxDocument, block: Table, accent: str, usable_cm: float, usabl
     if not block.columns:
         return
     count = len(block.columns)
-    widths = block.col_widths_cm or block.weights or [1.0] * count
+    widths = block.relative_widths(usable_cm)
     scale = usable_cm / sum(widths)
     table = doc.add_table(rows=1, cols=count, style="Table Grid")
     table.alignment = WD_TABLE_ALIGNMENT.CENTER

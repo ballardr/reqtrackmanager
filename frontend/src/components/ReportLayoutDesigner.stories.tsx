@@ -7,6 +7,7 @@ import {
   buildLayoutApi, buildLayoutDetail, buildLayoutSummary, buildOutlineTree, fakeValidate, LAYOUT_TEXT, TEXT_CHECKED_MS,
 } from "../testing/reportLayoutFixtures";
 import { buildDuplicateApi } from "../testing/reportDuplicateFixtures";
+import { chooseSnippetMenuItem, snippetMenuItem } from "../testing/reportSnippetMenuHelpers";
 import { buildSnippetStoreApi } from "../testing/reportSnippetStoreFixtures";
 import { saveVersion } from "../testing/saveVersionHelpers";
 import { buildUser, withRouter, withStatefulAuth } from "../testing/storybook-helpers";
@@ -354,7 +355,7 @@ export const SwitchingToTheBlocksShowsTheLayoutAsBlocks: Story = {
   play: async ({ canvasElement }) => {
     const canvas = await toBlocks(canvasElement);
     await expect(await canvas.findByRole("region", { name: "Block editor" })).toBeInTheDocument();
-    await expect((await firstHeading()).getFieldValue("text")).toBe("Requirements of {{project_name}}");
+    await expect((await firstHeading()).getFieldValue("_summary")).toBe("level 1 · Requirements of {{project_name}}");
     await expect(await canvas.findByText("No problems.", undefined, { timeout: TEXT_CHECKED_MS })).toBeInTheDocument();
     // Nothing edited: nothing to save, and the text-only pickers are not offered.
     await expect(canvas.getByRole("button", { name: "Save new version" })).toBeDisabled();
@@ -362,12 +363,21 @@ export const SwitchingToTheBlocksShowsTheLayoutAsBlocks: Story = {
     await expect(canvas.queryByRole("textbox", { name: "Layout text" })).not.toBeInTheDocument();
   },
 };
+/** Selects the first heading and sets its text in the block editor beside the canvas, the only place a block's values are edited. */
+async function setHeadingText(canvasElement: HTMLElement, text: string): Promise<Blockly.BlockSvg> {
+  const heading = await firstHeading();
+  Blockly.common.setSelected(heading);
+  const box = await within(await within(canvasElement).findByTestId("block-inspector")).findByRole("textbox", { name: "Heading" });
+  await userEvent.clear(box);
+  if (text !== "") await userEvent.type(box, text);
+  return heading;
+}
 
 export const EditingABlockSavesTheEditedTree: Story = {
   args: { api: blocksApi() },
   play: async ({ canvasElement, args }) => {
     const canvas = await toBlocks(canvasElement);
-    (await firstHeading()).setFieldValue("Edited title", "text");
+    await setHeadingText(canvasElement, "Edited title");
     await expect(await canvas.findByText("Unsaved changes")).toBeInTheDocument();
     const save = canvas.getByRole("button", { name: "Save new version" });
     await waitFor(() => expect(save).toBeEnabled(), { timeout: TEXT_CHECKED_MS });
@@ -384,36 +394,75 @@ export const BlocksWithProblemsCannotBeSavedAndShowThemInTheInspector: Story = {
   args: { api: blocksApi() },
   play: async ({ canvasElement }) => {
     const canvas = await toBlocks(canvasElement);
-    const heading = await firstHeading();
-    heading.setFieldValue("", "text");
+    const heading = await setHeadingText(canvasElement, "");
     await expect(await canvas.findByText("1 problem to fix", undefined, { timeout: TEXT_CHECKED_MS })).toBeInTheDocument();
     await waitFor(() => expect(heading.getIcon(Blockly.icons.IconType.WARNING)).toBeTruthy());
     Blockly.common.setSelected(heading);
     await expect(await canvas.findByText("Must not be empty.")).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Save new version" })).toBeDisabled();
-    await userEvent.click(canvas.getByRole("button", { name: "Preview" }));
-    await expect(await body().findByRole("button", { name: "Run preview" })).toBeDisabled();
+    await userEvent.click(canvas.getByRole("tab", { name: "Preview" }));
+    await expect(await canvas.findByRole("button", { name: "Run preview" })).toBeDisabled();
   },
 };
 
-export const TheBlocksViewHasTheFullWidthAndTheDialogOrPanelShowsThePreview: Story = {
+/** The Blocks view's right-hand panel has Block and Preview tabs: the block editor first, the preview a tab away or in a dialog. */
+export const TheBlocksViewHasBlockAndPreviewTabsInOnePanel: Story = {
   args: { api: blocksApi() },
   play: async ({ canvasElement }) => {
     const canvas = await toBlocks(canvasElement);
     await firstHeading();
-    // Closed by default: no preview beside the blocks, and the design grid is one column.
-    await expect(canvas.queryByRole("button", { name: "Run preview" })).not.toBeInTheDocument();
+    const panel = canvas.getByRole("complementary", { name: "Designer tools" });
     await expect(canvasElement.querySelector(".layout-designer--blocks")).not.toBeNull();
-    // The Preview button opens it in a dialog.
-    await userEvent.click(canvas.getByRole("button", { name: "Preview" }));
+    await expect(within(panel).getByRole("tab", { name: "Block" })).toHaveAttribute("aria-selected", "true");
+    // Fields and Widgets belong to the Text view.
+    await expect(within(panel).queryByRole("tab", { name: "Fields" })).not.toBeInTheDocument();
+    await expect(within(panel).queryByRole("button", { name: "Run preview" })).not.toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole("tab", { name: "Preview" }));
+    await expect(await within(panel).findByRole("button", { name: "Run preview" })).toBeInTheDocument();
+    // The preview opens in a dialog from its tab.
+    await userEvent.click(within(panel).getByRole("button", { name: "Open in dialog" }));
     const dialog = await body().findByRole("dialog", { name: "Report preview" });
     await expect(within(dialog).getByRole("button", { name: "Run preview" })).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
     await waitFor(() => expect(body().queryByRole("dialog", { name: "Report preview" })).not.toBeInTheDocument());
-    // The panel toggle shows it beside the blocks.
-    await userEvent.click(canvas.getByRole("button", { name: "Preview panel" }));
-    await expect(await canvas.findByRole("button", { name: "Run preview" })).toBeInTheDocument();
-    await expect(canvasElement.querySelector(".layout-designer--blocks-preview")).not.toBeNull();
+  },
+};
+
+/** Selecting a block brings the Block tab forward, whichever tab was showing. */
+export const SelectingABlockShowsTheBlockTab: Story = {
+  args: { api: blocksApi() },
+  play: async ({ canvasElement }) => {
+    const canvas = await toBlocks(canvasElement);
+    const heading = await firstHeading();
+    const panel = canvas.getByRole("complementary", { name: "Designer tools" });
+    await userEvent.click(within(panel).getByRole("tab", { name: "Preview" }));
+    await expect(within(panel).getByRole("tab", { name: "Preview" })).toHaveAttribute("aria-selected", "true");
+    Blockly.common.setSelected(heading);
+    await waitFor(() => expect(within(panel).getByRole("tab", { name: "Block" })).toHaveAttribute("aria-selected", "true"));
+    await expect(await within(panel).findByTestId("block-inspector")).toBeVisible();
+  },
+};
+
+/** The panel folds to a rail and unfolds (wide layout only); the block editor survives the fold. */
+export const ThePanelFoldsAndUnfoldsInBothViews: Story = {
+  args: { api: blocksApi() },
+  play: async ({ canvasElement }) => {
+    const canvas = await toBlocks(canvasElement);
+    const hide = canvas.queryByRole("button", { name: "Hide designer panel" });
+    // The toggle only exists in the wide layout; skip the interaction in a narrow viewport.
+    if (!hide) return;
+    await setHeadingText(canvasElement, "Kept while folded");
+    await userEvent.click(hide);
+    await expect(canvasElement.querySelector(".layout-designer--panel-folded")).not.toBeNull();
+    await expect(canvas.queryByRole("tab", { name: "Preview" })).not.toBeInTheDocument();
+    // The fold is one setting for both views.
+    await userEvent.click(canvas.getByRole("tab", { name: "Text" }));
+    await expect(canvasElement.querySelector(".layout-designer--panel-folded")).not.toBeNull();
+    await userEvent.click(canvas.getByRole("button", { name: "Show designer panel" }));
+    await expect(canvas.getByRole("tab", { name: "Fields" })).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("tab", { name: "Blocks" }));
+    Blockly.common.setSelected(await firstHeading());
+    await expect(await within(await canvas.findByTestId("block-inspector")).findByRole("textbox", { name: "Heading" })).toHaveValue("Kept while folded");
   },
 };
 
@@ -421,7 +470,7 @@ export const SwitchingBackToTextShowsTheBlocksChanges: Story = {
   args: { api: blocksApi() },
   play: async ({ canvasElement }) => {
     const canvas = await toBlocks(canvasElement);
-    (await firstHeading()).setFieldValue("Renamed", "text");
+    await setHeadingText(canvasElement, "Renamed");
     await userEvent.click(canvas.getByRole("tab", { name: "Text" }));
     await waitFor(async () => expect((await editorOf(canvasElement)).value).toBe("@layout document\n@heading Renamed\n"));
     await expect(canvas.getByText("Unsaved changes")).toBeInTheDocument();
@@ -458,7 +507,7 @@ export const BlocksWithProblemsCannotBeShownAsTextYet: Story = {
   args: { api: blocksApi() },
   play: async ({ canvasElement }) => {
     const canvas = await toBlocks(canvasElement);
-    (await firstHeading()).setFieldValue("", "text");
+    await setHeadingText(canvasElement, "");
     await expect(await canvas.findByText("1 problem to fix", undefined, { timeout: TEXT_CHECKED_MS })).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("tab", { name: "Text" }));
     await expect(await canvas.findByText("The blocks have problems, so they cannot be shown as text yet. Fix them first.")).toBeInTheDocument();
@@ -492,7 +541,7 @@ export const TheDesignerHasTextAndBlocksViewsOnly: Story = {
 /** Opens the snippet dialog from the Text view and chooses a snippet. */
 async function chooseSnippet(canvasElement: HTMLElement, name: string) {
   await editorOf(canvasElement);
-  await userEvent.click(within(canvasElement).getByRole("button", { name: "Insert snippet" }));
+  await chooseSnippetMenuItem(canvasElement, "Insert snippet");
   const d = within(await screen.findByRole("dialog", { name: "Insert snippet" }));
   await userEvent.click(await d.findByRole("button", { name: `Select ${name}` }));
   return d;
@@ -557,7 +606,7 @@ export const TextThatDoesNotReadCleanlyIsNotAnInsertionTarget: Story = {
   play: async ({ canvasElement }) => {
     const editor = await editorOf(canvasElement);
     await userEvent.type(editor, "BROKEN");
-    await userEvent.click(within(canvasElement).getByRole("button", { name: "Insert snippet" }));
+    await chooseSnippetMenuItem(canvasElement, "Insert snippet");
     await expect(await within(canvasElement).findByText(/Fix the problems in the text before inserting a snippet/)).toBeInTheDocument();
     await expect(screen.queryByRole("dialog", { name: "Insert snippet" })).not.toBeInTheDocument();
   },
@@ -567,7 +616,7 @@ export const InsertSnippetInTheBlocksViewShowsTheNoticeWithTheUndoHint: Story = 
   args: { api: blocksApi() },
   play: async ({ canvasElement }) => {
     const canvas = await toBlocks(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Insert snippet" }));
+    await chooseSnippetMenuItem(canvasElement, "Insert snippet");
     const d = within(await screen.findByRole("dialog", { name: "Insert snippet" }));
     await userEvent.click(await d.findByRole("button", { name: "Select Cover page" }));
     await userEvent.click(d.getByRole("button", { name: "Insert" }));
@@ -585,7 +634,7 @@ export const ASharedReadOnlyLayoutOffersNoInsertSnippet: Story = {
   args: { api: buildLayoutApi([buildLayoutSummary({ editable: false, origin: "organization" })], { stateful: false }) },
   play: async ({ canvasElement }) => {
     await editorOf(canvasElement);
-    await expect(within(canvasElement).queryByRole("button", { name: "Insert snippet" })).not.toBeInTheDocument();
+    await expect(within(canvasElement).queryByRole("button", { name: "Snippets" })).not.toBeInTheDocument();
   },
 };
 
@@ -605,7 +654,7 @@ export const SaveAsSnippetFromTheTextSavesTheBlockTheCaretIsIn: Story = {
   play: async ({ canvasElement, args }) => {
     const editor = await editorOf(canvasElement);
     await caretAtLine(editor, 3);
-    await userEvent.click(within(canvasElement).getByRole("button", { name: "Save as snippet" }));
+    await chooseSnippetMenuItem(canvasElement, "Save as snippet");
     const dialog = within(await screen.findByRole("dialog", { name: "Save as snippet" }));
     await expect(dialog.getByText("Saving 1 block (and everything inside it).")).toBeInTheDocument();
     await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Title block");
@@ -624,7 +673,7 @@ export const SaveAsSnippetFromTheTextTakesEveryTopLevelBlockTheSelectionTouches:
   play: async ({ canvasElement, args }) => {
     const editor = await editorOf(canvasElement);
     await selectLines(editor, 3, 6);
-    await userEvent.click(within(canvasElement).getByRole("button", { name: "Save as snippet" }));
+    await chooseSnippetMenuItem(canvasElement, "Save as snippet");
     const dialog = within(await screen.findByRole("dialog", { name: "Save as snippet" }));
     await expect(dialog.getByText("Saving 2 blocks (and everything inside them).")).toBeInTheDocument();
     await waitFor(() => expect(args.snippetApi?.check).toHaveBeenCalledWith(expect.anything(), { container: "nodes", start: 0, count: 2 }, "project"));
@@ -636,7 +685,7 @@ export const SaveAsSnippetFromTheTextNeedsTheCaretInABlock: Story = {
   play: async ({ canvasElement }) => {
     const editor = await editorOf(canvasElement);
     await caretAtLine(editor, 1);
-    await userEvent.click(within(canvasElement).getByRole("button", { name: "Save as snippet" }));
+    await chooseSnippetMenuItem(canvasElement, "Save as snippet");
     await expect(await within(canvasElement).findByText("Put the caret in a block, or select blocks, to save them as a snippet.")).toBeInTheDocument();
     await expect(screen.queryByRole("dialog", { name: "Save as snippet" })).not.toBeInTheDocument();
   },
@@ -647,7 +696,7 @@ export const SaveAsSnippetFromTheTextNeedsTextThatReadsCleanly: Story = {
   play: async ({ canvasElement }) => {
     const editor = await editorOf(canvasElement);
     await userEvent.type(editor, " BROKEN");
-    await userEvent.click(within(canvasElement).getByRole("button", { name: "Save as snippet" }));
+    await chooseSnippetMenuItem(canvasElement, "Save as snippet");
     await expect(await within(canvasElement).findByText(/Fix the problems in the text before saving a snippet/)).toBeInTheDocument();
     await expect(screen.queryByRole("dialog", { name: "Save as snippet" })).not.toBeInTheDocument();
   },
@@ -657,11 +706,11 @@ export const SaveAsSnippetInTheBlocksViewNeedsASelectedBlockAndSavesIt: Story = 
   args: { api: blocksApi(), snippetApi: buildSnippetStoreApi() },
   play: async ({ canvasElement, args }) => {
     const canvas = await toBlocks(canvasElement);
-    const button = await canvas.findByRole("button", { name: "Save as snippet" });
-    await expect(button).toBeDisabled();
+    await expect(await snippetMenuItem(canvasElement, "Save as snippet")).toBeDisabled();
+    await userEvent.keyboard("{Escape}");
     Blockly.common.setSelected(await firstHeading());
-    await waitFor(() => expect(button).toBeEnabled());
-    await userEvent.click(button);
+    await canvas.findByTestId("block-inspector");
+    await chooseSnippetMenuItem(canvasElement, "Save as snippet");
     const dialog = within(await screen.findByRole("dialog", { name: "Save as snippet" }));
     await expect(dialog.getByText(/Saving Heading/)).toBeInTheDocument();
     await userEvent.type(dialog.getByRole("textbox", { name: "Name" }), "Blocks heading");
@@ -677,6 +726,6 @@ export const ASharedReadOnlyLayoutOffersNoSaveAsSnippet: Story = {
   args: { api: buildLayoutApi([buildLayoutSummary({ editable: false, origin: "organization" })], { stateful: false }) },
   play: async ({ canvasElement }) => {
     await editorOf(canvasElement);
-    await expect(within(canvasElement).queryByRole("button", { name: "Save as snippet" })).not.toBeInTheDocument();
+    await expect(within(canvasElement).queryByRole("button", { name: "Snippets" })).not.toBeInTheDocument();
   },
 };

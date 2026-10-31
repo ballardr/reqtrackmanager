@@ -39,6 +39,7 @@ import re
 from PIL import Image as PilImage
 
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX
+from app.services.report_column_width import parse_width
 from app.services.report_image_layout import placed_size_cm
 from app.services.report_math import INLINE_SIZE_PT, scaled_svg, typeset
 from app.services.report_model import (
@@ -83,7 +84,7 @@ p.note { color: #555; font-size: .85rem; }
 table { border-collapse: collapse; width: 100%%; margin: .8rem 0; font-size: .85rem; }
 th { background: var(--accent); color: %(head_text)s; text-align: left; }
 th, td { border: 1px solid #ccc; padding: .3rem .5rem; vertical-align: top; overflow-wrap: anywhere; }
-table.compact td { border-color: #ddd; }
+table.compact td { border-color: #ddd; } table.fixed { table-layout: fixed; }
 tbody tr:nth-child(even) td { background-color: #f5f5f5; }
 figure { margin: 1rem 0; } figure img, figure svg { max-width: 100%%; height: auto; }
 figure.image { overflow-x: auto; } figure.image.align-center { text-align: center; } figure.image.align-right { text-align: right; }
@@ -304,6 +305,15 @@ def _cell_images(cell: ImageCell) -> str:
     return f'<div class="cell-images {"side" if cell.arrange == "side_by_side" else "stacked"}">{"".join(pictures)}</div>'
 
 
+def _column_width(spec: str | None) -> str:
+    """The `<col>` of a column with a forced width: a percentage of the table or a length; an auto column has none."""
+    parsed = parse_width(spec) if spec else None
+    if parsed is None:
+        return "<col>"
+    unit, value = parsed
+    return f'<col style="width:{value:g}%">' if unit == "percent" else f'<col style="width:{value:g}cm">'
+
+
 def _table(block: Table) -> str:
     head = "".join(f"<th>{_esc(c)}</th>" for c in block.columns)
     rows = []
@@ -314,9 +324,12 @@ def _table(block: Table) -> str:
             style = f' style="background-color:#{TONE_FILL[tone]};color:#{text_on(TONE_FILL[tone])}"' if tone else ""
             cells.append(f"<td{style}>{_cell_images(cell) if isinstance(cell, ImageCell) else _rich(cell)}</td>")
         rows.append(f"<tr>{''.join(cells)}</tr>")
-    css = ' class="compact"' if block.compact else ""
+    classes = [*(["compact"] if block.compact else []), *(["fixed"] if block.widths else [])]
+    css = f' class="{" ".join(classes)}"' if classes else ""
     columns = ""
-    if block.weights:
+    if block.widths:
+        columns = "<colgroup>" + "".join(_column_width(w) for w in block.widths) + "</colgroup>"
+    elif block.weights:
         columns = "<colgroup>" + "".join(f'<col style="width:{w / sum(block.weights) * 100:.1f}%">' for w in block.weights) + "</colgroup>"
     # A browser repeats a `thead` on every printed page, so without one the heading is an ordinary first row.
     first = f"<thead><tr>{head}</tr></thead><tbody>" if block.repeat_header else f"<tbody><tr>{head}</tr>"

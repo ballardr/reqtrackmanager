@@ -25,6 +25,7 @@ from collections.abc import Iterator, Sequence
 from datetime import date, datetime
 
 from app.services.csv_safety import csv_safe
+from app.services.report_column_width import CM_PER_CHARACTER
 from app.services.report_model import CellLink, DataCell, LinkedText, Sheet, SheetCell
 from app.services.report_odf import (
     FONT_FACES,
@@ -39,7 +40,6 @@ from app.services.report_odf import (
 )
 
 _ROWS_PER_CHUNK = 500
-_CM_PER_CHARACTER = 0.19
 _SIZED_ROWS = 200
 
 
@@ -101,8 +101,11 @@ def _cell(value: SheetCell, max_chars: int, style: str = "", names: Sequence[str
 
 
 def _column_width_cm(sheet: Sheet, index: int) -> float:
+    forced = sheet.widths_cm[index] if sheet.widths_cm and index < len(sheet.widths_cm) else None
+    if forced is not None:
+        return forced
     widest = max([len(sheet.columns[index]), *(len(str(row[index])) for row in sheet.rows[:_SIZED_ROWS] if index < len(row))])
-    return min(max(widest + 2, 8), 60) * _CM_PER_CHARACTER
+    return min(max(widest + 2, 8), 60) * CM_PER_CHARACTER
 
 
 def _content(sheets: Sequence[Sheet], names: Sequence[str], max_chars: int) -> Iterator[str]:

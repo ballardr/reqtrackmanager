@@ -42,6 +42,7 @@ from reportlab.platypus import Table as RlTable
 from reportlab.platypus.flowables import ImageAndFlowables
 
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX
+from app.services.report_column_width import resolve_table_widths_cm
 from app.services.report_document import (
     STYLES,
     ReportBranding,
@@ -305,7 +306,9 @@ def _image_cell(cell: ImageCell, column_width: float, usable_height: float) -> l
 
 def _table(block: Table, accent, usable_width: float, usable_height: float, images: _InlineImages):
     """A block table as a styled ReportLab table (compact or plain grid)."""
-    if block.col_widths_cm:
+    if block.widths:
+        widths = [w * cm for w in resolve_table_widths_cm(block.widths, usable_width / cm, block.weights)]
+    elif block.col_widths_cm:
         widths = [w * cm for w in block.col_widths_cm]
     elif block.weights:
         widths = [usable_width * w / sum(block.weights) for w in block.weights]

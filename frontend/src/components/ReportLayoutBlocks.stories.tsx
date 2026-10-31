@@ -8,6 +8,7 @@ import {
   buildBlockCatalogue, buildFieldCatalogue, buildImageLibrary, buildLayoutApi, buildOutlineTree, buildWidgets,
 } from "../testing/reportLayoutFixtures";
 import { buildUser, withStatefulAuth } from "../testing/storybook-helpers";
+import { chooseSnippetMenuItem, snippetMenuItem } from "../testing/reportSnippetMenuHelpers";
 import { treeToWorkspaceState, workspaceStateToTree } from "../utils/reportLayoutBlockly";
 import type { Tree } from "../utils/reportLayoutTree";
 import { ReportLayoutBlocks } from "./ReportLayoutBlocks";
@@ -25,17 +26,23 @@ function Harness({ initial, problems = [], readOnly = false, family = "document"
 }) {
   const [tree, setTree] = useState(initial);
   const [notice, setNotice] = useState<string | null>(null);
+  const [inspectorHost, setInspectorHost] = useState<HTMLElement | null>(null);
+  const [inspected, setInspected] = useState(0);
   return (
     <>
       <ReportLayoutBlocks
         tree={tree} onChange={setTree} family={family} blocks={BLOCKS} catalogue={CATALOGUE}
         widgets={WIDGETS} problems={problems} readOnly={readOnly}
+        inspectorHost={inspectorHost} onInspect={() => setInspected((count) => count + 1)}
         images={withSnippets ? IMAGES : undefined}
         snippets={withSnippets ? {
           api: SNIPPET_API, onInserted: (n) => setNotice(`${n.name}: ${n.changes.join(" ")}`),
           onSave: (selection, label) => setNotice(`save ${JSON.stringify(selection)} ${label}`),
         } : undefined}
       />
+      {/* Where the designer's side panel would be: the selected block's form is drawn here. */}
+      <div ref={setInspectorHost} className="card" />
+      <pre data-testid="inspected" hidden>{inspected}</pre>
       <pre data-testid="tree" hidden>{JSON.stringify(tree)}</pre>
       <pre data-testid="notice" hidden>{notice}</pre>
     </>
@@ -65,19 +72,21 @@ async function workspaceOf(): Promise<Blockly.WorkspaceSvg> {
 /** The layout's blocks (the root excluded) of a type. */
 const blocksOf = (ws: Blockly.WorkspaceSvg, type: string) => ws.getAllBlocks(false).filter((b) => b.type === `rl_${type}`) as Blockly.BlockSvg[];
 
-export const DrawsEachBlockWithItsShortFieldsInline: Story = {
+export const DrawsEachBlockWithAReadOnlySummary: Story = {
   play: async () => {
     const ws = await workspaceOf();
     await waitFor(() => expect(ws.getAllBlocks(false).filter((b) => b.type !== "rl_root")).toHaveLength(4));
     const [first, second] = blocksOf(ws, "heading");
-    // The heading's text and level sit on the block.
-    await expect(first.getFieldValue("text")).toBe("Requirements of {{project_name}}");
-    await expect(first.getFieldValue("level")).toBe("1");
-    await expect(second.getFieldValue("level")).toBe("2");
-    // The For each holds the nested heading and table in its Contents list.
+    // The heading's words and level are only summarised on the block; the editor panel edits them.
+    await expect(first.getFieldValue("_summary")).toBe("level 1 · Requirements of {{project_name}}");
+    await expect(second.getFieldValue("_summary")).toContain("level 2");
+    await expect(first.getFieldValue("text")).toBeNull();
+    await expect(first.getFieldValue("level")).toBeNull();
+    // The For each holds the nested heading and table in its Contents list and names its alias in the summary.
     const each = blocksOf(ws, "each")[0];
     await expect(each.getInputTargetBlock("children")?.type).toBe("rl_heading");
-    await expect(each.getFieldValue("as")).toBe("req");
+    await expect(each.getFieldValue("_summary")).toContain("as req");
+    await expect(each.getFieldValue("as")).toBeNull();
   },
 };
 
@@ -99,15 +108,23 @@ export const TreeToBlocksAndBackIsTheIdentity: Story = {
   },
 };
 
-export const EditingABlockFieldChangesTheTree: Story = {
+/** Every value, including the short ones that used to sit on the block, is edited in the block editor and reaches the tree. */
+export const EditingABlockFieldInTheEditorChangesTheTree: Story = {
   play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
     const ws = await workspaceOf();
     const heading = blocksOf(ws, "heading")[0];
-    heading.setFieldValue("New title", "text");
+    Blockly.common.setSelected(heading);
+    const inspector = await canvas.findByTestId("block-inspector");
+    const box = await within(inspector).findByRole("textbox", { name: "Heading" });
+    await userEvent.clear(box);
+    await userEvent.type(box, "New title");
     await waitFor(() => expect(treeOf(canvasElement).nodes[0].text).toBe("New title"));
-    // "Not set" removes an optional key rather than storing an empty string.
-    heading.setFieldValue("", "level");
-    await waitFor(() => expect(treeOf(canvasElement).nodes[0]).not.toHaveProperty("level"));
+    await waitFor(() => expect(heading.getFieldValue("_summary")).toBe("level 1 · New title"));
+    const level = within(inspector).getByRole("spinbutton", { name: "Level" });
+    await userEvent.clear(level);
+    await userEvent.type(level, "3");
+    await waitFor(() => expect(treeOf(canvasElement).nodes[0].level).toBe(3));
   },
 };
 
@@ -326,7 +343,7 @@ export const ATableLayoutOffersOnlySheets: Story = {
 
 /** Opens Insert snippet, chooses a snippet and inserts it. */
 async function insertSnippet(canvasElement: HTMLElement, name: string, choose?: (d: ReturnType<typeof within>) => Promise<void>) {
-  await userEvent.click(await within(canvasElement).findByRole("button", { name: "Insert snippet" }));
+  await chooseSnippetMenuItem(canvasElement, "Insert snippet");
   const d = within(await screen.findByRole("dialog", { name: "Insert snippet" }));
   await userEvent.click(await d.findByRole("button", { name: `Select ${name}` }));
   await choose?.(d);
@@ -411,7 +428,7 @@ export const NoInsertSnippetWhenReadOnlyOrWithoutCalls: Story = {
   args: { withSnippets: true, readOnly: true },
   play: async ({ canvasElement }) => {
     await workspaceOf();
-    await expect(within(canvasElement).queryByRole("button", { name: "Insert snippet" })).not.toBeInTheDocument();
+    await expect(within(canvasElement).queryByRole("button", { name: "Snippets" })).not.toBeInTheDocument();
   },
 };
 
@@ -421,13 +438,14 @@ export const SaveAsSnippetNeedsASelectedBlockAndNamesIt: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const ws = await workspaceOf();
-    const button = await canvas.findByRole("button", { name: "Save as snippet" });
-    await expect(button).toBeDisabled();
-    await expect(button).toHaveAttribute("title", "Select a block first: it is saved with everything inside it.");
+    const disabled = await snippetMenuItem(canvasElement, "Save as snippet");
+    await expect(disabled).toBeDisabled();
+    await expect(disabled).toHaveAttribute("title", "Select a block first: it is saved with everything inside it.");
+    await userEvent.keyboard("{Escape}");
     const [, nested] = blocksOf(ws, "heading");
     Blockly.common.setSelected(nested);
-    await waitFor(() => expect(button).toBeEnabled());
-    await userEvent.click(button);
+    await canvas.findByTestId("block-inspector");
+    await chooseSnippetMenuItem(canvasElement, "Save as snippet");
     await waitFor(() => expect(canvas.getByTestId("notice")).toHaveTextContent('save {"container":"nodes[1].children","start":0,"count":1} Saving Heading'));
   },
 };
@@ -436,6 +454,51 @@ export const ASharedLayoutOffersNoSaveAsSnippet: Story = {
   args: { withSnippets: true, readOnly: true },
   play: async ({ canvasElement }) => {
     await workspaceOf();
-    await expect(within(canvasElement).queryByRole("button", { name: "Save as snippet" })).not.toBeInTheDocument();
+    await expect(within(canvasElement).queryByRole("button", { name: "Snippets" })).not.toBeInTheDocument();
+  },
+};
+
+/** The layout's own settings are not stacked above the blocks: they open in the block editor when the layout block is selected. */
+export const LayoutSettingsOpenFromTheLayoutBlock: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const ws = await workspaceOf();
+    await expect(canvas.queryByText("Layout settings")).not.toBeInTheDocument();
+    Blockly.common.setSelected(ws.getTopBlocks(false).find((b) => b.type === "rl_root") as Blockly.BlockSvg);
+    const inspector = await canvas.findByTestId("layout-inspector");
+    await userEvent.selectOptions(within(inspector).getByRole("combobox", { name: "Page orientation" }), "landscape");
+    await waitFor(() => expect(treeOf(canvasElement).orientation).toBe("landscape"));
+    // Selecting a block takes the inspector back to that block.
+    Blockly.common.setSelected(blocksOf(ws, "table")[0]);
+    await canvas.findByTestId("block-inspector");
+    await expect(canvas.queryByTestId("layout-inspector")).not.toBeInTheDocument();
+  },
+};
+
+/** The caller is told when the inspector has something new to show, so a tabbed panel can bring it forward. */
+export const SelectingABlockOrOpeningSettingsTellsTheCaller: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const ws = await workspaceOf();
+    const count = () => Number(canvas.getByTestId("inspected").textContent);
+    const before = count();
+    Blockly.common.setSelected(blocksOf(ws, "heading")[0]);
+    await waitFor(() => expect(count()).toBeGreaterThan(before));
+    const afterBlock = count();
+    Blockly.common.setSelected(ws.getTopBlocks(false).find((b) => b.type === "rl_root") as Blockly.BlockSvg);
+    await waitFor(() => expect(count()).toBeGreaterThan(afterBlock));
+  },
+};
+
+/** A problem with a layout setting is a warning on the layout block, and the settings list it against the setting. */
+export const AProblemInTheLayoutSettingsIsAWarningOnTheLayoutBlock: Story = {
+  args: { problems: [{ path: "variables[0].name", message: "Must be lower-case letters." }] },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const ws = await workspaceOf();
+    const root = ws.getTopBlocks(false).find((b) => b.type === "rl_root") as Blockly.BlockSvg;
+    await waitFor(() => expect(root.getIcon(Blockly.icons.IconType.WARNING)).toBeTruthy());
+    Blockly.common.setSelected(root);
+    await expect(await canvas.findByText("Must be lower-case letters.")).toBeVisible();
   },
 };

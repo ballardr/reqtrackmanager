@@ -5,28 +5,39 @@
  * schemas and the theme drawn from the app's colour tokens.
  *
  * Responsibilities:
- * - Register one Blockly block type per layout block type (`BlockType`): a label, its short fields inline with a
- *   small label each, and a statement input per child list. A module's block type therefore needs no code here.
+ * - Register one Blockly block type per layout block type (`BlockType`): a label, a read-only summary of its key
+ *   facts, and a statement input per child list. A module's block type therefore needs no code here.
  * - Register the fixed root block and the stand-in for a block type the catalogue does not describe.
  * - Build a Blockly theme from the CSS colour tokens, so the editor follows the light and dark themes.
  *
  * Design decisions: the whole of Blockly is imported here and nowhere else, and this module is only loaded by the
  * lazily loaded editor, so the library stays out of the main bundle. Block colours come from a small fixed set
  * (structure, data, content) rather than per-type colours, with a light and a dark value each, mirroring how a
- * module registers its own accent colour instead of a core map growing an entry. Field values travel as strings in
- * dropdowns; `reportLayoutBlockly` converts them.
+ * module registers its own accent colour instead of a core map growing an entry.
  */
 import * as Blockly from "blockly/core";
 import * as En from "blockly/msg/en";
 
-import type { BlockField, BlockType } from "../api/reportLayouts";
-import { ROOT_INPUT, ROOT_TYPE, SUMMARY_FIELD, UNKNOWN_TYPE, UNSET, blockName, dropdownValues, inlineFields, inspectorFields } from "./reportLayoutBlockly";
+import type { BlockType } from "../api/reportLayouts";
+import { ROOT_INPUT, ROOT_TYPE, SUMMARY_FIELD, UNKNOWN_TYPE, blockName } from "./reportLayoutBlockly";
 
 /** The text the editor puts on its blocks (the app's strings, passed in so this module holds none). */
 export interface BlockLabels {
   layout: string;
   unknownBlock: string;
+  /** The name of the settings button on the layout block. */
+  settings: string;
+  /** Called when the settings button is pressed (opens the layout's settings in the block editor). */
+  onSettings: () => void;
 }
+
+/** The settings button's picture: a gear, drawn in white because the layout block is a dark colour in both themes. */
+const GEAR_ICON =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+  );
 
 type BlockRole = "structure" | "data" | "content";
 
@@ -89,25 +100,6 @@ export function buildTheme(): Blockly.Theme {
   });
 }
 
-/** Draws one inline field's control and gives it the key as its name. */
-function controlFor(field: BlockField): Blockly.Field {
-  const options = dropdownValues(field);
-  if (field.kind === "boolean") return new Blockly.FieldCheckbox(false);
-  if (options) {
-    const labelled: [string, string][] = [[labelOf(field, UNSET), UNSET], ...options.map((o): [string, string] => [labelOf(field, o), o])];
-    return new Blockly.FieldDropdown(labelled);
-  }
-  const max = field.max_length;
-  // Blockly's text field has no length limit of its own: cut what is typed or pasted past the schema's limit.
-  return new Blockly.FieldTextInput("", max ? (value: string) => (value.length > max ? value.slice(0, max) : value) : undefined);
-}
-
-/** What a dropdown option reads as: the value itself, or "default" (with the default when known) for the unset one. */
-function labelOf(field: BlockField, value: string): string {
-  if (value !== UNSET) return value.charAt(0).toUpperCase() + value.slice(1);
-  return field.default !== null && field.default !== undefined ? `(${String(field.default)})` : "—";
-}
-
 /**
  * Registers every block type the editor draws. Safe to call again with a newer catalogue.
  *
@@ -121,7 +113,9 @@ export function registerBlocks(types: BlockType[], labels: BlockLabels): void {
   blocks[ROOT_TYPE] = {
     init(this: Blockly.Block) {
       this.setStyle("rl_structure");
-      this.appendDummyInput().appendField(new Blockly.FieldLabel(labels.layout));
+      this.appendDummyInput()
+        .appendField(new Blockly.FieldLabel(labels.layout))
+        .appendField(new Blockly.FieldImage(GEAR_ICON, 18, 18, labels.settings, () => labels.onSettings()));
       this.appendStatementInput(ROOT_INPUT);
       this.setDeletable(false);
       this.setMovable(false);
@@ -146,13 +140,8 @@ export function registerBlocks(types: BlockType[], labels: BlockLabels): void {
         this.setNextStatement(true);
         this.setTooltip(type.description || type.label);
         const head = this.appendDummyInput().appendField(new Blockly.FieldLabel(type.label, "rl-block-title"));
-        for (const field of inlineFields(type)) {
-          // A field named like its block ("Heading" on a Heading) needs no second label.
-          if (field.label.toLowerCase() !== type.label.toLowerCase()) head.appendField(new Blockly.FieldLabel(field.label, "rl-field-label"));
-          head.appendField(controlFor(field), field.key);
-        }
-        // What only the inspector edits (a record type, the start of a text) is shown as a read-only summary.
-        if (inspectorFields(type).length > 0) head.appendField(new Blockly.FieldLabelSerializable("", "rl-summary"), SUMMARY_FIELD);
+        // The block only reports its key facts; every value is edited in the block editor beside the workspace.
+        if (type.described && type.fields.length > 0) head.appendField(new Blockly.FieldLabelSerializable("", "rl-summary"), SUMMARY_FIELD);
         for (const container of type.containers) {
           this.appendStatementInput(container.key).appendField(container.label);
         }

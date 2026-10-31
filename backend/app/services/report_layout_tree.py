@@ -66,6 +66,7 @@ from app.modules.registry import (
     get_record_attachment_providers,
     get_report_field_providers,
 )
+from app.services.report_column_width import percent_total, width_problem
 from app.services.report_fields import FieldInfo, UnknownReportFieldError, field_catalogue
 from app.services.report_file_names import template_problems
 from app.services.report_layout_block_schema import BlockContainer, BlockField, BlockProvides, BlockSchema
@@ -830,7 +831,8 @@ class TreeValidator:
             if "images" in col:
                 self.image_column(col, here, record_type, aliases)
                 continue
-            self.check_keys(col, here, required=("field",), optional=("label", "from", "link") if aliases else ("label",))
+            self.check_keys(col, here, required=("field",), optional=("label", "from", "link", "width") if aliases else ("label", "width"))
+            self.column_width(col, here)
             owner = record_type
             if aliases and "from" in col:
                 if col["from"] not in aliases:
@@ -842,6 +844,17 @@ class TreeValidator:
                 self.text(col["label"], f"{here}.label", limit=200)
             if aliases and "link" in col:
                 self.sheet_link(col["link"], f"{here}.link", owner)
+        total = percent_total([c.get("width") for c in cols if isinstance(c, dict)])
+        if total > 100 and not any(width_problem(c.get("width")) for c in cols if isinstance(c, dict) and "width" in c):
+            self.error(path, f"The columns' percentage widths add up to {total:g}%; they must not exceed 100%.")
+
+    def column_width(self, col: dict[str, Any], path: str) -> None:
+        """Validates a column's forced `width`: a percentage of the table or a length (`30%`, `4 cm`, `40 mm`)."""
+        if "width" not in col:
+            return
+        problem = width_problem(col["width"])
+        if problem:
+            self.error(f"{path}.width", problem)
 
     def sheet_link(self, link: Any, path: str, owner: str) -> None:
         """Validates a column's `link`, `{sheet: <name>}`: the cell opens the row of its record on that sheet.
@@ -863,7 +876,8 @@ class TreeValidator:
         (a width, default 90 % of the column, and an optional height) and an arrangement. A name pattern may read the row's
         own record as `{{row.field}}`.
         """
-        self.check_keys(col, path, required=("images",), optional=("label", "from") if aliases else ("label",))
+        self.check_keys(col, path, required=("images",), optional=("label", "from", "width") if aliases else ("label", "width"))
+        self.column_width(col, path)
         owner = record_type
         if aliases and "from" in col:
             if col["from"] not in aliases:

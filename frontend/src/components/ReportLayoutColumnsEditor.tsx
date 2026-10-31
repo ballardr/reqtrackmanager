@@ -4,7 +4,7 @@
  * Edits the columns of a table or sheet block, and a sheet's joins.
  *
  * Responsibilities:
- * - Columns: an ordered list of `{field, label?, from?}`; the field is chosen from the fields of the block's
+ * - Columns: an ordered list of `{field, label?, from?, width?}`; the field is chosen from the fields of the block's
  *   record type, and in a sheet with joins a column also says which record it reads (`from`). An **images column**
  *   (`{images: {...}, label?, from?}`) shows the pictures attached to each row's record; its settings are the server's
  *   `image_column_fields`, drawn by the caller's `renderImageField` with the shared field forms.
@@ -29,6 +29,8 @@ interface Column {
   field?: string;
   label?: string;
   from?: string;
+  /** A forced width: a share of the table (`30%`) or a length (`4 cm`, `40 mm`); absent means automatic. */
+  width?: string;
   /** Opens the row of the cell's record on the named sheet (a sheet column only). */
   link?: { sheet: string };
   /** Set for an image column (the pictures attached to each row's record): the rules and the size, never with a field. */
@@ -68,7 +70,7 @@ export function ReportLayoutColumnsEditor({
 
   function patch(i: number, change: Partial<Column>) {
     const next = { ...value[i], ...change };
-    for (const key of ["label", "from"] as const) if (next[key] === "") delete next[key];
+    for (const key of ["label", "from", "width"] as const) if (next[key] === "") delete next[key];
     if (next.link?.sheet === "") delete next.link;
     onChange(value.map((c, j) => (j === i ? next : c)));
   }
@@ -114,6 +116,10 @@ export function ReportLayoutColumnsEditor({
                 label={text.columnLabel(i + 1)} value={column.label ?? ""} placeholder={text.imagesHeadingPlaceholder} disabled={disabled}
                 onChange={(label) => patch(i, { label })}
               />
+              <TextField
+                label={text.columnWidth(i + 1)} value={column.width ?? ""} placeholder={text.columnWidthPlaceholder} disabled={disabled}
+                help={strings.help.reportColumnWidth} onChange={(width) => patch(i, { width })}
+              />
               {renderImageField && imageFields.map((f) => renderImageField(f, rules, owner?.recordType ?? null, (key, setting) => setRule(i, key, setting)))}
               {actions}
             </fieldset>
@@ -134,6 +140,10 @@ export function ReportLayoutColumnsEditor({
             <TextField helpNotNeeded
               label={text.columnLabel(i + 1)} value={column.label ?? ""} placeholder={text.columnHeadingPlaceholder} disabled={disabled}
               onChange={(label) => patch(i, { label })}
+            />
+            <TextField
+              label={text.columnWidth(i + 1)} value={column.width ?? ""} placeholder={text.columnWidthPlaceholder} disabled={disabled}
+              help={strings.help.reportColumnWidth} onChange={(width) => patch(i, { width })}
             />
             {linkTargets(owner?.recordType, column.link?.sheet).length > 0 && (
               <LabeledSelect

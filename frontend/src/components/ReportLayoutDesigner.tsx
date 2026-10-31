@@ -14,9 +14,11 @@
  * - Check the text a moment after typing stops (`parseText`) and list every problem by line, each jumping to its
  *   line; Save is available only for text that parsed cleanly, and sends the parsed tree with the version the
  *   author started from, so a concurrent save is reported (409) instead of overwritten.
- * - Offer, beside the text editor, the live preview, the field picker and the widget picker, which insert at the
- *   caret; and, on a second tab, the version history and comparison. The block editor takes the full width: its
- *   preview opens in a dialog (Preview) or, when the person turns it on, as a panel beside the blocks (remembered).
+ * - Offer, in one right-hand panel (`DesignerSidePanel`) shared by both views, tabs for the live preview (also openable in
+ *   a dialog), and, in the Text view, the field picker and the widget picker, which insert at the caret, or, in the Blocks
+ *   view, the selected block's form (the block editor draws it into the panel). The panel collapses to a rail; the
+ *   collapsed state and the last tab of each view are remembered per person. The version history and comparison are a
+ *   second main tab.
  * - Insert a snippet (`ReportSnippetPicker`) from either view and report what the server did (`ReportSnippetNotice`). In
  *   the Blocks view the editor places the blocks itself (Ctrl+Z undoes them); in the Text view the draft is read as a
  *   layout, the server inserts the snippet at the start or end of it and the text is written again from the result,
@@ -52,6 +54,7 @@ import { selectionFromLines } from "../utils/reportSnippetSelection";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { Badge } from "./Badge";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { DesignerSidePanel } from "./DesignerSidePanel";
 import { Modal } from "./Modal";
 import { ReportDuplicateDialog } from "./ReportDuplicateDialog";
 import { ReportLayoutBlockToolbar } from "./ReportLayoutBlockToolbar";
@@ -62,6 +65,7 @@ import { ReportLayoutPageSetup } from "./ReportLayoutPageSetup";
 import { ReportLayoutPreviewPanel } from "./ReportLayoutPreviewPanel";
 import { ReportLayoutWidgetPicker } from "./ReportLayoutWidgetPicker";
 import { ReportSaveSnippetDialog } from "./ReportSaveSnippetDialog";
+import { ReportSnippetMenu } from "./ReportSnippetMenu";
 import { ReportSnippetNotice, type SnippetNoticeData } from "./ReportSnippetNotice";
 import { ReportSnippetPicker } from "./ReportSnippetPicker";
 import { RecordHeader } from "./RecordHeader";
@@ -81,7 +85,7 @@ const ReportLayoutBlocks = lazy(() => import("./ReportLayoutBlocks").then((m) =>
 type EditView = "text" | "blocks";
 /** The views that edit the tree itself (the text view edits text). */
 const isTreeView = (view: EditView) => view !== "text";
-type AsideTab = "preview" | "fields" | "widgets";
+type AsideTab = "block" | "preview" | "fields" | "widgets";
 type Dialog = "details" | "delete" | "reload" | "leave" | "preview" | "duplicate" | "snippet" | "save-snippet";
 
 /** The last snippet insertion, for the notice above the views; `afterText` is the text view's text it produced (Undo is offered while it still stands). */
@@ -157,7 +161,14 @@ export function ReportLayoutDesigner({
   const [viewNote, setViewNote] = useState<string | null>(null);
   const [toolsFailed, setToolsFailed] = useState(false);
   const [tab, setTab] = useState<MainTab>("design");
-  const [aside, setAside] = useState<AsideTab>("preview");
+  // The last tab of each view is remembered per person; a block being selected also brings the Block tab forward, which is not a choice to remember.
+  const [storedBlocksTab, setStoredBlocksTab] = useUiPreference<string>("report_designer_tab_blocks", "block");
+  const [storedTextTab, setStoredTextTab] = useUiPreference<string>("report_designer_tab_text", "preview");
+  const [blocksTab, setBlocksTab] = useState<AsideTab>(storedBlocksTab === "preview" ? "preview" : "block");
+  const [textTab, setTextTab] = useState<AsideTab>(storedTextTab === "fields" || storedTextTab === "widgets" ? storedTextTab : "preview");
+  const [panelFolded, setPanelFolded] = useUiPreference<boolean>("report_designer_panel_collapsed", false);
+  /** The element the block editor draws the selected block's form into (inside the panel's Block tab). */
+  const [inspectorHost, setInspectorHost] = useState<HTMLElement | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveProblems, setSaveProblems] = useState<string[]>([]);
   const [conflict, setConflict] = useState<number | null>(null);
@@ -168,8 +179,6 @@ export function ReportLayoutDesigner({
   const [snippetNotice, setSnippetNotice] = useState<SnippetNotice | null>(null);
   /** The selection the Save as snippet dialog saves. */
   const [toSave, setToSave] = useState<SnippetToSave | null>(null);
-  /** Whether the block editor shows the preview as a panel beside the blocks (otherwise only in the Preview dialog). */
-  const [previewBeside, setPreviewBeside] = useUiPreference<boolean>("report_layout_preview_beside", false);
   const editor = useRef<HTMLTextAreaElement>(null);
   const pendingCaret = useRef<number | null>(null);
   /** Whether the author has put the caret in the text; until then insertions go to the end, not the untouched start. */
@@ -471,25 +480,29 @@ export function ReportLayoutDesigner({
     navigate(reportLayoutPath(landed, done.new_id));
   }
 
-  const asideTabs: TabDef<AsideTab>[] = [
-    { key: "preview", label: text.previewTab },
-    ...(editable && view === "text" ? [{ key: "fields" as const, label: text.fieldsTab }, { key: "widgets" as const, label: text.widgetsTab }] : []),
-  ];
   const textTools = editable && view === "text";
   const treeEditing = isTreeView(view);
-  const showAside = !treeEditing || previewBeside;
+  const asideTabs: TabDef<AsideTab>[] = treeEditing
+    ? [{ key: "block", label: text.blockTab }, { key: "preview", label: text.previewTab }]
+    : [
+      { key: "preview", label: text.previewTab },
+      ...(textTools ? [{ key: "fields" as const, label: text.fieldsTab }, { key: "widgets" as const, label: text.widgetsTab }] : []),
+    ];
+  const wanted = treeEditing ? blocksTab : textTab;
+  const asideActive = asideTabs.some((tab) => tab.key === wanted) ? wanted : asideTabs[0].key;
+  function chooseAside(next: AsideTab) {
+    if (treeEditing) {
+      setBlocksTab(next);
+      setStoredBlocksTab(next);
+    } else {
+      setTextTab(next);
+      setStoredTextTab(next);
+    }
+  }
   const preview = (
     <ReportLayoutPreviewPanel
       api={api} text={draft} name={detail.name} disabled={!valid || (treeEditing && textFor !== blockTree)} projectOptions={projectOptions}
     />
-  );
-  const previewControls = (
-    <>
-      <button type="button" className="btn" onClick={() => setDialog("preview")}>{text.previewButton}</button>
-      <button type="button" className="btn" aria-pressed={previewBeside} onClick={() => setPreviewBeside(!previewBeside)}>
-        {text.previewPanelToggle}
-      </button>
-    </>
   );
 
   return (
@@ -540,7 +553,7 @@ export function ReportLayoutDesigner({
       {tab === "design" && (
         <div
           {...tabPanelProps("layout-designer", "design")}
-          className={`layout-designer${treeEditing ? (previewBeside ? " layout-designer--blocks-preview" : " layout-designer--blocks") : ""}`}
+          className={`layout-designer${treeEditing ? " layout-designer--blocks" : ""}${panelFolded ? " layout-designer--panel-folded" : ""}`}
         >
           <div className="stack">
             {!editable && (
@@ -574,16 +587,7 @@ export function ReportLayoutDesigner({
               {editable && (
                 <div className="row" style={{ alignItems: "center", gap: "var(--space-3)" }}>
                   <ReportLayoutBlockToolbar family={detail.family} onInsert={(snippet) => insert(snippet, true)} />
-                  {blockTypes && (
-                    <button type="button" className="btn" aria-haspopup="dialog" onClick={() => void openTextSnippets()}>
-                      {strings.reportSnippets.insertButton}
-                    </button>
-                  )}
-                  {blockTypes && (
-                    <button type="button" className="btn" aria-haspopup="dialog" onClick={() => void openTextSave()}>
-                      {strings.reportSnippets.saveFromText}
-                    </button>
-                  )}
+                  {blockTypes && <ReportSnippetMenu onInsert={() => void openTextSnippets()} onSave={() => void openTextSave()} />}
                   <ReportLayoutPageSetup
                     text={draft} onChange={setDraft} images={{ library: api.images, scope: api.scope.kind }}
                     placeholders={catalogue?.placeholders}
@@ -638,7 +642,8 @@ export function ReportLayoutDesigner({
                     <Suspense fallback={<Spinner />}>
                       <ReportLayoutBlocks
                         tree={blockTree} onChange={setBlockTree} family={detail.family} blocks={blockTypes} catalogue={catalogue}
-                        widgets={widgets} problems={blockProblems} readOnly={!editable} toolbarEnd={previewControls}
+                        widgets={widgets} problems={blockProblems} readOnly={!editable}
+                        inspectorHost={inspectorHost} onInspect={() => setBlocksTab("block")}
                         images={{ library: api.images, scope: api.scope.kind }}
                         snippets={{
                           api,
@@ -672,29 +677,39 @@ export function ReportLayoutDesigner({
             )}
           </div>
 
-          {showAside && (
-          <div className="stack" aria-label={text.asideLabel} role="region">
-            <Tabs<AsideTab> idPrefix="layout-designer-tools" tabs={asideTabs} active={textTools ? aside : "preview"} onChange={setAside} />
-            <div {...tabPanelProps("layout-designer-tools", "preview")} hidden={textTools && aside !== "preview"}>
-              {preview}
+          <DesignerSidePanel<AsideTab>
+            label={text.asideLabel} idPrefix="layout-designer-tools" tabs={asideTabs} active={asideActive} onChange={chooseAside}
+            collapsed={panelFolded} onCollapsedChange={setPanelFolded}
+          >
+            {treeEditing && (
+              <div {...tabPanelProps("layout-designer-tools", "block")} hidden={asideActive !== "block"}>
+                <div ref={setInspectorHost} />
+              </div>
+            )}
+            <div {...tabPanelProps("layout-designer-tools", "preview")} hidden={asideActive !== "preview"}>
+              <div className="stack">
+                <div className="row">
+                  <button type="button" className="btn" onClick={() => setDialog("preview")}>{text.previewInDialog}</button>
+                </div>
+                {preview}
+              </div>
             </div>
-            {textTools && toolsFailed && aside !== "preview" && <p className="text-muted" role="alert">{text.loadToolsFailed}</p>}
+            {textTools && toolsFailed && asideActive !== "preview" && <p className="text-muted" role="alert">{text.loadToolsFailed}</p>}
             {textTools && (
-              <div {...tabPanelProps("layout-designer-tools", "fields")} hidden={aside !== "fields"}>
+              <div {...tabPanelProps("layout-designer-tools", "fields")} hidden={asideActive !== "fields"}>
                 {catalogue ? (
                   <ReportLayoutFieldPicker catalogue={catalogue} aliases={aliases} onInsert={(snippet) => insert(snippet, false)} />
                 ) : !toolsFailed && <Spinner />}
               </div>
             )}
             {textTools && (
-              <div {...tabPanelProps("layout-designer-tools", "widgets")} hidden={aside !== "widgets"}>
+              <div {...tabPanelProps("layout-designer-tools", "widgets")} hidden={asideActive !== "widgets"}>
                 {widgets ? (
                   <ReportLayoutWidgetPicker widgets={widgets} onInsert={(line) => insert(line, true)} />
                 ) : !toolsFailed && <Spinner />}
               </div>
             )}
-          </div>
-          )}
+          </DesignerSidePanel>
         </div>
       )}
 

@@ -14428,3 +14428,59 @@ The Report snippets section (organisation Templates & reports, project Reports) 
 Not done, and flagged: the designer still has its own copy of the Blocks/Text switching logic (it also carries the preview, pickers and version history); the dialog does not share that code. Extracting a shared tree-editor hook from the designer is a larger refactor than this phase and is not scoped.
 
 Verification: backend tests (whole-tree replace, carried page styles, empty/unknown/other-kind refusals, inherited 403); stories for the dialog and the panel; Playwright spec creates a snippet from the panel, edits it through Text and inserts it into a layout. The SOC 2 policies are unaffected (no authorisation, secret, logging or retention change; same audit pattern).
+
+## Custom reports Phase 52: one Snippets menu and layout settings on the layout block (2026-10-31)
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Snippet buttons | Insert snippet and Save as snippet are one icon button, **Snippets**, opening an `ActionMenu` (`ReportSnippetMenu`), in both Blocks and Text. The two text buttons and the `saveFromText` string are gone. | User |
+| Reusable menu parts | `ActionMenu` gains an optional `icon` (its trigger was always the kebab) and `ActionMenuItem` an optional `disabled`; the Save item is disabled with the reason as its title when no block is selected (it was a disabled button with a title before). | Agent |
+| Layout settings | The stacked, collapsible "Layout settings" section is gone. The root Layout block has a gear (`FieldImage`) button, and selecting the Layout block (by the gear or by clicking it, which also works in a read-only layout, where Blockly does not make fields clickable) shows `ReportLayoutSettings` in the block editor panel. Selecting any other block returns to that block. | User |
+| Problems | A problem on a layout setting (or on no block) is a warning on the Layout block and is listed in the panel when it is open; previously the "not on a setting" ones sat permanently above the blocks. | Agent |
+| Text view | Unchanged: the layout directives and `ReportLayoutPageSetup`. | Agent |
+
+Verification: stories (menu, layout block selection and warning, designer menu flows), Playwright (designer, snippet specs updated to the menu). Front-end only; no authorisation, secret, logging or retention change, so the SOC 2 policies are unaffected.
+
+## Custom reports Phase 53: the Blocks view edits values in the block editor only (2026-11-01)
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Where a value is edited | Only in the block editor beside the canvas. Blocks carry no editable Blockly field; they show their type label and one read-only `_summary` line. | User |
+| Summary content | The start of the block's text (or its record type), a heading's level (`level 2`) and a "for each" alias (`as req`), joined with " · ". Generic over the schema (reads `level` and `as`, never a block type), so a module's block gets the same line. | Agent |
+| Removed | `isInline`, `inlineFields`, `inspectorFields`, `controlValue`, the dropdown/checkbox/text controls and the inline write-back in `blockStateToNode`. A block's `data` (the node minus child lists) is now the only thing read back, so opening a layout cannot rewrite a value. | Agent |
+| Server schema | No per-field `inline` flag existed in the block schemas (the split was a client heuristic on field kind), so nothing is deleted server-side. | Agent |
+| Text view | Unchanged. | Agent |
+
+Verification: stories (summary, edit through the editor, designer flows that edited a Blockly field now edit in the editor), Playwright block-editor specs (no `.blocklyEditableField` on the canvas). Front-end only; the SOC 2 policies are unaffected.
+
+
+## Custom reports Phase 54: one tabbed, collapsible right-hand panel in the designer (2026-11-01)
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Shape | One shared `DesignerSidePanel` for both views: Text has Preview, Fields, Widgets; Blocks has Block and Preview. It folds to a rail with `DetailLayout`'s toggle and icons, and keeps its panels mounted when hidden (a preview result and the block form survive a tab switch). | User (mock) |
+| Block tab label | **Block**, not "Block editor" or the mock's "Blocks": the Blocks view tab and the canvas region are already called that. | Agent |
+| Remembering | The fold and each view's last tab are kept per person with `useUiPreference` (the server-side bag `DetailLayout` uses), not `localStorage`. It follows the person across devices, is the repo's one mechanism for display preferences, and replaces the old `report_layout_preview_beside` preference. A block being selected brings the Block tab forward without overwriting the remembered tab. | Agent |
+| How the block form reaches the panel | `ReportLayoutBlocks` draws its inspector into an `inspectorHost` element the caller owns (a portal) and calls `onInspect` when a block is selected or the layout's settings open. The designer's host is in the Block tab; the snippet editor dialog, which has no side panel, gives a host under the canvas. The old inline `blocks-layout` grid is removed. | Agent |
+| Preview | The Preview toolbar button and the "Preview panel" toggle are gone; **Open in dialog** is on the Preview tab in both views. The preview only runs on demand, so leaving the tab has nothing to cancel; the panel stays mounted so the last result remains. | Agent |
+| Narrow widths | Below 1100px the panel stacks under the editor as a full-width card with no fold button. | Agent |
+
+Also fixed: `ReportFolderField.stories.tsx` used a raw `1rem` that `check_spacing_tokens.py` flagged (now `var(--space-5)`).
+
+Verification: `DesignerSidePanel` stories (tabs, state kept, fold), designer and block-editor stories (Block/Preview tabs, selection brings Block forward, fold shared by both views, `onInspect`), Playwright (panel tabs, fold and remembered tab across a reload; the preview specs open the dialog through the Preview tab). Front-end only; the SOC 2 policies are unaffected.
+
+## Custom reports Phase 55: forced table column widths (2026-11-01)
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Units | A column's `width` is a percentage of the table (`30%`), a length (`4 cm`, `40 mm`) or absent (auto). Percent is the primary unit because it survives a change of page size or orientation. | User |
+| Where it is resolved | One module, `services/report_column_width.py`, gives every renderer the same rule: fixed columns take their width, auto columns share the rest (by weight where the table has weights, such as an images column), then the row is scaled to the table's width. A `Table` carries the raw `widths`; each renderer resolves them against its own usable width. A table with no width is unchanged. | Agent |
+| Fixed means fixed | Word already sets `tblLayout fixed` and the grid; ODT writes column styles; PDF gives `colWidths`; HTML gets a `<colgroup>` and `table.fixed { table-layout: fixed }` (cells already break long words). No column is laid out narrower than 8 mm (`MIN_COLUMN_CM`): a 1 % column on a page crashed ReportLab (negative cell width) until the floor was added; that is the stated limit for a column too narrow for a word, which then breaks inside it. | Agent |
+| Validation | Each width must parse and be 1-100 % or 5 mm-100 cm. Percentages summing over 100 are one error on the `columns` path. Lengths summing past the page are allowed (scaled down at render time, because the page is not known to the tree). | Agent |
+| Repeated tables | The width belongs to the block's column, so every table a block produces (one per component) has the same widths. | User |
+| Text view | `@column code "ID" width 12%`, `width 4 cm`, `width auto` (reads as no width). `@images` writes `colwidth` because its `width` already means the picture's; the tree key is `width` in both. The written form is canonical (`12%`, `4 cm`) so a layout round-trips exactly. No drag handle is built. | Agent |
+| Sheets | A sheet has no page, so a length is the column's width, a percentage is of a nominal 25 cm sheet, and auto keeps the content-sized width (XLSX and ODS; CSV ignores it). A fan-out run keeps the widths and gives the added Project column none. | Agent |
+| Starters | `report_starter_blocks.fixed_columns` gives a starter table its usual widths by field key (`USUAL_WIDTHS`: code 12 %, status 10 %, description 30 %, ...), so the Business Requirements Document, Engineering Specification, Requirements by Component and every module's starter section print steady columns. Copies already in an organisation are ordinary layouts and are not rewritten; the setup list's Add missing starters never overwrites them. | Agent |
+| Requirement-document tables with `col_widths_cm` | The built-in report tables that already pass `col_widths_cm` are unchanged (`widths` takes precedence only when set). | Agent |
+
+Verification: `test_report_column_width.py` (grammar, resolver and floor, tree check, text round trip and errors, identical columns across two tables of different content in PDF/Word/ODT/HTML, XLSX/ODS widths, a run over real records, every starter table), the columns editor story, Playwright (`report-column-widths.spec.ts`: set a width in the designer, text view and preview; the Engineering Specification prints identical colgroups for two components). Front-end change is one field per column (`help` text), no new endpoint; the SOC 2 policies are unaffected.

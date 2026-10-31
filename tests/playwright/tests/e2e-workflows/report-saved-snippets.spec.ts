@@ -72,11 +72,14 @@ test.describe("Saved report snippets", () => {
       await page.getByRole("button", { name: "Add block" }).click();
       await page.getByRole("menuitem", { name: "Heading 1" }).click();
       await page.getByLabel("Block details").getByRole("textbox", { name: "Heading", exact: true }).fill("House style heading");
-      await expect(page.getByRole("button", { name: "Save as snippet" })).toBeEnabled();
+      await page.getByRole("button", { name: "Snippets" }).click();
+      await expect(page.getByRole("menuitem", { name: "Save as snippet" })).toBeEnabled();
+      await page.keyboard.press("Escape");
     });
 
     await test.step("the dialog saves it for the project", async () => {
-      await page.getByRole("button", { name: "Save as snippet" }).click();
+      await page.getByRole("button", { name: "Snippets" }).click();
+      await page.getByRole("menuitem", { name: "Save as snippet" }).click();
       const dialog = saveDialog(page);
       await expect(dialog.getByText("Saves 1 block.")).toBeVisible();
       await expect(dialog.getByRole("button", { name: "Save snippet" })).toBeDisabled();
@@ -91,7 +94,8 @@ test.describe("Saved report snippets", () => {
     await test.step("another layout's Insert snippet lists it, says where it comes from and inserts it", async () => {
       await newLayout(page, project.id, `E2E saved target ${suffix}`);
       await page.getByRole("tab", { name: "Blocks" }).click();
-      await page.getByRole("button", { name: "Insert snippet" }).click();
+      await page.getByRole("button", { name: "Snippets" }).click();
+      await page.getByRole("menuitem", { name: "Insert snippet" }).click();
       const dialog = picker(page);
       const row = dialog.getByRole("button", { name: `Select ${snippetName}` });
       await expect(row).toContainText("Saved · This project");
@@ -121,14 +125,16 @@ test.describe("Saved report snippets", () => {
 
     await test.step("a caret on the layout line is in no block", async () => {
       await editor.evaluate((el: HTMLTextAreaElement) => { el.focus(); el.setSelectionRange(2, 2); });
-      await page.getByRole("button", { name: "Save as snippet" }).click();
+      await page.getByRole("button", { name: "Snippets" }).click();
+      await page.getByRole("menuitem", { name: "Save as snippet" }).click();
       await expect(page.getByText("Put the caret in a block, or select blocks, to save them as a snippet.")).toBeVisible();
       await expect(saveDialog(page)).toHaveCount(0);
     });
 
     await test.step("a selection across both blocks saves both", async () => {
       await editor.evaluate((el: HTMLTextAreaElement) => { el.focus(); el.setSelectionRange(el.value.indexOf("First"), el.value.length - 2); });
-      await page.getByRole("button", { name: "Save as snippet" }).click();
+      await page.getByRole("button", { name: "Snippets" }).click();
+      await page.getByRole("menuitem", { name: "Save as snippet" }).click();
       const dialog = saveDialog(page);
       await expect(dialog.getByText("Saving 2 blocks (and everything inside them).")).toBeVisible();
       await expect(dialog.getByText("Saves 2 blocks.")).toBeVisible();
@@ -259,7 +265,8 @@ test.describe("Saved report snippets", () => {
     await test.step("a layout inserts the edited snippet", async () => {
       await newLayout(page, project.id, `E2E panel target ${suffix}`);
       await page.getByRole("tab", { name: "Blocks" }).click();
-      await page.getByRole("button", { name: "Insert snippet" }).click();
+      await page.getByRole("button", { name: "Snippets" }).click();
+      await page.getByRole("menuitem", { name: "Insert snippet" }).click();
       const dialog = picker(page);
       await dialog.getByRole("button", { name: `Select ${name}` }).click();
       await expect(dialog.getByRole("list", { name: `Blocks in ${name}` })).toContainText("Edited in setup");

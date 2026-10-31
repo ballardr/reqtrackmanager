@@ -1364,6 +1364,12 @@ flowchart LR
   the designer (manage permission, nothing stored, the text never logged). `parse_text(format_tree(t))` returns `t`
   exactly for every valid tree, so editing as text and saving unchanged makes no new version. A syntax error gives a
   line and column and no tree; otherwise the validator runs and each of its errors is reported at its block's line.
+- **Column widths.** A table or sheet column may carry `width` (`30%`, `4 cm`, `40 mm`; absent is automatic), resolved by
+  `services/report_column_width.py` for every renderer: `Table.widths` (fixed layout in PDF `colWidths`, Word `tblLayout fixed` and
+  grid, ODT column styles, HTML `<colgroup>` with `table-layout: fixed`) and `Sheet.widths_cm` (XLSX/ODS; CSV ignores it).
+  Auto columns share what the fixed ones leave; no column is laid out narrower than 8 mm. The text view writes `width 12%` after
+  a `@column` heading (`colwidth` on `@images`). Starter tables take their usual widths from `USUAL_WIDTHS`
+  (`services/report_starter_blocks.py`).
 
 ```mermaid
 flowchart LR

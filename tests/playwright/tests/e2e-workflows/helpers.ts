@@ -737,3 +737,22 @@ export async function saveNewVersion(page: Page, note?: string): Promise<void> {
   if (note !== undefined) await popover.getByRole("textbox", { name: "Note on this change" }).fill(note);
   await popover.getByRole("button", { name: "Save", exact: true }).click();
 }
+
+/**
+ * Opens the report designer's preview in its dialog: the Preview tab of the right-hand panel, then Open in dialog.
+ * Works from either view (the panel is the same).
+ */
+export async function openDesignerPreviewDialog(page: Page): Promise<void> {
+  await page.getByRole("tab", { name: "Preview", exact: true }).click();
+  await page.getByRole("button", { name: "Open in dialog" }).click();
+}
+
+/**
+ * Closes the designer's preview dialog and, in the Blocks view, brings the Block tab of the right-hand panel back (opening
+ * the Preview tab to reach the dialog left it showing).
+ */
+export async function closeDesignerPreviewDialog(page: Page): Promise<void> {
+  await page.getByRole("dialog", { name: "Report preview" }).getByRole("button", { name: "Close" }).click();
+  const block = page.getByRole("complementary", { name: "Designer tools" }).getByRole("tab", { name: "Block", exact: true });
+  if (await block.count() > 0) await block.click();
+}

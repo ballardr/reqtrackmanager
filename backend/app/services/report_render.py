@@ -51,6 +51,7 @@ from openpyxl.worksheet.hyperlink import Hyperlink
 
 from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE
 from app.services.csv_safety import csv_safe
+from app.services.report_column_width import CM_PER_CHARACTER
 from app.services.report_docx import render_docx_document
 from app.services.report_html import render_html_document
 from app.services.report_model import CellLink, DataCell, LinkedText, ReportDocument, Sheet, SheetCell
@@ -237,6 +238,10 @@ def render_xlsx(source: RenderInput) -> RenderedFile:
         ws = workbook.create_sheet(title=name)
         ws.freeze_panes = "A2"
         for index, column in enumerate(sheet.columns, start=1):
+            forced = sheet.widths_cm[index - 1] if sheet.widths_cm and index - 1 < len(sheet.widths_cm) else None
+            if forced is not None:
+                ws.column_dimensions[get_column_letter(index)].width = forced / CM_PER_CHARACTER
+                continue
             widest = max([len(column), *(len(str(row[index - 1])) for row in sheet.rows[:200] if index - 1 < len(row))])
             ws.column_dimensions[get_column_letter(index)].width = min(max(widest + 2, 8), 60)
         ws.append([_text_cell(ws, c, bold=True) for c in sheet.columns])

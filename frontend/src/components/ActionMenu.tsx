@@ -57,6 +57,8 @@ export interface ActionMenuItem {
   /** Decorative icon shown before `label` — not repeated in the accessible name. */
   icon?: ReactNode;
   onSelect: () => void;
+  /** Greys the item out and ignores a click; `title` should say why. */
+  disabled?: boolean;
   /** Marks a destructive action (Archive, Delete permanently) with the danger outline. */
   danger?: boolean;
   /** Stable identity when `label` isn't a plain string; defaults to the
@@ -103,18 +105,23 @@ const itemKeyOf = (item: ActionMenuItem, index: number): string =>
  * @param items - The menu's rows, in display order.
  * @param disabled - Disables the trigger itself (e.g. while one of the
  *   menu's own actions, such as an export, is already in flight).
+ * @param footer - Muted text under the items.
+ * @param icon - The trigger's picture in place of the kebab.
  */
 export function ActionMenu({
   triggerLabel,
   items,
   disabled,
   footer,
+  icon,
 }: {
   triggerLabel: string;
   items: ActionMenuItem[];
   disabled?: boolean;
   /** Muted text under the items (a note that applies to the whole menu). */
   footer?: ReactNode;
+  /** The trigger's picture when the menu is about one thing (Snippets) and not "more actions"; the kebab when omitted. */
+  icon?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -132,7 +139,7 @@ export function ActionMenu({
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
       >
-        <MoreVertical />
+        {icon ?? <MoreVertical />}
       </button>
       {open && (
         <Popover anchorRef={triggerRef} fit title={triggerLabel} onClose={() => setOpen(false)}>
@@ -255,6 +262,7 @@ export function ActionMenuList({
                 role="menuitem"
                 className={item.danger ? "btn btn-danger menu-item" : "btn menu-item"}
                 title={item.title}
+                disabled={item.disabled}
                 onMouseEnter={() => hoverRow(null)}
                 onClick={() => {
                   onSelect();

@@ -3,7 +3,7 @@ import zlib from "node:zlib";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, openSetupReport, PASSWORD, saveNewVersion, selectProjectAdminGroup } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreviewDialog, openSetupReport, PASSWORD, saveNewVersion, selectProjectAdminGroup } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -113,7 +113,7 @@ test.describe("Report image columns", () => {
     });
 
     await test.step("the preview draws each row's matching pictures in its own cell", async () => {
-      await page.getByRole("button", { name: "Preview", exact: true }).click();
+      await openDesignerPreviewDialog(page);
       const dialog = page.getByRole("dialog", { name: "Report preview" });
       await dialog.getByRole("button", { name: "Run preview" }).click();
       const frame = dialog.frameLocator('iframe[title="Report preview"]');

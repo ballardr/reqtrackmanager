@@ -91,6 +91,7 @@ export function ReportSnippetEditorDialog({
   const [loadFailed, setLoadFailed] = useState(false);
   const [tree, setTree] = useState<Tree | null>(null);
   const [view, setView] = useState<EditorView>("blocks");
+  const [inspectorHost, setInspectorHost] = useState<HTMLElement | null>(null);
   const [draft, setDraft] = useState("");
   const [parsed, setParsed] = useState<{ text: string; result: TextParseResult | null } | null>(null);
   const [problems, setProblems] = useState<TreeProblem[]>([]);
@@ -255,8 +256,11 @@ export function ReportSnippetEditorDialog({
                   <ReportLayoutBlocks
                     tree={tree} onChange={setTree} family={snippet?.family ?? family} blocks={tools.blocks} catalogue={tools.catalogue}
                     widgets={tools.widgets} problems={problems} images={{ library: layoutApi.images, scope: layoutApi.scope.kind }}
+                    inspectorHost={inspectorHost}
                   />
                 </Suspense>
+                {/* The selected block's form: a dialog has no side panel, so it sits under the canvas. */}
+                <div ref={setInspectorHost} className="card" />
                 {problems.length > 0 && <strong>{strings.reportOutline.outlineProblemsTitle(problems.length)}</strong>}
               </div>
             )}

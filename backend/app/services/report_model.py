@@ -74,6 +74,7 @@ from urllib.parse import urlsplit
 from markdown_it import MarkdownIt
 
 from app.services.branding import contrast_text_hex
+from app.services.report_column_width import resolve_table_widths_cm
 
 if TYPE_CHECKING:
     from app.services.report_document import ReportBranding
@@ -426,6 +427,9 @@ class Table:
         weights: Relative column widths for a table that gave no `col_widths_cm`, one per column (a table with an image
             column gives it a larger share than an id); `None` for the renderer's own sizing.
         repeat_header: Whether the header row is printed again at the top of every page the table runs onto.
+        widths: The author's forced width per column (`30%`, `4 cm`, `40 mm`, or `None` for auto), or `None` when no column
+            has one. Takes precedence over `col_widths_cm` and `weights`: every renderer then lays the table out with
+            fixed columns (`services.report_column_width.resolve_table_widths_cm`).
     """
 
     columns: list[str]
@@ -435,6 +439,14 @@ class Table:
     tones: list[list[str | None]] | None = None
     weights: list[float] | None = None
     repeat_header: bool = True
+    widths: list[str | None] | None = None
+
+    def relative_widths(self, usable_cm: float) -> list[float]:
+        """The column widths a word-processor renderer scales to the page: the forced widths resolved against `usable_cm`,
+        else `col_widths_cm`, else `weights`, else equal."""
+        if self.widths:
+            return resolve_table_widths_cm(self.widths, usable_cm, self.weights)
+        return self.col_widths_cm or self.weights or [1.0] * len(self.columns)
 
     def tone_at(self, row: int, column: int) -> str | None:
         """The known tone of a body cell, or `None` (no tones, out of range, or an unknown name)."""
@@ -601,12 +613,15 @@ class Sheet:
         rows: Body rows of cells: text (a spreadsheet renderer guards formula injection), a typed `DataCell`, or a
             `LinkedText`.
         contents: Whether this is the workbook's generated contents sheet (a fan-out run rebuilds it rather than merging it).
+        widths_cm: The forced width of each column in cm (`None` = sized from its content), or `None` when no column has one.
+            A spreadsheet renderer uses it; CSV ignores it.
     """
 
     name: str
     columns: list[str]
     rows: Sequence[Sequence[SheetCell]]
     contents: bool = False
+    widths_cm: list[float | None] | None = None
 
 
 #: Page sizes a document can ask for, as (short side, long side) in cm.

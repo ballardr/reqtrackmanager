@@ -10,7 +10,7 @@ import { ReportFolderField } from "./ReportFolderField";
 function Host({ initial = "", api, onChanged }: { initial?: string; api: ReportFolderApi; onChanged?: () => void }) {
   const [value, setValue] = useState(initial);
   return (
-    <div style={{ width: "22rem", padding: "1rem" }}>
+    <div style={{ width: "22rem", padding: "var(--space-5)" }}>
       <ReportFolderField value={value} onChange={setValue} api={api} onChanged={onChanged} />
       <output aria-label="Value">{value}</output>
     </div>

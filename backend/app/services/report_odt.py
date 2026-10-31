@@ -468,7 +468,7 @@ class _Body:
         self._tables += 1
         name = f"Tbl{self._tables}"
         count = len(block.columns)
-        widths = block.col_widths_cm or block.weights or [1.0] * count
+        widths = block.relative_widths(self.usable_cm)
         scale = self.usable_cm / sum(widths)
         suffix = "_c" if block.compact else ""
         self.styles.append(
