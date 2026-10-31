@@ -14,7 +14,7 @@ set -e
 export PROMETHEUS_MULTIPROC_DIR="${PROMETHEUS_MULTIPROC_DIR:-/tmp/prometheus-multiproc}"
 rm -rf "$PROMETHEUS_MULTIPROC_DIR"
 mkdir -p "$PROMETHEUS_MULTIPROC_DIR"
-# Warn when the container's memory limit (cgroup v2, else v1) cannot hold the workers: about 1.2 GiB each (the heaviest request a worker has served stays in it) plus the
+# Warn when the container's memory limit (cgroup v2, else v1) cannot hold the workers: about 0.8 GiB each (the heaviest request a worker has served stays in it) plus the
 # parent (docs/deployment.md, "Sizing and memory limits"). The kernel would OOM-kill the backend under load, not at start.
 workers="${BACKEND_WORKERS:-4}"
 limit=""
@@ -24,7 +24,7 @@ done
 case "$limit" in
     ''|*[!0-9]*) ;;  # no limit ("max") or unreadable
     *)
-        needed=$(( workers * 1200 + 100 ))
+        needed=$(( workers * 800 + 100 ))
         if [ $(( limit / 1048576 )) -lt "$needed" ]; then
             echo "WARNING: the memory limit is $(( limit / 1048576 )) MiB but $workers workers need about $needed MiB; lower BACKEND_WORKERS or raise BACKEND_MEM_LIMIT" >&2
         fi

@@ -36,41 +36,43 @@ flowchart LR
   (4-8 s at 20,000), CSV export (3.5 s), PDF report (39 s), project export (12 s) and project import (115 s Linux,
   186 s Dell at the run's commit; faster after F8, not re-measured).
 
-## Sizing: memory per service (full runs, 4 workers, commits 38efb504 and 874d93b9, 2026-10-28)
+## Sizing: memory per service (Linux server, full mix, 4 and 6 workers, commit f93d8abb, 2026-10-29)
 
 Memory is what the stack needs on a host and what `docker-compose.yml` caps ([deployment.md](deployment.md#sizing-and-memory-limits)). Peaks are the
-largest `docker stats` sample of any scenario at that tier in one run of every scenario in order, with a 30-minute soak per tier
-(Linux server: capped at 4.5 GiB for the backend; Dell workstation: 15.7 GiB cap, so it shows what the workers want when nothing stops them).
+largest `docker stats` sample of any scenario at that tier, from one run of every scenario in order (22 scenarios, 3 repeats) with a 30-minute soak
+per tier, at 4 and at 6 workers (a worker sweep: one database pool of 4 + 10 for both). The backend's cap was 9.5 GiB, the database's 4 GiB.
+Per worker is the largest private memory of any worker after any scenario.
 
-| Service | Idle | T0-T1 (30-100 requirements) | T2 (1,000) | T3 (5,000) | T4 (20,000) | Default limit |
-|---------|------|-----------------------------|------------|------------|-------------|---------------|
-| Backend, 4 workers (Linux / Dell) | 1.7 GiB | 3.1-4.0 / 2.7-2.8 GiB | 4.4 / 4.6 GiB | 4.5 (at its cap) / 8.3 GiB | 4.5 (at its cap) / 11.4 GiB | 5 GiB |
-| Database | | 0.4 GiB | 0.8 GiB | 0.8-0.9 GiB | 1.1 / 3.0 GiB | 2 GiB |
-| Object storage | | up to 0.6 GiB | 0.4-0.45 GiB | 0.3 GiB | 0.1-0.17 GiB | 1 GiB |
+| Service | Idle | T0 (30 requirements) | T1 (100) | T2 (1,000) | T3 (5,000) | T4 (20,000) | Default limit |
+|---------|------|----------------------|----------|------------|------------|-------------|---------------|
+| Backend, 4 workers | 1.7 GiB | 2.2 GiB | 2.6 | 3.2 | 5.0 | 9.5 (at its cap) | 5 GiB |
+| Backend, 6 workers | 2.5 GiB | 3.3 | 3.3 | 4.2 | 6.6 | 9.5 (at its cap) | 5 GiB |
+| One worker, largest (4 / 6 workers) | 0.42 GiB | 0.60 / 0.61 | 0.67 / 0.61 | 0.91 / 0.84 | 1.50 / 1.32 | 2.4 / 3.2 | |
+| Database (4 / 6 workers) | | 0.35 / 0.39 GiB | 0.40 / 0.42 | 0.73 / 0.93 | 0.86 / 0.88 | 2.7 / 2.1 | 3 GiB |
+| Object storage (4 / 6 workers) | | 0.85 / 0.86 GiB | 0.85 / 0.86 | 0.77 / 0.74 | 0.53 / 0.69 | 0.26 / 0.39 | 2 GiB |
 
-- **A worker's memory is a high-water mark, not a per-request cost.** A worker starts at 0.42 GiB, sits at 0.45-0.55 GiB while it
-  only reads, and does not give memory back after a heavy request: it stays at the largest request it has ever served. After one
-  organisation bundle export a T0 worker holds 0.8-0.9 GiB and a T2 worker 1.1-1.6 GiB; at T3 a record-import preview takes a
-  worker to **2.3 GiB** and a report to 1.1-2.4 GiB; at T4 workers reach 2-3 GiB. The backend therefore needs **workers x the
-  high-water of the heaviest request a worker will serve**, because every worker eventually serves one. The earlier model
-  (0.55 GiB per worker plus 0.5 GiB per concurrent heavy request) described the first heavy request only and understated the
-  steady state by 2x or more (O22).
-- **The Linux server's backend sat at its 4.5 GiB cap at T3 and T4 and probably had workers killed** (inferred; the bundle has no
-  OOM counter): `bundle_import` failed 53 of 53 at T3 within 4 ms, as a restarting backend would, and a worker's private memory
-  fell to 0.41 GiB at T4. The Dell shows the same requests needing 8.3 GiB (T3) and 11.4 GiB (T4) with room to grow.
-- **No leak in the soak** at T0-T2 (trend flat). The soak's backend memory is whatever the earlier scenarios already ratcheted to.
-- **Six workers** under the mixed capacity load (ten projects, T2): backend 2.7-3.1 GiB, database 0.97-1.06 GiB (default
-  `shared_buffers`). With the recommended `shared_buffers` 512 MB and `work_mem` 16 MB at T3 the database reached **1.7 GiB (Linux) and
-  2.7 GiB (Dell)**, over the default 2 GiB limit: raise `DB_MEM_LIMIT` when you raise those settings.
-- **Object storage** peaked at 0.54-0.6 GiB with the attachment scenario (the earlier 143 MiB was measured while about half the
-  uploads were refused, see F21), touching the 544 MiB cap on the Linux run.
-- **Raspberry Pi 5, one worker** (2.7 GiB budget): backend 0.58 GiB (T0), 0.63 (T2), 0.79 (T3), 1.38 (T4); database 0.12-0.46 GiB. The
-  Pi did not run the heavy scenarios (reports, bundles), whose high-water would add to these.
-- **Not measured:** frontend and MCP server are not part of the perf stack; their limits come from a one-off idle `docker stats`
-  (about 11 and 57 MiB) with generous headroom. Boards under 8 GiB, and four workers on a Pi, are unmeasured.
-- **Re-measure** with `perf/run_baseline.sh` (its third run is the memory and scaling baseline) and compare with
-  `perf/compare.py`; when a number here moves, change the default limits in `docker-compose.yml` and the table in
-  [deployment.md](deployment.md#sizing-and-memory-limits) in the same change.
+- **A worker's memory is a high-water mark, not a per-request cost.** A worker starts at 0.42 GiB and does not give memory back after a heavy
+  request: it stays at the largest request it has served (O22). The backend therefore needs about **workers x the high-water of the heaviest
+  request a worker will serve**: 0.8 GiB at 1,000 requirements, 1.3 GiB at 5,000 and 2.4-3.2 GiB or more at 20,000, plus the parent process.
+  The totals above fit it: 4 workers 3.2 / 5.0 GiB at T2 / T3, 6 workers 4.2 / 6.6.
+- **The backend hit its 9.5 GiB cap at T4 with both worker counts**, so 9.5 is a floor for 20,000 requirements, not the need. Failures were
+  only there: both organisation exports failed twice at T4, and at 6 workers one project import (the container was at its cap).
+  At T0-T3 no request failed.
+- **No leak:** the backend's trend over the 30-minute soak was falling or flat at every tier and both worker counts (T0-T3 -90 to -640 MiB per hour
+  as earlier scenarios' memory was reused; T4 +12 MiB per hour at 6 workers, inside noise).
+- **Against the previous full run (4 workers, 4.5 GiB cap, commit 38efb504):** T2 backend peak 4.4 to 3.2 GiB, a T2 worker 1.67 to 0.91 GiB, a T3 worker 2.33 to
+  1.50 GiB. The record export and import batching (F22) and the streaming exports (F23) account for it. The reports (T3 worker 1.1 GiB, set by the first
+  heavy scenario) were not the largest cause by this run.
+- **Object storage peaked at 0.85 GiB at T0 and T1** under sustained attachment uploads, and the database at **2.7 GiB at T4** at the default
+  `shared_buffers`, so the defaults of 1 GiB and 2 GiB were too small and are now 2 GiB and 3 GiB. With the recommended `shared_buffers` 512 MB and `work_mem`
+  16 MB the database needs more again (1.7-2.7 GiB at T3 in the capacity runs).
+- **Six workers under the mixed capacity load** (ten projects, T2): backend 2.7-3.1 GiB, database 0.97-1.06 GiB.
+- **Raspberry Pi 5, one worker** (2.7 GiB budget): backend 0.58 GiB (T0), 0.63 (T2), 0.79 (T3), 1.38 (T4); database 0.12-0.46 GiB. The Pi did not
+  run the heavy scenarios, whose high-water would add to these.
+- **Not measured:** frontend and MCP server are not part of the perf stack; their limits come from a one-off idle `docker stats` (about 11 and 57 MiB) with generous
+  headroom. Boards under 8 GiB, and four workers on a Pi, are unmeasured.
+- **Re-measure** with `perf/run_baseline.sh` and compare with `perf/compare.py`; when a number here moves, change the default limits in `docker-compose.yml`
+  and the table in [deployment.md](deployment.md#sizing-and-memory-limits) in the same change.
 
 ## Capacity by worker count and host (T2, ten projects, commits 38efb504 and 874d93b9, 2026-10-28)
 

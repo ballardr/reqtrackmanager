@@ -400,17 +400,17 @@ Every always-on service has a memory limit in `docker-compose.yml`, set from the
 
 | Service | Variable | Default | Measured |
 |---------|----------|---------|----------|
-| `backend` | `BACKEND_MEM_LIMIT` | `5g` | 4 workers: 1.7 GiB idle, 1.8-2.4 GiB while only reading, 4.4-4.6 GiB once the workers have served an organisation export, bundle or report on a project of 1,000 requirements, 8.3 GiB at 5,000 and 11.4 GiB at 20,000 |
-| `db` | `DB_MEM_LIMIT` | `2g` | 0.4-0.8 GiB with four workers up to 1,000 requirements, about 1 GiB at six workers; 1.7-2.7 GiB at 5,000 requirements with `shared_buffers` 512 MB: raise it with that setting |
-| `storage` | `STORAGE_MEM_LIMIT` | `1g` | 0.1-0.6 GiB, the top under sustained attachment uploads |
+| `backend` | `BACKEND_MEM_LIMIT` | `5g` | 4 workers: 1.7 GiB idle, 2.2 GiB at 30 requirements, 3.2 GiB at 1,000, 5.0 GiB at 5,000 and 9.5 GiB or more at 20,000 (the test's cap); 6 workers: 4.2 GiB at 1,000, 6.6 GiB at 5,000 |
+| `db` | `DB_MEM_LIMIT` | `3g` | 0.4 GiB at 100 requirements, 0.7-0.9 GiB at 1,000 and 5,000, 2.1-2.7 GiB at 20,000; more with a larger `shared_buffers` (1.7-2.7 GiB at 5,000 with 512 MB) |
+| `storage` | `STORAGE_MEM_LIMIT` | `2g` | 0.3-0.86 GiB, the top under sustained attachment uploads |
 | `frontend` | `FRONTEND_MEM_LIMIT` | `128m` | about 11 MiB (idle snapshot) |
 | `mcp-server` | `MCP_MEM_LIMIT` | `256m` | about 57 MiB (idle snapshot) |
 
 A backend worker keeps the memory of the heaviest request it has served, so memory is a worker count and a project size, not a user count:
 
-> backend limit ≈ 0.1 GiB + `BACKEND_WORKERS` × the high-water of a worker (about 1.2 GiB for projects up to 1,000 requirements, 2.4 GiB around 5,000, 3 GiB and more at 20,000)
+> backend limit ≈ 0.1 GiB + `BACKEND_WORKERS` × the high-water of a worker (about 0.8 GiB for projects up to 1,000 requirements, 1.3 GiB around 5,000, 2.4-3.2 GiB and more at 20,000)
 
-Every worker eventually serves a heavy request (a report, a project or organisation export, a bundle or CSV import), so count all of them. The default covers four workers on projects up to about 1,000 requirements. A deployment with larger projects raises it (four workers on 5,000-requirement projects: `BACKEND_MEM_LIMIT=10g`), or runs fewer workers, which also cuts throughput: see the capacity table in [performance.md](performance.md). A rise in the limit has to fit the host's RAM together with the database and the operating system. The backend logs a `WARNING` at start if its limit is below the formula for its worker count at 1,000 requirements.
+Every worker eventually serves a heavy request (a project or organisation export, a bundle or CSV import, a report), so count all of them. The default covers up to six workers on projects up to about 1,000 requirements. A deployment with larger projects raises it (four workers on 5,000-requirement projects: `BACKEND_MEM_LIMIT=6g`; on 20,000-requirement projects use 12g or more, and expect heavy requests to need more than the 9.5 GiB the tests allowed), or runs fewer workers, which also cuts throughput: see the capacity table in [performance.md](performance.md). A rise in the limit has to fit the host's RAM together with the database and the operating system. The backend logs a `WARNING` at start if its limit is below the formula for its worker count at 1,000 requirements.
 
 ```mermaid
 flowchart TD

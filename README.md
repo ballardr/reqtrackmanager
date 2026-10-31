@@ -106,13 +106,13 @@ The full list of variables, defaults, and which are actually required is in [Con
 
 ### Sizing
 
-Memory follows the backend's worker count and the size of the largest project, not the number of users: a worker keeps the memory of the heaviest request it has served. Every always-on service has a memory limit in `docker-compose.yml` (overridable from `.env`); the backend's is roughly 0.1 GiB + `BACKEND_WORKERS` × 1.2 GiB for projects up to 1,000 requirements.
+Memory follows the backend's worker count and the size of the largest project, not the number of users: a worker keeps the memory of the heaviest request it has served. Every always-on service has a memory limit in `docker-compose.yml` (overridable from `.env`); the backend's is roughly 0.1 GiB + `BACKEND_WORKERS` × 0.8 GiB for projects up to 1,000 requirements (1.3 GiB per worker at 5,000, 2.4 GiB or more at 20,000).
 
-| Largest project | Backend, 4 workers | Database | Host RAM to plan for |
-|-----------------|--------------------|----------|----------------------|
-| Up to ~1,000 requirements | 4.4-4.6 GiB once heavy requests have run (1.8-2.4 GiB while only reading) | 0.4-0.8 GiB | 8 GiB |
-| ~5,000 requirements | 8.3 GiB | 0.9-2.7 GiB | 16 GiB, or fewer workers |
-| 20,000 requirements | 11.4 GiB | 1-3 GiB | 16 GiB or more |
+| Largest project | Backend, 4 workers (6 workers) | Database | Host RAM to plan for |
+|-----------------|--------------------------------|----------|----------------------|
+| Up to ~1,000 requirements | 3.2 GiB (4.2) | 0.7-0.9 GiB | 8 GiB |
+| ~5,000 requirements | 5.0 GiB (6.6) | 0.9-2.7 GiB | 16 GiB |
+| 20,000 requirements | 9.5 GiB or more | 2-3 GiB | 32 GiB or more |
 
 Throughput is CPU-bound: on a 16-core Linux server with six cores for the API a one-worker stack serves about 60 requests a second and six workers about 190 (usable) to 230 (peak), roughly 300-1,900 active people; a Raspberry Pi 5 serves about 8 requests a second with one worker. Figures, method and how to repeat it (`perf/run_baseline.sh`) are in [docs/performance.md](docs/performance.md) and [docs/deployment.md](docs/deployment.md#sizing-and-memory-limits).
 
@@ -167,7 +167,7 @@ Backend environment variables (set via `docker-compose.yml`, a `.env` file, or y
 | `BACKEND_WORKERS` | `4` | — | Backend worker processes per container (CPU cores the API can use). Workers coordinate via PostgreSQL; see the deployment guide's scaling section for connection/memory sizing |
 | `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | `5` / `10` | — | Database connections each backend worker keeps / may add under load. A worker holds at most `DB_POOL_SIZE + DB_MAX_OVERFLOW` plus two dedicated connections (17 by default), so `BACKEND_WORKERS × replicas × 17` must stay under PostgreSQL's `max_connections` (100 by default, 3 reserved) |
 | `MAX_CONCURRENT_REQUESTS` / `REQUEST_QUEUE_TIMEOUT_SECONDS` | `0` / `30` | — | Requests one backend worker serves at once (`0` = the database pool's capacity, `DB_POOL_SIZE + DB_MAX_OVERFLOW`), and how many seconds an extra request waits for a slot before a `503` with `Retry-After`. The limit keeps requests from holding every connection while waiting for a thread; raise it only together with the pool. `/health` and `/metrics` are never held |
-| `BACKEND_MEM_LIMIT` / `DB_MEM_LIMIT` / `STORAGE_MEM_LIMIT` / `FRONTEND_MEM_LIMIT` / `MCP_MEM_LIMIT` | `5g` / `2g` / `1g` / `128m` / `256m` | — | Memory limit of each always-on Compose service (`0` removes it). Defaults come from measured peaks; raise the backend's with the worker count and project size, see the [sizing guide](docs/deployment.md#sizing-and-memory-limits) |
+| `BACKEND_MEM_LIMIT` / `DB_MEM_LIMIT` / `STORAGE_MEM_LIMIT` / `FRONTEND_MEM_LIMIT` / `MCP_MEM_LIMIT` | `5g` / `3g` / `2g` / `128m` / `256m` | — | Memory limit of each always-on Compose service (`0` removes it). Defaults come from measured peaks; raise the backend's with the worker count and project size, see the [sizing guide](docs/deployment.md#sizing-and-memory-limits) |
 | `GEOIP_LOOKUP_ENABLED` | `false` | — | Whether login events resolve an approximate location for the client IP via a third-party lookup (C-A-07). Off by default since it's an external network dependency; login is never blocked by it regardless |
 | `GEOIP_LOOKUP_EXCLUDE_CIDRS` | private/loopback ranges | — | Comma-separated CIDR ranges never sent to the geolocation lookup, even when enabled |
 | `PUBLIC_BACKEND_URL` | `http://localhost:8000` | Recommended if SSO is used | This backend's own externally-reachable base URL — must exactly match the redirect URI registered on any OIDC identity provider (E-U-01) |

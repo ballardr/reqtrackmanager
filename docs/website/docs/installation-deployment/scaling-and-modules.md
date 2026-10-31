@@ -85,12 +85,12 @@ Every always-on service has a memory limit in `docker-compose.yml`, set from mea
 
 | Service | Variable | Default | Measured |
 |---------|----------|---------|----------|
-| Backend | `BACKEND_MEM_LIMIT` | `5g` | 4 workers: 1.8-2.4 GiB while only reading, 4.4-4.6 GiB once the workers have served an organisation export, bundle or report on a 1,000-requirement project, 8.3 GiB at 5,000 requirements, 11.4 GiB at 20,000 |
-| Database | `DB_MEM_LIMIT` | `2g` | 0.4-0.8 GiB with four workers, about 1 GiB at six; up to 2.7 GiB at 5,000 requirements with a larger `shared_buffers` |
-| Object storage | `STORAGE_MEM_LIMIT` | `1g` | 0.1-0.6 GiB |
+| Backend | `BACKEND_MEM_LIMIT` | `5g` | 4 workers: 3.2 GiB at 1,000 requirements, 5.0 GiB at 5,000, 9.5 GiB or more at 20,000; 6 workers: 4.2 GiB and 6.6 GiB |
+| Database | `DB_MEM_LIMIT` | `3g` | 0.7-0.9 GiB at 1,000 to 5,000 requirements, 2.1-2.7 GiB at 20,000 |
+| Object storage | `STORAGE_MEM_LIMIT` | `2g` | 0.3-0.86 GiB |
 | Frontend / MCP server | `FRONTEND_MEM_LIMIT` / `MCP_MEM_LIMIT` | `128m` / `256m` | about 11 / 57 MiB |
 
-A backend worker keeps the memory of the heaviest request it has served, so backend memory follows the worker count and the project size, not the number of users: roughly **0.1 GiB + 1.2 GiB × workers** for projects up to 1,000 requirements, and about 2.4 GiB per worker around 5,000. Every worker eventually serves a heavy request, so count all of them; with larger projects raise the limit or run fewer workers. Memory stayed flat over a 30-minute soak once the first heavy requests had run. See the [deployment guide](https://github.com/ballardr/reqtrackmanager/blob/main/docs/deployment.md#sizing-and-memory-limits) for the decision flow.
+A backend worker keeps the memory of the heaviest request it has served, so backend memory follows the worker count and the project size, not the number of users: roughly **0.1 GiB + 0.8 GiB × workers** for projects up to 1,000 requirements, about 1.3 GiB per worker around 5,000 and 2.4 GiB or more at 20,000. Every worker eventually serves a heavy request, so count all of them; with larger projects raise the limit or run fewer workers. Memory stayed flat over a 30-minute soak once the first heavy requests had run. See the [deployment guide](https://github.com/ballardr/reqtrackmanager/blob/main/docs/deployment.md#sizing-and-memory-limits) for the decision flow.
 
 ## Next steps
 

@@ -32,9 +32,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in production}
     # Memory limits (this and the other services) come from the measured peaks in docs/performance.md; sizing and
     # how to raise them are in docs/deployment.md, "Sizing". Each is overridable from `.env`; 0 removes the limit.
-    # Measured peak 1.1 GiB with six workers on a 1,000-requirement project; 1.7-2.7 GiB at 5,000 requirements with
+    # Measured peak 0.7-0.9 GiB at 1,000 requirements, 2.1-2.7 GiB at 20,000; 1.7-2.7 GiB at 5,000 with
     # `shared_buffers` 512MB: raise it with that setting.
-    mem_limit: ${DB_MEM_LIMIT:-2g}
+    mem_limit: ${DB_MEM_LIMIT:-3g}
     volumes:
       - reqtrack_db_data:/var/lib/postgresql/data
     # No host port published: nothing outside the Compose network needs
@@ -71,8 +71,8 @@ services:
     configs:
       - source: storage_identity
         target: /etc/seaweedfs/s3.json
-    # Measured peak 0.6 GiB under sustained attachment uploads.
-    mem_limit: ${STORAGE_MEM_LIMIT:-1g}
+    # Measured peak 0.86 GiB under sustained attachment uploads.
+    mem_limit: ${STORAGE_MEM_LIMIT:-2g}
     volumes:
       - reqtrack_storage_data:/data
     # No host port published: only the backend talks to this over the
@@ -99,8 +99,8 @@ services:
     build:
       context: ./backend
     # A worker keeps the memory of the heaviest request it has served (an organisation export, a bundle, a report):
-    # about 1.2 GiB each on projects up to 1,000 requirements, 2.4 GiB and more at 5,000. 5g fits four workers on
-    # the former; raise it with the worker count and project size (formula in docs/deployment.md).
+    # about 0.8 GiB each on projects up to 1,000 requirements, 1.3 GiB at 5,000 and 2.4 GiB and more at 20,000. 5g fits
+    # four to six workers on the first; raise it with the worker count and project size (formula in docs/deployment.md).
     mem_limit: ${BACKEND_MEM_LIMIT:-5g}
     environment:
       # Worker processes (CPU cores the API can use); see backend/docker-entrypoint.sh.
