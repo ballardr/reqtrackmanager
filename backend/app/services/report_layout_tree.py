@@ -70,7 +70,7 @@ from app.services.report_fields import FieldInfo, UnknownReportFieldError, field
 from app.services.report_file_names import template_problems
 from app.services.report_layout_block_schema import BlockContainer, BlockField, BlockProvides, BlockSchema
 from app.services.report_math import MAX_TEX_CHARS, split_math, tex_problem
-from app.services.report_model import CELL_ARRANGEMENTS, PLACEHOLDER_NAMES, PLACEHOLDER_RE
+from app.services.report_model import CELL_ARRANGEMENTS, CONTENTS_SHEET_NAME, PLACEHOLDER_NAMES, PLACEHOLDER_RE
 from app.services.report_page_styles import (
     ORIENTATIONS,
     PAGE_FIELD_NAMES,
@@ -346,6 +346,12 @@ class TreeValidator:
         self._collectors: list[set[Ref]] = []
         self._catalogues: dict[str, dict[str, FieldInfo] | None] = {}
         self._sheet_names: set[str] = set()
+        #: `{lower-case sheet name: (name, record type of its rows)}` and the sheet links found, checked once every sheet is known
+        #: (a link may name a sheet written after it): `(path, record type of the linked cell, sheet name)`.
+        self._sheet_roots: dict[str, tuple[str, str]] = {}
+        self._sheet_links: list[tuple[str, str, str]] = []
+        #: Whether the layout starts with a generated contents sheet (so no sheet of its own may take its name).
+        self.contents_sheet = False
         self.widget_reports: set[str] = set()
         #: `{name: declaration}` of the layout's valid variables (a reference is checked against these).
         self.variables: dict[str, dict[str, Any]] = {}
@@ -373,7 +379,7 @@ class TreeValidator:
             tree, "", required=("schema_version", "family", "nodes"),
             optional=(
                 "orientation", "page_size", "margins", "mirror_margins", "page_styles", "header", "footer", "variables", "file_name",
-                "repeat_table_header",
+                "repeat_table_header", "contents_sheet",
             ),
         )
         if tree.get("schema_version") != TREE_SCHEMA_VERSION:
@@ -401,6 +407,13 @@ class TreeValidator:
                 self.error("repeat_table_header", "Only a document layout has pages for a header row to repeat on.")
             elif not isinstance(tree["repeat_table_header"], bool):
                 self.error("repeat_table_header", "Must be true or false.")
+        if "contents_sheet" in tree:
+            if declared != FAMILY_TABLE:
+                self.error("contents_sheet", "Only a table layout has sheets for a contents sheet to list.")
+            elif not isinstance(tree["contents_sheet"], bool):
+                self.error("contents_sheet", "Must be true or false.")
+            elif tree["contents_sheet"]:
+                self.contents_sheet = True
         if "variables" in tree:
             self.variable_declarations(tree["variables"], "variables")
         if "file_name" in tree:
@@ -416,7 +429,18 @@ class TreeValidator:
             self.nodes(nodes, "nodes", 1)
         elif "nodes" in tree:
             self.error("nodes", "Must be a list of blocks.")
+        self.sheet_links()
         return self.analysis
+
+    def sheet_links(self) -> None:
+        """Checks every column `link` against the sheets: the sheet exists and lists the linked record's type."""
+        for path, owner, target in self._sheet_links:
+            found = self._sheet_roots.get(target.casefold())
+            if found is None:
+                names = ", ".join(name for name, _ in self._sheet_roots.values()) or "none"
+                self.error(path, f'No sheet is called "{target}". The sheets are: {names}.')
+            elif found[1] != owner:
+                self.error(path, f'Sheet "{found[0]}" lists {found[1]} records, not {owner} records, so this cell cannot open its row.')
 
     def page_styles(self, tree: dict[str, Any], family: str) -> None:
         """Checks the root's margins and page styles and notes the names a `section` block may use."""
@@ -801,7 +825,7 @@ class TreeValidator:
             if "images" in col:
                 self.image_column(col, here, record_type, aliases)
                 continue
-            self.check_keys(col, here, required=("field",), optional=("label", "from") if aliases else ("label",))
+            self.check_keys(col, here, required=("field",), optional=("label", "from", "link") if aliases else ("label",))
             owner = record_type
             if aliases and "from" in col:
                 if col["from"] not in aliases:
@@ -811,6 +835,21 @@ class TreeValidator:
             self.record_field(owner, col.get("field"), f"{here}.field")
             if "label" in col:
                 self.text(col["label"], f"{here}.label", limit=200)
+            if aliases and "link" in col:
+                self.sheet_link(col["link"], f"{here}.link", owner)
+
+    def sheet_link(self, link: Any, path: str, owner: str) -> None:
+        """Validates a column's `link`, `{sheet: <name>}`: the cell opens the row of its record on that sheet.
+
+        The sheet may be written later in the layout, so it is resolved by `sheet_links` once every sheet is known.
+        """
+        if not isinstance(link, dict):
+            self.error(path, "Must be an object like {\"sheet\": \"Requirements\"}.")
+            return
+        self.check_keys(link, path, required=("sheet",))
+        target = self.text(link.get("sheet", MISSING), f"{path}.sheet", limit=31)
+        if target is not None:
+            self._sheet_links.append((f"{path}.sheet", owner, target))
 
     def image_column(self, col: dict[str, Any], path: str, record_type: str, aliases: dict[str, str] | None) -> None:
         """Validates a column that shows the pictures attached to each row's record: `{images: {...rules}, label?, from?}`.
@@ -1410,6 +1449,8 @@ def _validate_sheet(v: TreeValidator, node: dict[str, Any], path: str) -> None:
     if name is not None:
         if _SHEET_NAME_BAD.search(name) or name.startswith("'") or name.endswith("'"):
             v.error(f"{path}.name", "A sheet name cannot contain [ ] : * ? / \\ or start or end with an apostrophe.")
+        elif v.contents_sheet and name.casefold() == CONTENTS_SHEET_NAME.casefold():
+            v.error(f"{path}.name", f'"{CONTENTS_SHEET_NAME}" names the generated contents sheet. Choose another name, or switch it off.')
         elif name.casefold() in v._sheet_names:
             v.error(f"{path}.name", f'Another sheet is already called "{name}".')
         v._sheet_names.add(name.casefold())
@@ -1419,6 +1460,8 @@ def _validate_sheet(v: TreeValidator, node: dict[str, Any], path: str) -> None:
         if record_type is None:
             return
         aliases = {root_alias: record_type}
+        if name is not None:
+            v._sheet_roots.setdefault(name.casefold(), (name, record_type))
         stack.enter_context(v.binding(root_alias, Binding("record", record_type)))
         joins = node.get("joins", [])
         if not isinstance(joins, list) or len(joins) > MAX_JOINS:

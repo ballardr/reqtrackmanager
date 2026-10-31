@@ -12,7 +12,9 @@ Responsibilities:
   `ReportDocument` that holds them with the title, branding and the page style of its own pages; `RunningBand` (a
   header or footer: an invisible left, centre and right table, with page fields and an optional logo).
 - `Sheet`: one named table of a table-family report (CSV, XLSX, ODS); not a
-  document block, so it is never inside a `ReportDocument`.
+  document block, so it is never inside a `ReportDocument`. Its cells are text or a typed `DataCell` (a real number,
+  date or UTC instant, so a spreadsheet can sort, sum and filter it); `typed_cell` is the one place a value is judged
+  safe to type.
 - Cell tones: `Table.tones` marks cells the screen colours (a rating band, a
   matrix cell) and `TONE_FILL` is the one tone-to-colour table both renderers use;
   `text_on` picks black or white text for any fill by contrast.
@@ -58,10 +60,13 @@ Dependencies: markdown-it-py. `ReportBranding` is imported for typing only.
 
 from __future__ import annotations
 
+import math
 import re
 import unicodedata
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from enum import Enum
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
@@ -471,6 +476,121 @@ class PageStyleChange:
 Block = Heading | Paragraph | Equation | Note | BulletList | NumberedList | Image | Table | Gap | PageBreak | PageStyleChange
 
 
+#: Most rows a sheet can hold in Excel and OpenDocument spreadsheets (a link past it cannot be made).
+MAX_SHEET_ROWS = 1_048_576
+#: Whole numbers a spreadsheet keeps exactly (Excel holds 15 significant digits); a larger one stays text.
+MAX_EXACT_INTEGER = 10**15
+
+
+@dataclass(frozen=True)
+class CellLink:
+    """Where a linked spreadsheet cell opens: a row of another sheet of the same workbook.
+
+    The sheet is held by position, not name, because a renderer cleans and de-duplicates the tab names when it writes
+    them (`report_render.unique_names`) and must write the name the tab really got.
+
+    Attributes:
+        sheet: Index of the target sheet in the workbook's `sheets` list.
+        row: The target row, counting the header row as 1.
+    """
+
+    sheet: int
+    row: int
+
+
+@dataclass(frozen=True)
+class DataCell:
+    """A spreadsheet cell that holds a real number, date or instant instead of text.
+
+    A spreadsheet can only sort, sum or filter such a value when it is stored typed. `text` is how the same value reads
+    as text (what CSV, the designer preview and `str()` give), so a consumer that only reads text is unaffected.
+    `typed_cell` is the one way to make one, and it is the only place that decides a value is safe to type.
+
+    Attributes:
+        text: The value as printed text, always derived from `value`, never from user text.
+        value: An `int`, `float` or `Decimal` (finite, within `MAX_EXACT_INTEGER`), a `date` (a calendar date), or a
+            timezone-naive `datetime` that is in UTC (a past instant; a spreadsheet has no timezone).
+        link: Where the cell opens when it is clicked, else `None`.
+    """
+
+    text: str
+    value: int | float | Decimal | date | datetime
+    link: CellLink | None = None
+
+    def __str__(self) -> str:
+        return self.text
+
+
+@dataclass(frozen=True)
+class LinkedText:
+    """A text spreadsheet cell that opens a row of another sheet when it is clicked.
+
+    Attributes:
+        text: The cell's text (guarded against formulas by the renderer, as any text cell).
+        link: Where it opens.
+    """
+
+    text: str
+    link: CellLink
+
+    def __str__(self) -> str:
+        return self.text
+
+
+#: What a sheet cell holds: text (formula-guarded by the renderer), a typed value, or text that links to another sheet.
+SheetCell = str | DataCell | LinkedText
+
+
+def linked(cell: SheetCell, link: CellLink) -> SheetCell:
+    """`cell` with `link` added; the cell's own text and type are kept."""
+    return replace(cell, link=link) if isinstance(cell, DataCell | LinkedText) else LinkedText(cell, link)
+
+
+#: Name of the contents sheet a table layout can start with.
+CONTENTS_SHEET_NAME = "Contents"
+
+
+def contents_sheet(sheets: Sequence[Sheet]) -> Sheet:
+    """The contents sheet for `sheets` (which will follow it, so tab `i` of `sheets` is tab `i + 1` of the workbook).
+
+    Returns:
+        A sheet of one row per sheet: its name, as a link to the sheet's heading row, and how many rows it holds.
+    """
+    rows: list[list[SheetCell]] = [
+        [LinkedText(sheet.name, CellLink(i + 1, 1)), DataCell(str(len(sheet.rows)), len(sheet.rows))]
+        for i, sheet in enumerate(sheets)
+    ]
+    return Sheet(CONTENTS_SHEET_NAME, ["Sheet", "Rows"], rows, contents=True)
+
+
+def typed_cell(text: str, value: object) -> SheetCell:
+    """`value` as a typed sheet cell, or `text` itself when the value cannot be held exactly.
+
+    Args:
+        text: The value as printed text (also the fallback).
+        value: The loaded field value: a number, a `date`, an aware or naive-UTC `datetime`, or anything else.
+
+    Returns:
+        A `DataCell` for a finite number inside `MAX_EXACT_INTEGER`, a date, or an instant (converted to naive UTC);
+        otherwise `text`. A boolean is never a number here: it reads `Yes` or `No`.
+    """
+    if not text or isinstance(value, bool):
+        return text
+    if isinstance(value, int):
+        return DataCell(text, value) if abs(value) < MAX_EXACT_INTEGER else text
+    if isinstance(value, float):
+        return DataCell(text, value) if math.isfinite(value) and abs(value) < MAX_EXACT_INTEGER else text
+    if isinstance(value, Decimal):
+        return DataCell(text, value) if value.is_finite() and abs(value) < MAX_EXACT_INTEGER else text
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return DataCell(text, value)
+        return DataCell(text, value.astimezone(UTC).replace(tzinfo=None))
+    if isinstance(value, date):
+        return DataCell(text, value)
+    return text
+
+
 @dataclass(frozen=True)
 class Sheet:
     """One named table of a table-family report.
@@ -478,12 +598,15 @@ class Sheet:
     Attributes:
         name: Sheet (tab) name, at most 31 characters.
         columns: Header cells.
-        rows: Body rows of plain-text cells; a spreadsheet renderer guards formula injection.
+        rows: Body rows of cells: text (a spreadsheet renderer guards formula injection), a typed `DataCell`, or a
+            `LinkedText`.
+        contents: Whether this is the workbook's generated contents sheet (a fan-out run rebuilds it rather than merging it).
     """
 
     name: str
     columns: list[str]
-    rows: list[list[str]]
+    rows: Sequence[Sequence[SheetCell]]
+    contents: bool = False
 
 
 #: Page sizes a document can ask for, as (short side, long side) in cm.

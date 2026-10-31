@@ -42,7 +42,7 @@ import {
 } from "../utils/reportLayoutBlockly";
 import { buildTheme, registerBlocks } from "../utils/reportLayoutBlocklyBlocks";
 import {
-  cloneNode, formatPath, listAt, namesInScope, nodeAt, parsePath, problemsForNode, setAt, stableJson, summarise, type Seg, type Tree, type TreeNode,
+  cloneNode, formatPath, listAt, namesInScope, nodeAt, parsePath, problemsForNode, setAt, sourceRecordType, stableJson, summarise, type Seg, type Tree, type TreeNode,
 } from "../utils/reportLayoutTree";
 import type { SnippetSelection } from "../api/reportSnippets";
 import { insertedBlocks, withBlocksOf } from "../utils/reportSnippets";
@@ -180,7 +180,10 @@ export function ReportLayoutBlocks({
   const unknownLabel = text.unknownBlockOnCanvas;
   const declared = Array.isArray(tree.variables) ? (tree.variables as { name?: string }[]).map((v) => String(v.name ?? "")).filter(Boolean) : [];
   const pageStyles = Array.isArray(tree.page_styles) ? (tree.page_styles as { name?: string }[]).map((s) => String(s.name ?? "")).filter(Boolean) : [];
-  const env: BlockEnv = { blocks, catalogue, widgets, variables: declared, pageStyles, images, readOnly };
+  const sheets = (Array.isArray(tree.nodes) ? (tree.nodes as TreeNode[]) : [])
+    .filter((n) => n.type === "sheet" && typeof n.name === "string" && n.name !== "")
+    .map((n) => ({ name: String(n.name), recordType: sourceRecordType(n.source, []) }));
+  const env: BlockEnv = { blocks, catalogue, widgets, variables: declared, pageStyles, sheets, images, readOnly };
 
   // The workspace lives as long as the catalogue, family and mode it was built for.
   useEffect(() => {

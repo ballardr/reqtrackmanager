@@ -162,6 +162,11 @@ LAYOUT_FIELDS: tuple[BlockField, ...] = (
         "switched off; applies to every table in the layout.", families=("document",),
     ),
     BlockField(
+        "contents_sheet", "Contents sheet", "boolean", default=False,
+        help="Start the workbook with a Contents sheet: one row per sheet, its name linking to the sheet, and how many rows "
+        "it holds. Excel and OpenDocument spreadsheets link; a CSV zip gets a plain Contents file.", families=("table",),
+    ),
+    BlockField(
         "page_styles", "Page styles", "page_styles",
         help="Named page styles (paper, orientation, margins) that a section block lays its contents out in, for example "
         "an A3 landscape table inside an A4 portrait report. A style leaves out what it shares with the layout.",

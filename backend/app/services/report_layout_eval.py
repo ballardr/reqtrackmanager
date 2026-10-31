@@ -83,7 +83,7 @@ from sqlalchemy.orm import Session
 
 from app.models.file import FileAsset
 from app.models.project import Project
-from app.models.report_layout import FAMILY_DOCUMENT
+from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE
 from app.modules.registry import is_module_enabled_for_project
 from app.services.link_graph import ArtefactResolver
 from app.services.link_type_scope import resolve_link_type_scope
@@ -99,10 +99,12 @@ from app.services.report_layout_tree import (
 )
 from app.services.report_math import MathSegment, source_of, split_math, tex_problem, typeset
 from app.services.report_model import (
+    MAX_SHEET_ROWS,
     SLOT_NAMES,
     Block,
     BulletList,
     Cell,
+    CellLink,
     Equation,
     Gap,
     Heading,
@@ -119,12 +121,16 @@ from app.services.report_model import (
     ReportDocument,
     RunningBand,
     Sheet,
+    SheetCell,
     SlotPart,
     Styled,
     Table,
+    contents_sheet,
     link_problem,
+    linked,
     markdown_to_blocks,
     text_runs,
+    typed_cell,
 )
 from app.services.report_page_styles import effective_bands, resolve_page_styles
 from app.services.report_record_images import candidate_files, compile_pattern, load_attachment_image, record_files
@@ -361,6 +367,11 @@ def evaluate_layout(
         run.warn(warning)
     for node in tree["nodes"]:
         run.evaluate(node, {})
+    if tree["family"] == FAMILY_TABLE:
+        with_contents = tree.get("contents_sheet", False)
+        run.resolve_sheet_links(1 if with_contents else 0)
+        if with_contents:
+            run.sheets.insert(0, contents_sheet(run.sheets))
     document = None
     if tree["family"] == FAMILY_DOCUMENT:
         style = run.page_styles[0]
@@ -413,6 +424,10 @@ class _Run:
         #: Whether a document table's header row is printed again on each page (the layout's `repeat_table_header`).
         self.repeat_table_header = True
         self.sheets: list[Sheet] = []
+        #: Per sheet (same order), `{(record type, id): index of its first row}` for the records of the sheet's own source,
+        #: and the cells waiting for a link: `(row, column, record key, target sheet name)`.
+        self.sheet_row_of: list[dict[tuple[str, uuid.UUID], int]] = []
+        self.sheet_links: list[tuple[list[SheetCell], int, tuple[str, uuid.UUID], str]] = []
         self.warnings: list[str] = []
         self.stats = EvalStats()
         self._equations = 0
@@ -721,6 +736,34 @@ class _Run:
         if key in RESERVED_FIELD_KEYS:
             return value or ""
         return format_value(self.catalogue(record.artefact_type)[key].kind, value)
+
+    def resolve_sheet_links(self, offset: int) -> None:
+        """Turns each linked cell into a link to the row its record has on the target sheet.
+
+        A record that is not on the target sheet (filtered out, hidden from the caller, over a cap, or past the last row a
+        spreadsheet can hold) leaves the cell as plain text; one warning counts them.
+
+        Args:
+            offset: How many sheets will come before the first one (1 when a contents sheet is added).
+        """
+        position = {sheet.name.casefold(): i for i, sheet in enumerate(self.sheets)}
+        missed = 0
+        for row, column, record_key, target in self.sheet_links:
+            at = position.get(target.casefold())
+            first = self.sheet_row_of[at].get(record_key) if at is not None else None
+            if at is None or first is None or first + 2 > MAX_SHEET_ROWS:
+                missed += 1
+                continue
+            row[column] = linked(row[column], CellLink(at + offset, first + 2))
+        if missed:
+            self.warn(f"{missed} link(s) between sheets could not be made because the record is not on the sheet they open; they show as plain text.")
+
+    def sheet_cell(self, record: ReportRecord, key: str) -> SheetCell:
+        """A field as a spreadsheet cell: a number, date or UTC instant is typed, anything else is its printed text."""
+        text = self.text_of(record, key)
+        if key in RESERVED_FIELD_KEYS or self.catalogue(record.artefact_type)[key].kind not in ("number", "date", "instant"):
+            return text
+        return typed_cell(text, self.raw(record, key))
 
     def fill_pieces(self, text: str, scope: Scope) -> list[tuple[str, bool]]:
         """Substitutes `{{...}}` placeholders in already-parsed text, in one pass over `text` only.
@@ -1348,10 +1391,14 @@ def _eval_sheet(run: _Run, node: dict[str, Any], scope: Scope) -> None:
         run.prefetch_files([
             rec for combo in rows_of for c in columns if "images" in c and (rec := combo[c.get("from", root_alias)]) is not None
         ])
-    rows = []
+    rows: list[list[SheetCell]] = []
+    first_row: dict[tuple[str, uuid.UUID], int] = {}
     for combo in rows_of:
         run.tick()
-        row = []
+        row: list[SheetCell] = []
+        root_record = combo[root_alias]
+        if root_record is not None:
+            first_row.setdefault((root_record.artefact_type, root_record.id), len(rows))
         for c in columns:
             record = combo[c.get("from", root_alias)]
             if record is None:
@@ -1359,11 +1406,14 @@ def _eval_sheet(run: _Run, node: dict[str, Any], scope: Scope) -> None:
             elif "images" in c:  # a sheet holds text, so the cell lists the file names
                 row.append(run.image_cell_text(record, c["images"], {}))
             else:
-                row.append(run.text_of(record, c["field"]))
+                row.append(run.sheet_cell(record, c["field"]))
+                if "link" in c:
+                    run.sheet_links.append((row, len(row) - 1, (record.artefact_type, record.id), c["link"]["sheet"]))
         rows.append(row)
     run.stats.rows += len(rows)
     run._count_output(1 + len(rows))
     run.sheets.append(Sheet(node["name"], labels, rows))
+    run.sheet_row_of.append(first_row)
     count = root.hidden + root.unavailable + unseen
     if count:
         run.warn(f'Sheet "{node["name"]}": {count} record(s) not shown (not accessible to you, or not available).')

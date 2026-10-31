@@ -447,3 +447,74 @@ def test_an_if_may_test_that_a_module_is_available_and_a_made_up_module_is_refus
     assert [e.path for e in errors] == ["nodes[0].when.module"]
     extra = {**empty_tree("document"), "nodes": [{"type": "if", "when": {"module": "risk_management", "op": "eq"}, "children": []}]}
     assert validate_tree(extra).errors, "an unknown key beside module is refused"
+
+
+# --- sheet links and the contents sheet -------------------------------------------------------
+
+
+def linking(link: Any = None, **overrides: Any) -> dict[str, Any]:
+    """A table layout of a Requirements sheet and a Pain sheet whose Requirement column links to it."""
+    requirements = {"type": "sheet", "name": "Requirements", "source": {"record_type": REQ}, "columns": [{"field": "code"}]}
+    pain = {
+        "type": "sheet", "name": "Pain", "source": {"record_type": PAIN}, "as": "pain",
+        "joins": [{"as": "req", "source": {"record_type": REQ, "linked_from": "pain"}}],
+        "columns": [{"field": "title"}, {"field": "code", "from": "req", "link": {"sheet": "Requirements"} if link is None else link}],
+    }
+    return {**sheets(requirements, pain), **overrides}
+
+
+def test_a_column_can_link_to_a_sheet_that_lists_its_record_type():
+    assert errors(linking()) == {}
+    assert errors(linking({"sheet": "requirements"})) == {}  # names compare ignoring case
+
+
+def test_a_link_may_name_a_sheet_written_after_it():
+    tree = linking()
+    tree["nodes"].reverse()
+    assert errors(tree) == {}
+
+
+def test_a_link_to_the_sheet_it_is_on_is_allowed():
+    tree = sheets({
+        "type": "sheet", "name": "Requirements", "source": {"record_type": REQ},
+        "columns": [{"field": "code", "link": {"sheet": "Requirements"}}],
+    })
+    assert errors(tree) == {}
+
+
+def test_a_link_to_a_missing_sheet_names_the_sheets():
+    problems = errors(linking({"sheet": "Nope"}))
+    assert list(problems) == ["nodes[1].columns[1].link.sheet"]
+    message = problems["nodes[1].columns[1].link.sheet"]
+    assert 'No sheet is called "Nope"' in message and "Requirements, Pain" in message
+
+
+def test_a_link_to_a_sheet_of_another_record_type_is_refused_naming_both():
+    problems = errors(linking({"sheet": "Pain"}))
+    message = problems["nodes[1].columns[1].link.sheet"]
+    assert 'Sheet "Pain" lists pain_point records, not requirement records' in message
+
+
+@pytest.mark.parametrize("link", ["Requirements", {}, {"sheet": 5}, {"sheet": "Requirements", "row": 2}, {"sheet": ""}])
+def test_a_link_must_be_an_object_with_one_sheet_name(link):
+    assert any(path.startswith("nodes[1].columns[1].link") for path in errors(linking(link)))
+
+
+def test_a_document_table_column_cannot_link():
+    tree = doc({"type": "table", "source": {"record_type": REQ}, "columns": [{"field": "code", "link": {"sheet": "S"}}]})
+    assert list(errors(tree)) == ["nodes[0].columns[0].link"]
+
+
+def test_the_contents_sheet_is_for_table_layouts_and_a_flag():
+    assert errors(linking(contents_sheet=True)) == {}
+    assert errors(linking(contents_sheet=False)) == {}
+    assert list(errors(linking(contents_sheet="yes"))) == ["contents_sheet"]
+    assert list(errors(doc(contents_sheet=True))) == ["contents_sheet"]
+
+
+def test_a_sheet_cannot_take_the_name_of_the_generated_contents_sheet():
+    tree = linking(contents_sheet=True)
+    tree["nodes"][1]["name"] = "contents"
+    assert list(errors(tree)) == ["nodes[1].name"]
+    tree["contents_sheet"] = False
+    assert errors(tree) == {}

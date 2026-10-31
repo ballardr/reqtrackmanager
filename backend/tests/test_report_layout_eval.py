@@ -32,7 +32,7 @@ from app.services.report_layout_eval import (
     matches_value,
 )
 from app.services.report_layout_tree import BLOCK_SPECS, InvalidLayoutError
-from app.services.report_model import Gap, Heading, Note, Paragraph, ReportDocument, Table
+from app.services.report_model import CellLink, DataCell, Gap, Heading, LinkedText, Note, Paragraph, ReportDocument, Table
 from tests.conftest import auth_headers
 from tests.link_world import REQ, World
 
@@ -462,6 +462,27 @@ def test_a_table_layout_yields_sheets(world, db):
     assert result.sheets[1].rows == [] and result.stats.rows == 2
 
 
+def test_a_sheet_types_date_cells_and_leaves_text_and_empty_values_as_text(world, db):
+    project = world.project("Typed P")
+    resp = world.client.post(
+        f"/api/v1/projects/{project['id']}/requirements",
+        json={"name": "dated", "component_id": project["component_id"], "category_id": project["category_id"], "review_date": "2026-10-30"},
+        headers=auth_headers(world.token),
+    )
+    assert resp.status_code == 201, resp.text
+    requirement(world, project, "undated")
+    tree = {"schema_version": 1, "family": "table", "nodes": [
+        {"type": "sheet", "name": "R", "source": {"record_type": REQ, "sort": [{"field": "title"}]},
+         "columns": [{"field": "title"}, {"field": "review_date"}]},
+    ]}
+
+    rows = run(db, world, project, tree).sheets[0].rows
+
+    assert rows[0] == ["dated", DataCell("2026-10-30", date(2026, 10, 30))]
+    assert rows[1] == ["undated", ""]
+    assert isinstance(rows[0][0], str)
+
+
 def test_a_sheet_reports_unseen_records_as_a_warning(world, db, monkeypatch):
     project = world.project("Sheet hidden P")
     world.pain_point(project, "Secret")
@@ -676,3 +697,81 @@ def test_an_if_on_a_module_combines_with_not(db, world):
     tree = doc({"type": "if", "when": {"not": {"module": "risk_management"}}, "children": [{"type": "text", "text": "no risk module"}]})
 
     assert lines(run(db, world, project, tree).document) == ["P no risk module"]
+
+
+# --- links between sheets and the contents sheet ---------------------------------------------------------------
+
+
+def linked_workbook(**overrides: Any) -> dict[str, Any]:
+    """A Requirements sheet, and a Pain sheet whose Requirement column opens the requirement's row on it."""
+    requirements = {"type": "sheet", "name": "Requirements", "source": {"record_type": REQ, "sort": [{"field": "title"}]},
+                    "columns": [{"field": "title"}]}
+    pain = {
+        "type": "sheet", "name": "Pain", "as": "pain", "source": {"record_type": PAIN, "sort": [{"field": "title"}]},
+        "joins": [{"as": "req", "source": {"record_type": REQ, "linked_from": "pain"}}],
+        "columns": [{"field": "title"}, {"field": "title", "from": "req", "label": "Requirement", "link": {"sheet": "Requirements"}}],
+    }
+    return {"schema_version": 1, "family": "table", "nodes": [requirements, pain], **overrides}
+
+
+def linked_world(world):
+    project = world.project("Links P")
+    a, b, c = (requirement(world, project, t) for t in ("A req", "B req", "C req"))
+    for req, title in ((a, "Late"), (c, "Noisy")):
+        world.link((REQ, req), (PAIN, world.pain_point(project, title)))
+    return project, (a, b, c)
+
+
+def test_a_linked_cell_opens_the_row_of_its_record_on_the_other_sheet(world, db):
+    project, _ = linked_world(world)
+
+    requirements, pain = run(db, world, project, linked_workbook()).sheets
+
+    assert [r[0] for r in requirements.rows] == ["A req", "B req", "C req"]
+    # Row 1 is the heading, so the requirement listed first is row 2.
+    assert pain.rows == [["Late", LinkedText("A req", CellLink(0, 2))], ["Noisy", LinkedText("C req", CellLink(0, 4))]]
+
+
+def test_a_record_not_on_the_target_sheet_stays_text_and_is_counted_in_one_warning(world, db):
+    project, _ = linked_world(world)
+    tree = linked_workbook()
+    tree["nodes"][0]["source"]["where"] = [{"field": "title", "op": "ne", "value": "C req"}]
+
+    result = run(db, world, project, tree)
+
+    assert result.sheets[1].rows == [["Late", LinkedText("A req", CellLink(0, 2))], ["Noisy", "C req"]]
+    assert [w for w in result.warnings if "link(s)" in w] == [
+        "1 link(s) between sheets could not be made because the record is not on the sheet they open; they show as plain text."
+    ]
+
+
+def test_a_link_to_the_same_sheet_and_to_the_first_row_of_a_repeated_record(world, db):
+    project, (a, *_rest) = linked_world(world)
+    world.link((REQ, a), (PAIN, world.pain_point(project, "Second")))
+    tree = {"schema_version": 1, "family": "table", "nodes": [{
+        "type": "sheet", "name": "Impact", "as": "req", "source": {"record_type": REQ, "sort": [{"field": "title"}]},
+        "joins": [{"as": "pain", "source": {"record_type": PAIN, "linked_from": "req", "sort": [{"field": "title"}]}}],
+        "columns": [{"field": "title", "link": {"sheet": "Impact"}}, {"field": "title", "from": "pain"}],
+    }]}
+
+    rows = run(db, world, project, tree).sheets[0].rows
+
+    # A req has two pain points and so two rows; both open its first row (2).
+    assert [r[0] for r in rows[:2]] == [LinkedText("A req", CellLink(0, 2))] * 2
+    assert rows[2][0] == LinkedText("B req", CellLink(0, 4))
+
+
+def test_a_contents_sheet_lists_every_sheet_and_the_links_count_it(world, db):
+    project, _ = linked_world(world)
+
+    result = run(db, world, project, linked_workbook(contents_sheet=True))
+
+    contents, requirements, pain = result.sheets
+    assert contents.contents and contents.columns == ["Sheet", "Rows"]
+    assert contents.rows == [
+        [LinkedText("Requirements", CellLink(1, 1)), DataCell("3", 3)],
+        [LinkedText("Pain", CellLink(2, 1)), DataCell("2", 2)],
+    ]
+    # The contents sheet comes first, so every position moves by one.
+    assert pain.rows[0][1] == LinkedText("A req", CellLink(1, 2))
+    assert [s.name for s in result.sheets] == ["Contents", "Requirements", "Pain"]

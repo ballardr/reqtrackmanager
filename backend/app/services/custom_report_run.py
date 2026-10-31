@@ -91,16 +91,22 @@ from app.services.report_layout_tree import record_types_of
 from app.services.report_model import (
     Block,
     BulletList,
+    CellLink,
+    DataCell,
     Equation,
     Gap,
     Heading,
+    LinkedText,
     Note,
     NumberedList,
     PageBreak,
     Paragraph,
     ReportDocument,
     Sheet,
+    SheetCell,
     Table,
+    contents_sheet,
+    linked,
 )
 from app.services.report_render import RenderedFile, RenderInput, formats_for, render
 from app.services.report_running import apply_template_defaults
@@ -366,14 +372,54 @@ def merge_evaluations(parts: Sequence[tuple[Project, EvaluatedLayout]], title: s
         first = parts[0][1].document
         document = replace(first, title=title, blocks=blocks) if first else ReportDocument(title=title, blocks=blocks)
     else:
-        merged: dict[str, Sheet] = {}
-        for project, part in parts:
-            for sheet in part.sheets:
-                target = merged.setdefault(sheet.name, Sheet(sheet.name, ["Project", *sheet.columns], []))
-                target.rows.extend([project.name, *row] for row in sheet.rows)
-        sheets = list(merged.values())
+        sheets = _merge_sheets([part for _, part in parts], [project.name for project, _ in parts])
     widgets = sorted({key for _, part in parts for key in part.widgets})
     return EvaluatedLayout(family, document, sheets, warnings, stats, digest, versions, truncated, widgets, parts[0][1].variables)
+
+
+def _merge_sheets(parts: Sequence[EvaluatedLayout], project_names: Sequence[str]) -> list[Sheet]:
+    """The sheets of one run per project as one set: same-named sheets stacked under a leading Project column.
+
+    A link between sheets is moved with its row: it points at the same record's row in the merged target sheet (the
+    project's own block of rows), by the target's name, since a project's run may have left a sheet out. A contents
+    sheet is rebuilt over the merged sheets rather than merged.
+
+    Args:
+        parts: Each project's evaluated table layout, in order.
+        project_names: The project name for each part.
+
+    Returns:
+        The merged sheets, a contents sheet first when any part had one.
+    """
+    with_contents = any(sheet.contents for part in parts for sheet in part.sheets)
+    offset = 1 if with_contents else 0
+    headers: dict[str, list[str]] = {}
+    start: dict[tuple[int, str], int] = {}
+    total: dict[str, int] = {}
+    for i, part in enumerate(parts):
+        for sheet in part.sheets:
+            if not sheet.contents:
+                headers.setdefault(sheet.name, ["Project", *sheet.columns])
+                start[i, sheet.name] = total.get(sheet.name, 0)
+                total[sheet.name] = start[i, sheet.name] + len(sheet.rows)
+    position = {name: n + offset for n, name in enumerate(headers)}
+
+    def moved(cell: SheetCell, i: int, part: EvaluatedLayout) -> SheetCell:
+        link = cell.link if isinstance(cell, DataCell | LinkedText) else None
+        if link is None:
+            return cell
+        target = part.sheets[link.sheet].name
+        if target not in position:
+            return replace(cell, link=None) if isinstance(cell, DataCell) else str(cell)
+        return linked(cell, CellLink(position[target], link.row + start[i, target]))
+
+    merged: dict[str, list[list[SheetCell]]] = {name: [] for name in headers}
+    for i, (part, project) in enumerate(zip(parts, project_names, strict=True)):
+        for sheet in part.sheets:
+            if not sheet.contents:
+                merged[sheet.name].extend([project, *(moved(c, i, part) for c in row)] for row in sheet.rows)
+    sheets = [Sheet(name, columns, merged[name]) for name, columns in headers.items()]
+    return [contents_sheet(sheets), *sheets] if with_contents else sheets
 
 
 # --- output ------------------------------------------------------------------------------------------------
@@ -432,7 +478,7 @@ def result_for(run: LayoutRun) -> ReportResult:
         notes += leftover
     else:
         sections = [
-            ReportSection(key=f"sheet-{i + 1}", title=sheet.name, columns=sheet.columns, rows=sheet.rows)
+            ReportSection(key=f"sheet-{i + 1}", title=sheet.name, columns=sheet.columns, rows=[[str(c) for c in row] for row in sheet.rows])
             for i, sheet in enumerate(evaluated.sheets)
         ]
     total = sum(evaluated.stats.records_read.values())

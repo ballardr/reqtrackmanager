@@ -109,9 +109,9 @@ def refused(resp) -> list[tuple[str, str]]:
 # ---- the built-in set --------------------------------------------------------------------------------------------
 
 
-def test_the_built_in_set_is_the_documented_six_with_unique_keys_and_real_targets():
+def test_the_built_in_set_is_the_documented_six_and_a_workbook_one_with_unique_keys_and_real_targets():
     keys = [snippet.key for snippet in CORE_REPORT_SNIPPETS]
-    assert sorted(keys) == sorted(EXPECTED_KEYS)
+    assert sorted(keys) == sorted([*EXPECTED_KEYS, "linked-sheets"])
     assert [s.key for _module, s in get_report_snippets()][: len(keys)] == keys
     for snippet in CORE_REPORT_SNIPPETS:
         assert snippet.name and snippet.description and snippet.category and snippet.formats
@@ -417,3 +417,31 @@ def test_all_the_snippets_together_save_as_a_layout_and_preview(world):
     assert body["ok"], body
     assert "Document control" in body["html"] and "Approvals" in body["html"]
     assert "__" in body["html"], "the fill-in lines print as underscores, not as emphasis"
+
+
+# ---- the table snippet --------------------------------------------------------------------------------------------
+
+
+def test_two_linked_sheets_fills_both_sheets_and_the_link_follows_the_first_sheets_name(world):
+    base = org_base(world)
+    snippet = next(s for s in listing(world, base) if s["key"] == "linked-sheets")
+    assert snippet["family"] == "table" and snippet["formats"] == ["xlsx", "ods", "csv"]
+    kinds = {c["value"] for c in snippet["parameters"][0]["choices"]}
+    values = {"first_type": "requirement", "second_type": "change_request", "first_name": "Needs", "second_name": "Changes"}
+    assert {"requirement", "change_request"} <= kinds
+
+    body = ok(apply(world, base, "linked-sheets", empty_tree("table"), values))
+
+    first, second = body["tree"]["nodes"]
+    assert (first["name"], first["source"]["record_type"]) == ("Needs", "requirement")
+    join_type = second["joins"][0]["source"]["record_type"]
+    assert (second["name"], second["source"]["record_type"], join_type) == ("Changes", "change_request", "requirement")
+    assert second["columns"][3]["link"] == {"sheet": "Needs"}
+    assert validate_tree(body["tree"], family="table").ok
+    assert parse_text(format_tree(body["tree"])).tree == body["tree"]
+
+
+def test_two_linked_sheets_is_refused_for_a_document_layout(world):
+    errors = refused(apply(world, org_base(world), "linked-sheets", doc(), {"first_type": "requirement", "second_type": "change_request"}))
+
+    assert errors and "table layout" in errors[0][1]

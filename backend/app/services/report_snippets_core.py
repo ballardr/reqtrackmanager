@@ -36,6 +36,7 @@ CATEGORY_FRONT = "Cover and front matter"
 CATEGORY_IMAGES = "Images"
 CATEGORY_TABLES = "Tables"
 CATEGORY_APPROVALS = "Approvals"
+CATEGORY_WORKBOOKS = "Workbooks"
 
 #: The box the logo is fitted into, in cm: at most this wide, and this tall less what the top margin leaves.
 LOGO_MAX_WIDTH_CM = 4.0
@@ -220,8 +221,49 @@ LANDSCAPE_TABLE = ReportSnippet(
     ),
 )
 
+_LINKED_COLUMNS = [{"field": "code", "label": "Code"}, {"field": "title", "label": "Title"}, {"field": "status", "label": "Status"}]
+
+LINKED_SHEETS = ReportSnippet(
+    key="linked-sheets",
+    name="Two linked sheets",
+    description=(
+        "A sheet of one kind of record and a second sheet of another kind, where each row of the second shows the record it "
+        "is linked to as a link that opens that record's row on the first sheet."
+    ),
+    category=CATEGORY_WORKBOOKS,
+    family="table",
+    blocks=(
+        {"type": "sheet", "name": "Records", "source": {"record_type": "", "sort": [{"field": "code"}]}, "columns": _LINKED_COLUMNS},
+        {
+            "type": "sheet", "name": "Linked records", "as": "linked", "source": {"record_type": "", "sort": [{"field": "code"}]},
+            "joins": [{"as": "origin", "source": {"record_type": "", "linked_from": "linked", "sort": [{"field": "code"}]}}],
+            "columns": [*_LINKED_COLUMNS, {"field": "code", "from": "origin", "label": "Linked record", "link": {"sheet": "Records"}}],
+        },
+    ),
+    parameters=(
+        ReportSnippetParameter(
+            "first_type", "First sheet lists", "record_type",
+            ("nodes[0].source.record_type", "nodes[1].joins[0].source.record_type"),
+            "The kind of record on the first sheet, and the kind the second sheet's link column opens.",
+        ),
+        ReportSnippetParameter(
+            "second_type", "Second sheet lists", "record_type", ("nodes[1].source.record_type",),
+            "The kind of record on the second sheet. Each row shows the record of the first kind it is linked to.",
+        ),
+        ReportSnippetParameter(
+            "first_name", "First sheet name", "text", ("nodes[0].name", "nodes[1].columns[3].link.sheet"),
+            "The first sheet's tab name. The second sheet's link column opens this sheet.", default="Records", max_length=31,
+        ),
+        ReportSnippetParameter(
+            "second_name", "Second sheet name", "text", ("nodes[1].name",), "The second sheet's tab name.",
+            default="Linked records", max_length=31,
+        ),
+    ),
+    formats=("xlsx", "ods", "csv"),
+)
+
 CORE_REPORT_SNIPPETS: tuple[ReportSnippet, ...] = (
-    COVER_PAGE, LOGO_TOP_RIGHT, DOCUMENT_CONTROL, RECORD_IMAGES, LANDSCAPE_TABLE, APPROVALS,
+    COVER_PAGE, LOGO_TOP_RIGHT, DOCUMENT_CONTROL, RECORD_IMAGES, LANDSCAPE_TABLE, APPROVALS, LINKED_SHEETS,
 )
 """Every built-in snippet, in the order the picker lists them within a category."""
 

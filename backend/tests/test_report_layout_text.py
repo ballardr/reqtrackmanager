@@ -17,7 +17,7 @@ import pytest
 from app.services import report_layout_text as text_module
 from app.services.report_layout_text import MAX_TEXT_VIEW_CHARS, TEXT_FORMS, TextForm, format_tree, parse_text, register_text_form
 from app.services.report_layout_tree import BLOCK_SPECS, MAX_DEPTH, MAX_NODES, InvalidLayoutError, tree_hash, validate_tree
-from tests.test_report_layout_tree import PAIN, REQ, doc, example, sheets
+from tests.test_report_layout_tree import PAIN, REQ, doc, example, linking, sheets
 
 STAKEHOLDER = "stakeholder"
 
@@ -588,3 +588,36 @@ def test_an_if_on_a_module_reads_and_writes_as_module_and_the_key():
     assert parsed.errors == []
     assert parsed.tree["nodes"][0]["when"] == {"all": [{"module": "risk_management"}, {"not": {"module": "decisions"}}]}
     assert parse_text(format_tree(parsed.tree)).tree == parsed.tree
+
+
+# --- sheet links and the contents sheet -------------------------------------------------------
+
+
+def test_a_column_link_and_the_contents_flag_round_trip():
+    tree = linking(contents_sheet=True)
+    tree["nodes"][1]["columns"][1]["label"] = "Needs"
+    text = format_tree(tree)
+
+    assert text.splitlines()[0] == "@layout table contents"
+    assert '@column req.code "Needs" link "Requirements"' in text
+    assert parse_text(text).tree == tree
+
+
+def test_a_link_without_a_heading_and_a_switched_off_contents_sheet_round_trip():
+    tree = linking(contents_sheet=False)
+    text = format_tree(tree)
+
+    assert text.splitlines()[0] == "@layout table nocontents"
+    assert '@column req.code link "Requirements"' in text
+    assert parse_text(text).tree == tree
+
+
+def test_a_document_table_column_cannot_have_a_link_in_text():
+    result = parse_text('@layout document\n@table requirement\n  @column title link "S"\n@end\n')
+    assert result.tree is None or result.errors
+    assert any("Only a sheet column can link" in e.message for e in result.errors)
+
+
+def test_a_link_needs_a_sheet_name():
+    result = parse_text('@layout table\n@sheet "S" requirement\n  @column title link\n@end\n')
+    assert any(e.line == 3 for e in result.errors)

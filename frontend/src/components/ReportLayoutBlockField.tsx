@@ -46,6 +46,8 @@ export interface BlockEnv {
   variables: string[];
   /** Names of the layout's page styles, which a section chooses from. */
   pageStyles: string[];
+  /** The layout's sheets and the record type each lists (empty in a document), which a sheet column can link to. */
+  sheets?: { name: string; recordType: string | null }[];
   /** The picture library an image block chooses from, and the scope an upload goes to; absent where there is none. */
   images?: { library: ReportImageLibrary; scope: "organization" | "project" };
   readOnly: boolean;
@@ -214,6 +216,7 @@ export function ReportLayoutBlockField({
           <ReportLayoutColumnsEditor
             value={(Array.isArray(value) ? value : []) as Obj[]} names={readable} catalogue={env.catalogue} disabled={disabled}
             onChange={(next) => set(next)}
+            sheets={node.type === "sheet" ? env.sheets : undefined}
             imageFields={env.blocks.image_column_fields}
             renderImageField={(imageField, rules, recordType, change) => (
               <ReportLayoutBlockField
